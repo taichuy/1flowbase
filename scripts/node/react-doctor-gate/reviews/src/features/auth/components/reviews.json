@@ -4,30 +4,30 @@
     {
       "file": "web/app/src/features/auth/components/HeroAnimation.tsx",
       "rule": "react-doctor/js-tosorted-immutable",
-      "sourceSha256": "64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f",
-      "reason": "HeroAnimation 属 DESIGN.md §2.1 Brand Layer，canvas RAF 和监听有 cleanup；三片柔光固定 filter，float keyframes 仅动画 transform，不逐帧改 blur。 排序目标是 spread/Array.from 新数组，未更改生产者集合，已满足输入不可变语义。",
-      "evidence": [{"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"333fa4fdd1c8f8088ffcd96a1430c18aac41dea93d55e1026026082060b76c2f"}, {"file":"web/app/src/features/auth/components/HeroAnimation.tsx","sha256":"64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f"}, {"file":"web/app/src/features/auth/pages/SignInPage.tsx","sha256":"2018f14fce9e706573a2655ef915f3b9fae26dcb2ef32f1769e44bc0a5ec1958"}, {"file":"web/app/src/shared/i18n/text.ts","sha256":"dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+      "sourceSha256": "fc023342fa6b620a57a15003d9a700e3c968a2cd5083a7904f8c21b3f1c7421b",
+      "reason": "[...leaves].sort 按 z 深度排序新数组以实现画家算法，不修改 leaves 原集合；hide_login_tagline 仅控制文案块，未改变此排序。",
+      "evidence": [{"file":"DESIGN.md","sha256":"b9cbd5dd762d3d2d49b8a5980c07c66bfbc7d306cf654e299709d325249d15a6"}, {"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"605d49b5c9e6845b1a2a62c50404382949f1f290fff03ce70ca1027934a44a2c"}]
     },
     {
       "file": "web/app/src/features/auth/components/HeroAnimation.tsx",
       "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f",
-      "reason": "HeroAnimation 属 DESIGN.md §2.1 Brand Layer，canvas RAF 和监听有 cleanup；三片柔光固定 filter，float keyframes 仅动画 transform，不逐帧改 blur。 职责属于同一资源或组件生命周期，独立草稿/异步状态没有应合为单一字段的不变量；同步 setters 由 React19 batching，行数或 setter 数本身不能证明额外 render。",
-      "evidence": [{"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"333fa4fdd1c8f8088ffcd96a1430c18aac41dea93d55e1026026082060b76c2f"}, {"file":"web/app/src/features/auth/components/HeroAnimation.tsx","sha256":"64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f"}, {"file":"web/app/src/features/auth/pages/SignInPage.tsx","sha256":"2018f14fce9e706573a2655ef915f3b9fae26dcb2ef32f1769e44bc0a5ec1958"}, {"file":"web/app/src/shared/i18n/text.ts","sha256":"dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+      "sourceSha256": "fc023342fa6b620a57a15003d9a700e3c968a2cd5083a7904f8c21b3f1c7421b",
+      "reason": "HeroAnimation 实现 DESIGN.md 的 Brand Layer；同一 canvas effect 拥有粒子、RAF 和 resize listener，并在 cleanup 中取消 RAF/监听。文件长度不是已发生额外渲染或职责越界的证据；新增 hide_login_tagline 只控制文案，登录/footer 保留由 sign-in 测试覆盖。",
+      "evidence": [{"file":"DESIGN.md","sha256":"b9cbd5dd762d3d2d49b8a5980c07c66bfbc7d306cf654e299709d325249d15a6"}, {"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"605d49b5c9e6845b1a2a62c50404382949f1f290fff03ce70ca1027934a44a2c"}]
     },
     {
       "file": "web/app/src/features/auth/components/HeroAnimation.tsx",
       "rule": "react-doctor/no-inline-exhaustive-style",
-      "sourceSha256": "64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f",
-      "reason": "HeroAnimation 属 DESIGN.md §2.1 Brand Layer，canvas RAF 和监听有 cleanup；三片柔光固定 filter，float keyframes 仅动画 transform，不逐帧改 blur。 Brand Layer 几何与 blur 是固定 style，动画只变 transform；无逐帧 blur 属性计算，运行时性能未取证。",
-      "evidence": [{"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"333fa4fdd1c8f8088ffcd96a1430c18aac41dea93d55e1026026082060b76c2f"}, {"file":"web/app/src/features/auth/components/HeroAnimation.tsx","sha256":"64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f"}, {"file":"web/app/src/features/auth/pages/SignInPage.tsx","sha256":"2018f14fce9e706573a2655ef915f3b9fae26dcb2ef32f1769e44bc0a5ec1958"}, {"file":"web/app/src/shared/i18n/text.ts","sha256":"dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+      "sourceSha256": "fc023342fa6b620a57a15003d9a700e3c968a2cd5083a7904f8c21b3f1c7421b",
+      "reason": "Brand Layer 的固定几何和 blur 使用内联 style；float keyframes 只动画 transform，没有逐帧计算 blur 属性。hide_login_tagline 不改变动画资源生命周期。此源码结论不冒充运行时帧率验证。",
+      "evidence": [{"file":"DESIGN.md","sha256":"b9cbd5dd762d3d2d49b8a5980c07c66bfbc7d306cf654e299709d325249d15a6"}, {"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"605d49b5c9e6845b1a2a62c50404382949f1f290fff03ce70ca1027934a44a2c"}]
     },
     {
       "file": "web/app/src/features/auth/components/HeroAnimation.tsx",
       "rule": "react-doctor/no-large-animated-blur",
-      "sourceSha256": "64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f",
-      "reason": "HeroAnimation 属 DESIGN.md §2.1 Brand Layer，canvas RAF 和监听有 cleanup；三片柔光固定 filter，float keyframes 仅动画 transform，不逐帧改 blur。 Brand Layer 几何与 blur 是固定 style，动画只变 transform；无逐帧 blur 属性计算，运行时性能未取证。",
-      "evidence": [{"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"333fa4fdd1c8f8088ffcd96a1430c18aac41dea93d55e1026026082060b76c2f"}, {"file":"web/app/src/features/auth/components/HeroAnimation.tsx","sha256":"64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f"}, {"file":"web/app/src/features/auth/pages/SignInPage.tsx","sha256":"2018f14fce9e706573a2655ef915f3b9fae26dcb2ef32f1769e44bc0a5ec1958"}, {"file":"web/app/src/shared/i18n/text.ts","sha256":"dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+      "sourceSha256": "fc023342fa6b620a57a15003d9a700e3c968a2cd5083a7904f8c21b3f1c7421b",
+      "reason": "三片光晕的 blur 是固定 filter，float keyframes 只改变 transform，未逐帧改变模糊半径；RAF/resize 有 cleanup。保留品牌视觉契约；当前证据不能据此声称所有设备的合成成本均低。",
+      "evidence": [{"file":"DESIGN.md","sha256":"b9cbd5dd762d3d2d49b8a5980c07c66bfbc7d306cf654e299709d325249d15a6"}, {"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"605d49b5c9e6845b1a2a62c50404382949f1f290fff03ce70ca1027934a44a2c"}]
     },
     {
       "file": "web/app/src/features/auth/components/PublicAuthBlock.tsx",

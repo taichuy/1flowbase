@@ -104,35 +104,35 @@
       "rule": "react-doctor/no-derived-state",
       "sourceSha256": "4f28a1491a51b90ec347dbf7d257edccaab090ed33f5890e0e603893a781e489",
       "reason": "web/app/src/features/settings/components/SystemRuntimePanel.tsx:471（react-doctor/no-derived-state）：SystemRuntimePanel 的多个状态分别保存采样历史、筛选、进程树展开与用户选择；history 是跨轮询保留的时间窗口，展开/选择又可被用户修改，不能从单次 metrics 纯派生。role=group 是相关信息组不是 address。函数长度/多个独立 useState 不能证明逐次渲染或 owner 错置；确实遗漏的拓扑依赖单列 F1。 web/app/src/features/settings/components/SystemRuntimePanel.tsx:564（react-doctor/no-derived-state）：SystemRuntimePanel 的多个状态分别保存采样历史、筛选、进程树展开与用户选择；history 是跨轮询保留的时间窗口，展开/选择又可被用户修改，不能从单次 metrics 纯派生。role=group 是相关信息组不是 address。函数长度/多个独立 useState 不能证明逐次渲染或 owner 错置；确实遗漏的拓扑依赖单列 F1。 web/app/src/features/settings/components/SystemRuntimePanel.tsx:567（react-doctor/no-derived-state）：SystemRuntimePanel 的多个状态分别保存采样历史、筛选、进程树展开与用户选择；history 是跨轮询保留的时间窗口，展开/选择又可被用户修改，不能从单次 metrics 纯派生。role=group 是相关信息组不是 address。函数长度/多个独立 useState 不能证明逐次渲染或 owner 错置；确实遗漏的拓扑依赖单列 F1。",
-      "evidence": [{"file":"web/app/src/features/settings/_tests/system-runtime-panel/system-runtime-panel.test.tsx","sha256":"f20df8c5e52ba820dd63dce850b26cecb75916dd1e30d2513b65aacf4eceffcf"}, {"file":"web/app/src/features/settings/components/SystemRuntimePanel.tsx","sha256":"4f28a1491a51b90ec347dbf7d257edccaab090ed33f5890e0e603893a781e489"}, {"file":"web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx","sha256":"de440c8e760e33103c150d320c3f529389e2512e11b2ceb5a4bda738703d2f8c"}, {"file":"web/app/src/style-boundary/SettingsSystemRuntimeStyleBoundaryScene.tsx","sha256":"2fef2ca55de101223ee9b55c2efbfb4744b3fd73109a97651869345c392a320d"}]
+      "evidence": [{"file":"web/app/src/features/settings/_tests/system-runtime-panel/system-runtime-panel.test.tsx","sha256":"f20df8c5e52ba820dd63dce850b26cecb75916dd1e30d2513b65aacf4eceffcf"}]
     },
     {
       "file": "web/app/src/features/settings/components/SystemRuntimePanel.tsx",
       "rule": "react-doctor/no-giant-component",
       "sourceSha256": "4f28a1491a51b90ec347dbf7d257edccaab090ed33f5890e0e603893a781e489",
       "reason": "web/app/src/features/settings/components/SystemRuntimePanel.tsx:396（react-doctor/no-giant-component）：SystemRuntimePanel 的多个状态分别保存采样历史、筛选、进程树展开与用户选择；history 是跨轮询保留的时间窗口，展开/选择又可被用户修改，不能从单次 metrics 纯派生。role=group 是相关信息组不是 address。函数长度/多个独立 useState 不能证明逐次渲染或 owner 错置；确实遗漏的拓扑依赖单列 F1。",
-      "evidence": [{"file":"web/app/src/features/settings/_tests/system-runtime-panel/system-runtime-panel.test.tsx","sha256":"f20df8c5e52ba820dd63dce850b26cecb75916dd1e30d2513b65aacf4eceffcf"}, {"file":"web/app/src/features/settings/components/SystemRuntimePanel.tsx","sha256":"4f28a1491a51b90ec347dbf7d257edccaab090ed33f5890e0e603893a781e489"}, {"file":"web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx","sha256":"de440c8e760e33103c150d320c3f529389e2512e11b2ceb5a4bda738703d2f8c"}, {"file":"web/app/src/style-boundary/SettingsSystemRuntimeStyleBoundaryScene.tsx","sha256":"2fef2ca55de101223ee9b55c2efbfb4744b3fd73109a97651869345c392a320d"}]
+      "evidence": [{"file":"web/app/src/features/settings/_tests/system-runtime-panel/system-runtime-panel.test.tsx","sha256":"f20df8c5e52ba820dd63dce850b26cecb75916dd1e30d2513b65aacf4eceffcf"}]
     },
     {
       "file": "web/app/src/features/settings/components/SystemRuntimePanel.tsx",
       "rule": "react-doctor/no-initialize-state",
       "sourceSha256": "4f28a1491a51b90ec347dbf7d257edccaab090ed33f5890e0e603893a781e489",
       "reason": "web/app/src/features/settings/components/SystemRuntimePanel.tsx:76（react-doctor/no-initialize-state）：narrow 已使用 lazy useState 读取 matchMedia 初值；effect update() 同步订阅安装与首屏之间的媒体变化，并注册/清理 change 事件。告警所谓 empty 初值与当前源码不符。",
-      "evidence": [{"file":"web/app/src/features/settings/_tests/system-runtime-panel/system-runtime-panel.test.tsx","sha256":"f20df8c5e52ba820dd63dce850b26cecb75916dd1e30d2513b65aacf4eceffcf"}, {"file":"web/app/src/features/settings/components/SystemRuntimePanel.tsx","sha256":"4f28a1491a51b90ec347dbf7d257edccaab090ed33f5890e0e603893a781e489"}, {"file":"web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx","sha256":"de440c8e760e33103c150d320c3f529389e2512e11b2ceb5a4bda738703d2f8c"}, {"file":"web/app/src/style-boundary/SettingsSystemRuntimeStyleBoundaryScene.tsx","sha256":"2fef2ca55de101223ee9b55c2efbfb4744b3fd73109a97651869345c392a320d"}]
+      "evidence": [{"file":"web/app/src/features/settings/_tests/system-runtime-panel/system-runtime-panel.test.tsx","sha256":"f20df8c5e52ba820dd63dce850b26cecb75916dd1e30d2513b65aacf4eceffcf"}]
     },
     {
       "file": "web/app/src/features/settings/components/SystemRuntimePanel.tsx",
       "rule": "react-doctor/prefer-tag-over-role",
       "sourceSha256": "4f28a1491a51b90ec347dbf7d257edccaab090ed33f5890e0e603893a781e489",
       "reason": "web/app/src/features/settings/components/SystemRuntimePanel.tsx:228（react-doctor/prefer-tag-over-role）：role=status 为 runtime 状态/拖动投影提示/移动目标提示/加载状态提供 live announcement，不是表单计算结果。<output> 的计算输出语义不适用；当前元素不会因使用标准 status role 失去屏幕阅读器语义。 web/app/src/features/settings/components/SystemRuntimePanel.tsx:962（react-doctor/prefer-tag-over-role）：SystemRuntimePanel 的多个状态分别保存采样历史、筛选、进程树展开与用户选择；history 是跨轮询保留的时间窗口，展开/选择又可被用户修改，不能从单次 metrics 纯派生。role=group 是相关信息组不是 address。函数长度/多个独立 useState 不能证明逐次渲染或 owner 错置；确实遗漏的拓扑依赖单列 F1。",
-      "evidence": [{"file":"web/app/src/features/settings/_tests/system-runtime-panel/system-runtime-panel.test.tsx","sha256":"f20df8c5e52ba820dd63dce850b26cecb75916dd1e30d2513b65aacf4eceffcf"}, {"file":"web/app/src/features/settings/components/SystemRuntimePanel.tsx","sha256":"4f28a1491a51b90ec347dbf7d257edccaab090ed33f5890e0e603893a781e489"}, {"file":"web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx","sha256":"de440c8e760e33103c150d320c3f529389e2512e11b2ceb5a4bda738703d2f8c"}, {"file":"web/app/src/style-boundary/SettingsSystemRuntimeStyleBoundaryScene.tsx","sha256":"2fef2ca55de101223ee9b55c2efbfb4744b3fd73109a97651869345c392a320d"}]
+      "evidence": [{"file":"web/app/src/features/settings/_tests/system-runtime-panel/system-runtime-panel.test.tsx","sha256":"f20df8c5e52ba820dd63dce850b26cecb75916dd1e30d2513b65aacf4eceffcf"}]
     },
     {
       "file": "web/app/src/features/settings/components/SystemRuntimePanel.tsx",
       "rule": "react-doctor/prefer-useReducer",
       "sourceSha256": "4f28a1491a51b90ec347dbf7d257edccaab090ed33f5890e0e603893a781e489",
       "reason": "web/app/src/features/settings/components/SystemRuntimePanel.tsx:396（react-doctor/prefer-useReducer）：SystemRuntimePanel 的多个状态分别保存采样历史、筛选、进程树展开与用户选择；history 是跨轮询保留的时间窗口，展开/选择又可被用户修改，不能从单次 metrics 纯派生。role=group 是相关信息组不是 address。函数长度/多个独立 useState 不能证明逐次渲染或 owner 错置；确实遗漏的拓扑依赖单列 F1。",
-      "evidence": [{"file":"web/app/src/features/settings/_tests/system-runtime-panel/system-runtime-panel.test.tsx","sha256":"f20df8c5e52ba820dd63dce850b26cecb75916dd1e30d2513b65aacf4eceffcf"}, {"file":"web/app/src/features/settings/components/SystemRuntimePanel.tsx","sha256":"4f28a1491a51b90ec347dbf7d257edccaab090ed33f5890e0e603893a781e489"}, {"file":"web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx","sha256":"de440c8e760e33103c150d320c3f529389e2512e11b2ceb5a4bda738703d2f8c"}, {"file":"web/app/src/style-boundary/SettingsSystemRuntimeStyleBoundaryScene.tsx","sha256":"2fef2ca55de101223ee9b55c2efbfb4744b3fd73109a97651869345c392a320d"}]
+      "evidence": [{"file":"web/app/src/features/settings/_tests/system-runtime-panel/system-runtime-panel.test.tsx","sha256":"f20df8c5e52ba820dd63dce850b26cecb75916dd1e30d2513b65aacf4eceffcf"}]
     },
     {
       "file": "web/app/src/features/settings/components/role-permissions/useRolePermissionController.tsx",

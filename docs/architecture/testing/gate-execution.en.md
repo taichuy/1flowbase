@@ -8,6 +8,16 @@ shards. The PR baseline has no Clippy step and keeps those check shards. Explici
 check commands remain available. Clippy does not replace feature-specific gates
 or behavior tests.
 
+Full CI runs the equivalent API behavior suite once in its four coverage shards.
+Control-plane library/integration tests also belong to coverage, with an explicit
+`cargo test --doc` step preserving current and future documentation examples.
+Ordinary diagnostic commands remain available. Storage suites have different test
+sets and retain both owners. Required aggregate components decrease from 34 to 29;
+coverage thresholds remain unchanged. Each API shard must prove successful nonzero
+execution, package/partition/SHA, inventory counts and nonempty profiles. Merge
+checks a complete disjoint runnable-test union and counts ignored tests separately
+from nextest partition/filter exclusions. Old artifacts cannot fill missing shards.
+
 `scripts/node/verify/backend.js` owns Cargo command construction and validation of
 protected test executions. `test-backend` reuses its static check, image/multimodal
 scenarios, and workspace test plan. Each protected command still requires actual
@@ -53,3 +63,33 @@ retained session advisory lock without waiting for pool eviction. Successful
 migrations still use the production entry point. Atomic rollback, money, and
 historical checksum assertions remain; production locking and rejection scenarios
 are retained.
+
+The common API fixture can clone a command-owned PostgreSQL template prepared only
+with formal migrations. Every test still owns a separate database and filesystem
+roots, uses explicit startup search_path, runs the production Migrator's
+version/checksum validation, and performs full business bootstrap. Existing empty
+database and historical migration/restore fixtures keep their original path.
+Templates are never cached across commands or CI runs.
+
+The Node runner builds the test-only `with-postgres-template` binary first, then
+executes it directly around the test command without nesting Cargo builds. The
+wrapper waits for its child and cleans up only its own template/clones on normal
+exit, failure and handled INT/TERM. SIGKILL cannot guarantee process cleanup.
+Phase metrics live under `tmp/test-governance/postgres-fixtures/`: fresh/clone
+measure database creation; migration includes connection and formal migration or
+validation; bootstrap covers remaining fixture initialization; prepare and cleanup
+measure template preparation and teardown. A serial-work model is
+`T_fresh = N × (F + M + B + D)` versus
+`T_template = P + N × (C + V + B + D) + D_template`, for N fixtures, empty-database
+creation F, migration M, clone C, validation V, bootstrap B, per-database cleanup D
+and template preparation P. This does not directly predict parallel wall time or
+establish a measured speedup. Retention requires actual
+fresh/clone measurements, isolation/cleanup evidence and final CI metrics.
+
+React Doctor reviews bind the complete target source and only the supporting
+invariant, direct consumer and relevant tests. Unrelated router/settings-shell
+changes should not invalidate local component reasoning. Narrowing evidence does
+not remove raw diagnostics or relax review of new rules. Sign-in filing HTML
+explicitly trusts publishers authorized by `system.branding.save`; its review binds
+both write authorization and verbatim rendering evidence. This does not authorize
+arbitrary untrusted HTML.

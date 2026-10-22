@@ -55,21 +55,21 @@
       "rule": "react-doctor/no-derived-state",
       "sourceSha256": "e200ad2a4d9581e17dfe028b242143aa04a116e3a3d3015537899c625c947a3a",
       "reason": "web/app/src/features/agent-flow/components/bindings/VariableGroupsField.tsx:232（react-doctor/no-derived-state）：candidateIds 是 DnD sortable 的稳定客户端行身份，不能从会变化的 selector 值派生；长度变化 effect 只追加/截断 IDs 并保留相同行身份，真正本地 move/delete 事件同步更新 ids 与 group。setCandidateIds 的函数式 updater 不是向父级传数据，规则把 state setter 当 callback。group 自身位置 key 问题另列 F7。",
-      "evidence": [{"file":"web/app/src/features/agent-flow/_tests/variable-aggregator/variable-groups-field.test.tsx","sha256":"5987132840cbfafbfffb509ffbf99af5d8e935e158a476420ab0f118c9fd233b"}, {"file":"web/app/src/features/agent-flow/components/bindings/VariableGroupsField.tsx","sha256":"e200ad2a4d9581e17dfe028b242143aa04a116e3a3d3015537899c625c947a3a"}, {"file":"web/app/src/features/agent-flow/schema/agent-flow-field-renderers.tsx","sha256":"72d59c1a2f3ea19eb042e2854511d74ef6d7078e79a49fbbb739a207fad32aa9"}, {"file":"web/app/src/style-boundary/renderers.tsx","sha256":"ae911570ba999184ff4826de8748d727e43e0cc5c94c96c76783e534389a8100"}]
+      "evidence": [{"file":"web/app/src/features/agent-flow/_tests/variable-aggregator/variable-groups-field.test.tsx","sha256":"5987132840cbfafbfffb509ffbf99af5d8e935e158a476420ab0f118c9fd233b"}]
     },
     {
       "file": "web/app/src/features/agent-flow/components/bindings/VariableGroupsField.tsx",
       "rule": "react-doctor/no-event-handler",
       "sourceSha256": "e200ad2a4d9581e17dfe028b242143aa04a116e3a3d3015537899c625c947a3a",
       "reason": "web/app/src/features/agent-flow/components/bindings/VariableGroupsField.tsx:237（react-doctor/no-event-handler）：candidateIds 是 DnD sortable 的稳定客户端行身份，不能从会变化的 selector 值派生；长度变化 effect 只追加/截断 IDs 并保留相同行身份，真正本地 move/delete 事件同步更新 ids 与 group。setCandidateIds 的函数式 updater 不是向父级传数据，规则把 state setter 当 callback。group 自身位置 key 问题另列 F7。",
-      "evidence": [{"file":"web/app/src/features/agent-flow/_tests/variable-aggregator/variable-groups-field.test.tsx","sha256":"5987132840cbfafbfffb509ffbf99af5d8e935e158a476420ab0f118c9fd233b"}, {"file":"web/app/src/features/agent-flow/components/bindings/VariableGroupsField.tsx","sha256":"e200ad2a4d9581e17dfe028b242143aa04a116e3a3d3015537899c625c947a3a"}, {"file":"web/app/src/features/agent-flow/schema/agent-flow-field-renderers.tsx","sha256":"72d59c1a2f3ea19eb042e2854511d74ef6d7078e79a49fbbb739a207fad32aa9"}, {"file":"web/app/src/style-boundary/renderers.tsx","sha256":"ae911570ba999184ff4826de8748d727e43e0cc5c94c96c76783e534389a8100"}]
+      "evidence": [{"file":"web/app/src/features/agent-flow/_tests/variable-aggregator/variable-groups-field.test.tsx","sha256":"5987132840cbfafbfffb509ffbf99af5d8e935e158a476420ab0f118c9fd233b"}]
     },
     {
       "file": "web/app/src/features/agent-flow/components/bindings/VariableGroupsField.tsx",
       "rule": "react-doctor/no-pass-data-to-parent",
       "sourceSha256": "e200ad2a4d9581e17dfe028b242143aa04a116e3a3d3015537899c625c947a3a",
       "reason": "web/app/src/features/agent-flow/components/bindings/VariableGroupsField.tsx:232（react-doctor/no-pass-data-to-parent）：candidateIds 是 DnD sortable 的稳定客户端行身份，不能从会变化的 selector 值派生；长度变化 effect 只追加/截断 IDs 并保留相同行身份，真正本地 move/delete 事件同步更新 ids 与 group。setCandidateIds 的函数式 updater 不是向父级传数据，规则把 state setter 当 callback。group 自身位置 key 问题另列 F7。",
-      "evidence": [{"file":"web/app/src/features/agent-flow/_tests/variable-aggregator/variable-groups-field.test.tsx","sha256":"5987132840cbfafbfffb509ffbf99af5d8e935e158a476420ab0f118c9fd233b"}, {"file":"web/app/src/features/agent-flow/components/bindings/VariableGroupsField.tsx","sha256":"e200ad2a4d9581e17dfe028b242143aa04a116e3a3d3015537899c625c947a3a"}, {"file":"web/app/src/features/agent-flow/schema/agent-flow-field-renderers.tsx","sha256":"72d59c1a2f3ea19eb042e2854511d74ef6d7078e79a49fbbb739a207fad32aa9"}, {"file":"web/app/src/style-boundary/renderers.tsx","sha256":"ae911570ba999184ff4826de8748d727e43e0cc5c94c96c76783e534389a8100"}]
+      "evidence": [{"file":"web/app/src/features/agent-flow/_tests/variable-aggregator/variable-groups-field.test.tsx","sha256":"5987132840cbfafbfffb509ffbf99af5d8e935e158a476420ab0f118c9fd233b"}]
     }
   ]
 }

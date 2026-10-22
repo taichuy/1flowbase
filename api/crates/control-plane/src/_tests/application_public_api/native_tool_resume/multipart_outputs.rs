@@ -1,11 +1,10 @@
 use super::*;
+use crate::_tests::validate_full_retry_input;
 use crate::application_public_api::callback_resume::{
     ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
     PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
 };
-use crate::application_public_api::compat::openai::history::{
-    prove_full_context_input, validate_full_retry_input,
-};
+use crate::application_public_api::compat::openai::history::prove_full_context_input;
 use crate::ports::ToolCallbackResultInput;
 
 fn append_notifications(body: &mut Value) {
@@ -200,11 +199,13 @@ async fn multipart_callback_replay_consumes_once_and_rejects_changed_notificatio
     let mut conflict = command;
     conflict.native_transport = Some(ProviderTransportPayload::openai_responses(body).unwrap());
     conflict.response_payload = changed;
-    assert!(service
-        .resume_callback_for_actor(actor, conflict)
-        .await
-        .unwrap_err()
-        .to_string()
-        .contains("payload_conflict"));
+    assert!(
+        service
+            .resume_callback_for_actor(actor, conflict)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("payload_conflict")
+    );
     assert_eq!(consumer.calls.lock().unwrap().len(), 1);
 }
