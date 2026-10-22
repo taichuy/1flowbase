@@ -1127,6 +1127,6 @@
     "load_failed": "无法读取系统设置",
     "retry": "重试",
     "hide_login_tagline": "关闭登录左侧标语",
-    "hide_login_tagline_help": "开启后，隐藏登录页左侧的标题与说明区域。"
+    "hide_login_tagline_help": "开启后，统一隐藏登录页左侧的固定标题与标语，与系统说明无关。"
   }
 }

@@ -1,5 +1,9 @@
 .system-settings {
-  max-width: 960px;
+  padding: 24px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  align-self: start;
 }
 .system-settings__logo {
   width: 72px;
@@ -13,5 +17,11 @@
 @media (max-width: 991px) {
   .system-settings {
     padding: 0 16px 24px;
+  }
+}
+
+@media (min-width: 576px) {
+  .system-settings__actions {
+    margin-left: 180px;
   }
 }

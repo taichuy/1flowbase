@@ -195,7 +195,6 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
       <Suspense fallback={null}>
         <HeroAnimation
           hide_login_tagline={metadata?.hide_login_tagline}
-          system_description={metadata?.system_description}
         />
       </Suspense>
       <div

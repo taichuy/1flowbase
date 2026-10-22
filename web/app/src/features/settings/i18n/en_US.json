@@ -1127,6 +1127,6 @@
     "load_failed": "Could not load system settings",
     "retry": "Retry",
     "hide_login_tagline": "Hide sign-in tagline",
-    "hide_login_tagline_help": "Hide the title and description on the left side of the sign-in page."
+    "hide_login_tagline_help": "Hide the fixed title and slogan together on the left side of the sign-in page, independently of the system description."
   }
 }

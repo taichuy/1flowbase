@@ -42,5 +42,8 @@
     "failed": "GitHub 登录未完成，请重试或选择其他登录方式。",
     "other_methods": "其他登录方式",
     "identity_unlinked": "该 GitHub 身份已解绑。请使用其他方式登录原本站账号，再到个人资料 → 安全设置 → GitHub 恢复绑定；不会自动创建新账号。"
+  },
+  "auto": {
+    "product_tagline": "对话即是壁垒，AI应用原生底座"
   }
 }

@@ -4,6 +4,7 @@ import {
   Alert,
   App,
   Button,
+  Divider,
   Flex,
   Form,
   Input,
@@ -75,9 +76,13 @@ export function SystemSettingsPanel() {
         <Typography.Paragraph type="secondary">
           {t('system_settings.description')}
         </Typography.Paragraph>
+        <Divider />
         <Form
           form={form}
-          layout="vertical"
+          layout="horizontal"
+          labelCol={{ xs: { span: 24 }, sm: { flex: '180px' } }}
+          wrapperCol={{ xs: { span: 24 }, sm: { flex: 1 } }}
+          labelWrap
           onFinish={(value) => mutation.mutate(value)}
           disabled={mutation.isPending}
         >
@@ -167,23 +172,28 @@ export function SystemSettingsPanel() {
               title={t('system_settings.save_failed')}
             />
           ) : null}
-          <Space>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={mutation.isPending}
-            >
-              {t('auto.save')}
-            </Button>
-            <Button
-              onClick={() => {
-                form.setFieldsValue(query.data!);
-                mutation.reset();
-              }}
-            >
-              {t('auto.reset')}
-            </Button>
-          </Space>
+          <Form.Item
+            wrapperCol={{ xs: { span: 24 }, sm: { offset: 0 } }}
+            className="system-settings__actions"
+          >
+            <Space>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={mutation.isPending}
+              >
+                {t('auto.save')}
+              </Button>
+              <Button
+                onClick={() => {
+                  form.setFieldsValue(query.data!);
+                  mutation.reset();
+                }}
+              >
+                {t('auto.reset')}
+              </Button>
+            </Space>
+          </Form.Item>
         </Form>
       </div>
     </SettingsSectionSurface>

@@ -2794,7 +2794,7 @@
         "propertyAssertions": [
           {
             "property": "max-width",
-            "expected": "960px"
+            "expected": "none"
           }
         ]
       },
@@ -2842,7 +2842,7 @@
         "propertyAssertions": [
           {
             "property": "max-width",
-            "expected": "960px"
+            "expected": "none"
           }
         ]
       },

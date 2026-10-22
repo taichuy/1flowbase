@@ -536,7 +536,8 @@ test('renders raw registration HTML below the powered-by footer', async () => {
     </AppProviders>
   );
   expect(await screen.findByText('1flowbase', { exact: true })).toBeVisible();
-  expect(screen.getByText('Configured description')).toBeVisible();
+  expect(document.querySelector('.hero-slogan-line')).toHaveTextContent('对话即是壁垒，AI应用原生底座');
+  expect(screen.queryByText('Configured description')).not.toBeInTheDocument();
   const link = await screen.findByRole('link', { name: '备案号' });
   expect(link).toHaveAttribute('href', 'https://beian.miit.gov.cn/');
   expect(link).toHaveAttribute('data-free', 'yes');
@@ -560,6 +561,7 @@ test('the hide switch removes the fixed login tagline while keeping sign-in and 
       </AppProviders>
     );
     expect(document.querySelector('.hero-text-block')).not.toBeInTheDocument();
+    expect(document.querySelector('.hero-slogan-line')).not.toBeInTheDocument();
     expect(document.querySelector('.auth-sign-in-panel')).toBeInTheDocument();
     expect(screen.getByText('Powered by 1flowbase')).toBeVisible();
     expect(screen.getByRole('link', { name: '备案号' })).toBeVisible();

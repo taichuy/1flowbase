@@ -42,5 +42,8 @@
     "failed": "GitHub sign-in did not complete. Try again or choose another method.",
     "other_methods": "Other sign-in methods",
     "identity_unlinked": "This GitHub identity was unlinked. Sign in to its original local account using another method, then restore it in Personal information → Security settings → GitHub. A new account will not be created."
+  },
+  "auto": {
+    "product_tagline": "AI app base begins from chat history."
   }
 }
