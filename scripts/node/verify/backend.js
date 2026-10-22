@@ -153,6 +153,20 @@ function buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads, incremen
   }));
 }
 
+function buildBackendTestCommands({
+  cargoJobs,
+  cargoTestThreads,
+  incremental = false,
+  repoRoot = getRepoRoot(),
+  env = process.env,
+}) {
+  return [
+    buildRustBackendStaticGateCommand({ repoRoot, env }),
+    ...buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads, incremental }),
+    buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental }),
+  ];
+}
+
 function buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, incremental = false }) {
   return OFFICIAL_I18N_SEED_GATE_TARGETS.map((target) => ({
     label: target.label,
@@ -234,7 +248,6 @@ function buildBackendCommands({
     ...buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, incremental }),
     ...buildHistoryMaintenanceCommands({ cargoJobs, cargoTestThreads, incremental }),
     buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental }),
-    buildBackendCargoCommand({ target: 'check', cargoJobs, cargoTestThreads, incremental }),
   ];
 }
 
@@ -267,6 +280,37 @@ function usageBackend(writeStdout = (text) => process.stdout.write(text)) {
     'Usage: node scripts/node/verify-backend.js [all|static|fmt|clippy|test|check|image-llm-vision|official-i18n-seed] [core-libs|runtime-storage|apps|control-plane|api-server-N-of-4]\n'
       + 'Runs backend Rust gates, optionally restricted to a CI shard. Package-level app shards are supported for test.\n'
   );
+}
+
+function runBackendCommandSequence(sequenceOptions) {
+  let emptySelection = false;
+  const status = runCommandSequence({
+    ...sequenceOptions,
+    onCommandComplete({ command, result }) {
+      if (command.label === 'model-usage-report-postgres') {
+        const output = `${result.stdout || ''}\n${result.stderr || ''}`;
+        const count = (name) => Number(output.match(new RegExp(`^# ${name} (\\d+)$`, 'mu'))?.[1] ?? NaN);
+        if (result.status === 0 && !(count('tests') > 0 && count('pass') === count('tests') && count('fail') === 0 && count('skipped') === 0)) {
+          emptySelection = true;
+          (sequenceOptions.writeStderr || process.stderr.write.bind(process.stderr))(
+            `${command.label}: no complete passing SQL evidence; refusing empty or skipped PostgreSQL gate\n`,
+          );
+        }
+        return;
+      }
+      if (!command.label.startsWith('cargo-test-image-llm-vision-')
+        && !command.label.startsWith('cargo-test-official-i18n-seed-')
+        && !command.label.startsWith('cargo-test-history-maintenance-')) return;
+      const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
+      if (result.status === 0 && !(counts.passedCount > 0 && counts.failedCount === 0)) {
+        emptySelection = true;
+        (sequenceOptions.writeStderr || process.stderr.write.bind(process.stderr))(
+          `${command.label}: no executed passing tests; refusing empty or failed protected Cargo gate\n`,
+        );
+      }
+    },
+  });
+  return status || (emptySelection ? 1 : 0);
 }
 
 async function runBackend(argv = [], deps = {}) {
@@ -308,39 +352,8 @@ async function runBackend(argv = [], deps = {}) {
     spawnSyncImpl: deps.spawnSyncImpl,
     writeStdout: deps.writeStdout,
     writeStderr: deps.writeStderr,
-    ...(['all', 'image-llm-vision', 'official-i18n-seed', 'history-maintenance'].includes(options.target) || (options.target === 'test' && options.shard === 'storage-postgres-1-of-4') ? {
-      runCommandSequenceImpl: (sequenceOptions) => {
-        let emptySelection = false;
-        const status = runCommandSequence({
-          ...sequenceOptions,
-          onCommandComplete({ command, result }) {
-            if (command.label === 'model-usage-report-postgres') {
-              const output = `${result.stdout || ''}\n${result.stderr || ''}`;
-              const count = (name) => Number(output.match(new RegExp(`^# ${name} (\\d+)$`, 'mu'))?.[1] ?? NaN);
-              if (result.status === 0 && !(count('tests') > 0 && count('pass') === count('tests') && count('fail') === 0 && count('skipped') === 0)) {
-                emptySelection = true;
-                (deps.writeStderr || process.stderr.write.bind(process.stderr))(
-                  `${command.label}: no complete passing SQL evidence; refusing empty or skipped PostgreSQL gate\n`,
-                );
-              }
-              return;
-            }
-            if (!command.label.startsWith('cargo-test-image-llm-vision-')
-              && !command.label.startsWith('cargo-test-official-i18n-seed-')
-              && !command.label.startsWith('cargo-test-history-maintenance-')) return;
-            const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
-            if (result.status === 0 && !(counts.passedCount > 0 && counts.failedCount === 0)) {
-              emptySelection = true;
-              (deps.writeStderr || process.stderr.write.bind(process.stderr))(
-                `${command.label}: no executed passing tests; refusing empty or failed protected Cargo gate\n`,
-              );
-            }
-          },
-        });
-        return status || (emptySelection ? 1 : 0);
-      },
-    } : {}),
+    runCommandSequenceImpl: runBackendCommandSequence,
   });
 }
 
-module.exports = { buildImageLlmVisionGateCommands, buildBackendCommands, parseBackendCliArgs, runBackend };
+module.exports = { buildImageLlmVisionGateCommands, buildBackendCommands, buildBackendTestCommands, buildRustBackendStaticGateCommand, parseBackendCliArgs, runBackend, runBackendCommandSequence };

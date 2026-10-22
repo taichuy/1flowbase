@@ -12,132 +12,18 @@ function getExpectedParallelism() {
     : os.cpus().length;
 }
 
-test('verify-backend buildCommands uses independent cargo jobs and cargo test threads', () => {
-  assert.deepEqual(buildCommands({ cargoJobs: 4, cargoTestThreads: 2, repoRoot: '/repo-root', env: {} }), [
-    {
-      label: 'rust-backend-static-gate',
-      command: process.execPath,
-      args: ['/repo-root/scripts/node/tooling.js', 'check-rust-backend'],
-      cwd: '/repo-root',
-    },
-    {
-      label: 'cargo-fmt',
-      command: 'cargo',
-      args: ['fmt', '--all', '--check'],
-      cwd: 'api',
-      env: {
-        CARGO_BUILD_JOBS: '4',
-      },
-    },
-    {
-      label: 'cargo-clippy',
-      command: 'cargo',
-      args: ['clippy', '--workspace', '--all-targets', '--jobs', '4', '--', '-D', 'warnings'],
-      cwd: 'api',
-      env: {
-        CARGO_BUILD_JOBS: '4',
-        CARGO_INCREMENTAL: '0',
-      },
-    },
-    {
-      label: 'cargo-test-image-llm-vision-control-plane-user-media-fallback',
-      command: 'cargo',
-      args: [
-        'test',
-        '-p',
-        'control-plane',
-        '--jobs',
-        '4',
-        'orchestration_runtime_textualizes_user_media_when_selected_model_is_not_multimodal',
-        '--',
-        '--test-threads=2',
-      ],
-      cwd: 'api',
-      env: {
-        CARGO_BUILD_JOBS: '4',
-        CARGO_INCREMENTAL: '0',
-      },
-    },
-    {
-      label: 'cargo-test-image-llm-vision-control-plane-multimodal-preserves-media',
-      command: 'cargo',
-      args: [
-        'test',
-        '-p',
-        'control-plane',
-        '--jobs',
-        '4',
-        'orchestration_runtime_keeps_user_media_when_configured_model_supports_multimodal',
-        '--',
-        '--test-threads=2',
-      ],
-      cwd: 'api',
-      env: {
-        CARGO_BUILD_JOBS: '4',
-        CARGO_INCREMENTAL: '0',
-      },
-    },
-    {
-      label: 'cargo-test-image-llm-vision-control-plane-routed-media-guidance',
-      command: 'cargo',
-      args: [
-        'test',
-        '-p',
-        'control-plane',
-        '--jobs',
-        '4',
-        'orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models',
-        '--',
-        '--test-threads=2',
-      ],
-      cwd: 'api',
-      env: {
-        CARGO_BUILD_JOBS: '4',
-        CARGO_INCREMENTAL: '0',
-      },
-    },
-    {
-      label: 'cargo-test-image-llm-vision-runtime-visible-media-tool',
-      command: 'cargo',
-      args: [
-        'test',
-        '-p',
-        'orchestration-runtime',
-        '--jobs',
-        '4',
-        'visible_internal_llm_tool_media',
-        '--',
-        '--test-threads=2',
-      ],
-      cwd: 'api',
-      env: {
-        CARGO_BUILD_JOBS: '4',
-        CARGO_INCREMENTAL: '0',
-      },
-    },
-    ...['official-i18n-seed', 'history-maintenance'].flatMap((target) =>
-      buildCommands({ cargoJobs: 4, cargoTestThreads: 2, target })),
-    {
-      label: 'cargo-test',
-      command: 'cargo',
-      args: ['test', '--workspace', '--jobs', '4', '--', '--test-threads=2'],
-      cwd: 'api',
-      env: {
-        CARGO_BUILD_JOBS: '4',
-        CARGO_INCREMENTAL: '0',
-      },
-    },
-    {
-      label: 'cargo-check',
-      command: 'cargo',
-      args: ['check', '--workspace', '--jobs', '4'],
-      cwd: 'api',
-      env: {
-        CARGO_BUILD_JOBS: '4',
-        CARGO_INCREMENTAL: '0',
-      },
-    },
-  ]);
+test('full backend verification checks types once and keeps separate build/test resource limits', () => {
+  const commands = buildCommands({ cargoJobs: 4, cargoTestThreads: 2, repoRoot: '/repo-root', env: {} });
+  assert.deepEqual(commands.slice(0, 3).map(({ label }) => label),
+    ['rust-backend-static-gate', 'cargo-fmt', 'cargo-clippy']);
+  assert.deepEqual(commands[2].args,
+    ['clippy', '--workspace', '--all-targets', '--jobs', '4', '--', '-D', 'warnings']);
+  assert.equal(commands.some(({ args }) => args[0] === 'check'), false);
+  assert.equal(commands.at(-1).label, 'cargo-test');
+  for (const command of commands.filter(({ command }) => command === 'cargo')) {
+    assert.equal(command.env.CARGO_BUILD_JOBS, '4');
+    if (command.args[0] === 'test') assert.ok(command.args.includes('--test-threads=2'));
+  }
 });
 
 test('verify-backend buildCommands enables incremental compilation when configured', () => {
@@ -515,14 +401,13 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
     .trim()
     .split('\n');
 
-  assert.equal(invocations.length, 16);
+  assert.equal(invocations.length, 15);
   assert.match(invocations[1], new RegExp(`clippy --workspace --all-targets --jobs ${expectedParallelism} -- -D warnings`));
   assert.match(invocations[2], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_textualizes_user_media_when_selected_model_is_not_multimodal -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[3], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_keeps_user_media_when_configured_model_supports_multimodal -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[4], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[5], new RegExp(`test -p orchestration-runtime --jobs ${expectedParallelism} visible_internal_llm_tool_media -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[14], new RegExp(`test --workspace --jobs ${expectedParallelism} -- --test-threads=${expectedParallelism}`));
-  assert.match(invocations[15], new RegExp(`check --workspace --jobs ${expectedParallelism}`));
 
   const warningLogPath = path.join(warningOutputDir, 'verify-backend.warnings.log');
   assert.equal(fs.existsSync(warningLogPath), true);

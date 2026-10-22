@@ -5,6 +5,13 @@
 - `tmp/test-governance/capacity-report.json`
 - `tmp/test-governance/capacity-report.md`
 
+Repository verification uses `node scripts/node/tooling.js data-contracts`. This
+entry scans the migration inventory once and reuses source analyses to write all
+four existing JSON/Markdown report pairs. Schema and query-contract errors still
+fail the gate. Raw JSONB and capacity planning remain advisory; missing capacity
+measurements remain unverified. Individual report commands remain available for
+targeted diagnosis.
+
 Default usage does not connect to a database:
 
 ```bash

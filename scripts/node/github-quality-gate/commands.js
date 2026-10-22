@@ -13,13 +13,15 @@ const REPO_BACKEND_SHARDS_BY_TARGET = {
   test: BACKEND_CI_TEST_SHARDS,
   check: BACKEND_SHARDS,
 };
+// Full acceptance already type-checks these packages with Clippy --all-targets.
+// Explicit check scopes remain available for the lighter PR lane and diagnosis.
 const REPO_BACKEND_COMPONENT_SCOPES = [
   'repo-backend-static',
   'repo-backend-fmt',
   'repo-backend-image-llm-vision',
   'repo-backend-official-i18n-seed',
   'repo-backend-history-maintenance',
-  ...REPO_BACKEND_SHARD_TARGETS.flatMap((target) =>
+  ...REPO_BACKEND_SHARD_TARGETS.filter((target) => target !== 'check').flatMap((target) =>
     REPO_BACKEND_SHARDS_BY_TARGET[target].map((shard) => `repo-backend-${target}-${shard.key}`)
   ),
 ];
@@ -62,6 +64,7 @@ const VALID_SCOPES = new Set([
   'release-rollback',
   'provider-conformance',
   ...REPO_BACKEND_COMPONENT_SCOPES,
+  ...BACKEND_SHARDS.map((shard) => `repo-backend-check-${shard.key}`),
   ...COVERAGE_BACKEND_COMPONENT_SCOPES,
   ...COVERAGE_API_SERVER_SHARDED_SCOPES,
   'coverage-backend-api-server-merge',

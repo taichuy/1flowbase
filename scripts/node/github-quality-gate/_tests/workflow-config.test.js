@@ -68,6 +68,28 @@ function readMiddlewareCompose() {
   );
 }
 
+test('full CI checks types through Clippy while the lighter PR lane retains cargo check', () => {
+  const { BACKEND_SHARDS } = require('../../verify/backend-targets.js');
+  const { buildBackendCommands } = require('../../verify/backend.js');
+  const { DEFAULT_AGGREGATE_SCOPES, REPO_BACKEND_COMPONENT_SCOPES, buildGateCommand } = require('../commands.js');
+  const workflow = readQualityGateWorkflow();
+  const backendJob = workflow.slice(workflow.indexOf('  repo-backend-gate:'), workflow.indexOf('  backend-consistency-gate:'));
+  const matrix = backendJob.slice(0, backendJob.indexOf('    steps:'));
+  const scopes = [...matrix.matchAll(/- (repo-backend-\S+)/gu)].map((match) => match[1]);
+  assert.deepEqual(scopes, REPO_BACKEND_COMPONENT_SCOPES);
+  assert.ok(DEFAULT_AGGREGATE_SCOPES.every((scope) => !scope.startsWith('repo-backend-check-')));
+  for (const shard of BACKEND_SHARDS) {
+    const options = { repoRoot, cargoJobs: 2, cargoTestThreads: 1, shard: shard.key };
+    const [check] = buildBackendCommands({ ...options, target: 'check' });
+    const [clippy] = buildBackendCommands({ ...options, target: 'clippy' });
+    assert.deepEqual(check.args.slice(1), clippy.args.slice(1, -3).filter((arg) => arg !== '--all-targets'));
+    assert.deepEqual(check.env, clippy.env);
+    assert.ok(DEFAULT_AGGREGATE_SCOPES.includes(`repo-backend-clippy-${shard.key}`));
+    assert.ok(readVerifyWorkflow().includes(`- repo-backend-check-${shard.key}`));
+    assert.deepEqual(buildGateCommand({ repoRoot, scope: `repo-backend-check-${shard.key}` }).args.slice(-2), ['check', shard.key]);
+  }
+});
+
 test('complete tooling lane prepares and requires the real Docker recovery fixture', () => {
   for (const workflow of [readQualityGateWorkflow(), readVerifyWorkflow()]) {
     const tooling = workflow.slice(workflow.indexOf('  repo-tooling-gate:'), workflow.indexOf('  repo-frontend-gate:'));

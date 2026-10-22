@@ -42,33 +42,15 @@ function buildRepoCommands({ repoRoot, env = process.env, target = 'all' }) {
       cwd: repoRoot,
     },
     {
-      label: 'repo-schema-hygiene',
+      label: 'repo-data-contracts',
       command: nodeBinary,
-      args: [resolveScriptsNodeCliEntry(repoRoot, 'tooling'), 'schema-hygiene'],
+      args: [resolveScriptsNodeCliEntry(repoRoot, 'tooling'), 'data-contracts'],
       cwd: repoRoot,
     },
     {
       label: 'repo-frontstage-governance-hygiene',
       command: nodeBinary,
       args: [resolveScriptsNodeCliEntry(repoRoot, 'tooling'), 'frontstage-governance-hygiene'],
-      cwd: repoRoot,
-    },
-    {
-      label: 'repo-raw-jsonb-report',
-      command: nodeBinary,
-      args: [resolveScriptsNodeCliEntry(repoRoot, 'tooling'), 'raw-jsonb-report'],
-      cwd: repoRoot,
-    },
-    {
-      label: 'repo-log-query-contract-report',
-      command: nodeBinary,
-      args: [resolveScriptsNodeCliEntry(repoRoot, 'tooling'), 'log-query-contract-report'],
-      cwd: repoRoot,
-    },
-    {
-      label: 'repo-capacity-report',
-      command: nodeBinary,
-      args: [resolveScriptsNodeCliEntry(repoRoot, 'tooling'), 'capacity-report'],
       cwd: repoRoot,
     },
     {

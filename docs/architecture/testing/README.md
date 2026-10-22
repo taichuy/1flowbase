@@ -10,6 +10,15 @@
 - 定向 Cargo 命令必须有非零实际通过用例；编译、ignored 和空 filter 不等于行为通过。真实 managed worker 由 CI 先构建，再向行为测试注入路径。
 - `state-protocols --skip-live-acp` 不验证真实外部 ACP 服务；静态边界、单元测试与 component 收据也不证明所有页面视觉或生产运行态已经验收。报告分别列明证据范围。
 
+## 门禁执行与结果复用
+
+[English](gate-execution.en.md)
+
+- 完整体检的 `clippy --all-targets` 同时承担对应包的类型检查，CI matrix 与默认汇总不再重复要求相同配置的三个 `cargo check` 分片。PR 基线没有 Clippy，继续保留 check；定向 check 命令仍可独立使用。feature 专项和行为测试不由 Clippy 替代。
+- `verify/backend.js` 是后端 Cargo 命令和受保护场景执行校验的 owner；`test-backend` 复用它的静态检查、图像/多模态场景和 workspace 测试计划。每条受保护测试仍须实际执行非零用例，邻接成功、全部 ignored、编译成功和缺失日志不能填补证据。
+- `tooling data-contracts` 使用同一份 migration inventory 和源码分析结果，生成原有 schema、raw JSONB、query-contract、capacity JSON/Markdown 报告。schema error 和 query-contract failure 继续阻断；raw JSONB、增长规划和未测量容量保留原来的 advisory / unverified 语义。查询契约等必需配置缺失或损坏时继续失败。独立报告入口仍服务于定向诊断。
+- 专项测试与全量测试只有在用例及运行条件等价时才能复用结果；nextest/libtest、线程栈、feature 和 coverage instrumentation 的差异需要单独判断。当前一致性、四基座、覆盖率与受保护的 image-llm 场景继续保留。
+
 ## 静态规则与结构所有权
 
 `check-rust-backend` 管理第一方 Rust 代码，排除 `api/vendor/` 的上游源码和安装产物。第三方漏洞与容器环境警告单列归因；不能借此排除第一方调用路径，也不能用路径包含 vendor 字样代替明确目录边界。测试中的合法失败注入与生产 panic 分别判断。

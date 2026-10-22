@@ -242,9 +242,9 @@ separate `cargo check` step supplies compilation evidence only.
 | `repo-backend-test-runtime-storage` | `node scripts/node/verify-backend.js test runtime-storage` |
 | `repo-backend-test-control-plane` | `node scripts/node/verify-backend.js test control-plane` |
 | `repo-backend-test-api-server` | `node scripts/node/verify-backend.js test api-server` |
-| `repo-backend-check-core-libs` | `node scripts/node/verify-backend.js check core-libs` |
-| `repo-backend-check-runtime-storage` | `node scripts/node/verify-backend.js check runtime-storage` |
-| `repo-backend-check-apps` | `node scripts/node/verify-backend.js check apps` |
+| `repo-backend-check-core-libs` | PR / explicit scope only: `node scripts/node/verify-backend.js check core-libs` |
+| `repo-backend-check-runtime-storage` | PR / explicit scope only: `node scripts/node/verify-backend.js check runtime-storage` |
+| `repo-backend-check-apps` | PR / explicit scope only: `node scripts/node/verify-backend.js check apps` |
 | `backend` | `node scripts/node/verify-backend.js` |
 | `backend-consistency` | `node scripts/node/cli/quality/verify-backend-consistency.js` |
 | `coverage` | `node scripts/node/verify-coverage.js all` |

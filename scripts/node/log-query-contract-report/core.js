@@ -326,9 +326,9 @@ function formatLogQueryContractMarkdown(report) {
 function writeLogQueryContractReports({
   repoRoot = getRepoRoot(),
   config,
+  report = collectLogQueryContractReport({ repoRoot, config }),
   outputRoot = OUTPUT_ROOT,
 } = {}) {
-  const report = collectLogQueryContractReport({ repoRoot, config });
   const outputDir = path.join(repoRoot, outputRoot);
   fs.mkdirSync(outputDir, { recursive: true });
   const reportPath = path.join(outputDir, JSON_REPORT_FILE);

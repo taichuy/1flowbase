@@ -4,7 +4,6 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
-  buildCargoCommandEnv,
   getRepoRoot,
   runCommandSequence,
   runManagedCommandSequence,
@@ -12,10 +11,10 @@ const {
 const { loadVerifyRuntimeConfig } = require("../testing/verify-runtime.js");
 const { resolveNodeBinaryFromPath } = require("../testing/node-runtime.js");
 const {
-  IMAGE_LLM_VISION_GATE_TARGETS,
-} = require("../verify/backend-targets.js");
-
-const { parseCargoTestCounts } = require("../verify/cargo-test-results.js");
+  buildBackendTestCommands: buildBackendCommands,
+  buildRustBackendStaticGateCommand,
+  runBackendCommandSequence,
+} = require("../verify/backend.js");
 
 const FRONTEND_LAYERS = new Set(["fast", "pr", "full", "page-regression"]);
 const TEST_COMMANDS = new Set(["backend", "contracts", "frontend", "scripts"]);
@@ -33,60 +32,6 @@ function resolveScriptsNodeEntry(repoRoot, entryName) {
 
 function resolveScriptsNodeCliEntry(repoRoot, entryName) {
   return `${resolveScriptsNodeEntry(repoRoot, entryName)}.js`;
-}
-
-function buildRustBackendStaticGateCommand({ repoRoot, env = process.env }) {
-  return {
-    label: "rust-backend-static-gate",
-    command: resolveNodeBinaryFromPath(env),
-    args: [
-      resolveScriptsNodeCliEntry(repoRoot, "tooling"),
-      "check-rust-backend",
-    ],
-    cwd: repoRoot,
-  };
-}
-
-function buildBackendCommands({
-  cargoJobs,
-  cargoTestThreads,
-  incremental = false,
-  repoRoot = getRepoRoot(),
-  env = process.env,
-}) {
-  return [
-    buildRustBackendStaticGateCommand({ repoRoot, env }),
-    ...IMAGE_LLM_VISION_GATE_TARGETS.map((target) => ({
-      label: target.label,
-      command: "cargo",
-      args: [
-        "test",
-        "-p",
-        target.packageName,
-        "--jobs",
-        String(cargoJobs),
-        target.filter,
-        "--",
-        `--test-threads=${cargoTestThreads}`,
-      ],
-      cwd: "api",
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
-    })),
-    {
-      label: "cargo-test",
-      command: "cargo",
-      args: [
-        "test",
-        "--workspace",
-        "--jobs",
-        String(cargoJobs),
-        "--",
-        `--test-threads=${cargoTestThreads}`,
-      ],
-      cwd: "api",
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
-    },
-  ];
 }
 
 function usageBackend(writeStdout = (text) => process.stdout.write(text)) {
@@ -111,22 +56,7 @@ async function runBackend(argv = [], deps = {}) {
   return managedRunner({
     repoRoot,
     env,
-    runCommandSequenceImpl(sequenceOptions) {
-      let missingEvidence = false;
-      const status = runCommandSequence({ ...sequenceOptions,
-        onCommandComplete({ command, result }) {
-          if (!command.label.startsWith('cargo-test-image-llm-vision-')) return;
-          const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
-          if (result.status === 0 && !(counts.passedCount > 0 && counts.failedCount === 0)) {
-            missingEvidence = true;
-            (deps.writeStderr || process.stderr.write.bind(process.stderr))(
-              `${command.label}: no executed passing tests; refusing empty or failed protected Cargo gate\n`,
-            );
-          }
-        },
-      });
-      return status || (missingEvidence ? 1 : 0);
-    },
+    runCommandSequenceImpl: runBackendCommandSequence,
     scope: "test-backend",
     lockMode: "heavy",
     commandDisplay: "node scripts/node/test-backend.js",

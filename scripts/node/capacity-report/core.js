@@ -1133,6 +1133,7 @@ async function main(argv = [], deps = {}) {
 }
 
 module.exports = {
+  buildReportInputs,
   buildPostgresCapacitySql,
   collectCapacityReport,
   collectPostgresCapacityInspection,

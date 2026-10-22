@@ -2,6 +2,7 @@
 
 const path = require("node:path");
 
+const { main: runDataContracts } = require("../capacity-report/data-contracts.js");
 const { main: runCapacityReport } = require("../capacity-report/core.js");
 const {
   main: runCheckStyleBoundary,
@@ -45,6 +46,7 @@ const TOOLING_COMMANDS = new Set([
   "check-style-boundary",
   "api-debug",
   "capacity-report",
+  "data-contracts",
   "check-rust-backend",
   "claude-skill-sync",
   "dev-experience",
@@ -133,7 +135,7 @@ function parseToolingCliArgs(argv) {
 
 function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
-    "Usage: node scripts/node/tooling <api-debug|capacity-report|check-rust-backend|check-style-boundary|claude-skill-sync|dev-experience|foundation-contracts|frontstage-governance-hygiene|gate-router|growth-table-report|hotspot-review|i18n-hygiene|log-query-contract-report|mock-ui-sync|page-debug|raw-jsonb-report|rebuild-run-log-projection|repo-hygiene|runtime-gate|schema-hygiene|security-risk|vite-lazy-deps-gate> [args]\n",
+    "Usage: node scripts/node/tooling <api-debug|capacity-report|data-contracts|check-rust-backend|check-style-boundary|claude-skill-sync|dev-experience|foundation-contracts|frontstage-governance-hygiene|gate-router|growth-table-report|hotspot-review|i18n-hygiene|log-query-contract-report|mock-ui-sync|page-debug|raw-jsonb-report|rebuild-run-log-projection|repo-hygiene|runtime-gate|schema-hygiene|security-risk|vite-lazy-deps-gate> [args]\n",
   );
 }
 
@@ -157,6 +159,10 @@ async function main(argv = [], deps = {}) {
 
   if (options.command === "api-debug") {
     return (deps.runApiDebugImpl || runApiDebug)(options.rest);
+  }
+
+  if (options.command === "data-contracts") {
+    return runDataContracts(options.rest, deps);
   }
 
   if (options.command === "capacity-report") {
