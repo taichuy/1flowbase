@@ -1,8 +1,6 @@
 use super::responses_index::ResponsesInputIndex;
 use super::*;
 
-const MAX_RESPONSES_COMPACTION_V2_INPUT_ITEMS: usize = 4_096;
-
 pub(super) fn validate_responses_input(
     input: &Value,
     is_v2_compaction: bool,
@@ -73,12 +71,6 @@ pub(super) fn validate_responses_compaction_v2_input(
         OpenAiCompatError::invalid("input", "V2 compaction input must be an array")
             .with_report(report.clone())
     })?;
-    if items.len() > MAX_RESPONSES_COMPACTION_V2_INPUT_ITEMS {
-        return Err(
-            OpenAiCompatError::invalid("input", "V2 compaction input has too many items")
-                .with_report(report.clone()),
-        );
-    }
     let mut trigger_index = None;
     for (index, item) in items.iter().enumerate() {
         let item_path = format!("$.input[{index}]");

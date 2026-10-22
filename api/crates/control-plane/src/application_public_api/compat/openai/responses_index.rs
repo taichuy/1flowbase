@@ -6,8 +6,6 @@ use super::OpenAiCompatError;
 use crate::application_public_api::protocol_translation::{TranslationProtocol, TranslationReport};
 use crate::ports::ProviderTransportPayload;
 
-pub(crate) const MAX_NATIVE_RESPONSES_INPUT_ITEMS: usize = 4_096;
-
 /// Codex can start or steer a turn with a standalone function output. Its
 /// optional call_id is absent/null, so it is context, not a callback receipt.
 /// Empty or malformed IDs remain receipts for the correlation owner to reject.
@@ -21,7 +19,6 @@ pub(crate) enum ResponsesInputIndexError {
     RequestKind,
     InputKind,
     PreviousResponseId,
-    TooManyItems,
     ItemKind { index: usize },
     ItemType { index: usize },
 }
@@ -31,10 +28,7 @@ impl ResponsesInputIndexError {
         match self {
             Self::RequestKind => "request",
             Self::PreviousResponseId => "previous_response_id",
-            Self::InputKind
-            | Self::TooManyItems
-            | Self::ItemKind { .. }
-            | Self::ItemType { .. } => "input",
+            Self::InputKind | Self::ItemKind { .. } | Self::ItemType { .. } => "input",
         }
     }
 
@@ -43,7 +37,6 @@ impl ResponsesInputIndexError {
             Self::RequestKind => "Responses request must be an object",
             Self::InputKind => "input must be text or an array",
             Self::PreviousResponseId => "previous_response_id must be non-empty text",
-            Self::TooManyItems => "Responses input has too many items",
             Self::ItemKind { .. } => "input items must be objects",
             Self::ItemType { .. } => "input item type must be text",
         }
@@ -51,7 +44,7 @@ impl ResponsesInputIndexError {
 
     pub(crate) fn receipt_source_path(self) -> Option<String> {
         match self {
-            Self::InputKind | Self::TooManyItems => Some("$.input".to_string()),
+            Self::InputKind => Some("$.input".to_string()),
             Self::ItemKind { index } => Some(format!("$.input[{index}]")),
             Self::ItemType { index } => Some(format!("$.input[{index}].type")),
             Self::RequestKind | Self::PreviousResponseId => None,
@@ -165,7 +158,7 @@ impl OpenAiResponsesEnvelope {
     }
 }
 
-/// Bounded, content-free index over an opaque Responses input.
+/// Content-free index over an opaque Responses input.
 ///
 /// The raw body remains owned by `ProviderTransportPayload`. This index stores
 /// only positions and identity fields required by the protocol adapter, so AI
@@ -195,10 +188,6 @@ impl ResponsesInputIndex {
         let items = input
             .as_array()
             .ok_or(ResponsesInputIndexError::InputKind)?;
-        if items.len() > MAX_NATIVE_RESPONSES_INPUT_ITEMS {
-            return Err(ResponsesInputIndexError::TooManyItems);
-        }
-
         let mut index = Self {
             item_count: items.len(),
             item_types: Vec::with_capacity(items.len()),

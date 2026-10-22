@@ -59,6 +59,8 @@ HTTP/SSE/WebSocket and MCP/WebMCP retain their input, error and streaming contra
 
 Source entry points: [route assembly](../../api/apps/api-server/src/console_contracts/external_route_assembly.rs), [endpoint catalog](../../api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs), [WebMCP interface](../../api/apps/api-server/src/routes/webmcp/interface.rs).
 
+Responses ingress validates structure, field types, continuation identity, and callback correlation without imposing an input item-count ceiling independent of protocol and provider contracts. Ordinary requests and V2 compaction retain the complete input; existing protocol validation still requires a unique V2 trigger at the end.
+
 ### Provider session ownership
 
 Authenticated Responses, Messages and Chat ingress seals explicit session signals into Host identity and passes it through Native metadata/input mapping to FlowRun. Message bodies do not infer sessions. Independent requests without a signal do not share a binding; trusted Responses continuation may inherit its original identity. Business conversation fields retain their meaning.

@@ -367,16 +367,30 @@ fn issue_2039_v2_compaction_rejects_invalid_trigger_shapes() {
 }
 
 #[test]
-fn issue_2039_v2_compaction_rejects_unbounded_item_count() {
+fn responses_compaction_preserves_input_above_the_former_item_limit() {
     let mut input = vec![json!({"type":"reasoning"}); 4_096];
     input.push(json!({"type":"compaction_trigger"}));
-    let error = translate_response_request_with_context(
-        json!({"model":"1flowbase","input":input}),
+    let request = json!({"model":"1flowbase","input":input});
+    let mut translated = translate_response_request_with_context(
+        request.clone(),
         OpenAiResponsesRequestContext::responses(),
     )
-    .expect_err("V2 compaction input item count must be bounded");
-    assert_eq!(error.code, "invalid_request");
-    assert_eq!(error.param.as_deref(), Some("input"));
+    .expect("valid compaction history must not have a gateway-specific item ceiling");
+    assert_eq!(
+        *translated.request.execution.execution_operation(),
+        domain::AiNativeOperation::Compact(domain::AiNativeCompactProfile::ResponsesCompactionV2)
+    );
+    assert!(translated.request.query.is_empty());
+    assert!(translated.request.history.is_empty());
+    assert_eq!(
+        translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .unwrap()
+            .wire_body(),
+        &request
+    );
 }
 
 // #2034 AC-002 diagnostic: the real HTTP ingress envelope must reconcile with
@@ -424,7 +438,7 @@ fn issue_2034_ingress_envelope_headers_reconcile_with_body_identity() {
 }
 
 #[test]
-fn issue_2046_responses_index_is_bounded_and_does_not_copy_opaque_content() {
+fn issue_2046_responses_index_does_not_copy_opaque_content() {
     let input = json!([
         {"role":"user","content":"private-marker"},
         {"type":"custom_tool_call","call_id":"call_1","name":"exec","input":"{}"},
@@ -432,7 +446,7 @@ fn issue_2046_responses_index_is_bounded_and_does_not_copy_opaque_content() {
         {"role":"assistant","phase":"commentary","content":"private-agent-message"},
         {"type":"future_context_boundary","future":"private-extension"}
     ]);
-    let index = ResponsesInputIndex::build(&input).expect("bounded opaque items are indexable");
+    let index = ResponsesInputIndex::build(&input).expect("opaque items are indexable");
     assert_eq!(index.item_count(), 5);
     assert_eq!(index.current_tool_output_positions(), vec![2]);
     assert!(index.has_assistant_message_after_tool_outputs());
@@ -461,9 +475,28 @@ fn issue_2046_responses_index_is_bounded_and_does_not_copy_opaque_content() {
         ResponsesInputIndex::build(&json!([{"type":42}])),
         Err(ResponsesInputIndexError::ItemType { index: 0 })
     );
+}
+
+#[test]
+fn responses_envelope_preserves_large_input_and_validates_tail_items() {
+    let mut input = vec![json!({"type":"message","role":"user","content":"history"}); 4_097];
+    input.push(json!({"type":"function_call","call_id":"tail","name":"exec","arguments":"{}"}));
+    input.push(json!({"type":"function_call_output","call_id":"tail","output":"tail-result"}));
+    let request = json!({"model":"1flowbase","input":input});
+    let envelope = OpenAiResponsesEnvelope::capture(request.clone())
+        .expect("valid Responses history must not have a gateway-specific item ceiling");
+    assert_eq!(envelope.raw_body(), &request);
+    assert_eq!(envelope.provider_transport_payload().wire_body(), &request);
+    let index = ResponsesRequestIndex::build(&request).unwrap();
+    assert_eq!(index.input().item_count(), 4_099);
+    assert_eq!(index.input().current_tool_output_positions(), vec![4_098]);
+    assert_eq!(index.input().outputs_by_call_id()["tail"], vec![4_098]);
+
+    let mut invalid = request;
+    invalid["input"][4_098]["type"] = json!(42);
     assert_eq!(
-        ResponsesInputIndex::build(&Value::Array(vec![json!({}); 4_097])),
-        Err(ResponsesInputIndexError::TooManyItems)
+        ResponsesRequestIndex::build(&invalid),
+        Err(ResponsesInputIndexError::ItemType { index: 4_098 })
     );
 }
 
