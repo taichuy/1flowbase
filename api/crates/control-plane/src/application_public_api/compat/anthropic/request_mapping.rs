@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) fn anthropic_inputs(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<NativeObject, AnthropicCompatError> {
     let mut inputs = Map::new();
     if let Some(value) = object.get("tools") {
@@ -43,7 +43,7 @@ pub(super) fn anthropic_inputs(
 
 pub(super) fn anthropic_reasoning(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<
     Option<crate::application_public_api::native::NativeReasoningParameters>,
     AnthropicCompatError,
@@ -253,7 +253,7 @@ pub(super) fn anthropic_reasoning(
 pub(super) fn normalize_anthropic_tool(
     tool: &Value,
     index: usize,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<Value, AnthropicCompatError> {
     let path = format!("$.tools[{index}]");
     let object = tool.as_object().ok_or_else(|| {
@@ -409,7 +409,7 @@ pub(super) fn normalize_anthropic_tool(
 
 pub(super) fn normalize_anthropic_tool_choice(
     value: &Value,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<Value, AnthropicCompatError> {
     let object = value.as_object().ok_or_else(|| {
         reject_anthropic_nested_field(

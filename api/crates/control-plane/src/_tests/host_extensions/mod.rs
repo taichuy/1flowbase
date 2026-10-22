@@ -1,4 +1,2 @@
-mod host_extension_boot_tests;
 mod host_extension_builtin_tests;
-mod host_extension_inventory_tests;
 mod host_extension_service_tests;

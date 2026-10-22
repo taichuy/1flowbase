@@ -10,6 +10,8 @@ use axum::{
     },
     Json,
 };
+#[cfg(test)]
+use control_plane::application_public_api::protocol_translation::TranslationReport;
 use control_plane::{
     application_public_api::{
         model_catalog::{AgentModelCapabilities, AgentModelDescriptor, AgentModelReasoning},
@@ -19,7 +21,7 @@ use control_plane::{
         },
         protocol_translation::{
             TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol,
-            TranslationReport, TranslationSafeRepresentation,
+            TranslationReportBuilder, TranslationSafeRepresentation,
         },
         run_service::native_result_from_run_detail,
     },
@@ -560,7 +562,7 @@ pub(crate) fn parse_native_run_request(
     bytes: Bytes,
 ) -> Result<TranslatedNativeRunRequest, NativeRunRequestParseError> {
     let value = serde_json::from_slice::<Value>(&bytes).map_err(|_| {
-        let mut report = TranslationReport::new(TranslationProtocol::Native);
+        let mut report = TranslationReportBuilder::new(TranslationProtocol::Native);
         report.record(
             "$.body",
             None,
@@ -572,7 +574,7 @@ pub(crate) fn parse_native_run_request(
             code: "json",
             message: "invalid JSON body".to_string(),
             #[cfg(test)]
-            report,
+            report: report.into_report(),
         }
     })?;
     translate_native_run_request(value).map_err(|error| {

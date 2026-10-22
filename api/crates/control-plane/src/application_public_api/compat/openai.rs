@@ -13,7 +13,8 @@ pub use crate::application_public_api::model_catalog::{
 };
 use crate::application_public_api::native::NativeRunRequest;
 use crate::application_public_api::protocol_translation::{
-    TranslationDecisionKind, TranslationProtocol, TranslationReport, TranslationSafeRepresentation,
+    TranslationDecisionKind, TranslationProtocol, TranslationReport, TranslationReportBuilder,
+    TranslationSafeRepresentation,
 };
 
 const OPENAI_CHAT_TYPED_ROOT_FIELDS: &[&str] = &[
@@ -84,13 +85,13 @@ pub struct OpenAiPreviousResponseContext {
 }
 
 impl OpenAiCompatError {
-    fn translation_invariant(report: TranslationReport) -> Self {
+    fn translation_invariant(report: TranslationReportBuilder) -> Self {
         Self {
             message: "translation receipt invariant violated".to_string(),
             error_type: "server_error".to_string(),
             param: None,
             code: "translation_invariant".to_string(),
-            report,
+            report: report.into_report(),
         }
     }
 
@@ -125,11 +126,11 @@ impl OpenAiCompatError {
         }
     }
 
-    fn with_report(mut self, report: TranslationReport) -> Self {
+    fn with_report(mut self, report: TranslationReportBuilder) -> Self {
         if report.ensure_consistent().is_err() {
             return Self::translation_invariant(report);
         }
-        self.report = report;
+        self.report = report.into_report();
         self
     }
 }

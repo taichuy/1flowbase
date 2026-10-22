@@ -246,7 +246,16 @@ where
         actor: &ActorContext,
         record: NotificationInstanceRecord,
     ) -> Result<NotificationInstance> {
-        let entry = self.types(actor).await?.into_iter().find(|entry| {
+        self.project_instance_with_types(actor, record, &self.types(actor).await?)
+            .await
+    }
+    async fn project_instance_with_types(
+        &self,
+        actor: &ActorContext,
+        record: NotificationInstanceRecord,
+        types: &[NotificationTypeCatalogEntry],
+    ) -> Result<NotificationInstance> {
+        let entry = types.iter().find(|entry| {
             entry.descriptor.type_code == record.type_code
                 && entry.installation_id == record.installation_id
         });
@@ -294,6 +303,7 @@ where
             .trim()
             .to_lowercase();
         let mut output = Vec::new();
+        let mut types = None;
         for record in self
             .repository
             .list_notification_instances(actor.current_workspace_id)
@@ -308,7 +318,14 @@ where
             {
                 continue;
             }
-            output.push(self.project_instance(actor, record).await?);
+            let types = match &types {
+                Some(types) => types,
+                None => types.insert(self.types(actor).await?),
+            };
+            output.push(
+                self.project_instance_with_types(actor, record, types)
+                    .await?,
+            );
         }
         Ok(output)
     }

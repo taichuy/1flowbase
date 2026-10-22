@@ -172,6 +172,7 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
         }
         let mut transaction = self.pool().begin().await?;
         let lease_micros = i64::try_from(claim_lease.whole_microseconds().max(1))?;
+        // Read delivery state from RETURNING: sibling CTEs share the pre-update snapshot.
         let rows = sqlx::query(
             r#"
             with candidates as (
@@ -181,15 +182,25 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
                 order by available_at, event_id, subscriber_id
                 for update skip locked
                 limit $2
+            ), claimed as (
+                update lifecycle_outbox_deliveries as delivery
+                set status = 'claimed', claimed_by = $1, claimed_at = now(),
+                    claim_id = gen_random_uuid(), claim_expires_at = now() + $3::bigint * interval '1 microsecond',
+                    attempt_count = attempt_count + 1
+                from candidates
+                where delivery.event_id = candidates.event_id
+                  and delivery.subscriber_id = candidates.subscriber_id
+                returning delivery.*
             )
-            update lifecycle_outbox_deliveries as delivery
-            set status = 'claimed', claimed_by = $1, claimed_at = now(),
-                claim_id = gen_random_uuid(), claim_expires_at = now() + $3::bigint * interval '1 microsecond',
-                attempt_count = attempt_count + 1
-            from candidates
-            where delivery.event_id = candidates.event_id
-              and delivery.subscriber_id = candidates.subscriber_id
-            returning delivery.event_id, delivery.subscriber_id
+            select outbox.event_id, outbox.transaction_id, outbox.contract_id,
+                   outbox.contract_version, outbox.canonical_payload, outbox.occurred_at,
+                   outbox.graph_fingerprint, delivery.subscriber_id, delivery.handler_id,
+                   delivery.handler_version, delivery.status, delivery.attempt_count,
+                   delivery.available_at, delivery.claimed_by, delivery.claimed_at,
+                   delivery.delivered_at, delivery.claim_id, delivery.claim_expires_at,
+                   delivery.pause_reason, delivery.paused_at
+            from claimed delivery
+            join lifecycle_outbox outbox using (event_id)
             "#,
         )
         .bind(worker_id)
@@ -197,18 +208,10 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
         .bind(lease_micros)
         .fetch_all(&mut *transaction)
         .await?;
-        let mut records = Vec::with_capacity(rows.len());
-        for row in rows {
-            records.push(
-                find_delivery(
-                    &mut *transaction,
-                    row.try_get("event_id")?,
-                    row.try_get::<String, _>("subscriber_id")?.as_str(),
-                )
-                .await?
-                .ok_or_else(|| anyhow!("claimed lifecycle delivery disappeared"))?,
-            );
-        }
+        let records = rows
+            .into_iter()
+            .map(map_record)
+            .collect::<Result<Vec<_>>>()?;
         transaction.commit().await?;
         Ok(records)
     }

@@ -39,9 +39,6 @@ const pageContentSaveHook = vi.hoisted(() => ({
 const blockCatalogHook = vi.hoisted(() => ({
   useFrontstageBlockCatalog: vi.fn()
 }));
-const dataCapabilitiesHook = vi.hoisted(() => ({
-  useFrontstageDataCapabilities: vi.fn()
-}));
 const runtimeSessionsHook = vi.hoisted(() => ({
   useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
     preparations: createNativePreparationSource([]),
@@ -98,10 +95,6 @@ vi.mock(
   () => pageContentSaveHook
 );
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
-vi.mock(
-  '../../hooks/use-frontstage-data-capabilities',
-  () => dataCapabilitiesHook
-);
 vi.mock(
   '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
@@ -470,21 +463,12 @@ function mockFrontstageBlockCatalog(
   });
 }
 
-function mockFrontstageDataCapabilities() {
-  dataCapabilitiesHook.useFrontstageDataCapabilities.mockReturnValue({
-    data: { queries: [], actions: [], models: [] },
-    loading: false,
-    error: null
-  });
-}
-
 beforeEach(() => {
   resetAuthStore();
   resetFrontstageDesignModeStore();
   vi.clearAllMocks();
   mockPageContentSaveState();
   mockFrontstageBlockCatalog();
-  mockFrontstageDataCapabilities();
   pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([
     {
       id: 'tab-1',

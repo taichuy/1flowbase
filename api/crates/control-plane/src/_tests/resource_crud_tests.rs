@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use control_plane::resource_crud::{
     filter_by_tk_values, filter_resource_records, matches_resource_filter, parse_resource_filter,
-    parse_resource_filter_expr, ResourceBatchSelection, ResourceCrudDescriptor, ResourceFilterExpr,
+    parse_resource_filter_expr, select_batch_ids, ResourceBatchSelection, ResourceFilterExpr,
     ResourceFilterOperator, ResourceFilterTarget,
 };
 use serde_json::json;
@@ -64,9 +64,18 @@ fn resource_filter_rejects_unknown_operator() {
 fn parse_resource_filter_accepts_empty_and_json_object() {
     assert!(parse_resource_filter(None).unwrap().is_none());
     assert!(parse_resource_filter(Some("")).unwrap().is_none());
+    assert!(parse_resource_filter(Some(" ")).unwrap().is_none());
+    assert_eq!(
+        parse_resource_filter(Some("{}")).unwrap(),
+        Some(ResourceFilterExpr::All(Vec::new()))
+    );
     assert_eq!(
         parse_resource_filter(Some(r#"{"status":"published"}"#)).unwrap(),
-        Some(json!({ "status": "published" }))
+        Some(ResourceFilterExpr::Field {
+            field: "status".to_string(),
+            operator: ResourceFilterOperator::Eq,
+            value: json!("published"),
+        })
     );
 }
 
@@ -136,11 +145,8 @@ fn filter_resource_records_returns_matching_records() {
         TestResource::new(&[("code", "customer_profiles")]),
     ];
 
-    let filtered = filter_resource_records(
-        resources,
-        Some(&json!({ "code": { "$includes": "customer" } })),
-    )
-    .unwrap();
+    let filter = parse_resource_filter(Some(r#"{"code":{"$includes":"customer"}}"#)).unwrap();
+    let filtered = filter_resource_records(resources, filter.as_ref()).unwrap();
 
     assert_eq!(filtered.len(), 1);
     assert_eq!(
@@ -150,55 +156,85 @@ fn filter_resource_records_returns_matching_records() {
 }
 
 #[test]
-fn resource_crud_descriptor_filters_records() {
-    let descriptor = ResourceCrudDescriptor::new("test_resource", "id");
-    let resources = vec![
-        TestResource::new(&[("id", "1"), ("code", "orders")]),
-        TestResource::new(&[("id", "2"), ("code", "customer_profiles")]),
-    ];
-
-    let filtered = descriptor
-        .filter_records(
-            resources,
-            Some(&json!({ "code": { "$includes": "customer" } })),
-        )
-        .unwrap();
-
-    assert_eq!(filtered.len(), 1);
-    assert_eq!(filtered[0].field_value("id").as_deref(), Some("2"));
-}
-
-#[test]
-fn resource_crud_descriptor_selects_batch_ids_by_filter_by_tk() {
-    let descriptor = ResourceCrudDescriptor::new("test_resource", "id");
-    let selected = descriptor
-        .select_batch_ids::<TestResource, String, _, _>(
-            Vec::new(),
-            ResourceBatchSelection::new(Some(json!(["id-1", "id-2"])), None),
-            Ok,
-            |resource| resource.field_value("id").unwrap_or_default(),
-        )
-        .unwrap();
+fn select_batch_ids_by_filter_by_tk() {
+    let selected = select_batch_ids::<TestResource, String, _, _>(
+        Vec::new(),
+        ResourceBatchSelection::new(Some(json!(["id-1", "id-2"])), None),
+        Ok,
+        |resource| resource.field_value("id").unwrap_or_default(),
+    )
+    .unwrap();
 
     assert_eq!(selected, vec!["id-1".to_string(), "id-2".to_string()]);
 }
 
 #[test]
-fn resource_crud_descriptor_selects_batch_ids_by_filter() {
-    let descriptor = ResourceCrudDescriptor::new("test_resource", "id");
+fn select_batch_ids_by_filter() {
     let resources = vec![
         TestResource::new(&[("id", "1"), ("code", "orders")]),
         TestResource::new(&[("id", "2"), ("code", "customer_profiles")]),
     ];
 
-    let selected = descriptor
-        .select_batch_ids(
-            resources,
-            ResourceBatchSelection::new(None, Some(json!({ "code.$includes": "customer" }))),
-            Ok,
-            |resource| resource.field_value("id").unwrap_or_default(),
-        )
-        .unwrap();
+    let selected = select_batch_ids(
+        resources,
+        ResourceBatchSelection::new(None, Some(json!({ "code.$includes": "customer" }))),
+        Ok,
+        |resource| resource.field_value("id").unwrap_or_default(),
+    )
+    .unwrap();
 
     assert_eq!(selected, vec!["2".to_string()]);
+}
+
+#[test]
+fn parse_resource_filter_rejects_invalid_json_shape_and_operators() {
+    for filter in [
+        "{",
+        "[]",
+        r#"{"$unknown":[]}"#,
+        r#"{"status":{"$in":"published"}}"#,
+    ] {
+        assert!(matches!(
+            parse_resource_filter(Some(filter)),
+            Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                "filter"
+            ))
+        ));
+    }
+}
+
+#[test]
+fn select_batch_ids_requires_explicit_selection_and_preserves_key_precedence() {
+    use control_plane::errors::ControlPlaneError;
+
+    let select = |selection| {
+        select_batch_ids::<TestResource, String, _, _>(Vec::new(), selection, Ok, |resource| {
+            resource.field_value("id").unwrap_or_default()
+        })
+    };
+    assert!(matches!(
+        select(ResourceBatchSelection::new(None, None)),
+        Err(ControlPlaneError::InvalidInput("filterByTk"))
+    ));
+    for filter in [json!({}), json!([]), json!({"status": {"$unknown": true}})] {
+        assert!(matches!(
+            select(ResourceBatchSelection::new(None, Some(filter))),
+            Err(ControlPlaneError::InvalidInput("filter"))
+        ));
+    }
+    assert_eq!(
+        select(ResourceBatchSelection::new(
+            Some(json!(["id-1"])),
+            Some(json!([]))
+        ))
+        .unwrap(),
+        vec!["id-1".to_string()]
+    );
+    assert!(matches!(
+        select(ResourceBatchSelection::new(
+            Some(json!(true)),
+            Some(json!({}))
+        )),
+        Err(ControlPlaneError::InvalidInput("filterByTk"))
+    ));
 }

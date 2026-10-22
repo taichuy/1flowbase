@@ -1,13 +1,11 @@
 mod batch;
-mod descriptor;
 mod filter;
 
-pub use batch::{filter_by_tk_values, ResourceBatchSelection};
-pub use descriptor::{ResourceCrudDescriptor, ResourceFilterTarget};
+pub use batch::{filter_by_tk_values, select_batch_ids, ResourceBatchSelection};
 pub use domain::{ResourceFilterExpr, ResourceFilterOperator};
 pub use filter::{
     filter_resource_records, matches_resource_filter, parse_resource_filter,
-    parse_resource_filter_expr,
+    parse_resource_filter_expr, ResourceFilterTarget,
 };
 
 impl ResourceFilterTarget for domain::ModelDefinitionRecord {

@@ -4,6 +4,14 @@
 
 This document describes current contracts, not a release acceptance claim. See the [historical #2007 test inventory](archive/2007/plugin-composition-test-batch.md) for that stage's commands. Later namespaced event contracts are described in the [invocation lifecycle](interface-lifecycle.md); Create → A → B/C below is a concrete example.
 
+## Current implementation and shared reads
+
+HostExtension boot uses contribution manifests, the Effective Extension Graph and the current provider registry. Inventory presentation, startup reconciliation and recovery use `ExtensionInstallationService`; disconnected legacy manifest, boot/inventory prototypes and receipt-rebuild APIs are not parallel entrypoints. Authentication and infrastructure registration, artifact integrity, signatures and recovery checks remain with their existing owners.
+
+Outbox claiming locks candidates, updates claims and returns complete delivery records in one SQL statement. Updated delivery state comes from `UPDATE RETURNING`, rather than rereading the statement's old snapshot. Per-subscriber identity, leases, claim tokens and stale-worker fencing remain independent.
+
+Notification instance lists load the type catalog on the first matching record and share it within that request; no matches cause no additional catalog read. Authorization is still projected per instance, and sending reacquires current authority. A list snapshot never grants send permission. Built-in provider routing consumes existing target IDs; only dynamic rules materialize wire candidates, and returned eligibility and session ownership are still checked.
+
 ## Plugin activation and capability approval
 
 User operation permission and plugin capability authority are separate decisions. Root may manage plugins without role configuration; other users need the corresponding enable, disable, or version-switch operation.

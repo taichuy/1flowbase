@@ -23,7 +23,7 @@ use super::{
     conversations::ApplicationPublicConversationRepository,
     mapping::ApplicationApiMappingConfig,
     protocol_translation::{
-        TranslationDecisionKind, TranslationProtocol, TranslationReport,
+        TranslationDecisionKind, TranslationProtocol, TranslationReportBuilder,
         TranslationSafeRepresentation,
     },
     run_service::{

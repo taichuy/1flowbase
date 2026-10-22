@@ -317,10 +317,6 @@ fn backend_only_auth_provider_contributes_block_schema_and_public_projection() {
         .register(RegisteredHostExtension {
             extension_id: "fixture-auth".to_string(),
             bootstrap_phase: HostExtensionBootstrapPhase::Boot,
-            provides_contracts: vec![],
-            overrides_contracts: vec![],
-            registers_slots: vec![],
-            registers_storage: vec![],
             infrastructure_providers: vec![],
             auth_providers: vec![AuthProviderContributionManifest {
                 auth_type: "fixture-auth.qr".to_string(),

@@ -1,18 +1,22 @@
 use serde_json::Value;
 
-use super::descriptor::ResourceFilterTarget;
 use crate::errors::ControlPlaneError;
 use domain::{ResourceFilterExpr, ResourceFilterOperator};
 
-pub fn parse_resource_filter(filter: Option<&str>) -> Result<Option<Value>, ControlPlaneError> {
+pub trait ResourceFilterTarget {
+    fn field_value(&self, field: &str) -> Option<String>;
+}
+
+pub fn parse_resource_filter(
+    filter: Option<&str>,
+) -> Result<Option<ResourceFilterExpr>, ControlPlaneError> {
     let Some(filter) = filter.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(None);
     };
 
     let filter =
         serde_json::from_str(filter).map_err(|_| ControlPlaneError::InvalidInput("filter"))?;
-    parse_resource_filter_expr(&filter)?;
-    Ok(Some(filter))
+    parse_resource_filter_expr(&filter).map(Some)
 }
 
 pub fn parse_resource_filter_expr(filter: &Value) -> Result<ResourceFilterExpr, ControlPlaneError> {
@@ -29,16 +33,14 @@ pub fn matches_resource_filter<T: ResourceFilterTarget>(
 
 pub fn filter_resource_records<T: ResourceFilterTarget>(
     records: Vec<T>,
-    filter: Option<&Value>,
+    filter: Option<&ResourceFilterExpr>,
 ) -> Result<Vec<T>, ControlPlaneError> {
     let Some(filter) = filter else {
         return Ok(records);
     };
-    let expr = parse_resource_filter_expr(filter)?;
-
     let mut filtered_records = Vec::with_capacity(records.len());
     for record in records {
-        if matches_filter_expr(&record, &expr)? {
+        if matches_filter_expr(&record, filter)? {
             filtered_records.push(record);
         }
     }

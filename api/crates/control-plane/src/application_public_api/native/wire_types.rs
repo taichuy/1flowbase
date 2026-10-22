@@ -78,7 +78,7 @@ impl NativeRunRequest {
 
 pub(super) fn native_history(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> std::result::Result<Vec<Value>, NativeRequestTranslationError> {
     let Some(value) = object.get("history") else {
         report.record(
@@ -118,7 +118,7 @@ pub(super) fn native_history(
 pub(super) fn normalize_native_history_entry(
     entry: &Value,
     index: usize,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> std::result::Result<Value, NativeRequestTranslationError> {
     let entry_path = format!("$.history[{index}]");
     let Some(object) = entry.as_object() else {
@@ -293,7 +293,7 @@ pub(super) fn normalize_native_history_entry(
 
 pub(super) fn native_attachments(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> std::result::Result<Vec<NativeAttachment>, NativeRequestTranslationError> {
     let Some(value) = object.get("attachments") else {
         report.record(
@@ -333,7 +333,7 @@ pub(super) fn native_attachments(
 pub(super) fn normalize_native_attachment(
     entry: &Value,
     index: usize,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> std::result::Result<NativeAttachment, NativeRequestTranslationError> {
     let entry_path = format!("$.attachments[{index}]");
     let Some(object) = entry.as_object() else {
@@ -488,7 +488,7 @@ pub(super) fn optional_native_attachment_string(
     object: &Map<String, Value>,
     field: &'static str,
     entry_path: &str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> std::result::Result<Option<String>, NativeRequestTranslationError> {
     let source_path = format!("{entry_path}.{field}");
     match object.get(field) {

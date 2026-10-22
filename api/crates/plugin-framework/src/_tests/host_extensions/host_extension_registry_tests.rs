@@ -7,10 +7,6 @@ fn registered_extension(extension_id: &str) -> RegisteredHostExtension {
     RegisteredHostExtension {
         extension_id: extension_id.into(),
         bootstrap_phase: HostExtensionBootstrapPhase::Boot,
-        provides_contracts: vec![],
-        overrides_contracts: vec![],
-        registers_slots: vec![],
-        registers_storage: vec![],
         infrastructure_providers: vec![],
         auth_providers: vec![],
         owned_resources: vec![],
@@ -33,49 +29,6 @@ fn infrastructure_provider(
         config_ref: format!("secret://system/{provider_code}/config"),
         config_schema: vec![],
     }
-}
-
-#[test]
-fn registry_rejects_duplicate_contract_without_override() {
-    let mut registry = HostExtensionRegistry::default();
-    let mut official = registered_extension("official.storage-host");
-    official.provides_contracts = vec!["storage-durable".into()];
-    official.registers_storage = vec![("storage-durable".into(), "postgres".into())];
-    registry
-        .register(official)
-        .expect("first registration should pass");
-
-    let mut custom = registered_extension("custom.storage-host");
-    custom.provides_contracts = vec!["storage-durable".into()];
-    custom.registers_storage = vec![("storage-durable".into(), "cockroach".into())];
-    let error = registry
-        .register(custom)
-        .expect_err("duplicate contract requires override");
-
-    assert!(error.to_string().contains("storage-durable"));
-}
-
-#[test]
-fn registry_allows_explicit_contract_override() {
-    let mut registry = HostExtensionRegistry::default();
-    let mut official = registered_extension("official.storage-host");
-    official.provides_contracts = vec!["storage-ephemeral".into()];
-    official.registers_storage = vec![("storage-ephemeral".into(), "memory".into())];
-    registry
-        .register(official)
-        .expect("first registration should pass");
-
-    let mut custom = registered_extension("custom.redis-host");
-    custom.overrides_contracts = vec!["storage-ephemeral".into()];
-    custom.registers_storage = vec![("storage-ephemeral".into(), "redis".into())];
-    registry
-        .register(custom)
-        .expect("explicit override should pass");
-
-    assert_eq!(
-        registry.contract_provider("storage-ephemeral"),
-        Some("custom.redis-host")
-    );
 }
 
 #[test]

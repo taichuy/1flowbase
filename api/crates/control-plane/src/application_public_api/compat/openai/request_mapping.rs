@@ -10,7 +10,7 @@ pub(super) enum OpenAiToolMapping {
 pub(super) fn openai_inputs(
     object: &Map<String, Value>,
     tool_mapping: OpenAiToolMapping,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<crate::application_public_api::native::NativeObject, OpenAiCompatError> {
     let mut inputs = Map::new();
     if let Some(value) = object.get("tools") {
@@ -183,7 +183,7 @@ pub(super) fn openai_inputs(
 pub(super) fn openai_reasoning(
     object: &Map<String, Value>,
     chat_completions: bool,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<
     Option<crate::application_public_api::native::NativeReasoningParameters>,
     OpenAiCompatError,

@@ -33,9 +33,6 @@ const runtimeSessionsHook = vi.hoisted(() => ({
     retryBlock: vi.fn()
   }))
 }));
-const dataCapabilitiesHook = vi.hoisted(() => ({
-  useFrontstageDataCapabilities: vi.fn()
-}));
 vi.mock(
   '../../hooks/use-frontstage-page-content-save',
   () => pageContentSaveHook
@@ -45,10 +42,6 @@ vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
   '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
-);
-vi.mock(
-  '../../hooks/use-frontstage-data-capabilities',
-  () => dataCapabilitiesHook
 );
 vi.mock('@monaco-editor/react', () => ({
   default: ({ value }: { value?: string }) => (
@@ -221,11 +214,6 @@ describe('FrontStagePage trial panel link', () => {
       reset: vi.fn(),
       save: vi.fn(),
       permissionDenied: false
-    });
-    dataCapabilitiesHook.useFrontstageDataCapabilities.mockReturnValue({
-      data: { queries: [], actions: [], models: [] },
-      loading: false,
-      error: null
     });
   });
 

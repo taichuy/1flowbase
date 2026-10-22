@@ -166,7 +166,7 @@ pub(in super::super) fn openai_image_content_block(part: &Value) -> Option<Value
 /// Translate a verified callback suffix without extracting a latest user message or
 /// moving system/context entries away from their submitted position.
 pub(crate) fn continuation_messages(items: &[Value]) -> Result<Vec<Value>, OpenAiCompatError> {
-    let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
+    let mut report = TranslationReportBuilder::new(TranslationProtocol::OpenAiResponses);
     validate_responses_items(&Value::Array(items.to_vec()), false, &mut report, true)?;
     items.iter().map(|item| match item.get("type").and_then(Value::as_str) {
         Some("function_call_output") if super::super::is_standalone_function_output(item) => external_context_message(item),

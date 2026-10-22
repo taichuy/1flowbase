@@ -26,15 +26,15 @@ use crate::application_public_api::native::{
     NativeRunRequest, NativeStreamOptions,
 };
 use crate::application_public_api::protocol_translation::{
-    TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol, TranslationReport,
-    TranslationSafeRepresentation,
+    TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol,
+    TranslationReportBuilder, TranslationSafeRepresentation,
 };
 use crate::ports::ProviderTransportPayload;
 
 pub fn translate_chat_completion_request(
     request: Value,
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
-    let mut report = TranslationReport::new(TranslationProtocol::OpenAiChat);
+    let mut report = TranslationReportBuilder::new(TranslationProtocol::OpenAiChat);
     let object = openai_request_object(&request, &mut report)?;
     validate_chat_root_fields(object, &mut report)?;
     let protocol_context = capture_client_protocol_body(
@@ -247,7 +247,10 @@ pub fn translate_chat_completion_request(
     report
         .ensure_consistent()
         .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?;
-    Ok(TranslatedNativeRunRequest { request, report })
+    Ok(TranslatedNativeRunRequest {
+        request,
+        report: report.into_report(),
+    })
 }
 
 pub fn translate_response_request(
@@ -268,7 +271,7 @@ pub fn translate_response_request_with_context_and_previous(
     context: OpenAiResponsesRequestContext,
     previous_response: Option<OpenAiPreviousResponseContext>,
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
-    let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
+    let mut report = TranslationReportBuilder::new(TranslationProtocol::OpenAiResponses);
     let request_index =
         super::responses_index::ResponsesRequestIndex::build(&request).map_err(|error| {
             if let Some(source_path) = error.receipt_source_path() {
@@ -326,7 +329,7 @@ fn translate_indexed_response_request(
     operation: AiNativeOperation,
     context: OpenAiResponsesRequestContext,
     previous_response: Option<OpenAiPreviousResponseContext>,
-    mut report: TranslationReport,
+    mut report: TranslationReportBuilder,
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let object = openai_request_object(&request, &mut report)?;
     let mut protocol_context = capture_client_protocol_body(
@@ -586,12 +589,15 @@ fn translate_indexed_response_request(
     report
         .ensure_consistent()
         .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?;
-    Ok(TranslatedNativeRunRequest { request, report })
+    Ok(TranslatedNativeRunRequest {
+        request,
+        report: report.into_report(),
+    })
 }
 
 fn openai_request_object<'a>(
     request: &'a Value,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<&'a Map<String, Value>, OpenAiCompatError> {
     let Some(object) = request.as_object() else {
         report.record(
@@ -612,7 +618,7 @@ fn openai_request_object<'a>(
 fn required_openai_string(
     object: &Map<String, Value>,
     field: &'static str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<String, OpenAiCompatError> {
     match object.get(field) {
         Some(Value::String(value)) => {
@@ -643,7 +649,7 @@ fn required_openai_string(
 fn required_openai_array<'a>(
     object: &'a Map<String, Value>,
     field: &'static str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<&'a Vec<Value>, OpenAiCompatError> {
     match object.get(field) {
         Some(Value::Array(values)) => Ok(values),
@@ -665,7 +671,7 @@ fn required_openai_array<'a>(
 fn required_openai_value<'a>(
     object: &'a Map<String, Value>,
     field: &'static str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<&'a Value, OpenAiCompatError> {
     object.get(field).ok_or_else(|| {
         reject_openai_required_field(
@@ -678,7 +684,7 @@ fn required_openai_value<'a>(
 }
 
 fn reject_openai_required_field(
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
     field: &'static str,
     reason: &str,
     effective_value: TranslationSafeRepresentation,
@@ -695,7 +701,7 @@ fn reject_openai_required_field(
 
 fn openai_conversation(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<NativeObject, OpenAiCompatError> {
     let mut conversation = NativeObject::default();
     match object.get("user") {
@@ -735,7 +741,7 @@ fn openai_conversation(
 
 fn openai_metadata(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<NativeRequestMetadata, OpenAiCompatError> {
     let Some(metadata) = object.get("metadata") else {
         report.record(

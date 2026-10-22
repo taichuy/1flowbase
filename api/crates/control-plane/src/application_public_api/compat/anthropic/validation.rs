@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) fn validate_anthropic_root_fields(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), AnthropicCompatError> {
     if let Some(field) = object.keys().find(|field| {
         matches!(
@@ -58,7 +58,7 @@ pub(super) fn validate_anthropic_root_fields(
 
 pub(super) fn record_anthropic_system_decision(
     value: Option<&Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) {
     let (kind, reason, effective_value) = match value {
         Some(_) => (
@@ -77,7 +77,7 @@ pub(super) fn record_anthropic_system_decision(
 
 pub(super) fn record_anthropic_context_management_decision(
     value: Option<&Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), AnthropicCompatError> {
     let Some(value) = value else {
         return Ok(());
@@ -103,7 +103,7 @@ pub(super) fn record_anthropic_context_management_decision(
 pub(super) fn validate_anthropic_message(
     message: &Value,
     index: usize,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), AnthropicCompatError> {
     let message_path = format!("$.messages[{index}]");
     let Some(object) = message.as_object() else {
@@ -213,11 +213,7 @@ pub(super) fn validate_anthropic_message(
     })?;
     let content_path = format!("$.messages[{index}].content");
     validate_anthropic_content_blocks(content, index, report).map_err(|error| {
-        if report
-            .decisions
-            .iter()
-            .all(|decision| decision.source_path != content_path)
-        {
+        if !report.contains_source_path(&content_path) {
             report.record(
                 &content_path,
                 None,
@@ -241,7 +237,7 @@ pub(super) fn validate_anthropic_message(
 pub(super) fn validate_anthropic_content_blocks(
     content: &Value,
     message_index: usize,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), AnthropicCompatError> {
     let Some(blocks) = content.as_array() else {
         if content.is_string() {
@@ -373,7 +369,7 @@ pub(super) fn validate_anthropic_reasoning_block(
     object: &Map<String, Value>,
     block_path: &str,
     block_type: &str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), AnthropicCompatError> {
     let (allowed_fields, required_field, error_message): (&[&str], &str, &str) =
         if block_type == "thinking" {
@@ -419,7 +415,7 @@ pub(super) fn validate_anthropic_reasoning_block(
 pub(super) fn validate_anthropic_tool_use_block(
     object: &Map<String, Value>,
     block_path: &str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), AnthropicCompatError> {
     if object.get("name").and_then(Value::as_str) == Some("computer") {
         report.record(
@@ -488,7 +484,7 @@ pub(super) fn validate_anthropic_tool_use_block(
 pub(super) fn validate_anthropic_tool_result_block(
     object: &Map<String, Value>,
     block_path: &str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), AnthropicCompatError> {
     reject_unknown_anthropic_content_block_fields(
         object,
@@ -546,7 +542,7 @@ pub(super) fn validate_anthropic_supported_content_block(
     object: &Map<String, Value>,
     block_path: &str,
     block_type: &str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), AnthropicCompatError> {
     match block_type {
         "text" => {
@@ -625,7 +621,7 @@ pub(super) fn reject_unknown_anthropic_content_block_fields(
     block_path: &str,
     allowed_fields: &[&str],
     unsupported_fields: &[&str],
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), AnthropicCompatError> {
     let unknown_fields = object
         .keys()
@@ -668,7 +664,7 @@ pub(super) fn validate_anthropic_media_source(
     value: Option<&Value>,
     source_path: &str,
     allows_text_source: bool,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), AnthropicCompatError> {
     let Some(source) = value.and_then(Value::as_object) else {
         return Err(reject_anthropic_nested_field(
@@ -805,7 +801,7 @@ pub(super) fn validate_anthropic_cache_control(
     cache_path: &str,
     kind: TranslationDecisionKind,
     target_path: Option<&str>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), AnthropicCompatError> {
     let decision_reason = match kind {
         TranslationDecisionKind::Unsupported => {
@@ -898,7 +894,7 @@ pub(super) fn validate_anthropic_cache_control(
 }
 
 pub(super) fn reject_anthropic_nested_field(
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
     source_path: &str,
     reason: &'static str,
     effective_value: TranslationSafeRepresentation,
@@ -915,7 +911,7 @@ pub(super) fn reject_anthropic_nested_field(
 
 pub(super) fn anthropic_response_mode(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<Option<String>, AnthropicCompatError> {
     match object.get("stream") {
         Some(Value::Bool(true)) => {

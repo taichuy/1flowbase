@@ -15,8 +15,6 @@ pub mod host_contract;
 pub mod host_extension_contribution;
 #[path = "host_extensions/host_extension_dropin.rs"]
 pub mod host_extension_dropin;
-#[path = "host_extensions/host_extension_manifest.rs"]
-pub mod host_extension_manifest;
 #[path = "host_extensions/host_extension_registry.rs"]
 pub mod host_extension_registry;
 pub mod installation;
@@ -60,11 +58,6 @@ pub use host_extension_contribution::{
     HostInfrastructureProviderManifest,
 };
 pub use host_extension_dropin::*;
-pub use host_extension_manifest::{
-    parse_host_extension_manifest, HostExtensionActivationPhase, HostExtensionDependencyManifest,
-    HostExtensionInterfaceManifest, HostExtensionLoadOrderManifest, HostExtensionManifestV1,
-    HostExtensionSourceKind, HostExtensionStorageManifest,
-};
 pub use host_extension_registry::{HostExtensionRegistry, RegisteredHostExtension};
 pub use installation::*;
 pub use managed_schema::*;

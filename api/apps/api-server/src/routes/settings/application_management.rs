@@ -8,7 +8,7 @@ use control_plane::{
         ApplicationManagementPage, ApplicationManagementQuery, ApplicationManagementRecord,
         ApplicationManagementSortDirection, ApplicationManagementSortField,
     },
-    resource_crud::{parse_resource_filter, parse_resource_filter_expr},
+    resource_crud::parse_resource_filter,
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
@@ -277,15 +277,10 @@ impl ConsoleInterfacePort<ApplicationManagementQueryParams, ApplicationManagemen
         query: ApplicationManagementQueryParams,
     ) -> ConsoleInterfaceFuture<'a, ApplicationManagementPageResponse> {
         Box::pin(async move {
-            let filter = match parse_resource_filter(query.filter.as_deref())
+            let filter = parse_resource_filter(query.filter.as_deref())
                 .map_err(ApiError::from)
                 .map_err(ConsoleInterfaceTargetError)?
-            {
-                Some(filter) => parse_resource_filter_expr(&filter)
-                    .map_err(ApiError::from)
-                    .map_err(ConsoleInterfaceTargetError)?,
-                None => domain::ResourceFilterExpr::All(Vec::new()),
-            };
+                .unwrap_or_else(|| domain::ResourceFilterExpr::All(Vec::new()));
             let (sort_field, sort_direction) =
                 parse_application_management_sort(query.sort.as_deref())
                     .map_err(ConsoleInterfaceTargetError)?;

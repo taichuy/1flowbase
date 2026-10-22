@@ -9,8 +9,6 @@ mod host_contract_tests;
 mod host_extension_contribution_tests;
 #[path = "host_extensions/host_extension_dropin_tests.rs"]
 mod host_extension_dropin_tests;
-#[path = "host_extensions/host_extension_manifest_tests.rs"]
-mod host_extension_manifest_tests;
 #[path = "host_extensions/host_extension_registry_tests.rs"]
 mod host_extension_registry_tests;
 mod managed_schema;

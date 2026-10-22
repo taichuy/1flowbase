@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) fn validate_chat_root_fields(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     accept_chat_stream_options(object, report)?;
     if let Some(field) = object.keys().find(|field| {
@@ -59,7 +59,7 @@ pub(super) fn validate_chat_root_fields(
 
 pub(super) fn accept_chat_stream_options(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     let Some(value) = object.get("stream_options") else {
         return Ok(());
@@ -109,7 +109,7 @@ pub(super) fn accept_chat_stream_options(
 pub(super) fn validate_chat_message_fields(
     message: &Value,
     index: usize,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     let message_path = format!("$.messages[{index}]");
     let Some(object) = message.as_object() else {
@@ -254,7 +254,7 @@ pub(super) fn validate_chat_message_fields(
 pub(super) fn reject_chat_system_media(
     content: &Value,
     message_index: usize,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     let Some(parts) = content.as_array() else {
         return Ok(());
@@ -285,7 +285,7 @@ pub(super) fn reject_chat_system_media(
 pub(super) fn validate_openai_content_parts(
     content: &Value,
     message_index: usize,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     let Some(parts) = content.as_array() else {
         if content.is_string() {
@@ -379,7 +379,7 @@ pub(super) fn validate_openai_content_parts(
 
 pub(super) fn chat_max_output_tokens(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<Option<u64>, OpenAiCompatError> {
     let max_completion_tokens = object.get("max_completion_tokens");
     let max_tokens = object.get("max_tokens");
@@ -444,7 +444,7 @@ pub(super) fn chat_max_output_tokens(
 pub(super) fn validate_response_transport_fields(
     object: &Map<String, Value>,
     transport_requirement: crate::application_public_api::native::ResponsesTransportRequirement,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     if transport_requirement
         == crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
@@ -569,7 +569,7 @@ fn responses_text_requires_native(text: &Value) -> bool {
 
 pub(super) fn responses_verbosity_hint(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<Option<&'static str>, OpenAiCompatError> {
     let Some(text) = object.get("text").filter(|value| !value.is_null()) else {
         return Ok(None);
@@ -743,7 +743,7 @@ pub(super) fn responses_content_requires_native_passthrough(content: &Value) -> 
 
 pub(super) fn accept_responses_codex_metadata_hints(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     if let Some(value) = object.get("prompt_cache_key") {
         if !value.is_string() {
@@ -810,7 +810,7 @@ pub(super) fn accept_responses_codex_metadata_hints(
 
 pub(super) fn accept_responses_include_hint(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     let Some(value) = object.get("include") else {
         return Ok(());
@@ -867,7 +867,7 @@ pub(super) fn accept_responses_include_hint(
 
 pub(super) fn accept_responses_parallel_tool_calls_hint(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     let Some(value) = object.get("parallel_tool_calls") else {
         return Ok(());
@@ -912,7 +912,7 @@ pub(super) fn accept_responses_parallel_tool_calls_hint(
 
 pub(super) fn accept_responses_store_hint(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     let Some(value) = object.get("store") else {
         return Ok(());
@@ -956,7 +956,7 @@ pub(super) fn accept_responses_store_hint(
 
 pub(super) fn response_stream_mode(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<Option<String>, OpenAiCompatError> {
     match object.get("stream") {
         Some(Value::Bool(true)) => {
@@ -1007,7 +1007,7 @@ pub(super) fn response_stream_mode(
 
 pub(super) fn response_max_output_tokens(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<Option<u64>, OpenAiCompatError> {
     let Some(value) = object.get("max_output_tokens") else {
         report.record(

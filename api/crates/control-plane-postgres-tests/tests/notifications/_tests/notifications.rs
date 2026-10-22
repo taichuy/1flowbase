@@ -6,6 +6,251 @@ use domain::NotificationInstanceStatus;
 use serde_json::json;
 use uuid::Uuid;
 
+#[derive(Default)]
+struct CountingAvailability {
+    calls: std::sync::atomic::AtomicUsize,
+    available: std::sync::atomic::AtomicBool,
+}
+
+#[async_trait::async_trait]
+impl control_plane::notifications::NotificationProviderPort for CountingAvailability {
+    async fn available(
+        &self,
+        _: &domain::ActorContext,
+        _: Uuid,
+        _: &extension_contracts::ContributionId,
+    ) -> anyhow::Result<bool> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(self.available.load(std::sync::atomic::Ordering::SeqCst))
+    }
+
+    async fn send(
+        &self,
+        _: &domain::ActorContext,
+        _: Uuid,
+        _: &extension_contracts::NotificationTypeDescriptor,
+        _: serde_json::Value,
+        _: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        panic!("unavailable notification provider must not receive a send")
+    }
+}
+
+#[tokio::test]
+async fn instance_query_shares_catalog_lazily_and_send_checks_fresh_availability() {
+    use control_plane::{
+        notifications::{system_notification_descriptor, NotificationInstanceListInput},
+        ports::{
+            CreatePluginAssignmentInput, NotificationRepository, PluginRepository,
+            SaveNotificationInstanceInput, UpsertPluginInstallationInput,
+        },
+    };
+    use extension_contracts::NotificationAuthorizationStatus;
+    use std::sync::{atomic::Ordering, Arc};
+
+    let (store, workspace, root) = super::support::seed_store().await;
+    let actor = store
+        .load_actor_context(root.id, workspace.tenant_id, workspace.id, None)
+        .await
+        .unwrap();
+    let mut descriptor = system_notification_descriptor();
+    descriptor.type_code = "acme/catalog/notification".into();
+    descriptor.contribution_id = extension_contracts::ContributionId::new("acme.catalog").unwrap();
+    descriptor.authorization = Some(
+        serde_json::from_value(json!({
+            "actions":[{"code":"qr","label":"Scan","kind":"qr_code"}],
+            "managed_secret_keys":["token"], "supports_delivery_window":true
+        }))
+        .unwrap(),
+    );
+    let installation = store
+        .upsert_installation(&UpsertPluginInstallationInput {
+            installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "acme".into(),
+            provider_code: "catalog".into(),
+            plugin_id: "acme.catalog".into(),
+            plugin_version: "1.0.0".into(),
+            contract_version: "1flowbase.extension-bus/v1".into(),
+            protocol: "stdio_json".into(),
+            display_name: "Catalog fixture".into(),
+            source_kind: "uploaded".into(),
+            trust_level: "unverified".into(),
+            verification_status: domain::PluginVerificationStatus::Valid,
+            desired_state: domain::PluginDesiredState::ActiveRequested,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
+            signature_algorithm: None,
+            signing_key_id: None,
+            metadata_json: json!({"notification_types":[descriptor]}),
+            is_system_reserved: false,
+            actor_user_id: root.id,
+        })
+        .await
+        .unwrap();
+    store
+        .create_assignment(&CreatePluginAssignmentInput {
+            installation_id: installation.id,
+            workspace_id: workspace.id,
+            provider_code: installation.provider_code,
+            actor_user_id: root.id,
+        })
+        .await
+        .unwrap();
+    let provider = Arc::new(CountingAvailability::default());
+    provider.available.store(true, Ordering::SeqCst);
+    let service = NotificationService::new(store.clone(), "catalog-fixture-key".into())
+        .with_provider(provider.clone());
+    assert!(service.list_instances(&actor).await.unwrap().is_empty());
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
+
+    for (name, type_code, status, authorization) in [
+        (
+            "Authorized",
+            "acme/catalog/notification",
+            NotificationInstanceStatus::Enabled,
+            Some("authorized"),
+        ),
+        (
+            "Unauthorised",
+            "acme/catalog/notification",
+            NotificationInstanceStatus::Enabled,
+            None,
+        ),
+        (
+            "Disabled",
+            "acme/catalog/missing",
+            NotificationInstanceStatus::Disabled,
+            Some("unauthorized"),
+        ),
+        (
+            "Missing",
+            "acme/catalog/missing",
+            NotificationInstanceStatus::Enabled,
+            Some("authorized"),
+        ),
+    ] {
+        let now = time::OffsetDateTime::now_utc();
+        store
+            .save_notification_instance(SaveNotificationInstanceInput {
+                record: domain::NotificationInstanceRecord {
+                    id: Uuid::now_v7(),
+                    workspace_id: workspace.id,
+                    type_code: type_code.into(),
+                    installation_id: Some(installation.id),
+                    display_name: name.into(),
+                    status,
+                    config_json: json!({}),
+                    configured_secret_fields: vec![],
+                    created_at: now,
+                    updated_at: now,
+                },
+                secret_config_json: json!({}),
+                master_key: "catalog-fixture-key".into(),
+                create: true,
+                initial_authorization: authorization
+                    .map(|status| serde_json::from_value(json!({"status":status})).unwrap()),
+            })
+            .await
+            .unwrap();
+    }
+    for input in [
+        NotificationInstanceListInput {
+            display_name: Some("absent".into()),
+            ..Default::default()
+        },
+        NotificationInstanceListInput {
+            type_code: Some("absent".into()),
+            ..Default::default()
+        },
+        NotificationInstanceListInput {
+            display_name: Some("disabled".into()),
+            status: Some(NotificationInstanceStatus::Enabled),
+            ..Default::default()
+        },
+    ] {
+        assert!(service
+            .query_instances(&actor, input)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
+    }
+    let records = store
+        .list_notification_instances(workspace.id)
+        .await
+        .unwrap();
+    let instances = service.list_instances(&actor).await.unwrap();
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        serde_json::to_value(
+            instances
+                .iter()
+                .map(|item| &item.record)
+                .collect::<Vec<_>>()
+        )
+        .unwrap(),
+        serde_json::to_value(&records).unwrap()
+    );
+    assert!(instances[0].available && instances[1].available);
+    let authorized = instances[0].authorization.as_ref().unwrap();
+    assert_eq!(
+        authorized.status,
+        NotificationAuthorizationStatus::Authorized
+    );
+    assert_eq!(
+        authorized.delivery_window.as_ref().unwrap().status,
+        extension_contracts::NotificationDeliveryWindowStatus::Unknown
+    );
+    assert_eq!(
+        instances[1].authorization.as_ref().unwrap().status,
+        NotificationAuthorizationStatus::Unauthorized
+    );
+    assert_eq!(instances[2].unavailable_reason, Some("instance_disabled"));
+    assert_eq!(
+        instances[2].authorization.as_ref().unwrap().status,
+        NotificationAuthorizationStatus::Unauthorized
+    );
+    assert_eq!(instances[3].unavailable_reason, Some("type_unavailable"));
+    assert_eq!(
+        instances[3].authorization.as_ref().unwrap().status,
+        NotificationAuthorizationStatus::Authorized
+    );
+    assert!(instances[3]
+        .authorization
+        .as_ref()
+        .unwrap()
+        .delivery_window
+        .is_none());
+
+    provider.available.store(false, Ordering::SeqCst);
+    let error = service
+        .send(
+            &actor,
+            domain::NotificationSource::Api,
+            instances[0].record.id,
+            json!({}),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<control_plane::errors::ControlPlaneError>(),
+        Some(control_plane::errors::ControlPlaneError::Conflict(
+            "plugin_unavailable"
+        ))
+    ));
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 2);
+    let unavailable = service.list_instances(&actor).await.unwrap();
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 3);
+    assert!(unavailable.iter().all(|instance| !instance.available));
+    assert_eq!(
+        unavailable[0].unavailable_reason,
+        Some("plugin_unavailable")
+    );
+    assert_eq!(unavailable[2].unavailable_reason, Some("instance_disabled"));
+    assert_eq!(unavailable[3].unavailable_reason, Some("type_unavailable"));
+}
+
 #[tokio::test]
 async fn committed_inbox_deduplicates_and_enforces_recipient_workspace_and_management_scope() {
     let (store, workspace, root) = super::support::seed_store().await;

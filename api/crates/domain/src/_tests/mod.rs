@@ -4,7 +4,6 @@ mod auth_domain_tests;
 #[path = "identity/console_policy_tests.rs"]
 mod console_policy_tests;
 mod flow_tests;
-mod host_extension_tests;
 mod i18n_catalog_tests;
 mod mcp_bundle_tests;
 #[path = "mcp_management/return_controls.rs"]

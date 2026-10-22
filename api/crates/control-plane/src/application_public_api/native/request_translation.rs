@@ -12,7 +12,8 @@ use super::{
 };
 use crate::application_public_api::protocol_translation::{
     anonymous_unknown_source_paths, TranslatedNativeRunRequest, TranslationDecisionKind,
-    TranslationProtocol, TranslationReport, TranslationSafeRepresentation,
+    TranslationProtocol, TranslationReport, TranslationReportBuilder,
+    TranslationSafeRepresentation,
 };
 
 /// Native is an adapter boundary too: it accepts only the public Native wire
@@ -26,18 +27,18 @@ pub struct NativeRequestTranslationError {
 }
 
 impl NativeRequestTranslationError {
-    pub(super) fn translation_invariant(report: TranslationReport) -> Self {
+    pub(super) fn translation_invariant(report: TranslationReportBuilder) -> Self {
         Self {
             code: "translation_invariant",
             message: "translation receipt invariant violated".to_string(),
-            report,
+            report: report.into_report(),
         }
     }
 
     pub(super) fn with_report(
         code: &'static str,
         message: impl Into<String>,
-        report: TranslationReport,
+        report: TranslationReportBuilder,
     ) -> Self {
         if report.ensure_consistent().is_err() {
             return Self::translation_invariant(report);
@@ -45,7 +46,7 @@ impl NativeRequestTranslationError {
         Self {
             code,
             message: message.into(),
-            report,
+            report: report.into_report(),
         }
     }
 
@@ -56,7 +57,7 @@ impl NativeRequestTranslationError {
         kind: TranslationDecisionKind,
         reason: &'static str,
         effective_value: TranslationSafeRepresentation,
-        mut report: TranslationReport,
+        mut report: TranslationReportBuilder,
     ) -> Self {
         report.record(source_path, None, kind, Some(reason), effective_value);
         Self::with_report(code, message, report)
@@ -66,7 +67,7 @@ impl NativeRequestTranslationError {
 pub fn translate_native_run_request(
     value: Value,
 ) -> std::result::Result<TranslatedNativeRunRequest, NativeRequestTranslationError> {
-    let mut report = TranslationReport::new(TranslationProtocol::Native);
+    let mut report = TranslationReportBuilder::new(TranslationProtocol::Native);
     let object = match value.as_object() {
         Some(object) => object,
         None => {
@@ -203,12 +204,15 @@ pub fn translate_native_run_request(
     report
         .ensure_consistent()
         .map_err(|_| NativeRequestTranslationError::translation_invariant(report.clone()))?;
-    Ok(TranslatedNativeRunRequest { request, report })
+    Ok(TranslatedNativeRunRequest {
+        request,
+        report: report.into_report(),
+    })
 }
 
 fn native_stream_options(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> std::result::Result<NativeStreamOptions, NativeRequestTranslationError> {
     let Some(value) = object.get("stream_options") else {
         report.record(
@@ -246,7 +250,7 @@ fn required_native_string(
     field: &'static str,
     source_path: &'static str,
     target_path: &'static str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> std::result::Result<String, NativeRequestTranslationError> {
     match object.get(field).and_then(Value::as_str) {
         Some(value) => {
@@ -280,7 +284,7 @@ fn optional_native_string(
     field: &'static str,
     source_path: &'static str,
     target_path: &'static str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> std::result::Result<Option<String>, NativeRequestTranslationError> {
     match object.get(field) {
         Some(value) if value.is_string() => {
@@ -320,7 +324,7 @@ fn optional_native_object(
     field: &'static str,
     source_path: &'static str,
     target_path: &'static str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> std::result::Result<NativeObject, NativeRequestTranslationError> {
     match object.get(field) {
         Some(Value::Object(values)) => {
@@ -357,7 +361,7 @@ fn optional_native_object(
 
 fn native_metadata(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> std::result::Result<NativeRequestMetadata, NativeRequestTranslationError> {
     let Some(value) = object.get("metadata") else {
         report.record(
@@ -403,7 +407,7 @@ fn native_metadata(
 
 fn native_metadata_parse_error(
     error: NativeRequestMetadataParseError,
-    report: &TranslationReport,
+    report: &TranslationReportBuilder,
 ) -> NativeRequestTranslationError {
     let mut rejection_report = report.clone();
     rejection_report.record(
@@ -427,7 +431,7 @@ fn native_metadata_parse_error(
 
 fn native_execution(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> std::result::Result<NativeExecution, NativeRequestTranslationError> {
     let Some(value) = object.get("execution") else {
         report.record(
@@ -597,7 +601,7 @@ impl std::fmt::Display for NativePromptBlockParseError {
 
 fn native_system(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> std::result::Result<Vec<NativePromptBlock>, NativeRequestTranslationError> {
     match object.get("system") {
         Some(Value::String(text)) => {
@@ -710,7 +714,7 @@ pub(super) fn parse_native_prompt_blocks(
 fn record_native_prompt_block_receipts(
     value: &Value,
     root_path: &str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) {
     let Some(blocks) = value.as_array() else {
         return;

@@ -17,6 +17,16 @@ flowchart LR
 
 这是逻辑调用关系，不是 Cargo 依赖图。认证由宿主 factory 在业务 Kernel Resolve 前完成，细节见[契约与身份](#contracts-and-identity)。`public / console / runtime` 等入口分区也不是上图四个责任平面；同一入口分区的请求仍经过各责任平面。
 
+## 业务处理的共享边界
+
+列表过滤的字符串入口只编译一次 `ResourceFilterExpr`，内存筛选和数据库查询消费同一已验证表达式。批量选择仍要求显式主键或非空过滤条件；无效 JSON、运算符与操作数由过滤器 owner 拒绝。Resource Action 的实际分派继续由 Kernel 与 Registry 承担，未接入生产的独立 Hook Pipeline 不作为执行层。
+
+协议翻译在 adapter 内使用独占可变的 `TranslationReportBuilder`，以索引查找来源路径并保持决定的插入顺序；完成后交付原有 `TranslationReport` DTO。索引不附着到可公开修改或反序列化的 DTO，重复决定、首个冲突及协议错误顺序保持原契约。
+
+应用 API 文档和控制台 API 文档复用 `openapi_docs` 的具名只读投影，但保留各自 Interface Contract ID。共享只覆盖相同的字段选择、摘要和观察边界，不直接序列化完整业务 DTO。
+
+前端应用列表由 `/settings/applications` 的应用管理页面提供，应用详情继续使用 `/applications/:applicationId/*`。无路由消费者的旧列表和独立历史 helper 不构成第二套运行入口；表单、归档导入导出及扩展模板安装继续由当前页面消费。
+
 ## 按问题阅读
 
 | 顺序 | 问题 | 章节 |

@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 use crate::application_public_api::{
     native::{CompactionIntent, CompactionProfile},
     protocol_translation::{
-        TranslationDecisionKind, TranslationReport, TranslationSafeRepresentation,
+        TranslationDecisionKind, TranslationReportBuilder, TranslationSafeRepresentation,
     },
 };
 
@@ -51,7 +51,7 @@ impl CodexTurnMetadataSource {
 /// callback admission and translation, so the two paths cannot disagree.
 pub struct OpenAiResponsesOperationDecision {
     operation: AiNativeOperation,
-    report: TranslationReport,
+    report: TranslationReportBuilder,
     context: OpenAiResponsesRequestContext,
 }
 
@@ -64,7 +64,7 @@ impl OpenAiResponsesOperationDecision {
         self,
     ) -> (
         AiNativeOperation,
-        TranslationReport,
+        TranslationReportBuilder,
         OpenAiResponsesRequestContext,
     ) {
         (self.operation, self.report, self.context)
@@ -80,7 +80,7 @@ pub fn classify_response_envelope_operation(
         .raw_body()
         .as_object()
         .expect("captured Responses object");
-    let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
+    let mut report = TranslationReportBuilder::new(TranslationProtocol::OpenAiResponses);
     let operation = classify_response_operation(object, &context, &mut report)?;
     Ok(OpenAiResponsesOperationDecision {
         operation,
@@ -156,7 +156,7 @@ enum CapturedCodexRequestKind {
 pub(super) fn classify_response_operation(
     object: &Map<String, Value>,
     context: &OpenAiResponsesRequestContext,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<AiNativeOperation, OpenAiCompatError> {
     let request_kind = context
         .captured_codex_turn_metadata
@@ -302,7 +302,7 @@ pub(super) fn is_compaction_trigger_item(item: &Value) -> bool {
 fn record_compaction_evidence(
     context: &OpenAiResponsesRequestContext,
     has_compaction_trigger: bool,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) {
     report.record(
         "$.ingress.endpoint",
@@ -333,7 +333,7 @@ fn record_compaction_evidence(
 
 fn classification_error(
     error: CompactionIntentClassificationError,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
     metadata_source: &str,
 ) -> OpenAiCompatError {
     match error {

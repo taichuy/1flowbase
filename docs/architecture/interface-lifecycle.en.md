@@ -27,6 +27,16 @@ These arrows describe calls, not Cargo dependencies. Host authentication complet
 
 Equivalent GUI/HTTP and MCP/WebMCP business intents use the same core permissions, business rules and terminal semantics. Protocol wrappers and invocation IDs can differ, while lineage and effects must satisfy their respective contracts.
 
+## Shared business processing
+
+List-filter text is compiled into `ResourceFilterExpr` once. In-memory filtering and repository queries consume the validated expression. Bulk selection still requires explicit primary keys or a nonempty filter; the filter owner rejects invalid JSON, operators and operands. Actual Resource Action dispatch remains with its Kernel and Registry, without a separate unused Hook Pipeline.
+
+Protocol adapters collect decisions in an exclusively mutable `TranslationReportBuilder`. A source-path index supports lookup while the ordered decisions retain insertion order. Finalization returns the existing `TranslationReport` DTO; mutable or deserialized DTOs never carry a stale side index. Duplicate decisions, the first conflict and protocol error ordering retain their contracts.
+
+Application and console API documentation share the named, read-only projection owned by `openapi_docs`, while keeping distinct Interface Contract IDs. Reuse covers identical field selection, summaries and observation bounds; it never serializes the complete business DTO.
+
+The application list is served by application management at `/settings/applications`; detail pages retain `/applications/:applicationId/*`. The old list without a route consumer and isolated historical helpers are not additional runtime entrypoints. Current pages retain forms, archive import/export and extension-template installation.
+
 ## Maintenance boundary
 
 Architecture invariants are separate from implementation coverage and candidate acceptance. Interface lifecycle contracts provide a foundation; opening plugin capabilities then requires evidence from actual declarations, loading, composition and execution. A controlled typed-plan test does not prove real plugin activation. A legitimate empty extension plan is not itself a defect.

@@ -1,3 +1,5 @@
+pub(crate) mod managed_projection;
+
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use anyhow::{anyhow, bail, Context, Result};

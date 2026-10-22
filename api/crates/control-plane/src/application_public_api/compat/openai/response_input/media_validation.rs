@@ -3,7 +3,7 @@ use super::*;
 pub(in super::super) fn validate_responses_content_parts(
     content: &Value,
     message_index: usize,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     let Some(parts) = content.as_array() else {
         if content.is_string() {
@@ -103,7 +103,7 @@ pub(in super::super) fn validate_openai_supported_content_part(
     part_path: &str,
     part_type: &str,
     error_param: &'static str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     match part_type {
         "text" | "input_text" | "output_text" => {
@@ -213,7 +213,7 @@ pub(in super::super) fn reject_unknown_openai_content_part_fields(
     part_path: &str,
     allowed_fields: &[&str],
     error_param: &'static str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     let unknown_fields = object
         .keys()
@@ -249,7 +249,7 @@ pub(in super::super) fn validate_openai_image_url_value(
     value: Option<&Value>,
     image_path: &str,
     error_param: &'static str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     let Some(value) = value else {
         report.record(

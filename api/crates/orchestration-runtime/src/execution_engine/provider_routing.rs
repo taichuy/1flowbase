@@ -23,16 +23,6 @@ pub(super) async fn select_provider_target<I>(
 where
     I: ProviderInvoker + ?Sized,
 {
-    let candidates = target_ids
-        .iter()
-        .enumerate()
-        .map(|(index, target_id)| ProviderDistributionCandidate {
-            target_id: target_id.clone(),
-            order: index as u32,
-            ready: true,
-            capabilities: BTreeSet::new(),
-        })
-        .collect::<Vec<_>>();
     let registry_fingerprint = runtime_context
         .provider_distribution_registry_fingerprint(invoker)
         .await?
@@ -40,9 +30,9 @@ where
     let target_index = match rule {
         crate::compiled_plan::LlmDistributionRule::None => 0,
         crate::compiled_plan::LlmDistributionRule::RetryRoundRobin => {
-            attempt_index % candidates.len()
+            attempt_index % target_ids.len()
         }
-        crate::compiled_plan::LlmDistributionRule::RoundRobin if candidates.len() > 1 => {
+        crate::compiled_plan::LlmDistributionRule::RoundRobin if target_ids.len() > 1 => {
             let key = distribution_key
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| anyhow!("round_robin llm routing is missing distribution_key"))?;
@@ -52,7 +42,7 @@ where
                     .next_llm_routing_counter(key, Some(LLM_ROUTING_COUNTER_TTL))
                     .await?;
                 Ok::<usize, anyhow::Error>(
-                    (counter - 1).rem_euclid(candidates.len() as i64) as usize
+                    (counter - 1).rem_euclid(target_ids.len() as i64) as usize
                 )
             })
             .await?
@@ -64,6 +54,16 @@ where
             contract_version,
             config,
         } => {
+            let candidates = target_ids
+                .iter()
+                .enumerate()
+                .map(|(index, target_id)| ProviderDistributionCandidate {
+                    target_id: target_id.clone(),
+                    order: index as u32,
+                    ready: true,
+                    capabilities: BTreeSet::new(),
+                })
+                .collect();
             let invocation = extension_contracts::ProviderDistributionInvocation {
                 invocation_id: runtime_context
                     .provider_distribution_invocation_id()
@@ -76,9 +76,9 @@ where
                 rule_id: rule_id.clone(),
                 rule_version: rule_version.clone(),
                 contract_version: contract_version.clone(),
-                registry_fingerprint: registry_fingerprint.clone(),
+                registry_fingerprint,
                 config: config.clone(),
-                candidates: candidates.clone(),
+                candidates,
             };
             let receipt = invoker
                 .select_provider_distribution(rule_id, invocation)
@@ -91,9 +91,9 @@ where
                     ));
                 }
             };
-            let target_index = candidates
+            let target_index = target_ids
                 .iter()
-                .position(|candidate| candidate.ready && candidate.target_id == *target_id)
+                .position(|candidate_id| candidate_id == target_id)
                 .ok_or_else(|| anyhow!("provider distribution selected an ineligible target"))?;
             return Ok(ProviderDistributionSelection {
                 target_index,
@@ -101,9 +101,8 @@ where
             });
         }
     };
-    let selected = candidates
+    let selected = target_ids
         .get(target_index)
-        .filter(|candidate| candidate.ready)
         .ok_or_else(|| anyhow!("provider distribution selected an ineligible target"))?;
     let rule_id = match rule {
         crate::compiled_plan::LlmDistributionRule::None => "builtin.none",
@@ -123,7 +122,7 @@ where
             registry_fingerprint,
             attempt: attempt_index as u32,
             decision: ProviderDistributionDecision::Select {
-                target_id: selected.target_id.clone(),
+                target_id: selected.clone(),
             },
         },
     })

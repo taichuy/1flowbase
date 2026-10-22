@@ -19,8 +19,8 @@ use crate::application_public_api::native::{
     NativeExecution, NativeRequestMetadata, NativeRunRequest, NativeStreamOptions,
 };
 use crate::application_public_api::protocol_translation::{
-    TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol, TranslationReport,
-    TranslationSafeRepresentation,
+    TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol,
+    TranslationReportBuilder, TranslationSafeRepresentation,
 };
 
 pub fn translate_messages_request(
@@ -33,7 +33,7 @@ pub fn translate_messages_request_with_context_window(
     request: Value,
     ingress_context_window: Option<AnthropicContextWindowRequest>,
 ) -> Result<TranslatedNativeRunRequest, AnthropicCompatError> {
-    let mut report = TranslationReport::new(TranslationProtocol::AnthropicMessages);
+    let mut report = TranslationReportBuilder::new(TranslationProtocol::AnthropicMessages);
     let object = anthropic_request_object(&request, &mut report)?;
     validate_anthropic_root_fields(object, &mut report)?;
     record_anthropic_context_management_decision(object.get("context_management"), &mut report)?;
@@ -161,12 +161,15 @@ pub fn translate_messages_request_with_context_window(
     report
         .ensure_consistent()
         .map_err(|_| AnthropicCompatError::translation_invariant(report.clone()))?;
-    Ok(TranslatedNativeRunRequest { request, report })
+    Ok(TranslatedNativeRunRequest {
+        request,
+        report: report.into_report(),
+    })
 }
 
 fn anthropic_request_object<'a>(
     request: &'a Value,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<&'a Map<String, Value>, AnthropicCompatError> {
     let Some(object) = request.as_object() else {
         report.record(
@@ -187,7 +190,7 @@ fn anthropic_request_object<'a>(
 fn required_anthropic_string(
     object: &Map<String, Value>,
     field: &'static str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<String, AnthropicCompatError> {
     match object.get(field) {
         Some(Value::String(value)) => {
@@ -218,7 +221,7 @@ fn required_anthropic_string(
 fn required_anthropic_array<'a>(
     object: &'a Map<String, Value>,
     field: &'static str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<&'a Vec<Value>, AnthropicCompatError> {
     match object.get(field) {
         Some(Value::Array(values)) => Ok(values),
@@ -238,7 +241,7 @@ fn required_anthropic_array<'a>(
 }
 
 fn reject_anthropic_required_field(
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
     field: &'static str,
     reason: &str,
     effective_value: TranslationSafeRepresentation,

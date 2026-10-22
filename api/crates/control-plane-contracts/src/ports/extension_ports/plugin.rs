@@ -617,33 +617,6 @@ pub trait PluginWorkerRepository: Send + Sync {
     ) -> anyhow::Result<domain::PluginWorkerLeaseRecord>;
 }
 
-#[derive(Debug, Clone)]
-pub struct UpsertHostExtensionInventoryInput {
-    pub extension_id: String,
-    pub version: String,
-    pub display_name: String,
-    pub source_kind: String,
-    pub trust_level: domain::HostExtensionTrustLevel,
-    pub activation_status: domain::HostExtensionActivationStatus,
-    pub provides_contracts: Vec<String>,
-    pub overrides_contracts: Vec<String>,
-    pub registers_slots: Vec<String>,
-    pub registers_storage: Vec<String>,
-    pub last_error: Option<String>,
-}
-
-#[async_trait]
-pub trait HostExtensionInventoryRepository: Send + Sync {
-    async fn upsert_host_extension_inventory(
-        &self,
-        input: &UpsertHostExtensionInventoryInput,
-    ) -> anyhow::Result<domain::HostExtensionInventoryRecord>;
-
-    async fn list_host_extension_inventory(
-        &self,
-    ) -> anyhow::Result<Vec<domain::HostExtensionInventoryRecord>>;
-}
-
 /// Verified fixed page source passed to the atomic plugin template application owner.
 #[derive(Debug, Clone)]
 pub struct PluginSettingsTemplateInput {

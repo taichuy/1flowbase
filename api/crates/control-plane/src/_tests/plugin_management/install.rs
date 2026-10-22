@@ -461,61 +461,6 @@ async fn plugin_management_service_refreshes_empty_current_node_without_global_p
 }
 
 #[tokio::test]
-async fn ac_be_1_plugin_management_rebuilds_inventory_from_local_receipt() {
-    let workspace_id = Uuid::now_v7();
-    let install_root =
-        std::env::temp_dir().join(format!("plugin-receipt-rebuild-{}", Uuid::now_v7()));
-    let source_repository = MemoryPluginManagementRepository::new(actor_with_permissions(
-        workspace_id,
-        &["plugin_config.view.all", "plugin_config.configure.all"],
-    ));
-    let source_service = PluginManagementService::new(
-        source_repository.clone(),
-        MemoryProviderRuntime::default(),
-        Arc::new(MemoryOfficialPluginSource::default()),
-        &install_root,
-    );
-    source_service
-        .install_uploaded_plugin(InstallUploadedPluginCommand {
-            actor_user_id: source_repository.actor.user_id,
-            file_name: "openai_compatible-0.1.0.1flowbasepkg".into(),
-            package_bytes: build_openai_compatible_package_bytes("0.1.0", false),
-        })
-        .await
-        .unwrap();
-
-    let rebuilt_repository = MemoryPluginManagementRepository::new(domain::ActorContext::root(
-        Uuid::now_v7(),
-        workspace_id,
-        "root",
-    ));
-    let rebuilt_service = PluginManagementService::new(
-        rebuilt_repository.clone(),
-        MemoryProviderRuntime::default(),
-        Arc::new(MemoryOfficialPluginSource::default()),
-        &install_root,
-    );
-    let rebuilt = rebuilt_service
-        .rebuild_inventory_from_local_receipts(rebuilt_repository.actor.user_id)
-        .await
-        .unwrap();
-
-    assert_eq!(rebuilt, 1);
-    let installations = rebuilt_repository.list_installations().await.unwrap();
-    assert_eq!(installations.len(), 1);
-    assert_eq!(installations[0].source_kind, "uploaded");
-    let artifact = rebuilt_repository
-        .get_artifact_instance(
-            &format!("local:{}", install_root.display()),
-            installations[0].id,
-        )
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(PathBuf::from(artifact.local_path.unwrap()).is_dir());
-}
-
-#[tokio::test]
 async fn plugin_management_service_marks_current_node_artifact_outdated_for_stale_local_version() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryPluginManagementRepository::new(actor_with_permissions(

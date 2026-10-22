@@ -15,8 +15,6 @@ pub mod file_management;
 pub mod flow;
 pub mod frontend_block_catalog;
 pub mod frontstage;
-#[path = "extension_models/host_extension.rs"]
-pub mod host_extension;
 pub mod i18n_catalog;
 #[path = "extension_models/js_dependency.rs"]
 pub mod js_dependency;
@@ -98,9 +96,6 @@ pub use frontstage::{
     FrontstageBlockDescendantProjection, FrontstageBlockNodeRecord, FrontstageBlockNodeSummary,
     FrontstageBlockPresentation, FrontstageBlockSearchResult, FrontstageBlockSubtreeImpact,
     FrontstagePageKind, FrontstagePageRecord, FrontstagePageTreeNode,
-};
-pub use host_extension::{
-    HostExtensionActivationStatus, HostExtensionInventoryRecord, HostExtensionTrustLevel,
 };
 pub use i18n_catalog::{
     ActiveOfficialCatalogMessage, CatalogDigest, CatalogLocale, CatalogMessageIdentity,

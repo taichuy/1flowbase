@@ -10,10 +10,6 @@ use crate::host_extension_contribution::{
 pub struct RegisteredHostExtension {
     pub extension_id: String,
     pub bootstrap_phase: HostExtensionBootstrapPhase,
-    pub provides_contracts: Vec<String>,
-    pub overrides_contracts: Vec<String>,
-    pub registers_slots: Vec<String>,
-    pub registers_storage: Vec<(String, String)>,
     pub infrastructure_providers: Vec<HostInfrastructureProviderManifest>,
     pub auth_providers: Vec<AuthProviderContributionManifest>,
     pub owned_resources: Vec<String>,
@@ -33,9 +29,6 @@ pub struct RegisteredInfrastructureProvider {
 
 #[derive(Debug, Default)]
 pub struct HostExtensionRegistry {
-    contracts: BTreeMap<String, String>,
-    slots: BTreeMap<String, String>,
-    storage: BTreeMap<String, String>,
     extensions: BTreeMap<String, RegisteredHostExtension>,
     infrastructure_providers: BTreeMap<(String, String), RegisteredInfrastructureProvider>,
     auth_providers: BTreeMap<String, (String, AuthProviderContributionManifest)>,
@@ -49,14 +42,6 @@ impl HostExtensionRegistry {
                 "duplicate host extension: {}",
                 extension.extension_id
             )));
-        }
-
-        for contract in &extension.provides_contracts {
-            if self.contracts.contains_key(contract) {
-                return Err(PluginFrameworkError::invalid_provider_package(format!(
-                    "host contract {contract} already registered"
-                )));
-            }
         }
 
         let mut declared_provider_keys = BTreeSet::new();
@@ -91,25 +76,6 @@ impl HostExtensionRegistry {
             }
         }
 
-        for contract in &extension.provides_contracts {
-            self.contracts
-                .insert(contract.clone(), extension.extension_id.clone());
-        }
-
-        for contract in &extension.overrides_contracts {
-            self.contracts
-                .insert(contract.clone(), extension.extension_id.clone());
-        }
-
-        for slot in &extension.registers_slots {
-            self.slots
-                .insert(slot.clone(), extension.extension_id.clone());
-        }
-
-        for (kind, implementation) in &extension.registers_storage {
-            self.storage.insert(kind.clone(), implementation.clone());
-        }
-
         for provider in &extension.infrastructure_providers {
             let key = (provider.contract.clone(), provider.provider_code.clone());
             self.default_infrastructure_providers
@@ -135,18 +101,6 @@ impl HostExtensionRegistry {
             .insert(extension.extension_id.clone(), extension);
 
         Ok(())
-    }
-
-    pub fn contract_provider(&self, contract: &str) -> Option<&str> {
-        self.contracts.get(contract).map(String::as_str)
-    }
-
-    pub fn slot_provider(&self, slot: &str) -> Option<&str> {
-        self.slots.get(slot).map(String::as_str)
-    }
-
-    pub fn storage_implementation(&self, kind: &str) -> Option<&str> {
-        self.storage.get(kind).map(String::as_str)
     }
 
     pub fn infrastructure_provider(

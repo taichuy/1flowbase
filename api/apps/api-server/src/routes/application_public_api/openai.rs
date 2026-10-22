@@ -30,7 +30,7 @@ use control_plane::application_public_api::{
         ApplicationNativeRunService, NativeRunResult, NativeRunStatus, NativeRunValidationError,
     },
     protocol_translation::{
-        TranslationDecisionKind, TranslationProtocol, TranslationReport,
+        TranslationDecisionKind, TranslationProtocol, TranslationReport, TranslationReportBuilder,
         TranslationSafeRepresentation,
     },
     run_service::ApplicationPublishedRunControlRepository,
@@ -805,7 +805,7 @@ fn parse_openai_json_body(
     protocol: TranslationProtocol,
 ) -> Result<Value, OpenAiRouteError> {
     serde_json::from_slice::<Value>(&body).map_err(|_| {
-        let mut report = TranslationReport::new(protocol);
+        let mut report = TranslationReportBuilder::new(protocol);
         report.record(
             "$.body",
             None,
@@ -818,7 +818,7 @@ fn parse_openai_json_body(
             error_type: "invalid_request_error".to_string(),
             param: Some("body".to_string()),
             code: "invalid_request".to_string(),
-            report,
+            report: report.into_report(),
         }
         .into()
     })

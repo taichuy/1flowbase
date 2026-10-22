@@ -15,10 +15,6 @@ fn fixture_authenticator_registry() -> crate::auth::AuthenticatorRegistry {
         .register(RegisteredHostExtension {
             extension_id: "fixture-auth".to_string(),
             bootstrap_phase: HostExtensionBootstrapPhase::Boot,
-            provides_contracts: vec![],
-            overrides_contracts: vec![],
-            registers_slots: vec![],
-            registers_storage: vec![],
             infrastructure_providers: vec![],
             auth_providers: vec![AuthProviderContributionManifest {
                 auth_type: "fixture-auth.qr".to_string(),

@@ -6,7 +6,7 @@ use serde_json::{Map, Value};
 
 use super::NativeObject;
 use crate::application_public_api::protocol_translation::{
-    anonymous_unknown_source_paths, TranslationDecisionKind, TranslationReport,
+    anonymous_unknown_source_paths, TranslationDecisionKind, TranslationReportBuilder,
     TranslationSafeRepresentation,
 };
 
@@ -687,7 +687,7 @@ impl std::fmt::Display for NativeModelParameterParseError {
 
 pub(super) fn record_native_execution_receipts(
     execution: &NativeExecution,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) {
     if execution.idempotency_key.is_some() {
         report.record(
@@ -715,7 +715,7 @@ pub(super) fn record_native_execution_receipts(
 
 fn record_native_model_parameter_receipts(
     model_parameters: &NativeExecutionModelParameters,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) {
     report.record(
         MODEL_PARAMETERS_PATH,

@@ -13,7 +13,8 @@ use crate::application_public_api::client_protocol_envelope::{
 };
 use crate::application_public_api::native::{NativeObject, NativeRunRequest};
 use crate::application_public_api::protocol_translation::{
-    TranslationDecisionKind, TranslationProtocol, TranslationReport, TranslationSafeRepresentation,
+    TranslationDecisionKind, TranslationProtocol, TranslationReport, TranslationReportBuilder,
+    TranslationSafeRepresentation,
 };
 
 const ANTHROPIC_CONTEXT_1M_MODEL_SUFFIX: &str = "[1m]";
@@ -64,11 +65,11 @@ impl AnthropicContextWindowRequest {
 }
 
 impl AnthropicCompatError {
-    fn translation_invariant(report: TranslationReport) -> Self {
+    fn translation_invariant(report: TranslationReportBuilder) -> Self {
         Self {
             message: "translation receipt invariant violated".to_string(),
             error_type: "api_error".to_string(),
-            report,
+            report: report.into_report(),
         }
     }
 
@@ -89,11 +90,11 @@ impl AnthropicCompatError {
         }
     }
 
-    fn with_report(mut self, report: TranslationReport) -> Self {
+    fn with_report(mut self, report: TranslationReportBuilder) -> Self {
         if report.ensure_consistent().is_err() {
             return Self::translation_invariant(report);
         }
-        self.report = report;
+        self.report = report.into_report();
         self
     }
 }

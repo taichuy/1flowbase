@@ -187,7 +187,7 @@ impl ModelDefinitionsAdapter {
                     }
                 }
                 let filter = parse_resource_filter(query.filter.as_deref())?;
-                models = STATE_MODEL_RESOURCE.filter_records(models, filter.as_ref())?;
+                models = filter_resource_records(models, filter.as_ref())?;
                 let preferred_locale = self
                     .dependencies
                     .store
@@ -394,7 +394,7 @@ impl ModelDefinitionsAdapter {
                     .settings_service(access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID)
                     .list_models(user_id)
                     .await?;
-                let model_ids = STATE_MODEL_RESOURCE.select_batch_ids(
+                let model_ids = select_batch_ids(
                     models,
                     ResourceBatchSelection::new(body.filter_by_tk, body.filter),
                     |value| {

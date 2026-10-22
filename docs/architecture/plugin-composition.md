@@ -4,6 +4,14 @@
 
 本文维护当前组合契约。当前验收以实际提交与测试报告为准；[#2007 历史测试入口](archive/2007/plugin-composition-test-batch.md)不作为当前通过证据。通用命名空间事件的后续边界见[调用生命周期](interface-lifecycle.md#契约驱动的插件事件)，下述 Create → A → B/C 是具体实例。
 
+## 当前实现与共享读取
+
+HostExtension 启动以贡献 manifest、Effective Extension Graph 和当前 provider registry 为真值。库存展示、启动重建与恢复使用 `ExtensionInstallationService`；未接入宿主的旧 manifest、boot/inventory 原型和 receipt 重建 API 不作为平行入口。认证、基础设施 provider 注册以及安装制品、签名与恢复校验继续由现有 owner 执行。
+
+Outbox 领取在一个 SQL 语句中锁定候选、更新 claim 并返回完整投递记录；更新后的状态来自 `UPDATE RETURNING`，不从同一语句的旧快照重读 delivery。逐订阅者身份、租约、claim token 和 stale-worker fencing 保持独立。
+
+通知实例列表在首次命中记录时读取一次类型目录，同一请求共用该目录；无命中时不额外读取。实例授权继续逐条计算，发送继续重新获取当前执行授权，不把列表快照作为发送许可。供应商内置分发直接消费已有目标 ID；仅动态规则构造其协议候选列表，结果仍校验 eligibility 和会话归属。
+
 ## 插件启用与能力批准
 
 用户的操作权限与插件的能力授权分别判断。Root 不依赖角色配置即可执行插件管理操作；非 root 仍需对应启用、停用或版本切换 operation。

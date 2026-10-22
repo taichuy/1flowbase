@@ -20,7 +20,7 @@ pub(super) struct ClaudeCodeUserIdentity {
 
 pub(super) fn anthropic_metadata(
     object: &Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<AnthropicRequestMetadata, AnthropicCompatError> {
     match object.get("metadata") {
         Some(Value::Object(metadata)) => {
@@ -121,7 +121,7 @@ pub(super) fn anthropic_metadata(
 
 pub(super) fn anthropic_max_output_tokens(
     object: &serde_json::Map<String, Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<Option<u64>, AnthropicCompatError> {
     let Some(value) = object.get("max_tokens") else {
         report.record(
@@ -183,7 +183,7 @@ pub(super) fn normalize_anthropic_model_for_native(
 
 pub(super) fn anthropic_system_content_parts(
     value: Option<&Value>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<Vec<NativePromptBlock>, AnthropicCompatError> {
     let mut parts = Vec::new();
     match value {
@@ -270,7 +270,7 @@ pub(super) fn native_anthropic_system_text_block(object: &Map<String, Value>) ->
 pub(super) fn validate_anthropic_system_text_block(
     object: &Map<String, Value>,
     block_path: &str,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), AnthropicCompatError> {
     let unknown_fields = object
         .keys()

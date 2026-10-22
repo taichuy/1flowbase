@@ -182,20 +182,13 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         installed.installation.category,
         domain::ExtensionCategory::RuntimeExtensions
     );
-    let inventory = management
-        .list_local_inventory(
-            actor_id,
-            Some(ExtensionCatalogCategory::RuntimeExtensions),
-            None,
-            100,
-        )
-        .await
-        .unwrap();
-    assert!(inventory
-        .entries
-        .iter()
-        .any(|entry| entry.installation.id == installation_id
-            && entry.category == "runtime-extensions"));
+    let inventory =
+        ExtensionInstallationService::new(runtime.store.clone(), &state.provider_install_root)
+            .list_installed_for_node(&state.api_node_id)
+            .await
+            .unwrap();
+    assert!(inventory.iter().any(|entry| entry.id == installation_id
+        && entry.identity.category == domain::ExtensionCategory::RuntimeExtensions));
     management
         .assign_plugin(AssignPluginCommand {
             actor_user_id: actor_id,

@@ -60,6 +60,21 @@ async fn lcf_005_outbox_claim_retry_delivery_and_idempotency_are_durable() {
     assert_eq!(claimed.len(), 1);
     assert_eq!(claimed[0].status, LifecycleOutboxStatus::Claimed);
     assert_eq!(claimed[0].attempt_count, 1);
+    assert_eq!(claimed[0].claimed_by, Some(worker));
+    assert!(claimed[0].claim_id.is_some());
+    assert!(claimed[0].claimed_at.is_some());
+    assert_eq!(
+        claimed[0].claim_expires_at,
+        claimed[0].claimed_at.map(|at| at + lease)
+    );
+    let mut expected = first;
+    expected.status = LifecycleOutboxStatus::Claimed;
+    expected.attempt_count = 1;
+    expected.claimed_by = Some(worker);
+    expected.claimed_at = claimed[0].claimed_at;
+    expected.claim_id = claimed[0].claim_id;
+    expected.claim_expires_at = claimed[0].claim_expires_at;
+    assert_eq!(claimed[0], expected);
 
     store
         .retry_lifecycle_fact(

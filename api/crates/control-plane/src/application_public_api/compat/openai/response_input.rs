@@ -4,7 +4,7 @@ use super::*;
 pub(super) fn validate_responses_input(
     input: &Value,
     is_v2_compaction: bool,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     validate_responses_input_items(input, is_v2_compaction, report).map_err(|error| {
         if !report.has_decision("$.input", TranslationDecisionKind::Rejected) {
@@ -23,7 +23,7 @@ pub(super) fn validate_responses_input(
 pub(super) fn validate_native_responses_input(
     input: &Value,
     index: &ResponsesInputIndex,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     if input.is_string() {
         report.record(
@@ -65,7 +65,7 @@ pub(super) fn validate_native_responses_input(
 
 pub(super) fn validate_responses_compaction_v2_input(
     input: &Value,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     let items = input.as_array().ok_or_else(|| {
         OpenAiCompatError::invalid("input", "V2 compaction input must be an array")
@@ -143,7 +143,7 @@ pub(super) fn validate_responses_compaction_v2_input(
 pub(super) fn validate_native_mcp_approval_continuation(
     input: &Value,
     previous_response: Option<&OpenAiPreviousResponseContext>,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     let Some(items) = input.as_array() else {
         return Ok(());
@@ -195,7 +195,7 @@ pub(super) fn validate_native_mcp_approval_continuation(
 pub(super) fn validate_responses_input_items(
     input: &Value,
     is_v2_compaction: bool,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     validate_responses_items(input, is_v2_compaction, report, false)
 }
@@ -205,7 +205,7 @@ pub(super) fn validate_responses_input_items(
 fn validate_responses_items(
     input: &Value,
     is_v2_compaction: bool,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
     verified_callback: bool,
 ) -> Result<(), OpenAiCompatError> {
     if input.is_string() {
@@ -538,7 +538,7 @@ fn validate_responses_items(
 pub(super) fn reject_responses_system_media(
     content: &Value,
     message_index: usize,
-    report: &mut TranslationReport,
+    report: &mut TranslationReportBuilder,
 ) -> Result<(), OpenAiCompatError> {
     let Some(parts) = content.as_array() else {
         return Ok(());

@@ -6,7 +6,9 @@ pub(crate) use tool_outputs::native_tool_results;
 use serde_json::Value;
 
 use super::OpenAiCompatError;
-use crate::application_public_api::protocol_translation::{TranslationProtocol, TranslationReport};
+use crate::application_public_api::protocol_translation::{
+    TranslationProtocol, TranslationReportBuilder,
+};
 use crate::ports::ProviderTransportPayload;
 
 /// Codex can start or steer a turn with a standalone function output. Its
@@ -115,12 +117,15 @@ impl std::fmt::Debug for OpenAiResponsesEnvelope {
 impl OpenAiResponsesEnvelope {
     pub fn capture(raw_body: Value) -> Result<Self, OpenAiCompatError> {
         let index = ResponsesRequestIndex::build(&raw_body).map_err(|error| {
-            OpenAiCompatError::invalid(error.param(), error.message())
-                .with_report(TranslationReport::new(TranslationProtocol::OpenAiResponses))
+            OpenAiCompatError::invalid(error.param(), error.message()).with_report(
+                TranslationReportBuilder::new(TranslationProtocol::OpenAiResponses),
+            )
         })?;
         let transport = ProviderTransportPayload::openai_responses(raw_body).map_err(|_| {
             OpenAiCompatError::invalid("request", "Responses request must be an object")
-                .with_report(TranslationReport::new(TranslationProtocol::OpenAiResponses))
+                .with_report(TranslationReportBuilder::new(
+                    TranslationProtocol::OpenAiResponses,
+                ))
         })?;
         Ok(Self {
             transport,

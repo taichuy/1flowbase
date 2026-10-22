@@ -27,7 +27,7 @@ use control_plane::application_public_api::{
     },
     native::{AnswerProjectionSegmentKind, NativeRunResult, NativeRunStatus},
     protocol_translation::{
-        TranslationDecisionKind, TranslationProtocol, TranslationReport,
+        TranslationDecisionKind, TranslationProtocol, TranslationReport, TranslationReportBuilder,
         TranslationSafeRepresentation,
     },
 };
@@ -509,7 +509,7 @@ fn anthropic_token(headers: &HeaderMap) -> Result<String, native::NativeApiError
 
 fn parse_anthropic_json_body(body: Bytes) -> Result<Value, AnthropicRouteError> {
     serde_json::from_slice::<Value>(&body).map_err(|_| {
-        let mut report = TranslationReport::new(TranslationProtocol::AnthropicMessages);
+        let mut report = TranslationReportBuilder::new(TranslationProtocol::AnthropicMessages);
         report.record(
             "$.body",
             None,
@@ -520,7 +520,7 @@ fn parse_anthropic_json_body(body: Bytes) -> Result<Value, AnthropicRouteError> 
         AnthropicCompatError {
             message: "invalid JSON body".to_string(),
             error_type: "invalid_request".to_string(),
-            report,
+            report: report.into_report(),
         }
         .into()
     })

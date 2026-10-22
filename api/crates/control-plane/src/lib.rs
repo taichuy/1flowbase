@@ -19,7 +19,6 @@ pub mod frontend_block_catalog;
 pub mod frontstage;
 pub mod host_extension;
 pub mod host_extension_boot;
-pub mod host_extension_inventory;
 #[path = "presentation_catalogs/i18n.rs"]
 pub mod i18n;
 pub mod i18n_catalog;

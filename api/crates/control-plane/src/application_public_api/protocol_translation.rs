@@ -1,3 +1,5 @@
+use std::collections::{hash_map::Entry, HashMap};
+
 use serde::{Deserialize, Serialize};
 
 use super::native::NativeRunRequest;
@@ -105,6 +107,34 @@ impl TranslationReport {
         }
     }
 
+    pub fn has_decision(&self, source_path: &str, kind: TranslationDecisionKind) -> bool {
+        self.decisions
+            .iter()
+            .any(|decision| decision.source_path == source_path && decision.kind == kind)
+    }
+}
+
+/// Mutable adapter-owned receipt collection. Only this owner can change the
+/// decisions while the source-path index exists; the finished DTO stays freely
+/// mutable and deserializable without carrying an index that could become stale.
+#[derive(Debug, Clone)]
+pub struct TranslationReportBuilder {
+    report: TranslationReport,
+    source_indices: HashMap<String, usize>,
+}
+
+impl TranslationReportBuilder {
+    pub fn new(protocol: TranslationProtocol) -> Self {
+        Self {
+            report: TranslationReport::new(protocol),
+            source_indices: HashMap::new(),
+        }
+    }
+
+    pub fn into_report(self) -> TranslationReport {
+        self.report
+    }
+
     pub fn record(
         &mut self,
         source_path: &str,
@@ -113,7 +143,7 @@ impl TranslationReport {
         reason: Option<&str>,
         effective_value: TranslationSafeRepresentation,
     ) {
-        if self.invariant_error.is_some() {
+        if self.report.invariant_error.is_some() {
             return;
         }
         let decision = TranslationDecision {
@@ -123,21 +153,22 @@ impl TranslationReport {
             reason: reason.map(ToOwned::to_owned),
             effective_value,
         };
-        if let Some(existing) = self
-            .decisions
-            .iter_mut()
-            .find(|existing| existing.source_path == source_path)
-        {
-            if *existing != decision {
-                self.invariant_error = Some(TranslationReportInvariantError {
-                    source_path: source_path.to_string(),
-                    existing: existing.clone(),
-                    attempted: decision,
-                });
+        match self.source_indices.entry(decision.source_path.clone()) {
+            Entry::Occupied(entry) => {
+                let existing = &self.report.decisions[*entry.get()];
+                if *existing != decision {
+                    self.report.invariant_error = Some(TranslationReportInvariantError {
+                        source_path: source_path.to_string(),
+                        existing: existing.clone(),
+                        attempted: decision,
+                    });
+                }
             }
-            return;
+            Entry::Vacant(entry) => {
+                entry.insert(self.report.decisions.len());
+                self.report.decisions.push(decision);
+            }
         }
-        self.decisions.push(decision);
     }
 
     /// Finalize a report at the external-protocol boundary. Record calls are
@@ -145,7 +176,7 @@ impl TranslationReport {
     /// conflict into a typed, propagatable adapter invariant before the report
     /// can cross that boundary.
     pub fn ensure_consistent(&self) -> Result<(), TranslationReportInvariantError> {
-        self.invariant_error.clone().map_or(Ok(()), Err)
+        self.report.invariant_error.clone().map_or(Ok(()), Err)
     }
 
     /// Preserve the fact that each unexpected wire key was present while never
@@ -167,9 +198,13 @@ impl TranslationReport {
     }
 
     pub fn has_decision(&self, source_path: &str, kind: TranslationDecisionKind) -> bool {
-        self.decisions
-            .iter()
-            .any(|decision| decision.source_path == source_path && decision.kind == kind)
+        self.source_indices
+            .get(source_path)
+            .is_some_and(|index| self.report.decisions[*index].kind == kind)
+    }
+
+    pub(crate) fn contains_source_path(&self, source_path: &str) -> bool {
+        self.source_indices.contains_key(source_path)
     }
 }
 
@@ -210,7 +245,7 @@ mod tests {
 
     #[test]
     fn accepts_an_idempotent_repeat_for_the_same_source_path() {
-        let mut report = TranslationReport::new(TranslationProtocol::AnthropicMessages);
+        let mut report = TranslationReportBuilder::new(TranslationProtocol::AnthropicMessages);
         report.record(
             "$.messages[0].content",
             Some("$.query"),
@@ -226,6 +261,7 @@ mod tests {
             TranslationSafeRepresentation::Redacted,
         );
 
+        let report = report.into_report();
         assert_eq!(report.decisions.len(), 1);
         assert_eq!(
             report.decisions[0].kind,
@@ -235,7 +271,7 @@ mod tests {
 
     #[test]
     fn surfaces_conflicting_duplicate_source_path_decisions_as_a_translation_invariant() {
-        let mut report = TranslationReport::new(TranslationProtocol::Native);
+        let mut report = TranslationReportBuilder::new(TranslationProtocol::Native);
         report.record(
             "$.execution.compatibility_mode",
             None,
@@ -254,7 +290,97 @@ mod tests {
         let error = report
             .ensure_consistent()
             .expect_err("a conflicting source decision must become a recoverable invariant error");
+        report.record(
+            "$.later",
+            None,
+            TranslationDecisionKind::Exact,
+            None,
+            TranslationSafeRepresentation::Present,
+        );
+        report.record(
+            "$.execution.compatibility_mode",
+            None,
+            TranslationDecisionKind::Dropped,
+            None,
+            TranslationSafeRepresentation::Absent,
+        );
+        assert_eq!(report.ensure_consistent(), Err(error.clone()));
+        assert!(!report.contains_source_path("$.later"));
         assert_eq!(error.source_path(), "$.execution.compatibility_mode");
+        let report = report.into_report();
         assert_eq!(report.decisions.len(), 1);
+    }
+
+    #[test]
+    fn indexed_collection_preserves_large_input_order_and_idempotent_decisions() {
+        let mut builder = TranslationReportBuilder::new(TranslationProtocol::OpenAiResponses);
+        let paths = (0..4096)
+            .map(|index| format!("$.input[{index}]"))
+            .collect::<Vec<_>>();
+        for path in paths.iter().chain(paths.iter().rev()) {
+            builder.record(
+                path,
+                Some("$.history"),
+                TranslationDecisionKind::Normalized,
+                None,
+                TranslationSafeRepresentation::Redacted,
+            );
+            assert!(builder.has_decision(path, TranslationDecisionKind::Normalized));
+            assert!(!builder.has_decision(path, TranslationDecisionKind::Rejected));
+        }
+        builder.ensure_consistent().unwrap();
+        let report = builder.into_report();
+        assert_eq!(
+            report
+                .decisions
+                .iter()
+                .map(|decision| &decision.source_path)
+                .collect::<Vec<_>>(),
+            paths.iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn finished_report_preserves_wire_shape_equality_and_public_mutability() {
+        let mut builder = TranslationReportBuilder::new(TranslationProtocol::Native);
+        builder.record(
+            "$.query",
+            Some("$.query"),
+            TranslationDecisionKind::Exact,
+            None,
+            TranslationSafeRepresentation::Redacted,
+        );
+        builder.record(
+            "$.model",
+            None,
+            TranslationDecisionKind::Defaulted,
+            Some("use application model"),
+            TranslationSafeRepresentation::Absent,
+        );
+        let report = builder.into_report();
+        let wire = serde_json::to_value(&report).unwrap();
+        assert_eq!(
+            wire,
+            serde_json::json!({
+                "protocol": "native",
+                "decisions": [
+                    {"source_path": "$.query", "target_path": "$.query", "kind": "exact", "effective_value": "redacted"},
+                    {"source_path": "$.model", "kind": "defaulted", "reason": "use application model", "effective_value": "absent"}
+                ]
+            })
+        );
+        let mut decoded: TranslationReport = serde_json::from_value(wire).unwrap();
+        assert_eq!(decoded, report);
+        decoded.decisions.remove(0);
+        decoded.decisions[0].source_path = "$.changed".to_string();
+        assert!(!decoded.has_decision("$.query", TranslationDecisionKind::Exact));
+        assert!(!decoded.has_decision("$.model", TranslationDecisionKind::Defaulted));
+        assert!(decoded.has_decision("$.changed", TranslationDecisionKind::Defaulted));
+        assert_ne!(decoded, report);
+        assert_eq!(
+            serde_json::from_value::<TranslationReport>(serde_json::to_value(&decoded).unwrap())
+                .unwrap(),
+            decoded
+        );
     }
 }

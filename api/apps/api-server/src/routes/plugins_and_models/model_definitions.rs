@@ -13,7 +13,7 @@ use control_plane::model_definition::{
     UpdateModelFieldCommand, UpdateScopeDataModelGrantCommand,
 };
 use control_plane::resource_crud::{
-    parse_resource_filter, ResourceBatchSelection, ResourceCrudDescriptor,
+    filter_resource_records, parse_resource_filter, select_batch_ids, ResourceBatchSelection,
 };
 use control_plane::runtime_registry_sync::ModelDefinitionMutationService;
 use control_plane::{
@@ -37,9 +37,6 @@ use crate::{
 
 #[path = "model_definitions_interface.rs"]
 pub(crate) mod interface;
-
-const STATE_MODEL_RESOURCE: ResourceCrudDescriptor =
-    ResourceCrudDescriptor::new("state_model", "id");
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
