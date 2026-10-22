@@ -8,6 +8,7 @@ use domain::{CallbackTaskRecord, CallbackTaskStatus, FlowRunStatus};
 use serde_json::{json, Value};
 
 use super::api_keys::ApplicationApiKeyActor;
+use super::compat::openai::responses_index::native_tool_results;
 use super::compat::openai::OpenAiResponsesEnvelope;
 use crate::errors::ControlPlaneError;
 
@@ -49,25 +50,17 @@ where
         return Ok(None);
     }
 
-    let mut call_ids = BTreeSet::new();
-    let mut tool_results = Vec::with_capacity(output_positions.len());
-    for position in output_positions {
-        let output = &input[position];
-        let call_id = output
-            .get("call_id")
-            .and_then(Value::as_str)
-            .filter(|id| !id.is_empty())
-            .ok_or(ControlPlaneError::InvalidInput(
-                "native_tool_output_call_id",
-            ))?;
-        let content = output.get("output").ok_or(ControlPlaneError::InvalidInput(
-            "native_tool_output_content",
-        ))?;
-        if !call_ids.insert(call_id.to_owned()) {
-            return Err(ControlPlaneError::Conflict("native_tool_output_duplicate").into());
-        }
-        tool_results.push(json!({"tool_call_id": call_id, "content": content}));
-    }
+    let tool_results =
+        native_tool_results(output_positions.iter().map(|position| &input[*position]))?;
+    let call_ids: BTreeSet<String> = tool_results
+        .iter()
+        .map(|result| {
+            result["tool_call_id"]
+                .as_str()
+                .expect("validated output ID")
+                .to_owned()
+        })
+        .collect();
     debug_assert!(call_ids.iter().all(|call_id| {
         index
             .outputs_by_call_id()
@@ -200,7 +193,8 @@ where
     // history/context must prove the predecessor prefix; comparing user messages
     // conflates a complete history with a delta and rejects valid context updates.
     // Output-only submissions retain scoped call-id correlation.
-    let full_context_required = previous_response_id.is_none() && input.len() > call_ids.len();
+    let full_context_required =
+        previous_response_id.is_none() && input.len() > output_positions.len();
     let full_context_proven = full_context_required
         && super::compat::openai::history::prove_full_context_input(
             input_value,
@@ -282,10 +276,7 @@ fn is_independent_session_history(
     };
     let positions = envelope.index().input().current_tool_output_positions();
     let expected: BTreeSet<&str> = owned_call_ids.iter().map(String::as_str).collect();
-    if expected.is_empty()
-        || expected.len() != owned_call_ids.len()
-        || positions.len() != expected.len()
-    {
+    if expected.is_empty() || expected.len() != owned_call_ids.len() {
         return false;
     }
     let supplied: BTreeSet<&str> = positions

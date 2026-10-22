@@ -1,5 +1,8 @@
 use std::collections::BTreeMap;
 
+mod tool_outputs;
+pub(crate) use tool_outputs::native_tool_results;
+
 use serde_json::Value;
 
 use super::OpenAiCompatError;

@@ -173,9 +173,14 @@ async fn issue_1743_bound_native_continuation_sends_only_sealed_delta_wire() {
         "gpt-5.4-mini",
     );
     let continuation = crate::ports::ProviderContinuation::new("resp-bound", affinity).unwrap();
+    let outputs = json!([
+        {"type":"custom_tool_call_output","call_id":"call-1","output":"Script completed"},
+        {"type":"custom_tool_call_output","call_id":"call-1","output":"notification"},
+        {"type":"custom_tool_call_output","call_id":"call-1","output":[{"type":"input_text","text":"result"}]}
+    ]);
     let payload = crate::ports::ProviderTransportPayload::openai_responses(json!({
         "model": "gpt-5.4-mini",
-        "input": [{"type": "function_call_output", "call_id": "call-1", "output": "ok"}]
+        "input": outputs.clone()
     }))
     .unwrap()
     .bind_openai_continuation(continuation)
@@ -236,10 +241,7 @@ async fn issue_1743_bound_native_continuation_sends_only_sealed_delta_wire() {
         native.wire_body["previous_response_id"],
         json!("resp-bound")
     );
-    assert_eq!(
-        native.wire_body["input"][0]["type"],
-        json!("function_call_output")
-    );
+    assert_eq!(native.wire_body["input"], outputs);
 }
 
 #[tokio::test]
