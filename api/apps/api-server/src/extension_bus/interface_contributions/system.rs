@@ -5,8 +5,18 @@ pub(super) fn contributions(
     mcp_interface_catalog_dependencies: &crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies,
 ) -> Result<Vec<InterfaceRegistryContribution>, RegistryCompilationError> {
     Ok(vec![
-        InterfaceRegistryContribution::new("api-server.system-branding", &["system.branding.get", "system.branding.save"], &["api-server.system-branding"], crate::routes::branding::compile_registry(state.store.clone())?),
-        InterfaceRegistryContribution::new("api-server.public-branding", &["public.system-metadata.read"], &["api-server.public-branding"], crate::routes::branding::public_interface::compile_registry(state.store.clone())?),
+        InterfaceRegistryContribution::new(
+            "api-server.system-branding",
+            &["system.branding.get", "system.branding.save"],
+            &["api-server.system-branding"],
+            crate::routes::branding::compile_registry(state.store.clone())?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.public-branding",
+            &["public.system-metadata.read"],
+            &["api-server.public-branding"],
+            crate::routes::branding::public_interface::compile_registry(state.store.clone())?,
+        ),
         InterfaceRegistryContribution::new(
             "api-server.console-system",
             &[

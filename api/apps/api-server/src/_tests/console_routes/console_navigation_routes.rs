@@ -108,6 +108,7 @@ async fn console_navigation_route_returns_root_registry_with_separated_arrays() 
             "settings.system-runtime",
             "settings.memory-observation",
             "settings.i18n",
+            "settings.system",
         ]
     );
 }

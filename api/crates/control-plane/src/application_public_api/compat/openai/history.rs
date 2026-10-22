@@ -108,21 +108,6 @@ pub(crate) fn completed_history(
     Ok(Some(serde_json::to_value(history)?))
 }
 
-/// A full retry is precisely the proven history followed by this callback's outputs.
-/// Ownership and equality to the accepted callback output payload remain the callback owner.
-pub(crate) fn validate_full_retry_input(
-    input: &Value,
-    trusted_history: &Value,
-    owned_call_ids: &[String],
-) -> Result<()> {
-    let proof = prove_full_context_input(input, trusted_history, owned_call_ids)?;
-    ensure!(
-        proof.context.is_empty(),
-        "native_history_item_count_mismatch"
-    );
-    Ok(())
-}
-
 /// References into the unchanged wire body, after the proven predecessor prefix.
 /// Context may occur before, between or after the owned outputs.
 pub(crate) struct FullContextInput<'a> {

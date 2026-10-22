@@ -40,8 +40,16 @@ must preserve core scenarios. Historical durations are references with explicit
 source/environment/cache differences; unmeasured values remain unknown.
 
 Local backend budgets are `min(CPUs, max(4, floor(CPUs / 2)))` and
-`min(effective memory, max(8 GiB, effective memory / 2))`. GitHub Actions verification
+`min(effective memory, max(8 GiB, effective memory / 2))`. Both quotas apply to the
+aggregate `dev-rust.slice`; the parent and frontend sibling remain unrestricted by default. GitHub Actions verification
 and warmup use all runner CPUs and do not apply local memory quotas. Installation
 and operating-system limits are owned by [scripts/README](../../../scripts/README.md);
 this does not introduce admission coordination across frontend, databases, and
 other sessions.
+
+Migration rejection tests run the formal migration set on a dedicated connection
+and explicitly close that connection after the expected error. This releases any
+retained session advisory lock without waiting for pool eviction. Successful
+migrations still use the production entry point. Atomic rollback, money, and
+historical checksum assertions remain; production locking and rejection scenarios
+are retained.

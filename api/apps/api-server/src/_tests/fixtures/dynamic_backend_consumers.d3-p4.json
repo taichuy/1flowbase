@@ -1,6 +1,6 @@
 {
   "packet": "D3-P4",
-  "count": 82,
+  "count": 84,
   "consumers": [
     {
       "category": "settings_feature_label",
@@ -411,6 +411,16 @@
       "category": "settings_policy_group",
       "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
       "key": "UI navigation, page configuration, code template and persisted component record management operations"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "System settings"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "Manage installation-wide public branding"
     }
   ]
 }

@@ -61,9 +61,9 @@ pub mod session_security;
 pub mod state_transition;
 #[path = "system_services/system_agent.rs"]
 pub mod system_agent;
+pub mod system_backup;
 #[path = "system_services/system_branding.rs"]
 pub mod system_branding;
-pub mod system_backup;
 #[path = "system_services/system_metadata.rs"]
 pub mod system_metadata;
 pub mod system_recovery;

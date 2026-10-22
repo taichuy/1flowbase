@@ -51,8 +51,9 @@ worktree 也采用该默认值。日常启动和验证保留显式整数覆盖�
 CI 仍使用全部 runner CPU。预热独立采用同一自动预算规则，始终先获取锁定依赖，
 再串行完成启动目标、测试普通库和全量测试预编译。
 
-Linux 安装脚本需要 Node 和用户 systemd，会在应用配置时把 `DEV_CPU_QUOTA=auto` 解析为
-对应的 CPUQuota（例如 8 CPU 得到 400%），多个 worktree 的开发子组共享父组总预算。
+Linux 安装脚本需要 Node 和用户 systemd，会在应用配置时把 `RUST_CPU_QUOTA=auto` 解析为
+对应的 CPUQuota（例如 8 CPU 得到 400%），多个 Rust worktree 共享 `dev-rust.slice` 总预算。
+`dev.slice` 父组默认不限制 CPU，前端不占用 Rust 的组内额度。
 迁移机器或调整 CPU/内存容量后，重新运行安装脚本刷新 systemd 配额；无需手工重新计算数值。
 Windows/macOS 的项目 Node 入口采用同一并发规则；systemd 配额仅适用于 Linux。
 已有 `.1flowbase.verify.local.json` 中的数字视为显式覆盖，不会猜测并替换；需要自动适配时，
@@ -70,7 +71,7 @@ Rust MemoryHigh = MemoryMax × 90%（按 MiB 向下取整）
 4 CPU / 8 GiB 是容量允许时的 Rust 预算目标，不是最低硬件认证；低配允许超过半机，
 资源不足时以有效总容量封顶；会话低水位保护不再扣减 Rust 预算。`MemoryHigh` 提前回收/节流，`MemoryMax` 是
 所有 Rust worktree 合计的硬上限，不是单个任务额度，也不预分配内存或保证构建一定成功。
-swap 上限保留 1 GiB；`dev.slice` 和 `dev-frontend.slice` 内存、swap 不设上限。
+swap 上限保留 1 GiB；`dev.slice` 和 `dev-frontend.slice` 的 CPU、内存、swap 默认不设上限。
 自定义内存配置时可同时指定 `RUST_MEMORY_HIGH` / `RUST_MEMORY_MAX`；显式值原样传给 systemd。
 可先运行 `node scripts/node/testing/resources/budget.js` 查看当前环境自动预算。
 
@@ -80,7 +81,8 @@ CPU portability: local build/test defaults and the installed Cargo wrapper recal
 CI, including cache warmup, keeps full runner parallelism and has no local memory cap. Automatic memory capacity respects process/container
 constraints and targets the larger of 8 GiB or half capacity, capped by effective
 capacity. Session MemoryLow remains a reclaim preference and is not subtracted from this budget. MemoryHigh is 90% of MemoryMax.
-These are aggregate Rust limits, not verified minimum hardware requirements or allocations.
+These are aggregate Rust limits on `dev-rust.slice`, not verified minimum hardware requirements or allocations.
+The parent `dev.slice` and frontend sibling remain unrestricted by default.
 On Linux, reapply the installer after capacity changes to refresh systemd limits.
 Windows/macOS use the same Node CPU policy without Linux systemd limits.
 First-time warmup uses `node scripts/node/reset-rust-cache/cli.js --warmup-only` to fetch
@@ -90,7 +92,7 @@ locked dependencies and precompile all test targets sequentially while preservin
 `dev-run <command>`（前端可用 `dev-run --frontend <command>`）。
 已有进程不会自动迁移；直接使用绝对路径工具或 NVM 把自身 bin 提到包装器前面会绕过入口，
 请用 `type -a cargo pnpm` 及 `/proc/<pid>/cgroup` 核对。
-Docker 数据库不属于用户级开发组，仍需计入组外预算。
+Docker 数据库不属于用户级开发组。
 整机 swap 容量保持 4 GiB，3 GiB 仅作为观察线，不触发清理。
 管理员执行 `sudo bash scripts/shell/apply-oomd-policy.sh "$(id -u)"`，
 把 `SwapUsedLimit` 恢复为 90%，关闭 `user-UID.slice` 和 `user@UID.service`
@@ -109,14 +111,14 @@ Cargo 和 pnpm 不再自动进入统一排队，可以并行执行。
 | 字段 | 作用 |
 | --- | --- |
 | `PROFILE_MODE` | `limited` 写入并应用限制；`unlimited` 删除脚本管理的配置并恢复默认值。 |
-| `DEV_CPU_QUOTA` | `auto` 按半机/目标至少 4 CPU 生成父组总配额，不超过实际 CPU；也可显式指定 systemd CPUQuota，例如 `400%`。 |
+| `DEV_CPU_QUOTA` | 默认 `infinity`，父组不限；自定义配置仍支持 `auto` 或显式 systemd CPUQuota。 |
 | `SESSION_MEMORY_LOW` | `auto` 使用上述系统余量；为 `session.slice` 设置低水位保护，不是最大内存限制。 |
 | `RUST_OOM_PRESSURE_LIMIT` | `dev-rust.slice` 的 PSI 内存压力阈值，只影响 Rust 组。 |
 | `RUST_OOM_PRESSURE_DURATION` | Rust 组超过压力阈值后必须持续的时间。 |
 | `RUST_MEMORY_HIGH` | `auto` 使用自动内存预算的 90%；超过后内核加强回收和节流，支持显式 systemd 值。 |
-| `RUST_MEMORY_MAX` | `auto` 使用上述半机/8 GiB/系统余量公式，支持显式 systemd 值。 |
+| `RUST_MEMORY_MAX` | `auto` 使用上述半机/8 GiB/有效容量公式，支持显式 systemd 值。 |
 | `RUST_MEMORY_SWAP_MAX` | Rust 构建 slice 可使用的 swap 上限。 |
-| `RUST_CPU_QUOTA` | Rust 编译总 CPU 配额；200% 表示最多两个逻辑核的 CPU 时间，不是构建时长限制。 |
+| `RUST_CPU_QUOTA` | 默认 `auto` 按半机/目标至少 4 CPU 生成 Rust 总配额，不超过实际 CPU；支持显式配额，200% 表示两个逻辑核的 CPU 时间。 |
 | `RUST_IO_WEIGHT` | Rust 构建 cgroup 的相对 I/O 权重，实际调度效果依赖设备和 cgroup 层级。 |
 | `CARGO_MAX_JOBS` | `auto` 每次运行采用上述 CPU 策略，也支持正整数；调用方显式设置更低值时保留。预热入口可通过单次调用的 `ONEFLOWBASE_CARGO_JOB_LIMIT` 指定独立预算，内存 scope 仍生效。 |
 | `PROJECT_CARGO_JOBS` | 本仓库启动和验证的编译并发，`auto` 原样写入本地 JSON，每次读取时按当前 CPU 计算；也支持正整数。 |

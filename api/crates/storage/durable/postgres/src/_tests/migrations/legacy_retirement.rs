@@ -3,11 +3,25 @@ use std::borrow::Cow;
 
 use control_plane_contracts::ports::{BillingRepository, CreditCommandInput, ReserveCreditInput};
 use serde_json::{json, Value};
-use sqlx::{migrate::Migrator, PgPool};
+use sqlx::{migrate::Migrator, Connection, PgConnection, PgPool};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 const RETIREMENT: i64 = 20261018010000;
+
+async fn rejected_migration(pool: &PgPool) -> sqlx::migrate::MigrateError {
+    // A deliberately rejected migration can retain its session advisory lock.
+    // Close its owned connection before retrying, rather than waiting for pool eviction.
+    let mut connection = PgConnection::connect_with(&pool.connect_options())
+        .await
+        .unwrap();
+    let error = sqlx::migrate!("./migrations")
+        .run(&mut connection)
+        .await
+        .unwrap_err();
+    connection.close().await.unwrap();
+    error
+}
 
 async fn old_database() -> PgPool {
     let url = std::env::var("DATABASE_URL")
@@ -145,7 +159,7 @@ async fn legacy_retirement_refuses_nonempty_ledger_then_preserves_thirteen_sourc
         );
     }
     let history = checksums(&pool).await;
-    let error = crate::run_migrations(&pool).await.unwrap_err();
+    let error = rejected_migration(&pool).await;
     assert!(format!("{error:#}").contains("legacy recovery ledger is not empty"));
     assert_eq!(old_transport(&pool).await, before, "refusal must be atomic");
     assert_eq!(money(&pool).await, monetary);
@@ -183,7 +197,7 @@ async fn legacy_retirement_refuses_pending_source_or_unfinished_sibling_receipt(
                 .bind(event).execute(&pool).await.unwrap();
         }
         let before = old_transport(&pool).await;
-        let error = crate::run_migrations(&pool).await.unwrap_err();
+        let error = rejected_migration(&pool).await;
         assert!(format!("{error:#}").contains("unfinished legacy model publication"));
         assert_eq!(old_transport(&pool).await, before);
     }

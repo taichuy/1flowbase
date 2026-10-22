@@ -124,7 +124,7 @@ async fn native_empty_prewarm_cross_flow_delta_creates_verified_callback_history
     full_input.push(tool_item);
     full_input
         .push(json!({"type":"function_call_output","call_id":"call_native","output":"sunny"}));
-    crate::application_public_api::compat::openai::history::validate_full_retry_input(
+    crate::_tests::validate_full_retry_input(
         &Value::Array(full_input.clone()),
         &metadata["history"],
         &["call_native".into()],
@@ -132,7 +132,7 @@ async fn native_empty_prewarm_cross_flow_delta_creates_verified_callback_history
     .expect("cross-flow history must include the prewarm input and canonical completed tool item");
     full_input[0]["content"] = json!("different request");
     assert!(
-        crate::application_public_api::compat::openai::history::validate_full_retry_input(
+        crate::_tests::validate_full_retry_input(
             &Value::Array(full_input),
             &metadata["history"],
             &["call_native".into()],

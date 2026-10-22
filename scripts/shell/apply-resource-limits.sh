@@ -14,8 +14,10 @@ fi
 # shellcheck source=/dev/null
 source "$config_file"
 
+DEV_CPU_QUOTA=${DEV_CPU_QUOTA:-}
 RUST_CPU_QUOTA=${RUST_CPU_QUOTA:-}
 # systemd represents an unlimited CPU quota with an empty assignment.
+[[ $DEV_CPU_QUOTA != infinity ]] || DEV_CPU_QUOTA=
 [[ $RUST_CPU_QUOTA != infinity ]] || RUST_CPU_QUOTA=
 RUST_IO_WEIGHT=${RUST_IO_WEIGHT:-100}
 
@@ -61,7 +63,6 @@ write_limited_profile() {
     DEV_MEMORY_HIGH \
     DEV_MEMORY_MAX \
     DEV_MEMORY_SWAP_MAX \
-    DEV_CPU_QUOTA \
     FRONTEND_MEMORY_HIGH \
     FRONTEND_MEMORY_MAX \
     RUST_MEMORY_HIGH \
@@ -83,7 +84,7 @@ write_limited_profile() {
   fi
 
   local cpu_jobs project_cargo_jobs_json project_cargo_test_threads_json
-  if [[ $DEV_CPU_QUOTA == auto || $CARGO_MAX_JOBS == auto ||
+  if [[ $DEV_CPU_QUOTA == auto || $RUST_CPU_QUOTA == auto || $CARGO_MAX_JOBS == auto ||
         $PROJECT_CARGO_JOBS == auto || $PROJECT_CARGO_TEST_THREADS == auto ]]; then
     cpu_jobs=$(node "$budget_source" cpu-jobs)
     if [[ ! $cpu_jobs =~ ^[1-9][0-9]*$ ]]; then
@@ -91,6 +92,7 @@ write_limited_profile() {
       exit 2
     fi
     [[ $DEV_CPU_QUOTA != auto ]] || DEV_CPU_QUOTA="${cpu_jobs}00%"
+    [[ $RUST_CPU_QUOTA != auto ]] || RUST_CPU_QUOTA="${cpu_jobs}00%"
   fi
   local memory_limits reserve_bytes high_bytes max_bytes
   if [[ $SESSION_MEMORY_LOW == auto || $RUST_MEMORY_HIGH == auto || $RUST_MEMORY_MAX == auto ]]; then
@@ -138,7 +140,7 @@ EOF
 
   cat >"$rust_config" <<EOF
 [Unit]
-Description=Memory budget for Rust builds
+Description=CPU and memory budget for Rust builds
 
 [Slice]
 MemoryAccounting=yes
@@ -279,8 +281,8 @@ EOF
     "CPUQuota=$RUST_CPU_QUOTA" \
     "IOWeight=$RUST_IO_WEIGHT"
 
-  printf 'Development CPU quota: %s; Rust memory high/max: %s / %s; session protection: %s\n' \
-    "$DEV_CPU_QUOTA" "$RUST_MEMORY_HIGH" "$RUST_MEMORY_MAX" "$SESSION_MEMORY_LOW"
+  printf 'Rust CPU quota: %s; Rust memory high/max: %s / %s; session protection: %s\n' \
+    "${RUST_CPU_QUOTA:-unlimited}" "$RUST_MEMORY_HIGH" "$RUST_MEMORY_MAX" "$SESSION_MEMORY_LOW"
 }
 
 write_unlimited_profile() {
