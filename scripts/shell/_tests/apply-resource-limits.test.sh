@@ -182,7 +182,7 @@ test "$cancel_status" -eq 143
 grep -Fq -- '--no-block stop rust-cargo-' "$systemctl_log"
 
 # Installation resolves systemd quotas; wrappers recalculate for every call.
-for cpu_case in 1:1 2:2 3:2 4:2 8:4 20:10; do
+for cpu_case in 1:1 2:2 3:3 4:4 6:4 8:4 20:10; do
   cpus=${cpu_case%:*}
   jobs=${cpu_case#*:}
   env "${common_env[@]}" RESOURCE_LIMITS_TEST_CPUS="$cpus" \
@@ -197,8 +197,8 @@ for cpu_case in 1:1 2:2 3:2 4:2 8:4 20:10; do
   grep -Fq -- "build --jobs=$jobs" "$test_root/cpu-$cpus.log"
 done
 
-# Rust's memory floor may exceed half the machine but never consumes OS headroom.
-for memory_case in 4:1:3 8:2:6 12:2:8 16:2:8 24:2:12 32:2:16; do
+# Rust's memory floor may exceed half the machine, but never its effective capacity.
+for memory_case in 4:1:4 8:2:8 12:2:8 16:2:8 24:2:12 32:2:16; do
   IFS=: read -r capacity reserve budget <<<"$memory_case"
   env "${common_env[@]}" RESOURCE_LIMITS_TEST_MEMORY_GIB="$capacity" \
     "$script_dir/apply-resource-limits.sh" "$script_dir/resource-limits.conf"
@@ -207,7 +207,7 @@ for memory_case in 4:1:3 8:2:6 12:2:8 16:2:8 24:2:12 32:2:16; do
 done
 env "${common_env[@]}" RESOURCE_LIMITS_TEST_MEMORY_GIB=64 RESOURCE_LIMITS_TEST_CONSTRAINED_GIB=8 \
   "$script_dir/apply-resource-limits.sh" "$script_dir/resource-limits.conf"
-grep -Fxq 'MemoryMax=6442450944' "$systemd_dir/dev-rust.slice"
+grep -Fxq 'MemoryMax=8589934592' "$systemd_dir/dev-rust.slice"
 
 # The same installed wrapper follows changed CPU availability without reinstall.
 env PATH="$mock_bin:$PATH" RESOURCE_LIMITS_TEST_CPUS=8 \

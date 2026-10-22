@@ -18,6 +18,11 @@
 - `verify/backend.js` 是后端 Cargo 命令和受保护场景执行校验的 owner；`test-backend` 复用它的静态检查、图像/多模态场景和 workspace 测试计划。每条受保护测试仍须实际执行非零用例，邻接成功、全部 ignored、编译成功和缺失日志不能填补证据。
 - `tooling data-contracts` 使用同一份 migration inventory 和源码分析结果，生成原有 schema、raw JSONB、query-contract、capacity JSON/Markdown 报告。schema error 和 query-contract failure 继续阻断；raw JSONB、增长规划和未测量容量保留原来的 advisory / unverified 语义。查询契约等必需配置缺失或损坏时继续失败。独立报告入口仍服务于定向诊断。
 - 专项测试与全量测试只有在用例及运行条件等价时才能复用结果；nextest/libtest、线程栈、feature 和 coverage instrumentation 的差异需要单独判断。当前一致性、四基座、覆盖率与受保护的 image-llm 场景继续保留。
+- 五个前端 consumer contract 用例由前端验收拥有：`frontend-pr` 显式运行 contracts；仓库级 `frontend/all` 通过常规测试与 page-regression 的并集覆盖全部用例，tooling 不再重复执行。`test-frontend full` 单独不包含全部页面回归，不能作为该并集的替代。
+
+统一治理验收需要冻结候选的全量 Rust 测试和完整 CI：记录通过、失败、忽略/跳过数及核心场景清单，分别量化编译、测试、CI 墙钟时间和累计 runner 时间。根收据须满足前述 candidate、component 与成功条件；局部脚本通过不能结算整体任务。合并重复执行允许执行次数减少，但核心场景不得缺失。历史时间只作注明源码、环境、缓存差异的参考；未测量值保留未知。
+
+本地后端预算使用 `min(CPU 容量, max(4, floor(CPU 容量 / 2)))` 和 `min(有效内存容量, max(8 GiB, 有效内存容量 / 2))`。GitHub Actions 的验证与预热使用全部 runner CPU，不施加本地内存配额。具体安装与系统限制由 [scripts/README](../../../scripts/README.md) 维护，不扩展为跨前端、数据库和其他会话的实时准入系统。
 
 ## 静态规则与结构所有权
 

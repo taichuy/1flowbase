@@ -29,6 +29,15 @@ test('frontend run and coverage exclusions are all selected by page regression',
   }
 });
 
+test('repository full frontend covers every targeted contract through normal and page suites', () => {
+  const { CONTRACT_TEST_FILES } = require('../../test/index.js');
+  const missing = missingPageCoverage(scripts.test, scripts['test:page-regression']);
+  for (const file of CONTRACT_TEST_FILES) {
+    assert.ok(testFiles.includes(file), `contract test must exist: ${file}`);
+    assert.ok(!missing.includes(file), `contract must execute in the full frontend lane: ${file}`);
+  }
+});
+
 test('inventory rejects quoted positional globs and omitted page directories', () => {
   const directory = 'src/features/settings/_tests/model-providers-page/';
   for (const replacement of [`'${directory}*.test.tsx'`, '']) {

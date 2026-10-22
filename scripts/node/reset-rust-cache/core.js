@@ -9,6 +9,7 @@ const {
 const {
   getAvailableParallelism,
   getLocalCpuBudget,
+  isCiEnvironment,
   loadVerifyRuntimeConfig,
 } = require('../testing/verify-runtime.js');
 
@@ -30,8 +31,8 @@ function buildCargoEnv({ cargoJobs, incremental, testProfile = false }) {
   return env;
 }
 
-function buildRustWarmupPlan({ incremental, availableParallelism = getAvailableParallelism() }) {
-  const cargoJobs = getLocalCpuBudget(availableParallelism);
+function buildRustWarmupPlan({ incremental, availableParallelism = getAvailableParallelism(), env = process.env }) {
+  const cargoJobs = isCiEnvironment(env) ? availableParallelism : getLocalCpuBudget(availableParallelism);
   const devEnv = buildCargoEnv({ cargoJobs, incremental });
   const testEnv = buildCargoEnv({ cargoJobs, incremental, testProfile: true });
 
@@ -143,15 +144,16 @@ function runCargo({ repoRoot, args, env }) {
 async function runRustCacheReset({
   repoRoot = getRepoRoot(),
   warmupOnly = false,
+  env = process.env,
   availableParallelism = getAvailableParallelism(),
   loadRuntimeConfigImpl = loadVerifyRuntimeConfig,
   cleanupBackendCacheImpl = cleanupBackendCache,
   runCargoImpl = runCargo,
   writeStdout = (text) => process.stdout.write(text),
 } = {}) {
-  const runtimeConfig = loadRuntimeConfigImpl({ repoRoot });
+  const runtimeConfig = loadRuntimeConfigImpl({ repoRoot, env, availableParallelism });
   const { incremental } = runtimeConfig.backend;
-  const plan = buildRustWarmupPlan({ incremental, availableParallelism });
+  const plan = buildRustWarmupPlan({ incremental, availableParallelism, env });
 
   if (warmupOnly) {
     writeStdout('[1flowbase-reset-rust-cache] 保留已有缓存与运行中的服务，仅预热 Rust 构建和测试目标。\n');

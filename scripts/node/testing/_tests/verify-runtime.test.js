@@ -81,7 +81,7 @@ test("local CPU budgets adapt to the current machine without rewriting config", 
   try {
     for (const backend of [{}, { cargoJobs: "auto", cargoTestThreads: "auto" }]) {
       fs.writeFileSync(path.join(repoRoot, LOCAL_VERIFY_CONFIG_FILE), JSON.stringify({ backend }));
-      for (const [availableParallelism, expected] of [[1, 1], [2, 2], [3, 2], [4, 2], [8, 4], [20, 10]]) {
+      for (const [availableParallelism, expected] of [[1, 1], [2, 2], [3, 3], [4, 4], [6, 4], [8, 4], [20, 10]]) {
         const config = loadVerifyRuntimeConfig({ repoRoot, env: {}, availableParallelism });
         assert.equal(config.backend.cargoJobs, expected);
         assert.equal(config.backend.cargoTestThreads, expected);

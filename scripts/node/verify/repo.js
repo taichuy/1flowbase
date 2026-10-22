@@ -65,12 +65,6 @@ function buildRepoCommands({ repoRoot, env = process.env, target = 'all' }) {
       args: [resolveScriptsNodeCliEntry(repoRoot, 'test'), 'scripts'],
       cwd: repoRoot,
     },
-    {
-      label: 'repo-contract-tests',
-      command: nodeBinary,
-      args: [resolveScriptsNodeCliEntry(repoRoot, 'test'), 'contracts'],
-      cwd: repoRoot,
-    },
   ];
   const viteLazyDepsCommand = {
     label: 'repo-vite-lazy-deps-gate',
@@ -103,6 +97,12 @@ function buildRepoCommands({ repoRoot, env = process.env, target = 'all' }) {
   const frontendPrCommands = [
     devExperienceCommand,
     viteLazyDepsCommand,
+    {
+      label: 'repo-contract-tests',
+      command: nodeBinary,
+      args: [resolveScriptsNodeCliEntry(repoRoot, 'test'), 'contracts'],
+      cwd: repoRoot,
+    },
     {
       label: 'repo-frontend-pr',
       command: nodeBinary,

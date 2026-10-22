@@ -6,6 +6,21 @@ const path = require('node:path');
 
 const { buildCommands, main } = require('../../verify-repo.js');
 
+test('PR frontend fails when its targeted contracts fail', async () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'frontend-pr-contracts-'));
+  try {
+    const status = await main(['frontend-pr'], {
+      repoRoot, env: {}, writeStdout() {}, writeStderr() {},
+      spawnSyncImpl(_command, args) {
+        return { status: args.at(-1) === 'contracts' ? 1 : 0, stdout: '', stderr: '' };
+      },
+    });
+    assert.equal(status, 1);
+  } finally {
+    fs.rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
 test('buildCommands can select repository gate slices for parallel CI jobs', () => {
   const repoRoot = '/repo-root';
 
@@ -19,7 +34,6 @@ test('buildCommands can select repository gate slices for parallel CI jobs', () 
       'repo-frontstage-governance-hygiene',
       'repo-security-risk',
       'repo-script-tests',
-      'repo-contract-tests',
     ]
   );
   assert.deepEqual(
@@ -28,7 +42,7 @@ test('buildCommands can select repository gate slices for parallel CI jobs', () 
   );
   assert.deepEqual(
     buildCommands({ repoRoot, target: 'frontend-pr' }).map((command) => command.label),
-    ['repo-dev-experience', 'repo-vite-lazy-deps-gate', 'repo-frontend-pr']
+    ['repo-dev-experience', 'repo-vite-lazy-deps-gate', 'repo-contract-tests', 'repo-frontend-pr']
   );
   assert.deepEqual(
     buildCommands({ repoRoot, target: 'backend' }).map((command) => command.label),
@@ -57,7 +71,7 @@ test('main runs repository full gate in order and captures advisory output', asy
   });
 
   assert.equal(status, 0);
-  assert.equal(calls.length, 13);
+  assert.equal(calls.length, 12);
   assert.deepEqual(
     calls.map((call) => call.args),
     [
@@ -71,7 +85,6 @@ test('main runs repository full gate in order and captures advisory output', asy
       ],
       [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'security-risk'],
       [path.join(repoRoot, 'scripts', 'node', 'test.js'), 'scripts'],
-      [path.join(repoRoot, 'scripts', 'node', 'test.js'), 'contracts'],
       [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'dev-experience'],
       [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'vite-lazy-deps-gate'],
       [path.join(repoRoot, 'scripts', 'node', 'test.js'), 'frontend', 'full'],
@@ -90,7 +103,6 @@ test('main runs repository full gate in order and captures advisory output', asy
   assert.doesNotMatch(warningLog, /tooling\.js\/growth-table-report/u);
   assert.match(warningLog, /warning: .*tooling\.js\/security-risk advisory/u);
   assert.match(warningLog, /warning: .*test\.js\/scripts advisory/u);
-  assert.match(warningLog, /warning: .*test\.js\/contracts advisory/u);
   assert.match(warningLog, /warning: .*tooling\.js\/dev-experience advisory/u);
   assert.match(warningLog, /warning: .*tooling\.js\/vite-lazy-deps-gate advisory/u);
   assert.match(warningLog, /warning: .*test\.js\/frontend advisory/u);
@@ -136,10 +148,11 @@ test('main runs the requested frontend PR repository gate slice', async () => {
   });
 
   assert.equal(status, 0);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 4);
   assert.deepEqual(calls[0].args, [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'dev-experience']);
   assert.deepEqual(calls[1].args, [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'vite-lazy-deps-gate']);
-  assert.deepEqual(calls[2].args, [path.join(repoRoot, 'scripts', 'node', 'test.js'), 'frontend', 'pr']);
+  assert.deepEqual(calls[2].args, [path.join(repoRoot, 'scripts', 'node', 'test.js'), 'contracts']);
+  assert.deepEqual(calls[3].args, [path.join(repoRoot, 'scripts', 'node', 'test.js'), 'frontend', 'pr']);
 });
 
 test('main passes the inherited lock token through every repository gate command', async () => {
@@ -158,7 +171,7 @@ test('main passes the inherited lock token through every repository gate command
   });
 
   assert.equal(status, 0);
-  assert.equal(calls.length, 13);
+  assert.equal(calls.length, 12);
   assert.equal(
     calls.every((call) => call.options.env.ONEFLOWBASE_VERIFY_LOCK_TOKEN === 'chain-token'),
     true

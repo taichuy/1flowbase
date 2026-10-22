@@ -1,5 +1,16 @@
 {
   "exemptions": {
+    "system_branding": {
+      "kind": "system_singleton_state",
+      "reason": "Global branding is one row keyed by a fixed TRUE singleton, read and upserted without workspace routing or time pagination",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
     "model_provider_session_bindings": {
       "kind": "immutable_provider_session_origin",
       "reason": "Provider session origin is immutable and looked up by authenticated workspace plus scoped digest; it preserves the original instance identity after instance deletion and does not consume generic row identity or time pagination.",
@@ -963,6 +974,7 @@
     }
   },
   "ownedTableContracts": {
+    "system_branding": { "primaryKey": ["singleton"] },
     "runtime_credit_ledger": {
       "primaryKey": ["id"],
       "foreignKeys": [

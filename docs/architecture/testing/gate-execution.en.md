@@ -25,3 +25,23 @@ Reuse between targeted and full suites requires equivalent tests and execution
 conditions. Differences in nextest/libtest, stack size, features, and coverage
 instrumentation need separate assessment. Consistency, foundation, coverage, and
 protected image-llm scenarios remain in the acceptance plan.
+
+The frontend owns the five consumer-contract tests. `frontend-pr` runs the targeted
+contracts explicitly; repository `frontend/all` covers them through the union of
+normal tests and page regression. Tooling no longer executes them again.
+`test-frontend full` alone does not include the entire page-regression suite.
+
+Unified governance acceptance requires full Rust tests and complete CI on a frozen
+candidate. Record passed, failed, ignored/skipped tests and core scenarios, plus
+compilation time, test time, CI wall time, and cumulative runner time. The aggregate
+must satisfy the candidate/component checks and succeed; targeted script tests do
+not establish overall completion. Deduplication may reduce execution counts but
+must preserve core scenarios. Historical durations are references with explicit
+source/environment/cache differences; unmeasured values remain unknown.
+
+Local backend budgets are `min(CPUs, max(4, floor(CPUs / 2)))` and
+`min(effective memory, max(8 GiB, effective memory / 2))`. GitHub Actions verification
+and warmup use all runner CPUs and do not apply local memory quotas. Installation
+and operating-system limits are owned by [scripts/README](../../../scripts/README.md);
+this does not introduce admission coordination across frontend, databases, and
+other sessions.

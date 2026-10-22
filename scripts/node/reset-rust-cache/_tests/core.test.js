@@ -27,7 +27,7 @@ test('warmup selects the installed project resource wrapper without replacing un
 });
 
 test('buildRustWarmupPlan fetches locked dependencies before staged compilation with half the available CPUs', () => {
-  assert.deepEqual(buildRustWarmupPlan({ availableParallelism: 20, incremental: true }), [
+  assert.deepEqual(buildRustWarmupPlan({ env: {}, availableParallelism: 20, incremental: true }), [
     {
       label: 'locked dependencies',
       args: ['fetch', '--manifest-path', 'api/Cargo.toml', '--target', 'host-tuple', '--locked'],
@@ -66,15 +66,33 @@ test('buildRustWarmupPlan fetches locked dependencies before staged compilation 
       },
     },
   ]);
-  for (const [availableParallelism, expected] of [[1, '1'], [2, '2'], [3, '2']]) {
-    assert.ok(buildRustWarmupPlan({ availableParallelism, incremental: true })
+  for (const [availableParallelism, expected] of [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [6, '4']]) {
+    assert.ok(buildRustWarmupPlan({ env: {}, availableParallelism, incremental: true })
       .every((stage) => stage.env.CARGO_BUILD_JOBS === expected));
+  }
+});
+
+test('CI warmup uses the entire runner instead of the local half-machine budget', async () => {
+  for (const env of [{ CI: 'true' }, { GITHUB_ACTIONS: 'true' }]) {
+    assert.ok(buildRustWarmupPlan({ availableParallelism: 20, incremental: false, env })
+      .every((stage) => stage.env.CARGO_BUILD_JOBS === '20'));
+    const status = await runRustCacheReset({
+      repoRoot: '/repo', warmupOnly: true, availableParallelism: 20, env,
+      loadRuntimeConfigImpl: () => ({ backend: { incremental: false } }),
+      async runCargoImpl({ env: cargoEnv }) {
+        assert.equal(cargoEnv.CARGO_BUILD_JOBS, '20');
+        return 0;
+      },
+      writeStdout() {},
+    });
+    assert.equal(status, 0);
   }
 });
 
 test('warmup-only preserves existing cache and completes dependency/test stages in order', async () => {
   const events = [];
   const status = await runRustCacheReset({
+    env: {},
     repoRoot: '/repo', warmupOnly: true, availableParallelism: 2,
     loadRuntimeConfigImpl: () => ({ backend: { incremental: true } }),
     cleanupBackendCacheImpl: () => assert.fail('warmup-only must not stop services or delete caches'),
@@ -99,6 +117,7 @@ test('warmup-only preserves existing cache and completes dependency/test stages 
 test('runRustCacheReset uses its own CPU budget while preserving shared development settings', async () => {
   const events = [];
   const status = await runRustCacheReset({
+    env: {},
     repoRoot: '/repo',
     availableParallelism: 20,
     loadRuntimeConfigImpl: () => ({ backend: { cargoJobs: 2, incremental: false } }),
@@ -126,6 +145,7 @@ test('runRustCacheReset uses its own CPU budget while preserving shared developm
 test('runRustCacheReset does not start all targets when test-profile preparation fails', async () => {
   const events = [];
   const status = await runRustCacheReset({
+    env: {},
     repoRoot: '/repo',
     availableParallelism: 20,
     loadRuntimeConfigImpl: () => ({ backend: { cargoJobs: 2, incremental: true } }),
@@ -157,6 +177,7 @@ test('all-target warmup waits for both the runtime build and test-profile prepar
   let preparationStarted;
   const preparing = new Promise((resolve) => { preparationStarted = resolve; });
   const pending = runRustCacheReset({
+    env: {},
     repoRoot: '/repo',
     availableParallelism: 20,
     loadRuntimeConfigImpl: () => ({ backend: { cargoJobs: 2, incremental: true } }),
