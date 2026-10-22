@@ -2,6 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { backendThresholds } = require('../testing/coverage-thresholds.js');
+const { loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
+const { buildPostgresTemplateCommands, withPostgresMetricsEnv } = require('../testing/postgres-template.js');
 
 const API_SERVER_PACKAGE = 'api-server';
 const API_SERVER_SOURCE_MARKER = '/api/apps/api-server/src/';
@@ -254,16 +256,22 @@ function run(command, {
 
 function runApiServerShard({
   repoRoot, shardIndex, shardCount, cargoTestThreads, env = process.env, spawnSyncImpl, writeStdout, writeStderr,
+  runtimeConfig,
 }) {
   const commands = buildApiServerShardCommands({ repoRoot, shardIndex, shardCount, cargoTestThreads });
   const shardDir = path.dirname(commands[2].profilePattern);
   fs.rmSync(shardDir, { recursive: true, force: true });
   fs.mkdirSync(shardDir, { recursive: true });
   if (!env.QUALITY_GATE_TARGET_SHA?.trim()) throw new Error('coverage shard requires a frozen SHA');
-  const llvmEnv = parseLlvmCovEnvironment(run(commands[0], { env, spawnSyncImpl, capture: true }));
+  const runtime = runtimeConfig || loadVerifyRuntimeConfig({ repoRoot, env });
+  const runnerEnv = withPostgresMetricsEnv({
+    repoRoot, env, scope: `coverage-shadow-api-server-${shardIndex}-of-${shardCount}`,
+  });
+  const llvmEnv = parseLlvmCovEnvironment(run(commands[0], { env: runnerEnv, spawnSyncImpl, capture: true }));
   const instrumentedEnv = {
-    ...env,
+    ...runnerEnv,
     ...llvmEnv,
+    CARGO_BUILD_JOBS: String(runtime.backend.cargoJobs),
     LLVM_PROFILE_FILE: commands[2].profilePattern,
     CARGO_PROFILE_TEST_DEBUG: '0',
     RUST_MIN_STACK: String(8 * 1024 * 1024),
@@ -273,7 +281,14 @@ function runApiServerShard({
   fs.writeFileSync(path.join(shardDir, `inventory-${shardIndex}.json`), `${JSON.stringify(inventory)}\n`, 'utf8');
   const testCount = collectNextestTestIds(inventory).length;
   if (testCount === 0) throw new Error('coverage shard inventory has no runnable tests');
-  const execution = parseNextestSummary(run(commands[2], {
+  const [buildTemplate, runTests] = buildPostgresTemplateCommands({
+    repoRoot, command: { ...commands[2], label: `coverage-api-server-${shardIndex}-of-${shardCount}` }, env: instrumentedEnv,
+  });
+  run(buildTemplate, {
+    env: instrumentedEnv, spawnSyncImpl, writeStdout, writeStderr,
+    logPrefix: path.join(shardDir, `template-build-${shardIndex}`),
+  });
+  const execution = parseNextestSummary(run(runTests, {
     env: instrumentedEnv, spawnSyncImpl, writeStdout, writeStderr,
     logPrefix: path.join(shardDir, `nextest-${shardIndex}`),
   }));

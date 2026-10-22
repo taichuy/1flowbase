@@ -5,6 +5,7 @@ const { buildCargoCommandEnv, getRepoRoot, runCommandSequence, runManagedCommand
 const { loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
 const { COVERAGE_ROOT } = require('../testing/coverage-thresholds.js');
 const { parseCargoTestCounts } = require('./cargo-test-results.js');
+const { buildPostgresTemplateCommands, withPostgresMetricsEnv } = require('../testing/postgres-template.js');
 const { selectBackendCoverageEntries, reportCoverageThresholds, BACKEND_COVERAGE_ENTRY_BY_KEY } = require("./coverage-report.js");
 
 const VALID_COVERAGE_TARGETS = new Set(['frontend', 'backend', 'all']);
@@ -396,11 +397,15 @@ async function runCoverage(argv = [], deps = {}) {
     writeStderr: deps.writeStderr,
     runCommandSequenceImpl: (sequenceOptions) => {
       let status = 0;
+      const sequenceEnv = withPostgresMetricsEnv(sequenceOptions);
 
       try {
         status = runCommandSequence({
           ...sequenceOptions,
-          commands: sequenceOptions.commands,
+          env: sequenceEnv,
+          commands: sequenceOptions.commands.flatMap((command) => buildPostgresTemplateCommands({
+            repoRoot, command, env: sequenceEnv,
+          })),
           onCommandComplete({ command, result }) {
             // nextest already fails on an empty selection via --no-tests=fail.
             // Every libtest coverage command needs its own executed-test proof;
@@ -437,7 +442,7 @@ async function runCoverage(argv = [], deps = {}) {
         if (shouldCleanupBackendCoverage) {
           const cleanupStatus = runCommandSequence({
             repoRoot,
-            env: sequenceOptions.env,
+            env: sequenceEnv,
             scope: `verify-coverage-${options.target}-clean-after`,
             commands: buildCoverageBackendCleanupCommands(),
             spawnSyncImpl: deps.spawnSyncImpl,

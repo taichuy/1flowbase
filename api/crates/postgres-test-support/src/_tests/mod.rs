@@ -5,6 +5,9 @@ use sqlx::{
 };
 use std::str::FromStr;
 
+mod metrics;
+mod template;
+
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
         .or_else(|_| std::env::var("API_DATABASE_URL"))
