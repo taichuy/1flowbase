@@ -18,7 +18,8 @@ use uuid::Uuid;
 use control_plane::ports::{ExtensionInstallationRepository, UpsertExtensionInstallationInput};
 
 use crate::{
-    config::ResolvedOfficialMcpBundleSourceConfig, official_extension_catalog::rewrite_github_raw_url,
+    config::ResolvedOfficialMcpBundleSourceConfig,
+    official_extension_catalog::rewrite_github_raw_url,
 };
 
 pub const MCP_CATALOG_SCHEMA_VERSION: &str = "1flowbase.mcp-catalog/v2";
