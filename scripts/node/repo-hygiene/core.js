@@ -82,10 +82,6 @@ const OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST = new Map([
     "GitHub official-source implementation already resolves Network Center routes",
   ],
   [
-    "api/apps/api-server/src/catalog_sources/official_plugin_registry.rs",
-    "Legacy registry source retained for compatibility tests; production uses the routed extension catalog",
-  ],
-  [
     "api/apps/api-server/src/routes/settings/mcp_management/upstream_client.rs",
     "Third-party MCP endpoints require DNS pinning and SSRF enforcement before connection",
   ],

@@ -94,15 +94,6 @@ pub struct ApiConfig {
     pub bootstrap_root_nickname: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct ResolvedOfficialPluginSourceConfig {
-    pub source_kind: String,
-    pub source_label: String,
-    pub registry_url: String,
-    pub github_proxy_url: Option<String>,
-    pub trust_mode: String,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedOfficialExtensionCatalogSourceConfig {
     pub source_kind: String,
@@ -488,38 +479,6 @@ impl ApiConfig {
                 .cloned()
                 .unwrap_or_else(|| "Root".to_string()),
         })
-    }
-
-    pub fn resolve_official_plugin_source(&self) -> ResolvedOfficialPluginSourceConfig {
-        if let Some(mirror_url) = self
-            .official_plugin_mirror_registry_url
-            .clone()
-            .filter(|value| !value.trim().is_empty())
-        {
-            return ResolvedOfficialPluginSourceConfig {
-                source_kind: "mirror_registry".into(),
-                source_label: "Mirror source".into(),
-                registry_url: mirror_url,
-                github_proxy_url: self.official_plugin_github_proxy_url.clone(),
-                trust_mode: self.official_plugin_trust_mode(),
-            };
-        }
-
-        ResolvedOfficialPluginSourceConfig {
-            source_kind: "official_registry".into(),
-            source_label: "Official source".into(),
-            registry_url: self.official_plugin_default_registry_url.clone(),
-            github_proxy_url: self.official_plugin_github_proxy_url.clone(),
-            trust_mode: self.official_plugin_trust_mode(),
-        }
-    }
-
-    fn official_plugin_trust_mode(&self) -> String {
-        if self.official_plugin_signature_required {
-            "signature_required".to_string()
-        } else {
-            "allow_unsigned".to_string()
-        }
     }
 
     pub fn resolve_official_mcp_bundle_source(&self) -> ResolvedOfficialMcpBundleSourceConfig {

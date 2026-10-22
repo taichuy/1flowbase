@@ -1,5 +1,7 @@
 use super::*;
 
+const GITHUB_RAW_CONTENT_BASE_URL: &str = "https://raw.githubusercontent.com/";
+
 pub(super) async fn download_with_client_budget(
     client: &Client,
     url: &str,
@@ -256,6 +258,22 @@ pub(super) fn select_current_platform_artifact(
             (_, None) => 1,
             _ => 0,
         })
+}
+
+pub(crate) fn rewrite_github_raw_url(url: &str, github_proxy_url: Option<&str>) -> String {
+    let Some(github_proxy_url) = github_proxy_url
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return url.to_string();
+    };
+    let github_proxy_url = github_proxy_url.trim_end_matches('/');
+    let proxied_raw_prefix = format!("{github_proxy_url}/{GITHUB_RAW_CONTENT_BASE_URL}");
+    if url.starts_with(&proxied_raw_prefix) || !url.starts_with(GITHUB_RAW_CONTENT_BASE_URL) {
+        return url.to_string();
+    }
+
+    format!("{github_proxy_url}/{url}")
 }
 
 pub(super) fn rewrite_github_download_url(url: &str, github_proxy_url: Option<&str>) -> String {

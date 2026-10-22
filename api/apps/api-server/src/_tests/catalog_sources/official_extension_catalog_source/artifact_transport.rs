@@ -1,4 +1,5 @@
 use super::*;
+use crate::official_extension_catalog::rewrite_github_raw_url;
 
 #[tokio::test]
 async fn publisher_cutover_artifact_body_interruption_retries_once_with_fresh_request() {
@@ -200,4 +201,47 @@ async fn missing_release_asset_preserves_404_host_evidence_without_retrying() {
         1
     );
     server.abort();
+}
+
+#[test]
+fn rewrite_github_raw_url_adds_proxy_prefix_for_raw_githubusercontent() {
+    assert_eq!(
+        rewrite_github_raw_url(
+            "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/file.svg",
+            Some("https://gh-proxy.com/")
+        ),
+        "https://gh-proxy.com/https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/file.svg"
+    );
+}
+
+#[test]
+fn rewrite_github_raw_url_normalizes_proxy_prefix_without_trailing_slash() {
+    assert_eq!(
+        rewrite_github_raw_url(
+            "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/file.svg",
+            Some("https://gh-proxy.com")
+        ),
+        "https://gh-proxy.com/https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/file.svg"
+    );
+}
+
+#[test]
+fn rewrite_github_raw_url_keeps_non_raw_urls_unchanged() {
+    assert_eq!(
+        rewrite_github_raw_url(
+            "https://example.com/openai-compatible.1flowbasepkg",
+            Some("https://gh-proxy.com/")
+        ),
+        "https://example.com/openai-compatible.1flowbasepkg"
+    );
+}
+
+#[test]
+fn rewrite_github_raw_url_does_not_duplicate_existing_proxy_prefix() {
+    let proxied = "https://gh-proxy.com/https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/file.svg";
+
+    assert_eq!(
+        rewrite_github_raw_url(proxied, Some("https://gh-proxy.com/")),
+        proxied
+    );
 }

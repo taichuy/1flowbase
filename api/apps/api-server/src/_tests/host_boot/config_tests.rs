@@ -787,48 +787,10 @@ fn api_config_reads_official_plugin_and_model_pricing_settings() {
 }
 
 #[test]
-fn api_config_prefers_mirror_registry_when_present() {
-    let config = ApiConfig::from_env_map(&[
-        (
-            "API_DATABASE_URL",
-            "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase",
-        ),
-        ("API_EPHEMERAL_BACKEND", "memory"),
-        (
-            "API_OFFICIAL_PLUGIN_DEFAULT_REGISTRY_URL",
-            "https://official.example.com/official-registry.json",
-        ),
-        (
-            "API_OFFICIAL_PLUGIN_MIRROR_REGISTRY_URL",
-            "https://mirror.example.com/official-registry.json",
-        ),
-        (
-            "API_OFFICIAL_PLUGIN_TRUSTED_PUBLIC_KEYS_JSON",
-            r#"[{"key_id":"official-key-2026-04","algorithm":"ed25519","public_key_pem":"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA7n50M0Xkq4n3aQm7x0Whv14jArlTc95xJ3Adxpv8uKk=\n-----END PUBLIC KEY-----"}]"#,
-        ),
-        ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
-        ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
-        ("BOOTSTRAP_ROOT_PASSWORD", "secret"),
-        ("BOOTSTRAP_WORKSPACE_NAME", "1flowbase"),
-    ])
-    .unwrap();
-
-    let resolved = config.resolve_official_plugin_source();
-    assert_eq!(resolved.source_kind, "mirror_registry");
-    assert_eq!(
-        resolved.registry_url,
-        "https://mirror.example.com/official-registry.json"
-    );
-}
-
-#[test]
 fn api_config_defaults_official_plugin_signature_required() {
     let config = ApiConfig::from_env_map(&base_env_without_ephemeral_backend()).unwrap();
 
     assert!(config.official_plugin_signature_required);
-
-    let resolved = config.resolve_official_plugin_source();
-    assert_eq!(resolved.trust_mode, "signature_required");
 }
 
 #[test]
@@ -838,9 +800,6 @@ fn api_config_reads_official_plugin_signature_required_override() {
     let config = ApiConfig::from_env_map(&env).unwrap();
 
     assert!(!config.official_plugin_signature_required);
-
-    let resolved = config.resolve_official_plugin_source();
-    assert_eq!(resolved.trust_mode, "allow_unsigned");
 }
 
 #[test]
@@ -875,12 +834,6 @@ fn api_config_reads_official_plugin_github_proxy_url() {
 
     assert_eq!(
         config.official_plugin_github_proxy_url.as_deref(),
-        Some("https://gh-proxy.com/")
-    );
-
-    let resolved = config.resolve_official_plugin_source();
-    assert_eq!(
-        resolved.github_proxy_url.as_deref(),
         Some("https://gh-proxy.com/")
     );
 }

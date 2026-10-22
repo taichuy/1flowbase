@@ -7,10 +7,10 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     config::ResolvedOfficialI18nCatalogSourceConfig,
+    official_extension_catalog::rewrite_github_raw_url,
     official_i18n_catalog_seed::{
         decode_downloaded_catalog_seed, inspect_catalog_seed, CatalogSeedInspection,
     },
-    official_plugin_registry::rewrite_github_raw_url,
 };
 
 pub struct ApiOfficialI18nCatalogSource {

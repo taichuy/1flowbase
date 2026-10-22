@@ -2,21 +2,6 @@
   "version": "rust-backend-reviews/v1",
   "allowedFindings": [
     {
-      "id": "fixed-supported-runtime-target",
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/catalog_sources/official_plugin_registry.rs",
-      "snippet": "RuntimeTarget::from_rust_target_triple(\"x86_64-unknown-linux-musl\").unwrap()",
-      "reason": "build_catalog_snapshot unwraps only the fixed x86_64-unknown-linux-musl literal. RuntimeTarget::from_rust_target_triple matches this exact literal to Ok; runtime caller data cannot change that argument.",
-      "source_sha256": "abe1865561e5c2ef5fd471588eda85a3be65cec13563a0afddb4b31ec8c14db2",
-      "evidence": [
-        {
-          "file": "api/crates/extension-contracts/src/runtime_target.rs",
-          "sha256": "63fd8db499b1aae8bfa2721d85dbacedc1df5d5ad9d9fea0f97de2521dda0f46",
-          "reason": "from_rust_target_triple has an explicit Ok arm for this exact fixed literal; unsupported strings return Err separately."
-        }
-      ]
-    },
-    {
       "id": "json-model-provider-catalog",
       "rule": "no-production-escape",
       "file": "api/apps/api-server/src/routes/plugins_and_models/model_providers/response_mapping.rs",

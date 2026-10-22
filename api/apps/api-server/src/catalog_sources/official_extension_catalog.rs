@@ -27,7 +27,6 @@ use crate::{
         DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
     },
     network_egress_client::{NetworkEgressExecutionScope, NetworkEgressHttpClientResolver},
-    official_plugin_registry::rewrite_github_raw_url,
 };
 
 #[path = "official_extension_catalog/catalog_port.rs"]
@@ -35,6 +34,7 @@ mod catalog_port;
 #[path = "official_extension_catalog/runtime_projection.rs"]
 mod runtime_projection;
 
+pub(crate) use artifact_download::rewrite_github_raw_url;
 pub use runtime_projection::ApiOfficialRuntimeExtensionSource;
 
 const EXTENSION_CATALOG_SCHEMA_VERSION: &str = "1flowbase.extension-catalog/v1";

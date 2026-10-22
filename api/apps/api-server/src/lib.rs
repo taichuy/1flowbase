@@ -48,8 +48,6 @@ pub mod official_i18n_catalog_seed;
 pub mod official_i18n_catalog_source;
 #[path = "catalog_sources/official_mcp_bundles.rs"]
 pub mod official_mcp_bundles;
-#[path = "catalog_sources/official_plugin_registry.rs"]
-pub mod official_plugin_registry;
 pub mod openapi;
 pub mod openapi_docs;
 pub mod openapi_interface;
