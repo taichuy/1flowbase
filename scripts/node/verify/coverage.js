@@ -72,6 +72,15 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
       // Coverage instrumentation does not require Rust debug symbols for source mapping.
       ...(usesNextest ? { CARGO_PROFILE_TEST_DEBUG: '0' } : {}),
     };
+    // llvm-cov omits doctests by default. Preserve the ordinary test owner's
+    // documentation checks, including compile-fail cases and future examples.
+    const docTestCommand = {
+      label: `backend-coverage-${entry.key}-doc-tests`,
+      command: 'cargo',
+      args: ['test', '--package', entry.packageName, '--doc', '--', `--test-threads=${cargoTestThreads}`],
+      cwd: 'api',
+      env,
+    };
     if (entry.key === 'control-plane') {
       const outputPath = path.join(
         repoRoot,
@@ -147,15 +156,7 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
           'api-server',
           { filter: 'ui_management_routes' }
         ),
-        {
-          // llvm-cov does not include doctests by default. Keep the ordinary
-          // cargo test owner's documentation checks, including future examples.
-          label: 'backend-coverage-control-plane-doc-tests',
-          command,
-          args: ['test', '--package', entry.packageName, '--doc', '--', `--test-threads=${cargoTestThreads}`],
-          cwd,
-          env,
-        },
+        docTestCommand,
       ];
     }
     if (entry.key === 'storage-postgres') {
@@ -227,7 +228,7 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
         },
       ];
     }
-    return {
+    const coverageCommand = {
       label: `backend-coverage-${entry.key}`,
       command: 'cargo',
       args: [
@@ -247,6 +248,9 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
       cwd: 'api',
       env,
     };
+    return ['orchestration-runtime', 'runtime-extension-host'].includes(entry.key)
+      ? [coverageCommand, docTestCommand]
+      : [coverageCommand];
   });
 }
 
@@ -409,15 +413,14 @@ async function runCoverage(argv = [], deps = {}) {
               || command.args[1] === 'clean'
               || command.args.includes('nextest') || result.status !== 0) return;
             const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
-            const isControlPlaneDoctest = command.label === 'backend-coverage-control-plane-doc-tests'
-              && command.args[0] === 'test' && command.args.includes('--doc');
-            const executed = isControlPlaneDoctest
+            const isDoctest = command.args[0] === 'test' && command.args.includes('--doc');
+            const executed = isDoctest
               ? counts.passedCount !== null && counts.passedCount >= 0
               : counts.passedCount > 0;
             if (!(executed && counts.failedCount === 0)) {
               status = 1;
               (deps.writeStderr || process.stderr.write.bind(process.stderr))(
-                `${command.label}: ${isControlPlaneDoctest ? 'no successful doctest result' : 'no executed passing tests'}; refusing invalid coverage evidence\n`,
+                `${command.label}: ${isDoctest ? 'no successful doctest result' : 'no executed passing tests'}; refusing invalid coverage evidence\n`,
               );
             }
           },

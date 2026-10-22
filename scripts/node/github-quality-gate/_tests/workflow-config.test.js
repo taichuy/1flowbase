@@ -73,7 +73,7 @@ test('full CI checks types through Clippy while the lighter PR lane retains carg
   const { buildBackendCommands } = require('../../verify/backend.js');
   const { DEFAULT_AGGREGATE_SCOPES, REPO_BACKEND_COMPONENT_SCOPES, buildGateCommand } = require('../commands.js');
   const workflow = readQualityGateWorkflow();
-  const backendJob = workflow.slice(workflow.indexOf('  repo-backend-gate:'), workflow.indexOf('  backend-consistency-gate:'));
+  const backendJob = workflow.slice(workflow.indexOf('  repo-backend-gate:'), workflow.indexOf('  coverage-frontend-gate:'));
   const matrix = backendJob.slice(0, backendJob.indexOf('    steps:'));
   const scopes = [...matrix.matchAll(/- (repo-backend-\S+)/gu)].map((match) => match[1]);
   assert.deepEqual(scopes, REPO_BACKEND_COMPONENT_SCOPES);
@@ -90,10 +90,10 @@ test('full CI checks types through Clippy while the lighter PR lane retains carg
   }
 });
 
-test('full CI coverage owns ordinary API and control-plane tests while manual scopes remain available', () => {
+test('full CI requires 24 owners while equivalent focused and ordinary manual scopes remain available', () => {
   const { DEFAULT_AGGREGATE_SCOPES, buildGateCommand } = require('../commands.js');
   const workflow = readQualityGateWorkflow();
-  const backendJob = workflow.slice(workflow.indexOf('  repo-backend-gate:'), workflow.indexOf('  backend-consistency-gate:'));
+  const backendJob = workflow.slice(workflow.indexOf('  repo-backend-gate:'), workflow.indexOf('  coverage-frontend-gate:'));
   const aggregateScopes = workflow.match(/INPUT_EXPECTED_SCOPES: '([^']+)'/u)[1].split(',');
   assert.deepEqual(aggregateScopes, DEFAULT_AGGREGATE_SCOPES);
   const removedShards = ['control-plane', ...Array.from({ length: 4 }, (_, index) => `api-server-${index + 1}-of-4`)];
@@ -107,10 +107,23 @@ test('full CI coverage owns ordinary API and control-plane tests while manual sc
   for (let index = 1; index <= 4; index += 1) {
     assert.ok(DEFAULT_AGGREGATE_SCOPES.includes(`repo-backend-test-storage-postgres-${index}-of-4`));
   }
+  assert.equal(DEFAULT_AGGREGATE_SCOPES.length, 24);
   for (const scope of ['coverage-backend-control-plane', 'coverage-backend-api-server-merge',
-    'repo-backend-image-llm-vision', 'repo-backend-official-i18n-seed', 'repo-backend-history-maintenance',
-    'backend-consistency-control-runtime', 'backend-consistency-storage', 'backend-consistency-api']) {
+    'coverage-backend-orchestration-runtime', 'coverage-backend-runtime-extension-host',
+    'coverage-backend-storage-postgres', 'repo-backend-history-maintenance']) {
     assert.ok(DEFAULT_AGGREGATE_SCOPES.includes(scope));
+  }
+  for (const [scope, target] of [
+    ['repo-backend-image-llm-vision', 'image-llm-vision'],
+    ['repo-backend-official-i18n-seed', 'official-i18n-seed'],
+    ['backend-consistency-control-runtime', 'control-runtime'],
+    ['backend-consistency-storage', 'storage'],
+    ['backend-consistency-api', 'api'],
+  ]) {
+    assert.ok(!DEFAULT_AGGREGATE_SCOPES.includes(scope));
+    assert.ok(!backendJob.includes(`- ${scope}\n`));
+    assert.ok(workflow.slice(0, workflow.indexOf('\npermissions:')).includes(`- ${scope}\n`));
+    assert.equal(buildGateCommand({ repoRoot, scope }).args.at(-1), target);
   }
 });
 
@@ -644,10 +657,6 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   assert.match(workflow, /- repo-backend-check-apps/u);
   assert.match(
     workflow,
-    /backend-consistency-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci'\) \}\}/u,
-  );
-  assert.match(
-    workflow,
     /coverage-frontend-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci'\) \}\}/u,
   );
   assert.match(workflow, /coverage-frontend-gate:[\s\S]*?timeout-minutes: 70/u);
@@ -678,7 +687,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   );
   assert.match(
     workflow,
-    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- resolve-quality-gate-target\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate\n\s+- backend-consistency-gate\n\s+- coverage-frontend-gate\n\s+- coverage-backend-gate/u,
+    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- resolve-quality-gate-target\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate\n\s+- coverage-frontend-gate\n\s+- coverage-backend-gate/u,
   );
   assert.doesNotMatch(workflow, /- state-protocols-gate/u);
   assert.match(workflow, /- container-images-gate/u);
@@ -690,13 +699,12 @@ test("quality gate workflow runs ci scope as parallel component gates before one
     workflow,
     /start_postgres: \$\{\{ startsWith\(matrix\.scope, 'repo-backend-test-'\) \|\| matrix\.scope == 'repo-backend-history-maintenance' \}\}/u,
   );
-  assert.match(workflow, /scope: backend-consistency-\$\{\{ matrix\.group \}\}/u);
   assert.match(workflow, /scope: coverage-frontend/u);
   assert.match(workflow, /scope: container-images/u);
   assert.match(workflow, /publish_issue: "false"/u);
   assert.match(workflow, /INPUT_PUBLISH_ISSUE: "true"/u);
-  assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*repo-backend-image-llm-vision/u);
-  assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*repo-backend-official-i18n-seed/u);
+  assert.doesNotMatch(workflow, /INPUT_EXPECTED_SCOPES: .*repo-backend-image-llm-vision/u);
+  assert.doesNotMatch(workflow, /INPUT_EXPECTED_SCOPES: .*repo-backend-official-i18n-seed/u);
   assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*repo-frontend-react-doctor/u);
   assert.doesNotMatch(workflow, /INPUT_EXPECTED_SCOPES: .*state-protocols/u);
   assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*container-images/u);
@@ -709,7 +717,6 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   assert.match(workflow, /name: test-governance-repo-frontend/u);
   assert.match(workflow, /name: test-governance-repo-frontend-react-doctor/u);
   assert.match(workflow, /name: test-governance-\$\{\{ matrix\.scope \}\}/u);
-  assert.match(workflow, /name: test-governance-backend-consistency-\$\{\{ matrix\.group \}\}/u);
   assert.match(workflow, /name: test-governance-coverage-frontend/u);
   assert.doesNotMatch(workflow, /name: test-governance-state-protocols/u);
   assert.match(workflow, /name: test-governance-container-images/u);
@@ -745,10 +752,6 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
   );
   assert.match(
     workflow,
-    /backend-consistency-gate:[\s\S]*?name: Restore Rust backend consistency quality gate cache[\s\S]*?uses: actions\/cache@v5[\s\S]*?tmp\/quality-gate-cache\/rust-backend-consistency\/\$\{\{ matrix\.group \}\}\/target[\s\S]*?key: rust-quality-gate-backend-consistency-v2-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.group \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
-  );
-  assert.match(
-    workflow,
     /coverage-backend-gate:[\s\S]*?name: Restore Rust coverage quality gate cache[\s\S]*?uses: actions\/cache@v5[\s\S]*?tmp\/quality-gate-cache\/rust-coverage\/\$\{\{ matrix\.scope \}\}\/target[\s\S]*?key: rust-quality-gate-coverage-v2-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.scope \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
   );
   assert.match(
@@ -771,7 +774,7 @@ test("API-server and Host quality-gate shards build and export the real SDK work
   );
   const backendMatrix = workflow.slice(
     workflow.indexOf("  repo-backend-gate:\n"),
-    workflow.indexOf("  backend-consistency-gate:\n"),
+    workflow.indexOf("  coverage-frontend-gate:\n"),
   );
 
   for (const [job, scope, target] of [

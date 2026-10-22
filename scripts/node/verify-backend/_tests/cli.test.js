@@ -415,28 +415,49 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
 });
 
 
-test('root_1998_ac_007_cross_layer_postgres_host_enters_all_four_ci_partitions', () => {
-  const { BACKEND_CI_TEST_SHARDS } = require('../../verify/backend-targets.js');
-  const shards = BACKEND_CI_TEST_SHARDS.filter((shard) => shard.key.startsWith('storage-postgres-'));
-  assert.equal(shards.length, 4);
-  for (const [index, shard] of shards.entries()) {
-    assert.equal(shard.key, `storage-postgres-${index + 1}-of-4`);
-    assert.equal(shard.nextestPartition, `hash:${index + 1}/4`);
-    assert.deepEqual(shard.packages, ['storage-durable-postgres', 'control-plane-postgres-tests']);
-    const commands = buildCommands({ cargoJobs: 4, cargoTestThreads: 2, repoRoot: '/repo-root', env: {}, target: 'test', shard: shard.key });
-    assert.equal(commands.length, index === 0 ? 2 : 1);
-    assert.deepEqual(commands[0].args, [
-      'nextest', 'run', '--package', 'storage-durable-postgres', '--package', 'control-plane-postgres-tests',
-      '--partition', `hash:${index + 1}/4`, '--test-threads', '2', '--no-fail-fast', '--no-tests=fail',
-    ]);
-    if (index === 0) {
-      assert.deepEqual(commands[1], {
-        label: 'model-usage-report-postgres',
-        command: process.execPath,
-        args: ['--test', '--test-reporter=tap', '/repo-root/scripts/node/model-usage-report/integration/postgres.test.js'],
-        cwd: '/repo-root',
-      });
+test('PostgreSQL shards retain cross-layer and SQL tests when full CI transfers the adapter suite to coverage', () => {
+  for (const env of [{}, { CI: 'true' }, { QUALITY_GATE_SCOPE: 'repo-backend-test-storage-postgres-1-of-4' }, { QUALITY_GATE_SCOPE: 'ci' }]) {
+    for (let index = 1; index <= 4; index += 1) {
+      const commands = buildCommands({ cargoJobs: 4, cargoTestThreads: 2, repoRoot: '/repo-root', env, target: 'test', shard: `storage-postgres-${index}-of-4` });
+      assert.equal(commands.length, index === 1 ? 2 : 1);
+      assert.deepEqual(commands[0].args, [
+        'nextest', 'run',
+        ...(env.QUALITY_GATE_SCOPE === 'ci' ? [] : ['--package', 'storage-durable-postgres']),
+        '--package', 'control-plane-postgres-tests',
+        '--partition', `hash:${index}/4`, '--test-threads', '2', '--no-fail-fast', '--no-tests=fail',
+      ]);
+      if (index === 1) {
+        assert.deepEqual(commands[1], {
+          label: 'model-usage-report-postgres',
+          command: process.execPath,
+          args: ['--test', '--test-reporter=tap', '/repo-root/scripts/node/model-usage-report/integration/postgres.test.js'],
+          cwd: '/repo-root',
+        });
+      }
     }
+  }
+});
+
+test('the actual backend CLI transfers runtime packages only when full CI owns their coverage', async () => {
+  for (const env of [{}, { CI: 'true' }, { QUALITY_GATE_SCOPE: 'repo-backend-test-runtime-storage-fast' }, { QUALITY_GATE_SCOPE: 'ci' }]) {
+    let commands;
+    await main(['test', 'runtime-storage-fast'], {
+      repoRoot: '/repo-root', env,
+      runtimeConfig: { backend: { cargoJobs: 4, cargoTestThreads: 2 } },
+      managedRunnerImpl(options) { commands = options.commands; return 0; },
+    });
+    assert.equal(commands.length, 1);
+    assert.deepEqual(commands[0].args, [
+      'test', '--package', 'runtime-core',
+      ...(env.QUALITY_GATE_SCOPE === 'ci' ? [] : ['--package', 'runtime-extension-host']),
+      '--package', 'runtime-extension-sdk',
+      ...(env.QUALITY_GATE_SCOPE === 'ci' ? [] : ['--package', 'orchestration-runtime']),
+      '--package', 'storage-durable', '--package', 'storage-ephemeral', '--package', 'storage-object',
+      '--jobs', '4', '--', '--test-threads=2',
+    ]);
+    // A workspace invocation has no sibling coverage owner to replace it.
+    assert.deepEqual(buildCommands({ cargoJobs: 4, cargoTestThreads: 2, env, target: 'all' }).at(-1).args,
+      ['test', '--workspace', '--jobs', '4', '--', '--test-threads=2']);
   }
 });
 
@@ -477,7 +498,7 @@ test('actual PostgreSQL shard CLI executes SQL evidence and rejects failed, empt
     const invocations = [];
     try {
       const status = await main(['test', 'storage-postgres-1-of-4'], {
-        repoRoot, env: {},
+        repoRoot, env: { QUALITY_GATE_SCOPE: 'ci' },
         runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 2 } },
         writeStdout() {}, writeStderr() {},
         managedRunnerImpl(options) {
@@ -493,6 +514,8 @@ test('actual PostgreSQL shard CLI executes SQL evidence and rejects failed, empt
         },
       });
       assert.equal(status, expectedStatus);
+      assert.ok(!invocations[0].args.includes('storage-durable-postgres'));
+      assert.ok(invocations[0].args.includes('control-plane-postgres-tests'));
       assert.equal(invocations.length, 2, 'the actual CLI must not omit the SQL lane');
       assert.equal(invocations[1].command, process.execPath);
       assert.deepEqual(invocations[1].args, [

@@ -4,9 +4,9 @@
 
 ## 证据分层
 
-- `verify.yml` 是 PR / push 合并基线；`quality-gate.yml scope=ci` 是完整项目体检，额外包含完整测试分片、Clippy、一致性、覆盖率和 React Doctor。
+- `verify.yml` 是 PR / push 合并基线；`quality-gate.yml scope=ci` 是完整项目体检，额外包含完整测试分片、Clippy、覆盖率、特殊 feature 场景和 React Doctor。
 - 一次完整体检固定同一个 full SHA。根 `quality-gate-report.json` 必须为 `passed/0`，必需 component 唯一、成功且绑定同 SHA；四个 API coverage 分片经 merge 后才形成覆盖率 component。
-- SDK / Host / 内存 EventBus 的单元测试由 runtime-storage-fast 执行，贡献契约与插件事件注册测试由 core-libs 执行；PostgreSQL adapter 与跨层 service 测试由 storage-postgres 分片执行；API lib 与 integration targets 由 API nextest 分片执行。临时专项 workflow 的存在不代表必须重复执行同一组行为。
+- SDK / 内存 EventBus 的单元测试由 runtime-storage-fast 执行，贡献契约与插件事件注册测试由 core-libs 执行；Host、orchestration-runtime 和 PostgreSQL adapter 的完整包测试由各自 coverage owner 执行，跨层 control-plane-postgres-tests 仍由 storage-postgres 四分片完整执行，第一分片另执行 model-usage-report-postgres Node 集成；API lib 与 integration targets 由 API coverage nextest 分片执行。临时专项 workflow 的存在不代表必须重复执行同一组行为。
 - 定向 Cargo 命令必须有非零实际通过用例；编译、ignored 和空 filter 不等于行为通过。真实 managed worker 由 CI 先构建，再向行为测试注入路径。
 - `state-protocols --skip-live-acp` 不验证真实外部 ACP 服务；静态边界、单元测试与 component 收据也不证明所有页面视觉或生产运行态已经验收。报告分别列明证据范围。
 
@@ -15,11 +15,11 @@
 [English](gate-execution.en.md)
 
 - 完整体检的 `clippy --all-targets` 同时承担对应包的类型检查，CI matrix 与默认汇总不再重复要求相同配置的三个 `cargo check` 分片。PR 基线没有 Clippy，继续保留 check；定向 check 命令仍可独立使用。feature 专项和行为测试不由 Clippy 替代。
-- API 普通四分片与 coverage 四分片的 package、默认 features、nextest partition 和实际 test identity 并集相同，完整 CI 由 coverage 一次承担行为与覆盖率验收。控制平面的 lib/integration 同样交给 coverage，另保留显式 `cargo test --doc`，包括未来新增的文档示例。普通定向入口仍可手动运行；storage 的两套执行集合不同，继续保留。必需汇总 component 从 34 降为 29，不改变 coverage 阈值。
+- API 普通四分片与 coverage 四分片的 package、默认 features、nextest partition 和实际 test identity 并集相同，完整 CI 由 coverage 一次承担行为与覆盖率验收。控制平面、orchestration-runtime、runtime-extension-host 和 storage-durable-postgres 的完整包行为测试同样交给各自 coverage owner；前三者另保留显式 `cargo test --doc`，包括 Host compile-fail 用例和未来文档示例。仅 `QUALITY_GATE_SCOPE=ci` 的普通 runtime/storage 分片省略这三个重复包；独立手动 / PR shard、`test-backend` 与 `verify-backend all` 保留原测试集合。control-plane-postgres-tests 的四分片与第一分片的 SQL 报表集成继续运行。
 - API coverage 分片成功执行非零用例后才写回执；merge 核对同 SHA、package/partition、实际通过数、inventory 与非空 profile 数量，再验证完整、不重叠的可执行用例并集。ignored 单独按全量集合计数，不能把 nextest 的 partition/filter skipped 当作 ignored，也不能用旧产物补缺失分片。
 - `verify/backend.js` 是后端 Cargo 命令和受保护场景执行校验的 owner；`test-backend` 复用它的静态检查、图像/多模态场景和 workspace 测试计划。每条受保护测试仍须实际执行非零用例，邻接成功、全部 ignored、编译成功和缺失日志不能填补证据。
 - `tooling data-contracts` 使用同一份 migration inventory 和源码分析结果，生成原有 schema、raw JSONB、query-contract、capacity JSON/Markdown 报告。schema error 和 query-contract failure 继续阻断；raw JSONB、增长规划和未测量容量保留原来的 advisory / unverified 语义。查询契约等必需配置缺失或损坏时继续失败。独立报告入口仍服务于定向诊断。
-- 专项测试与全量测试只有在用例及运行条件等价时才能复用结果；nextest/libtest、线程栈、feature 和 coverage instrumentation 的差异需要单独判断。当前一致性、四基座、覆盖率与受保护的 image-llm 场景继续保留。
+- 专项测试与全量测试只有在用例及运行条件等价时才能复用结果；nextest/libtest、线程栈、feature 和 coverage instrumentation 的差异需要单独判断。已核对实际用例 identity 的 consistency-control-runtime/storage/api、official-i18n-seed、image-llm-vision 默认 feature 场景由普通 / coverage 包测试完整执行，完整 CI 不再重跑这五个专项 owner，必需 component 从 29 降为 24。专项手动入口及 PR 的 seed / image-llm 门禁保持有效；history-maintenance 的特殊 feature 和独有场景继续单独执行。四基座、coverage 阈值和缺失 / 失败 / 错误 SHA receipt 的拒绝条件不变。
 - 五个前端 consumer contract 用例由前端验收拥有：`frontend-pr` 显式运行 contracts；仓库级 `frontend/all` 通过常规测试与 page-regression 的并集覆盖全部用例，tooling 不再重复执行。`test-frontend full` 单独不包含全部页面回归，不能作为该并集的替代。
 
 统一治理验收需要冻结候选的全量 Rust 测试和完整 CI：记录通过、失败、忽略/跳过数及核心场景清单，分别量化编译、测试、CI 墙钟时间和累计 runner 时间。根收据须满足前述 candidate、component 与成功条件；局部脚本通过不能结算整体任务。合并重复执行允许执行次数减少，但核心场景不得缺失。历史时间只作注明源码、环境、缓存差异的参考；未测量值保留未知。

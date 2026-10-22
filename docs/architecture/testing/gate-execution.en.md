@@ -9,11 +9,15 @@ check commands remain available. Clippy does not replace feature-specific gates
 or behavior tests.
 
 Full CI runs the equivalent API behavior suite once in its four coverage shards.
-Control-plane library/integration tests also belong to coverage, with an explicit
-`cargo test --doc` step preserving current and future documentation examples.
-Ordinary diagnostic commands remain available. Storage suites have different test
-sets and retain both owners. Required aggregate components decrease from 34 to 29;
-coverage thresholds remain unchanged. Each API shard must prove successful nonzero
+Complete package behavior suites for control-plane, orchestration-runtime,
+runtime-extension-host and storage-durable-postgres also belong to their coverage
+owners. The first three retain explicit `cargo test --doc` steps, including the
+Host compile-fail case and future examples. Only ordinary runtime/storage shards
+under `QUALITY_GATE_SCOPE=ci` omit the three duplicated packages. Standalone/PR
+shards, `test-backend` and `verify-backend all` retain their full selection. All
+control-plane-postgres-tests still run in four storage partitions, with the
+model-usage-report-postgres Node integration in partition one.
+Each API shard must prove successful nonzero
 execution, package/partition/SHA, inventory counts and nonempty profiles. Merge
 checks a complete disjoint runnable-test union and counts ignored tests separately
 from nextest partition/filter exclusions. Old artifacts cannot fill missing shards.
@@ -33,8 +37,14 @@ still fail. Standalone report commands remain available for targeted diagnosis.
 
 Reuse between targeted and full suites requires equivalent tests and execution
 conditions. Differences in nextest/libtest, stack size, features, and coverage
-instrumentation need separate assessment. Consistency, foundation, coverage, and
-protected image-llm scenarios remain in the acceptance plan.
+instrumentation need separate assessment. Executed test identities confirm that
+the default-feature consistency-control-runtime/storage/api, official-i18n-seed
+and image-llm-vision suites already run in ordinary/coverage package tests. Full
+CI omits those five repeated owners, reducing required components from 29 to 24.
+Their manual scopes and the PR seed/image-llm gates remain available. The special
+features and unique cases of history-maintenance retain a separate owner.
+Foundation gates, coverage thresholds and rejection of missing, failed or
+wrong-SHA receipts remain unchanged.
 
 The frontend owns the five consumer-contract tests. `frontend-pr` runs the targeted
 contracts explicitly; repository `frontend/all` covers them through the union of

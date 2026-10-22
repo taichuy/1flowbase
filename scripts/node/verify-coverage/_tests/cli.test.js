@@ -83,7 +83,11 @@ function expectedBackendCoverageCommands({ repoRoot, entry, cargoParallelism, ca
         },
       ];
     }
-    return [baseCommand];
+    return [baseCommand, {
+      ...baseCommand,
+      label: `backend-coverage-${entry.key}-doc-tests`,
+      args: ['test', '--package', entry.packageName, '--doc', '--', `--test-threads=${cargoTestThreads}`],
+    }].filter((command) => command === baseCommand || ['orchestration-runtime', 'runtime-extension-host'].includes(entry.key));
   }
 
   const outputPath = `${repoRoot}/tmp/test-governance/coverage/backend/control-plane.json`;
@@ -249,7 +253,7 @@ test('collectFrontendCoverageFailures compares the two-decimal percentage report
   );
 });
 
-test('buildBackendCommands emits one cargo llvm-cov command per protected package', () => {
+test('buildBackendCommands preserves complete coverage suites and owned doctests', () => {
   const repoRoot = '/repo-root';
 
   assert.deepEqual(

@@ -214,10 +214,16 @@ function buildBackendCommands({
   }
 
   if (target === 'clippy' || target === 'test' || target === 'check') {
-    const commands = [buildBackendCargoCommand({ target, cargoJobs, cargoTestThreads, incremental, shard })];
+    const normalizedShard = normalizeBackendShard(shard);
+    // Only the complete quality-gate workflow schedules the matching coverage
+    // owners. Standalone/PR shards and workspace commands retain every package.
+    const testShard = target === 'test' && env.QUALITY_GATE_SCOPE === 'ci' && normalizedShard?.coverageOwnedPackages
+      ? { ...normalizedShard, packages: normalizedShard.packages.filter((name) => !normalizedShard.coverageOwnedPackages.includes(name)) }
+      : normalizedShard;
+    const commands = [buildBackendCargoCommand({ target, cargoJobs, cargoTestThreads, incremental, shard: testShard })];
     // The SQL report needs PostgreSQL, not a private deployed page. Run once in
     // the database-backed batch, and keep it inside the candidate gate receipt.
-    if (target === 'test' && normalizeBackendShard(shard)?.key === 'storage-postgres-1-of-4') {
+    if (target === 'test' && normalizedShard?.key === 'storage-postgres-1-of-4') {
       commands.push({
         label: 'model-usage-report-postgres',
         command: process.execPath,

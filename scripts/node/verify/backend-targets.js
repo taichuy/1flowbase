@@ -39,6 +39,7 @@ const BACKEND_APP_TEST_SHARDS = [
 const BACKEND_RUNTIME_STORAGE_TEST_SHARDS = [
   {
     key: 'runtime-storage-fast',
+    coverageOwnedPackages: ['runtime-extension-host', 'orchestration-runtime'],
     packages: [
       'runtime-core',
       'runtime-extension-host',
@@ -51,6 +52,7 @@ const BACKEND_RUNTIME_STORAGE_TEST_SHARDS = [
   },
   ...Array.from({ length: 4 }, (_, index) => ({
     key: `storage-postgres-${index + 1}-of-4`,
+    coverageOwnedPackages: ['storage-durable-postgres'],
     packages: ['storage-durable-postgres', 'control-plane-postgres-tests'],
     nextestPartition: `hash:${index + 1}/4`,
   })),

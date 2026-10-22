@@ -2,7 +2,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { BACKEND_SHARDS, BACKEND_CI_TEST_SHARDS } = require('../../verify/backend-targets.js');
+const { BACKEND_SHARDS } = require('../../verify/backend-targets.js');
+const { buildBackendCommands } = require('../../verify/backend.js');
+const { buildCoverageBackendCommands } = require('../../verify/coverage.js');
+const { DEFAULT_AGGREGATE_SCOPES } = require('../../github-quality-gate/commands.js');
 
 const repoRoot = path.resolve(__dirname, '../../../..');
 // Current workspace uses explicit member paths and literal package names. Fail closed
@@ -27,7 +30,13 @@ function assertCovered(members, shards) {
 test('check/clippy and CI tests cover every current Rust workspace member', () => {
   const members = workspacePackages();
   assertCovered(members, BACKEND_SHARDS);
-  assertCovered(members, BACKEND_CI_TEST_SHARDS);
+  const options = { repoRoot, cargoJobs: 2, cargoParallelism: 2, cargoTestThreads: 2, env: { QUALITY_GATE_SCOPE: 'ci' } };
+  const commands = DEFAULT_AGGREGATE_SCOPES.filter((scope) => scope.startsWith('repo-backend-test-'))
+    .flatMap((scope) => buildBackendCommands({ ...options, target: 'test', shard: scope.replace('repo-backend-test-', '') }));
+  commands.push(...buildCoverageBackendCommands(options));
+  assertCovered(members, commands.map(({ args }) => ({
+    packages: args.filter((value, index) => args[index - 1] === '--package'),
+  })));
 });
 
 test('workspace inventory rejects a new unassigned member and stale package target', () => {

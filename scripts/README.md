@@ -329,14 +329,21 @@ node scripts/node/verify.js ci
 - `cargo fmt --all --check`
 - `cargo clippy --workspace --all-targets -D warnings`
 - `cargo test --workspace`
-- `cargo check --workspace`
+- image-llm、official-i18n-seed、history-maintenance 专项场景
 
-CI 可用 `core-libs`、`runtime-storage`、`apps` 分片；`test` 目标额外支持
-`control-plane`、`api-server` 包级分片。
+`clippy --all-targets` 同时承担类型检查；独立 `check` 目标仍供 PR 与定向诊断使用。
+`clippy/check` 可用 `core-libs`、`runtime-storage`、`apps` 分片；`test` 另支持
+`runtime-storage-fast`、`storage-postgres-N-of-4`、`control-plane` 和 `api-server-N-of-4`。
+
+`quality-gate.yml scope=ci` 的普通 runtime/storage shard 通过现有
+`QUALITY_GATE_SCOPE=ci` 上下文，将 orchestration-runtime、runtime-extension-host、
+storage-durable-postgres 的重复包测试交给 coverage。control-plane-postgres-tests
+四分片与第一分片的 model-usage-report-postgres 集成继续执行。独立 shard、
+`test-backend` 和 `verify-backend all` 保持完整测试能力。
 
 ### `node scripts/node/verify-coverage.js [frontend|backend|all]`
 
-仓库覆盖率门禁。覆盖率摘要写入 `tmp/test-governance/coverage-summary.log`，后端覆盖率需要本地安装 `cargo-llvm-cov`。
+仓库覆盖率门禁。覆盖率摘要写入 `tmp/test-governance/coverage-summary.log`，后端覆盖率需要本地安装 `cargo-llvm-cov`。control-plane、orchestration-runtime 与 runtime-extension-host 的 coverage owner 另运行显式 doctest，保留 compile-fail 与未来文档示例。
 
 ### `node scripts/node/verify-repo.js`
 
@@ -352,7 +359,11 @@ CI 可用 `core-libs`、`runtime-storage`、`apps` 分片；`test` 目标额外�
 
 ### `node scripts/node/verify-ci.js`
 
-CI 组合入口，当前执行 `verify-repo`、`verify-backend-consistency` 与 `verify-coverage all`。
+本地串行组合入口，当前执行 `verify-repo`、`verify-backend-consistency` 与 `verify-coverage all`。
+GitHub `quality-gate.yml scope=ci` 使用 24 个必需 component 的并行执行计划：
+consistency 三组、official-i18n-seed 与 image-llm-vision 的默认 feature 用例已由普通 / coverage
+包测试完整覆盖，不再重复执行专项 owner；专项手动入口及 PR 门禁继续保留。
+history-maintenance 的特殊 feature 场景仍单独运行。聚合继续拒绝缺失、失败或错误 SHA 的收据。
 
 ## Frontend Tooling
 

@@ -37,7 +37,7 @@ test('aggregate rejects mixed, missing, and unbound candidate evidence', () => {
 test('full quality jobs execute the resolver snapshot and preserve standalone scopes', () => {
   const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/quality-gate.yml'), 'utf8');
   for (const job of ['repo-tooling-gate', 'repo-frontend-gate', 'repo-frontend-react-doctor-gate',
-    'repo-backend-gate', 'backend-consistency-gate', 'coverage-frontend-gate',
+    'repo-backend-gate', 'coverage-frontend-gate',
     'coverage-backend-gate', 'coverage-backend-api-server-sharded',
     'coverage-backend-api-server-sharded-merge', 'container-images-gate',
     'ai-gateway-protocol-conformance', 'aggregate']) {

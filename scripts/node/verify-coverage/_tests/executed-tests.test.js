@@ -62,38 +62,41 @@ test('each control-plane coverage command requires its own executed passing test
   }
 });
 
-test('the explicit control-plane doctest step permits zero examples but rejects missing or failed results', async () => {
-  for (const [output, exitCode, expected] of [
-    ['test result: ok. 0 passed; 0 failed; 0 ignored;', 0, 0],
-    ['test result: ok. 2 passed; 0 failed; 0 ignored;', 0, 0],
-    ['', 0, 1],
-    ['test result: FAILED. 0 passed; 1 failed; 0 ignored;', 0, 1],
-    ['test result: FAILED. 0 passed; 1 failed; 0 ignored;', 101, 101],
-  ]) {
-    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverage-doctests-'));
-    try {
-      let doctestCalls = 0;
-      const status = await main(['backend', 'control-plane'], {
-        repoRoot, env: {},
-        runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 2 } },
-        preflightSpawnSyncImpl: () => ({ status: 0 }),
-        writeStdout() {}, writeStderr() {},
-        spawnSyncImpl(_command, args) {
-          if (args[0] === 'test' && args.includes('--doc')) {
-            doctestCalls += 1;
-            return { status: exitCode, stdout: output, stderr: '' };
-          }
-          return { status: 0, stdout: args[1] === 'clean' ? '' : 'test result: ok. 3 passed; 0 failed;', stderr: '' };
-        },
-        managedRunnerImpl(options) { return options.runCommandSequenceImpl(options); },
-        readFileSyncImpl() {
-          return JSON.stringify({ data: [{ totals: { lines: { percent: 100 } } }] });
-        },
-      });
-      assert.equal(doctestCalls, 1);
-      assert.equal(status, expected, `${exitCode}: ${output}`);
-    } finally {
-      fs.rmSync(repoRoot, { recursive: true, force: true });
+for (const backendKey of ['control-plane', 'orchestration-runtime', 'runtime-extension-host']) {
+  test(`the explicit ${backendKey} doctest step permits zero examples but rejects missing or failed results`, async () => {
+    for (const [output, exitCode, expected] of [
+      ['test result: ok. 0 passed; 0 failed; 0 ignored;', 0, 0],
+      ['test result: ok. 2 passed; 0 failed; 0 ignored;', 0, 0],
+      ['', 0, 1],
+      ['test result: FAILED. 0 passed; 1 failed; 0 ignored;', 0, 1],
+      ['test result: FAILED. 0 passed; 1 failed; 0 ignored;', 101, 101],
+    ]) {
+      const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverage-doctests-'));
+      try {
+        let doctestCalls = 0;
+        const status = await main(['backend', backendKey], {
+          repoRoot, env: {},
+          runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 2 } },
+          preflightSpawnSyncImpl: () => ({ status: 0 }),
+          writeStdout() {}, writeStderr() {},
+          spawnSyncImpl(_command, args) {
+            if (args[0] === 'test' && args.includes('--doc')) {
+              doctestCalls += 1;
+              assert.deepEqual(args, ['test', '--package', backendKey, '--doc', '--', '--test-threads=2']);
+              return { status: exitCode, stdout: output, stderr: '' };
+            }
+            return { status: 0, stdout: args[1] === 'clean' ? '' : 'test result: ok. 3 passed; 0 failed;', stderr: '' };
+          },
+          managedRunnerImpl(options) { return options.runCommandSequenceImpl(options); },
+          readFileSyncImpl() {
+            return JSON.stringify({ data: [{ totals: { lines: { percent: 100 } } }] });
+          },
+        });
+        assert.equal(doctestCalls, 1);
+        assert.equal(status, expected, `${exitCode}: ${output}`);
+      } finally {
+        fs.rmSync(repoRoot, { recursive: true, force: true });
+      }
     }
-  }
-});
+  });
+}

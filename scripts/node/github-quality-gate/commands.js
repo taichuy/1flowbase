@@ -21,11 +21,10 @@ const COVERAGE_OWNED_TEST_SHARDS = new Set([
 ]);
 // Full acceptance already type-checks these packages with Clippy --all-targets.
 // Explicit check scopes remain available for the lighter PR lane and diagnosis.
+// Default-feature consistency, seed and image suites already run in package tests.
 const REPO_BACKEND_COMPONENT_SCOPES = [
   'repo-backend-static',
   'repo-backend-fmt',
-  'repo-backend-image-llm-vision',
-  'repo-backend-official-i18n-seed',
   'repo-backend-history-maintenance',
   ...REPO_BACKEND_SHARD_TARGETS.filter((target) => target !== 'check').flatMap((target) =>
     REPO_BACKEND_SHARDS_BY_TARGET[target]
@@ -45,7 +44,6 @@ const DEFAULT_AGGREGATE_SCOPES = [
   'repo-frontend',
   'repo-frontend-react-doctor',
   ...REPO_BACKEND_COMPONENT_SCOPES,
-  ...BACKEND_CONSISTENCY_COMPONENT_SCOPES,
   'coverage-frontend',
   ...COVERAGE_BACKEND_COMPONENT_SCOPES.filter((scope) => scope !== 'coverage-backend-api-server'),
   'coverage-backend-api-server-merge',
@@ -62,6 +60,8 @@ const VALID_SCOPES = new Set([
   'repo-frontend-pr',
   'repo-frontend-react-doctor',
   'repo-backend',
+  'repo-backend-image-llm-vision',
+  'repo-backend-official-i18n-seed',
   'backend',
   'backend-consistency',
   'state-protocols',
