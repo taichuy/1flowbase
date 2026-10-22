@@ -1,17 +1,10 @@
-use std::str::FromStr;
+use std::{str::FromStr, time::Duration};
 
 use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},
     ConnectOptions, Connection, PgConnection, PgPool,
 };
 use uuid::Uuid;
-
-mod cleanup;
-mod metrics;
-mod template;
-
-pub use metrics::{record_phase_duration, PostgresTestPhase};
-pub use template::PostgresTestTemplate;
 
 /// A test schema inside a wholly owned temporary database.
 ///
@@ -95,8 +88,6 @@ pub struct PostgresTestDatabase {
     cleanup_options: PgConnectOptions,
     database_url: String,
     database_name: String,
-    clone_prefix: Option<String>,
-    cleaned: bool,
 }
 
 impl PostgresTestDatabase {
@@ -121,8 +112,6 @@ impl PostgresTestDatabase {
             cleanup_options: admin_options.database("postgres"),
             database_url,
             database_name,
-            clone_prefix: None,
-            cleaned: false,
         })
     }
 
@@ -140,31 +129,13 @@ impl PostgresTestDatabase {
             .connect(&self.database_url)
             .await
     }
-
-    async fn cleanup(&mut self) -> Result<(), sqlx::Error> {
-        if self.cleaned {
-            return Ok(());
-        }
-        cleanup::cleanup_owned_databases(
-            &self.cleanup_options,
-            &self.database_name,
-            self.clone_prefix.as_deref(),
-        )
-        .await?;
-        self.cleaned = true;
-        Ok(())
-    }
 }
 
 impl Drop for PostgresTestDatabase {
     fn drop(&mut self) {
-        if self.cleaned {
-            return;
-        }
         let cleanup_options = self.cleanup_options.clone();
         let database_name = self.database_name.clone();
-        let clone_prefix = self.clone_prefix.clone();
-        if !cleanup::is_owned_database_name(&database_name) {
+        if !database_name.starts_with("test_backup_") {
             eprintln!("refusing to drop non-temporary PostgreSQL database {database_name}");
             return;
         }
@@ -181,15 +152,29 @@ impl Drop for PostgresTestDatabase {
                         return;
                     }
                 };
-                let result = runtime.block_on(cleanup::cleanup_owned_databases(
-                    &cleanup_options,
-                    &database_name,
-                    clone_prefix.as_deref(),
-                ));
+                let result = runtime.block_on(async {
+                    tokio::time::timeout(Duration::from_secs(30), async {
+                        let mut connection = PgConnection::connect_with(&cleanup_options).await?;
+                        sqlx::query(
+                            "select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid()",
+                        )
+                        .bind(&database_name)
+                        .execute(&mut connection)
+                        .await?;
+                        sqlx::query(sqlx::AssertSqlSafe(format!(r#"drop database if exists "{database_name}""#)))
+                            .execute(&mut connection)
+                            .await?;
+                        connection.close().await
+                    })
+                    .await
+                });
                 match result {
-                    Ok(()) => {}
-                    Err(error) => eprintln!(
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => eprintln!(
                         "failed to drop PostgreSQL test database {database_name}: {error}"
+                    ),
+                    Err(_) => eprintln!(
+                        "timed out while dropping PostgreSQL test database {database_name}"
                     ),
                 }
             });

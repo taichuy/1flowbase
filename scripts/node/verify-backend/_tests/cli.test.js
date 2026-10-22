@@ -381,17 +381,12 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
     ].join('\n')
   );
   fs.chmodSync(fakeCargoPath, 0o755);
-  const fakeTemplatePath = path.join(tempDir, 'api/target/debug/with-postgres-template');
-  fs.mkdirSync(path.dirname(fakeTemplatePath), { recursive: true });
-  fs.writeFileSync(fakeTemplatePath, '#!/usr/bin/env bash\nshift\nexec "$@"\n');
-  fs.chmodSync(fakeTemplatePath, 0o755);
 
   const result = spawnSync('node', [scriptPath], {
     cwd: repoRoot,
     env: {
       ...process.env,
       CI: 'true',
-      CARGO_TARGET_DIR: path.join(tempDir, 'api/target'),
       PATH: `${fakeBinDir}:${process.env.PATH ?? ''}`,
       VERIFY_BACKEND_LOG: logPath,
       ONEFLOWBASE_WARNING_OUTPUT_DIR: warningOutputDir,
@@ -406,14 +401,13 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
     .trim()
     .split('\n');
 
-  assert.equal(invocations.length, 16);
+  assert.equal(invocations.length, 15);
   assert.match(invocations[1], new RegExp(`clippy --workspace --all-targets --jobs ${expectedParallelism} -- -D warnings`));
   assert.match(invocations[2], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_textualizes_user_media_when_selected_model_is_not_multimodal -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[3], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_keeps_user_media_when_configured_model_supports_multimodal -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[4], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[5], new RegExp(`test -p orchestration-runtime --jobs ${expectedParallelism} visible_internal_llm_tool_media -- --test-threads=${expectedParallelism}`));
-  assert.equal(invocations[14], 'build --locked --package postgres-test-support --bin with-postgres-template --profile test');
-  assert.match(invocations[15], new RegExp(`test --workspace --jobs ${expectedParallelism} -- --test-threads=${expectedParallelism}`));
+  assert.match(invocations[14], new RegExp(`test --workspace --jobs ${expectedParallelism} -- --test-threads=${expectedParallelism}`));
 
   const warningLogPath = path.join(warningOutputDir, 'verify-backend.warnings.log');
   assert.equal(fs.existsSync(warningLogPath), true);

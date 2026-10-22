@@ -363,12 +363,7 @@ test('main cleans llvm-cov artifacts before and after backend coverage runs', as
         entry,
         cargoParallelism: 2,
         cargoTestThreads: 4,
-      }).flatMap((command) => command.args.includes('api-server')
-        ? [
-          ['build', '--locked', '--package', 'postgres-test-support', '--bin', 'with-postgres-template', '--profile', 'test'],
-          ['--', 'cargo', ...command.args],
-        ]
-        : [command.args])),
+      }).map((command) => command.args)),
       ['llvm-cov', 'clean', '--workspace'],
     ]
   );

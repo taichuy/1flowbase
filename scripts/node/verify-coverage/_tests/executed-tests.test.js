@@ -34,9 +34,8 @@ test('each control-plane coverage command requires its own executed passing test
           preflightSpawnSyncImpl: () => ({ status: 0 }),
           writeStdout() {}, writeStderr(text) { diagnostics += text; },
           spawnSyncImpl(_command, args) {
-            const testArgs = args[0] === '--' ? args.slice(2) : args;
             const selected = commands.find(command =>
-              JSON.stringify(command.args) === JSON.stringify(testArgs));
+              JSON.stringify(command.args) === JSON.stringify(args));
             return {
               status: 0,
               stdout: args[1] === 'clean'

@@ -131,17 +131,13 @@ test('successful shard persists raw output and metadata only after exact runnabl
   const rawStderr = '\u001b[32mSummary\u001b[0m [1.0s] 1 test run: 1 passed, 1454 skipped\n';
   let echoedStdout = '';
   let echoedStderr = '';
-  const calls = [];
   runApiServerShard({
     repoRoot, shardIndex: 1, shardCount: 4, cargoTestThreads: 2,
-    env: { QUALITY_GATE_TARGET_SHA: sha, CARGO_TARGET_DIR: '../tmp/existing-coverage-target', ONEFLOWBASE_VERIFY_LOCK_TOKEN: 'owned-lock' },
-    runtimeConfig: { backend: { cargoJobs: 3, cargoTestThreads: 2 } },
+    env: { QUALITY_GATE_TARGET_SHA: sha },
     writeStdout(text) { echoedStdout += text; }, writeStderr(text) { echoedStderr += text; },
-    spawnSyncImpl(command, args, options) {
-      calls.push({ command, args, options });
+    spawnSyncImpl(_command, args, options) {
       if (args[1] === 'show-env') return { status: 0, stdout: llvmEnvironment };
       if (args[1] === 'list') return { status: 0, stdout: JSON.stringify(inventory(['1'], ['later'])) };
-      if (args[0] === 'build') return { status: 0, stdout: null, stderr: null };
       fs.writeFileSync(options.env.LLVM_PROFILE_FILE.replace('%p', '1').replace('%m', 'binary'), 'profile');
       fs.writeSync(options.stdio[1], rawStdout);
       fs.writeSync(options.stdio[2], rawStderr);
@@ -154,22 +150,6 @@ test('successful shard persists raw output and metadata only after exact runnabl
   assert.equal(fs.readFileSync(path.join(directory, 'nextest-1.stderr.log'), 'utf8'), rawStderr);
   assert.equal(echoedStdout, rawStdout);
   assert.equal(echoedStderr, rawStderr);
-  assert.equal(calls.length, 4);
-  assert.deepEqual(calls[1].args.slice(0, 2), ['nextest', 'list']);
-  assert.equal(calls[1].command, 'cargo');
-  assert.equal(calls[2].args[0], 'build');
-  assert.equal(calls[3].command, path.join(repoRoot, 'tmp/existing-coverage-target/debug/with-postgres-template'));
-  assert.deepEqual(calls[3].args.slice(0, 4), ['--', 'cargo', 'nextest', 'run']);
-  for (const call of calls.slice(1)) {
-    assert.equal(call.options.env.CARGO_BUILD_JOBS, '3');
-    assert.equal(call.options.env.CARGO_TARGET_DIR, '../tmp/existing-coverage-target');
-    assert.equal(call.options.env.RUSTC_WRAPPER, '/bin/cov');
-    assert.equal(call.options.env.CARGO_LLVM_COV, '1');
-    assert.equal(call.options.env.ONEFLOWBASE_VERIFY_LOCK_TOKEN, 'owned-lock');
-    assert.equal(call.options.env.POSTGRES_TEST_METRICS_DIR,
-      path.join(repoRoot, 'tmp/test-governance/postgres-fixtures/coverage-shadow-api-server-1-of-4'));
-    assert.equal(call.options.env.LLVM_PROFILE_FILE, path.join(directory, 'shard-1-%p-%m.profraw'));
-  }
 });
 
 test('failed, empty or incomplete shard execution cannot leave a successful receipt', (t) => {
@@ -182,13 +162,11 @@ test('failed, empty or incomplete shard execution cannot leave a successful rece
     { output: 'Summary [1s] 1 test run: 1 passed', noProfile: true, pattern: /no profraw/u },
     { emptyInventory: true, pattern: /no runnable tests/u },
     { noSha: true, pattern: /frozen SHA/u },
-    { buildStatus: 7, pattern: /exit code 7/u },
   ]) {
     const repoRoot = temporaryRepo(t);
     const directory = path.join(repoRoot, 'tmp/test-governance/coverage-shadow/api-server/shard-1');
     fs.mkdirSync(directory, { recursive: true });
     fs.writeFileSync(path.join(directory, 'metadata-1.json'), JSON.stringify(metadata()));
-    let executions = 0;
     assert.throws(() => runApiServerShard({
       repoRoot, shardIndex: 1, shardCount: 4, cargoTestThreads: 2,
       env: { QUALITY_GATE_TARGET_SHA: scenario.noSha ? '' : sha },
@@ -196,8 +174,6 @@ test('failed, empty or incomplete shard execution cannot leave a successful rece
       spawnSyncImpl(_command, args, options) {
         if (args[1] === 'show-env') return { status: 0, stdout: llvmEnvironment };
         if (args[1] === 'list') return { status: 0, stdout: JSON.stringify(inventory(scenario.emptyInventory ? [] : ['1'], ['later'])) };
-        if (args[0] === 'build') return { status: scenario.buildStatus || 0, stdout: null, stderr: null };
-        executions += 1;
         if (!scenario.noProfile) fs.writeFileSync(options.env.LLVM_PROFILE_FILE.replace('%p', '1').replace('%m', 'binary'), 'profile');
         fs.writeSync(options.stdio[2], scenario.output || '');
         return { status: scenario.exitCode || 0, stdout: null, stderr: null };
@@ -205,7 +181,6 @@ test('failed, empty or incomplete shard execution cannot leave a successful rece
     }), scenario.pattern);
     assert.equal(fs.existsSync(path.join(directory, 'metadata-1.json')), false);
     if (scenario.exitCode) assert.equal(fs.readFileSync(path.join(directory, 'nextest-1.stderr.log'), 'utf8'), scenario.output);
-    if (scenario.buildStatus) assert.equal(executions, 0);
   }
 });
 

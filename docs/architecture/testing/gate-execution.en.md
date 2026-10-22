@@ -64,27 +64,12 @@ migrations still use the production entry point. Atomic rollback, money, and
 historical checksum assertions remain; production locking and rejection scenarios
 are retained.
 
-The common API fixture can clone a command-owned PostgreSQL template prepared only
-with formal migrations. Every test still owns a separate database and filesystem
-roots, uses explicit startup search_path, runs the production Migrator's
-version/checksum validation, and performs full business bootstrap. Existing empty
-database and historical migration/restore fixtures keep their original path.
-Templates are never cached across commands or CI runs.
-
-The Node runner builds the test-only `with-postgres-template` binary first, then
-executes it directly around the test command without nesting Cargo builds. The
-wrapper waits for its child and cleans up only its own template/clones on normal
-exit, failure and handled INT/TERM. SIGKILL cannot guarantee process cleanup.
-Phase metrics live under `tmp/test-governance/postgres-fixtures/`: fresh/clone
-measure database creation; migration includes connection and formal migration or
-validation; bootstrap covers remaining fixture initialization; prepare and cleanup
-measure template preparation and teardown. A serial-work model is
-`T_fresh = N × (F + M + B + D)` versus
-`T_template = P + N × (C + V + B + D) + D_template`, for N fixtures, empty-database
-creation F, migration M, clone C, validation V, bootstrap B, per-database cleanup D
-and template preparation P. This does not directly predict parallel wall time or
-establish a measured speedup. Retention requires actual
-fresh/clone measurements, isolation/cleanup evidence and final CI metrics.
+The common API fixture uses `PostgresTestSchema::create()` to give each test a
+separate empty database and schema with explicit startup search_path, then runs
+the production Migrator and complete business bootstrap. Filesystem roots remain
+isolated per fixture, and the database guard only cleans up its owned temporary
+database. Historical migration and restore fixtures keep their existing entry
+points.
 
 React Doctor reviews bind the complete target source and only the supporting
 invariant, direct consumer and relevant tests. Unrelated router/settings-shell

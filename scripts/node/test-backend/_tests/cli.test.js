@@ -210,7 +210,7 @@ test('test-backend main writes advisory warning output under tmp/test-governance
   });
 
   assert.equal(status, 0);
-  assert.equal(calls.length, 7);
+  assert.equal(calls.length, 6);
   assert.deepEqual(calls[1].args, [
     'test',
     '-p',
@@ -231,9 +231,7 @@ test('test-backend main writes advisory warning output under tmp/test-governance
     '--',
     '--test-threads=1',
   ]);
-  assert.deepEqual(calls[5].args, ['build', '--locked', '--package', 'postgres-test-support', '--bin', 'with-postgres-template', '--profile', 'test']);
-  assert.equal(calls[6].command, path.join(repoRoot, 'api/target/debug/with-postgres-template'));
-  assert.deepEqual(calls[6].args, ['--', 'cargo', 'test', '--workspace', '--jobs', '1', '--', '--test-threads=1']);
+  assert.deepEqual(calls[5].args, ['test', '--workspace', '--jobs', '1', '--', '--test-threads=1']);
 
   const warningLogPath = path.join(repoRoot, 'tmp', 'test-governance', 'test-backend.warnings.log');
   assert.equal(fs.existsSync(warningLogPath), true);

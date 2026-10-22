@@ -6,7 +6,6 @@ const { BACKEND_SHARDS, BACKEND_TEST_SHARDS, IMAGE_LLM_VISION_GATE_TARGETS, OFFI
 const { parseCargoTestCounts } = require('./cargo-test-results.js');
 const { buildHistoryMaintenanceCommands } = require('./history-maintenance.js');
 const { resolveScriptsNodeCliEntry } = require("./command-paths.js");
-const { buildPostgresTemplateCommands, withPostgresMetricsEnv } = require('../testing/postgres-template.js');
 
 const VALID_BACKEND_TARGETS = new Set([
   'all',
@@ -285,18 +284,8 @@ function usageBackend(writeStdout = (text) => process.stdout.write(text)) {
 
 function runBackendCommandSequence(sequenceOptions) {
   let emptySelection = false;
-  const env = withPostgresMetricsEnv(sequenceOptions);
-  const commands = sequenceOptions.commands.flatMap((command) => {
-    // Seed/provenance and the independent maintenance CLI do not use the API
-    // shared fixture; their existing database-free entry points stay available.
-    if (command.label.startsWith('cargo-test-official-i18n-seed-')
-      || command.label.startsWith('cargo-test-history-maintenance-')) return [command];
-    return buildPostgresTemplateCommands({ repoRoot: sequenceOptions.repoRoot, command, env });
-  });
   const status = runCommandSequence({
     ...sequenceOptions,
-    env,
-    commands,
     onCommandComplete({ command, result }) {
       if (command.label === 'model-usage-report-postgres') {
         const output = `${result.stdout || ''}\n${result.stderr || ''}`;

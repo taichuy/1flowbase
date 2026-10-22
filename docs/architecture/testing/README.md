@@ -28,11 +28,7 @@
 
 迁移拒绝场景使用同一正式迁移集，并让预期失败的迁移独占连接、返回错误后显式关闭，避免失败留下的 session advisory lock 等待连接池淘汰。正常迁移仍走生产入口；保留原子回滚、账务、历史 checksum 等断言，不通过关闭生产迁移锁或删除失败场景加速。
 
-API 通用 fixture 可使用命令拥有的 PostgreSQL 模板。`postgres-test-support` 只向模板应用正式 migration，关闭连接后，每个测试克隆独立数据库，保留模板 schema 名与显式 startup search_path。每个克隆继续执行生产 Migrator 的 version/checksum 校验，以及完整 root/session/业务 bootstrap；文件目录仍逐 fixture 隔离。原 `create()` 与历史迁移/恢复场景保持空库路径。模板不跨命令或 CI run 缓存。
-
-Node runner 先构建测试专用 `with-postgres-template`，再直接运行它包裹测试命令，不嵌套 Cargo 构建。wrapper 等待子进程结束，正常、失败及可处理的 INT/TERM 均回收自己拥有的模板和克隆；SIGKILL 无法保证进程清理，不据此承诺无条件 Drop。阶段计时落在 `tmp/test-governance/postgres-fixtures/`：fresh/clone 仅计建库，migration 计连接与正式迁移/校验，bootstrap 计剩余 fixture 初始化，prepare 计一次模板准备，cleanup 计回收。
-
-设每命令 N 次 fixture、空库创建 F、迁移 M、克隆 C、已应用迁移校验 V、业务初始化 B、单库清理 D、模板准备 P，串行工作量近似为 `T_fresh = N × (F + M + B + D)`、`T_template = P + N × (C + V + B + D) + D_template`。它不直接代表并行墙钟或实测收益；同环境 fresh/clone 对照、隔离与清理测试、最终 CI 墙钟和 runner 时间共同决定是否保留优化。
+API 通用 fixture 通过 `PostgresTestSchema::create()` 为每个测试创建独立空数据库和 schema，显式设置 startup search_path，再执行生产 Migrator 和完整业务 bootstrap。文件目录同样逐 fixture 隔离；数据库 guard 只回收自己拥有的临时库。历史迁移与恢复 fixture 保留各自原有入口。
 
 ## 静态规则与结构所有权
 

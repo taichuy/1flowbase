@@ -9,11 +9,8 @@ use super::plugins::{
 use super::*;
 use axum::response::Response;
 use control_plane::ports::{FileManagementRepository, SessionStore};
-use postgres_test_support::{record_phase_duration, PostgresTestPhase, PostgresTestSchema};
-use std::{
-    io::Write,
-    time::{Duration, Instant},
-};
+use postgres_test_support::PostgresTestSchema;
+use std::{io::Write, time::Duration};
 
 #[derive(Clone)]
 struct StaticApiRuntimeProfileCollector {
@@ -79,28 +76,7 @@ pub(crate) fn test_config() -> ApiConfig {
 }
 
 async fn isolated_database(base_url: &str) -> PostgresTestSchema {
-    match (
-        std::env::var_os("POSTGRES_TEST_TEMPLATE_DATABASE"),
-        std::env::var_os("POSTGRES_TEST_TEMPLATE_SCHEMA"),
-    ) {
-        (Some(database), Some(schema)) => PostgresTestSchema::create_from_template(
-            base_url,
-            database.to_str().expect("template database must be UTF-8"),
-            schema.to_str().expect("template schema must be UTF-8"),
-        )
-        .await
-        .expect("configured test template must be cloneable"),
-        (None, None) => {
-            let started = Instant::now();
-            let result = PostgresTestSchema::create(base_url).await;
-            let metric =
-                record_phase_duration(PostgresTestPhase::Fresh, started.elapsed(), result.is_ok());
-            let database = result.unwrap();
-            metric.expect("test fixture timing should be recorded");
-            database
-        }
-        _ => panic!("test template database and schema must be configured together"),
-    }
+    PostgresTestSchema::create(base_url).await.unwrap()
 }
 
 async fn isolated_postgres_toolchain(
@@ -195,20 +171,12 @@ async fn test_state_with_runtime_profile_state(
     pool_settings.acquire_timeout = Duration::from_secs(30);
     pool_settings.idle_timeout = Some(Duration::from_millis(250));
     pool_settings.max_lifetime = Some(Duration::from_secs(1));
-    let migration_started = Instant::now();
     let durable = storage_durable_postgres::build_main_durable_postgres_with_pool_settings(
         &config.database_url,
         pool_settings,
     )
-    .await;
-    let migration_metric = record_phase_duration(
-        PostgresTestPhase::Migration,
-        migration_started.elapsed(),
-        durable.is_ok(),
-    );
-    let durable = durable.unwrap();
-    migration_metric.expect("test migration timing should be recorded");
-    let bootstrap_started = Instant::now();
+    .await
+    .unwrap();
     let store = durable.store.clone();
     let (postgres_toolchain, postgres_toolchain_root) = isolated_postgres_toolchain(&store).await;
     let file_storage_registry = Arc::new(storage_object::builtin_driver_registry());
@@ -417,12 +385,6 @@ async fn test_state_with_runtime_profile_state(
         bootstrap_workspace_id: bootstrap.workspace_id,
         bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
     });
-    record_phase_duration(
-        PostgresTestPhase::Bootstrap,
-        bootstrap_started.elapsed(),
-        true,
-    )
-    .expect("test bootstrap timing should be recorded");
     (state, config.database_url)
 }
 

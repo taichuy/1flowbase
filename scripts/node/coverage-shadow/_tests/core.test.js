@@ -166,13 +166,12 @@ test('shard orchestration fails closed when nextest execution fails', () => {
     env: { QUALITY_GATE_TARGET_SHA: 'abc' },
     writeStdout() {},
     writeStderr() {},
-    spawnSyncImpl(_command, args, options) {
+    spawnSyncImpl(_command, _args, options) {
       call += 1;
       if (call === 1) {
         return { status: 0, stdout: "export RUSTC_WRAPPER='/bin/cov'\nexport CARGO_LLVM_COV='1'\n" };
       }
       if (call === 2) return { status: 0, stdout: JSON.stringify(inventory(['a'])) };
-      if (args[0] === 'build') return { status: 0, stdout: '' };
       testEnv = options.env;
       return { status: 7, stdout: '', stderr: 'failed' };
     },
