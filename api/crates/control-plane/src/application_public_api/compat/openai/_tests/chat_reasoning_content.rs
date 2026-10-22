@@ -69,6 +69,87 @@ fn chat_reasoning_content_preserves_media_blocks_and_literal_text() {
 }
 
 #[test]
+fn chat_reasoning_content_keeps_latest_multimodal_user_after_later_tool_history() {
+    let translated = translate_chat_completion_request(json!({
+        "model":"gpt-6-luna",
+        "messages":[
+            {"role":"user","content":[
+                {"type":"text","text":"inspect the image"},
+                {"type":"image_url","image_url":{"url":"https://example.com/user.png"}},
+                {"type":"text","text":"then explain"}
+            ]},
+            {"role":"assistant","reasoning_content":"private image reasoning","content":"checking the image",
+            "tool_calls":[{"id":"call_image","type":"function","function":{
+                "name":"inspect_image","arguments":"{\"detail\":\"full\"}"
+            }}]},
+            {"role":"tool","tool_call_id":"call_image","content":"image inspected"}
+        ]
+    })).unwrap();
+
+    assert_eq!(translated.request.query, "inspect the image\nthen explain");
+    let expected_history = json!([
+        {"role":"assistant","content":"checking the image","content_blocks":[
+            {"type":"reasoning","text":"private image reasoning"},
+            {"type":"text","text":"checking the image"}
+        ],"tool_calls":[{"id":"call_image","name":"inspect_image","arguments":{"detail":"full"}}]},
+        {"role":"tool","content":"image inspected","tool_call_id":"call_image"},
+        {"role":"user","content":"inspect the image\nthen explain","content_blocks":[
+            {"type":"text","text":"inspect the image"},
+            {"type":"image_url","image_url":{"url":"https://example.com/user.png"}},
+            {"type":"text","text":"then explain"}
+        ]}
+    ]);
+    // Serialized equality also preserves object field order for provider replay.
+    assert_eq!(
+        serde_json::to_string(&translated.request.history).unwrap(),
+        serde_json::to_string(&expected_history).unwrap()
+    );
+    let message_decisions = translated
+        .report
+        .decisions
+        .iter()
+        .filter(|decision| {
+            decision.source_path == "$.messages"
+                || decision.source_path.ends_with(".content")
+                || decision.source_path.ends_with(".reasoning_content")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        message_decisions
+            .iter()
+            .map(|decision| decision.source_path.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "$.messages[0].content",
+            "$.messages[1].content",
+            "$.messages[2].content",
+            "$.messages",
+            "$.messages[1].reasoning_content",
+        ]
+    );
+    for decision in message_decisions {
+        assert_eq!(decision.kind, TranslationDecisionKind::Normalized);
+        assert_eq!(
+            decision.effective_value,
+            TranslationSafeRepresentation::Redacted
+        );
+    }
+    let receipt = serde_json::to_string(&translated.report).unwrap();
+    for private_content in [
+        "inspect the image",
+        "then explain",
+        "private image reasoning",
+        "checking the image",
+        "image inspected",
+        "https://example.com/",
+        "call_image",
+        "inspect_image",
+    ] {
+        assert!(!receipt.contains(private_content));
+    }
+}
+
+#[test]
 fn chat_reasoning_content_null_is_absent_but_empty_string_remains_explicit() {
     let baseline = json!({"model":"gpt-6-luna","messages":[
         {"role":"assistant","content":"visible"}, {"role":"user","content":"next"}

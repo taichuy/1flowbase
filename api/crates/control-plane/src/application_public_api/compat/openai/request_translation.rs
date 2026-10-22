@@ -77,6 +77,7 @@ pub fn translate_chat_completion_request(
     );
     let mut system_parts = Vec::new();
     let mut history = Vec::new();
+    let mut latest_user_content = None;
     for (index, message) in messages.iter().enumerate() {
         let role = message
             .get("role")
@@ -90,7 +91,7 @@ pub fn translate_chat_completion_request(
             None,
             TranslationSafeRepresentation::Present,
         );
-        let content =
+        let mut content =
             openai_message_content(message).map_err(|error| error.with_report(report.clone()))?;
         let content_path = format!("$.messages[{index}].content");
         if !message.get("content").is_none_or(Value::is_null) {
@@ -103,6 +104,7 @@ pub fn translate_chat_completion_request(
             );
         }
         if index == last_user_index {
+            latest_user_content = Some(content);
             continue;
         }
         if matches!(role, "system" | "developer") {
@@ -111,30 +113,19 @@ pub fn translate_chat_completion_request(
             }
             continue;
         }
-        let mut history_entry = serde_json::json!({ "role": role, "content": content.text });
-        if let Some(content_blocks) = content.content_blocks {
-            history_entry["content_blocks"] = content_blocks;
-        }
         if let Some(reasoning) = message.get("reasoning_content") {
             let reasoning_path = format!("$.messages[{index}].reasoning_content");
             if let Some(text) = reasoning.as_str() {
                 // Canonical blocks own reasoning independently of visible text.
                 // Include the visible blocks as well because content_blocks is
                 // the complete ordered representation consumed by providers.
-                let mut blocks = history_entry
-                    .get("content_blocks")
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        let visible = history_entry["content"].as_str().unwrap_or_default();
-                        if visible.is_empty() {
-                            Vec::new()
-                        } else {
-                            vec![serde_json::json!({"type":"text","text":visible})]
-                        }
-                    });
+                let mut blocks = match content.content_blocks.take() {
+                    Some(Value::Array(blocks)) => blocks,
+                    _ if content.text.is_empty() => Vec::new(),
+                    _ => vec![serde_json::json!({"type":"text","text":content.text})],
+                };
                 blocks.insert(0, serde_json::json!({"type":"reasoning","text":text}));
-                history_entry["content_blocks"] = Value::Array(blocks);
+                content.content_blocks = Some(Value::Array(blocks));
                 report.record(
                     &reasoning_path,
                     Some("$.history[].content_blocks"),
@@ -153,6 +144,11 @@ pub fn translate_chat_completion_request(
                 );
             }
         }
+        let mut history_entry = serde_json::json!({ "role": role });
+        history_entry["content"] = Value::String(content.text);
+        if let Some(content_blocks) = content.content_blocks {
+            history_entry["content_blocks"] = content_blocks;
+        }
         if let Some(tool_calls) = message.get("tool_calls").filter(|value| value.is_array()) {
             history_entry["tool_calls"] = super::openai_chat_history_tool_calls(tool_calls);
         }
@@ -162,15 +158,14 @@ pub fn translate_chat_completion_request(
         }
         history.push(history_entry);
     }
-    let latest_user_content = openai_message_content(&messages[last_user_index])
-        .map_err(|error| error.with_report(report.clone()))?;
+    let latest_user_content =
+        latest_user_content.expect("last user message was mapped during traversal");
     let query = latest_user_content.text;
     if let Some(content_blocks) = latest_user_content.content_blocks {
-        history.push(serde_json::json!({
-            "role": "user",
-            "content": query.clone(),
-            "content_blocks": content_blocks,
-        }));
+        let mut history_entry = serde_json::json!({ "role": "user" });
+        history_entry["content"] = Value::String(query.clone());
+        history_entry["content_blocks"] = content_blocks;
+        history.push(history_entry);
     }
 
     let response_mode = match object.get("stream") {

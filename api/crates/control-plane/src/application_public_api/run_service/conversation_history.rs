@@ -35,44 +35,31 @@ pub fn assistant_conversation_native_history_to_values(
     let mut history = Vec::new();
     let mut pending_tool_calls = Vec::new();
 
-    for message in messages {
+    for mut message in messages {
         if message.role != "tool" {
             append_interrupted_tool_outputs(&mut history, &mut pending_tool_calls);
         }
 
         if message.role == "assistant" {
-            let mut value = message.into_value();
-            let complete_tool_calls = value
-                .get("tool_calls")
-                .and_then(Value::as_array)
-                .map(|tool_calls| {
-                    tool_calls
+            if let Some(tool_calls) = message.tool_calls.as_mut() {
+                tool_calls.retain(|tool_call| {
+                    let Some((id, name)) = complete_tool_call(tool_call) else {
+                        return false;
+                    };
+                    if pending_tool_calls
                         .iter()
-                        .filter_map(|tool_call| {
-                            complete_tool_call(tool_call).and_then(|(id, name)| {
-                                if pending_tool_calls
-                                    .iter()
-                                    .any(|(pending_id, _)| pending_id == &id)
-                                {
-                                    None
-                                } else {
-                                    pending_tool_calls.push((id, name));
-                                    Some(tool_call.clone())
-                                }
-                            })
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            if complete_tool_calls.is_empty() {
-                value
-                    .as_object_mut()
-                    .expect("Native history is an object")
-                    .remove("tool_calls");
-            } else {
-                value["tool_calls"] = Value::Array(complete_tool_calls);
+                        .any(|(pending_id, _)| pending_id == &id)
+                    {
+                        return false;
+                    }
+                    pending_tool_calls.push((id, name));
+                    true
+                });
+                if tool_calls.is_empty() {
+                    message.tool_calls = None;
+                }
             }
-            history.push(value);
+            history.push(message.into_value());
             continue;
         }
 
@@ -119,62 +106,5 @@ fn append_interrupted_tool_outputs(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn native_message(
-        role: &str,
-        content: &str,
-        tool_call_id: Option<&str>,
-        tool_calls: Option<Vec<Value>>,
-    ) -> AssistantConversationNativeMessage {
-        AssistantConversationNativeMessage {
-            role: role.to_string(),
-            content: content.to_string(),
-            name: None,
-            tool_call_id: tool_call_id.map(ToOwned::to_owned),
-            is_error: None,
-            content_blocks: None,
-            tool_calls,
-        }
-    }
-
-    #[test]
-    fn assistant_history_closes_complete_interrupted_tool_calls_and_drops_orphan_outputs() {
-        let history = assistant_conversation_native_history_to_values(vec![
-            native_message("user", "Find an order", None, None),
-            native_message(
-                "assistant",
-                "",
-                None,
-                Some(vec![
-                    json!({ "id": "call_order", "name": "find_order", "arguments": { "id": "42" } }),
-                    json!({ "id": "call_order", "name": "find_order", "arguments": { "id": "42" } }),
-                    json!({ "id": "", "name": "incomplete", "arguments": {} }),
-                ]),
-            ),
-            native_message("tool", "stale", Some("unknown_call"), None),
-            native_message("user", "Try again", None, None),
-        ]);
-
-        assert_eq!(history.len(), 4);
-        assert_eq!(
-            history[0],
-            json!({ "role": "user", "content": "Find an order" })
-        );
-        assert_eq!(
-            history[1]["tool_calls"],
-            json!([
-                { "id": "call_order", "name": "find_order", "arguments": { "id": "42" } }
-            ])
-        );
-        assert_eq!(history[2]["role"], "tool");
-        assert_eq!(history[2]["tool_call_id"], "call_order");
-        assert_eq!(history[2]["is_error"], true);
-        assert_eq!(history[2]["content"], INTERRUPTED_TOOL_CALL_CONTENT);
-        assert_eq!(
-            history[3],
-            json!({ "role": "user", "content": "Try again" })
-        );
-    }
-}
+#[path = "_tests/conversation_history.rs"]
+mod tests;
