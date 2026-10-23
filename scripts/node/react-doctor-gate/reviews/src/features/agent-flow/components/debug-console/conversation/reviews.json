@@ -4,30 +4,326 @@
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugConversationPane.tsx",
       "rule": "react-doctor/js-combine-iterations",
-      "sourceSha256": "072cfee33b2075a4af7bc15e6f5e44ae5263f1c040c2238660e459fa53e595ac",
+      "sourceSha256": "aea20df99aadf0e941dac8f39ea1375c2d461fa675525d468c994d7ebf3c316c",
       "reason": "DebugConversationPane 是 composer/列表/运行状态局部容器；先建 assistant runIds，再筛掉重复 user detail 入口，两阶段 Set 表示不同职责。 逐阶段线性选择/投影保持顺序与类型缩窄，后续过滤可能依赖前一步计算；没有由组合产生重复副作用或错误结果。",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-log-panel.test.tsx", "sha256": "4e4c8989d520721bc8252c503067a9465503c901035f4009d819fa3f9b954d33"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-pane.test.tsx", "sha256": "290bccf8d1939f6300c7717429d3efbc2d345ab0f37ed5ddc121f33c884cee4b"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/debug-conversation-log-panel/trace-presentation.test.tsx", "sha256": "118c4c06f4a9884dac30b8aa5371b561cd5822bfdcfbe438ec581b6356970e86"}, {"file": "web/app/src/features/agent-flow/api/runtime.ts", "sha256": "3852bccbf75a2a479c073f01674846d12b63a5d7091122c586b5a7077f986027"}, {"file": "web/app/src/features/agent-flow/components/debug-console/AgentFlowDebugConsole.tsx", "sha256": "7e29afc2ec2796a67f2c60a4fcea94430e28cdafeebee3bda00e629b81dc07bc"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugAssistantMessage.tsx", "sha256": "df4a20501e89a30eca02967861a089abc30e4276a3c0cd05ed9fe866288d2851"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugComposer.tsx", "sha256": "f4cef6d0828e03b92840968a6bae6cb42c0accbc63fb4dbddaa3712754608b07"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugConversationPane.tsx", "sha256": "072cfee33b2075a4af7bc15e6f5e44ae5263f1c040c2238660e459fa53e595ac"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugMarkdownContent.tsx", "sha256": "f4f5569aa66e1a2e7d7c48c7e8947ca3079226b5e6e7076430ea86ecb217c208"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/PageReferenceTag.tsx", "sha256": "d123ba7f1658406f9829790ae9748c918b66e1da393fe95afa62d6ab94fe67a2"}, {"file": "web/app/src/features/agent-flow/components/detail/last-run/runtime-debug-payload.tsx", "sha256": "5837eb8c46bcf6cf8c6e97079c4bd85ae6e700f831e7a38efdeeb4dd1879234e"}, {"file": "web/app/src/features/agent-flow/hooks/runtime/useAgentFlowDebugSession.ts", "sha256": "d8bc40795e9e840953c414acee7aabdb8ff38c406b66e08352573b0dd62519be"}, {"file": "web/app/src/features/applications/_tests/agent-logs/imported-forward.test.tsx", "sha256": "fc9351bc0d1366237845608cc93d584bcd3e88e920f493ed335d33d98938de9b"}, {"file": "web/app/src/features/applications/_tests/agent-logs/record-details.test.tsx", "sha256": "75adb82244dc07b51bf661c45fd300fa4ae26c074e50ded1186ac56224c9f6e0"}, {"file": "web/app/src/features/applications/_tests/agent-logs/record-history.test.tsx", "sha256": "7e69b0cff18e905a2617d2f8d2583e806068f6d5dabf95f7fc265580c7808822"}, {"file": "web/app/src/features/applications/_tests/agent-logs/subagents.test.tsx", "sha256": "d591834249e1ec95c4b9a0b35c0166b45ba4d8eece9acbab57682b5e5b533b3d"}, {"file": "web/app/src/features/applications/_tests/application-run-detail-panel.test.tsx", "sha256": "3c8cc45e72026d708670c76c9b881c6ea398ab046c39efdbac91cb51029ca608"}, {"file": "web/app/src/features/applications/components/logs/ApplicationRunDetailPanel.tsx", "sha256": "8fea30b083bce225efe678fa1ff7a1abaaadb8d07ef88278571cdd550d1dc37d"}, {"file": "web/app/src/shared/i18n/text.ts", "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+      "evidence": [
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-log-panel.test.tsx",
+          "sha256": "4e4c8989d520721bc8252c503067a9465503c901035f4009d819fa3f9b954d33"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-pane.test.tsx",
+          "sha256": "290bccf8d1939f6300c7717429d3efbc2d345ab0f37ed5ddc121f33c884cee4b"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/debug-conversation-log-panel/trace-presentation.test.tsx",
+          "sha256": "118c4c06f4a9884dac30b8aa5371b561cd5822bfdcfbe438ec581b6356970e86"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/api/runtime.ts",
+          "sha256": "3852bccbf75a2a479c073f01674846d12b63a5d7091122c586b5a7077f986027"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/AgentFlowDebugConsole.tsx",
+          "sha256": "7e29afc2ec2796a67f2c60a4fcea94430e28cdafeebee3bda00e629b81dc07bc"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugAssistantMessage.tsx",
+          "sha256": "0d870dc50fbc00c5db676d6d09319faaa336e161181e65cdfb20b59a66ffed59"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugComposer.tsx",
+          "sha256": "f4cef6d0828e03b92840968a6bae6cb42c0accbc63fb4dbddaa3712754608b07"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugConversationPane.tsx",
+          "sha256": "aea20df99aadf0e941dac8f39ea1375c2d461fa675525d468c994d7ebf3c316c"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugMarkdownContent.tsx",
+          "sha256": "f4f5569aa66e1a2e7d7c48c7e8947ca3079226b5e6e7076430ea86ecb217c208"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/PageReferenceTag.tsx",
+          "sha256": "d123ba7f1658406f9829790ae9748c918b66e1da393fe95afa62d6ab94fe67a2"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/last-run/runtime-debug-payload.tsx",
+          "sha256": "5837eb8c46bcf6cf8c6e97079c4bd85ae6e700f831e7a38efdeeb4dd1879234e"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/hooks/runtime/useAgentFlowDebugSession.ts",
+          "sha256": "d8bc40795e9e840953c414acee7aabdb8ff38c406b66e08352573b0dd62519be"
+        },
+        {
+          "file": "web/app/src/features/applications/_tests/agent-logs/imported-forward.test.tsx",
+          "sha256": "fc9351bc0d1366237845608cc93d584bcd3e88e920f493ed335d33d98938de9b"
+        },
+        {
+          "file": "web/app/src/features/applications/_tests/agent-logs/record-details.test.tsx",
+          "sha256": "75adb82244dc07b51bf661c45fd300fa4ae26c074e50ded1186ac56224c9f6e0"
+        },
+        {
+          "file": "web/app/src/features/applications/_tests/agent-logs/record-history.test.tsx",
+          "sha256": "7e69b0cff18e905a2617d2f8d2583e806068f6d5dabf95f7fc265580c7808822"
+        },
+        {
+          "file": "web/app/src/features/applications/_tests/agent-logs/subagents.test.tsx",
+          "sha256": "d591834249e1ec95c4b9a0b35c0166b45ba4d8eece9acbab57682b5e5b533b3d"
+        },
+        {
+          "file": "web/app/src/features/applications/_tests/application-run-detail-panel.test.tsx",
+          "sha256": "3c8cc45e72026d708670c76c9b881c6ea398ab046c39efdbac91cb51029ca608"
+        },
+        {
+          "file": "web/app/src/features/applications/components/logs/ApplicationRunDetailPanel.tsx",
+          "sha256": "8fea30b083bce225efe678fa1ff7a1abaaadb8d07ef88278571cdd550d1dc37d"
+        },
+        {
+          "file": "web/app/src/shared/i18n/text.ts",
+          "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugConversationPane.tsx",
       "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "072cfee33b2075a4af7bc15e6f5e44ae5263f1c040c2238660e459fa53e595ac",
+      "sourceSha256": "aea20df99aadf0e941dac8f39ea1375c2d461fa675525d468c994d7ebf3c316c",
       "reason": "DebugConversationPane 是 composer/列表/运行状态局部容器；先建 assistant runIds，再筛掉重复 user detail 入口，两阶段 Set 表示不同职责。 职责属于同一资源或组件生命周期，独立草稿/异步状态没有应合为单一字段的不变量；同步 setters 由 React19 batching，行数或 setter 数本身不能证明额外 render。",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-log-panel.test.tsx", "sha256": "4e4c8989d520721bc8252c503067a9465503c901035f4009d819fa3f9b954d33"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-pane.test.tsx", "sha256": "290bccf8d1939f6300c7717429d3efbc2d345ab0f37ed5ddc121f33c884cee4b"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/debug-conversation-log-panel/trace-presentation.test.tsx", "sha256": "118c4c06f4a9884dac30b8aa5371b561cd5822bfdcfbe438ec581b6356970e86"}, {"file": "web/app/src/features/agent-flow/api/runtime.ts", "sha256": "3852bccbf75a2a479c073f01674846d12b63a5d7091122c586b5a7077f986027"}, {"file": "web/app/src/features/agent-flow/components/debug-console/AgentFlowDebugConsole.tsx", "sha256": "7e29afc2ec2796a67f2c60a4fcea94430e28cdafeebee3bda00e629b81dc07bc"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugAssistantMessage.tsx", "sha256": "df4a20501e89a30eca02967861a089abc30e4276a3c0cd05ed9fe866288d2851"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugComposer.tsx", "sha256": "f4cef6d0828e03b92840968a6bae6cb42c0accbc63fb4dbddaa3712754608b07"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugConversationPane.tsx", "sha256": "072cfee33b2075a4af7bc15e6f5e44ae5263f1c040c2238660e459fa53e595ac"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugMarkdownContent.tsx", "sha256": "f4f5569aa66e1a2e7d7c48c7e8947ca3079226b5e6e7076430ea86ecb217c208"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/PageReferenceTag.tsx", "sha256": "d123ba7f1658406f9829790ae9748c918b66e1da393fe95afa62d6ab94fe67a2"}, {"file": "web/app/src/features/agent-flow/components/detail/last-run/runtime-debug-payload.tsx", "sha256": "5837eb8c46bcf6cf8c6e97079c4bd85ae6e700f831e7a38efdeeb4dd1879234e"}, {"file": "web/app/src/features/agent-flow/hooks/runtime/useAgentFlowDebugSession.ts", "sha256": "d8bc40795e9e840953c414acee7aabdb8ff38c406b66e08352573b0dd62519be"}, {"file": "web/app/src/features/applications/_tests/agent-logs/imported-forward.test.tsx", "sha256": "fc9351bc0d1366237845608cc93d584bcd3e88e920f493ed335d33d98938de9b"}, {"file": "web/app/src/features/applications/_tests/agent-logs/record-details.test.tsx", "sha256": "75adb82244dc07b51bf661c45fd300fa4ae26c074e50ded1186ac56224c9f6e0"}, {"file": "web/app/src/features/applications/_tests/agent-logs/record-history.test.tsx", "sha256": "7e69b0cff18e905a2617d2f8d2583e806068f6d5dabf95f7fc265580c7808822"}, {"file": "web/app/src/features/applications/_tests/agent-logs/subagents.test.tsx", "sha256": "d591834249e1ec95c4b9a0b35c0166b45ba4d8eece9acbab57682b5e5b533b3d"}, {"file": "web/app/src/features/applications/_tests/application-run-detail-panel.test.tsx", "sha256": "3c8cc45e72026d708670c76c9b881c6ea398ab046c39efdbac91cb51029ca608"}, {"file": "web/app/src/features/applications/components/logs/ApplicationRunDetailPanel.tsx", "sha256": "8fea30b083bce225efe678fa1ff7a1abaaadb8d07ef88278571cdd550d1dc37d"}, {"file": "web/app/src/shared/i18n/text.ts", "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+      "evidence": [
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-log-panel.test.tsx",
+          "sha256": "4e4c8989d520721bc8252c503067a9465503c901035f4009d819fa3f9b954d33"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-pane.test.tsx",
+          "sha256": "290bccf8d1939f6300c7717429d3efbc2d345ab0f37ed5ddc121f33c884cee4b"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/debug-conversation-log-panel/trace-presentation.test.tsx",
+          "sha256": "118c4c06f4a9884dac30b8aa5371b561cd5822bfdcfbe438ec581b6356970e86"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/api/runtime.ts",
+          "sha256": "3852bccbf75a2a479c073f01674846d12b63a5d7091122c586b5a7077f986027"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/AgentFlowDebugConsole.tsx",
+          "sha256": "7e29afc2ec2796a67f2c60a4fcea94430e28cdafeebee3bda00e629b81dc07bc"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugAssistantMessage.tsx",
+          "sha256": "0d870dc50fbc00c5db676d6d09319faaa336e161181e65cdfb20b59a66ffed59"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugComposer.tsx",
+          "sha256": "f4cef6d0828e03b92840968a6bae6cb42c0accbc63fb4dbddaa3712754608b07"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugConversationPane.tsx",
+          "sha256": "aea20df99aadf0e941dac8f39ea1375c2d461fa675525d468c994d7ebf3c316c"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugMarkdownContent.tsx",
+          "sha256": "f4f5569aa66e1a2e7d7c48c7e8947ca3079226b5e6e7076430ea86ecb217c208"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/PageReferenceTag.tsx",
+          "sha256": "d123ba7f1658406f9829790ae9748c918b66e1da393fe95afa62d6ab94fe67a2"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/last-run/runtime-debug-payload.tsx",
+          "sha256": "5837eb8c46bcf6cf8c6e97079c4bd85ae6e700f831e7a38efdeeb4dd1879234e"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/hooks/runtime/useAgentFlowDebugSession.ts",
+          "sha256": "d8bc40795e9e840953c414acee7aabdb8ff38c406b66e08352573b0dd62519be"
+        },
+        {
+          "file": "web/app/src/features/applications/_tests/agent-logs/imported-forward.test.tsx",
+          "sha256": "fc9351bc0d1366237845608cc93d584bcd3e88e920f493ed335d33d98938de9b"
+        },
+        {
+          "file": "web/app/src/features/applications/_tests/agent-logs/record-details.test.tsx",
+          "sha256": "75adb82244dc07b51bf661c45fd300fa4ae26c074e50ded1186ac56224c9f6e0"
+        },
+        {
+          "file": "web/app/src/features/applications/_tests/agent-logs/record-history.test.tsx",
+          "sha256": "7e69b0cff18e905a2617d2f8d2583e806068f6d5dabf95f7fc265580c7808822"
+        },
+        {
+          "file": "web/app/src/features/applications/_tests/agent-logs/subagents.test.tsx",
+          "sha256": "d591834249e1ec95c4b9a0b35c0166b45ba4d8eece9acbab57682b5e5b533b3d"
+        },
+        {
+          "file": "web/app/src/features/applications/_tests/application-run-detail-panel.test.tsx",
+          "sha256": "3c8cc45e72026d708670c76c9b881c6ea398ab046c39efdbac91cb51029ca608"
+        },
+        {
+          "file": "web/app/src/features/applications/components/logs/ApplicationRunDetailPanel.tsx",
+          "sha256": "8fea30b083bce225efe678fa1ff7a1abaaadb8d07ef88278571cdd550d1dc37d"
+        },
+        {
+          "file": "web/app/src/shared/i18n/text.ts",
+          "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugWorkflowProcess.tsx",
       "rule": "react-doctor/no-derived-state",
       "sourceSha256": "1edde4b933125c6beadb16f3b37ff4c9f985cac3613b2a8fc470a600ba816a44",
-      "reason": "New streamed callback detail keys are automatically expanded once using automaticallyExpandedNodeKeysRef, while preserving user-chosen expanded keys. The source trace query/stream can update without a local event.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/debug-composer.test.tsx", "sha256": "61ea27fe6381ffce873b73535accf3e7d8439eb59bd6e35ab696fac9f7c1d656"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/workflow-fixture.ts", "sha256": "edb42eca5e644692bdc599f12428f39c4043f3f860d065b846446b5c7ccbf05a"}, {"file": "web/app/src/features/agent-flow/_tests/node-debug-preview-input.test.ts", "sha256": "01d405b2cba815498a35dddf5901963efffc716d0825d3d9d4b3744f0c4bafd9"}, {"file": "web/app/src/features/agent-flow/api/runtime.ts", "sha256": "3852bccbf75a2a479c073f01674846d12b63a5d7091122c586b5a7077f986027"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugAssistantMessage.tsx", "sha256": "df4a20501e89a30eca02967861a089abc30e4276a3c0cd05ed9fe866288d2851"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugMarkdownContent.tsx", "sha256": "f4f5569aa66e1a2e7d7c48c7e8947ca3079226b5e6e7076430ea86ecb217c208"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugWorkflowNodeRow.tsx", "sha256": "688ec03fa6a3b4e9067d6852c65daacb3c3520d40238cd234d7e8c3e6d48104f"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugWorkflowProcess.tsx", "sha256": "1edde4b933125c6beadb16f3b37ff4c9f985cac3613b2a8fc470a600ba816a44"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/LlmToolTraceTree.tsx", "sha256": "ea15432303fc53eb7479f23a57f4c5b19ae26f7613b3d939ad8c905816dc30cf"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/debug-workflow-trace-utils.ts", "sha256": "23e7243692c3375dfa25371c5e5964a0c551a0a12277e021b6c71783f0718799"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/llm-tool-callbacks.ts", "sha256": "a9fc24861f1c6291674a3705855f88ca958ea5777aa66a10b473b9496d907de6"}, {"file": "web/app/src/features/agent-flow/components/detail/last-run/runtime-debug-payload.tsx", "sha256": "5837eb8c46bcf6cf8c6e97079c4bd85ae6e700f831e7a38efdeeb4dd1879234e"}, {"file": "web/app/src/features/agent-flow/components/embedded-assistant/AssistantRunActivityPanel.tsx", "sha256": "55776661d67e7202c8af9ad11c25b12f4a0d2ed2d1a1784f2ef8f224cd626d48"}, {"file": "web/app/src/shared/i18n/text.ts", "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+      "reason": "New streamed callback detail keys are automatically expanded once using automaticallyExpandedNodeKeys, while preserving user-chosen expanded keys. The source trace query/stream can update without a local event.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/debug-composer.test.tsx",
+          "sha256": "61ea27fe6381ffce873b73535accf3e7d8439eb59bd6e35ab696fac9f7c1d656"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/workflow-fixture.ts",
+          "sha256": "edb42eca5e644692bdc599f12428f39c4043f3f860d065b846446b5c7ccbf05a"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/node-debug-preview-input.test.ts",
+          "sha256": "01d405b2cba815498a35dddf5901963efffc716d0825d3d9d4b3744f0c4bafd9"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/api/runtime.ts",
+          "sha256": "3852bccbf75a2a479c073f01674846d12b63a5d7091122c586b5a7077f986027"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugAssistantMessage.tsx",
+          "sha256": "0d870dc50fbc00c5db676d6d09319faaa336e161181e65cdfb20b59a66ffed59"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugMarkdownContent.tsx",
+          "sha256": "f4f5569aa66e1a2e7d7c48c7e8947ca3079226b5e6e7076430ea86ecb217c208"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugWorkflowNodeRow.tsx",
+          "sha256": "688ec03fa6a3b4e9067d6852c65daacb3c3520d40238cd234d7e8c3e6d48104f"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugWorkflowProcess.tsx",
+          "sha256": "1edde4b933125c6beadb16f3b37ff4c9f985cac3613b2a8fc470a600ba816a44"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/LlmToolTraceTree.tsx",
+          "sha256": "ea15432303fc53eb7479f23a57f4c5b19ae26f7613b3d939ad8c905816dc30cf"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/debug-workflow-trace-utils.ts",
+          "sha256": "23e7243692c3375dfa25371c5e5964a0c551a0a12277e021b6c71783f0718799"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/llm-tool-callbacks.ts",
+          "sha256": "a9fc24861f1c6291674a3705855f88ca958ea5777aa66a10b473b9496d907de6"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/last-run/runtime-debug-payload.tsx",
+          "sha256": "5837eb8c46bcf6cf8c6e97079c4bd85ae6e700f831e7a38efdeeb4dd1879234e"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/embedded-assistant/AssistantRunActivityPanel.tsx",
+          "sha256": "55776661d67e7202c8af9ad11c25b12f4a0d2ed2d1a1784f2ef8f224cd626d48"
+        },
+        {
+          "file": "web/app/src/shared/i18n/text.ts",
+          "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/conversation/LlmToolTraceTree.tsx",
       "rule": "react-doctor/no-event-handler",
       "sourceSha256": "ea15432303fc53eb7479f23a57f4c5b19ae26f7613b3d939ad8c905816dc30cf",
       "reason": "debugPayloadList 是 useMemo 派生，effectiveToolCallbacks 含异步 artifact 结果；defaultToolsExpanded 需在外部数据到达时展开，不能只放原点击中。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-log-pagination.test.tsx", "sha256": "0d6b858073a89bb0b99ceecbe5db6c053c2570a12c66ff18f51bfd695bcc7e5c"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-log-panel.test.tsx", "sha256": "4e4c8989d520721bc8252c503067a9465503c901035f4009d819fa3f9b954d33"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-pane.test.tsx", "sha256": "290bccf8d1939f6300c7717429d3efbc2d345ab0f37ed5ddc121f33c884cee4b"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/debug-conversation-log-panel/lazy-trace-groups.test.tsx", "sha256": "74ca89ff57c0b97bab3b073a2994374084de5a43e28e18db62ba721910d92043"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/debug-conversation-log-panel/trace-presentation.test.tsx", "sha256": "118c4c06f4a9884dac30b8aa5371b561cd5822bfdcfbe438ec581b6356970e86"}, {"file": "web/app/src/features/agent-flow/api/runtime.ts", "sha256": "3852bccbf75a2a479c073f01674846d12b63a5d7091122c586b5a7077f986027"}, {"file": "web/app/src/features/agent-flow/components/debug-console/ConversationLogPanel.tsx", "sha256": "6b149b0205229793e9d744bb50408c906d2c0683cf6315e193005937b01069b4"}, {"file": "web/app/src/features/agent-flow/components/debug-console/LazyConversationTrace.tsx", "sha256": "61725ea5b90ba02654d74f0885cd59ef0898678c50fbbeb876d10aea7701c98f"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/AnswerSnapshotTrace.tsx", "sha256": "bf17cc6691e7cff999e3f4c4c35227c06c64f5cfc6577f347137c1370e85979a"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugWorkflowNodeRow.tsx", "sha256": "688ec03fa6a3b4e9067d6852c65daacb3c3520d40238cd234d7e8c3e6d48104f"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugWorkflowProcess.tsx", "sha256": "1edde4b933125c6beadb16f3b37ff4c9f985cac3613b2a8fc470a600ba816a44"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/LlmToolTraceTree.tsx", "sha256": "ea15432303fc53eb7479f23a57f4c5b19ae26f7613b3d939ad8c905816dc30cf"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/llm-tool-callbacks.ts", "sha256": "a9fc24861f1c6291674a3705855f88ca958ea5777aa66a10b473b9496d907de6"}, {"file": "web/app/src/features/agent-flow/components/debug-console/conversation/metrics-formatter.ts", "sha256": "f0a104723d7624f5311f7849afaf343786d25ab76f80f327563b653476273713"}, {"file": "web/app/src/features/agent-flow/components/detail/last-run/NodeRunPayloadSections.tsx", "sha256": "6bd6ae422d6088168a7582c4e104dd61fa73cee2b88d839f1690f4d58fba8754"}, {"file": "web/app/src/features/agent-flow/components/detail/last-run/runtime-debug-payload.tsx", "sha256": "5837eb8c46bcf6cf8c6e97079c4bd85ae6e700f831e7a38efdeeb4dd1879234e"}, {"file": "web/app/src/features/applications/_tests/agent-logs/imported-trace.test.tsx", "sha256": "d6a27e7abe8baae8a344334dd0872d378929bcf9b33e35bc5ecaf42ffbf2dd19"}, {"file": "web/app/src/features/applications/_tests/agent-logs/record-details.test.tsx", "sha256": "75adb82244dc07b51bf661c45fd300fa4ae26c074e50ded1186ac56224c9f6e0"}, {"file": "web/app/src/features/applications/components/logs/ApplicationRunLogViewer.tsx", "sha256": "f42ff9435b3dcf71398b39259186af123c716e61463a3cd155ac260cf0478041"}, {"file": "web/app/src/features/applications/components/logs/workspace/_tests/shadow-styles.test.tsx", "sha256": "26391a8d62c2f3a0654f70e42cdb2d57c78c5813046a4fe55d4f6fb771378b97"}, {"file": "web/app/src/shared/i18n/text.ts", "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+      "evidence": [
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-log-pagination.test.tsx",
+          "sha256": "0d6b858073a89bb0b99ceecbe5db6c053c2570a12c66ff18f51bfd695bcc7e5c"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-log-panel.test.tsx",
+          "sha256": "4e4c8989d520721bc8252c503067a9465503c901035f4009d819fa3f9b954d33"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/debug-conversation-pane.test.tsx",
+          "sha256": "290bccf8d1939f6300c7717429d3efbc2d345ab0f37ed5ddc121f33c884cee4b"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/debug-conversation-log-panel/lazy-trace-groups.test.tsx",
+          "sha256": "74ca89ff57c0b97bab3b073a2994374084de5a43e28e18db62ba721910d92043"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/debug-conversation-log-panel/trace-presentation.test.tsx",
+          "sha256": "118c4c06f4a9884dac30b8aa5371b561cd5822bfdcfbe438ec581b6356970e86"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/api/runtime.ts",
+          "sha256": "3852bccbf75a2a479c073f01674846d12b63a5d7091122c586b5a7077f986027"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/ConversationLogPanel.tsx",
+          "sha256": "6b149b0205229793e9d744bb50408c906d2c0683cf6315e193005937b01069b4"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/LazyConversationTrace.tsx",
+          "sha256": "61725ea5b90ba02654d74f0885cd59ef0898678c50fbbeb876d10aea7701c98f"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/AnswerSnapshotTrace.tsx",
+          "sha256": "bf17cc6691e7cff999e3f4c4c35227c06c64f5cfc6577f347137c1370e85979a"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugWorkflowNodeRow.tsx",
+          "sha256": "688ec03fa6a3b4e9067d6852c65daacb3c3520d40238cd234d7e8c3e6d48104f"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugWorkflowProcess.tsx",
+          "sha256": "1edde4b933125c6beadb16f3b37ff4c9f985cac3613b2a8fc470a600ba816a44"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/LlmToolTraceTree.tsx",
+          "sha256": "ea15432303fc53eb7479f23a57f4c5b19ae26f7613b3d939ad8c905816dc30cf"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/llm-tool-callbacks.ts",
+          "sha256": "a9fc24861f1c6291674a3705855f88ca958ea5777aa66a10b473b9496d907de6"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/metrics-formatter.ts",
+          "sha256": "f0a104723d7624f5311f7849afaf343786d25ab76f80f327563b653476273713"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/last-run/NodeRunPayloadSections.tsx",
+          "sha256": "6bd6ae422d6088168a7582c4e104dd61fa73cee2b88d839f1690f4d58fba8754"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/last-run/runtime-debug-payload.tsx",
+          "sha256": "5837eb8c46bcf6cf8c6e97079c4bd85ae6e700f831e7a38efdeeb4dd1879234e"
+        },
+        {
+          "file": "web/app/src/features/applications/_tests/agent-logs/imported-trace.test.tsx",
+          "sha256": "d6a27e7abe8baae8a344334dd0872d378929bcf9b33e35bc5ecaf42ffbf2dd19"
+        },
+        {
+          "file": "web/app/src/features/applications/_tests/agent-logs/record-details.test.tsx",
+          "sha256": "75adb82244dc07b51bf661c45fd300fa4ae26c074e50ded1186ac56224c9f6e0"
+        },
+        {
+          "file": "web/app/src/features/applications/components/logs/ApplicationRunLogViewer.tsx",
+          "sha256": "f42ff9435b3dcf71398b39259186af123c716e61463a3cd155ac260cf0478041"
+        },
+        {
+          "file": "web/app/src/features/applications/components/logs/workspace/_tests/shadow-styles.test.tsx",
+          "sha256": "26391a8d62c2f3a0654f70e42cdb2d57c78c5813046a4fe55d4f6fb771378b97"
+        },
+        {
+          "file": "web/app/src/shared/i18n/text.ts",
+          "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"
+        }
+      ]
     }
   ]
 }

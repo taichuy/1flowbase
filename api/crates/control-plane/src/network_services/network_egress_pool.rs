@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde_json::json;
-use std::collections::{HashMap, HashSet};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -164,17 +164,16 @@ where
     }
 
     pub async fn list_global(&self, actor_user_id: Uuid) -> Result<Vec<NetworkEgressPoolView>> {
-        Ok(vec![
-            self.view(ensure_global_network_egress_pool(&self.repository, actor_user_id).await?)
-                .await?,
-        ])
+        let pool = ensure_global_network_egress_pool(&self.repository, actor_user_id).await?;
+        Ok(vec![self.view(pool, &mut HashMap::new()).await?])
     }
 
     pub async fn list(&self) -> Result<Vec<NetworkEgressPoolView>> {
         let pools = self.repository.list_network_egress_pools().await?;
         let mut views = Vec::with_capacity(pools.len());
+        let mut providers = HashMap::new();
         for pool in pools {
-            views.push(self.view(pool).await?);
+            views.push(self.view(pool, &mut providers).await?);
         }
         Ok(views)
     }
@@ -515,14 +514,24 @@ where
             .ok_or_else(|| ControlPlaneError::Conflict("network_egress_pool_unavailable").into())
     }
 
-    async fn view(&self, pool: domain::NetworkEgressPool) -> Result<NetworkEgressPoolView> {
+    async fn view(
+        &self,
+        pool: domain::NetworkEgressPool,
+        providers: &mut HashMap<Uuid, PoolProviderSnapshot>,
+    ) -> Result<NetworkEgressPoolView> {
         let members = self
             .repository
             .list_network_egress_pool_members(pool.id)
             .await?;
         let mut member_views = Vec::with_capacity(members.len());
         for member in members {
-            member_views.push(self.member_view(member).await?);
+            let provider = match providers.entry(member.provider_id) {
+                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Vacant(entry) => {
+                    entry.insert(self.provider_snapshot(member.provider_id).await?)
+                }
+            };
+            member_views.push(provider.member_view(member));
         }
         Ok(NetworkEgressPoolView {
             pool,
@@ -541,47 +550,35 @@ where
         &self,
         member: domain::NetworkEgressPoolMember,
     ) -> Result<NetworkEgressPoolMemberView> {
+        Ok(self
+            .provider_snapshot(member.provider_id)
+            .await?
+            .member_view(member))
+    }
+
+    async fn provider_snapshot(&self, provider_id: Uuid) -> Result<PoolProviderSnapshot> {
         let provider = self
             .repository
-            .get_network_egress_provider(member.provider_id)
+            .get_network_egress_provider(provider_id)
             .await?;
-        let projection = self
+        let mut projections = HashMap::new();
+        for projection in self
             .repository
-            .list_network_egress_projections(member.provider_id)
+            .list_network_egress_projections(provider_id)
             .await?
-            .into_iter()
-            .find(|item| item.provider_egress_key == member.provider_egress_key);
+        {
+            projections
+                .entry(projection.provider_egress_key.clone())
+                .or_insert(projection);
+        }
         let address_summary = match provider.as_ref() {
             Some(provider) => self.safe_address_summary(provider).await?,
             None => None,
         };
-        let health = member_health_from_snapshot(
-            provider.as_ref(),
-            projection.as_ref(),
-            member.probe_status,
-        );
-        let region = projection
-            .as_ref()
-            .and_then(|projection| projection.region.clone())
-            .or(member.probe_exit_region.clone());
-        Ok(NetworkEgressPoolMemberView {
-            provider_code: provider
-                .as_ref()
-                .map(|provider| provider.provider_code.clone())
-                .unwrap_or_else(|| "unknown".to_string()),
-            display_name: projection
-                .as_ref()
-                .map(|projection| projection.display_name.clone())
-                .or_else(|| {
-                    provider
-                        .as_ref()
-                        .map(|provider| provider.display_name.clone())
-                })
-                .unwrap_or_else(|| member.provider_egress_key.clone()),
-            member,
-            health,
+        Ok(PoolProviderSnapshot {
+            provider,
+            projections,
             address_summary,
-            region,
         })
     }
 
@@ -684,6 +681,36 @@ where
                 serde_json::json!({}),
             ))
             .await
+    }
+}
+
+struct PoolProviderSnapshot {
+    provider: Option<domain::NetworkEgressProviderRecord>,
+    projections: HashMap<String, domain::NetworkEgressProjectionRecord>,
+    address_summary: Option<String>,
+}
+
+impl PoolProviderSnapshot {
+    fn member_view(&self, member: domain::NetworkEgressPoolMember) -> NetworkEgressPoolMemberView {
+        let provider = self.provider.as_ref();
+        let projection = self.projections.get(&member.provider_egress_key);
+        let health = member_health_from_snapshot(provider, projection, member.probe_status);
+        let region = projection
+            .and_then(|projection| projection.region.clone())
+            .or(member.probe_exit_region.clone());
+        NetworkEgressPoolMemberView {
+            provider_code: provider
+                .map(|provider| provider.provider_code.clone())
+                .unwrap_or_else(|| "unknown".to_string()),
+            display_name: projection
+                .map(|projection| projection.display_name.clone())
+                .or_else(|| provider.map(|provider| provider.display_name.clone()))
+                .unwrap_or_else(|| member.provider_egress_key.clone()),
+            member,
+            health,
+            address_summary: self.address_summary.clone(),
+            region,
+        }
     }
 }
 

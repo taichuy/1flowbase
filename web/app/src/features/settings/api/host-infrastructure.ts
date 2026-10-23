@@ -1,16 +1,9 @@
 import {
-  clearConsoleHostInfrastructureCacheDomain,
-  clearConsoleHostInfrastructureCacheEntry,
   getConsoleHostInfrastructureMemoryOverview,
   getConsoleHostInfrastructureMemoryStatsOverview,
   getConsoleHostInfrastructureMemoryStats,
   getConsoleHostInfrastructureCacheOverview,
-  listConsoleHostInfrastructureCacheEntries,
-  listConsoleHostInfrastructureMemoryEntries,
-  listConsoleHostInfrastructureMemoryTree,
-  revealConsoleHostInfrastructureCacheEntry,
   revealConsoleHostInfrastructureMemoryEntry,
-  searchConsoleHostInfrastructureMemoryEntries,
   type ConsoleCacheEntryMetadata,
   type ConsoleCacheEntryValue,
   type ConsoleCacheDomain,
@@ -27,7 +20,17 @@ import {
   type ConsoleMemoryRevealMode,
   type ConsoleMemorySearchRequest,
   type ConsoleMemoryTreeNode,
-  type ConsoleHostInfrastructureMemoryTree,
+  type ConsoleHostInfrastructureMemoryTree
+} from '@1flowbase/api-client';
+
+export {
+  listConsoleHostInfrastructureCacheEntries as fetchSettingsHostInfrastructureCacheEntries,
+  listConsoleHostInfrastructureMemoryEntries as fetchSettingsHostInfrastructureMemoryEntries,
+  listConsoleHostInfrastructureMemoryTree as fetchSettingsHostInfrastructureMemoryTree,
+  searchConsoleHostInfrastructureMemoryEntries as searchSettingsHostInfrastructureMemoryEntries,
+  revealConsoleHostInfrastructureCacheEntry as revealSettingsHostInfrastructureCacheEntry,
+  clearConsoleHostInfrastructureCacheEntry as clearSettingsHostInfrastructureCacheEntry,
+  clearConsoleHostInfrastructureCacheDomain as clearSettingsHostInfrastructureCacheDomain
 } from '@1flowbase/api-client';
 
 export type SettingsHostInfrastructureCacheOverview =
@@ -180,41 +183,6 @@ export function fetchSettingsHostInfrastructureMemoryStats(
   return getConsoleHostInfrastructureMemoryStats(contractCode, request);
 }
 
-export function fetchSettingsHostInfrastructureCacheEntries(
-  domainCode: string
-) {
-  return listConsoleHostInfrastructureCacheEntries(domainCode);
-}
-
-export function fetchSettingsHostInfrastructureMemoryEntries(
-  contractCode: string,
-  request?: SettingsHostInfrastructureMemoryPageRequest
-) {
-  return listConsoleHostInfrastructureMemoryEntries(contractCode, request);
-}
-
-export function fetchSettingsHostInfrastructureMemoryTree(
-  contractCode: string,
-  request?: SettingsHostInfrastructureMemoryPageRequest
-) {
-  return listConsoleHostInfrastructureMemoryTree(contractCode, request);
-}
-
-export function searchSettingsHostInfrastructureMemoryEntries(
-  contractCode: string,
-  request: SettingsHostInfrastructureMemorySearchRequest
-) {
-  return searchConsoleHostInfrastructureMemoryEntries(contractCode, request);
-}
-
-export function revealSettingsHostInfrastructureCacheEntry(
-  domainCode: string,
-  key: string,
-  csrfToken: string
-) {
-  return revealConsoleHostInfrastructureCacheEntry(domainCode, key, csrfToken);
-}
-
 export function revealSettingsHostInfrastructureMemoryEntry(
   contractCode: string,
   entryRef: string,
@@ -227,19 +195,4 @@ export function revealSettingsHostInfrastructureMemoryEntry(
     csrfToken,
     revealMode
   );
-}
-
-export function clearSettingsHostInfrastructureCacheEntry(
-  domainCode: string,
-  key: string,
-  csrfToken: string
-) {
-  return clearConsoleHostInfrastructureCacheEntry(domainCode, key, csrfToken);
-}
-
-export function clearSettingsHostInfrastructureCacheDomain(
-  domainCode: string,
-  csrfToken: string
-) {
-  return clearConsoleHostInfrastructureCacheDomain(domainCode, csrfToken);
 }

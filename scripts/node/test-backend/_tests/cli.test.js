@@ -4,257 +4,182 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { buildCommands, main } = require('../../test-backend.js');
+const { main } = require('../../test-backend.js');
+const { buildBackendCommands } = require('../../verify/backend.js');
 
-test('test-backend buildCommands uses independent cargo jobs and cargo test threads', () => {
-  assert.deepEqual(buildCommands({ cargoJobs: 4, cargoTestThreads: 2, repoRoot: '/repo-root', env: {} }), [
-    {
-      label: 'rust-backend-static-gate',
-      command: process.execPath,
-      args: ['/repo-root/scripts/node/tooling.js', 'check-rust-backend'],
-      cwd: '/repo-root',
-    },
-    {
-      label: 'cargo-test-image-llm-vision-control-plane-user-media-fallback',
-      command: 'cargo',
-      args: [
-        'test',
-        '-p',
-        'control-plane',
-        '--jobs',
-        '4',
-        'orchestration_runtime_textualizes_user_media_when_selected_model_is_not_multimodal',
-        '--',
-        '--test-threads=2',
-      ],
-      cwd: 'api',
-      env: {
-        CARGO_BUILD_JOBS: '4',
-        CARGO_INCREMENTAL: '0',
-      },
-    },
-    {
-      label: 'cargo-test-image-llm-vision-control-plane-multimodal-preserves-media',
-      command: 'cargo',
-      args: [
-        'test',
-        '-p',
-        'control-plane',
-        '--jobs',
-        '4',
-        'orchestration_runtime_keeps_user_media_when_configured_model_supports_multimodal',
-        '--',
-        '--test-threads=2',
-      ],
-      cwd: 'api',
-      env: {
-        CARGO_BUILD_JOBS: '4',
-        CARGO_INCREMENTAL: '0',
-      },
-    },
-    {
-      label: 'cargo-test-image-llm-vision-control-plane-routed-media-guidance',
-      command: 'cargo',
-      args: [
-        'test',
-        '-p',
-        'control-plane',
-        '--jobs',
-        '4',
-        'orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models',
-        '--',
-        '--test-threads=2',
-      ],
-      cwd: 'api',
-      env: {
-        CARGO_BUILD_JOBS: '4',
-        CARGO_INCREMENTAL: '0',
-      },
-    },
-    {
-      label: 'cargo-test-image-llm-vision-runtime-visible-media-tool',
-      command: 'cargo',
-      args: [
-        'test',
-        '-p',
-        'orchestration-runtime',
-        '--jobs',
-        '4',
-        'visible_internal_llm_tool_media',
-        '--',
-        '--test-threads=2',
-      ],
-      cwd: 'api',
-      env: {
-        CARGO_BUILD_JOBS: '4',
-        CARGO_INCREMENTAL: '0',
-      },
-    },
-    {
-      label: 'cargo-test',
-      command: 'cargo',
-      args: ['test', '--workspace', '--jobs', '4', '--', '--test-threads=2'],
-      cwd: 'api',
-      env: {
-        CARGO_BUILD_JOBS: '4',
-        CARGO_INCREMENTAL: '0',
-      },
-    },
-  ]);
-});
+const runtimeConfig = {
+  backend: { cargoJobs: 5, cargoTestThreads: 2, incremental: true },
+};
+const passingResult = {
+  status: 0,
+  stdout: 'test result: ok. 1 passed; 0 failed; 0 ignored;\n',
+  stderr: '',
+};
 
-test('test-backend buildCommands enables incremental compilation when configured', () => {
-  const commands = buildCommands({
-    cargoJobs: 2,
-    cargoTestThreads: 1,
-    incremental: true,
-    repoRoot: '/repo-root',
+async function runFixture(t, argv, cargoResult = passingResult) {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'test-backend-cli-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const calls = [];
+  let managedOptions;
+  let stderr = '';
+  const status = await main(argv, {
+    repoRoot,
     env: {},
+    runtimeConfig,
+    writeStdout() {},
+    writeStderr(text) { stderr += text; },
+    managedRunnerImpl(options) {
+      managedOptions = options;
+      return options.runCommandSequenceImpl({
+        ...options,
+        spawnSyncImpl(command, args, spawnOptions) {
+          calls.push({ command, args, ...spawnOptions });
+          return command === 'cargo'
+            ? cargoResult
+            : { status: 0, stdout: '', stderr: '' };
+        },
+      });
+    },
   });
+  return { status, calls, managedOptions, stderr, repoRoot };
+}
 
-  assert.deepEqual(commands[1].env, {
-    CARGO_BUILD_JOBS: '2',
-    CARGO_INCREMENTAL: '1',
+function cargoCall(result) {
+  const calls = result.calls.filter((call) => call.command === 'cargo');
+  assert.equal(calls.length, 1, 'each invocation runs one Cargo test selection');
+  return calls[0];
+}
+
+test('no-argument backend entry retains static and workspace coverage without duplicate image runs', async (t) => {
+  const result = await runFixture(t, []);
+  assert.equal(result.status, 0);
+  assert.equal(result.calls.length, 2);
+  assert.equal(result.calls[0].args.at(-1), 'check-rust-backend');
+  assert.deepEqual(cargoCall(result).args,
+    ['test', '--workspace', '--jobs', '5', '--', '--test-threads=2']);
+  assert.equal(result.managedOptions.scope, 'test-backend');
+  assert.equal(result.managedOptions.lockMode, 'heavy');
+  assert.equal(result.managedOptions.commandDisplay, 'node scripts/node/test-backend.js');
+
+  const focused = buildBackendCommands({
+    repoRoot: result.repoRoot, env: {}, cargoJobs: 5, cargoTestThreads: 2,
+    target: 'image-llm-vision',
   });
-  assert.deepEqual(commands.at(-1).env, {
-    CARGO_BUILD_JOBS: '2',
-    CARGO_INCREMENTAL: '1',
-  });
+  assert.equal(focused.length, 4, 'the independent image gate remains available');
+  assert.ok(focused.every((command) => command.label.startsWith('cargo-test-image-llm-vision-')));
+  assert.ok(focused.every((command) => !command.args.includes('--workspace')));
 });
 
-test('main prints help without running the backend gate', async () => {
+test('backend package, target and filter selections reach Cargo with configured resource limits', async (t) => {
+  const cases = [
+    {
+      argv: ['--package', 'domain', '--lib', '--filter', 'scope::matches', '--exact'],
+      packages: ['domain'], target: ['--lib'], filter: 'scope::matches', exact: true,
+    },
+    {
+      argv: ['-p', 'control-plane-postgres-tests', '--test', 'responses_history_migration', '--filter', 'migration'],
+      packages: ['control-plane-postgres-tests'], target: ['--test', 'responses_history_migration'], filter: 'migration',
+    },
+    {
+      argv: ['-p', 'api-server', '--bin', 'api-server'],
+      packages: ['api-server'], target: ['--bin', 'api-server'],
+    },
+    {
+      argv: ['-p', 'domain', '--package', 'access-control'],
+      packages: ['domain', 'access-control'], target: [],
+    },
+  ];
+  for (const fixture of cases) {
+    const result = await runFixture(t, fixture.argv);
+    assert.equal(result.status, 0);
+    const call = cargoCall(result);
+    assert.equal(call.args.includes('--workspace'), false);
+    assert.deepEqual(call.args.flatMap((arg, index) => arg === '--package' ? [call.args[index + 1]] : []), fixture.packages);
+    const targetIndex = 1 + fixture.packages.length * 2;
+    assert.deepEqual(call.args.slice(targetIndex, targetIndex + fixture.target.length), fixture.target);
+    assert.equal(call.args[targetIndex + fixture.target.length], '--jobs');
+    if (fixture.filter) {
+      assert.ok(call.args.includes(fixture.filter));
+      assert.ok(call.args.indexOf(fixture.filter) < call.args.indexOf('--'));
+    }
+    assert.equal(call.args[call.args.indexOf('--jobs') + 1], '5');
+    assert.deepEqual(call.args.slice(call.args.indexOf('--') + 1), [
+      '--test-threads=2', ...(fixture.exact ? ['--exact'] : []),
+    ]);
+    assert.equal(call.env.CARGO_BUILD_JOBS, '5');
+    assert.equal(call.env.CARGO_INCREMENTAL, '1');
+    assert.equal(call.cwd, path.join(result.repoRoot, 'api'));
+    assert.equal(result.managedOptions.lockMode, 'heavy');
+    assert.match(result.managedOptions.commandDisplay, /domain|api-server|control-plane-postgres-tests/u);
+  }
+});
+
+test('backend rejects unsupported or incomplete selections before starting any runner', async () => {
+  const invalid = [
+    [['domain'], /Unsupported backend test argument/u],
+    [['--workspace'], /Unsupported backend test argument/u],
+    [['--package'], /Missing value/u],
+    [['--package', '--lib'], /Missing value/u],
+    [['--package', ''], /Missing value/u],
+    [['--filter', 'one_test'], /requires --package/u],
+    [['--lib'], /requires --package/u],
+    [['-p', 'domain', '--filter'], /Missing value/u],
+    [['-p', 'domain', '--test'], /Missing value/u],
+    [['-p', 'domain', '--lib', '--test', 'integration'], /Only one backend test target/u],
+    [['-p', 'domain', '--filter', 'one', '--filter', 'two'], /Only one backend test filter/u],
+    [['-p', 'domain', '--exact'], /--exact requires --filter/u],
+    [['-p', 'domain', '--jobs', '99'], /Unsupported backend test argument/u],
+    [['-p', 'domain', '--', '--test-threads=99'], /Unsupported backend test argument/u],
+  ];
+  for (const [argv, error] of invalid) {
+    let started = false;
+    await assert.rejects(() => main(argv, {
+      managedRunnerImpl() { started = true; return 0; },
+      spawnSyncImpl() { started = true; return passingResult; },
+    }), error);
+    assert.equal(started, false, argv.join(' '));
+  }
+});
+
+test('backend selection requires executed passing tests and preserves process failure', async (t) => {
+  const cases = [
+    { stdout: 'test result: ok. 0 passed; 0 failed; 0 ignored;', expected: 1 },
+    { stdout: 'test result: ok. 0 passed; 0 failed; 7 ignored;', expected: 1 },
+    { stdout: 'Compiling domain\n', expected: 1 },
+    { stdout: 'test result: FAILED. 1 passed; 1 failed; 0 ignored;', expected: 1 },
+    { stdout: 'test result: ok. 0 passed; 0 failed;\ntest result: ok. 1 passed; 0 failed;', expected: 0 },
+    { stdout: passingResult.stdout, status: 23, expected: 23 },
+  ];
+  for (const fixture of cases) {
+    const result = await runFixture(t, ['-p', 'domain', '--lib', '--filter', 'selected'], {
+      status: fixture.status ?? 0, stdout: fixture.stdout, stderr: '',
+    });
+    assert.equal(result.status, fixture.expected, fixture.stdout);
+    if (fixture.expected === 1) assert.match(result.stderr, /no executed passing tests/u);
+  }
+  const emptyWorkspace = await runFixture(t, [], { ...passingResult, stdout: '' });
+  assert.equal(emptyWorkspace.status, 1);
+});
+
+test('selected backend execution retains advisory warning capture', async (t) => {
+  const result = await runFixture(t, ['-p', 'domain', '--lib'], {
+    ...passingResult, stderr: 'warning: cargo test advisory\n',
+  });
+  assert.equal(result.status, 0);
+  const warningLog = path.join(result.repoRoot, 'tmp', 'test-governance', 'test-backend.warnings.log');
+  assert.match(fs.readFileSync(warningLog, 'utf8'), /warning: cargo test advisory/u);
+});
+
+test('backend help documents selection without running the gate', async () => {
   let output = '';
   let ran = false;
-
   const status = await main(['--help'], {
-    writeStdout(text) {
-      output += text;
-    },
-    managedRunnerImpl() {
-      ran = true;
-      return 0;
-    },
+    writeStdout(text) { output += text; },
+    managedRunnerImpl() { ran = true; return 0; },
   });
-
   assert.equal(status, 0);
   assert.equal(ran, false);
   assert.match(output, /Usage: node scripts\/node\/test-backend\.js/u);
-});
-
-test('main routes backend test execution through the heavy managed gate', async () => {
-  let capturedOptions = null;
-
-  const status = await main([], {
-    repoRoot: '/repo-root',
-    env: {},
-    runtimeConfig: {
-      backend: {
-        cargoJobs: 5,
-        cargoTestThreads: 2,
-      },
-      locks: {
-        waitTimeoutMinutes: 30,
-        waitTimeoutMs: 30 * 60 * 1000,
-        pollIntervalMs: 5000,
-      },
-    },
-    writeStdout() {},
-    writeStderr() {},
-    managedRunnerImpl(options) {
-      capturedOptions = options;
-      return 0;
-    },
-  });
-
-  assert.equal(status, 0);
-  assert.equal(capturedOptions.lockMode, 'heavy');
-  assert.equal(capturedOptions.scope, 'test-backend');
-  assert.equal(capturedOptions.commandDisplay, 'node scripts/node/test-backend.js');
-  assert.deepEqual(capturedOptions.commands, buildCommands({
-    cargoJobs: 5,
-    cargoTestThreads: 2,
-    repoRoot: '/repo-root',
-    env: {},
-  }));
-});
-
-test('test-backend main writes advisory warning output under tmp/test-governance', async () => {
-  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-test-backend-'));
-  const calls = [];
-
-  const status = await main([], {
-    repoRoot,
-    env: {},
-    runtimeConfig: {
-      backend: {
-        cargoJobs: 1,
-        cargoTestThreads: 1,
-      },
-      locks: {
-        waitTimeoutMinutes: 30,
-        waitTimeoutMs: 30 * 60 * 1000,
-        pollIntervalMs: 5000,
-      },
-    },
-    writeStdout() {},
-    writeStderr() {},
-    spawnSyncImpl(command, args, options) {
-      calls.push({ command, args, options });
-
-      return {
-        status: 0,
-        stdout: 'test result: ok. 1 passed; 0 failed; 0 ignored;\n',
-        stderr: 'warning: cargo test advisory\n',
-      };
-    },
-  });
-
-  assert.equal(status, 0);
-  assert.equal(calls.length, 6);
-  assert.deepEqual(calls[1].args, [
-    'test',
-    '-p',
-    'control-plane',
-    '--jobs',
-    '1',
-    'orchestration_runtime_textualizes_user_media_when_selected_model_is_not_multimodal',
-    '--',
-    '--test-threads=1',
-  ]);
-  assert.deepEqual(calls[4].args, [
-    'test',
-    '-p',
-    'orchestration-runtime',
-    '--jobs',
-    '1',
-    'visible_internal_llm_tool_media',
-    '--',
-    '--test-threads=1',
-  ]);
-  assert.deepEqual(calls[5].args, ['test', '--workspace', '--jobs', '1', '--', '--test-threads=1']);
-
-  const warningLogPath = path.join(repoRoot, 'tmp', 'test-governance', 'test-backend.warnings.log');
-  assert.equal(fs.existsSync(warningLogPath), true);
-  assert.match(fs.readFileSync(warningLogPath, 'utf8'), /warning: cargo test advisory/u);
-});
-
-test('backend test entry cannot accept an empty protected media selector', async () => {
-  for (const [output, expected] of [['test result: ok. 0 passed; 0 failed;', 1], ['test result: ok. 1 passed; 0 failed;', 0]]) {
-    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'backend-media-execution-'));
-    try {
-      const status = await main([], { repoRoot, env: {},
-        runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 2 } },
-        writeStdout() {}, writeStderr() {},
-        managedRunnerImpl(options) {
-          return options.runCommandSequenceImpl({ ...options,
-            spawnSyncImpl(_command, args) {
-              return { status: 0, stdout: args.includes('orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models')
-                ? output : 'test result: ok. 4 passed; 0 failed;', stderr: '' };
-            },
-          });
-        },
-      });
-      assert.equal(status, expected);
-    } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
-  }
+  assert.match(output, /--package/u);
+  assert.match(output, /--filter/u);
 });

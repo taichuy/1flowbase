@@ -1,11 +1,5 @@
 import {
-  applyConsoleBuiltinMcpTemplate,
   applyConsoleInstalledMcpExtension,
-  checkConsoleExtensionUpdates,
-  disableConsoleInstalledExtension,
-  deleteConsoleInstalledExtension,
-  enableConsoleInstalledExtension,
-  getConsoleExtensionCatalogEntry,
   getConsoleInstalledMcpExtensionConflict,
   getConsoleInstalledMcpExtensionIntegrityChallenge,
   getConsoleExtensionRiskChallenge,
@@ -14,7 +8,6 @@ import {
   listConsoleExtensionCatalog,
   listConsoleInstalledExtensions,
   previewConsoleInstalledMcpExtension,
-  previewConsoleBuiltinMcpTemplate,
   type ConsoleExtensionCatalogEntry,
   type ConsoleExtensionApplicationAction,
   type ConsoleExtensionCategory,
@@ -22,6 +15,16 @@ import {
   type ConsoleExtensionRiskOverride,
   type ConsoleInstalledMcpExtensionApplyOptions,
   type ConsoleInstalledExtension
+} from '@1flowbase/api-client';
+
+export {
+  getConsoleExtensionCatalogEntry as fetchSettingsExtensionCatalogEntry,
+  checkConsoleExtensionUpdates as checkSettingsExtensionUpdates,
+  deleteConsoleInstalledExtension as deleteSettingsInstalledExtension,
+  enableConsoleInstalledExtension as enableSettingsInstalledExtension,
+  disableConsoleInstalledExtension as disableSettingsInstalledExtension,
+  previewConsoleBuiltinMcpTemplate as previewSettingsBuiltinMcpTemplate,
+  applyConsoleBuiltinMcpTemplate as applySettingsBuiltinMcpTemplate
 } from '@1flowbase/api-client';
 
 export type SettingsExtensionCategory = ConsoleExtensionCategory;
@@ -88,20 +91,6 @@ export function fetchSettingsExtensionCatalog(
   return listConsoleExtensionCatalog(category, query);
 }
 
-export function fetchSettingsExtensionCatalogEntry(
-  category: SettingsExtensionCategory,
-  catalogId: string
-) {
-  return getConsoleExtensionCatalogEntry(category, catalogId);
-}
-
-export function checkSettingsExtensionUpdates(
-  input: Parameters<typeof checkConsoleExtensionUpdates>[0],
-  csrfToken: string
-) {
-  return checkConsoleExtensionUpdates(input, csrfToken);
-}
-
 export function installSettingsExtension(
   entry: SettingsExtensionCatalogEntry,
   csrfToken: string,
@@ -121,27 +110,6 @@ export function installSettingsExtension(
     csrfToken,
     update
   );
-}
-
-export function deleteSettingsInstalledExtension(
-  installationId: string,
-  csrfToken: string
-) {
-  return deleteConsoleInstalledExtension(installationId, csrfToken);
-}
-
-export function enableSettingsInstalledExtension(
-  installationId: string,
-  csrfToken: string
-) {
-  return enableConsoleInstalledExtension(installationId, csrfToken);
-}
-
-export function disableSettingsInstalledExtension(
-  installationId: string,
-  csrfToken: string
-) {
-  return disableConsoleInstalledExtension(installationId, csrfToken);
 }
 
 export function previewSettingsInstalledMcpExtension(
@@ -165,30 +133,6 @@ export function applySettingsInstalledMcpExtension(
     extensionInstallationId,
     csrfToken,
     options
-  );
-}
-
-export function previewSettingsBuiltinMcpTemplate(
-  builtinTemplateId: string,
-  instanceId: string,
-  csrfToken: string
-) {
-  return previewConsoleBuiltinMcpTemplate(
-    builtinTemplateId,
-    instanceId,
-    csrfToken
-  );
-}
-
-export function applySettingsBuiltinMcpTemplate(
-  builtinTemplateId: string,
-  instanceId: string,
-  csrfToken: string
-) {
-  return applyConsoleBuiltinMcpTemplate(
-    builtinTemplateId,
-    instanceId,
-    csrfToken
   );
 }
 

@@ -1,4 +1,5 @@
 use domain::{ModelDefinitionRecord, ModelFieldRecord};
+use sqlx::{postgres::PgRow, Row};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -31,6 +32,34 @@ pub struct StoredModelDefinitionRow {
 pub struct PgModelDefinitionMapper;
 
 impl PgModelDefinitionMapper {
+    pub(crate) fn from_pg_row(row: PgRow, fields: Vec<ModelFieldRecord>) -> ModelDefinitionRecord {
+        Self::to_model_definition_record(StoredModelDefinitionRow {
+            id: row.get("id"),
+            scope_kind: row.get("scope_kind"),
+            scope_id: row.get("scope_id"),
+            data_source_instance_id: row.get("data_source_instance_id"),
+            source_kind: row.get("source_kind"),
+            external_resource_key: row.get("external_resource_key"),
+            external_table_id: row.get("external_table_id"),
+            external_capability_snapshot: row.get("external_capability_snapshot"),
+            template_provider: row.get("template_provider"),
+            template_code: row.get("template_code"),
+            template_version: row.get("template_version"),
+            code: row.get("code"),
+            title: row.get("title"),
+            description: row.get("description"),
+            physical_table_name: row.get("physical_table_name"),
+            acl_namespace: row.get("acl_namespace"),
+            audit_namespace: row.get("audit_namespace"),
+            availability_status: row.get("availability_status"),
+            status: row.get("status"),
+            owner_kind: row.get("owner_kind"),
+            owner_id: row.get("owner_id"),
+            is_protected: row.get("is_protected"),
+            fields,
+        })
+    }
+
     pub fn to_model_definition_record(row: StoredModelDefinitionRow) -> ModelDefinitionRecord {
         ModelDefinitionRecord {
             id: row.id,

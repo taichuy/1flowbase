@@ -1,32 +1,12 @@
 import {
-  createConsoleNetworkEgressProvider,
-  createConsoleNetworkEgressProxy,
-  getConsoleNetworkEgressProxy,
-  updateConsoleNetworkEgressProxy,
   type ConsoleNetworkEgressProxy,
-  createConsoleNetworkEgressPool,
-  createConsoleNetworkEgressPoolMember,
-  createConsoleNetworkEgressPoolStaticHttpMember,
-  addConsoleNetworkEgressProviderToPool,
-  deleteConsoleNetworkEgressPool,
-  deleteConsoleNetworkEgressPoolMember,
-  deleteConsoleNetworkEgressPoolMembers,
-  createConsoleNetworkEgressRoute,
-  deleteConsoleNetworkEgressRoute,
   listConsoleNetworkEgressProviders,
   listConsoleNetworkEgressProviderTypes,
   listConsoleNetworkEgressOfficialPluginCatalog,
   listConsoleNetworkEgressPools,
   listConsoleNetworkEgressRoutes,
-  updateConsoleNetworkEgressPool,
-  updateConsoleNetworkEgressPoolMember,
-  updateConsoleNetworkEgressRoute,
-  updateConsoleNetworkEgressProviderLifecycle,
-  syncConsoleNetworkEgressProvider,
-  testConsoleNetworkEgressPoolMember,
   installConsoleNetworkEgressOfficialPlugin,
   listConsoleNetworkEgressPluginFamilies,
-  uploadConsoleNetworkEgressPluginPackage,
   type ConsoleNetworkEgressPool,
   type ConsoleNetworkEgressPoolMember,
   type ConsoleNetworkEgressProvider,
@@ -44,16 +24,40 @@ import {
   type UpdateConsoleNetworkEgressPoolMemberInput,
   type DeleteConsoleNetworkEgressPoolMembersInput,
   type UpdateConsoleNetworkEgressRouteInput,
-  type UpdateConsoleNetworkEgressProviderLifecycleInput,
-  switchConsoleNetworkEgressPluginVersion,
-  uninstallConsoleNetworkEgressPluginFamily,
-  uninstallConsoleNetworkEgressPluginVersion
+  type UpdateConsoleNetworkEgressProviderLifecycleInput
+} from '@1flowbase/api-client';
+
+export {
+  switchConsoleNetworkEgressPluginVersion as switchSettingsNetworkEgressPluginVersion,
+  uninstallConsoleNetworkEgressPluginVersion as uninstallSettingsNetworkEgressPluginVersion,
+  uninstallConsoleNetworkEgressPluginFamily as uninstallSettingsNetworkEgressPluginFamily,
+  uploadConsoleNetworkEgressPluginPackage as uploadSettingsNetworkEgressPluginPackage,
+  createConsoleNetworkEgressProvider as createSettingsNetworkEgressProvider,
+  updateConsoleNetworkEgressProviderLifecycle as updateSettingsNetworkEgressProviderLifecycle,
+  syncConsoleNetworkEgressProvider as syncSettingsNetworkEgressProvider,
+  createConsoleNetworkEgressProxy as createSettingsNetworkEgressProxy,
+  testConsoleNetworkEgressPoolMember as testSettingsNetworkEgressPoolMember,
+  createConsoleNetworkEgressRoute as createSettingsNetworkEgressRoute,
+  updateConsoleNetworkEgressRoute as updateSettingsNetworkEgressRoute,
+  deleteConsoleNetworkEgressRoute as deleteSettingsNetworkEgressRoute,
+  createConsoleNetworkEgressPool as createSettingsNetworkEgressPool,
+  updateConsoleNetworkEgressPool as updateSettingsNetworkEgressPool,
+  deleteConsoleNetworkEgressPool as deleteSettingsNetworkEgressPool,
+  createConsoleNetworkEgressPoolMember as createSettingsNetworkEgressPoolMember,
+  createConsoleNetworkEgressPoolStaticHttpMember as createSettingsNetworkEgressPoolStaticHttpMember,
+  addConsoleNetworkEgressProviderToPool as addSettingsNetworkEgressProviderToPool,
+  updateConsoleNetworkEgressPoolMember as updateSettingsNetworkEgressPoolMember,
+  deleteConsoleNetworkEgressPoolMember as deleteSettingsNetworkEgressPoolMember,
+  deleteConsoleNetworkEgressPoolMembers as deleteSettingsNetworkEgressPoolMembers,
+  getConsoleNetworkEgressProxy as fetchSettingsNetworkEgressProxy,
+  updateConsoleNetworkEgressProxy as updateSettingsNetworkEgressProxy
 } from '@1flowbase/api-client';
 
 export type SettingsNetworkEgressProvider = ConsoleNetworkEgressProvider;
 export type SettingsNetworkEgressProviderType =
   ConsoleNetworkEgressProviderType;
-export type SettingsNetworkEgressPluginFamily = ConsoleNetworkEgressPluginFamily;
+export type SettingsNetworkEgressPluginFamily =
+  ConsoleNetworkEgressPluginFamily;
 export type CreateSettingsNetworkEgressProviderInput =
   CreateConsoleNetworkEgressProviderInput;
 export type CreateSettingsNetworkEgressProxyInput =
@@ -134,190 +138,22 @@ export function installSettingsNetworkEgressOfficialPlugin(
   pluginId: string,
   csrfToken: string
 ) {
-  return installConsoleNetworkEgressOfficialPlugin({ plugin_id: pluginId }, csrfToken);
+  return installConsoleNetworkEgressOfficialPlugin(
+    { plugin_id: pluginId },
+    csrfToken
+  );
 }
 
 export function fetchSettingsNetworkEgressPluginFamilies() {
   return listConsoleNetworkEgressPluginFamilies();
 }
 
-export function switchSettingsNetworkEgressPluginVersion(
-  providerCode: string,
-  installationId: string,
-  csrfToken: string
-) {
-  return switchConsoleNetworkEgressPluginVersion(providerCode, installationId, csrfToken);
-}
-
-export function uninstallSettingsNetworkEgressPluginVersion(
-  providerCode: string,
-  installationId: string,
-  csrfToken: string
-) {
-  return uninstallConsoleNetworkEgressPluginVersion(providerCode, installationId, csrfToken);
-}
-
-export function uninstallSettingsNetworkEgressPluginFamily(
-  providerCode: string,
-  csrfToken: string
-) {
-  return uninstallConsoleNetworkEgressPluginFamily(providerCode, csrfToken);
-}
-
-export function uploadSettingsNetworkEgressPluginPackage(
-  file: File,
-  csrfToken: string
-) {
-  return uploadConsoleNetworkEgressPluginPackage(file, csrfToken);
-}
-
-export function createSettingsNetworkEgressProvider(
-  input: CreateSettingsNetworkEgressProviderInput,
-  csrfToken: string
-) {
-  return createConsoleNetworkEgressProvider(input, csrfToken);
-}
-
-export function updateSettingsNetworkEgressProviderLifecycle(
-  providerId: string,
-  input: UpdateSettingsNetworkEgressProviderLifecycleInput,
-  csrfToken: string
-) {
-  return updateConsoleNetworkEgressProviderLifecycle(
-    providerId,
-    input,
-    csrfToken
-  );
-}
-
-export function syncSettingsNetworkEgressProvider(
-  providerId: string,
-  csrfToken: string
-) {
-  return syncConsoleNetworkEgressProvider(providerId, csrfToken);
-}
-
 export function fetchSettingsNetworkEgressPools() {
   return listConsoleNetworkEgressPools();
 }
-export function createSettingsNetworkEgressProxy(
-  input: CreateSettingsNetworkEgressProxyInput,
-  csrfToken: string
-) {
-  return createConsoleNetworkEgressProxy(input, csrfToken);
-}
-export function testSettingsNetworkEgressPoolMember(
-  poolId: string,
-  memberId: string,
-  csrfToken: string
-) {
-  return testConsoleNetworkEgressPoolMember(poolId, memberId, csrfToken);
-}
+
 export function fetchSettingsNetworkEgressRoutes() {
   return listConsoleNetworkEgressRoutes();
 }
-export function createSettingsNetworkEgressRoute(
-  input: CreateSettingsNetworkEgressRouteInput,
-  csrfToken: string
-) {
-  return createConsoleNetworkEgressRoute(input, csrfToken);
-}
-export function updateSettingsNetworkEgressRoute(
-  routeId: string,
-  input: UpdateSettingsNetworkEgressRouteInput,
-  csrfToken: string
-) {
-  return updateConsoleNetworkEgressRoute(routeId, input, csrfToken);
-}
-export function deleteSettingsNetworkEgressRoute(
-  routeId: string,
-  csrfToken: string
-) {
-  return deleteConsoleNetworkEgressRoute(routeId, csrfToken);
-}
-
-export function createSettingsNetworkEgressPool(
-  input: CreateSettingsNetworkEgressPoolInput,
-  csrfToken: string
-) {
-  return createConsoleNetworkEgressPool(input, csrfToken);
-}
-
-export function updateSettingsNetworkEgressPool(
-  poolId: string,
-  input: UpdateSettingsNetworkEgressPoolInput,
-  csrfToken: string
-) {
-  return updateConsoleNetworkEgressPool(poolId, input, csrfToken);
-}
-
-export function deleteSettingsNetworkEgressPool(
-  poolId: string,
-  csrfToken: string
-) {
-  return deleteConsoleNetworkEgressPool(poolId, csrfToken);
-}
-
-export function createSettingsNetworkEgressPoolMember(
-  poolId: string,
-  input: CreateSettingsNetworkEgressPoolMemberInput,
-  csrfToken: string
-) {
-  return createConsoleNetworkEgressPoolMember(poolId, input, csrfToken);
-}
-
-export function createSettingsNetworkEgressPoolStaticHttpMember(
-  poolId: string,
-  input: CreateSettingsNetworkEgressPoolStaticHttpMemberInput,
-  csrfToken: string
-) {
-  return createConsoleNetworkEgressPoolStaticHttpMember(poolId, input, csrfToken);
-}
-
-export function addSettingsNetworkEgressProviderToPool(
-  poolId: string,
-  input: AddSettingsNetworkEgressProviderToPoolInput,
-  csrfToken: string
-) {
-  return addConsoleNetworkEgressProviderToPool(poolId, input, csrfToken);
-}
-
-export function updateSettingsNetworkEgressPoolMember(
-  poolId: string,
-  memberId: string,
-  input: UpdateSettingsNetworkEgressPoolMemberInput,
-  csrfToken: string
-) {
-  return updateConsoleNetworkEgressPoolMember(
-    poolId,
-    memberId,
-    input,
-    csrfToken
-  );
-}
-
-export function deleteSettingsNetworkEgressPoolMember(
-  poolId: string,
-  memberId: string,
-  csrfToken: string
-) {
-  return deleteConsoleNetworkEgressPoolMember(poolId, memberId, csrfToken);
-}
-
-export function deleteSettingsNetworkEgressPoolMembers(
-  poolId: string,
-  input: DeleteSettingsNetworkEgressPoolMembersInput,
-  csrfToken: string
-) {
-  return deleteConsoleNetworkEgressPoolMembers(poolId, input, csrfToken);
-}
 
 export type SettingsNetworkEgressProxy = ConsoleNetworkEgressProxy;
-
-export function fetchSettingsNetworkEgressProxy(providerId: string) {
-  return getConsoleNetworkEgressProxy(providerId);
-}
-
-export function updateSettingsNetworkEgressProxy(providerId: string, input: CreateSettingsNetworkEgressProxyInput, csrfToken: string) {
-  return updateConsoleNetworkEgressProxy(providerId, input, csrfToken);
-}

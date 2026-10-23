@@ -74,6 +74,33 @@ async fn store() -> (PgControlPlaneStore, domain::UserRecord) {
     (store, actor)
 }
 
+// Count real repository reads through a dedicated connection; fixture writes use the original pool.
+async fn counted_read_store(
+    store: &PgControlPlaneStore,
+) -> (
+    PgControlPlaneStore,
+    std::sync::Arc<std::sync::atomic::AtomicUsize>,
+) {
+    let reads = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let acquire_reads = reads.clone();
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .min_connections(1)
+        .max_connections(1)
+        .idle_timeout(None)
+        .max_lifetime(None)
+        .before_acquire(move |_, _| {
+            acquire_reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Box::pin(async { Ok(true) })
+        })
+        .connect_with((*store.pool().connect_options()).clone())
+        .await
+        .unwrap();
+    // Warm the one connection before resetting the measurement window.
+    sqlx::query("select 1").execute(&pool).await.unwrap();
+    reads.store(0, std::sync::atomic::Ordering::SeqCst);
+    (PgControlPlaneStore::new(pool), reads)
+}
+
 #[tokio::test]
 async fn ac_015_failed_sync_preserves_stably_ordered_egress_projection() {
     let (store, actor) = store().await;
@@ -303,10 +330,44 @@ async fn ac_007_pool_member_preserves_missing_provider_reference_without_runtime
         "stable pool references must be unique per pool"
     );
 
-    let view = NetworkEgressPoolService::new(store.clone())
+    let second_member = NetworkEgressPoolRepository::create_network_egress_pool_member(
+        &store,
+        &CreateNetworkEgressPoolMemberInput {
+            member_id: Uuid::now_v7(),
+            pool_id,
+            provider_id,
+            provider_egress_key: "also-gone".to_string(),
+            enabled: false,
+            sequence: 20,
+            actor_user_id: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+    sqlx::query(
+        "update network_egress_pool_members set probe_exit_region = 'probe-region' where id = $1",
+    )
+    .bind(member_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let (counted_store, reads) = counted_read_store(&store).await;
+    let view = NetworkEgressPoolService::new(counted_store.clone())
         .list()
         .await
         .expect("missing provider should project instead of discarding the member");
+    assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 4);
+    assert_eq!(view[0].members.len(), 2);
+    assert_eq!(view[0].members[0].provider_code, "unknown");
+    assert_eq!(view[0].members[0].display_name, "gone-egress");
+    assert_eq!(view[0].members[0].region.as_deref(), Some("probe-region"));
+    assert_eq!(view[0].members[1].member.id, second_member.id);
+    assert!(!view[0].members[1].member.enabled);
+    assert_eq!(
+        view[0].members[1].health,
+        domain::NetworkEgressPoolMemberHealth::Invalid
+    );
+    counted_store.pool().close().await;
     assert_eq!(view[0].members[0].member.id, member_id);
     assert_eq!(
         view[0].members[0].health,
@@ -490,6 +551,46 @@ async fn ac_006_ac_007_pool_selection_uses_current_healthy_projection_and_never_
     assert_eq!(unavailable.health.as_str(), "unhealthy");
     assert_eq!(available.health.as_str(), "not_tested");
 
+    sqlx::query(
+        "update network_egress_pool_members set probe_exit_region = 'probe-fallback' where id = $1",
+    )
+    .bind(available.member.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let (counted_store, reads) = counted_read_store(&store).await;
+    let list_service = NetworkEgressPoolService::new(counted_store.clone());
+    let listed = list_service.list_global(actor.id).await.unwrap();
+    let actual_reads = reads.load(std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(
+        actual_reads, 4,
+        "pool + members + one provider + one projection read"
+    );
+    let listed_members = &listed[0].members;
+    assert_eq!(
+        listed_members
+            .iter()
+            .map(|item| item.member.id)
+            .collect::<Vec<_>>(),
+        vec![
+            unavailable.member.id,
+            available.member.id,
+            unreferenced.member.id
+        ]
+    );
+    assert_eq!(
+        listed_members
+            .iter()
+            .map(|item| item.health.as_str())
+            .collect::<Vec<_>>(),
+        vec!["unhealthy", "not_tested", "not_tested"]
+    );
+    assert_eq!(listed_members[1].display_name, "Available second");
+    assert_eq!(listed_members[1].region.as_deref(), Some("test-b"));
+    println!(
+        "network_pool_read_volume members=3 providers=1 expected_reads=4 actual_reads={actual_reads}"
+    );
+
     let selection = NetworkEgressPoolService::new(store.clone())
         .select_healthy_first(pool_id)
         .await
@@ -603,10 +704,18 @@ async fn ac_006_ac_007_pool_selection_uses_current_healthy_projection_and_never_
     )
     .await
     .expect("a later sync may invalidate a formerly current descriptor");
-    let views = NetworkEgressPoolService::new(store.clone())
-        .list()
+    reads.store(0, std::sync::atomic::Ordering::SeqCst);
+    let views = list_service
+        .list_global(actor.id)
         .await
         .expect("stale references should remain visible for correction");
+    assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 4);
+    assert_eq!(views[0].members[1].display_name, "Selection fixture");
+    assert_eq!(
+        views[0].members[1].region.as_deref(),
+        Some("probe-fallback")
+    );
+    counted_store.pool().close().await;
     assert!(views[0]
         .members
         .iter()

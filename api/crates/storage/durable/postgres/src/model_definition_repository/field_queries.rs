@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
-use sqlx::{Postgres, Row, Transaction};
+use sqlx::{Executor, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use crate::{
@@ -73,7 +73,11 @@ pub(super) async fn insert_model_field(
 
 pub(super) async fn load_fields_by_model_id(
     pool: &sqlx::PgPool,
+    model_ids: &[Uuid],
 ) -> Result<HashMap<Uuid, Vec<domain::ModelFieldRecord>>> {
+    if model_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
     let rows = sqlx::query(
         r#"
         select
@@ -98,17 +102,19 @@ pub(super) async fn load_fields_by_model_id(
             sort_order,
             availability_status
         from model_fields
+        where data_model_id = any($1)
         order by data_model_id asc, sort_order asc, created_at asc
         "#,
     )
+    .bind(model_ids)
     .fetch_all(pool)
     .await?;
 
     Ok(group_field_rows(rows))
 }
 
-pub(super) async fn load_fields_for_model(
-    tx: &mut Transaction<'_, Postgres>,
+pub(super) async fn load_fields_for_model<'e>(
+    executor: impl Executor<'e, Database = Postgres>,
     model_id: Uuid,
 ) -> Result<Vec<domain::ModelFieldRecord>> {
     let rows = sqlx::query(
@@ -140,10 +146,10 @@ pub(super) async fn load_fields_for_model(
         "#,
     )
     .bind(model_id)
-    .fetch_all(&mut **tx)
+    .fetch_all(executor)
     .await?;
 
-    Ok(group_field_rows(rows).remove(&model_id).unwrap_or_default())
+    Ok(rows.into_iter().map(to_model_field_record).collect())
 }
 
 pub(super) async fn load_model_field_for_update(
@@ -327,3 +333,7 @@ fn to_model_field_record(row: sqlx::postgres::PgRow) -> domain::ModelFieldRecord
         availability_status: row.get("availability_status"),
     })
 }
+
+#[cfg(test)]
+#[path = "../_tests/model_definition_repository/scoped_field_reads.rs"]
+mod scoped_field_reads;

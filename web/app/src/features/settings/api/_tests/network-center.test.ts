@@ -22,58 +22,11 @@ const apiClient = vi.hoisted(() => ({
 vi.mock('@1flowbase/api-client', () => apiClient);
 
 import {
-  createSettingsNetworkEgressProvider,
-  createSettingsNetworkEgressPool,
-  createSettingsNetworkEgressPoolMember,
-  deleteSettingsNetworkEgressPool,
-  deleteSettingsNetworkEgressPoolMember,
-  deleteSettingsNetworkEgressPoolMembers,
   fetchSettingsNetworkEgressPools,
-  fetchSettingsNetworkEgressProviders,
   fetchSettingsNetworkEgressRoutes,
   settingsNetworkEgressRoutesQueryKey,
-  settingsNetworkEgressPoolsQueryKey,
-  updateSettingsNetworkEgressPool,
-  updateSettingsNetworkEgressPoolMember,
-  createSettingsNetworkEgressRoute,
-  updateSettingsNetworkEgressRoute,
-  deleteSettingsNetworkEgressRoute,
-  updateSettingsNetworkEgressProviderLifecycle,
-  syncSettingsNetworkEgressProvider
+  settingsNetworkEgressPoolsQueryKey
 } from '../network-center';
-
-describe('settings network egress providers API', () => {
-  test('QF-002 forwards the selected provider type and plugin configuration without frontend aliases', () => {
-    const provider = {
-      installation_id: 'installation-1',
-      display_name: 'Mihomo edge',
-      description: 'Primary subscription',
-      config: { subscription_url: 'https://example.invalid/subscription' }
-    };
-
-    fetchSettingsNetworkEgressProviders();
-    createSettingsNetworkEgressProvider(provider, 'csrf-123');
-    updateSettingsNetworkEgressProviderLifecycle(
-      'provider-1',
-      { lifecycle: 'active' },
-      'csrf-123'
-    );
-    syncSettingsNetworkEgressProvider('provider-1', 'csrf-123');
-
-    expect(apiClient.listConsoleNetworkEgressProviders).toHaveBeenCalledWith();
-    expect(apiClient.createConsoleNetworkEgressProvider).toHaveBeenCalledWith(
-      provider,
-      'csrf-123'
-    );
-    expect(
-      apiClient.updateConsoleNetworkEgressProviderLifecycle
-    ).toHaveBeenCalledWith('provider-1', { lifecycle: 'active' }, 'csrf-123');
-    expect(apiClient.syncConsoleNetworkEgressProvider).toHaveBeenCalledWith(
-      'provider-1',
-      'csrf-123'
-    );
-  });
-});
 
 describe('settings network egress pools API', () => {
   beforeEach(() => {
@@ -91,95 +44,17 @@ describe('settings network egress pools API', () => {
 
     expect(apiClient.listConsoleNetworkEgressPools).toHaveBeenCalledWith();
   });
-
-  test('AC-NC08 forwards only backend pool and member DTO fields', () => {
-    const pool = { display_name: 'European exits' };
-    const member = {
-      provider_id: 'provider-1',
-      provider_egress_key: 'egress:eu-west',
-      enabled: true,
-      sequence: 10
-    };
-
-    createSettingsNetworkEgressPool(pool, 'csrf-123');
-    updateSettingsNetworkEgressPool('pool-1', pool, 'csrf-123');
-    deleteSettingsNetworkEgressPool('pool-1', 'csrf-123');
-    createSettingsNetworkEgressPoolMember('pool-1', member, 'csrf-123');
-    updateSettingsNetworkEgressPoolMember(
-      'pool-1',
-      'member-1',
-      { enabled: false, sequence: 20 },
-      'csrf-123'
-    );
-    deleteSettingsNetworkEgressPoolMember('pool-1', 'member-1', 'csrf-123');
-    deleteSettingsNetworkEgressPoolMembers(
-      'pool-1',
-      { selection: 'selected', member_ids: ['member-1'] },
-      'csrf-123'
-    );
-
-    expect(apiClient.createConsoleNetworkEgressPool).toHaveBeenCalledWith(
-      pool,
-      'csrf-123'
-    );
-    expect(apiClient.updateConsoleNetworkEgressPool).toHaveBeenCalledWith(
-      'pool-1',
-      pool,
-      'csrf-123'
-    );
-    expect(apiClient.deleteConsoleNetworkEgressPool).toHaveBeenCalledWith(
-      'pool-1',
-      'csrf-123'
-    );
-    expect(apiClient.createConsoleNetworkEgressPoolMember).toHaveBeenCalledWith(
-      'pool-1',
-      member,
-      'csrf-123'
-    );
-    expect(apiClient.updateConsoleNetworkEgressPoolMember).toHaveBeenCalledWith(
-      'pool-1',
-      'member-1',
-      { enabled: false, sequence: 20 },
-      'csrf-123'
-    );
-    expect(apiClient.deleteConsoleNetworkEgressPoolMember).toHaveBeenCalledWith(
-      'pool-1',
-      'member-1',
-      'csrf-123'
-    );
-    expect(apiClient.deleteConsoleNetworkEgressPoolMembers).toHaveBeenCalledWith(
-      'pool-1',
-      { selection: 'selected', member_ids: ['member-1'] },
-      'csrf-123'
-    );
-  });
 });
 
 describe('settings network egress routes API', () => {
-  test('AC-NC13 forwards the typed route DTO without frontend aliases', () => {
-    const route = {
-      consumer_kind: 'http_node',
-      consumer_reference: null,
-      pool_member_ids: ['member-1', 'member-2'],
-      enabled: true
-    };
+  test('AC-NC13 owns the routes query key and list callback', () => {
     expect(settingsNetworkEgressRoutesQueryKey).toEqual([
       'settings',
       'network-center',
       'routes'
     ]);
     fetchSettingsNetworkEgressRoutes();
-    createSettingsNetworkEgressRoute(route, 'csrf-123');
-    updateSettingsNetworkEgressRoute(
-      'route-1',
-      { pool_member_ids: ['member-2'], enabled: false },
-      'csrf-123'
-    );
-    deleteSettingsNetworkEgressRoute('route-1', 'csrf-123');
+
     expect(apiClient.listConsoleNetworkEgressRoutes).toHaveBeenCalledWith();
-    expect(apiClient.createConsoleNetworkEgressRoute).toHaveBeenCalledWith(
-      route,
-      'csrf-123'
-    );
   });
 });

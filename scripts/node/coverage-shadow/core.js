@@ -30,7 +30,9 @@ function buildApiServerShardCommands({ repoRoot, shardIndex, shardCount, cargoTe
       command: 'cargo',
       args: ['nextest', 'run', ...common, '--test-threads', String(cargoTestThreads), '--no-fail-fast', '--no-tests=fail'],
       cwd: path.join(repoRoot, 'api'),
-      profilePattern: path.join(shardDir, `shard-${shardIndex}-%p-%m.profraw`),
+      // LLVM merges concurrent processes into a worker-sized pool per binary.
+      // Including %p would instead retain a full profile for every test process.
+      profilePattern: path.join(shardDir, `shard-${shardIndex}-%${cargoTestThreads}m.profraw`),
     },
   ];
 }

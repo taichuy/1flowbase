@@ -38,7 +38,7 @@ test('API coverage shadow shard uses the stable nextest hash partition', () => {
     ['nextest', 'list', '--package', 'api-server', '--partition', 'hash:2/4', '--message-format', 'json'],
     ['nextest', 'run', '--package', 'api-server', '--partition', 'hash:2/4', '--test-threads', '4', '--no-fail-fast', '--no-tests=fail'],
   ]);
-  assert.match(commands[2].profilePattern, /coverage-shadow\/api-server\/shard-2\/shard-2-%p-%m\.profraw$/u);
+  assert.match(commands[2].profilePattern, /coverage-shadow\/api-server\/shard-2\/shard-2-%4m\.profraw$/u);
 });
 
 test('llvm-cov environment parser accepts Cargo ANSI color output', () => {

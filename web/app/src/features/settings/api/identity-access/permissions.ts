@@ -1,11 +1,12 @@
 import {
-  fetchConsoleRoleConsolePolicyCatalog,
   listConsolePermissions,
   replaceConsoleSettingsOrder,
   type ConsolePermission,
   type ConsolePolicyCatalog,
   type ConsolePolicyCatalogLocale
 } from '@1flowbase/api-client';
+
+export { fetchConsoleRoleConsolePolicyCatalog as fetchSettingsConsolePolicyCatalog } from '@1flowbase/api-client';
 
 export type SettingsPermission = ConsolePermission;
 export type SettingsConsolePolicyCatalog = ConsolePolicyCatalog;
@@ -29,12 +30,6 @@ export function replaceSettingsConsolePolicyOrder(
     csrfToken,
     locale
   );
-}
-
-export function fetchSettingsConsolePolicyCatalog(
-  locale: SettingsConsolePolicyCatalogLocale
-): Promise<SettingsConsolePolicyCatalog> {
-  return fetchConsoleRoleConsolePolicyCatalog(locale);
 }
 
 export function fetchSettingsPermissions(): Promise<SettingsPermission[]> {

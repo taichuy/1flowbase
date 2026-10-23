@@ -1,26 +1,25 @@
 import {
-  createConsoleRole,
-  deleteConsoleRole,
-  fetchConsoleRoleConsolePolicy,
   fetchConsoleRoleDataPolicy,
-  fetchConsoleRolePermissions,
-  fetchConsoleRoleFrontstageRoutes,
   listConsoleRoles,
   replaceConsoleRoleDataPolicy,
-  replaceConsoleRoleConsolePolicy,
-  replaceConsoleRolePermissions,
-  replaceConsoleRoleFrontstageRoutes,
-  updateConsoleRole,
   type ConsoleRole,
   type ConsoleRoleConsolePolicy,
   type ConsoleRoleDataPolicyScope,
   type ConsoleRolePermissions,
   type ConsoleRoleFrontstageRoutes,
-  type ReplaceConsoleRoleFrontstageRoutesInput,
-  type CreateConsoleRoleInput,
-  type ReplaceConsoleRolePermissionsInput,
-  type ReplaceConsoleRoleConsolePolicyInput,
-  type UpdateConsoleRoleInput
+  type ReplaceConsoleRoleConsolePolicyInput
+} from '@1flowbase/api-client';
+
+export {
+  createConsoleRole as createSettingsRole,
+  updateConsoleRole as updateSettingsRole,
+  deleteConsoleRole as deleteSettingsRole,
+  fetchConsoleRoleConsolePolicy as fetchSettingsRoleConsolePolicy,
+  replaceConsoleRoleConsolePolicy as replaceSettingsRoleConsolePolicy,
+  fetchConsoleRolePermissions as fetchSettingsRolePermissions,
+  replaceConsoleRolePermissions as replaceSettingsRolePermissions,
+  fetchConsoleRoleFrontstageRoutes as fetchSettingsRoleFrontstageRoutes,
+  replaceConsoleRoleFrontstageRoutes as replaceSettingsRoleFrontstageRoutes
 } from '@1flowbase/api-client';
 
 export type SettingsRole = ConsoleRole;
@@ -79,57 +78,12 @@ export function fetchSettingsRoles(): Promise<SettingsRole[]> {
   return listConsoleRoles();
 }
 
-export function createSettingsRole(
-  input: CreateConsoleRoleInput,
-  csrfToken: string
-): Promise<SettingsRole> {
-  return createConsoleRole(input, csrfToken);
-}
-
-export function updateSettingsRole(
-  roleCode: string,
-  input: UpdateConsoleRoleInput,
-  csrfToken: string
-): Promise<void> {
-  return updateConsoleRole(roleCode, input, csrfToken);
-}
-
-export function deleteSettingsRole(roleCode: string, csrfToken: string): Promise<void> {
-  return deleteConsoleRole(roleCode, csrfToken);
-}
-
-export function fetchSettingsRoleConsolePolicy(
-  roleCode: string
-): Promise<SettingsRoleConsolePolicy> {
-  return fetchConsoleRoleConsolePolicy(roleCode);
-}
-
-export function replaceSettingsRoleConsolePolicy(
-  roleCode: string,
-  input: ReplaceSettingsRoleConsolePolicyInput,
-  csrfToken: string
-): Promise<void> {
-  return replaceConsoleRoleConsolePolicy(roleCode, input, csrfToken);
-}
-
-export function fetchSettingsRolePermissions(
-  roleCode: string
-): Promise<SettingsRolePermissions> {
-  return fetchConsoleRolePermissions(roleCode);
-}
-
-export function replaceSettingsRolePermissions(
-  roleCode: string,
-  input: ReplaceConsoleRolePermissionsInput,
-  csrfToken: string
-): Promise<void> {
-  return replaceConsoleRolePermissions(roleCode, input, csrfToken);
-}
-
 export function fetchSettingsRoleDataPolicy(
   roleCode: string
 ): Promise<SettingsRoleDataPolicy> {
-  return fetchConsoleRoleDataPolicy(roleCode) as Promise<SettingsRoleDataPolicy>;
+  return fetchConsoleRoleDataPolicy(
+    roleCode
+  ) as Promise<SettingsRoleDataPolicy>;
 }
 
 export function replaceSettingsRoleDataPolicy(
@@ -137,13 +91,9 @@ export function replaceSettingsRoleDataPolicy(
   input: ReplaceSettingsRoleDataPolicyInput,
   csrfToken: string
 ): Promise<SettingsRoleDataPolicy> {
-  return replaceConsoleRoleDataPolicy(roleCode, input, csrfToken) as Promise<SettingsRoleDataPolicy>;
-}
-
-export function fetchSettingsRoleFrontstageRoutes(roleCode: string): Promise<SettingsRoleFrontstageRoutes> {
-  return fetchConsoleRoleFrontstageRoutes(roleCode);
-}
-
-export function replaceSettingsRoleFrontstageRoutes(roleCode: string, input: ReplaceConsoleRoleFrontstageRoutesInput, csrfToken: string): Promise<void> {
-  return replaceConsoleRoleFrontstageRoutes(roleCode, input, csrfToken);
+  return replaceConsoleRoleDataPolicy(
+    roleCode,
+    input,
+    csrfToken
+  ) as Promise<SettingsRoleDataPolicy>;
 }

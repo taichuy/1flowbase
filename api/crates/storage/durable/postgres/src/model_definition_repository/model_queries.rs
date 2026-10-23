@@ -1,16 +1,16 @@
 use anyhow::Result;
-use sqlx::{Postgres, Row, Transaction};
+use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
-use crate::mappers::model_definition_mapper::{PgModelDefinitionMapper, StoredModelDefinitionRow};
+use crate::mappers::model_definition_mapper::PgModelDefinitionMapper;
 
-use super::field_queries::{load_fields_by_model_id, load_fields_for_model};
+use super::field_queries::load_fields_for_model;
 
 pub(super) async fn load_model_definition(
     pool: &sqlx::PgPool,
     model_id: Uuid,
 ) -> Result<Option<domain::ModelDefinitionRecord>> {
-    let fields_by_model_id = load_fields_by_model_id(pool).await?;
+    let fields = load_fields_for_model(pool, model_id).await?;
     let row = sqlx::query(
         r#"
         select
@@ -44,36 +44,7 @@ pub(super) async fn load_model_definition(
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|row| {
-        PgModelDefinitionMapper::to_model_definition_record(StoredModelDefinitionRow {
-            id: row.get("id"),
-            scope_kind: row.get("scope_kind"),
-            scope_id: row.get("scope_id"),
-            data_source_instance_id: row.get("data_source_instance_id"),
-            source_kind: row.get("source_kind"),
-            external_resource_key: row.get("external_resource_key"),
-            external_table_id: row.get("external_table_id"),
-            external_capability_snapshot: row.get("external_capability_snapshot"),
-            template_provider: row.get("template_provider"),
-            template_code: row.get("template_code"),
-            template_version: row.get("template_version"),
-            code: row.get("code"),
-            title: row.get("title"),
-            description: row.get("description"),
-            physical_table_name: row.get("physical_table_name"),
-            acl_namespace: row.get("acl_namespace"),
-            audit_namespace: row.get("audit_namespace"),
-            availability_status: row.get("availability_status"),
-            status: row.get("status"),
-            owner_kind: row.get("owner_kind"),
-            owner_id: row.get("owner_id"),
-            is_protected: row.get("is_protected"),
-            fields: fields_by_model_id
-                .get(&model_id)
-                .cloned()
-                .unwrap_or_default(),
-        })
-    }))
+    Ok(row.map(|row| PgModelDefinitionMapper::from_pg_row(row, fields)))
 }
 
 pub(super) async fn load_model_definition_for_update(
@@ -88,7 +59,7 @@ pub(super) async fn load_model_definition_with_lock(
     model_id: Uuid,
     for_update: bool,
 ) -> Result<Option<domain::ModelDefinitionRecord>> {
-    let fields = load_fields_for_model(tx, model_id).await?;
+    let fields = load_fields_for_model(&mut **tx, model_id).await?;
     let mut statement = String::from(
         r#"
         select
@@ -128,33 +99,7 @@ pub(super) async fn load_model_definition_with_lock(
         .fetch_optional(&mut **tx)
         .await?;
 
-    Ok(row.map(|row| {
-        PgModelDefinitionMapper::to_model_definition_record(StoredModelDefinitionRow {
-            id: row.get("id"),
-            scope_kind: row.get("scope_kind"),
-            scope_id: row.get("scope_id"),
-            data_source_instance_id: row.get("data_source_instance_id"),
-            source_kind: row.get("source_kind"),
-            external_resource_key: row.get("external_resource_key"),
-            external_table_id: row.get("external_table_id"),
-            external_capability_snapshot: row.get("external_capability_snapshot"),
-            template_provider: row.get("template_provider"),
-            template_code: row.get("template_code"),
-            template_version: row.get("template_version"),
-            code: row.get("code"),
-            title: row.get("title"),
-            description: row.get("description"),
-            physical_table_name: row.get("physical_table_name"),
-            acl_namespace: row.get("acl_namespace"),
-            audit_namespace: row.get("audit_namespace"),
-            availability_status: row.get("availability_status"),
-            status: row.get("status"),
-            owner_kind: row.get("owner_kind"),
-            owner_id: row.get("owner_id"),
-            is_protected: row.get("is_protected"),
-            fields,
-        })
-    }))
+    Ok(row.map(|row| PgModelDefinitionMapper::from_pg_row(row, fields)))
 }
 
 pub(super) async fn insert_model_definition(

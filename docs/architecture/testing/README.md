@@ -17,10 +17,16 @@
 - 完整体检的 `clippy --all-targets` 同时承担对应包的类型检查，CI matrix 与默认汇总不再重复要求相同配置的三个 `cargo check` 分片。PR 基线没有 Clippy，继续保留 check；定向 check 命令仍可独立使用。feature 专项和行为测试不由 Clippy 替代。
 - API 普通四分片与 coverage 四分片的 package、默认 features、nextest partition 和实际 test identity 并集相同，完整 CI 由 coverage 一次承担行为与覆盖率验收。控制平面、orchestration-runtime、runtime-extension-host 和 storage-durable-postgres 的完整包行为测试同样交给各自 coverage owner；前三者另保留显式 `cargo test --doc`，包括 Host compile-fail 用例和未来文档示例。仅 `QUALITY_GATE_SCOPE=ci` 的普通 runtime/storage 分片省略这三个重复包；独立手动 / PR shard、`test-backend` 与 `verify-backend all` 保留原测试集合。control-plane-postgres-tests 的四分片与第一分片的 SQL 报表集成继续运行。
 - API coverage 分片成功执行非零用例后才写回执；merge 核对同 SHA、package/partition、实际通过数、inventory 与非空 profile 数量，再验证完整、不重叠的可执行用例并集。ignored 单独按全量集合计数，不能把 nextest 的 partition/filter skipped 当作 ignored，也不能用旧产物补缺失分片。
-- `verify/backend.js` 是后端 Cargo 命令和受保护场景执行校验的 owner；`test-backend` 复用它的静态检查、图像/多模态场景和 workspace 测试计划。每条受保护测试仍须实际执行非零用例，邻接成功、全部 ignored、编译成功和缺失日志不能填补证据。
+- `verify/backend.js` 是后端 Cargo 命令和受保护场景执行校验的 owner；无参数 `test-backend` 与 `verify-backend all` 执行静态检查和一次 workspace 测试，图像/多模态场景已由该集合覆盖。独立 `image-llm-vision` 专项仍可运行。每条受保护测试仍须实际执行非零用例，邻接成功、全部 ignored、编译成功和缺失日志不能填补证据。
 - `tooling data-contracts` 使用同一份 migration inventory 和源码分析结果，生成原有 schema、raw JSONB、query-contract、capacity JSON/Markdown 报告。schema error 和 query-contract failure 继续阻断；raw JSONB、增长规划和未测量容量保留原来的 advisory / unverified 语义。查询契约等必需配置缺失或损坏时继续失败。独立报告入口仍服务于定向诊断。
 - 专项测试与全量测试只有在用例及运行条件等价时才能复用结果；nextest/libtest、线程栈、feature 和 coverage instrumentation 的差异需要单独判断。已核对实际用例 identity 的 consistency-control-runtime/storage/api、official-i18n-seed、image-llm-vision 默认 feature 场景由普通 / coverage 包测试完整执行，完整 CI 不再重跑这五个专项 owner，必需 component 从 29 降为 24。专项手动入口及 PR 的 seed / image-llm 门禁保持有效；history-maintenance 的特殊 feature 和独有场景继续单独执行。四基座、coverage 阈值和缺失 / 失败 / 错误 SHA receipt 的拒绝条件不变。
 - 五个前端 consumer contract 用例由前端验收拥有：`frontend-pr` 显式运行 contracts；仓库级 `frontend/all` 通过常规测试与 page-regression 的并集覆盖全部用例，tooling 不再重复执行。`test-frontend full` 单独不包含全部页面回归，不能作为该并集的替代。
+
+开发定向入口直接把选择条件交给原生 runner：`test-backend.js --package <crate> [--lib | --test <target> | --bin <target>] [--filter <name>] [--exact]`，以及 `test-frontend.js fast [--] <file> [-t <pattern>]`。后端选择须带 package；不支持、缺值或冲突参数在启动前报错，不能静默扩大成全量测试。资源预算与非零执行检查继续生效；完整 CI 在既有 owner 中实际运行一条 Rust 和一条前端定向命令。
+
+协议专项只拥有官方供应商测试、插件打包和真实 wire/runtime 契约。仓库 Rust 行为测试交给上述普通/coverage owner，Node 工具测试交给 `repo-tooling`，不在协议任务重复编译执行。完整 CI 仍必须同时取得这些 owner 的候选收据；单独协议绿灯不代表全仓验收。供应商独有测试、非零执行校验、真实协议错误/传输 oracle 和源码/产物配对保持有效。
+
+API coverage 使用 [LLVM 原生 `%Nm` 合并池](https://clang.llvm.org/docs/SourceBasedCodeCoverage.html)：N 来自当前测试并行度，每个二进制由运行时加锁合并；不再用 `%p` 为每个测试进程留下完整 profile。分片集合、执行计数、SHA 与覆盖率阈值不变。首分片先在同一真实插桩二进制上比较逐进程与池化的完整 coverage counters，并以丢失一次执行作为反例；证明失败则该分片不能产生成功收据。等价证据随首分片 artifact 保留，最终仍合并全部 API 测试的 profiles。
 
 统一治理验收需要冻结候选的全量 Rust 测试和完整 CI：记录通过、失败、忽略/跳过数及核心场景清单，分别量化编译、测试、CI 墙钟时间和累计 runner 时间。根收据须满足前述 candidate、component 与成功条件；局部脚本通过不能结算整体任务。合并重复执行允许执行次数减少，但核心场景不得缺失。历史时间只作注明源码、环境、缓存差异的参考；未测量值保留未知。
 

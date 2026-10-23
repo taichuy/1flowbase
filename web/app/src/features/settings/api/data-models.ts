@@ -1,28 +1,9 @@
 import {
-  batchDeleteConsoleDataModels,
-  createConsoleDataSource,
-  createConsoleDataModel,
-  createConsoleDataModelField,
-  createConsoleDataModelScopeGrant,
-  deleteConsoleDataModel,
-  deleteConsoleDataModelField,
-  discoverConsoleDataSourceResources,
   fetchConsoleCompatibleDataModelTemplates,
-  fetchConsoleDataModelAdvisorFindings,
-  fetchConsoleDataModelOpenApiDocument,
-  fetchConsoleDataModelRecordPreview,
-  fetchConsoleDataModelScopeGrants,
   fetchConsoleDataModels,
   fetchConsoleDataSourceCatalog,
   fetchConsoleDataSources,
-  fetchConsoleDataSourceResources,
-  mapConsoleDataSourceResourceToModel,
   previewConsoleDataSourceResource,
-  updateConsoleDataModel,
-  updateConsoleDataModelField,
-  updateConsoleDataModelScopeGrant,
-  updateConsoleDataSourceDefaults,
-  validateConsoleDataSource,
   type BatchDeleteConsoleDataModelsInput,
   type BatchDeleteConsoleDataModelsResult,
   type ConsoleDataModel,
@@ -47,6 +28,28 @@ import {
   type UpdateConsoleDataModelInput,
   type UpdateConsoleDataModelScopeGrantInput,
   type UpdateConsoleDataSourceDefaultsInput
+} from '@1flowbase/api-client';
+
+export {
+  createConsoleDataSource as createSettingsDataSource,
+  validateConsoleDataSource as validateSettingsDataSource,
+  updateConsoleDataSourceDefaults as updateSettingsDataSourceDefaults,
+  fetchConsoleDataSourceResources as fetchSettingsDataSourceResources,
+  discoverConsoleDataSourceResources as discoverSettingsDataSourceResources,
+  mapConsoleDataSourceResourceToModel as mapSettingsDataSourceResourceToModel,
+  createConsoleDataModel as createSettingsDataModel,
+  updateConsoleDataModel as updateSettingsDataModel,
+  deleteConsoleDataModel as deleteSettingsDataModel,
+  batchDeleteConsoleDataModels as batchDeleteSettingsDataModels,
+  createConsoleDataModelField as createSettingsDataModelField,
+  updateConsoleDataModelField as updateSettingsDataModelField,
+  deleteConsoleDataModelField as deleteSettingsDataModelField,
+  fetchConsoleDataModelScopeGrants as fetchSettingsDataModelScopeGrants,
+  createConsoleDataModelScopeGrant as createSettingsDataModelScopeGrant,
+  updateConsoleDataModelScopeGrant as updateSettingsDataModelScopeGrant,
+  fetchConsoleDataModelAdvisorFindings as fetchSettingsDataModelAdvisorFindings,
+  fetchConsoleDataModelRecordPreview as fetchSettingsDataModelRecordPreview,
+  fetchConsoleDataModelOpenApiDocument as fetchSettingsDataModelOpenApiDocument
 } from '@1flowbase/api-client';
 
 export type SettingsDataSource = ConsoleDataSource;
@@ -163,39 +166,6 @@ export function fetchSettingsDataSourceCatalog() {
   return fetchConsoleDataSourceCatalog();
 }
 
-export function createSettingsDataSource(
-  input: CreateSettingsDataSourceInput,
-  csrfToken: string
-) {
-  return createConsoleDataSource(input, csrfToken);
-}
-
-export function validateSettingsDataSource(
-  dataSourceId: string,
-  csrfToken: string
-) {
-  return validateConsoleDataSource(dataSourceId, csrfToken);
-}
-
-export function updateSettingsDataSourceDefaults(
-  dataSourceId: string,
-  input: UpdateSettingsDataSourceDefaultsInput,
-  csrfToken: string
-) {
-  return updateConsoleDataSourceDefaults(dataSourceId, input, csrfToken);
-}
-
-export function fetchSettingsDataSourceResources(dataSourceId: string) {
-  return fetchConsoleDataSourceResources(dataSourceId);
-}
-
-export function discoverSettingsDataSourceResources(
-  dataSourceId: string,
-  csrfToken: string
-) {
-  return discoverConsoleDataSourceResources(dataSourceId, csrfToken);
-}
-
 export function previewSettingsDataSourceResource(
   dataSourceId: string,
   resourceKey: string,
@@ -206,14 +176,6 @@ export function previewSettingsDataSourceResource(
     { resource_key: resourceKey, limit: 20, options_json: {} },
     csrfToken
   );
-}
-
-export function mapSettingsDataSourceResourceToModel(
-  dataSourceId: string,
-  input: MapSettingsDataSourceResourceToModelInput,
-  csrfToken: string
-) {
-  return mapConsoleDataSourceResourceToModel(dataSourceId, input, csrfToken);
 }
 
 export function fetchSettingsCompatibleDataModelTemplates(
@@ -239,88 +201,4 @@ export function fetchSettingsDataModels(
 
 export function fetchSettingsAllDataModels() {
   return fetchConsoleDataModels();
-}
-
-export function createSettingsDataModel(
-  input: CreateSettingsDataModelInput,
-  csrfToken: string
-) {
-  return createConsoleDataModel(input, csrfToken);
-}
-
-export function updateSettingsDataModel(
-  modelId: string,
-  input: UpdateSettingsDataModelInput,
-  csrfToken: string
-) {
-  return updateConsoleDataModel(modelId, input, csrfToken);
-}
-
-export function deleteSettingsDataModel(modelId: string, csrfToken: string) {
-  return deleteConsoleDataModel(modelId, csrfToken);
-}
-
-export function batchDeleteSettingsDataModels(
-  input: BatchDeleteSettingsDataModelsInput,
-  csrfToken: string
-) {
-  return batchDeleteConsoleDataModels(input, csrfToken);
-}
-
-export function createSettingsDataModelField(
-  modelId: string,
-  input: CreateSettingsDataModelFieldInput,
-  csrfToken: string
-) {
-  return createConsoleDataModelField(modelId, input, csrfToken);
-}
-
-export function updateSettingsDataModelField(
-  modelId: string,
-  fieldId: string,
-  input: UpdateSettingsDataModelFieldInput,
-  csrfToken: string
-) {
-  return updateConsoleDataModelField(modelId, fieldId, input, csrfToken);
-}
-
-export function deleteSettingsDataModelField(
-  modelId: string,
-  fieldId: string,
-  csrfToken: string
-) {
-  return deleteConsoleDataModelField(modelId, fieldId, csrfToken);
-}
-
-export function fetchSettingsDataModelScopeGrants(modelId: string) {
-  return fetchConsoleDataModelScopeGrants(modelId);
-}
-
-export function createSettingsDataModelScopeGrant(
-  modelId: string,
-  input: CreateSettingsDataModelScopeGrantInput,
-  csrfToken: string
-) {
-  return createConsoleDataModelScopeGrant(modelId, input, csrfToken);
-}
-
-export function updateSettingsDataModelScopeGrant(
-  modelId: string,
-  grantId: string,
-  input: UpdateSettingsDataModelScopeGrantInput,
-  csrfToken: string
-) {
-  return updateConsoleDataModelScopeGrant(modelId, grantId, input, csrfToken);
-}
-
-export function fetchSettingsDataModelAdvisorFindings(modelId: string) {
-  return fetchConsoleDataModelAdvisorFindings(modelId);
-}
-
-export function fetchSettingsDataModelRecordPreview(modelCode: string) {
-  return fetchConsoleDataModelRecordPreview(modelCode);
-}
-
-export function fetchSettingsDataModelOpenApiDocument(modelId: string) {
-  return fetchConsoleDataModelOpenApiDocument(modelId);
 }

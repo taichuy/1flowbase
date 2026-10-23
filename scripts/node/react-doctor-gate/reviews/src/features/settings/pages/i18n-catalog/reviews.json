@@ -6,28 +6,28 @@
       "rule": "react-doctor/jsx-no-jsx-as-prop",
       "sourceSha256": "3963034ed6741a8f3e38448daa6c708949bb958172b3e4d32847d58685ac4e51",
       "reason": "I18nCatalogPage 分开过滤草稿/已应用过滤/分页/编辑/确认；mutation 成功通过 refreshCatalog helper invalidate settingsI18nCatalogQueryKey；filters 是组合 slot。 接收方公开 ReactNode slot 专用于 status/filters/notice 组合，JSX 是接口的实际用途。",
-      "evidence": [{"file":"web/app/src/features/settings/pages/i18n-catalog/_tests/i18n-catalog-page.test.tsx","sha256":"1f5b2014a2a069a0a7328dae6f0eb983c780618b8d597408540a1a15b95639cf"}, {"file":"web/app/src/features/settings/api/i18n-catalog.ts","sha256":"48eca012304b9bc45eb99f9c5a43918a303da9d0615def73d5bf7f69a9d5fb5b"}, {"file":"web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx","sha256":"f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"}]
+      "evidence": [{"file":"web/app/src/features/settings/pages/i18n-catalog/_tests/i18n-catalog-page.test.tsx","sha256":"1f5b2014a2a069a0a7328dae6f0eb983c780618b8d597408540a1a15b95639cf"}, {"file":"web/app/src/features/settings/api/i18n-catalog.ts","sha256":"cd8d13955c779c6e8ec5f904e0ec1fac38e484858e418f51e8a454341ed79757"}, {"file":"web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx","sha256":"f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"}]
     },
     {
       "file": "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx",
       "rule": "react-doctor/no-giant-component",
       "sourceSha256": "3963034ed6741a8f3e38448daa6c708949bb958172b3e4d32847d58685ac4e51",
       "reason": "I18nCatalogPage 分开过滤草稿/已应用过滤/分页/编辑/确认；mutation 成功通过 refreshCatalog helper invalidate settingsI18nCatalogQueryKey；filters 是组合 slot。 职责属于同一资源或组件生命周期，独立草稿/异步状态没有应合为单一字段的不变量；同步 setters 由 React19 batching，行数或 setter 数本身不能证明额外 render。",
-      "evidence": [{"file":"web/app/src/features/settings/pages/i18n-catalog/_tests/i18n-catalog-page.test.tsx","sha256":"1f5b2014a2a069a0a7328dae6f0eb983c780618b8d597408540a1a15b95639cf"}, {"file":"web/app/src/features/settings/api/i18n-catalog.ts","sha256":"48eca012304b9bc45eb99f9c5a43918a303da9d0615def73d5bf7f69a9d5fb5b"}, {"file":"web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx","sha256":"f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"}]
+      "evidence": [{"file":"web/app/src/features/settings/pages/i18n-catalog/_tests/i18n-catalog-page.test.tsx","sha256":"1f5b2014a2a069a0a7328dae6f0eb983c780618b8d597408540a1a15b95639cf"}, {"file":"web/app/src/features/settings/api/i18n-catalog.ts","sha256":"cd8d13955c779c6e8ec5f904e0ec1fac38e484858e418f51e8a454341ed79757"}, {"file":"web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx","sha256":"f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"}]
     },
     {
       "file": "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx",
       "rule": "react-doctor/prefer-useReducer",
       "sourceSha256": "3963034ed6741a8f3e38448daa6c708949bb958172b3e4d32847d58685ac4e51",
       "reason": "I18nCatalogPage 分开过滤草稿/已应用过滤/分页/编辑/确认；mutation 成功通过 refreshCatalog helper invalidate settingsI18nCatalogQueryKey；filters 是组合 slot。 职责属于同一资源或组件生命周期，独立草稿/异步状态没有应合为单一字段的不变量；同步 setters 由 React19 batching，行数或 setter 数本身不能证明额外 render。",
-      "evidence": [{"file":"web/app/src/features/settings/pages/i18n-catalog/_tests/i18n-catalog-page.test.tsx","sha256":"1f5b2014a2a069a0a7328dae6f0eb983c780618b8d597408540a1a15b95639cf"}, {"file":"web/app/src/features/settings/api/i18n-catalog.ts","sha256":"48eca012304b9bc45eb99f9c5a43918a303da9d0615def73d5bf7f69a9d5fb5b"}, {"file":"web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx","sha256":"f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"}]
+      "evidence": [{"file":"web/app/src/features/settings/pages/i18n-catalog/_tests/i18n-catalog-page.test.tsx","sha256":"1f5b2014a2a069a0a7328dae6f0eb983c780618b8d597408540a1a15b95639cf"}, {"file":"web/app/src/features/settings/api/i18n-catalog.ts","sha256":"cd8d13955c779c6e8ec5f904e0ec1fac38e484858e418f51e8a454341ed79757"}, {"file":"web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx","sha256":"f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"}]
     },
     {
       "file": "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx",
       "rule": "react-doctor/query-mutation-missing-invalidation",
       "sourceSha256": "3963034ed6741a8f3e38448daa6c708949bb958172b3e4d32847d58685ac4e51",
       "reason": "I18nCatalogPage 分开过滤草稿/已应用过滤/分页/编辑/确认；mutation 成功通过 refreshCatalog helper invalidate settingsI18nCatalogQueryKey；filters 是组合 slot。 核查 mutationFn/onSuccess/helper/父回调：读取预览和授权 reveal 无实体列表更新；写操作通过 helper/父回调失效，不能只找对象内 invalidate 字面量。",
-      "evidence": [{"file":"web/app/src/features/settings/pages/i18n-catalog/_tests/i18n-catalog-page.test.tsx","sha256":"1f5b2014a2a069a0a7328dae6f0eb983c780618b8d597408540a1a15b95639cf"}, {"file":"web/app/src/features/settings/api/i18n-catalog.ts","sha256":"48eca012304b9bc45eb99f9c5a43918a303da9d0615def73d5bf7f69a9d5fb5b"}, {"file":"web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx","sha256":"f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"}]
+      "evidence": [{"file":"web/app/src/features/settings/pages/i18n-catalog/_tests/i18n-catalog-page.test.tsx","sha256":"1f5b2014a2a069a0a7328dae6f0eb983c780618b8d597408540a1a15b95639cf"}, {"file":"web/app/src/features/settings/api/i18n-catalog.ts","sha256":"cd8d13955c779c6e8ec5f904e0ec1fac38e484858e418f51e8a454341ed79757"}, {"file":"web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx","sha256":"f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"}]
     }
   ]
 }

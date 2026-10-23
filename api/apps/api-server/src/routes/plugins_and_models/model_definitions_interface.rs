@@ -390,10 +390,13 @@ impl ModelDefinitionsAdapter {
                 Ok(ModelDefinitionsOutput::Deleted)
             }
             ModelDefinitionsInput::BatchDelete(body) => {
-                let models = self
-                    .settings_service(access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID)
-                    .list_models(user_id)
-                    .await?;
+                let models = if body.filter_by_tk.is_some() {
+                    Vec::new()
+                } else {
+                    self.settings_service(access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID)
+                        .list_models(user_id)
+                        .await?
+                };
                 let model_ids = select_batch_ids(
                     models,
                     ResourceBatchSelection::new(body.filter_by_tk, body.filter),

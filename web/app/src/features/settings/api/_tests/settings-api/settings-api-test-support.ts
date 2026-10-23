@@ -2,19 +2,6 @@ import { vi } from 'vitest';
 import { modelProviderCatalogContract } from '../../../../../test/model-provider-contract-fixtures';
 
 const modelProviderApiFixtures = vi.hoisted(() => ({
-  mainInstance: {
-    provider_code: 'openai_compatible',
-    auto_include_new_instances: true,
-    revision: 1,
-    model_routing_policies: [
-      {
-        model_id: 'gpt-4o-mini',
-        distribution_rule: 'none',
-        provider_instance_ids: ['provider-1'],
-        excluded_provider_instance_ids: []
-      }
-    ]
-  },
   options: {
     locale_meta: {
       requested_locale: 'zh_Hans',
@@ -91,20 +78,17 @@ export const modelProviderOptionsContract = modelProviderApiFixtures.options;
 
 vi.mock('@1flowbase/api-client', () => ({
   fetchConsoleApiDocsCatalog: vi.fn().mockResolvedValue({ categories: [] }),
-  fetchConsoleApiDocsCategoryOperations: vi.fn().mockResolvedValue({
-    id: 'console',
-    operations: []
-  }),
-  fetchConsoleApiOperationSpec: vi.fn().mockResolvedValue({ openapi: '3.1.0' }),
+  fetchConsoleApiDocsCategoryOperations: vi.fn(),
+  fetchConsoleApiOperationSpec: vi.fn(),
   listConsoleMembers: vi.fn().mockResolvedValue([]),
-  createConsoleMember: vi.fn().mockResolvedValue({ id: 'member-1' }),
-  updateConsoleMember: vi.fn().mockResolvedValue({ id: 'member-1' }),
-  disableConsoleMember: vi.fn().mockResolvedValue(undefined),
-  enableConsoleMember: vi.fn().mockResolvedValue(undefined),
-  deleteConsoleMember: vi.fn().mockResolvedValue(undefined),
-  resetConsoleMemberPassword: vi.fn().mockResolvedValue(undefined),
-  changeConsolePassword: vi.fn().mockResolvedValue(undefined),
-  replaceConsoleMemberRoles: vi.fn().mockResolvedValue(undefined),
+  createConsoleMember: vi.fn(),
+  updateConsoleMember: vi.fn(),
+  disableConsoleMember: vi.fn(),
+  enableConsoleMember: vi.fn(),
+  deleteConsoleMember: vi.fn(),
+  resetConsoleMemberPassword: vi.fn(),
+  changeConsolePassword: vi.fn(),
+  replaceConsoleMemberRoles: vi.fn(),
   listConsolePricingRules: vi.fn().mockResolvedValue([]),
   createConsolePricingRule: vi.fn().mockResolvedValue({ id: 'pricing-rule-1' }),
   updateConsolePricingRule: vi.fn().mockResolvedValue({ id: 'pricing-rule-1' }),
@@ -128,14 +112,11 @@ vi.mock('@1flowbase/api-client', () => ({
     .mockResolvedValue({ id: 'credit-ledger-1' }),
   listConsolePermissions: vi.fn().mockResolvedValue([]),
   listConsoleRoles: vi.fn().mockResolvedValue([]),
-  createConsoleRole: vi.fn().mockResolvedValue({ code: 'member' }),
-  updateConsoleRole: vi.fn().mockResolvedValue(undefined),
-  deleteConsoleRole: vi.fn().mockResolvedValue(undefined),
-  fetchConsoleRolePermissions: vi.fn().mockResolvedValue({
-    role_code: 'member',
-    permission_codes: []
-  }),
-  replaceConsoleRolePermissions: vi.fn().mockResolvedValue(undefined),
+  createConsoleRole: vi.fn(),
+  updateConsoleRole: vi.fn(),
+  deleteConsoleRole: vi.fn(),
+  fetchConsoleRolePermissions: vi.fn(),
+  replaceConsoleRolePermissions: vi.fn(),
   listConsoleModelProviderCatalog: vi
     .fn()
     .mockResolvedValue(modelProviderCatalogContract),
@@ -143,72 +124,17 @@ vi.mock('@1flowbase/api-client', () => ({
   listConsoleSettingsModelProviderOptions: vi
     .fn()
     .mockResolvedValue(modelProviderApiFixtures.options),
-  getConsoleModelProviderMainInstance: vi
-    .fn()
-    .mockResolvedValue(modelProviderApiFixtures.mainInstance),
-  getConsoleModelProviderModels: vi.fn().mockResolvedValue({
-    provider_instance_id: 'provider-1',
-    models: []
-  }),
-  previewConsoleModelProviderModels: vi.fn().mockResolvedValue({
-    models: [],
-    preview_token: 'preview-1',
-    expires_at: '2026-04-22T12:00:00Z'
-  }),
-  createConsoleModelProviderInstance: vi.fn().mockResolvedValue({
-    id: 'provider-1'
-  }),
-  updateConsoleModelProviderInstance: vi.fn().mockResolvedValue(undefined),
-  updateConsoleModelProviderMainInstance: vi
-    .fn()
-    .mockResolvedValue(modelProviderApiFixtures.mainInstance),
-  authenticateConsoleModelProviderInstance: vi.fn().mockResolvedValue({
-    instance: { id: 'provider-1' },
-    status: 'authorized',
-    message: null,
-    user_action: null
-  }),
-  validateConsoleModelProviderInstance: vi.fn().mockResolvedValue({
-    instance: {
-      id: 'provider-1',
-      installation_id: 'installation-1',
-      provider_code: 'openai_compatible',
-      protocol: 'openai_compatible',
-      display_name: 'OpenAI Production',
-      status: 'ready',
-      included_in_main: true,
-      config_json: {
-        base_url: 'https://api.openai.com/v1'
-      },
-      configured_models: [
-        {
-          model_id: 'gpt-4o-mini',
-          enabled: true,
-          context_window_override_tokens: null
-        },
-        {
-          model_id: 'gpt-4o',
-          enabled: false,
-          context_window_override_tokens: null
-        }
-      ],
-      enabled_model_ids: ['gpt-4o-mini'],
-      catalog_refresh_status: 'ready',
-      catalog_last_error_message: null,
-      catalog_refreshed_at: '2026-04-18T10:01:00Z',
-      model_count: 2
-    },
-    output: {}
-  }),
-  refreshConsoleModelProviderModels: vi.fn().mockResolvedValue({
-    provider_instance_id: 'provider-1',
-    models: []
-  }),
-  revealConsoleModelProviderSecret: vi.fn().mockResolvedValue({
-    key: 'api_key',
-    value: 'super-secret'
-  }),
-  deleteConsoleModelProviderInstance: vi.fn().mockResolvedValue(undefined),
+  getConsoleModelProviderMainInstance: vi.fn(),
+  getConsoleModelProviderModels: vi.fn(),
+  previewConsoleModelProviderModels: vi.fn(),
+  createConsoleModelProviderInstance: vi.fn(),
+  updateConsoleModelProviderInstance: vi.fn(),
+  updateConsoleModelProviderMainInstance: vi.fn(),
+  authenticateConsoleModelProviderInstance: vi.fn(),
+  validateConsoleModelProviderInstance: vi.fn(),
+  refreshConsoleModelProviderModels: vi.fn(),
+  revealConsoleModelProviderSecret: vi.fn(),
+  deleteConsoleModelProviderInstance: vi.fn(),
   listConsolePluginFamilies: vi.fn().mockResolvedValue({
     locale_meta: {
       requested_locale: null,
@@ -243,22 +169,18 @@ vi.mock('@1flowbase/api-client', () => ({
     installation: { id: 'installation-1' }
   }),
   fetchConsoleFileStorages: vi.fn().mockResolvedValue([]),
-  createConsoleFileStorage: vi.fn().mockResolvedValue({ id: 'storage-1' }),
+  createConsoleFileStorage: vi.fn(),
   fetchConsoleFileTables: vi.fn().mockResolvedValue([]),
-  createConsoleFileTable: vi.fn().mockResolvedValue({ id: 'table-1' }),
-  updateConsoleFileTableBinding: vi.fn().mockResolvedValue({ id: 'table-1' }),
-  uploadConsolePluginPackage: vi.fn().mockResolvedValue({
-    installation: { id: 'installation-upload' }
-  }),
+  createConsoleFileTable: vi.fn(),
+  updateConsoleFileTableBinding: vi.fn(),
+  uploadConsolePluginPackage: vi.fn(),
   upgradeConsolePluginFamilyLatest: vi.fn().mockResolvedValue({
     id: 'task-upgrade'
   }),
   switchConsolePluginFamilyVersion: vi.fn().mockResolvedValue({
     id: 'task-switch'
   }),
-  getConsolePluginTask: vi.fn().mockResolvedValue({
-    id: 'task-1'
-  }),
+  getConsolePluginTask: vi.fn(),
   getConsoleHostInfrastructureMemoryOverview: vi.fn().mockResolvedValue({
     can_manage: true,
     contracts: []
@@ -280,81 +202,9 @@ vi.mock('@1flowbase/api-client', () => ({
     sensitive_entry_count: 0,
     total_value_size_bytes: 0
   }),
-  listConsoleHostInfrastructureMemoryEntries: vi.fn().mockResolvedValue({
-    contract_code: 'session-store',
-    label: 'Sessions',
-    provider_code: 'local',
-    capabilities: {
-      list_entries: true,
-      list_tree: true,
-      search_entries: true,
-      reveal_value: true,
-      default_page_size: 50,
-      max_page_size: 200,
-      default_byte_limit: 65536,
-      max_byte_limit: 262144,
-      default_preview_size_bytes: 8192,
-      max_full_value_size_bytes: 262144
-    },
-    supported: true,
-    inspection_path: [],
-    entries: [],
-    next_cursor: null,
-    limit: 50,
-    byte_limit: 65536,
-    emitted_bytes: 0,
-    truncated_by_byte_limit: false
-  }),
-  listConsoleHostInfrastructureMemoryTree: vi.fn().mockResolvedValue({
-    contract_code: 'session-store',
-    label: 'Sessions',
-    provider_code: 'local',
-    capabilities: {
-      list_entries: true,
-      list_tree: true,
-      search_entries: true,
-      reveal_value: true,
-      default_page_size: 50,
-      max_page_size: 200,
-      default_byte_limit: 65536,
-      max_byte_limit: 262144,
-      default_preview_size_bytes: 8192,
-      max_full_value_size_bytes: 262144
-    },
-    supported: true,
-    inspection_path: [],
-    nodes: [],
-    next_cursor: null,
-    limit: 50,
-    byte_limit: 65536,
-    emitted_bytes: 0,
-    truncated_by_byte_limit: false
-  }),
-  searchConsoleHostInfrastructureMemoryEntries: vi.fn().mockResolvedValue({
-    contract_code: 'session-store',
-    label: 'Sessions',
-    provider_code: 'local',
-    capabilities: {
-      list_entries: true,
-      list_tree: true,
-      search_entries: true,
-      reveal_value: true,
-      default_page_size: 50,
-      max_page_size: 200,
-      default_byte_limit: 65536,
-      max_byte_limit: 262144,
-      default_preview_size_bytes: 8192,
-      max_full_value_size_bytes: 262144
-    },
-    supported: true,
-    inspection_path: [],
-    entries: [],
-    next_cursor: null,
-    limit: 50,
-    byte_limit: 65536,
-    emitted_bytes: 0,
-    truncated_by_byte_limit: false
-  }),
+  listConsoleHostInfrastructureMemoryEntries: vi.fn(),
+  listConsoleHostInfrastructureMemoryTree: vi.fn(),
+  searchConsoleHostInfrastructureMemoryEntries: vi.fn(),
   revealConsoleHostInfrastructureMemoryEntry: vi.fn().mockResolvedValue({
     metadata: {
       contract_code: 'session-store',
@@ -392,34 +242,10 @@ vi.mock('@1flowbase/api-client', () => ({
     },
     domains: []
   }),
-  listConsoleHostInfrastructureCacheEntries: vi.fn().mockResolvedValue({
-    domain_code: 'application-logs',
-    capabilities: {
-      list_domains: true,
-      list_entries: true,
-      reveal_value: true,
-      clear_entry: true,
-      clear_domain: true
-    },
-    entries: []
-  }),
-  revealConsoleHostInfrastructureCacheEntry: vi.fn().mockResolvedValue({
-    metadata: {
-      domain_code: 'application-logs',
-      key: 'application-logs:run:1',
-      value_size_bytes: 12,
-      ttl_seconds: null,
-      created_at_unix: null,
-      expires_at_unix: null
-    },
-    value: { ok: true }
-  }),
-  clearConsoleHostInfrastructureCacheEntry: vi.fn().mockResolvedValue({
-    cleared: true
-  }),
-  clearConsoleHostInfrastructureCacheDomain: vi.fn().mockResolvedValue({
-    cleared_count: 1
-  }),
+  listConsoleHostInfrastructureCacheEntries: vi.fn(),
+  revealConsoleHostInfrastructureCacheEntry: vi.fn(),
+  clearConsoleHostInfrastructureCacheEntry: vi.fn(),
+  clearConsoleHostInfrastructureCacheDomain: vi.fn(),
   fetchConsoleSystemRuntimeProfile: vi.fn().mockResolvedValue({
     topology: { relationship: 'same_host' },
     hosts: []
@@ -428,10 +254,7 @@ vi.mock('@1flowbase/api-client', () => ({
     process_total: 0,
     processes: []
   }),
-  terminateConsoleSystemProcess: vi.fn().mockResolvedValue({
-    pid: 1,
-    outcome: 'signalled'
-  })
+  terminateConsoleSystemProcess: vi.fn()
 }));
 
 export { modelProviderCatalogContract };

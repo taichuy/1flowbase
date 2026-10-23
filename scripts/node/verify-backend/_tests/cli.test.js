@@ -20,6 +20,8 @@ test('full backend verification checks types once and keeps separate build/test 
     ['clippy', '--workspace', '--all-targets', '--jobs', '4', '--', '-D', 'warnings']);
   assert.equal(commands.some(({ args }) => args[0] === 'check'), false);
   assert.equal(commands.at(-1).label, 'cargo-test');
+  assert.equal(commands.filter(({ args }) => args[0] === 'test' && args.includes('--workspace')).length, 1);
+  assert.equal(commands.some(({ label }) => label.startsWith('cargo-test-image-llm-vision-')), false);
   for (const command of commands.filter(({ command }) => command === 'cargo')) {
     assert.equal(command.env.CARGO_BUILD_JOBS, '4');
     if (command.args[0] === 'test') assert.ok(command.args.includes('--test-threads=2'));
@@ -203,69 +205,22 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
     shard: null,
   });
 
-  assert.deepEqual(
-    buildCommands({
-      cargoJobs: 4,
-      cargoTestThreads: 2,
-      repoRoot: '/repo-root',
-      env: {},
-      target: 'image-llm-vision',
-    }).map((command) => ({ label: command.label, args: command.args })),
-    [
-      {
-        label: 'cargo-test-image-llm-vision-control-plane-user-media-fallback',
-        args: [
-          'test',
-          '-p',
-          'control-plane',
-          '--jobs',
-          '4',
-          'orchestration_runtime_textualizes_user_media_when_selected_model_is_not_multimodal',
-          '--',
-          '--test-threads=2',
-        ],
-      },
-      {
-        label: 'cargo-test-image-llm-vision-control-plane-multimodal-preserves-media',
-        args: [
-          'test',
-          '-p',
-          'control-plane',
-          '--jobs',
-          '4',
-          'orchestration_runtime_keeps_user_media_when_configured_model_supports_multimodal',
-          '--',
-          '--test-threads=2',
-        ],
-      },
-      {
-        label: 'cargo-test-image-llm-vision-control-plane-routed-media-guidance',
-        args: [
-          'test',
-          '-p',
-          'control-plane',
-          '--jobs',
-          '4',
-          'orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models',
-          '--',
-          '--test-threads=2',
-        ],
-      },
-      {
-        label: 'cargo-test-image-llm-vision-runtime-visible-media-tool',
-        args: [
-          'test',
-          '-p',
-          'orchestration-runtime',
-          '--jobs',
-          '4',
-          'visible_internal_llm_tool_media',
-          '--',
-          '--test-threads=2',
-        ],
-      },
-    ]
-  );
+  const imageCommands = buildCommands({
+    cargoJobs: 4, cargoTestThreads: 2, repoRoot: '/repo-root', env: {},
+    target: 'image-llm-vision',
+  });
+  assert.equal(imageCommands.length, 4);
+  assert.deepEqual(imageCommands.map(({ args }) => args[5]), [
+    'orchestration_runtime_textualizes_user_media_when_selected_model_is_not_multimodal',
+    'orchestration_runtime_keeps_user_media_when_configured_model_supports_multimodal',
+    'orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models',
+    'visible_internal_llm_tool_media',
+  ]);
+  for (const command of imageCommands) {
+    assert.equal(command.args.includes('--workspace'), false);
+    assert.equal(command.args[command.args.indexOf('--jobs') + 1], '4');
+    assert.equal(command.args.at(-1), '--test-threads=2');
+  }
 
   assert.deepEqual(parseBackendCliArgs(['official-i18n-seed']), {
     help: false,
@@ -401,13 +356,11 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
     .trim()
     .split('\n');
 
-  assert.equal(invocations.length, 15);
+  assert.equal(invocations.length, 11);
   assert.match(invocations[1], new RegExp(`clippy --workspace --all-targets --jobs ${expectedParallelism} -- -D warnings`));
-  assert.match(invocations[2], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_textualizes_user_media_when_selected_model_is_not_multimodal -- --test-threads=${expectedParallelism}`));
-  assert.match(invocations[3], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_keeps_user_media_when_configured_model_supports_multimodal -- --test-threads=${expectedParallelism}`));
-  assert.match(invocations[4], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models -- --test-threads=${expectedParallelism}`));
-  assert.match(invocations[5], new RegExp(`test -p orchestration-runtime --jobs ${expectedParallelism} visible_internal_llm_tool_media -- --test-threads=${expectedParallelism}`));
-  assert.match(invocations[14], new RegExp(`test --workspace --jobs ${expectedParallelism} -- --test-threads=${expectedParallelism}`));
+  assert.equal(invocations.filter((invocation) => invocation.startsWith('test --workspace ')).length, 1);
+  assert.equal(invocations.some((invocation) => /orchestration_runtime_.*media|visible_internal_llm_tool_media/u.test(invocation)), false);
+  assert.match(invocations.at(-1), new RegExp(`test --workspace --jobs ${expectedParallelism} -- --test-threads=${expectedParallelism}`));
 
   const warningLogPath = path.join(warningOutputDir, 'verify-backend.warnings.log');
   assert.equal(fs.existsSync(warningLogPath), true);
@@ -527,7 +480,7 @@ test('actual PostgreSQL shard CLI executes SQL evidence and rejects failed, empt
 });
 
 // Each protected selector must execute; a neighbouring passing command cannot hide an empty one.
-test('image media gate rejects empty, ignored, absent and failed executions per selector', async () => {
+test('standalone image selections and the full workspace require their own executed tests', async () => {
   for (const target of ['image-llm-vision', 'all']) {
     for (const [output, expected] of [
       ['test result: ok. 0 passed; 0 failed; 20 ignored;', 1],
@@ -548,14 +501,20 @@ test('image media gate rejects empty, ignored, absent and failed executions per 
               ...options,
               spawnSyncImpl(_command, args) {
                 invocations.push(args);
-                const selected = args.includes('orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models');
-                return { status: 0, stdout: selected ? output : 'test result: ok. 3 passed; 0 failed;', stderr: '' };
+                const selected = target === 'all'
+                  ? args[0] === 'test' && args.includes('--workspace')
+                  : args.includes('orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models');
+                const stdout = args[0] === 'test' ? 'test result: ok. 3 passed; 0 failed;' : '';
+                return { status: 0, stdout: selected ? output : stdout, stderr: '' };
               },
             });
           },
         });
         assert.equal(status, expected, `${target}: ${output}`);
-        assert.ok(invocations.some(args => args.includes('orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models')));
+        const mediaRuns = invocations.filter(args => args.includes('orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models'));
+        assert.equal(mediaRuns.length, target === 'all' ? 0 : 1);
+        const workspaceRuns = invocations.filter(args => args[0] === 'test' && args.includes('--workspace'));
+        assert.equal(workspaceRuns.length, target === 'all' ? 1 : 0);
       } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
     }
   }

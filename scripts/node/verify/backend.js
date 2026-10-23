@@ -64,10 +64,13 @@ function buildBackendCargoCommand({
   cargoTestThreads,
   incremental = false,
   shard,
+  testSelection,
 }) {
   const normalizedShard = normalizeBackendShard(shard);
-  const labelSuffix = normalizedShard ? `-${normalizedShard.key}` : '';
-  const packageArgs = buildBackendPackageArgs(normalizedShard);
+  const labelSuffix = testSelection ? '-selected' : normalizedShard ? `-${normalizedShard.key}` : '';
+  const packageArgs = testSelection
+    ? testSelection.packages.flatMap((packageName) => ['--package', packageName])
+    : buildBackendPackageArgs(normalizedShard);
 
   if (target === 'clippy') {
     return {
@@ -109,7 +112,13 @@ function buildBackendCargoCommand({
     return {
       label: `cargo-test${labelSuffix}`,
       command: 'cargo',
-      args: ['test', ...packageArgs, '--jobs', String(cargoJobs), '--', `--test-threads=${cargoTestThreads}`],
+      args: [
+        'test', ...packageArgs, ...(testSelection?.targetArgs ?? []),
+        '--jobs', String(cargoJobs),
+        ...(testSelection?.filter ? [testSelection.filter] : []),
+        '--', `--test-threads=${cargoTestThreads}`,
+        ...(testSelection?.exact ? ['--exact'] : []),
+      ],
       cwd: 'api',
       env: {
         ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
@@ -159,11 +168,14 @@ function buildBackendTestCommands({
   incremental = false,
   repoRoot = getRepoRoot(),
   env = process.env,
+  selection,
 }) {
   return [
     buildRustBackendStaticGateCommand({ repoRoot, env }),
-    ...buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads, incremental }),
-    buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental }),
+    {
+      ...buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental, testSelection: selection }),
+      requireExecutedTests: true,
+    },
   ];
 }
 
@@ -250,10 +262,12 @@ function buildBackendCommands({
     buildRustBackendStaticGateCommand({ repoRoot, env }),
     buildBackendFmtCommand({ cargoJobs }),
     buildBackendCargoCommand({ target: 'clippy', cargoJobs, cargoTestThreads, incremental }),
-    ...buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads, incremental }),
     ...buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, incremental }),
     ...buildHistoryMaintenanceCommands({ cargoJobs, cargoTestThreads, incremental }),
-    buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental }),
+    {
+      ...buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental }),
+      requireExecutedTests: true,
+    },
   ];
 }
 
@@ -304,7 +318,8 @@ function runBackendCommandSequence(sequenceOptions) {
         }
         return;
       }
-      if (!command.label.startsWith('cargo-test-image-llm-vision-')
+      if (!command.requireExecutedTests
+        && !command.label.startsWith('cargo-test-image-llm-vision-')
         && !command.label.startsWith('cargo-test-official-i18n-seed-')
         && !command.label.startsWith('cargo-test-history-maintenance-')) return;
       const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);

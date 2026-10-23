@@ -1,14 +1,14 @@
 import {
   fetchConsoleSystemRuntimeProcesses,
   fetchConsoleSystemRuntimeProfile,
-  terminateConsoleSystemProcess,
   type ConsoleSystemRuntimeProcessList,
   type ConsoleSystemRuntimeProfile
 } from '@1flowbase/api-client';
 
+export { terminateConsoleSystemProcess as terminateSettingsSystemRuntimeProcess } from '@1flowbase/api-client';
+
 export type SettingsSystemRuntimeProfile = ConsoleSystemRuntimeProfile;
-export type SettingsSystemRuntimeProcessList =
-  ConsoleSystemRuntimeProcessList;
+export type SettingsSystemRuntimeProcessList = ConsoleSystemRuntimeProcessList;
 
 export const settingsSystemRuntimeQueryKey = [
   'settings',
@@ -27,8 +27,4 @@ export function fetchSettingsSystemRuntimeProfile() {
 
 export function fetchSettingsSystemRuntimeProcesses() {
   return fetchConsoleSystemRuntimeProcesses();
-}
-
-export function terminateSettingsSystemRuntimeProcess(pid: number) {
-  return terminateConsoleSystemProcess(pid);
 }

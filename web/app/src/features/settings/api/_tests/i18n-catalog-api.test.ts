@@ -17,8 +17,6 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => ({
 
 import {
   fetchSettingsI18nCatalogEntries,
-  restoreAllSettingsI18nCatalogOverrides,
-  saveSettingsI18nCatalogOverride,
   settingsI18nCatalogListQueryKey
 } from '../i18n-catalog';
 
@@ -46,31 +44,5 @@ describe('settings i18n catalog API', () => {
       'list',
       request
     ]);
-  });
-
-  test('AC-008 forwards expected revision for entry and global writes', async () => {
-    client.upsertI18nCatalogOverride.mockResolvedValue({ revision: 9 });
-    client.restoreAllI18nCatalogOverrides.mockResolvedValue({ revision: 10 });
-    const input = {
-      key: 'Settings',
-      locale: 'zh_Hans',
-      translation: '设置',
-      expected_revision: 8
-    };
-
-    await saveSettingsI18nCatalogOverride(input, 'csrf-123');
-    await restoreAllSettingsI18nCatalogOverrides(
-      { expected_revision: 9 },
-      'csrf-123'
-    );
-
-    expect(client.upsertI18nCatalogOverride).toHaveBeenCalledWith(
-      input,
-      'csrf-123'
-    );
-    expect(client.restoreAllI18nCatalogOverrides).toHaveBeenCalledWith(
-      { expected_revision: 9 },
-      'csrf-123'
-    );
   });
 });

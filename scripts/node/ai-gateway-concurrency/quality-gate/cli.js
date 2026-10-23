@@ -177,223 +177,6 @@ function assertExecutedCargoTests(output, name) {
   if (passed === 0) throw new Error(`${name}: no executed passing tests`);
 }
 
-function testFiles(repoRoot) {
-  const suites = [
-    "protocol-oracle",
-    "responses-websocket-acceptance",
-    "characterize",
-    "workflow-contract",
-    "wire-audit",
-    "mock-upstream",
-    "gateway-fixture",
-    "local-acceptance",
-    "local-client-acceptance",
-    "quality-gate",
-  ];
-  return suites.flatMap((suite) => {
-    const directory = path.join(
-      repoRoot,
-      "scripts/node/ai-gateway-concurrency",
-      suite,
-      "_tests",
-    );
-    return fs
-      .readdirSync(directory)
-      .filter((file) => file.endsWith(".test.js"))
-      .sort()
-      .map((file) => path.join(directory, file));
-  });
-}
-
-function conversationTestInvocations(repoRoot, databaseUrl) {
-  const manifestPath = path.join(repoRoot, "api/Cargo.toml");
-  const invocation = (name, packageName, filter, target = null, extraEnv = {}) => ({
-    name,
-    options: {
-      env: {
-        API_DATABASE_URL: databaseUrl,
-        DATABASE_URL: databaseUrl,
-        BOOTSTRAP_ROOT_ACCOUNT: "root",
-        BOOTSTRAP_ROOT_PASSWORD: "change-me",
-        ...extraEnv,
-      },
-    },
-    args: [
-      "test",
-      "--manifest-path",
-      manifestPath,
-      "-p",
-      packageName,
-      ...(target ? ["--test", target] : ["--lib"]),
-      filter,
-    ],
-  });
-  return [
-    // Root #1998: execute the strengthened behavior fixtures on the same candidate
-    // and isolated database as the online protocol evidence.
-    invocation("api-server-interface-lifecycle-acceptance", "api-server", "root_1998"),
-    invocation("api-server-compact-compatibility", "api-server", "_tests::application_public_api::compat_routes::compact::"),
-    invocation("api-server-official-seed-consumer-inventory", "api-server", "_tests::dynamic_backend_consumer_inventory::"),
-    invocation("storage-postgres-legacy-provider-upgrades", "storage-durable-postgres", "model_provider_repository_backfills_"),
-    invocation("api-server-runtime-event-lifecycle-tests", "api-server", "_tests::runtime_event_stream::", null, { RUST_TEST_NOCAPTURE: "1" }),
-    invocation("api-server-debug-cold-replay-tests", "api-server", "routes::applications_group::debug_run_stream::tests::"),
-    invocation("api-server-compatible-forwarding-tests", "api-server", "routes::application_public_api::compat_sse::tests::forwarding::"),
-    invocation("control-plane-runtime-event-persister-tests", "control-plane", "orchestration_runtime::runtime_event_persister::tests::"),
-    invocation("control-plane-provider-observation-order-tests", "control-plane", "orchestration_runtime::provider_invoker::runtime_events::tests::"),
-    invocation("control-plane-frozen-plan-cache-tests", "control-plane", "orchestration_runtime::frozen_plan::_tests::"),
-    invocation("storage-ephemeral-published-plan-cache-tests", "storage-ephemeral", "published_plan_cache_tests::"),
-    invocation("control-plane-contract-authenticity-tests", "control-plane-contracts", ""),
-    invocation("postgres-runtime-replay-gc-tests", "control-plane-postgres-tests", "replay_gc_", "orchestration_runtime_integration"),
-    invocation("postgres-callback-resume-tests", "control-plane-postgres-tests", "callback_resume::", "orchestration_runtime_integration"),
-    invocation("gateway-dependency-boundary-tests", "control-plane-postgres-tests", "", "dependency_boundaries"),
-    invocation(
-      "plugin-framework-count-tokens-estimator-total-corpus",
-      "plugin-framework",
-      "d1_p03_generic_estimator_is_total_for_canonical_prompt_block_families",
-    ),
-    invocation(
-      "plugin-framework-count-tokens-contract-tests",
-      "plugin-framework",
-      "count_tokens",
-    ),
-    invocation(
-      "extension-package-runtime-count-tokens-estimator-fault-tests",
-      "extension-package-runtime",
-      "count_tokens_estimator",
-    ),
-    invocation(
-      "runtime-extension-host-count-tokens-totality-tests",
-      "runtime-extension-host",
-      "count_tokens",
-    ),
-    invocation(
-      "orchestration-runtime-count-tokens-terminal-tests",
-      "orchestration-runtime",
-      "count_tokens",
-    ),
-    invocation(
-      "control-plane-count-tokens-route-tests",
-      "control-plane",
-      "count_tokens",
-    ),
-    invocation(
-      "api-server-count-tokens-envelope-tests",
-      "api-server",
-      "count_tokens",
-    ),
-    invocation(
-      "plugin-framework-message-block-contract-tests",
-      "plugin-framework",
-      "root_1534",
-    ),
-    invocation(
-      "orchestration-runtime-semantic-route-tests",
-      "orchestration-runtime",
-      "root_1534",
-    ),
-    invocation(
-      "orchestration-runtime-upstream-error-tests",
-      "orchestration-runtime",
-      "upstream",
-    ),
-    invocation(
-      "control-plane-conversation-tests",
-      "control-plane",
-      "application_public_api",
-    ),
-    invocation(
-      "control-plane-client-trajectory-tests",
-      "control-plane",
-      "client_trajectory::_tests::",
-    ),
-    invocation(
-      "api-server-anthropic-error-projection-tests",
-      "api-server",
-      "routes::application_public_api::anthropic::error_projection::tests::",
-    ),
-    invocation(
-      "api-server-anthropic-stream-error-tests",
-      "api-server",
-      "routes::application_public_api::compat_sse::protocol_mappers::anthropic_stream::error_tests::",
-    ),
-    invocation(
-      "control-plane-live-provider-error-tests",
-      "control-plane",
-      "provider_error_after_live_delta_drains_runtime_event_stream_forwarding",
-    ),
-    invocation(
-      "orchestration-runtime-anthropic-callback-retry-tests",
-      "orchestration-runtime",
-      "anthropic_callback_retry",
-    ),
-    invocation(
-      "orchestration-runtime-cross-provider-image-llm-tests",
-      "orchestration-runtime",
-      "ac_001_cross_provider_image_llm_does_not_inherit_parent_reasoning_semantics",
-    ),
-    invocation(
-      "control-plane-answer-node-truth-tests",
-      "control-plane",
-      "ac_004_answer_node_truth",
-    ),
-    invocation(
-      "api-server-answer-node-truth-tests",
-      "api-server",
-      "ac_004_answer_node_truth",
-    ),
-    invocation(
-      "api-server-translation-protocol-persistence-tests",
-      "api-server",
-      "compatibility_mode",
-    ),
-    invocation(
-      "storage-postgres-protocol-context-migration-tests",
-      "storage-durable-postgres",
-      "protocol_context_migration_tests",
-    ),
-    invocation(
-      "api-server-protocol-projection-tests",
-      "api-server",
-      "routes::application_public_api::compat_sse::tests::protocol_projection",
-    ),
-    invocation(
-      "api-server-public-stream-causality-tests",
-      "api-server",
-      "_tests::application_public_api::compat_routes::streaming::ac_live_causality",
-    ),
-    invocation(
-      "api-server-responses-websocket-tests",
-      "api-server",
-      "routes::application_public_api::responses_websocket::tests",
-    ),
-    invocation(
-      "api-server-callback-adapter-tests",
-      "api-server",
-      "routes::application_public_api::callback_adapter::tests",
-    ),
-    invocation(
-      "api-server-native-sse-tests",
-      "api-server",
-      "routes::application_public_api::sse::tests",
-    ),
-    invocation(
-      "api-server-terminal-fallback-tests",
-      "api-server",
-      "routes::application_public_api::stream_terminal_fallback::tests",
-    ),
-    invocation(
-      "control-plane-issue-1743-anthropic-round-trip-tests",
-      "control-plane",
-      "issue_1743",
-    ),
-    invocation(
-      "api-server-issue-1743-anthropic-round-trip-tests",
-      "api-server",
-      "issue_1743",
-    ),
-  ];
-}
-
 function officialProviderTestInvocations(officialSourceRoot) {
   return OFFICIAL_PROVIDER_CODES.map((providerCode) => ({
     name: `${providerCode}-provider-tests`,
@@ -532,27 +315,8 @@ async function runQualityGate(rawOptions) {
 
   let result = null;
   try {
-    attempt("protocol-structural-tests", "node", [
-      "--test",
-      ...testFiles(repoRoot),
-    ]);
-    // Boundary fixtures resolve the full locked workspace graph in offline
-    // mode, including dependencies outside the host's compiled test targets.
-    attempt("gateway-locked-dependencies", "cargo", [
-      "fetch",
-      "--locked",
-      "--manifest-path",
-      path.join(repoRoot, "api/Cargo.toml"),
-    ]);
-    // Rust fixtures create their own disposable databases. Keep that authority
-    // on the supplied test administrator; the online Gateway still uses the
-    // separate restricted role and database created above.
-    for (const invocation of database
-      ? conversationTestInvocations(repoRoot, rawOptions.databaseUrl)
-      : []) {
-      attempt(invocation.name, "cargo", invocation.args, invocation.options);
-    }
-
+    // Repository unit and structural tests belong to the full CI component owners.
+    // This gate owns paired provider tests and the real Gateway protocol workflow.
     for (const invocation of officialProviderTestInvocations(
       officialSourceRoot,
     )) {
@@ -725,7 +489,6 @@ if (require.main === module) {
 module.exports = {
   assertExecutedCargoTests,
   canRunWorkflowContract,
-  conversationTestInvocations,
   artifactBytes,
   boundedCommandLog,
   dockerDatabaseContract,
@@ -734,5 +497,4 @@ module.exports = {
   officialProviderTestInvocations,
   parseArgs,
   runQualityGate,
-  testFiles,
 };

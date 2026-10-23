@@ -1,67 +1,38 @@
 import { describe, expect, test, vi } from 'vitest';
 
 vi.mock('@1flowbase/api-client', () => ({
-  batchDeleteConsoleDataModels: vi.fn().mockResolvedValue({
-    deleted: true,
-    deleted_count: 2,
-    deleted_ids: ['model-1', 'model-2']
-  }),
-  createConsoleDataModel: vi.fn().mockResolvedValue({ id: 'model-1' }),
-  createConsoleDataModelField: vi.fn().mockResolvedValue({ id: 'field-1' }),
-  createConsoleDataModelScopeGrant: vi.fn().mockResolvedValue({
-    id: 'grant-1'
-  }),
-  deleteConsoleDataModel: vi.fn().mockResolvedValue({ deleted: true }),
-  deleteConsoleDataModelField: vi.fn().mockResolvedValue({ deleted: true }),
-  fetchConsoleDataModelAdvisorFindings: vi.fn().mockResolvedValue([]),
-  fetchConsoleDataModelOpenApiDocument: vi.fn().mockResolvedValue({
-    openapi: '3.1.0'
-  }),
-  fetchConsoleDataModelRecordPreview: vi.fn().mockResolvedValue({
-    records: []
-  }),
-  fetchConsoleDataModelScopeGrants: vi.fn().mockResolvedValue([]),
+  batchDeleteConsoleDataModels: vi.fn(),
+  createConsoleDataModel: vi.fn(),
+  createConsoleDataModelField: vi.fn(),
+  createConsoleDataModelScopeGrant: vi.fn(),
+  deleteConsoleDataModel: vi.fn(),
+  deleteConsoleDataModelField: vi.fn(),
+  fetchConsoleDataModelAdvisorFindings: vi.fn(),
+  fetchConsoleDataModelOpenApiDocument: vi.fn(),
+  fetchConsoleDataModelRecordPreview: vi.fn(),
+  fetchConsoleDataModelScopeGrants: vi.fn(),
   fetchConsoleCompatibleDataModelTemplates: vi.fn().mockResolvedValue([]),
   fetchConsoleDataModels: vi.fn().mockResolvedValue([]),
   fetchConsoleDataSources: vi.fn().mockResolvedValue([]),
   fetchConsoleDataSourceCatalog: vi.fn().mockResolvedValue({ entries: [] }),
-  fetchConsoleDataSourceResources: vi.fn().mockResolvedValue({ entries: [] }),
+  fetchConsoleDataSourceResources: vi.fn(),
   createConsoleDataSource: vi.fn(),
   validateConsoleDataSource: vi.fn(),
   discoverConsoleDataSourceResources: vi.fn(),
   previewConsoleDataSourceResource: vi.fn(),
   mapConsoleDataSourceResourceToModel: vi.fn(),
-  updateConsoleDataModel: vi.fn().mockResolvedValue({ id: 'model-1' }),
-  updateConsoleDataModelField: vi.fn().mockResolvedValue({ id: 'field-1' }),
-  updateConsoleDataModelScopeGrant: vi.fn().mockResolvedValue({
-    id: 'grant-1'
-  }),
-  updateConsoleDataSourceDefaults: vi.fn().mockResolvedValue({
-    id: 'source-1'
-  })
+  updateConsoleDataModel: vi.fn(),
+  updateConsoleDataModelField: vi.fn(),
+  updateConsoleDataModelScopeGrant: vi.fn(),
+  updateConsoleDataSourceDefaults: vi.fn()
 }));
 
 import {
-  batchDeleteConsoleDataModels,
-  createConsoleDataModel,
-  createConsoleDataModelField,
-  createConsoleDataModelScopeGrant,
-  deleteConsoleDataModel,
-  deleteConsoleDataModelField,
   fetchConsoleDataModels,
   fetchConsoleCompatibleDataModelTemplates,
-  fetchConsoleDataSources,
-  updateConsoleDataModel,
-  updateConsoleDataModelField,
-  updateConsoleDataSourceDefaults
+  fetchConsoleDataSources
 } from '@1flowbase/api-client';
 import {
-  batchDeleteSettingsDataModels,
-  createSettingsDataModel,
-  createSettingsDataModelField,
-  createSettingsDataModelScopeGrant,
-  deleteSettingsDataModel,
-  deleteSettingsDataModelField,
   fetchSettingsDataModels,
   fetchSettingsCompatibleDataModelTemplates,
   settingsCompatibleDataModelTemplatesQueryKey,
@@ -71,10 +42,7 @@ import {
   settingsDataModelOpenApiQueryKey,
   settingsDataModelsQueryKey,
   settingsDataModelScopeGrantsQueryKey,
-  settingsDataSourcesQueryKey,
-  updateSettingsDataModel,
-  updateSettingsDataModelField,
-  updateSettingsDataSourceDefaults
+  settingsDataSourcesQueryKey
 } from '../data-models';
 
 describe('settings data models API wrappers', () => {
@@ -152,145 +120,5 @@ describe('settings data models API wrappers', () => {
       data_source_id: 'source-1',
       filter: { code: { $includes: 'orders' } }
     });
-  });
-
-  test('delegates mutations with CSRF tokens', async () => {
-    await updateSettingsDataSourceDefaults(
-      'source-1',
-      {
-        default_data_model_status: 'draft'
-      },
-      'csrf-123'
-    );
-    expect(updateConsoleDataSourceDefaults).toHaveBeenCalledWith(
-      'source-1',
-      {
-        default_data_model_status: 'draft'
-      },
-      'csrf-123'
-    );
-
-    await createSettingsDataModel(
-      {
-        scope_kind: 'workspace',
-        template_provider: 'core',
-        template_code: 'general',
-        template_version: 'v1',
-        code: 'orders',
-        title: 'Orders',
-        description: 'Workspace order records'
-      },
-      'csrf-123'
-    );
-    expect(createConsoleDataModel).toHaveBeenCalledWith(
-      {
-        scope_kind: 'workspace',
-        template_provider: 'core',
-        template_code: 'general',
-        template_version: 'v1',
-        code: 'orders',
-        title: 'Orders',
-        description: 'Workspace order records'
-      },
-      'csrf-123'
-    );
-
-    await updateSettingsDataModel(
-      'model-1',
-      {
-        title: 'Customer Orders',
-        description: 'Customer order records',
-        status: 'published'
-      },
-      'csrf-123'
-    );
-    expect(updateConsoleDataModel).toHaveBeenCalledWith(
-      'model-1',
-      {
-        title: 'Customer Orders',
-        description: 'Customer order records',
-        status: 'published'
-      },
-      'csrf-123'
-    );
-
-    await deleteSettingsDataModel('model-1', 'csrf-123');
-    expect(deleteConsoleDataModel).toHaveBeenCalledWith('model-1', 'csrf-123');
-
-    await batchDeleteSettingsDataModels(
-      { filterByTk: ['model-1', 'model-2'], confirmed: true },
-      'csrf-123'
-    );
-    expect(batchDeleteConsoleDataModels).toHaveBeenCalledWith(
-      { filterByTk: ['model-1', 'model-2'], confirmed: true },
-      'csrf-123'
-    );
-
-    await createSettingsDataModelField(
-      'model-1',
-      {
-        code: 'email',
-        title: 'Email',
-        field_kind: 'string',
-        is_required: false,
-        is_unique: false,
-        default_value: null,
-        display_interface: 'input',
-        display_options: {},
-        relation_target_model_id: null,
-        relation_options: {}
-      },
-      'csrf-123'
-    );
-    expect(createConsoleDataModelField).toHaveBeenCalled();
-
-    await updateSettingsDataModelField(
-      'model-1',
-      'field-1',
-      {
-        title: 'Primary Email',
-        is_required: true,
-        is_unique: true,
-        default_value: null,
-        display_interface: 'input',
-        display_options: {},
-        relation_options: {}
-      },
-      'csrf-123'
-    );
-    expect(updateConsoleDataModelField).toHaveBeenCalledWith(
-      'model-1',
-      'field-1',
-      {
-        title: 'Primary Email',
-        is_required: true,
-        is_unique: true,
-        default_value: null,
-        display_interface: 'input',
-        display_options: {},
-        relation_options: {}
-      },
-      'csrf-123'
-    );
-
-    await deleteSettingsDataModelField('model-1', 'field-1', 'csrf-123');
-    expect(deleteConsoleDataModelField).toHaveBeenCalledWith(
-      'model-1',
-      'field-1',
-      'csrf-123'
-    );
-
-    await createSettingsDataModelScopeGrant(
-      'model-1',
-      {
-        scope_kind: 'system',
-        scope_id: '00000000-0000-0000-0000-000000000000',
-        enabled: true,
-        permission_profile: 'system_all',
-        confirm_unsafe_external_source_system_all: true
-      },
-      'csrf-123'
-    );
-    expect(createConsoleDataModelScopeGrant).toHaveBeenCalled();
   });
 });

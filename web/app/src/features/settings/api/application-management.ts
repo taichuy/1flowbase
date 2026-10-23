@@ -1,9 +1,10 @@
 import {
-  listConsoleApplicationManagement,
   type ConsoleApplicationManagementItem,
   type ConsoleApplicationManagementPage,
   type ConsoleApplicationManagementQuery
 } from '@1flowbase/api-client';
+
+export { listConsoleApplicationManagement as fetchSettingsApplicationManagement } from '@1flowbase/api-client';
 
 export type SettingsApplicationManagementItem =
   ConsoleApplicationManagementItem;
@@ -21,10 +22,4 @@ export function settingsApplicationManagementQueryKey(
   query: SettingsApplicationManagementQuery
 ) {
   return [...settingsApplicationManagementQueryPrefix, query] as const;
-}
-
-export function fetchSettingsApplicationManagement(
-  query: SettingsApplicationManagementQuery
-): Promise<SettingsApplicationManagementPage> {
-  return listConsoleApplicationManagement(query);
 }

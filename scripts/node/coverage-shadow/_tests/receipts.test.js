@@ -138,7 +138,7 @@ test('successful shard persists raw output and metadata only after exact runnabl
     spawnSyncImpl(_command, args, options) {
       if (args[1] === 'show-env') return { status: 0, stdout: llvmEnvironment };
       if (args[1] === 'list') return { status: 0, stdout: JSON.stringify(inventory(['1'], ['later'])) };
-      fs.writeFileSync(options.env.LLVM_PROFILE_FILE.replace('%p', '1').replace('%m', 'binary'), 'profile');
+      fs.writeFileSync(options.env.LLVM_PROFILE_FILE.replace(/%\d*m/gu, 'binary_0'), 'profile');
       fs.writeSync(options.stdio[1], rawStdout);
       fs.writeSync(options.stdio[2], rawStderr);
       return { status: 0, stdout: null, stderr: null };
@@ -174,7 +174,7 @@ test('failed, empty or incomplete shard execution cannot leave a successful rece
       spawnSyncImpl(_command, args, options) {
         if (args[1] === 'show-env') return { status: 0, stdout: llvmEnvironment };
         if (args[1] === 'list') return { status: 0, stdout: JSON.stringify(inventory(scenario.emptyInventory ? [] : ['1'], ['later'])) };
-        if (!scenario.noProfile) fs.writeFileSync(options.env.LLVM_PROFILE_FILE.replace('%p', '1').replace('%m', 'binary'), 'profile');
+        if (!scenario.noProfile) fs.writeFileSync(options.env.LLVM_PROFILE_FILE.replace(/%\d*m/gu, 'binary_0'), 'profile');
         fs.writeSync(options.stdio[2], scenario.output || '');
         return { status: scenario.exitCode || 0, stdout: null, stderr: null };
       },

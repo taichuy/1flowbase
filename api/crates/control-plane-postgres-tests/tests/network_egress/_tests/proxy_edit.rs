@@ -90,6 +90,13 @@ async fn ac_002_proxy_edit_preserves_secret_member_and_route_and_rejects_invalid
         json!({"host":"127.0.0.1","port":"3128","username":"alice"})
     );
     assert_eq!(view.configured_secret_fields, vec!["password"]);
+    let pool_service = NetworkEgressPoolService::with_secret_master_key(store.clone(), key.clone());
+    let pool_view = pool_service.list_global(actor.id).await.unwrap();
+    assert_eq!(
+        pool_view[0].members[0].address_summary.as_deref(),
+        Some("127.0.0.1:3128")
+    );
+    assert!(!format!("{pool_view:?}").contains("keep-me"));
     for password in [None, Some("")] {
         let mut config = json!({"host":"203.0.113.20","port":"8080","username":"bob"});
         if let Some(password) = password {
@@ -119,6 +126,14 @@ async fn ac_002_proxy_edit_preserves_secret_member_and_route_and_rejects_invalid
     let view = service.get_proxy(id).await.unwrap();
     assert_eq!(view.display_name, "Updated");
     assert_eq!(view.description, "Updated description");
+    let pool_view = pool_service.list_global(actor.id).await.unwrap();
+    assert_eq!(
+        pool_view[0].members[0].address_summary.as_deref(),
+        Some("203.0.113.20:8080")
+    );
+    assert!(!pool_view[0].members[0].member.enabled);
+    assert_eq!(pool_view[0].members[0].member.sequence, 7);
+    assert!(!format!("{pool_view:?}").contains("keep-me"));
     let member = store
         .list_network_egress_pool_members(original.pool_id)
         .await

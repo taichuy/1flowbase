@@ -23,8 +23,10 @@ checks a complete disjoint runnable-test union and counts ignored tests separate
 from nextest partition/filter exclusions. Old artifacts cannot fill missing shards.
 
 `scripts/node/verify/backend.js` owns Cargo command construction and validation of
-protected test executions. `test-backend` reuses its static check, image/multimodal
-scenarios, and workspace test plan. Each protected command still requires actual
+protected test executions. With no arguments, `test-backend` and `verify-backend all`
+run static checks and the workspace test plan once; that plan already includes
+image/multimodal scenarios. The standalone `image-llm-vision` scope remains available.
+Each protected command still requires actual
 passing tests: adjacent success, ignored tests, compilation, or absent output do
 not establish execution evidence.
 
@@ -50,6 +52,32 @@ The frontend owns the five consumer-contract tests. `frontend-pr` runs the targe
 contracts explicitly; repository `frontend/all` covers them through the union of
 normal tests and page regression. Tooling no longer executes them again.
 `test-frontend full` alone does not include the entire page-regression suite.
+
+Scoped developer commands pass selections to the native runner:
+`test-backend.js --package <crate> [--lib | --test <target> | --bin <target>] [--filter <name>] [--exact]`
+and `test-frontend.js fast [--] <file> [-t <pattern>]`. Backend selection requires
+a package. Unsupported, missing or conflicting arguments fail before execution
+instead of silently running the full suite. Resource budgets and nonzero-test
+checks still apply. Full CI executes a real scoped Rust command and a scoped
+frontend command in their existing owner jobs.
+
+Protocol conformance owns official provider tests, plugin packaging and real wire
+and runtime contracts. Repository Rust behavior belongs to the ordinary/coverage
+owners above; Node tool tests belong to `repo-tooling`. The protocol job no longer
+compiles and executes them again. Full CI still requires candidate receipts from
+all these owners; a standalone protocol pass does not establish repository-wide
+acceptance. Provider-only cases, nonzero execution checks, transport/error oracles
+and paired source/artifact provenance remain intact.
+
+API coverage uses the [native LLVM `%Nm` merge pool](https://clang.llvm.org/docs/SourceBasedCodeCoverage.html),
+with N derived from test parallelism. The runtime locks and merges profiles per
+binary instead of retaining a full profile for every test process through `%p`.
+Partitions, execution counts, SHA checks and coverage thresholds are unchanged.
+Before its test run, the first shard compares complete coverage counters for the
+old and pooled patterns using the same real instrumented binary. Deliberately
+omitting one execution must change the counters. A failed proof prevents a
+successful shard receipt. The proof travels with shard one's artifact; final
+coverage still merges profiles from the complete API test suite.
 
 Unified governance acceptance requires full Rust tests and complete CI on a frozen
 candidate. Record passed, failed, ignored/skipped tests and core scenarios, plus

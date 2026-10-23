@@ -621,6 +621,26 @@ async fn model_definition_routes_batch_delete_models_from_action_endpoint() {
 
     assert_eq!(unconfirmed_response.status(), StatusCode::BAD_REQUEST);
 
+    for selection in [json!([]), json!(["not-a-uuid"])] {
+        let invalid_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/console/settings/data-models/model-definitions:batchDelete")
+                    .header("cookie", &cookie)
+                    .header("x-csrf-token", &csrf)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"filterByTk": selection, "confirmed": true}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(invalid_response.status(), StatusCode::BAD_REQUEST);
+    }
+
     let delete_response = app
         .clone()
         .oneshot(
@@ -632,7 +652,8 @@ async fn model_definition_routes_batch_delete_models_from_action_endpoint() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "filterByTk": [orders_id, invoices_id],
+                        "filterByTk": [orders_id, invoices_id, orders_id],
+                        "filter": {"code": {"$eq": "no-match"}},
                         "confirmed": true
                     })
                     .to_string(),
@@ -650,6 +671,43 @@ async fn model_definition_routes_batch_delete_models_from_action_endpoint() {
     )
     .unwrap();
     assert_eq!(payload["data"]["deleted_count"], json!(2));
+    assert_eq!(
+        payload["data"]["deleted_ids"],
+        json!([orders_id, invoices_id])
+    );
+
+    let filtered_id = create_model(&app, &cookie, &csrf, "receipts", "Receipts").await;
+    let filtered_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/data-models/model-definitions:batchDelete")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "filter": {"code": {"$eq": "receipts"}},
+                        "confirmed": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(filtered_response.status(), StatusCode::OK);
+    let filtered_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(filtered_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        filtered_payload["data"]["deleted_ids"],
+        json!([filtered_id])
+    );
 
     let list_response = app
         .oneshot(
