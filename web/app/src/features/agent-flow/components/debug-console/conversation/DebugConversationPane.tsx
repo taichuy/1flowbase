@@ -172,7 +172,7 @@ export function DebugConversationPane({
         styles: {
           body: { width: '100%' },
           content: { width: '100%' },
-          root: { paddingInlineEnd: 0, width: '100%' }
+          root: { paddingBlock: 0, paddingInlineEnd: 0, width: '100%' }
         },
         variant: 'borderless' as const,
         contentRender: (message: AgentFlowDebugMessage) => (
@@ -200,7 +200,7 @@ export function DebugConversationPane({
           body: { width: '100%' },
           content: { width: '100%' },
           footer: { marginTop: 12 },
-          root: { paddingInlineEnd: 0, width: '100%' }
+          root: { paddingBlock: 0, paddingInlineEnd: 0, width: '100%' }
         },
         variant: 'borderless' as const,
         contentRender: (message: AgentFlowDebugMessage) => (
@@ -226,7 +226,10 @@ export function DebugConversationPane({
         placement: 'end' as const,
         shape: 'corner' as const,
         rootClassName: 'agent-flow-editor__debug-message-actions-owner',
-        styles: { footer: { marginTop: 12 } },
+        styles: {
+          root: { paddingBlock: 0 },
+          footer: { marginTop: 12 }
+        },
         contentRender: (message: AgentFlowDebugMessage) => (
           <Flex align="end" gap={4} vertical>
             <Typography.Paragraph className="agent-flow-editor__debug-message-content">
