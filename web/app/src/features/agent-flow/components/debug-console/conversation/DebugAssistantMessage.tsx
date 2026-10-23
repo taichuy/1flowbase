@@ -1,14 +1,13 @@
 import BranchesOutlined from '@ant-design/icons/es/icons/BranchesOutlined';
-import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
 import HistoryOutlined from '@ant-design/icons/es/icons/HistoryOutlined';
-import { App, Button, Space, Tooltip } from 'antd';
+import { Button, Space, Tooltip } from 'antd';
 import type { ReactNode } from 'react';
 
 import type { AgentFlowDebugMessage } from '../../../api/runtime';
 import type { RuntimeDebugArtifactBatchLoader } from '../../detail/last-run/runtime-debug-payload';
 import { parseAssistantContent } from '../../../lib/debug-console/assistant-content';
-import { copyTextToClipboard } from '../../../../../shared/ui/clipboard/copy-text';
+import { MessageCopyButton } from './actions/MessageCopyButton';
 import { DebugMarkdownContent } from './DebugMarkdownContent';
 import { DebugWorkflowProcess } from './DebugWorkflowProcess';
 import './debug-message.css';
@@ -59,9 +58,7 @@ export function DebugAssistantMessage({
   onOpenLog?: (message: AgentFlowDebugMessage) => void;
   onOpenResumeTimeline?: (message: AgentFlowDebugMessage) => void;
 }) {
-  const { message: messageApi } = App.useApp();
   const parsedContent = parseAssistantContent(message.content);
-  const parsedFullContent = parseAssistantContent(message.content);
   const hasReasoning = Boolean(parsedContent.reasoningText.trim());
   const hasAnswer = Boolean(parsedContent.answerText.trim());
   const canOpenLog = message.canOpenDetail !== false;
@@ -69,19 +66,6 @@ export function DebugAssistantMessage({
     message.presentation === 'answer'
       ? i18nText('appShell', 'auto.assistant_activity')
       : i18nText('agentFlow', 'auto.view_conversation_log');
-
-  async function handleCopyOutput() {
-    if (!parsedFullContent.answerText) {
-      return;
-    }
-
-    try {
-      await copyTextToClipboard(parsedFullContent.answerText);
-      messageApi.success(i18nText('agentFlow', 'auto.copied'));
-    } catch {
-      messageApi.error(i18nText('agentFlow', 'auto.copy_failed'));
-    }
-  }
 
   return (
     <article
@@ -131,17 +115,10 @@ export function DebugAssistantMessage({
           wrap
         >
           {message.presentation !== 'status' ? (
-            <Tooltip title={i18nText('agentFlow', 'auto.copy_output')}>
-              <Button
-                aria-label={i18nText('agentFlow', 'auto.copy_output')}
-                disabled={!parsedFullContent.answerText}
-                icon={<CopyOutlined />}
-                size="small"
-                onClick={() => {
-                  void handleCopyOutput();
-                }}
-              />
-            </Tooltip>
+            <MessageCopyButton
+              text={parsedContent.answerText}
+              label={i18nText('agentFlow', 'auto.copy_output')}
+            />
           ) : null}
           {onOpenLog && canOpenLog ? (
             <Tooltip title={openLogLabel}>
