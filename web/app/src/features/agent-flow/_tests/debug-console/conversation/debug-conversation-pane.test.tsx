@@ -484,6 +484,10 @@ describe('message copy actions', () => {
       renderPane([{ ...assistantMessage(content), role }]);
       const buttons = screen.getAllByRole('button', { name: /复制/ });
       expect(buttons).toHaveLength(1);
+      if (role !== 'assistant') {
+        expect(buttons[0].closest('.ant-bubble-content')).toBeNull();
+        expect(buttons[0].closest('.ant-bubble-footer')).not.toBeNull();
+      }
       fireEvent.click(buttons[0]);
       await waitFor(() => expect(copy).toHaveBeenLastCalledWith(content));
     }
