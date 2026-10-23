@@ -4,7 +4,7 @@
     {
       "file": "web/app/package.json",
       "rule": "deslop/unused-dependency",
-      "sourceSha256": "8fbc5e1f89f50672dbf55b8af6c7a530661b993407580cde0fa9450a38b673f7",
+      "sourceSha256": "67574f0d861958f52ba3cbcc565bbda841c6192a3b6f41e039f7e0e2eb70cf6d",
       "reason": "web/app/package.json:1（deslop/unused-dependency）：is-mobile 被 vite/dev-runtime.ts 的 DEV_CRITICAL_INTEROP_SPECIFIERS 按字符串消费；verifyCriticalInteropCache 检查其 CommonJS 优化产物。scripts/node/dev-up/_tests/vite-config-text.test.js 也断言该直接依赖。删除会破坏开发态 interop 合同。",
       "evidence": [{"file":"web/app/vite/dev-runtime.ts","sha256":"ce4f288569437405cd9b1becdb2b80d17e14e9573534a8262e47ae422e496bef"}, {"file":"scripts/node/dev-up/_tests/vite-config-text.test.js","sha256":"c3eb165ba5c7644691211e59da2203a10df8b411da34133a289aef4406fb11a1"}]
     },
