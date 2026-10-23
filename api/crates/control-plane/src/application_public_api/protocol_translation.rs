@@ -107,6 +107,10 @@ impl TranslationReport {
         }
     }
 
+    pub fn ensure_consistent(&self) -> Result<(), TranslationReportInvariantError> {
+        self.invariant_error.clone().map_or(Ok(()), Err)
+    }
+
     pub fn has_decision(&self, source_path: &str, kind: TranslationDecisionKind) -> bool {
         self.decisions
             .iter()
@@ -176,7 +180,7 @@ impl TranslationReportBuilder {
     /// conflict into a typed, propagatable adapter invariant before the report
     /// can cross that boundary.
     pub fn ensure_consistent(&self) -> Result<(), TranslationReportInvariantError> {
-        self.report.invariant_error.clone().map_or(Ok(()), Err)
+        self.report.ensure_consistent()
     }
 
     /// Preserve the fact that each unexpected wire key was present while never

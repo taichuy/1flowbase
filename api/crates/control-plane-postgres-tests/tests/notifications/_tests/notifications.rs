@@ -101,7 +101,17 @@ async fn instance_query_shares_catalog_lazily_and_send_checks_fresh_availability
     provider.available.store(true, Ordering::SeqCst);
     let service = NotificationService::new(store.clone(), "catalog-fixture-key".into())
         .with_provider(provider.clone());
-    assert!(service.list_instances(&actor).await.unwrap().is_empty());
+    // A workspace already contains its system notification. Scope this fixture's
+    // reads to its own records instead of assuming bootstrap creates an empty list.
+    let fixture_query = || NotificationInstanceListInput {
+        display_name: Some("Catalog fixture ".into()),
+        ..Default::default()
+    };
+    assert!(service
+        .query_instances(&actor, fixture_query())
+        .await
+        .unwrap()
+        .is_empty());
     assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
 
     for (name, type_code, status, authorization) in [
@@ -138,7 +148,7 @@ async fn instance_query_shares_catalog_lazily_and_send_checks_fresh_availability
                     workspace_id: workspace.id,
                     type_code: type_code.into(),
                     installation_id: Some(installation.id),
-                    display_name: name.into(),
+                    display_name: format!("Catalog fixture {name}"),
                     status,
                     config_json: json!({}),
                     configured_secret_fields: vec![],
@@ -179,8 +189,21 @@ async fn instance_query_shares_catalog_lazily_and_send_checks_fresh_availability
     let records = store
         .list_notification_instances(workspace.id)
         .await
+        .unwrap()
+        .into_iter()
+        .filter(|record| record.display_name.starts_with("Catalog fixture "))
+        .collect::<Vec<_>>();
+    let instances = service
+        .query_instances(&actor, fixture_query())
+        .await
         .unwrap();
-    let instances = service.list_instances(&actor).await.unwrap();
+    assert_eq!(instances.len(), 4);
+    let instance = |name: &str| {
+        instances
+            .iter()
+            .find(|item| item.record.display_name == format!("Catalog fixture {name}"))
+            .unwrap()
+    };
     assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
     assert_eq!(
         serde_json::to_value(
@@ -192,8 +215,8 @@ async fn instance_query_shares_catalog_lazily_and_send_checks_fresh_availability
         .unwrap(),
         serde_json::to_value(&records).unwrap()
     );
-    assert!(instances[0].available && instances[1].available);
-    let authorized = instances[0].authorization.as_ref().unwrap();
+    assert!(instance("Authorized").available && instance("Unauthorised").available);
+    let authorized = instance("Authorized").authorization.as_ref().unwrap();
     assert_eq!(
         authorized.status,
         NotificationAuthorizationStatus::Authorized
@@ -203,20 +226,30 @@ async fn instance_query_shares_catalog_lazily_and_send_checks_fresh_availability
         extension_contracts::NotificationDeliveryWindowStatus::Unknown
     );
     assert_eq!(
-        instances[1].authorization.as_ref().unwrap().status,
+        instance("Unauthorised")
+            .authorization
+            .as_ref()
+            .unwrap()
+            .status,
         NotificationAuthorizationStatus::Unauthorized
     );
-    assert_eq!(instances[2].unavailable_reason, Some("instance_disabled"));
     assert_eq!(
-        instances[2].authorization.as_ref().unwrap().status,
+        instance("Disabled").unavailable_reason,
+        Some("instance_disabled")
+    );
+    assert_eq!(
+        instance("Disabled").authorization.as_ref().unwrap().status,
         NotificationAuthorizationStatus::Unauthorized
     );
-    assert_eq!(instances[3].unavailable_reason, Some("type_unavailable"));
     assert_eq!(
-        instances[3].authorization.as_ref().unwrap().status,
+        instance("Missing").unavailable_reason,
+        Some("type_unavailable")
+    );
+    assert_eq!(
+        instance("Missing").authorization.as_ref().unwrap().status,
         NotificationAuthorizationStatus::Authorized
     );
-    assert!(instances[3]
+    assert!(instance("Missing")
         .authorization
         .as_ref()
         .unwrap()
@@ -228,7 +261,7 @@ async fn instance_query_shares_catalog_lazily_and_send_checks_fresh_availability
         .send(
             &actor,
             domain::NotificationSource::Api,
-            instances[0].record.id,
+            instance("Authorized").record.id,
             json!({}),
         )
         .await
@@ -240,15 +273,31 @@ async fn instance_query_shares_catalog_lazily_and_send_checks_fresh_availability
         ))
     ));
     assert_eq!(provider.calls.load(Ordering::SeqCst), 2);
-    let unavailable = service.list_instances(&actor).await.unwrap();
+    let unavailable = service
+        .query_instances(&actor, fixture_query())
+        .await
+        .unwrap();
+    assert_eq!(unavailable.len(), 4);
+    let unavailable_instance = |name: &str| {
+        unavailable
+            .iter()
+            .find(|item| item.record.display_name == format!("Catalog fixture {name}"))
+            .unwrap()
+    };
     assert_eq!(provider.calls.load(Ordering::SeqCst), 3);
     assert!(unavailable.iter().all(|instance| !instance.available));
     assert_eq!(
-        unavailable[0].unavailable_reason,
+        unavailable_instance("Authorized").unavailable_reason,
         Some("plugin_unavailable")
     );
-    assert_eq!(unavailable[2].unavailable_reason, Some("instance_disabled"));
-    assert_eq!(unavailable[3].unavailable_reason, Some("type_unavailable"));
+    assert_eq!(
+        unavailable_instance("Disabled").unavailable_reason,
+        Some("instance_disabled")
+    );
+    assert_eq!(
+        unavailable_instance("Missing").unavailable_reason,
+        Some("type_unavailable")
+    );
 }
 
 #[tokio::test]

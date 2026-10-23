@@ -18,9 +18,9 @@
     {
       "file": "web/app/src/features/frontstage/_tests/frontstage-page/design-controls.fixtures.tsx",
       "rule": "react-doctor/only-export-components",
-      "sourceSha256": "5be0c1d339057282ec4f2a484abb7793a8aacd52cc00daea32d717922ba2d027",
+      "sourceSha256": "e40725535f71467e0fd8d12c745ff612550aeb781ae678f6a8343f7846d1816b",
       "reason": "This Vitest-only fixture defines stable local harness components together with the mock controls and custom helpers used by the adjacent scenario modules. It is not reachable through the production app graph or used as a Fast Refresh boundary. Testing Library utilities, production components and other imported runtime symbols are now imported directly by the scenario modules; the remaining mixed exports are locally owned harness/mock bindings whose identities must be shared by these assertions. Unused fixture exports and the two broad unused-vars suppressions were removed.",
-      "evidence": [{"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls.fixtures.tsx","sha256":"5be0c1d339057282ec4f2a484abb7793a8aacd52cc00daea32d717922ba2d027"}, {"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls-catalog-creation.test.tsx","sha256":"ae9acc91d1b3ee5f8d090049d6c677a88a598a1b7bf460cd3ce34ce3fb4ea242"}, {"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls.test.tsx","sha256":"5d2f019298f47680cb0b45233a63dca3ed3734afc1e8ec4009aced65fa969b29"}]
+      "evidence": [{"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls.fixtures.tsx","sha256":"e40725535f71467e0fd8d12c745ff612550aeb781ae678f6a8343f7846d1816b"}, {"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls-catalog-creation.test.tsx","sha256":"ae9acc91d1b3ee5f8d090049d6c677a88a598a1b7bf460cd3ce34ce3fb4ea242"}, {"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls.test.tsx","sha256":"5d2f019298f47680cb0b45233a63dca3ed3734afc1e8ec4009aced65fa969b29"}]
     },
     {
       "file": "web/app/src/features/me/components/AuthenticationMethodsPanel.tsx",

@@ -2,7 +2,7 @@ use axum::http::{HeaderMap, StatusCode};
 use control_plane::application_public_api::{
     compat::openai::{OpenAiCompatError, OpenAiResponsesEndpoint, OpenAiResponsesRequestContext},
     protocol_translation::{
-        TranslationDecisionKind, TranslationProtocol, TranslationReport,
+        TranslationDecisionKind, TranslationProtocol, TranslationReportBuilder,
         TranslationSafeRepresentation,
     },
 };
@@ -106,7 +106,7 @@ pub(super) fn unexpected_compact_result_error() -> OpenAiRouteError {
 }
 
 fn invalid_codex_turn_metadata(message: &'static str) -> OpenAiRouteError {
-    let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
+    let mut report = TranslationReportBuilder::new(TranslationProtocol::OpenAiResponses);
     report.record(
         "$.ingress.x-codex-turn-metadata",
         None,
@@ -119,6 +119,6 @@ fn invalid_codex_turn_metadata(message: &'static str) -> OpenAiRouteError {
         error_type: "invalid_request_error".to_string(),
         param: Some(CODEX_TURN_METADATA_HEADER.to_string()),
         code: "invalid_request".to_string(),
-        report,
+        report: report.into_report(),
     }))
 }
