@@ -35,6 +35,10 @@ Protocol adapters collect decisions in an exclusively mutable `TranslationReport
 
 Application and console API documentation share the named, read-only projection owned by `openapi_docs`, while keeping distinct Interface Contract IDs. Reuse covers identical field selection, summaries and observation bounds; it never serializes the complete business DTO.
 
+Network provider lists, single-provider results, and proxy-pool results share one named read-only projection. Debug Snapshot and Run share the inner `ApplicationRunDetailResponse` projection and schema, while each interface retains its outer tag and Interface Contract ID. Sharing preserves field selection, summaries, nulls, and existing observation bounds; it does not serialize the complete DTO.
+
+MCP discovery builds a borrowed tool index within each catalog query, preserving catalog order, visibility, aliases, child counts, and final truncation. The index is not retained across requests. Run-log statistics traverse and deduplicate callback identities directly; the display owner still constructs complete debug artifacts, bodies, status, and route traces. Counting no longer constructs those artifacts.
+
 The application list is served by application management at `/settings/applications`; detail pages retain `/applications/:applicationId/*`. The old list without a route consumer and isolated historical helpers are not additional runtime entrypoints. Current pages retain forms, archive import/export and extension-template installation.
 
 ## Maintenance boundary

@@ -21,6 +21,7 @@ use crate::{
 };
 
 pub(crate) mod core_interface;
+mod managed_provider_projection;
 pub mod plugins;
 pub mod pools;
 pub(crate) mod pools_interface;
@@ -550,3 +551,7 @@ mod tests {
         assert!(!serialized.to_string().contains("secret://"));
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/provider_projection.rs"]
+mod provider_projection_tests;

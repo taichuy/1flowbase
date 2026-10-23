@@ -217,6 +217,18 @@ fn application_run_statistics_counts_indexed_llm_tool_callbacks() {
         .native_messages
         .push(detail.native_messages[1].clone());
     assert_eq!(application_run_statistics(&detail).tool_callback_count, 3);
+
+    detail.callback_tasks[0].request_payload = serde_json::json!({
+        "tool_calls": {
+            "__runtime_debug_artifact": true,
+            "artifact_ref": Uuid::now_v7().to_string(),
+            "tool_call_count": 7
+        }
+    });
+    assert_eq!(application_run_statistics(&detail).tool_callback_count, 7);
+    detail.callback_tasks[0].request_payload["tool_calls"]["tool_call_count"] =
+        serde_json::json!(1);
+    assert_eq!(application_run_statistics(&detail).tool_callback_count, 3);
 }
 
 #[test]

@@ -25,6 +25,10 @@ flowchart LR
 
 应用 API 文档和控制台 API 文档复用 `openapi_docs` 的具名只读投影，但保留各自 Interface Contract ID。共享只覆盖相同的字段选择、摘要和观察边界，不直接序列化完整业务 DTO。
 
+网络供应商列表、单项与代理池输出复用同一个具名只读投影；调试 Snapshot 与 Run 复用 `ApplicationRunDetailResponse` 的内部投影与 schema，外层标签和 Interface Contract ID 仍由各自入口拥有。共享保持字段选择、摘要、空值与既有观察边界，不扩展为完整 DTO 序列化。
+
+MCP discovery 在单次目录查询内建立借用的工具索引，保留目录顺序、可见性、别名、子项计数和最终截断规则；索引不跨请求保存。运行日志统计直接遍历回调身份并去重，完整调试产物的正文、状态与 route trace 仍由展示 owner 生成，统计不再为计数构造这些产物。
+
 前端应用列表由 `/settings/applications` 的应用管理页面提供，应用详情继续使用 `/applications/:applicationId/*`。无路由消费者的旧列表和独立历史 helper 不构成第二套运行入口；表单、归档导入导出及扩展模板安装继续由当前页面消费。
 
 ## 按问题阅读

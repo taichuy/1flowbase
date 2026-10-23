@@ -60,6 +60,8 @@ pub(crate) mod interface_trace_payloads;
 pub(crate) mod log_exchange;
 pub(crate) mod log_query;
 pub(crate) mod logs_delete;
+#[path = "application_runtime/response_projection/managed_detail_projection/mod.rs"]
+mod managed_detail_projection;
 pub(crate) mod record_trace;
 mod runtime_debug_artifacts;
 

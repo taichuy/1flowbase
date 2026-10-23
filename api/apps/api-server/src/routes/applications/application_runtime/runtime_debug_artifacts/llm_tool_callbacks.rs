@@ -216,12 +216,12 @@ fn round_index(round: &Map<String, Value>, fallback_index: usize) -> i64 {
         .unwrap_or(fallback_index as i64)
 }
 
-fn read_round_tool_calls(round: &Map<String, Value>) -> Vec<Value> {
+fn read_round_tool_calls(round: &Map<String, Value>) -> &[Value] {
     let assistant_tool_calls = record_field(round, &["assistant", "assistant_message"])
         .and_then(value_object)
         .and_then(|assistant| assistant.get("tool_calls"))
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default();
 
     if !assistant_tool_calls.is_empty() {
@@ -231,15 +231,15 @@ fn read_round_tool_calls(round: &Map<String, Value>) -> Vec<Value> {
     round
         .get("tool_calls")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default()
 }
 
-fn read_round_tool_results(round: &Map<String, Value>) -> Vec<Value> {
+fn read_round_tool_results(round: &Map<String, Value>) -> &[Value] {
     round
         .get("tool_results")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default()
 }
 
@@ -291,7 +291,7 @@ pub(super) fn collect_llm_tool_callback_runtime_facts(
             facts_by_tool_call_id.insert(
                 tool_call_id,
                 LlmToolCallbackRuntimeFacts {
-                    callback_payload,
+                    callback_payload: callback_payload.clone(),
                     duration_ms,
                 },
             );
@@ -301,11 +301,11 @@ pub(super) fn collect_llm_tool_callback_runtime_facts(
     facts_by_tool_call_id
 }
 
-fn read_callback_response_tool_payloads(response_payload: &Value) -> Vec<Value> {
+fn read_callback_response_tool_payloads(response_payload: &Value) -> &[Value] {
     if let Some(tool_results) = response_payload
         .get("tool_results")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
     {
         return tool_results;
     }
@@ -314,16 +314,16 @@ fn read_callback_response_tool_payloads(response_payload: &Value) -> Vec<Value> 
         .as_object()
         .and_then(|object| {
             record_string_field(object, &["tool_call_id", "id", "call_id"])
-                .map(|_| vec![response_payload.clone()])
+                .map(|_| std::slice::from_ref(response_payload))
         })
         .unwrap_or_default()
 }
 
-fn read_callback_request_tool_payloads(request_payload: &Value) -> Vec<Value> {
+fn read_callback_request_tool_payloads(request_payload: &Value) -> &[Value] {
     if let Some(tool_calls) = request_payload
         .get("tool_calls")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
     {
         return tool_calls;
     }
@@ -332,7 +332,7 @@ fn read_callback_request_tool_payloads(request_payload: &Value) -> Vec<Value> {
         .as_object()
         .and_then(|object| {
             record_string_field(object, &["id", "tool_call_id", "call_id"])
-                .map(|_| vec![request_payload.clone()])
+                .map(|_| std::slice::from_ref(request_payload))
         })
         .unwrap_or_default()
 }
@@ -502,7 +502,7 @@ pub(super) fn collect_llm_tool_callbacks(
             .and_then(|round| round.get("usage"))
             .cloned();
 
-        for (tool_call_index, tool_call) in read_round_tool_calls(round).into_iter().enumerate() {
+        for (tool_call_index, tool_call) in read_round_tool_calls(round).iter().enumerate() {
             let Some(tool_call_object) = tool_call.as_object() else {
                 continue;
             };
@@ -523,7 +523,7 @@ pub(super) fn collect_llm_tool_callbacks(
                     call_usage: record_value_field(tool_call_object, &["call_usage"])
                         .or_else(|| current_usage.clone()),
                     result_context_usage: None,
-                    request_payload: tool_call,
+                    request_payload: tool_call.clone(),
                     request_round_index: Some(current_round_index),
                     result_round_index: None,
                     route_trace: None,
@@ -531,9 +531,7 @@ pub(super) fn collect_llm_tool_callbacks(
             );
         }
 
-        for (tool_result_index, tool_result) in
-            read_round_tool_results(round).into_iter().enumerate()
-        {
+        for (tool_result_index, tool_result) in read_round_tool_results(round).iter().enumerate() {
             let Some(tool_result_object) = tool_result.as_object() else {
                 continue;
             };
@@ -571,140 +569,79 @@ pub(super) fn collect_llm_tool_callbacks(
     callbacks
 }
 
-fn collect_llm_tool_callbacks_from_callback_tasks(
+pub(super) fn count_llm_tool_callback_trace_items<'a>(
+    debug_payloads: impl IntoIterator<Item = &'a Value>,
     callback_tasks: &[domain::CallbackTaskRecord],
-    runtime_facts: &HashMap<String, LlmToolCallbackRuntimeFacts>,
-) -> Vec<LlmToolCallbackArtifact> {
-    let mut callbacks: Vec<LlmToolCallbackArtifact> = Vec::new();
-    let mut index_by_id = std::collections::HashMap::<String, usize>::new();
+    native_messages: &[Value],
+) -> usize {
+    let mut callback_ids = std::collections::HashSet::new();
+    let mut artifact_callback_index = 0_usize;
+
+    for debug_payload in debug_payloads {
+        let Some(llm_rounds) = debug_payload.get("llm_rounds") else {
+            continue;
+        };
+        if let Some(rounds) = llm_rounds.as_array() {
+            for (fallback_round_index, round) in rounds.iter().enumerate() {
+                let Some(round) = round.as_object() else {
+                    continue;
+                };
+                let current_round_index = round_index(round, fallback_round_index);
+                for (index, tool_call) in read_round_tool_calls(round).iter().enumerate() {
+                    if let Some(tool_call) = tool_call.as_object() {
+                        callback_ids.insert(tool_call_id(tool_call, current_round_index, index));
+                    }
+                }
+                for (index, tool_result) in read_round_tool_results(round).iter().enumerate() {
+                    if let Some(tool_result) = tool_result.as_object() {
+                        callback_ids.insert(tool_result_id(
+                            tool_result,
+                            current_round_index,
+                            index,
+                        ));
+                    }
+                }
+            }
+        }
+        if let Some(callbacks) = llm_rounds.get("tool_callbacks").and_then(Value::as_array) {
+            for callback in callbacks {
+                // Artifact IDs intentionally retain empty strings and whitespace. The fallback
+                // position spans all artifact arrays, including entries with explicit IDs.
+                let id = callback
+                    .get("id")
+                    .or_else(|| callback.get("tool_call_id"))
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(|| format!("artifact_tool_callback_{artifact_callback_index}"));
+                callback_ids.insert(id);
+                artifact_callback_index += 1;
+            }
+        }
+    }
 
     for task in callback_tasks {
         if task.callback_kind != "llm_tool_calls" {
             continue;
         }
-
-        for (tool_call_index, tool_call) in
-            read_callback_request_tool_payloads(&task.request_payload)
-                .into_iter()
-                .enumerate()
-        {
-            let Some(tool_call_object) = tool_call.as_object() else {
-                continue;
-            };
-            let id = tool_call_id(tool_call_object, 0, tool_call_index);
-            let name =
-                record_string_field(tool_call_object, &["name"]).unwrap_or_else(|| "Tool".into());
-            let call_usage = record_value_field(tool_call_object, &["call_usage"]);
-
-            upsert_llm_tool_callback(
-                &mut callbacks,
-                &mut index_by_id,
-                LlmToolCallbackArtifact {
-                    callback_payload: runtime_facts
-                        .get(&id)
-                        .map(|facts| facts.callback_payload.clone()),
-                    duration_ms: runtime_facts.get(&id).and_then(|facts| facts.duration_ms),
-                    id,
-                    name,
-                    request_payload: tool_call,
-                    request_round_index: None,
-                    result_round_index: None,
-                    call_usage,
-                    result_context_usage: None,
-                    route_trace: None,
-                },
-            );
-        }
-
-        let Some(response_payload) = task.response_payload.as_ref() else {
-            continue;
-        };
-        for (tool_result_index, tool_result) in
-            read_callback_response_tool_payloads(response_payload)
-                .into_iter()
-                .enumerate()
-        {
-            let Some(tool_result_object) = tool_result.as_object() else {
-                continue;
-            };
-            let id = tool_result_id(tool_result_object, 0, tool_result_index);
-            let name =
-                record_string_field(tool_result_object, &["name"]).unwrap_or_else(|| "Tool".into());
-            let duration_ms = record_i64_field(tool_result_object, &["duration_ms"])
-                .or_else(|| runtime_facts.get(&id).and_then(|facts| facts.duration_ms))
-                .or_else(|| callback_duration_ms(task));
-            let call_usage = record_value_field(tool_result_object, &["call_usage"]);
-            let result_context_usage =
-                record_value_field(tool_result_object, &["result_context_usage"]);
-
-            upsert_llm_tool_callback(
-                &mut callbacks,
-                &mut index_by_id,
-                LlmToolCallbackArtifact {
-                    callback_payload: runtime_facts
-                        .get(&id)
-                        .map(|facts| facts.callback_payload.clone())
-                        .or_else(|| Some(tool_result.clone())),
-                    duration_ms,
-                    id,
-                    name,
-                    request_payload: json!({}),
-                    request_round_index: None,
-                    result_round_index: None,
-                    call_usage,
-                    result_context_usage,
-                    route_trace: None,
-                },
-            );
-        }
-    }
-
-    callbacks
-}
-
-pub(super) fn count_llm_tool_callback_trace_items(
-    debug_payloads: &[Value],
-    callback_tasks: &[domain::CallbackTaskRecord],
-    native_messages: &[Value],
-) -> usize {
-    let runtime_facts = collect_llm_tool_callback_runtime_facts(callback_tasks);
-    let mut callbacks = Vec::<LlmToolCallbackArtifact>::new();
-    let mut index_by_id = std::collections::HashMap::<String, usize>::new();
-
-    for callback in debug_payloads
-        .iter()
-        .filter_map(|payload| payload.get("llm_rounds"))
-        .flat_map(|llm_rounds| collect_llm_tool_callbacks(llm_rounds, &runtime_facts))
-    {
-        upsert_llm_tool_callback(&mut callbacks, &mut index_by_id, callback);
-    }
-
-    for callback in collect_llm_tool_callbacks_from_callback_tasks(callback_tasks, &runtime_facts) {
-        upsert_llm_tool_callback(&mut callbacks, &mut index_by_id, callback);
-    }
-    attach_inline_route_traces(&mut callbacks, debug_payloads);
-
-    let mut callback_ids = callbacks
-        .into_iter()
-        .map(|callback| callback.id)
-        .collect::<std::collections::HashSet<_>>();
-    callback_ids.extend(
-        debug_payloads
+        for (index, tool_call) in read_callback_request_tool_payloads(&task.request_payload)
             .iter()
-            .filter_map(|payload| payload.get("llm_rounds"))
-            .filter_map(|llm_rounds| llm_rounds.get("tool_callbacks"))
-            .filter_map(Value::as_array)
-            .flatten()
             .enumerate()
-            .map(|(index, callback)| {
-                callback
-                    .get("id")
-                    .or_else(|| callback.get("tool_call_id"))
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned)
-                    .unwrap_or_else(|| format!("artifact_tool_callback_{index}"))
-            }),
-    );
+        {
+            if let Some(tool_call) = tool_call.as_object() {
+                callback_ids.insert(tool_call_id(tool_call, 0, index));
+            }
+        }
+        if let Some(response_payload) = task.response_payload.as_ref() {
+            for (index, tool_result) in read_callback_response_tool_payloads(response_payload)
+                .iter()
+                .enumerate()
+            {
+                if let Some(tool_result) = tool_result.as_object() {
+                    callback_ids.insert(tool_result_id(tool_result, 0, index));
+                }
+            }
+        }
+    }
 
     callback_ids.extend(native_messages.iter().filter_map(|message| {
         let item = message.get("_source_item")?;

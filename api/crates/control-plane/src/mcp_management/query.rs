@@ -247,24 +247,25 @@ pub fn list_catalog_items(
         .groups
         .iter()
         .filter(|g| g.instance_record_id == instance.id)
-        .cloned()
         .collect::<Vec<_>>();
     let bindings = catalog
         .bindings
         .iter()
         .filter(|b| b.instance_record_id == instance.id)
-        .cloned()
         .collect::<Vec<_>>();
-    let tools = &catalog.tools;
-    let enabled_tool_ids = tools
-        .iter()
-        .filter(|tool| tool.status == domain::McpToolStatus::Enabled)
-        .map(|tool| tool.id)
-        .collect::<HashSet<_>>();
-    let mut children_counts = HashMap::<String, i64>::new();
+    let mut tools_by_id = HashMap::with_capacity(catalog.tools.len());
+    let mut enabled_tool_ids = HashSet::new();
+    for tool in &catalog.tools {
+        // Display uses the first record; child counts include any enabled duplicate.
+        tools_by_id.entry(tool.id).or_insert(tool);
+        if tool.status == domain::McpToolStatus::Enabled {
+            enabled_tool_ids.insert(tool.id);
+        }
+    }
+    let mut children_counts = HashMap::<&str, i64>::new();
     for group in groups.iter().filter(|group| group.enabled) {
         if let Some(parent_path) = parent_group_path(&group.path) {
-            *children_counts.entry(parent_path.to_owned()).or_default() += 1;
+            *children_counts.entry(parent_path).or_default() += 1;
         }
     }
     for binding in bindings
@@ -272,7 +273,7 @@ pub fn list_catalog_items(
         .filter(|binding| binding.visible && enabled_tool_ids.contains(&binding.tool_record_id))
     {
         *children_counts
-            .entry(binding.group_path.clone())
+            .entry(binding.group_path.as_str())
             .or_default() += 1;
     }
     let base_path = path.unwrap_or(instance.default_entry_path.as_str());
@@ -297,15 +298,15 @@ pub fn list_catalog_items(
             group.description_short.as_deref(),
         ) {
             let children_count = children_counts
-                .get(&group.path)
+                .get(group.path.as_str())
                 .copied()
                 .unwrap_or_default();
             items.push(domain::McpListItemSummary {
                 id: group.id.to_string(),
                 item_kind: domain::McpListItemKind::Group,
-                path: group.path,
-                name: group.display_name,
-                description_short: group.description_short,
+                path: group.path.clone(),
+                name: group.display_name.clone(),
+                description_short: group.description_short.clone(),
                 children_count,
                 risk_level: None,
             });
@@ -321,9 +322,8 @@ pub fn list_catalog_items(
                 path_regex_filter.as_ref(),
             )
     }) {
-        if let Some(tool) = tools
-            .iter()
-            .find(|tool| tool.id == binding.tool_record_id)
+        if let Some(tool) = tools_by_id
+            .get(&binding.tool_record_id)
             .filter(|tool| tool.status == domain::McpToolStatus::Enabled)
         {
             let display_name = binding
@@ -339,7 +339,7 @@ pub fn list_catalog_items(
                 items.push(domain::McpListItemSummary {
                     id: tool.tool_id.clone(),
                     item_kind: domain::McpListItemKind::Tool,
-                    path: binding.group_path,
+                    path: binding.group_path.clone(),
                     name: binding
                         .display_alias
                         .clone()
@@ -356,3 +356,7 @@ pub fn list_catalog_items(
     items.truncate(limit);
     Ok(items)
 }
+
+#[cfg(test)]
+#[path = "_tests/catalog_query.rs"]
+mod catalog_query_tests;

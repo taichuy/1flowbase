@@ -1,6 +1,7 @@
 mod schema;
 
 use super::*;
+use crate::routes::applications::application_runtime::managed_detail_projection;
 
 impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -55,13 +56,13 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
                     })]),
                 ),
             ]),
-            Self::Snapshot(_) => return self.snapshot_projection(),
+            Self::Snapshot(detail) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Snapshot".to_owned())),
+                ("0", managed_detail_projection::project(detail)?),
+            ]),
         })
     }
 
     const CONTRACT_ID: &'static str = "console-application-runtime-debug-artifacts-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
-
-#[path = "application_runtime_debug_artifacts_output/snapshot_projection.rs"]
-mod snapshot_projection;

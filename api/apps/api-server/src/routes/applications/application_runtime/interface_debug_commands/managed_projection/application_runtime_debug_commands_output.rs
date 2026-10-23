@@ -1,6 +1,7 @@
 mod schema;
 
 use super::*;
+use crate::routes::applications::application_runtime::managed_detail_projection;
 
 impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -9,7 +10,10 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Run(_) => return self.run_projection(),
+            Self::Run(detail) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Run".to_owned())),
+                ("0", managed_detail_projection::project(detail)?),
+            ]),
             Self::Node(_field_0) => mp::object_value(&[
                 ("variant", serde_json::Value::String("Node".to_owned())),
                 (
@@ -277,6 +281,3 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
     const CONTRACT_ID: &'static str = "console-application-runtime-debug-commands-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
-
-#[path = "application_runtime_debug_commands_output/run_projection.rs"]
-mod run_projection;

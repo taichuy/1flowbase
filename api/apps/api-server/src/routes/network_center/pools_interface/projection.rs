@@ -1,3 +1,4 @@
+use super::super::managed_provider_projection as provider;
 use super::*;
 
 impl InterfaceContract for NetworkPoolsInput {
@@ -196,50 +197,7 @@ impl InterfaceContract for NetworkPoolsOutput {
             ]),
             mp::object_schema(&[
                 ("variant", mp::tag_schema("Provider")),
-                (
-                    "0",
-                    mp::object_schema(&[
-                        ("id", mp::text_schema()),
-                        (
-                            "extension_category",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
-                        ),
-                        (
-                            "extension_organization",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
-                        ),
-                        (
-                            "extension_artifact_id",
-                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
-                        ),
-                        ("provider_code", mp::text_schema()),
-                        (
-                            "display_name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "description",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
-                        ),
-                        ("lifecycle", mp::text_schema()),
-                        (
-                            "health_status",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "last_sync_error",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
-                        ),
-                        (
-                            "last_synced_at",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
-                        ),
-                        (
-                            "egresses",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("provider_egress_key",mp::object_schema(&[("byte_count",mp::count_schema())])), ("display_name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("region",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("tags",mp::object_schema(&[("item_count",mp::count_schema())])), ("availability",mp::object_schema(&[("byte_count",mp::count_schema())])), ("synced_at",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
-                        ),
-                    ]),
-                ),
+                ("0", provider::provider_schema()),
             ]),
             mp::object_schema(&[
                 ("variant", mp::tag_schema("Member")),
@@ -690,144 +648,7 @@ impl InterfaceContract for NetworkPoolsOutput {
             ]),
             Self::Provider(_field_0) => mp::object_value(&[
                 ("variant", serde_json::Value::String("Provider".to_owned())),
-                (
-                    "0",
-                    mp::object_value(&[
-                        ("id", mp::text(&(_field_0).id)?),
-                        (
-                            "extension_category",
-                            match (_field_0).extension_category.as_ref() {
-                                Some(item) => mp::object_value(&[(
-                                    "byte_count",
-                                    serde_json::json!((item).len()),
-                                )]),
-                                None => serde_json::Value::Null,
-                            },
-                        ),
-                        (
-                            "extension_organization",
-                            match (_field_0).extension_organization.as_ref() {
-                                Some(item) => mp::object_value(&[(
-                                    "byte_count",
-                                    serde_json::json!((item).len()),
-                                )]),
-                                None => serde_json::Value::Null,
-                            },
-                        ),
-                        (
-                            "extension_artifact_id",
-                            match (_field_0).extension_artifact_id.as_ref() {
-                                Some(item) => mp::text(item)?,
-                                None => serde_json::Value::Null,
-                            },
-                        ),
-                        ("provider_code", mp::text(&(_field_0).provider_code)?),
-                        (
-                            "display_name",
-                            mp::object_value(&[(
-                                "byte_count",
-                                serde_json::json!((_field_0).display_name.len()),
-                            )]),
-                        ),
-                        (
-                            "description",
-                            mp::object_value(&[(
-                                "byte_count",
-                                serde_json::json!((_field_0).description.len()),
-                            )]),
-                        ),
-                        ("lifecycle", mp::text(&(_field_0).lifecycle)?),
-                        (
-                            "health_status",
-                            mp::object_value(&[(
-                                "byte_count",
-                                serde_json::json!((_field_0).health_status.len()),
-                            )]),
-                        ),
-                        (
-                            "last_sync_error",
-                            match (_field_0).last_sync_error.as_ref() {
-                                Some(item) => mp::object_value(&[(
-                                    "byte_count",
-                                    serde_json::json!((item).len()),
-                                )]),
-                                None => serde_json::Value::Null,
-                            },
-                        ),
-                        (
-                            "last_synced_at",
-                            match (_field_0).last_synced_at.as_ref() {
-                                Some(item) => mp::object_value(&[(
-                                    "byte_count",
-                                    serde_json::json!((item).len()),
-                                )]),
-                                None => serde_json::Value::Null,
-                            },
-                        ),
-                        ("egresses", {
-                            if (_field_0).egresses.len() > 32 {
-                                return None;
-                            }
-                            serde_json::Value::Array(
-                                (_field_0)
-                                    .egresses
-                                    .iter()
-                                    .map(|item| {
-                                        Some(mp::object_value(&[
-                                            (
-                                                "provider_egress_key",
-                                                mp::object_value(&[(
-                                                    "byte_count",
-                                                    serde_json::json!((item)
-                                                        .provider_egress_key
-                                                        .len()),
-                                                )]),
-                                            ),
-                                            (
-                                                "display_name",
-                                                mp::object_value(&[(
-                                                    "byte_count",
-                                                    serde_json::json!((item).display_name.len()),
-                                                )]),
-                                            ),
-                                            (
-                                                "region",
-                                                match (item).region.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
-                                                        "byte_count",
-                                                        serde_json::json!((item).len()),
-                                                    )]),
-                                                    None => serde_json::Value::Null,
-                                                },
-                                            ),
-                                            (
-                                                "tags",
-                                                mp::object_value(&[(
-                                                    "item_count",
-                                                    serde_json::json!((item).tags.len()),
-                                                )]),
-                                            ),
-                                            (
-                                                "availability",
-                                                mp::object_value(&[(
-                                                    "byte_count",
-                                                    serde_json::json!((item).availability.len()),
-                                                )]),
-                                            ),
-                                            (
-                                                "synced_at",
-                                                mp::object_value(&[(
-                                                    "byte_count",
-                                                    serde_json::json!((item).synced_at.len()),
-                                                )]),
-                                            ),
-                                        ]))
-                                    })
-                                    .collect::<Option<Vec<_>>>()?,
-                            )
-                        }),
-                    ]),
-                ),
+                ("0", provider::provider_projection(_field_0)?),
             ]),
             Self::Member(_field_0) => mp::object_value(&[
                 ("variant", serde_json::Value::String("Member".to_owned())),

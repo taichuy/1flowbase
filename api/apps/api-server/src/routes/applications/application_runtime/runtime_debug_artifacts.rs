@@ -75,8 +75,8 @@ use llm_tool_callbacks::{
     execution_status_from_callback_payload, execution_status_from_callback_payload_and_route_trace,
 };
 
-pub(super) fn count_llm_tool_callback_trace_items(
-    debug_payloads: &[Value],
+pub(super) fn count_llm_tool_callback_trace_items<'a>(
+    debug_payloads: impl IntoIterator<Item = &'a Value>,
     callback_tasks: &[domain::CallbackTaskRecord],
     native_messages: &[Value],
 ) -> usize {
