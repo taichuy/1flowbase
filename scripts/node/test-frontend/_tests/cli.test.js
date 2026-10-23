@@ -5,13 +5,33 @@ const os = require("node:os");
 const path = require("node:path");
 
 const { parseCliArgs, buildCommands, main } = require("../../test-frontend.js");
-const { main: runVitest } = require("../../cli/run-frontend-vitest.js");
+
+const passingReport = {
+  success: true, numTotalTests: 2, numPassedTests: 1, numFailedTests: 0,
+  numFailedTestSuites: 0, numPendingTests: 1,
+};
+
+function selectionReportPath(args) {
+  const reportArg = args.find((arg) => arg.startsWith("--outputFile.json="));
+  assert.ok(reportArg, "the current invocation requests a native JSON report");
+  return reportArg.slice("--outputFile.json=".length);
+}
+
+function writeSelectionReport(args, report = passingReport) {
+  const reportPath = selectionReportPath(args);
+  assert.equal(fs.existsSync(reportPath), false, "a report must not exist before this invocation writes it");
+  if (report !== null) {
+    fs.writeFileSync(reportPath, typeof report === "string" ? report : JSON.stringify(report));
+  }
+  return reportPath;
+}
 
 test("parseCliArgs defaults to full frontend gate", () => {
   assert.deepEqual(parseCliArgs([]), {
     help: false,
     layer: "full",
     passThroughArgs: [],
+    fileFilters: [],
   });
 });
 
@@ -20,6 +40,7 @@ test("parseCliArgs accepts page-regression frontend gate", () => {
     help: false,
     layer: "page-regression",
     passThroughArgs: [],
+    fileFilters: [],
   });
 });
 
@@ -28,6 +49,7 @@ test("parseCliArgs accepts pr frontend gate", () => {
     help: false,
     layer: "pr",
     passThroughArgs: [],
+    fileFilters: [],
   });
 });
 
@@ -212,37 +234,110 @@ test("main names page-regression as its own frontend scope", async () => {
   );
 });
 
-test("fast file and name filters reach the Vitest runner while preserving its worker budget", async (t) => {
+test("explicit files bypass the fast exclusion list and reach budgeted Vitest with name filters", async (t) => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "test-frontend-selected-"));
   t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
   const file = "src/shared/i18n/_tests/format.test.ts";
+  const excludedFile = "src/features/settings/pages/settings-page/model-providers/_tests/use-model-provider-data.test.tsx";
+  const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../../web/app/package.json"), "utf8"));
+  assert.ok(packageJson.scripts.test.includes(`--exclude ${excludedFile}`));
   const runtimeConfig = { frontend: { vitestMaxWorkers: 3 } };
-  for (const selection of [[file, "-t", "decimal units"], ["--", file, "--testNamePattern=decimal units"]]) {
+  for (const selection of [[excludedFile], ["--", file, excludedFile, "-t", "decimal units"], [file, "--testNamePattern=decimal units"]]) {
     const calls = [];
     const status = await main(["fast", ...selection], {
       repoRoot, env: {}, runtimeConfig, writeStdout() {}, writeStderr() {},
-      spawnSyncImpl(command, args) {
-        calls.push({ command, args });
-        // Model pnpm's dispatch to the existing app test runner without a child process.
-        const runnerStatus = runVitest(["run", ...args.slice(3)], {
-          repoRoot, env: {}, runtimeConfig,
-          spawnSyncImpl(vitestCommand, vitestArgs) {
-            calls.push({ command: vitestCommand, args: vitestArgs });
-            return { status: 0 };
-          },
-        });
-        return { status: runnerStatus, stdout: "", stderr: "" };
+      spawnSyncImpl(command, args, options) {
+        calls.push({ command, args, options });
+        const reportPath = writeSelectionReport(args);
+        assert.ok(reportPath.startsWith(path.join(repoRoot, "tmp", "test-governance", "frontend-selections") + path.sep));
+        return { status: 0, stdout: "", stderr: "" };
       },
     });
     assert.equal(status, 0);
-    assert.equal(calls.length, 2);
-    assert.ok(calls.every(({ command }) => command === "pnpm"));
-    assert.deepEqual(calls[0].args.slice(0, 3), ["--dir", "web/app", "test"]);
-    assert.deepEqual(calls[1].args.slice(0, 5), ["--dir", "web/app", "exec", "vitest", "run"]);
-    assert.ok(calls[1].args.includes(file));
-    assert.ok(calls[1].args.includes("--maxWorkers=3"));
-    assert.deepEqual(calls[1].args.slice(6), selection.filter((arg) => arg !== "--"));
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].command, "pnpm");
+    const { args, options } = calls[0];
+    assert.deepEqual(args.slice(0, 5), ["--dir", "web/app", "exec", "vitest", "run"]);
+    assert.equal(args[5], "--maxWorkers=3");
+    assert.deepEqual(args.slice(6, -3), selection.filter((arg) => arg !== "--"));
+    assert.deepEqual(args.slice(-3, -1), ["--reporter=default", "--reporter=json"]);
+    assert.equal(args.includes("--exclude"), false);
+    assert.equal(options.env.ONEFLOWBASE_VITEST_MODE, "run");
   }
+});
+
+test("name-only selection retains the fast package suite and requires its own report", async (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "test-frontend-name-only-"));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  for (const passed of [0, 1]) {
+    const status = await main(["fast", "--", "-t", "decimal"], {
+      repoRoot, env: {}, writeStdout() {}, writeStderr() {},
+      spawnSyncImpl(command, args) {
+        assert.equal(command, "pnpm");
+        assert.deepEqual(args.slice(0, 5), ["--dir", "web/app", "test", "-t", "decimal"]);
+        writeSelectionReport(args, { ...passingReport, numPassedTests: passed });
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+    assert.equal(status, passed === 0 ? 1 : 0);
+  }
+});
+
+test("selected frontend runs reject invalid execution evidence and retain process and act failures", async (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "test-frontend-evidence-"));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const cases = [
+    { name: "all skipped", report: { ...passingReport, numPassedTests: 0, numPendingTests: 2 } },
+    { name: "empty", report: { ...passingReport, numTotalTests: 0, numPassedTests: 0, numPendingTests: 0 } },
+    { name: "missing", report: null },
+    { name: "malformed", report: "{unfinished" },
+    { name: "failed tests", report: { ...passingReport, numFailedTests: 1 } },
+    { name: "failed suite", report: { ...passingReport, numFailedTestSuites: 1 } },
+    { name: "process failure", report: passingReport, processStatus: 23, expected: 23 },
+    { name: "act failure", report: passingReport, stderr: "An update to Widget inside a test was not wrapped in act(...)\n" },
+    { name: "passing with filtered tests", report: passingReport, stderr: "warning: vitest advisory\n", expected: 0 },
+  ];
+  for (const fixture of cases) {
+    let stderr = "";
+    const status = await main(["fast", "src/example.test.ts", "-t", "selected"], {
+      repoRoot, env: {}, runtimeConfig: { frontend: { vitestMaxWorkers: 2 } },
+      writeStdout() {}, writeStderr(text) { stderr += text; },
+      spawnSyncImpl(_command, args) {
+        writeSelectionReport(args, fixture.report);
+        return { status: fixture.processStatus ?? 0, stdout: "", stderr: fixture.stderr ?? "" };
+      },
+    });
+    assert.equal(status, fixture.expected ?? 1, fixture.name);
+    if (fixture.name === "act failure") assert.match(stderr, /escaped the awaited act boundary/u);
+    else if (fixture.expected === undefined) assert.match(stderr, /no valid executed passing tests/u);
+  }
+});
+
+test("overlapping selections cannot accept another invocation's successful report", async (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "test-frontend-isolated-reports-"));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const pending = [];
+  const invoke = () => main(["fast", "src/example.test.ts"], {
+    repoRoot, env: {}, runtimeConfig: { frontend: { vitestMaxWorkers: 2 } },
+    writeStdout() {}, writeStderr() {},
+    managedRunnerImpl(options) {
+      return new Promise((resolve) => pending.push({ options, resolve }));
+    },
+  });
+  const invocations = [invoke(), invoke()];
+  const paths = pending.map(({ options }) => selectionReportPath(options.commands[0].args));
+  assert.equal(new Set(paths).size, 2);
+  for (const [index, { options, resolve }] of pending.entries()) {
+    resolve(options.runCommandSequenceImpl({
+      ...options,
+      spawnSyncImpl(_command, args) {
+        if (index === 0) writeSelectionReport(args);
+        else assert.equal(fs.existsSync(paths[0]), true, "the other run already has a successful report");
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    }));
+  }
+  assert.deepEqual(await Promise.all(invocations), [0, 1]);
 });
 
 test("frontend rejects unsupported arguments before any runner starts", async () => {

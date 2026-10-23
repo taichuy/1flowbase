@@ -22,7 +22,7 @@
 - 专项测试与全量测试只有在用例及运行条件等价时才能复用结果；nextest/libtest、线程栈、feature 和 coverage instrumentation 的差异需要单独判断。已核对实际用例 identity 的 consistency-control-runtime/storage/api、official-i18n-seed、image-llm-vision 默认 feature 场景由普通 / coverage 包测试完整执行，完整 CI 不再重跑这五个专项 owner，必需 component 从 29 降为 24。专项手动入口及 PR 的 seed / image-llm 门禁保持有效；history-maintenance 的特殊 feature 和独有场景继续单独执行。四基座、coverage 阈值和缺失 / 失败 / 错误 SHA receipt 的拒绝条件不变。
 - 五个前端 consumer contract 用例由前端验收拥有：`frontend-pr` 显式运行 contracts；仓库级 `frontend/all` 通过常规测试与 page-regression 的并集覆盖全部用例，tooling 不再重复执行。`test-frontend full` 单独不包含全部页面回归，不能作为该并集的替代。
 
-开发定向入口直接把选择条件交给原生 runner：`test-backend.js --package <crate> [--lib | --test <target> | --bin <target>] [--filter <name>] [--exact]`，以及 `test-frontend.js fast [--] <file> [-t <pattern>]`。后端选择须带 package；不支持、缺值或冲突参数在启动前报错，不能静默扩大成全量测试。资源预算与非零执行检查继续生效；完整 CI 在既有 owner 中实际运行一条 Rust 和一条前端定向命令。
+开发定向入口直接把选择条件交给原生 runner：`test-backend.js --package <crate> [--lib | --test <target> | --bin <target>] [--filter <name>] [--exact]`，以及 `test-frontend.js fast [--] <file> [-t <pattern>]`。后端选择须带 package；不支持、缺值或冲突参数在启动前报错，不能静默扩大成全量测试。前端显式文件不继承快速套件排除名单，未指定文件仍保留该范围；定向执行通过独占的原生 Vitest JSON 报告核验非零通过，不能把全部 skipped 当成功。资源预算继续生效；完整 CI 在既有 owner 中实际运行一条 Rust 和一条前端定向命令。
 
 协议专项只拥有官方供应商测试、插件打包和真实 wire/runtime 契约。仓库 Rust 行为测试交给上述普通/coverage owner，Node 工具测试交给 `repo-tooling`，不在协议任务重复编译执行。完整 CI 仍必须同时取得这些 owner 的候选收据；单独协议绿灯不代表全仓验收。供应商独有测试、非零执行校验、真实协议错误/传输 oracle 和源码/产物配对保持有效。
 

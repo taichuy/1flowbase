@@ -57,8 +57,11 @@ Scoped developer commands pass selections to the native runner:
 `test-backend.js --package <crate> [--lib | --test <target> | --bin <target>] [--filter <name>] [--exact]`
 and `test-frontend.js fast [--] <file> [-t <pattern>]`. Backend selection requires
 a package. Unsupported, missing or conflicting arguments fail before execution
-instead of silently running the full suite. Resource budgets and nonzero-test
-checks still apply. Full CI executes a real scoped Rust command and a scoped
+instead of silently running the full suite. Explicit frontend files bypass the
+fast-suite exclusions; name-only selections retain that suite. Each selection
+validates its own native Vitest JSON report for actual passing tests, so an
+all-skipped run cannot succeed. Resource budgets still apply.
+Full CI executes a real scoped Rust command and a scoped
 frontend command in their existing owner jobs.
 
 Protocol conformance owns official provider tests, plugin packaging and real wire

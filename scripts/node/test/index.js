@@ -5,11 +5,13 @@ const path = require("node:path");
 
 const {
   getRepoRoot,
+  resolveOutputDir,
   runCommandSequence,
   runManagedCommandSequence,
 } = require("../testing/warning-capture.js");
 const { loadVerifyRuntimeConfig } = require("../testing/verify-runtime.js");
 const { resolveNodeBinaryFromPath } = require("../testing/node-runtime.js");
+const { buildVitestCommand } = require("../cli/run-frontend-vitest.js");
 const {
   buildBackendTestCommands: buildBackendCommands,
   buildRustBackendStaticGateCommand,
@@ -182,6 +184,7 @@ function parseFrontendCliArgs(argv) {
       help: true,
       layer: "full",
       passThroughArgs: [],
+      fileFilters: [],
     };
   }
 
@@ -195,6 +198,7 @@ function parseFrontendCliArgs(argv) {
     throw new Error(`Unsupported frontend arguments for ${layer}; selectors are only supported by fast`);
   }
   const passThroughArgs = [];
+  const fileFilters = [];
   let hasNamePattern = false;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -215,6 +219,7 @@ function parseFrontendCliArgs(argv) {
       throw new Error(`Unsupported frontend fast argument: ${arg}; use file paths and -t/--testNamePattern`);
     } else {
       passThroughArgs.push(arg);
+      fileFilters.push(arg);
     }
   }
 
@@ -222,17 +227,27 @@ function parseFrontendCliArgs(argv) {
     help: false,
     layer,
     passThroughArgs,
+    fileFilters,
   };
 }
 
-function buildFrontendCommands({ layer, repoRoot, env = process.env, passThroughArgs = [] }) {
+function buildFrontendCommands({ layer, repoRoot, env = process.env, passThroughArgs = [], fileFilters = [], runtimeConfig, reportPath }) {
   if (layer === "fast") {
+    const testArgs = [
+      ...passThroughArgs,
+      ...(reportPath ? ["--reporter=default", "--reporter=json", `--outputFile.json=${reportPath}`] : []),
+    ];
+    // Explicit files must not inherit the fast package script's --exclude list.
+    const command = fileFilters.length > 0
+      ? {
+          ...buildVitestCommand({ mode: "run", runtimeConfig, passThroughArgs: testArgs }),
+          env: { ONEFLOWBASE_VITEST_MODE: "run" },
+        }
+      : { command: "pnpm", args: ["--dir", "web/app", "test", ...testArgs], cwd: "." };
     return [
       {
         label: "frontend-fast-test",
-        command: "pnpm",
-        args: ["--dir", "web/app", "test", ...passThroughArgs],
-        cwd: ".",
+        ...command,
       },
     ];
   }
@@ -309,6 +324,7 @@ function usageFrontend(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
     "Usage: node scripts/node/test-frontend.js [fast|pr|full|page-regression]\n" +
       "Defaults to full. Only fast accepts: [--] [file ...] [-t <pattern> | --testNamePattern <pattern>].\n" +
+      "Explicit files bypass fast-suite exclusions. Without files, the fast suite is retained. Selections require executed passing tests.\n" +
       "Example: node scripts/node/test-frontend.js fast -- src/shared/i18n/_tests/format.test.ts -t decimal\n",
   );
 }
@@ -326,6 +342,13 @@ async function runFrontend(argv = [], deps = {}) {
   const runtimeConfig =
     deps.runtimeConfig || loadVerifyRuntimeConfig({ repoRoot, env });
   const managedRunner = deps.managedRunnerImpl || runManagedCommandSequence;
+  let reportPath;
+  if (options.passThroughArgs.length > 0) {
+    const outputDir = path.join(resolveOutputDir(repoRoot, env), "frontend-selections");
+    fs.mkdirSync(outputDir, { recursive: true });
+    // Each invocation owns a new report path, so prior or concurrent output cannot satisfy it.
+    reportPath = path.join(fs.mkdtempSync(path.join(outputDir, "run-")), "vitest.json");
+  }
 
   return managedRunner({
     repoRoot,
@@ -340,7 +363,33 @@ async function runFrontend(argv = [], deps = {}) {
       repoRoot,
       env,
       passThroughArgs: options.passThroughArgs,
+      fileFilters: options.fileFilters,
+      runtimeConfig,
+      reportPath,
     }),
+    runCommandSequenceImpl(sequenceOptions) {
+      let executedSelection = !reportPath;
+      const status = runCommandSequence({
+        ...sequenceOptions,
+        onCommandComplete({ result }) {
+          if (!reportPath || result.status !== 0) return;
+          try {
+            const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+            executedSelection = report.success === true
+              && Number.isInteger(report.numPassedTests) && report.numPassedTests > 0
+              && report.numFailedTests === 0 && report.numFailedTestSuites === 0;
+          } catch {
+            executedSelection = false;
+          }
+          if (!executedSelection) {
+            (sequenceOptions.writeStderr || process.stderr.write.bind(process.stderr))(
+              `[test-fidelity] frontend selection has no valid executed passing tests; inspect this run's Vitest report: ${reportPath}\n`,
+            );
+          }
+        },
+      });
+      return status || (executedSelection ? 0 : 1);
+    },
     spawnSyncImpl: deps.spawnSyncImpl,
     writeStdout: deps.writeStdout,
     writeStderr: deps.writeStderr,
