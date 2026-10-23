@@ -16,6 +16,7 @@ import type {
 } from '../../../api/runtime';
 import type { AgentFlowDebugSessionStatus } from '../../../hooks/runtime/useAgentFlowDebugSession';
 import type { RuntimeDebugArtifactBatchLoader } from '../../detail/last-run/runtime-debug-payload';
+import { MessageCopyButton } from './actions/MessageCopyButton';
 import { DebugAssistantMessage } from './DebugAssistantMessage';
 import { DebugComposer } from './DebugComposer';
 import { DebugMarkdownContent } from './DebugMarkdownContent';
@@ -200,12 +201,17 @@ export function DebugConversationPane({
         },
         variant: 'borderless' as const,
         contentRender: (message: AgentFlowDebugMessage) => (
-          <div className="agent-flow-editor__debug-message agent-flow-editor__debug-message--system">
+          <Flex
+            align="start"
+            vertical
+            className="agent-flow-editor__debug-message agent-flow-editor__debug-message--system"
+          >
             <DebugMarkdownContent
               className="agent-flow-editor__debug-message-content"
               content={message.content}
             />
-          </div>
+            <MessageCopyButton text={message.content} />
+          </Flex>
         )
       },
       user: {
@@ -222,6 +228,7 @@ export function DebugConversationPane({
                 reference={reference}
               />
             ))}
+            <MessageCopyButton text={message.content} />
             {onOpenMessageLog && userLogMessageIds.has(message.id) ? (
               <Tooltip
                 title={i18nText('agentFlow', 'auto.view_conversation_log')}

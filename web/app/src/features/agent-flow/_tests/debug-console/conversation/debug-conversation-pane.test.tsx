@@ -1,4 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { App } from 'antd';
+import copy from 'copy-to-clipboard';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type {
@@ -7,6 +9,8 @@ import type {
 } from '../../../api/runtime';
 import { DebugConversationPane } from '../../../components/debug-console/conversation/DebugConversationPane';
 import { LlmToolTraceTree } from '../../../components/debug-console/conversation/LlmToolTraceTree';
+
+vi.mock('copy-to-clipboard', () => ({ default: vi.fn() }));
 
 const runContext: AgentFlowRunContext = {
   environmentLabel: 'draft',
@@ -59,7 +63,8 @@ function renderPane(messages: AgentFlowDebugMessage[]) {
       onChangeQuery={vi.fn()}
       onStopRun={vi.fn()}
       onSubmitPrompt={vi.fn()}
-    />
+    />,
+    { wrapper: App }
   );
 }
 
@@ -466,5 +471,40 @@ describe('DebugConversationPane log access before an assistant answer', () => {
     expect(
       screen.queryByRole('button', { name: '查看对话日志' })
     ).not.toBeInTheDocument();
+  });
+});
+
+
+describe('message copy actions', () => {
+  test.each(['system', 'user', 'assistant'] as const)(
+    'copies the complete %s message text',
+    async (role) => {
+      const content = '第一行 **原文**\n第二行 <tag> & 内容';
+      vi.mocked(copy).mockReturnValue(true);
+      renderPane([{ ...assistantMessage(content), role }]);
+      const buttons = screen.getAllByRole('button', { name: /复制/ });
+      expect(buttons).toHaveLength(1);
+      fireEvent.click(buttons[0]);
+      await waitFor(() => expect(copy).toHaveBeenLastCalledWith(content));
+    }
+  );
+
+  test('reports clipboard failure for a user message', async () => {
+    vi.mocked(copy).mockReturnValue(false);
+    render(
+      <App>
+        <DebugConversationPane
+          messages={[{ ...assistantMessage('用户文本'), role: 'user' }]}
+          runContext={runContext}
+          status="running"
+          stopping={false}
+          onChangeQuery={vi.fn()}
+          onStopRun={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </App>
+    );
+    fireEvent.click(screen.getByRole('button', { name: '复制' }));
+    expect(await screen.findByText('复制失败')).toBeInTheDocument();
   });
 });
