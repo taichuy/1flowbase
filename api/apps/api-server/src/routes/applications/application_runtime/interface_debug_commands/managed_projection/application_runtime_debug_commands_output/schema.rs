@@ -1,4 +1,4 @@
-use crate::routes::applications::application_runtime::managed_detail_projection;
+use crate::routes::application_runtime::managed_detail_projection;
 
 pub(super) fn schema() -> Option<serde_json::Value> {
     use crate::extension_bus::managed_projection as mp;

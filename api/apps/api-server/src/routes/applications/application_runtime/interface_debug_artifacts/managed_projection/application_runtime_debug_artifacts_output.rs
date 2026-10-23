@@ -1,7 +1,7 @@
 mod schema;
 
 use super::*;
-use crate::routes::applications::application_runtime::managed_detail_projection;
+use crate::routes::application_runtime::managed_detail_projection;
 
 impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
