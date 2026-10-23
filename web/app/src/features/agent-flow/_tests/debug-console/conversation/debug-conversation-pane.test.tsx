@@ -480,7 +480,7 @@ describe('message copy actions', () => {
     'copies the complete %s message text',
     async (role) => {
       const content = '第一行 **原文**\n第二行 <tag> & 内容';
-      vi.mocked(copy).mockReturnValue(true);
+      vi.mocked(copy).mockResolvedValue(true);
       renderPane([{ ...assistantMessage(content), role }]);
       const buttons = screen.getAllByRole('button', { name: /复制/ });
       expect(buttons).toHaveLength(1);
@@ -494,7 +494,7 @@ describe('message copy actions', () => {
   );
 
   test('reports clipboard failure for a user message', async () => {
-    vi.mocked(copy).mockReturnValue(false);
+    vi.mocked(copy).mockResolvedValue(false);
     render(
       <App>
         <DebugConversationPane
