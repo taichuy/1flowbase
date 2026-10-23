@@ -590,3 +590,17 @@
   opacity: 1;
   pointer-events: auto;
 }
+
+.agent-flow-editor__debug-message-action-row {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.agent-flow-editor__debug-message-actions-owner:hover
+  .agent-flow-editor__debug-message-action-row,
+.agent-flow-editor__debug-message-actions-owner:focus-within
+  .agent-flow-editor__debug-message-action-row {
+  opacity: 1;
+  pointer-events: auto;
+}

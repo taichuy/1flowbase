@@ -1,12 +1,13 @@
 import BranchesOutlined from '@ant-design/icons/es/icons/BranchesOutlined';
 import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
 import HistoryOutlined from '@ant-design/icons/es/icons/HistoryOutlined';
-import { Button, Space, Tooltip } from 'antd';
+import { Button, Tooltip } from 'antd';
 import type { ReactNode } from 'react';
 
 import type { AgentFlowDebugMessage } from '../../../api/runtime';
 import type { RuntimeDebugArtifactBatchLoader } from '../../detail/last-run/runtime-debug-payload';
 import { parseAssistantContent } from '../../../lib/debug-console/assistant-content';
+import { MessageActions } from './actions/MessageActions';
 import { MessageCopyButton } from './actions/MessageCopyButton';
 import { DebugMarkdownContent } from './DebugMarkdownContent';
 import { DebugWorkflowProcess } from './DebugWorkflowProcess';
@@ -71,6 +72,7 @@ export function DebugAssistantMessage({
     <article
       className={[
         'agent-flow-editor__debug-message',
+        'agent-flow-editor__debug-message-actions-owner',
         'agent-flow-editor__debug-message--assistant',
         message.presentation === 'status' &&
           'agent-flow-editor__debug-message--status'
@@ -105,50 +107,41 @@ export function DebugAssistantMessage({
           </>
         )}
       </div>
-      <fieldset
-        aria-label={i18nText('agentFlow', 'auto.output_action')}
-        className="agent-flow-editor__debug-message-action-row"
-      >
-        <Space
-          className="agent-flow-editor__debug-message-actions"
-          size={8}
-          wrap
-        >
-          {message.presentation !== 'status' ? (
-            <MessageCopyButton
-              text={parsedContent.answerText}
-              label={i18nText('agentFlow', 'auto.copy_output')}
+      <MessageActions>
+        {message.presentation !== 'status' ? (
+          <MessageCopyButton
+            text={parsedContent.answerText}
+            label={i18nText('agentFlow', 'auto.copy_output')}
+          />
+        ) : null}
+        {onOpenLog && canOpenLog ? (
+          <Tooltip title={openLogLabel}>
+            <Button
+              aria-label={openLogLabel}
+              icon={
+                message.presentation === 'answer' ? (
+                  <BranchesOutlined />
+                ) : (
+                  <FileTextOutlined />
+                )
+              }
+              size="small"
+              onClick={() => onOpenLog(message)}
             />
-          ) : null}
-          {onOpenLog && canOpenLog ? (
-            <Tooltip title={openLogLabel}>
-              <Button
-                aria-label={openLogLabel}
-                icon={
-                  message.presentation === 'answer' ? (
-                    <BranchesOutlined />
-                  ) : (
-                    <FileTextOutlined />
-                  )
-                }
-                size="small"
-                onClick={() => onOpenLog(message)}
-              />
-            </Tooltip>
-          ) : null}
-          {onOpenResumeTimeline ? (
-            <Tooltip title={i18nText('agentFlow', 'auto.view_resume_timeline')}>
-              <Button
-                aria-label={i18nText('agentFlow', 'auto.view_resume_timeline')}
-                icon={<HistoryOutlined />}
-                size="small"
-                onClick={() => onOpenResumeTimeline(message)}
-              />
-            </Tooltip>
-          ) : null}
-          {extraActions}
-        </Space>
-      </fieldset>
+          </Tooltip>
+        ) : null}
+        {onOpenResumeTimeline ? (
+          <Tooltip title={i18nText('agentFlow', 'auto.view_resume_timeline')}>
+            <Button
+              aria-label={i18nText('agentFlow', 'auto.view_resume_timeline')}
+              icon={<HistoryOutlined />}
+              size="small"
+              onClick={() => onOpenResumeTimeline(message)}
+            />
+          </Tooltip>
+        ) : null}
+        {extraActions}
+      </MessageActions>
     </article>
   );
 }

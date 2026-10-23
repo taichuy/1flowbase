@@ -16,6 +16,7 @@ import type {
 } from '../../../api/runtime';
 import type { AgentFlowDebugSessionStatus } from '../../../hooks/runtime/useAgentFlowDebugSession';
 import type { RuntimeDebugArtifactBatchLoader } from '../../detail/last-run/runtime-debug-payload';
+import { MessageActions } from './actions/MessageActions';
 import { MessageCopyButton } from './actions/MessageCopyButton';
 import { DebugAssistantMessage } from './DebugAssistantMessage';
 import { DebugComposer } from './DebugComposer';
@@ -193,11 +194,12 @@ export function DebugConversationPane({
       },
       system: {
         placement: 'start' as const,
-        rootClassName: 'agent-flow-editor__debug-system-bubble',
+        rootClassName:
+          'agent-flow-editor__debug-system-bubble agent-flow-editor__debug-message-actions-owner',
         styles: {
           body: { width: '100%' },
           content: { width: '100%' },
-          footer: { marginTop: 8, paddingInline: 8 },
+          footer: { marginTop: 12 },
           root: { paddingInlineEnd: 0, width: '100%' }
         },
         variant: 'borderless' as const,
@@ -215,13 +217,16 @@ export function DebugConversationPane({
         ),
         footerPlacement: 'outer-end' as const,
         footer: (message: AgentFlowDebugMessage) => (
-          <MessageCopyButton text={message.content} />
+          <MessageActions>
+            <MessageCopyButton text={message.content} />
+          </MessageActions>
         )
       },
       user: {
         placement: 'end' as const,
         shape: 'corner' as const,
-        styles: { footer: { marginTop: 8, paddingInline: 8 } },
+        rootClassName: 'agent-flow-editor__debug-message-actions-owner',
+        styles: { footer: { marginTop: 12 } },
         contentRender: (message: AgentFlowDebugMessage) => (
           <Flex align="end" gap={4} vertical>
             <Typography.Paragraph className="agent-flow-editor__debug-message-content">
@@ -237,7 +242,7 @@ export function DebugConversationPane({
         ),
         footerPlacement: 'outer-end' as const,
         footer: (message: AgentFlowDebugMessage) => (
-          <Flex gap={8} justify="end">
+          <MessageActions>
             <MessageCopyButton text={message.content} />
             {onOpenMessageLog && userLogMessageIds.has(message.id) ? (
               <Tooltip
@@ -254,7 +259,7 @@ export function DebugConversationPane({
                 />
               </Tooltip>
             ) : null}
-          </Flex>
+          </MessageActions>
         )
       }
     }),

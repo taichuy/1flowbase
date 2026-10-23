@@ -744,17 +744,6 @@
   border: 0;
   padding: 0 clamp(0.25rem, 1.5cqw, 0.5rem);
   min-inline-size: 0;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease;
-}
-
-.agent-flow-editor__debug-message--assistant:hover
-  .agent-flow-editor__debug-message-action-row,
-.agent-flow-editor__debug-message--assistant:focus-within
-  .agent-flow-editor__debug-message-action-row {
-  opacity: 1;
-  pointer-events: auto;
 }
 
 .agent-flow-editor__debug-message-actions {
