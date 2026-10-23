@@ -1,7 +1,8 @@
 use control_plane_contracts::ports::{
-    CreateUiCodeTemplateInput, CreateUiComponentRecordInput, OfficialUiComponentCatalogRecord,
-    ReviseUiCodeTemplateInput, UiComponentCatalogRepository, UiComponentRecordPatch,
-    UiManagementRepository,
+    CreateUiCodeTemplateInput, CreateUiComponentRecordInput, FrontendBlockCatalogDefaultTemplate,
+    FrontendBlockCatalogRepository, FrontendBlockCatalogTemplateRevision,
+    ListUiComponentRecordsQuery, OfficialUiComponentCatalogRecord, ReviseUiCodeTemplateInput,
+    UiComponentCatalogRepository, UiComponentRecordPatch, UiManagementRepository,
 };
 use domain::{UiCodeTemplateLanguage, UiComponentRecordOrigin, UiComponentRecordUpstream};
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
@@ -331,4 +332,243 @@ async fn template_archive_removal_migration_preserves_content_and_restores_visib
         .is_none());
     assert!(store.list_ui_code_templates().await.unwrap().is_empty());
     assert!(!store.delete_ui_code_template(template.id).await.unwrap());
+}
+
+#[tokio::test]
+async fn component_pages_preserve_search_order_bodies_and_one_snapshot_without_off_page_sources() {
+    let store = store().await;
+    let actor = Uuid::now_v7();
+    let mut fixtures = Vec::new();
+    for index in (0..25).rev() {
+        let code = format!("taichuy.paging.item-{index:02}");
+        let mut record = official_record(&code, "paging", &format!("import body {index}"));
+        record.name = match index {
+            23 => "Éclair".into(),
+            24 => "İstanbul".into(),
+            _ => format!("Item {:02}", index / 2),
+        };
+        record.source_code = format!("source-only-token {index}");
+        if index == 24 {
+            record.description = "Literal %_ marker".into();
+            record.keywords = vec!["KEYWORD-ONLY".into()];
+        }
+        fixtures.push(record);
+    }
+    store
+        .replace_official_ui_component_source_group("taichuy", "paging", &fixtures, actor)
+        .await
+        .unwrap();
+    let mut expected = store.list_ui_component_records().await.unwrap();
+    expected.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.component_code.cmp(&right.component_code))
+    });
+
+    for (offset, limit, start, end) in [
+        (0, 20, 0, 20),
+        (20, 20, 20, 25),
+        (24, usize::MAX, 24, 25),
+        (usize::MAX, 20, 25, 25),
+        (0, 0, 0, 1),
+    ] {
+        let page = store
+            .list_ui_component_records_page(ListUiComponentRecordsQuery {
+                query: Some("  ".into()),
+                offset,
+                limit,
+            })
+            .await
+            .unwrap();
+        assert_eq!(page.items, expected[start..end]);
+        assert_eq!(
+            (page.total, page.offset, page.limit),
+            (25, start, limit.max(1))
+        );
+        assert_eq!(page.has_more, end < 25);
+        assert_eq!(page.next_offset, (end < 25).then_some(end));
+    }
+    for (search, matching_codes) in [
+        ("  ÉCLAIR  ", vec!["taichuy.paging.item-23"]),
+        ("İSTANBUL", vec!["taichuy.paging.item-24"]),
+        ("%_", vec!["taichuy.paging.item-24"]),
+        ("keyword-only", vec!["taichuy.paging.item-24"]),
+        ("source-only-token", vec![]),
+        ("not-present", vec![]),
+    ] {
+        let page = store
+            .list_ui_component_records_page(ListUiComponentRecordsQuery {
+                query: Some(search.into()),
+                offset: 0,
+                limit: 20,
+            })
+            .await
+            .unwrap();
+        assert_eq!(page.total, matching_codes.len(), "search: {search}");
+        assert_eq!(
+            page.items
+                .iter()
+                .map(|item| item.component_code.as_str())
+                .collect::<Vec<_>>(),
+            matching_codes
+        );
+    }
+    for search in ["taichuy", "paging", "@not-installed", "9.9.9", "1.0.0"] {
+        let page = store
+            .list_ui_component_records_page(ListUiComponentRecordsQuery {
+                query: Some(search.into()),
+                offset: 0,
+                limit: 20,
+            })
+            .await
+            .unwrap();
+        assert_eq!(page.total, 25, "search: {search}");
+    }
+
+    // The fixture view fails if either source field outside the requested page is evaluated.
+    // A metadata lock holds the read between snapshot acquisition and page hydration.
+    let lock_id = (Uuid::now_v7().as_u128() & 0x7fff_ffff) as i32;
+    let fixture_sql = format!(
+        r#"
+        alter table ui_component_records rename to component_page_fixture;
+        create function page_source(body text, code text) returns text language plpgsql immutable as $$
+        begin
+            if code >= 'taichuy.paging.item-20' then raise exception 'off-page source materialized'; end if;
+            return body;
+        end $$;
+        create function page_metadata(body text, lock_id integer) returns text language plpgsql volatile as $$
+        begin
+            perform pg_advisory_xact_lock_shared(9271, lock_id);
+            return body;
+        end $$;
+        create view ui_component_records as select id, scope_id, component_code, name,
+            page_metadata(description, {lock_id}) as description,
+            page_source(import_code, component_code) as import_code,
+            page_source(source_code, component_code) as source_code,
+            origin, source, "group", upstream_identity, upstream_version, version, keywords,
+            catalog_updated_at, source_locator, source_checksum, created_by, updated_by, created_at, updated_at
+        from component_page_fixture;
+    "#
+    );
+    // SQL safety: fixture DDL is static except for a locally generated integer advisory lock key.
+    sqlx::raw_sql(sqlx::AssertSqlSafe(fixture_sql.as_str()))
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let mut writer = store.pool().begin().await.unwrap();
+    sqlx::query("select pg_advisory_xact_lock(9271, $1)")
+        .bind(lock_id)
+        .execute(&mut *writer)
+        .await
+        .unwrap();
+    let reader = PgControlPlaneStore::new(store.pool().clone());
+    let page_task = tokio::spawn(async move {
+        reader
+            .list_ui_component_records_page(ListUiComponentRecordsQuery {
+                query: None,
+                offset: 0,
+                limit: 20,
+            })
+            .await
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let waiting: bool = sqlx::query_scalar("select exists(select 1 from pg_locks where locktype = 'advisory' and classid = 9271 and objid = $1::int::oid and not granted)")
+                .bind(lock_id).fetch_one(&mut *writer).await.unwrap();
+            if waiting { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }).await.expect("reader must reach the metadata snapshot");
+    sqlx::query("update component_page_fixture set name = 'ZZ changed', source_code = 'new source' where component_code = 'taichuy.paging.item-00'")
+        .execute(&mut *writer).await.unwrap();
+    sqlx::query(
+        "delete from component_page_fixture where component_code = 'taichuy.paging.item-24'",
+    )
+    .execute(&mut *writer)
+    .await
+    .unwrap();
+    writer.commit().await.unwrap();
+    let page = page_task.await.unwrap().unwrap();
+    assert_eq!(page.total, 25);
+    assert_eq!(page.items, expected[..20]);
+}
+
+#[tokio::test]
+async fn frontend_catalog_template_projection_reads_only_published_default_sources() {
+    let store = store().await;
+    let actor = Uuid::now_v7();
+    let mut chosen = None;
+    for name in ["Default", "Other published", "Unpublished"] {
+        let template = store
+            .create_ui_code_template(&CreateUiCodeTemplateInput {
+                provider_code: "fixture.frontend".into(),
+                contribution_code: "hero".into(),
+                name: name.into(),
+                source: format!("published {name}"),
+                language: UiCodeTemplateLanguage::Tsx,
+                actor_user_id: actor,
+            })
+            .await
+            .unwrap();
+        if name != "Unpublished" {
+            store
+                .publish_ui_code_template_revision(template.id, 1, actor)
+                .await
+                .unwrap();
+        }
+        if name == "Default" {
+            store
+                .set_ui_code_template_default(template.id, actor)
+                .await
+                .unwrap();
+            store
+                .revise_ui_code_template(&ReviseUiCodeTemplateInput {
+                    template_id: template.id,
+                    name: name.into(),
+                    source: "unpublished draft".into(),
+                    language: UiCodeTemplateLanguage::Jsx,
+                    actor_user_id: actor,
+                })
+                .await
+                .unwrap();
+            chosen = Some(template.id);
+        }
+    }
+    // The migrated schema remains authoritative; this read-only view instruments source
+    // evaluation so a full template/draft read fails instead of silently passing parity.
+    let fixture_sql = format!(
+        r#"
+        alter table ui_code_template_revisions rename to template_revision_fixture;
+        create function catalog_source(body text, template uuid, published boolean) returns text language plpgsql immutable as $$
+        begin
+            if template <> '{}'::uuid or not published then raise exception 'unused template source materialized'; end if;
+            return body;
+        end $$;
+        create view ui_code_template_revisions as select id, template_id, revision,
+            catalog_source(source, template_id, is_published) as source,
+            language, is_latest, is_published, created_by, created_at
+        from template_revision_fixture;
+    "#,
+        chosen.unwrap()
+    );
+    // SQL safety: static fixture DDL interpolates only the UUID created by this test.
+    sqlx::raw_sql(sqlx::AssertSqlSafe(fixture_sql.as_str()))
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .list_active_ui_code_templates_for_catalog()
+            .await
+            .unwrap(),
+        vec![FrontendBlockCatalogDefaultTemplate {
+            provider_code: "fixture.frontend".into(),
+            contribution_code: "hero".into(),
+            published_revision: Some(FrontendBlockCatalogTemplateRevision {
+                revision: 1,
+                source: "published Default".into(),
+                language: UiCodeTemplateLanguage::Tsx
+            }),
+        }]
+    );
 }

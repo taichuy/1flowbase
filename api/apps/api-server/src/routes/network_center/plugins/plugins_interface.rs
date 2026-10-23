@@ -4,8 +4,8 @@ use control_plane::{
     network_egress::NetworkEgressProviderService,
     network_egress_secret::ProviderRegistryNetworkEgressSecretResolver,
     plugin_management::{
-        DeletePluginFamilyCommand, InstallResolvedOfficialPluginCommand,
-        InstallUploadedPluginCommand, PluginCatalogFilter, PluginManagementService,
+        DeletePluginFamilyCommand, InstallUploadedPluginCommand, PluginCatalogFilter,
+        PluginManagementService,
     },
     ports::OfficialPluginSourcePort,
 };
@@ -56,11 +56,11 @@ impl InterfaceContract for NetworkPluginInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ListOfficial")),
                 (
                     "query",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "plugin_type",
                             serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
@@ -71,11 +71,11 @@ impl InterfaceContract for NetworkPluginInput {
                         ),
                         (
                             "q",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "cursor",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "limit",
@@ -84,50 +84,50 @@ impl InterfaceContract for NetworkPluginInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("ListFamilies"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("ListFamilies"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("SwitchVersion")),
                 ("provider_code", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[("installation_id", mp::text_schema())]),
+                    mp::object_schema([("installation_id", mp::text_schema())]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UninstallVersion")),
                 ("provider_code", mp::text_schema()),
                 ("installation_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UninstallFamily")),
                 ("provider_code", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("InstallOfficial")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("plugin_id", mp::text_schema()),
                         (
                             "compatibility_override",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("reason",mp::object_schema(&[("byte_count",mp::count_schema())])), ("acknowledged_current_host_version",mp::text_schema()), ("acknowledged_minimum_host_version",mp::text_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("reason",mp::object_schema([("byte_count",mp::count_schema())])), ("acknowledged_current_host_version",mp::text_schema()), ("acknowledged_minimum_host_version",mp::text_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "risk_override",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("reason",mp::object_schema(&[("byte_count",mp::count_schema())])), ("acknowledged_warnings",mp::object_schema(&[("item_count",mp::count_schema())]))]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("reason",mp::object_schema([("byte_count",mp::count_schema())])), ("acknowledged_warnings",mp::object_schema([("item_count",mp::count_schema())]))]), {"type":"null"}]}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("InstallUploaded")),
                 (
                     "file_name",
-                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                    mp::object_schema([("byte_count", mp::count_schema())]),
                 ),
                 (
                     "package_bytes",
-                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                    mp::object_schema([("byte_count", mp::count_schema())]),
                 ),
             ]),
         ]))
@@ -138,14 +138,14 @@ impl InterfaceContract for NetworkPluginInput {
             Self::ListOfficial {
                 query: _field_query,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ListOfficial".to_owned()),
                 ),
                 (
                     "query",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "plugin_type",
                             match (_field_query).plugin_type.as_ref() {
@@ -163,7 +163,7 @@ impl InterfaceContract for NetworkPluginInput {
                         (
                             "q",
                             match (_field_query).q.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -173,7 +173,7 @@ impl InterfaceContract for NetworkPluginInput {
                         (
                             "cursor",
                             match (_field_query).cursor.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -190,7 +190,7 @@ impl InterfaceContract for NetworkPluginInput {
                     ]),
                 ),
             ]),
-            Self::ListFamilies { .. } => mp::object_value(&[(
+            Self::ListFamilies { .. } => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ListFamilies".to_owned()),
             )]),
@@ -198,7 +198,7 @@ impl InterfaceContract for NetworkPluginInput {
                 provider_code: _field_provider_code,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("SwitchVersion".to_owned()),
@@ -206,7 +206,7 @@ impl InterfaceContract for NetworkPluginInput {
                 ("provider_code", mp::text(_field_provider_code)?),
                 (
                     "body",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "installation_id",
                         mp::text(&(_field_body).installation_id)?,
                     )]),
@@ -216,7 +216,7 @@ impl InterfaceContract for NetworkPluginInput {
                 provider_code: _field_provider_code,
                 installation_id: _field_installation_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UninstallVersion".to_owned()),
@@ -227,29 +227,29 @@ impl InterfaceContract for NetworkPluginInput {
             Self::UninstallFamily {
                 provider_code: _field_provider_code,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UninstallFamily".to_owned()),
                 ),
                 ("provider_code", mp::text(_field_provider_code)?),
             ]),
-            Self::InstallOfficial(_field_0) => mp::object_value(&[
+            Self::InstallOfficial(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("InstallOfficial".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("plugin_id", mp::text(&(_field_0).plugin_id)?),
                         (
                             "compatibility_override",
                             match (_field_0).compatibility_override.as_ref() {
-                                Some(item) => mp::object_value(&[
+                                Some(item) => mp::object_value([
                                     (
                                         "reason",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).reason.len()),
                                         )]),
@@ -269,17 +269,17 @@ impl InterfaceContract for NetworkPluginInput {
                         (
                             "risk_override",
                             match (_field_0).risk_override.as_ref() {
-                                Some(item) => mp::object_value(&[
+                                Some(item) => mp::object_value([
                                     (
                                         "reason",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).reason.len()),
                                         )]),
                                     ),
                                     (
                                         "acknowledged_warnings",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "item_count",
                                             serde_json::json!((item).acknowledged_warnings.len()),
                                         )]),
@@ -295,21 +295,18 @@ impl InterfaceContract for NetworkPluginInput {
                 file_name: _field_file_name,
                 package_bytes: _field_package_bytes,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("InstallUploaded".to_owned()),
                 ),
                 (
                     "file_name",
-                    mp::object_value(&[(
-                        "byte_count",
-                        serde_json::json!((_field_file_name).len()),
-                    )]),
+                    mp::object_value([("byte_count", serde_json::json!((_field_file_name).len()))]),
                 ),
                 (
                     "package_bytes",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "byte_count",
                         serde_json::json!((_field_package_bytes).len()),
                     )]),
@@ -337,51 +334,51 @@ impl InterfaceContract for NetworkPluginOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Official")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "source_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "source_label",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "source_freshness",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "locale_meta",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 (
                                     "requested_locale",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "resolved_locale",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 (
                                     "source",
                                     mp::union_schema(vec![
-                                        mp::object_schema(&[("variant", mp::tag_schema("Query"))]),
-                                        mp::object_schema(&[(
+                                        mp::object_schema([("variant", mp::tag_schema("Query"))]),
+                                        mp::object_schema([(
                                             "variant",
                                             mp::tag_schema("ExplicitHeader"),
                                         )]),
-                                        mp::object_schema(&[(
+                                        mp::object_schema([(
                                             "variant",
                                             mp::tag_schema("UserPreferredLocale"),
                                         )]),
-                                        mp::object_schema(&[(
+                                        mp::object_schema([(
                                             "variant",
                                             mp::tag_schema("AcceptLanguage"),
                                         )]),
-                                        mp::object_schema(&[(
+                                        mp::object_schema([(
                                             "variant",
                                             mp::tag_schema("Fallback"),
                                         )]),
@@ -389,51 +386,51 @@ impl InterfaceContract for NetworkPluginOutput {
                                 ),
                                 (
                                     "fallback_locale",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 (
                                     "supported_locales",
-                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                    mp::object_schema([("item_count", mp::count_schema())]),
                                 ),
                             ]),
                         ),
                         (
                             "page",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 ("limit", serde_json::json!({"type":"integer"})),
                                 (
                                     "next_cursor",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                             ]),
                         ),
                         (
                             "entries",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("plugin_id",mp::text_schema()), ("plugin_type",mp::text_schema()), ("provider_code",mp::text_schema()), ("display_name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("icon",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("protocol",mp::text_schema()), ("current_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("latest_version",mp::text_schema()), ("has_update",serde_json::json!({"type":"boolean"})), ("minimum_host_version",mp::text_schema()), ("current_host_version",mp::text_schema()), ("compatibility_status",mp::object_schema(&[("byte_count",mp::count_schema())])), ("compatibility_warning_reason",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("selected_artifact",mp::object_schema(&[("os",mp::object_schema(&[("byte_count",mp::count_schema())])), ("arch",mp::object_schema(&[("byte_count",mp::count_schema())])), ("libc",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("rust_target",mp::object_schema(&[("byte_count",mp::count_schema())])), ("checksum",mp::object_schema(&[("byte_count",mp::count_schema())])), ("signature_algorithm",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("signing_key_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}))])), ("model_discovery_mode",mp::object_schema(&[("byte_count",mp::count_schema())])), ("install_status",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("plugin_id",mp::text_schema()), ("plugin_type",mp::text_schema()), ("provider_code",mp::text_schema()), ("display_name",mp::object_schema([("byte_count",mp::count_schema())])), ("description",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("icon",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("protocol",mp::text_schema()), ("current_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("latest_version",mp::text_schema()), ("has_update",serde_json::json!({"type":"boolean"})), ("minimum_host_version",mp::text_schema()), ("current_host_version",mp::text_schema()), ("compatibility_status",mp::object_schema([("byte_count",mp::count_schema())])), ("compatibility_warning_reason",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("selected_artifact",mp::object_schema([("os",mp::object_schema([("byte_count",mp::count_schema())])), ("arch",mp::object_schema([("byte_count",mp::count_schema())])), ("libc",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("rust_target",mp::object_schema([("byte_count",mp::count_schema())])), ("checksum",mp::object_schema([("byte_count",mp::count_schema())])), ("signature_algorithm",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("signing_key_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}))])), ("model_discovery_mode",mp::object_schema([("byte_count",mp::count_schema())])), ("install_status",mp::object_schema([("byte_count",mp::count_schema())]))])}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Families")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("provider_code",mp::text_schema()), ("display_name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("current_installation_id",mp::text_schema()), ("current_version",mp::text_schema()), ("can_uninstall",serde_json::json!({"type":"boolean"})), ("installed_versions",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("installation_id",mp::text_schema()), ("plugin_version",mp::text_schema()), ("is_current",serde_json::json!({"type":"boolean"})), ("can_uninstall",serde_json::json!({"type":"boolean"}))])}))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("provider_code",mp::text_schema()), ("display_name",mp::object_schema([("byte_count",mp::count_schema())])), ("current_installation_id",mp::text_schema()), ("current_version",mp::text_schema()), ("can_uninstall",serde_json::json!({"type":"boolean"})), ("installed_versions",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("installation_id",mp::text_schema()), ("plugin_version",mp::text_schema()), ("is_current",serde_json::json!({"type":"boolean"})), ("can_uninstall",serde_json::json!({"type":"boolean"}))])}))])}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Installed")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "installation",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 ("id", mp::text_schema()),
                                 ("provider_code", mp::text_schema()),
                                 (
                                     "runtime_slot",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 ("plugin_id", mp::text_schema()),
                                 ("plugin_version", mp::text_schema()),
@@ -441,35 +438,35 @@ impl InterfaceContract for NetworkPluginOutput {
                                 ("protocol", mp::text_schema()),
                                 (
                                     "display_name",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 (
                                     "source_kind",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 (
                                     "trust_level",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 (
                                     "verification_status",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 (
                                     "desired_state",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 (
                                     "expected_checksum",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "signature_status",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 (
                                     "signature_algorithm",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "signing_key_id",
@@ -477,7 +474,7 @@ impl InterfaceContract for NetworkPluginOutput {
                                 ),
                                 (
                                     "local_artifact",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("node_id",mp::text_schema()), ("installation_id",mp::text_schema()), ("local_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("local_checksum",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("package_path",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("manifest_fingerprint",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("artifact_status",mp::object_schema(&[("byte_count",mp::count_schema())])), ("runtime_status",mp::object_schema(&[("byte_count",mp::count_schema())])), ("availability_status",mp::object_schema(&[("byte_count",mp::count_schema())])), ("checked_at",mp::object_schema(&[("byte_count",mp::count_schema())])), ("last_error",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}))]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("node_id",mp::text_schema()), ("installation_id",mp::text_schema()), ("local_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("local_checksum",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("package_path",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("manifest_fingerprint",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("artifact_status",mp::object_schema([("byte_count",mp::count_schema())])), ("runtime_status",mp::object_schema([("byte_count",mp::count_schema())])), ("availability_status",mp::object_schema([("byte_count",mp::count_schema())])), ("checked_at",mp::object_schema([("byte_count",mp::count_schema())])), ("last_error",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}))]), {"type":"null"}]}),
                                 ),
                                 ("metadata_json", mp::json_summary_schema()),
                                 ("created_at", mp::text_schema()),
@@ -486,7 +483,7 @@ impl InterfaceContract for NetworkPluginOutput {
                         ),
                         (
                             "task",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 ("id", mp::text_schema()),
                                 (
                                     "installation_id",
@@ -499,31 +496,31 @@ impl InterfaceContract for NetworkPluginOutput {
                                 ("provider_code", mp::text_schema()),
                                 (
                                     "task_kind",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 ("status", mp::text_schema()),
                                 (
                                     "status_message",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 ("detail_json", mp::json_summary_schema()),
                                 ("created_at", mp::text_schema()),
                                 ("updated_at", mp::text_schema()),
                                 (
                                     "finished_at",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                             ]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("Empty"))]),
+            mp::object_schema([("variant", mp::tag_schema("Empty"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(match self {Self::Official(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Official".to_owned())), ("0",mp::object_value(&[("source_kind",mp::object_value(&[("byte_count",serde_json::json!((_field_0).source_kind.len()))])), ("source_label",mp::object_value(&[("byte_count",serde_json::json!((_field_0).source_label.len()))])), ("source_freshness",mp::object_value(&[("byte_count",serde_json::json!((_field_0).source_freshness.len()))])), ("locale_meta",mp::object_value(&[("requested_locale",match (_field_0).locale_meta.requested_locale.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("resolved_locale",mp::object_value(&[("byte_count",serde_json::json!((_field_0).locale_meta.resolved_locale.len()))])), ("source",match &(_field_0).locale_meta.source {crate::routes::settings_group::system::LocaleSourceResponse::Query => mp::object_value(&[("variant",serde_json::Value::String("Query".to_owned()))]), crate::routes::settings_group::system::LocaleSourceResponse::ExplicitHeader => mp::object_value(&[("variant",serde_json::Value::String("ExplicitHeader".to_owned()))]), crate::routes::settings_group::system::LocaleSourceResponse::UserPreferredLocale => mp::object_value(&[("variant",serde_json::Value::String("UserPreferredLocale".to_owned()))]), crate::routes::settings_group::system::LocaleSourceResponse::AcceptLanguage => mp::object_value(&[("variant",serde_json::Value::String("AcceptLanguage".to_owned()))]), crate::routes::settings_group::system::LocaleSourceResponse::Fallback => mp::object_value(&[("variant",serde_json::Value::String("Fallback".to_owned()))])}), ("fallback_locale",mp::object_value(&[("byte_count",serde_json::json!((_field_0).locale_meta.fallback_locale.len()))])), ("supported_locales",mp::object_value(&[("item_count",serde_json::json!((_field_0).locale_meta.supported_locales.len()))]))])), ("page",mp::object_value(&[("limit",serde_json::json!((_field_0).page.limit)), ("next_cursor",match (_field_0).page.next_cursor.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })])), ("entries",{ if (_field_0).entries.len() > 32 { return None; } serde_json::Value::Array((_field_0).entries.iter().map(|item| Some(mp::object_value(&[("plugin_id",mp::text(&(item).plugin_id)?), ("plugin_type",mp::text(&(item).plugin_type)?), ("provider_code",mp::text(&(item).provider_code)?), ("display_name",mp::object_value(&[("byte_count",serde_json::json!((item).display_name.len()))])), ("description",match (item).description.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("icon",match (item).icon.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("protocol",mp::text(&(item).protocol)?), ("current_version",match (item).current_version.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("latest_version",mp::text(&(item).latest_version)?), ("has_update",serde_json::Value::Bool((item).has_update)), ("minimum_host_version",mp::text(&(item).minimum_host_version)?), ("current_host_version",mp::text(&(item).current_host_version)?), ("compatibility_status",mp::object_value(&[("byte_count",serde_json::json!((item).compatibility_status.len()))])), ("compatibility_warning_reason",match (item).compatibility_warning_reason.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("selected_artifact",mp::object_value(&[("os",mp::object_value(&[("byte_count",serde_json::json!((item).selected_artifact.os.len()))])), ("arch",mp::object_value(&[("byte_count",serde_json::json!((item).selected_artifact.arch.len()))])), ("libc",match (item).selected_artifact.libc.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("rust_target",mp::object_value(&[("byte_count",serde_json::json!((item).selected_artifact.rust_target.len()))])), ("checksum",mp::object_value(&[("byte_count",serde_json::json!((item).selected_artifact.checksum.len()))])), ("signature_algorithm",match (item).selected_artifact.signature_algorithm.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("signing_key_id",match (item).selected_artifact.signing_key_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null })])), ("model_discovery_mode",mp::object_value(&[("byte_count",serde_json::json!((item).model_discovery_mode.len()))])), ("install_status",mp::object_value(&[("byte_count",serde_json::json!((item).install_status.len()))]))]))).collect::<Option<Vec<_>>>()?) })]))]), Self::Families(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Families".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value(&[("provider_code",mp::text(&(item).provider_code)?), ("display_name",mp::object_value(&[("byte_count",serde_json::json!((item).display_name.len()))])), ("current_installation_id",mp::text(&(item).current_installation_id)?), ("current_version",mp::text(&(item).current_version)?), ("can_uninstall",serde_json::Value::Bool((item).can_uninstall)), ("installed_versions",{ if (item).installed_versions.len() > 32 { return None; } serde_json::Value::Array((item).installed_versions.iter().map(|item| Some(mp::object_value(&[("installation_id",mp::text(&(item).installation_id)?), ("plugin_version",mp::text(&(item).plugin_version)?), ("is_current",serde_json::Value::Bool((item).is_current)), ("can_uninstall",serde_json::Value::Bool((item).can_uninstall))]))).collect::<Option<Vec<_>>>()?) })]))).collect::<Option<Vec<_>>>()?) })]), Self::Installed(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Installed".to_owned())), ("0",mp::object_value(&[("installation",mp::object_value(&[("id",mp::text(&(_field_0).installation.id)?), ("provider_code",mp::text(&(_field_0).installation.provider_code)?), ("runtime_slot",match (_field_0).installation.runtime_slot.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("plugin_id",mp::text(&(_field_0).installation.plugin_id)?), ("plugin_version",mp::text(&(_field_0).installation.plugin_version)?), ("contract_version",mp::text(&(_field_0).installation.contract_version)?), ("protocol",mp::text(&(_field_0).installation.protocol)?), ("display_name",mp::object_value(&[("byte_count",serde_json::json!((_field_0).installation.display_name.len()))])), ("source_kind",mp::object_value(&[("byte_count",serde_json::json!((_field_0).installation.source_kind.len()))])), ("trust_level",mp::object_value(&[("byte_count",serde_json::json!((_field_0).installation.trust_level.len()))])), ("verification_status",mp::object_value(&[("byte_count",serde_json::json!((_field_0).installation.verification_status.len()))])), ("desired_state",mp::object_value(&[("byte_count",serde_json::json!((_field_0).installation.desired_state.len()))])), ("expected_checksum",match (_field_0).installation.expected_checksum.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("signature_status",mp::object_value(&[("byte_count",serde_json::json!((_field_0).installation.signature_status.len()))])), ("signature_algorithm",match (_field_0).installation.signature_algorithm.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("signing_key_id",match (_field_0).installation.signing_key_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("local_artifact",match (_field_0).installation.local_artifact.as_ref() { Some(item) => mp::object_value(&[("node_id",mp::text(&(item).node_id)?), ("installation_id",mp::text(&(item).installation_id)?), ("local_version",match (item).local_version.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("local_checksum",match (item).local_checksum.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("package_path",match (item).package_path.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("manifest_fingerprint",match (item).manifest_fingerprint.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("artifact_status",mp::object_value(&[("byte_count",serde_json::json!((item).artifact_status.len()))])), ("runtime_status",mp::object_value(&[("byte_count",serde_json::json!((item).runtime_status.len()))])), ("availability_status",mp::object_value(&[("byte_count",serde_json::json!((item).availability_status.len()))])), ("checked_at",mp::object_value(&[("byte_count",serde_json::json!((item).checked_at.len()))])), ("last_error",match (item).last_error.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]), None => serde_json::Value::Null }), ("metadata_json",mp::json_summary(&(_field_0).installation.metadata_json)), ("created_at",mp::text(&(_field_0).installation.created_at)?), ("updated_at",mp::text(&(_field_0).installation.updated_at)?)])), ("task",mp::object_value(&[("id",mp::text(&(_field_0).task.id)?), ("installation_id",match (_field_0).task.installation_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("workspace_id",match (_field_0).task.workspace_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("provider_code",mp::text(&(_field_0).task.provider_code)?), ("task_kind",mp::object_value(&[("byte_count",serde_json::json!((_field_0).task.task_kind.len()))])), ("status",mp::text(&(_field_0).task.status)?), ("status_message",match (_field_0).task.status_message.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("detail_json",mp::json_summary(&(_field_0).task.detail_json)), ("created_at",mp::text(&(_field_0).task.created_at)?), ("updated_at",mp::text(&(_field_0).task.updated_at)?), ("finished_at",match (_field_0).task.finished_at.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))]))]), Self::Empty => mp::object_value(&[("variant",serde_json::Value::String("Empty".to_owned()))])})
+        Some(match self {Self::Official(_field_0) => mp::object_value([("variant",serde_json::Value::String("Official".to_owned())), ("0",mp::object_value([("source_kind",mp::object_value([("byte_count",serde_json::json!((_field_0).source_kind.len()))])), ("source_label",mp::object_value([("byte_count",serde_json::json!((_field_0).source_label.len()))])), ("source_freshness",mp::object_value([("byte_count",serde_json::json!((_field_0).source_freshness.len()))])), ("locale_meta",mp::object_value([("requested_locale",match (_field_0).locale_meta.requested_locale.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("resolved_locale",mp::object_value([("byte_count",serde_json::json!((_field_0).locale_meta.resolved_locale.len()))])), ("source",match &(_field_0).locale_meta.source {crate::routes::settings_group::system::LocaleSourceResponse::Query => mp::object_value([("variant",serde_json::Value::String("Query".to_owned()))]), crate::routes::settings_group::system::LocaleSourceResponse::ExplicitHeader => mp::object_value([("variant",serde_json::Value::String("ExplicitHeader".to_owned()))]), crate::routes::settings_group::system::LocaleSourceResponse::UserPreferredLocale => mp::object_value([("variant",serde_json::Value::String("UserPreferredLocale".to_owned()))]), crate::routes::settings_group::system::LocaleSourceResponse::AcceptLanguage => mp::object_value([("variant",serde_json::Value::String("AcceptLanguage".to_owned()))]), crate::routes::settings_group::system::LocaleSourceResponse::Fallback => mp::object_value([("variant",serde_json::Value::String("Fallback".to_owned()))])}), ("fallback_locale",mp::object_value([("byte_count",serde_json::json!((_field_0).locale_meta.fallback_locale.len()))])), ("supported_locales",mp::object_value([("item_count",serde_json::json!((_field_0).locale_meta.supported_locales.len()))]))])), ("page",mp::object_value([("limit",serde_json::json!((_field_0).page.limit)), ("next_cursor",match (_field_0).page.next_cursor.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })])), ("entries",{ if (_field_0).entries.len() > 32 { return None; } serde_json::Value::Array((_field_0).entries.iter().map(|item| Some(mp::object_value([("plugin_id",mp::text(&(item).plugin_id)?), ("plugin_type",mp::text(&(item).plugin_type)?), ("provider_code",mp::text(&(item).provider_code)?), ("display_name",mp::object_value([("byte_count",serde_json::json!((item).display_name.len()))])), ("description",match (item).description.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("icon",match (item).icon.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("protocol",mp::text(&(item).protocol)?), ("current_version",match (item).current_version.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("latest_version",mp::text(&(item).latest_version)?), ("has_update",serde_json::Value::Bool((item).has_update)), ("minimum_host_version",mp::text(&(item).minimum_host_version)?), ("current_host_version",mp::text(&(item).current_host_version)?), ("compatibility_status",mp::object_value([("byte_count",serde_json::json!((item).compatibility_status.len()))])), ("compatibility_warning_reason",match (item).compatibility_warning_reason.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("selected_artifact",mp::object_value([("os",mp::object_value([("byte_count",serde_json::json!((item).selected_artifact.os.len()))])), ("arch",mp::object_value([("byte_count",serde_json::json!((item).selected_artifact.arch.len()))])), ("libc",match (item).selected_artifact.libc.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("rust_target",mp::object_value([("byte_count",serde_json::json!((item).selected_artifact.rust_target.len()))])), ("checksum",mp::object_value([("byte_count",serde_json::json!((item).selected_artifact.checksum.len()))])), ("signature_algorithm",match (item).selected_artifact.signature_algorithm.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("signing_key_id",match (item).selected_artifact.signing_key_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null })])), ("model_discovery_mode",mp::object_value([("byte_count",serde_json::json!((item).model_discovery_mode.len()))])), ("install_status",mp::object_value([("byte_count",serde_json::json!((item).install_status.len()))]))]))).collect::<Option<Vec<_>>>()?) })]))]), Self::Families(_field_0) => mp::object_value([("variant",serde_json::Value::String("Families".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value([("provider_code",mp::text(&(item).provider_code)?), ("display_name",mp::object_value([("byte_count",serde_json::json!((item).display_name.len()))])), ("current_installation_id",mp::text(&(item).current_installation_id)?), ("current_version",mp::text(&(item).current_version)?), ("can_uninstall",serde_json::Value::Bool((item).can_uninstall)), ("installed_versions",{ if (item).installed_versions.len() > 32 { return None; } serde_json::Value::Array((item).installed_versions.iter().map(|item| Some(mp::object_value([("installation_id",mp::text(&(item).installation_id)?), ("plugin_version",mp::text(&(item).plugin_version)?), ("is_current",serde_json::Value::Bool((item).is_current)), ("can_uninstall",serde_json::Value::Bool((item).can_uninstall))]))).collect::<Option<Vec<_>>>()?) })]))).collect::<Option<Vec<_>>>()?) })]), Self::Installed(_field_0) => mp::object_value([("variant",serde_json::Value::String("Installed".to_owned())), ("0",mp::object_value([("installation",mp::object_value([("id",mp::text(&(_field_0).installation.id)?), ("provider_code",mp::text(&(_field_0).installation.provider_code)?), ("runtime_slot",match (_field_0).installation.runtime_slot.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("plugin_id",mp::text(&(_field_0).installation.plugin_id)?), ("plugin_version",mp::text(&(_field_0).installation.plugin_version)?), ("contract_version",mp::text(&(_field_0).installation.contract_version)?), ("protocol",mp::text(&(_field_0).installation.protocol)?), ("display_name",mp::object_value([("byte_count",serde_json::json!((_field_0).installation.display_name.len()))])), ("source_kind",mp::object_value([("byte_count",serde_json::json!((_field_0).installation.source_kind.len()))])), ("trust_level",mp::object_value([("byte_count",serde_json::json!((_field_0).installation.trust_level.len()))])), ("verification_status",mp::object_value([("byte_count",serde_json::json!((_field_0).installation.verification_status.len()))])), ("desired_state",mp::object_value([("byte_count",serde_json::json!((_field_0).installation.desired_state.len()))])), ("expected_checksum",match (_field_0).installation.expected_checksum.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("signature_status",mp::object_value([("byte_count",serde_json::json!((_field_0).installation.signature_status.len()))])), ("signature_algorithm",match (_field_0).installation.signature_algorithm.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("signing_key_id",match (_field_0).installation.signing_key_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("local_artifact",match (_field_0).installation.local_artifact.as_ref() { Some(item) => mp::object_value([("node_id",mp::text(&(item).node_id)?), ("installation_id",mp::text(&(item).installation_id)?), ("local_version",match (item).local_version.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("local_checksum",match (item).local_checksum.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("package_path",match (item).package_path.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("manifest_fingerprint",match (item).manifest_fingerprint.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("artifact_status",mp::object_value([("byte_count",serde_json::json!((item).artifact_status.len()))])), ("runtime_status",mp::object_value([("byte_count",serde_json::json!((item).runtime_status.len()))])), ("availability_status",mp::object_value([("byte_count",serde_json::json!((item).availability_status.len()))])), ("checked_at",mp::object_value([("byte_count",serde_json::json!((item).checked_at.len()))])), ("last_error",match (item).last_error.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]), None => serde_json::Value::Null }), ("metadata_json",mp::json_summary(&(_field_0).installation.metadata_json)), ("created_at",mp::text(&(_field_0).installation.created_at)?), ("updated_at",mp::text(&(_field_0).installation.updated_at)?)])), ("task",mp::object_value([("id",mp::text(&(_field_0).task.id)?), ("installation_id",match (_field_0).task.installation_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("workspace_id",match (_field_0).task.workspace_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("provider_code",mp::text(&(_field_0).task.provider_code)?), ("task_kind",mp::object_value([("byte_count",serde_json::json!((_field_0).task.task_kind.len()))])), ("status",mp::text(&(_field_0).task.status)?), ("status_message",match (_field_0).task.status_message.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("detail_json",mp::json_summary(&(_field_0).task.detail_json)), ("created_at",mp::text(&(_field_0).task.created_at)?), ("updated_at",mp::text(&(_field_0).task.updated_at)?), ("finished_at",match (_field_0).task.finished_at.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))]))]), Self::Empty => mp::object_value([("variant",serde_json::Value::String("Empty".to_owned()))])})
     }
 
     const CONTRACT_ID: &'static str = "console-network-plugin-output";
@@ -608,69 +605,6 @@ impl NetworkPluginAdapter {
             )
             .await?;
         Ok(project_plugin_families(catalog.entries)?)
-    }
-
-    async fn resolved_official_command(
-        &self,
-        actor_user_id: uuid::Uuid,
-        workspace_id: uuid::Uuid,
-        body: InstallOfficialPluginBody,
-    ) -> Result<InstallResolvedOfficialPluginCommand, ApiError> {
-        let mut cursor = None;
-        let (entry, source_kind) = loop {
-            let page = self
-                .0
-                .official_catalog_source
-                .list_page_for_workspace(workspace_id, "runtime-extensions", cursor.as_deref())
-                .await?;
-            if let Some(entry) = page.entries.into_iter().find(|entry| {
-                entry
-                    .source
-                    .metadata
-                    .get("plugin_id")
-                    .and_then(serde_json::Value::as_str)
-                    == Some(body.plugin_id.as_str())
-            }) {
-                break (entry, page.source_kind);
-            }
-            let Some(next) = page.metadata.next_cursor else {
-                return Err(
-                    control_plane::errors::ControlPlaneError::NotFound("official_plugin").into(),
-                );
-            };
-            cursor = Some(next);
-        };
-        let plugin_type = entry
-            .source
-            .metadata
-            .get("plugin_type")
-            .and_then(serde_json::Value::as_str)
-            .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-                "official_plugin_type",
-            ))?
-            .to_string();
-        let downloaded = self
-            .0
-            .official_catalog_source
-            .download_artifact_for_workspace(workspace_id, &entry)
-            .await?;
-        let expected_checksum = downloaded.descriptor.expected_checksum.clone().ok_or(
-            control_plane::errors::ControlPlaneError::InvalidInput("official_plugin_checksum"),
-        )?;
-        Ok(InstallResolvedOfficialPluginCommand {
-            actor_user_id,
-            plugin_id: body.plugin_id,
-            plugin_type,
-            minimum_host_version: entry.host_version_requirement,
-            source_kind,
-            file_name: downloaded.file_name,
-            package_bytes: downloaded.artifact_bytes,
-            expected_checksum,
-            compatibility_override: crate::routes::plugins::to_compatibility_override(
-                body.compatibility_override,
-            ),
-            risk_override: crate::routes::plugins::to_risk_override(body.risk_override),
-        })
     }
 
     async fn execute_inner(
@@ -871,9 +805,13 @@ impl NetworkPluginAdapter {
                 Ok(NetworkPluginOutput::Empty)
             }
             NetworkPluginInput::InstallOfficial(body) => {
-                let command = self
-                    .resolved_official_command(actor.user_id, actor.current_workspace_id, body)
-                    .await?;
+                let command = crate::routes::plugins::resolve_official_install_command(
+                    self.0.official_catalog_source.as_ref(),
+                    actor.user_id,
+                    actor.current_workspace_id,
+                    body,
+                )
+                .await?;
                 let result = self
                     .service(actor, "network_egress_plugins.install.official")
                     .install_resolved_official_plugin(command)

@@ -50,14 +50,14 @@ pub(crate) struct NativeModelsInput;
 impl InterfaceContract for NativeModelsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "kind",
             mp::tag_schema("NativeModelsInput"),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "kind",
             serde_json::Value::String("NativeModelsInput".to_owned()),
         )]))
@@ -71,28 +71,28 @@ pub(crate) struct NativeModelsOutput(pub(crate) NativeModelListResponse);
 impl InterfaceContract for NativeModelsOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "0",
-            mp::object_schema(&[
+            mp::object_schema([
                 (
                     "object",
-                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                    mp::object_schema([("byte_count", mp::count_schema())]),
                 ),
                 (
                     "data",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("name",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("context_window",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("max_context_window",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("capabilities",mp::object_schema(&[("reasoning",serde_json::json!({"type":"boolean"})), ("tool_call",serde_json::json!({"type":"boolean"})), ("multimodal",serde_json::json!({"type":"boolean"})), ("structured_output",serde_json::json!({"type":"boolean"}))])), ("reasoning",serde_json::json!({"anyOf": [mp::object_schema(&[("default_effort",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("supported_efforts",mp::object_schema(&[("item_count",mp::count_schema())]))]), {"type":"null"}]}))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("name",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("context_window",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("max_context_window",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("capabilities",mp::object_schema([("reasoning",serde_json::json!({"type":"boolean"})), ("tool_call",serde_json::json!({"type":"boolean"})), ("multimodal",serde_json::json!({"type":"boolean"})), ("structured_output",serde_json::json!({"type":"boolean"}))])), ("reasoning",serde_json::json!({"anyOf": [mp::object_schema([("default_effort",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("supported_efforts",mp::object_schema([("item_count",mp::count_schema())]))]), {"type":"null"}]}))])}),
                 ),
             ]),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "0",
-            mp::object_value(&[
+            mp::object_value([
                 (
                     "object",
-                    mp::object_value(&[("byte_count", serde_json::json!((self).0.object.len()))]),
+                    mp::object_value([("byte_count", serde_json::json!((self).0.object.len()))]),
                 ),
                 ("data", {
                     if (self).0.data.len() > 32 {
@@ -104,12 +104,12 @@ impl InterfaceContract for NativeModelsOutput {
                             .data
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("id", mp::text(&(item).id)?),
                                     (
                                         "name",
                                         match (item).name.as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -132,7 +132,7 @@ impl InterfaceContract for NativeModelsOutput {
                                     ),
                                     (
                                         "capabilities",
-                                        mp::object_value(&[
+                                        mp::object_value([
                                             (
                                                 "reasoning",
                                                 serde_json::Value::Bool(
@@ -162,11 +162,11 @@ impl InterfaceContract for NativeModelsOutput {
                                     (
                                         "reasoning",
                                         match (item).reasoning.as_ref() {
-                                            Some(item) => mp::object_value(&[
+                                            Some(item) => mp::object_value([
                                                 (
                                                     "default_effort",
                                                     match (item).default_effort.as_ref() {
-                                                        Some(item) => mp::object_value(&[(
+                                                        Some(item) => mp::object_value([(
                                                             "byte_count",
                                                             serde_json::json!((item).len()),
                                                         )]),
@@ -175,7 +175,7 @@ impl InterfaceContract for NativeModelsOutput {
                                                 ),
                                                 (
                                                     "supported_efforts",
-                                                    mp::object_value(&[(
+                                                    mp::object_value([(
                                                         "item_count",
                                                         serde_json::json!((item)
                                                             .supported_efforts
@@ -210,7 +210,7 @@ pub(crate) struct NativeUploadFileInput {
 impl InterfaceContract for NativeUploadFileInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             ("file_table_id", mp::text_schema()),
             (
                 "content_type",
@@ -218,13 +218,13 @@ impl InterfaceContract for NativeUploadFileInput {
             ),
             (
                 "bytes",
-                mp::object_schema(&[("byte_count", mp::count_schema())]),
+                mp::object_schema([("byte_count", mp::count_schema())]),
             ),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[
+        Some(mp::object_value([
             (
                 "file_table_id",
                 serde_json::Value::String((self).file_table_id.to_string()),
@@ -238,7 +238,7 @@ impl InterfaceContract for NativeUploadFileInput {
             ),
             (
                 "bytes",
-                mp::object_value(&[("byte_count", serde_json::json!((self).bytes.len()))]),
+                mp::object_value([("byte_count", serde_json::json!((self).bytes.len()))]),
             ),
         ]))
     }
@@ -251,9 +251,9 @@ pub(crate) struct NativeUploadFileOutput(pub(crate) UploadedFileResponse);
 impl InterfaceContract for NativeUploadFileOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "0",
-            mp::object_schema(&[
+            mp::object_schema([
                 ("file_table_id", mp::text_schema()),
                 ("storage_id", mp::text_schema()),
                 ("record", mp::json_summary_schema()),
@@ -262,9 +262,9 @@ impl InterfaceContract for NativeUploadFileOutput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "0",
-            mp::object_value(&[
+            mp::object_value([
                 ("file_table_id", mp::text(&(self).0.file_table_id)?),
                 ("storage_id", mp::text(&(self).0.storage_id)?),
                 ("record", mp::json_summary(&(self).0.record)),
@@ -280,9 +280,9 @@ pub(crate) struct NativeReadTargetError(pub(crate) NativeApiError);
 impl InterfaceContract for NativeReadTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "0",
-            mp::object_schema(&[
+            mp::object_schema([
                 (
                     "status",
                     serde_json::json!({"type":"integer","minimum":100,"maximum":599}),
@@ -290,21 +290,21 @@ impl InterfaceContract for NativeReadTargetError {
                 ("code", mp::text_schema()),
                 (
                     "message",
-                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                    mp::object_schema([("byte_count", mp::count_schema())]),
                 ),
             ]),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "0",
-            mp::object_value(&[
+            mp::object_value([
                 ("status", serde_json::json!((self).0.status.as_u16())),
                 ("code", mp::text((self).0.code)?),
                 (
                     "message",
-                    mp::object_value(&[("byte_count", serde_json::json!((self).0.message.len()))]),
+                    mp::object_value([("byte_count", serde_json::json!((self).0.message.len()))]),
                 ),
             ]),
         )]))

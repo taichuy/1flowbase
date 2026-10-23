@@ -26,7 +26,7 @@ pub(crate) struct CollectorAssetInput {
 impl InterfaceContract for CollectorAssetInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             ("organization", mp::text_schema()),
             ("artifact_id", mp::text_schema()),
             ("version", mp::text_schema()),
@@ -35,7 +35,7 @@ impl InterfaceContract for CollectorAssetInput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[
+        Some(mp::object_value([
             ("organization", mp::text(&self.organization)?),
             ("artifact_id", mp::text(&self.artifact_id)?),
             ("version", mp::text(&self.version)?),
@@ -71,14 +71,14 @@ impl From<ApiError> for CollectorAssetTargetError {
 impl InterfaceContract for CollectorAssetTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "kind",
             mp::tag_schema("CollectorAssetTargetError"),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "kind",
             serde_json::Value::String("CollectorAssetTargetError".to_owned()),
         )]))

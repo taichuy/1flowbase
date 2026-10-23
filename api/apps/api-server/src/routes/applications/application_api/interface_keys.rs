@@ -39,19 +39,19 @@ impl InterfaceContract for ApplicationApiKeyInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("List")),
                 ("application_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Create")),
                 ("application_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "expires_at",
@@ -60,7 +60,7 @@ impl InterfaceContract for ApplicationApiKeyInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Revoke")),
                 ("application_id", mp::text_schema()),
                 ("key_id", mp::text_schema()),
@@ -73,7 +73,7 @@ impl InterfaceContract for ApplicationApiKeyInput {
             Self::List {
                 application_id: _field_application_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("List".to_owned())),
                 (
                     "application_id",
@@ -84,7 +84,7 @@ impl InterfaceContract for ApplicationApiKeyInput {
                 application_id: _field_application_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Create".to_owned())),
                 (
                     "application_id",
@@ -92,10 +92,10 @@ impl InterfaceContract for ApplicationApiKeyInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).name.len()),
                             )]),
@@ -114,7 +114,7 @@ impl InterfaceContract for ApplicationApiKeyInput {
                 application_id: _field_application_id,
                 key_id: _field_key_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Revoke".to_owned())),
                 (
                     "application_id",
@@ -164,22 +164,22 @@ impl InterfaceContract for ApplicationApiKeyOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("List")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("creator_user_id",mp::text_schema()), ("enabled",serde_json::json!({"type":"boolean"})), ("expires_at",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("last_used_at",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("creator_user_id",mp::text_schema()), ("enabled",serde_json::json!({"type":"boolean"})), ("expires_at",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("last_used_at",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Created")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("creator_user_id", mp::text_schema()),
                         ("enabled", serde_json::json!({"type":"boolean"})),
@@ -189,20 +189,20 @@ impl InterfaceContract for ApplicationApiKeyOutput {
                         ),
                         (
                             "last_used_at",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         ("created_at", mp::text_schema()),
                         ("updated_at", mp::text_schema()),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("NoContent"))]),
+            mp::object_schema([("variant", mp::tag_schema("NoContent"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::List(_field_0) => mp::object_value(&[
+            Self::List(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("List".to_owned())),
                 ("0", {
                     if (_field_0).len() > 32 {
@@ -212,11 +212,11 @@ impl InterfaceContract for ApplicationApiKeyOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("id", serde_json::Value::String((item).id.to_string())),
                                     (
                                         "name",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).name.len()),
                                         )]),
@@ -238,7 +238,7 @@ impl InterfaceContract for ApplicationApiKeyOutput {
                                     (
                                         "last_used_at",
                                         match (item).last_used_at.as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -253,15 +253,15 @@ impl InterfaceContract for ApplicationApiKeyOutput {
                     )
                 }),
             ]),
-            Self::Created(_field_0) => mp::object_value(&[
+            Self::Created(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Created".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", serde_json::Value::String((_field_0).id.to_string())),
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
@@ -281,7 +281,7 @@ impl InterfaceContract for ApplicationApiKeyOutput {
                         (
                             "last_used_at",
                             match (_field_0).last_used_at.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -294,7 +294,7 @@ impl InterfaceContract for ApplicationApiKeyOutput {
                 ),
             ]),
             Self::NoContent => {
-                mp::object_value(&[("variant", serde_json::Value::String("NoContent".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("NoContent".to_owned()))])
             }
         })
     }

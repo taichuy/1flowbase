@@ -4,12 +4,12 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Start")),
                 ("application_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("input_payload", mp::json_summary_schema()),
                         (
                             "document",
@@ -18,39 +18,39 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Resume")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("checkpoint_id", mp::text_schema()),
                         ("input_payload", mp::json_summary_schema()),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Cancel")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CompleteCallback")),
                 ("application_id", mp::text_schema()),
                 ("callback_task_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[("response_payload", mp::json_summary_schema())]),
+                    mp::object_schema([("response_payload", mp::json_summary_schema())]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("StartNode")),
                 ("application_id", mp::text_schema()),
                 ("node_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("input_payload", mp::json_summary_schema()),
                         (
                             "document",
@@ -68,7 +68,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
                 application_id: _field_application_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Start".to_owned())),
                 (
                     "application_id",
@@ -76,7 +76,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "input_payload",
                             mp::json_summary(&(_field_body).input_payload),
@@ -96,7 +96,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
                 run_id: _field_run_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Resume".to_owned())),
                 (
                     "application_id",
@@ -108,7 +108,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("checkpoint_id", mp::text(&(_field_body).checkpoint_id)?),
                         (
                             "input_payload",
@@ -121,7 +121,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
                 application_id: _field_application_id,
                 run_id: _field_run_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Cancel".to_owned())),
                 (
                     "application_id",
@@ -137,7 +137,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
                 callback_task_id: _field_callback_task_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CompleteCallback".to_owned()),
@@ -152,7 +152,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "response_payload",
                         mp::json_summary(&(_field_body).response_payload),
                     )]),
@@ -163,7 +163,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
                 node_id: _field_node_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("StartNode".to_owned())),
                 (
                     "application_id",
@@ -172,7 +172,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
                 ("node_id", mp::text(_field_node_id)?),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "input_payload",
                             mp::json_summary(&(_field_body).input_payload),

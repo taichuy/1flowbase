@@ -27,11 +27,11 @@ pub(crate) struct ProviderIconInput(pub(crate) String);
 impl InterfaceContract for ProviderIconInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[("0", mp::text_schema())]))
+        Some(mp::object_schema([("0", mp::text_schema())]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[("0", mp::text(&(self).0)?)]))
+        Some(mp::object_value([("0", mp::text(&(self).0)?)]))
     }
 
     const CONTRACT_ID: &'static str = "console-provider-icon-input";
@@ -45,21 +45,21 @@ pub(crate) struct ProviderIconOutput {
 impl InterfaceContract for ProviderIconOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             ("content_type", mp::text_schema()),
             (
                 "content",
-                mp::object_schema(&[("byte_count", mp::count_schema())]),
+                mp::object_schema([("byte_count", mp::count_schema())]),
             ),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[
+        Some(mp::object_value([
             ("content_type", mp::text((self).content_type)?),
             (
                 "content",
-                mp::object_value(&[("byte_count", serde_json::json!((self).content.len()))]),
+                mp::object_value([("byte_count", serde_json::json!((self).content.len()))]),
             ),
         ]))
     }

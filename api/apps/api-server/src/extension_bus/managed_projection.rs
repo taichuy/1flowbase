@@ -20,18 +20,25 @@ pub(crate) fn count_schema() -> Value {
     json!({"type": "integer", "minimum": 0})
 }
 
-pub(crate) fn object_schema(fields: &[(&str, Value)]) -> Value {
-    let properties: serde_json::Map<String, Value> = fields
-        .iter()
-        .map(|(name, schema)| ((*name).to_owned(), schema.clone()))
-        .collect();
-    let required: Vec<&str> = fields.iter().map(|(name, _)| *name).collect();
-    json!({"type": "object", "properties": properties, "required": required,
-        "additionalProperties": false})
+pub(crate) fn object_schema<'a>(fields: impl IntoIterator<Item = (&'a str, Value)>) -> Value {
+    let fields = fields.into_iter();
+    let field_count = fields.size_hint().0;
+    let mut properties = serde_json::Map::with_capacity(field_count);
+    let mut required = Vec::with_capacity(field_count);
+    for (name, schema) in fields {
+        properties.insert(name.to_owned(), schema);
+        required.push(Value::String(name.to_owned()));
+    }
+    object_value([
+        ("type", Value::String("object".to_owned())),
+        ("properties", Value::Object(properties)),
+        ("required", Value::Array(required)),
+        ("additionalProperties", Value::Bool(false)),
+    ])
 }
 
 pub(crate) fn json_summary_schema() -> Value {
-    object_schema(&[
+    object_schema([
         (
             "kind",
             json!({"type": "string", "maxLength": 7,
@@ -55,15 +62,15 @@ pub(crate) fn json_summary(value: &Value) -> Value {
     json!({"kind": kind, "item_count": count, "byte_count": bytes})
 }
 
-pub(crate) fn object_value(fields: &[(&str, Value)]) -> Value {
+pub(crate) fn object_value<'a>(fields: impl IntoIterator<Item = (&'a str, Value)>) -> Value {
     Value::Object(
         fields
-            .iter()
-            .map(|(name, value)| ((*name).to_owned(), value.clone()))
+            .into_iter()
+            .map(|(name, value)| (name.to_owned(), value))
             .collect(),
     )
 }
 
 pub(crate) fn union_schema(variants: Vec<Value>) -> Value {
-    json!({"oneOf": variants})
+    object_value([("oneOf", Value::Array(variants))])
 }

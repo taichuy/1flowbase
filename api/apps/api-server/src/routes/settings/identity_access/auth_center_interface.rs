@@ -59,20 +59,20 @@ impl InterfaceContract for AuthCenterInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[("variant", mp::tag_schema("Overview"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("Overview"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("Create")),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("auth_type", mp::text_schema()),
                         (
                             "title",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "description",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         ("enabled", serde_json::json!({"type":"boolean"})),
                         (
@@ -82,15 +82,15 @@ impl InterfaceContract for AuthCenterInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Copy")),
                 ("id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "title",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "sort_order",
@@ -99,42 +99,42 @@ impl InterfaceContract for AuthCenterInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Delete")),
                 ("id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Reorder")),
                 (
                     "body",
-                    mp::object_schema(&[(
+                    mp::object_schema([(
                         "ids",
                         serde_json::json!({"type":"array","maxItems":32,"items":mp::text_schema()}),
                     )]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UpdateEnabled")),
                 ("id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[("enabled", serde_json::json!({"type":"boolean"}))]),
+                    mp::object_schema([("enabled", serde_json::json!({"type":"boolean"}))]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UpdateConfig")),
                 ("id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "title",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("enabled", serde_json::json!({"type":"boolean"})),
                         (
                             "description",
-                            serde_json::json!({"anyOf": [serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}), {"type":"null"}]}),
                         ),
                         (
                             "self_registration_enabled",
@@ -142,19 +142,19 @@ impl InterfaceContract for AuthCenterInput {
                         ),
                         (
                             "extension_config",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("item_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("item_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UpdatePublicUiBlock")),
                 ("id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[(
+                    mp::object_schema([(
                         "public_ui_block",
-                        mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        mp::object_schema([("byte_count", mp::count_schema())]),
                     )]),
                 ),
             ]),
@@ -164,19 +164,19 @@ impl InterfaceContract for AuthCenterInput {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
             Self::Overview { .. } => {
-                mp::object_value(&[("variant", serde_json::Value::String("Overview".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("Overview".to_owned()))])
             }
             Self::Create {
                 body: _field_body, ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Create".to_owned())),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("auth_type", mp::text(&(_field_body).auth_type)?),
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).title.len()),
                             )]),
@@ -184,7 +184,7 @@ impl InterfaceContract for AuthCenterInput {
                         (
                             "description",
                             match (_field_body).description.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -206,15 +206,15 @@ impl InterfaceContract for AuthCenterInput {
                 id: _field_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Copy".to_owned())),
                 ("id", serde_json::Value::String((_field_id).to_string())),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).title.len()),
                             )]),
@@ -229,17 +229,17 @@ impl InterfaceContract for AuthCenterInput {
                     ]),
                 ),
             ]),
-            Self::Delete { id: _field_id, .. } => mp::object_value(&[
+            Self::Delete { id: _field_id, .. } => mp::object_value([
                 ("variant", serde_json::Value::String("Delete".to_owned())),
                 ("id", serde_json::Value::String((_field_id).to_string())),
             ]),
             Self::Reorder {
                 body: _field_body, ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Reorder".to_owned())),
                 (
                     "body",
-                    mp::object_value(&[("ids", {
+                    mp::object_value([("ids", {
                         if (_field_body).ids.len() > 32 {
                             return None;
                         }
@@ -257,7 +257,7 @@ impl InterfaceContract for AuthCenterInput {
                 id: _field_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UpdateEnabled".to_owned()),
@@ -265,17 +265,14 @@ impl InterfaceContract for AuthCenterInput {
                 ("id", serde_json::Value::String((_field_id).to_string())),
                 (
                     "body",
-                    mp::object_value(&[(
-                        "enabled",
-                        serde_json::Value::Bool((_field_body).enabled),
-                    )]),
+                    mp::object_value([("enabled", serde_json::Value::Bool((_field_body).enabled))]),
                 ),
             ]),
             Self::UpdateConfig {
                 id: _field_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UpdateConfig".to_owned()),
@@ -283,10 +280,10 @@ impl InterfaceContract for AuthCenterInput {
                 ("id", serde_json::Value::String((_field_id).to_string())),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).title.len()),
                             )]),
@@ -296,7 +293,7 @@ impl InterfaceContract for AuthCenterInput {
                             "description",
                             match (_field_body).description.as_ref() {
                                 Some(item) => match (item).as_ref() {
-                                    Some(item) => mp::object_value(&[(
+                                    Some(item) => mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).len()),
                                     )]),
@@ -312,7 +309,7 @@ impl InterfaceContract for AuthCenterInput {
                         (
                             "extension_config",
                             match (_field_body).extension_config.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "item_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -326,7 +323,7 @@ impl InterfaceContract for AuthCenterInput {
                 id: _field_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UpdatePublicUiBlock".to_owned()),
@@ -334,9 +331,9 @@ impl InterfaceContract for AuthCenterInput {
                 ("id", serde_json::Value::String((_field_id).to_string())),
                 (
                     "body",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "public_ui_block",
-                        mp::object_value(&[(
+                        mp::object_value([(
                             "byte_count",
                             serde_json::json!((_field_body).public_ui_block.len()),
                         )]),
@@ -364,79 +361,79 @@ impl InterfaceContract for AuthCenterOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Overview")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("default_login_entry_id", mp::text_schema()),
                         (
                             "supported_auth_types",
-                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                            mp::object_schema([("item_count", mp::count_schema())]),
                         ),
                         (
                             "login_entries",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("auth_type",mp::text_schema()), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("enabled",serde_json::json!({"type":"boolean"})), ("is_builtin",serde_json::json!({"type":"boolean"})), ("sort_order",serde_json::json!({"type":"integer"})), ("public_ui_block",mp::object_schema(&[("byte_count",mp::count_schema())])), ("default_public_ui_block",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("interface_path_prefixes",mp::object_schema(&[("item_count",mp::count_schema())])), ("public_variables",serde_json::json!({"anyOf": [mp::object_schema(&[("item_count",mp::count_schema())]), {"type":"null"}]})), ("context_variables",mp::object_schema(&[("item_count",mp::count_schema())])), ("config_schema",mp::object_schema(&[("item_count",mp::count_schema())])), ("config_values",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("auth_type",mp::text_schema()), ("title",mp::object_schema([("byte_count",mp::count_schema())])), ("enabled",serde_json::json!({"type":"boolean"})), ("is_builtin",serde_json::json!({"type":"boolean"})), ("sort_order",serde_json::json!({"type":"integer"})), ("public_ui_block",mp::object_schema([("byte_count",mp::count_schema())])), ("default_public_ui_block",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("interface_path_prefixes",mp::object_schema([("item_count",mp::count_schema())])), ("public_variables",serde_json::json!({"anyOf": [mp::object_schema([("item_count",mp::count_schema())]), {"type":"null"}]})), ("context_variables",mp::object_schema([("item_count",mp::count_schema())])), ("config_schema",mp::object_schema([("item_count",mp::count_schema())])), ("config_values",mp::object_schema([("item_count",mp::count_schema())]))])}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Authenticator")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         ("auth_type", mp::text_schema()),
                         (
                             "title",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("enabled", serde_json::json!({"type":"boolean"})),
                         ("is_builtin", serde_json::json!({"type":"boolean"})),
                         ("sort_order", serde_json::json!({"type":"integer"})),
                         (
                             "public_ui_block",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "default_public_ui_block",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "interface_path_prefixes",
-                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                            mp::object_schema([("item_count", mp::count_schema())]),
                         ),
                         (
                             "public_variables",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("item_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("item_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "context_variables",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("group",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Configuration"))]), mp::object_schema(&[("variant",mp::tag_schema("Runtime"))])])), ("label",mp::object_schema(&[("byte_count",mp::count_schema())])), ("member_path",mp::object_schema(&[("byte_count",mp::count_schema())])), ("schema",mp::json_summary_schema())])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("group",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Configuration"))]), mp::object_schema([("variant",mp::tag_schema("Runtime"))])])), ("label",mp::object_schema([("byte_count",mp::count_schema())])), ("member_path",mp::object_schema([("byte_count",mp::count_schema())])), ("schema",mp::json_summary_schema())])}),
                         ),
                         (
                             "config_schema",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("key",mp::object_schema(&[("byte_count",mp::count_schema())])), ("label",mp::object_schema(&[("byte_count",mp::count_schema())])), ("r#type",mp::object_schema(&[("byte_count",mp::count_schema())])), ("control",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("read_only",serde_json::json!({"anyOf": [serde_json::json!({"type":"boolean"}), {"type":"null"}]})), ("required",serde_json::json!({"anyOf": [serde_json::json!({"type":"boolean"}), {"type":"null"}]})), ("pattern",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("key",mp::object_schema([("byte_count",mp::count_schema())])), ("label",mp::object_schema([("byte_count",mp::count_schema())])), ("r#type",mp::object_schema([("byte_count",mp::count_schema())])), ("control",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("read_only",serde_json::json!({"anyOf": [serde_json::json!({"type":"boolean"}), {"type":"null"}]})), ("required",serde_json::json!({"anyOf": [serde_json::json!({"type":"boolean"}), {"type":"null"}]})), ("pattern",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
                         ),
                         (
                             "config_values",
-                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                            mp::object_schema([("item_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("NoContent"))]),
+            mp::object_schema([("variant", mp::tag_schema("NoContent"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Overview(_field_0) => mp::object_value(&[
+            Self::Overview(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Overview".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "default_login_entry_id",
                             serde_json::Value::String(
@@ -445,7 +442,7 @@ impl InterfaceContract for AuthCenterOutput {
                         ),
                         (
                             "supported_auth_types",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).supported_auth_types.len()),
                             )]),
@@ -459,7 +456,7 @@ impl InterfaceContract for AuthCenterOutput {
                                     .login_entries
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             (
                                                 "id",
                                                 serde_json::Value::String((item).id.to_string()),
@@ -467,7 +464,7 @@ impl InterfaceContract for AuthCenterOutput {
                                             ("auth_type", mp::text(&(item).auth_type)?),
                                             (
                                                 "title",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).title.len()),
                                                 )]),
@@ -480,7 +477,7 @@ impl InterfaceContract for AuthCenterOutput {
                                             ("sort_order", serde_json::json!((item).sort_order)),
                                             (
                                                 "public_ui_block",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).public_ui_block.len()),
                                                 )]),
@@ -488,7 +485,7 @@ impl InterfaceContract for AuthCenterOutput {
                                             (
                                                 "default_public_ui_block",
                                                 match (item).default_public_ui_block.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -497,7 +494,7 @@ impl InterfaceContract for AuthCenterOutput {
                                             ),
                                             (
                                                 "interface_path_prefixes",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item)
                                                         .interface_path_prefixes
@@ -507,7 +504,7 @@ impl InterfaceContract for AuthCenterOutput {
                                             (
                                                 "public_variables",
                                                 match (item).public_variables.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "item_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -516,7 +513,7 @@ impl InterfaceContract for AuthCenterOutput {
                                             ),
                                             (
                                                 "context_variables",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item)
                                                         .context_variables
@@ -525,14 +522,14 @@ impl InterfaceContract for AuthCenterOutput {
                                             ),
                                             (
                                                 "config_schema",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item).config_schema.len()),
                                                 )]),
                                             ),
                                             (
                                                 "config_values",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item).config_values.len()),
                                                 )]),
@@ -545,19 +542,19 @@ impl InterfaceContract for AuthCenterOutput {
                     ]),
                 ),
             ]),
-            Self::Authenticator(_field_0) => mp::object_value(&[
+            Self::Authenticator(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("Authenticator".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", serde_json::Value::String((_field_0).id.to_string())),
                         ("auth_type", mp::text(&(_field_0).auth_type)?),
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).title.len()),
                             )]),
@@ -567,7 +564,7 @@ impl InterfaceContract for AuthCenterOutput {
                         ("sort_order", serde_json::json!((_field_0).sort_order)),
                         (
                             "public_ui_block",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).public_ui_block.len()),
                             )]),
@@ -575,7 +572,7 @@ impl InterfaceContract for AuthCenterOutput {
                         (
                             "default_public_ui_block",
                             match (_field_0).default_public_ui_block.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -584,7 +581,7 @@ impl InterfaceContract for AuthCenterOutput {
                         ),
                         (
                             "interface_path_prefixes",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).interface_path_prefixes.len()),
                             )]),
@@ -592,7 +589,7 @@ impl InterfaceContract for AuthCenterOutput {
                         (
                             "public_variables",
                             match (_field_0).public_variables.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "item_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -603,7 +600,7 @@ impl InterfaceContract for AuthCenterOutput {
                             if (_field_0).context_variables.len() > 32 {
                                 return None;
                             }
-                            serde_json::Value::Array((_field_0).context_variables.iter().map(|item| Some(mp::object_value(&[("group",match &(item).group {crate::routes::settings_group::auth_center::AuthCenterContextVariableGroupResponse::Configuration => mp::object_value(&[("variant",serde_json::Value::String("Configuration".to_owned()))]), crate::routes::settings_group::auth_center::AuthCenterContextVariableGroupResponse::Runtime => mp::object_value(&[("variant",serde_json::Value::String("Runtime".to_owned()))])}), ("label",mp::object_value(&[("byte_count",serde_json::json!((item).label.len()))])), ("member_path",mp::object_value(&[("byte_count",serde_json::json!((item).member_path.len()))])), ("schema",mp::json_summary(&(item).schema))]))).collect::<Option<Vec<_>>>()?)
+                            serde_json::Value::Array((_field_0).context_variables.iter().map(|item| Some(mp::object_value([("group",match &(item).group {crate::routes::settings_group::auth_center::AuthCenterContextVariableGroupResponse::Configuration => mp::object_value([("variant",serde_json::Value::String("Configuration".to_owned()))]), crate::routes::settings_group::auth_center::AuthCenterContextVariableGroupResponse::Runtime => mp::object_value([("variant",serde_json::Value::String("Runtime".to_owned()))])}), ("label",mp::object_value([("byte_count",serde_json::json!((item).label.len()))])), ("member_path",mp::object_value([("byte_count",serde_json::json!((item).member_path.len()))])), ("schema",mp::json_summary(&(item).schema))]))).collect::<Option<Vec<_>>>()?)
                         }),
                         ("config_schema", {
                             if (_field_0).config_schema.len() > 32 {
@@ -614,24 +611,24 @@ impl InterfaceContract for AuthCenterOutput {
                                     .config_schema
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             (
                                                 "key",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).key.len()),
                                                 )]),
                                             ),
                                             (
                                                 "label",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).label.len()),
                                                 )]),
                                             ),
                                             (
                                                 "r#type",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).r#type.len()),
                                                 )]),
@@ -639,7 +636,7 @@ impl InterfaceContract for AuthCenterOutput {
                                             (
                                                 "control",
                                                 match (item).control.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -663,7 +660,7 @@ impl InterfaceContract for AuthCenterOutput {
                                             (
                                                 "pattern",
                                                 match (item).pattern.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -677,7 +674,7 @@ impl InterfaceContract for AuthCenterOutput {
                         }),
                         (
                             "config_values",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).config_values.len()),
                             )]),
@@ -686,7 +683,7 @@ impl InterfaceContract for AuthCenterOutput {
                 ),
             ]),
             Self::NoContent => {
-                mp::object_value(&[("variant", serde_json::Value::String("NoContent".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("NoContent".to_owned()))])
             }
         })
     }

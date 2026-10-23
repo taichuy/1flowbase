@@ -54,69 +54,66 @@ impl InterfaceContract for ConsoleIdentityInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[("variant", mp::tag_schema("GetSession"))]),
-            mp::object_schema(&[("variant", mp::tag_schema("DeleteSession"))]),
-            mp::object_schema(&[("variant", mp::tag_schema("RevokeAllSessions"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("GetSession"))]),
+            mp::object_schema([("variant", mp::tag_schema("DeleteSession"))]),
+            mp::object_schema([("variant", mp::tag_schema("RevokeAllSessions"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("SwitchWorkspace")),
                 ("workspace_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("SwitchRole")),
                 ("role_code", mp::text_schema()),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("GetMe"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("GetMe"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("PatchMe")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "nickname",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "introduction",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "preferred_locale",
                             mp::union_schema(vec![
-                                mp::object_schema(&[
+                                mp::object_schema([
                                     ("variant", mp::tag_schema("Value")),
-                                    (
-                                        "0",
-                                        mp::object_schema(&[("byte_count", mp::count_schema())]),
-                                    ),
+                                    ("0", mp::object_schema([("byte_count", mp::count_schema())])),
                                 ]),
-                                mp::object_schema(&[("variant", mp::tag_schema("Null"))]),
+                                mp::object_schema([("variant", mp::tag_schema("Null"))]),
                             ]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("PatchMeMeta")),
                 (
                     "0",
-                    mp::object_schema(&[("meta", mp::json_summary_schema())]),
+                    mp::object_schema([("meta", mp::json_summary_schema())]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("ChangePassword"))]),
-            mp::object_schema(&[("variant", mp::tag_schema("ListUserApiKeys"))]),
-            mp::object_schema(&[("variant", mp::tag_schema("ListUserApiKeyRoleOptions"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("ChangePassword"))]),
+            mp::object_schema([("variant", mp::tag_schema("ListUserApiKeys"))]),
+            mp::object_schema([("variant", mp::tag_schema("ListUserApiKeyRoleOptions"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("CreateUserApiKey")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "role_code",
@@ -124,12 +121,12 @@ impl InterfaceContract for ConsoleIdentityInput {
                         ),
                         (
                             "expiration_policy",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("RevokeUserApiKey")),
                 ("api_key_id", mp::text_schema()),
             ]),
@@ -138,22 +135,22 @@ impl InterfaceContract for ConsoleIdentityInput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::GetSession => mp::object_value(&[(
+            Self::GetSession => mp::object_value([(
                 "variant",
                 serde_json::Value::String("GetSession".to_owned()),
             )]),
-            Self::DeleteSession => mp::object_value(&[(
+            Self::DeleteSession => mp::object_value([(
                 "variant",
                 serde_json::Value::String("DeleteSession".to_owned()),
             )]),
-            Self::RevokeAllSessions => mp::object_value(&[(
+            Self::RevokeAllSessions => mp::object_value([(
                 "variant",
                 serde_json::Value::String("RevokeAllSessions".to_owned()),
             )]),
             Self::SwitchWorkspace {
                 workspace_id: _field_workspace_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("SwitchWorkspace".to_owned()),
@@ -163,7 +160,7 @@ impl InterfaceContract for ConsoleIdentityInput {
             Self::SwitchRole {
                 role_code: _field_role_code,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("SwitchRole".to_owned()),
@@ -171,30 +168,30 @@ impl InterfaceContract for ConsoleIdentityInput {
                 ("role_code", mp::text(_field_role_code)?),
             ]),
             Self::GetMe => {
-                mp::object_value(&[("variant", serde_json::Value::String("GetMe".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("GetMe".to_owned()))])
             }
-            Self::PatchMe(_field_0) => mp::object_value(&[
+            Self::PatchMe(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("PatchMe".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "nickname",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).nickname.len()),
                             )]),
                         ),
                         (
                             "introduction",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).introduction.len()),
                             )]),
@@ -204,18 +201,18 @@ impl InterfaceContract for ConsoleIdentityInput {
                             match &(_field_0).preferred_locale {
                                 crate::routes::identity_group::me::PreferredLocalePatch::Value(
                                     _field_0,
-                                ) => mp::object_value(&[
+                                ) => mp::object_value([
                                     ("variant", serde_json::Value::String("Value".to_owned())),
                                     (
                                         "0",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((_field_0).len()),
                                         )]),
                                     ),
                                 ]),
                                 crate::routes::identity_group::me::PreferredLocalePatch::Null => {
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "variant",
                                         serde_json::Value::String("Null".to_owned()),
                                     )])
@@ -225,39 +222,39 @@ impl InterfaceContract for ConsoleIdentityInput {
                     ]),
                 ),
             ]),
-            Self::PatchMeMeta(_field_0) => mp::object_value(&[
+            Self::PatchMeMeta(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("PatchMeMeta".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[("meta", mp::json_summary(&(_field_0).meta))]),
+                    mp::object_value([("meta", mp::json_summary(&(_field_0).meta))]),
                 ),
             ]),
-            Self::ChangePassword(_) => mp::object_value(&[(
+            Self::ChangePassword(_) => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ChangePassword".to_owned()),
             )]),
-            Self::ListUserApiKeys => mp::object_value(&[(
+            Self::ListUserApiKeys => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ListUserApiKeys".to_owned()),
             )]),
-            Self::ListUserApiKeyRoleOptions => mp::object_value(&[(
+            Self::ListUserApiKeyRoleOptions => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ListUserApiKeyRoleOptions".to_owned()),
             )]),
-            Self::CreateUserApiKey(_field_0) => mp::object_value(&[
+            Self::CreateUserApiKey(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CreateUserApiKey".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
@@ -271,7 +268,7 @@ impl InterfaceContract for ConsoleIdentityInput {
                         ),
                         (
                             "expiration_policy",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).expiration_policy.len()),
                             )]),
@@ -279,7 +276,7 @@ impl InterfaceContract for ConsoleIdentityInput {
                     ]),
                 ),
             ]),
-            Self::RevokeUserApiKey { api_key_id } => mp::object_value(&[
+            Self::RevokeUserApiKey { api_key_id } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("RevokeUserApiKey".to_owned()),
@@ -311,14 +308,14 @@ pub(crate) struct ConsoleIdentityTargetError(pub(crate) ApiError);
 impl InterfaceContract for ConsoleIdentityTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "kind",
             mp::tag_schema("ConsoleIdentityTargetError"),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "kind",
             serde_json::Value::String("ConsoleIdentityTargetError".to_owned()),
         )]))

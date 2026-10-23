@@ -34,24 +34,24 @@ impl InterfaceContract for WorkflowScheduleInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Get")),
                 ("application_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Replace")),
                 ("application_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("enabled", serde_json::json!({"type":"boolean"})),
                         (
                             "cron",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "timezone",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("input_payload", mp::json_summary_schema()),
                     ]),
@@ -65,7 +65,7 @@ impl InterfaceContract for WorkflowScheduleInput {
             Self::Get {
                 application_id: _field_application_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Get".to_owned())),
                 (
                     "application_id",
@@ -76,7 +76,7 @@ impl InterfaceContract for WorkflowScheduleInput {
                 application_id: _field_application_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Replace".to_owned())),
                 (
                     "application_id",
@@ -84,18 +84,18 @@ impl InterfaceContract for WorkflowScheduleInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("enabled", serde_json::Value::Bool((_field_body).enabled)),
                         (
                             "cron",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).cron.len()),
                             )]),
                         ),
                         (
                             "timezone",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).timezone.len()),
                             )]),
@@ -143,29 +143,29 @@ impl InterfaceContract for WorkflowScheduleOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Optional")),
                 (
                     "0",
-                    serde_json::json!({"anyOf": [mp::object_schema(&[("id",mp::text_schema()), ("workspace_id",mp::text_schema()), ("application_id",mp::text_schema()), ("enabled",serde_json::json!({"type":"boolean"})), ("cron",mp::object_schema(&[("byte_count",mp::count_schema())])), ("timezone",mp::object_schema(&[("byte_count",mp::count_schema())])), ("input_payload",mp::json_summary_schema()), ("created_by",mp::text_schema()), ("updated_by",mp::text_schema()), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())]), {"type":"null"}]}),
+                    serde_json::json!({"anyOf": [mp::object_schema([("id",mp::text_schema()), ("workspace_id",mp::text_schema()), ("application_id",mp::text_schema()), ("enabled",serde_json::json!({"type":"boolean"})), ("cron",mp::object_schema([("byte_count",mp::count_schema())])), ("timezone",mp::object_schema([("byte_count",mp::count_schema())])), ("input_payload",mp::json_summary_schema()), ("created_by",mp::text_schema()), ("updated_by",mp::text_schema()), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())]), {"type":"null"}]}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Required")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         ("workspace_id", mp::text_schema()),
                         ("application_id", mp::text_schema()),
                         ("enabled", serde_json::json!({"type":"boolean"})),
                         (
                             "cron",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "timezone",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("input_payload", mp::json_summary_schema()),
                         ("created_by", mp::text_schema()),
@@ -180,12 +180,12 @@ impl InterfaceContract for WorkflowScheduleOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Optional(_field_0) => mp::object_value(&[
+            Self::Optional(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Optional".to_owned())),
                 (
                     "0",
                     match (_field_0).as_ref() {
-                        Some(item) => mp::object_value(&[
+                        Some(item) => mp::object_value([
                             ("id", serde_json::Value::String((item).id.to_string())),
                             (
                                 "workspace_id",
@@ -198,14 +198,14 @@ impl InterfaceContract for WorkflowScheduleOutput {
                             ("enabled", serde_json::Value::Bool((item).enabled)),
                             (
                                 "cron",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).cron.len()),
                                 )]),
                             ),
                             (
                                 "timezone",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).timezone.len()),
                                 )]),
@@ -226,11 +226,11 @@ impl InterfaceContract for WorkflowScheduleOutput {
                     },
                 ),
             ]),
-            Self::Required(_field_0) => mp::object_value(&[
+            Self::Required(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Required".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", serde_json::Value::String((_field_0).id.to_string())),
                         (
                             "workspace_id",
@@ -243,14 +243,14 @@ impl InterfaceContract for WorkflowScheduleOutput {
                         ("enabled", serde_json::Value::Bool((_field_0).enabled)),
                         (
                             "cron",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).cron.len()),
                             )]),
                         ),
                         (
                             "timezone",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).timezone.len()),
                             )]),

@@ -7,11 +7,11 @@ impl InterfaceContract for MemoryInspectionOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Overview(_field_0) => mp::object_value(&[
+            Self::Overview(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Overview".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("can_manage", serde_json::Value::Bool((_field_0).can_manage)),
                         ("contracts", {
                             if (_field_0).contracts.len() > 32 {
@@ -22,11 +22,11 @@ impl InterfaceContract for MemoryInspectionOutput {
                                     .contracts
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("contract_code", mp::text(&(item).contract_code)?),
                                             (
                                                 "label",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).label.len()),
                                                 )]),
@@ -40,7 +40,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                                             ),
                                             (
                                                 "capabilities",
-                                                mp::object_value(&[
+                                                mp::object_value([
                                                     (
                                                         "list_entries",
                                                         serde_json::Value::Bool(
@@ -135,17 +135,17 @@ impl InterfaceContract for MemoryInspectionOutput {
                     ]),
                 ),
             ]),
-            Self::StatsOverview(_field_0) => mp::object_value(&[
+            Self::StatsOverview(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("StatsOverview".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "inspection_path",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).inspection_path.len()),
                             )]),
@@ -159,11 +159,11 @@ impl InterfaceContract for MemoryInspectionOutput {
                                     .contracts
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("contract_code", mp::text(&(item).contract_code)?),
                                             (
                                                 "label",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).label.len()),
                                                 )]),
@@ -177,7 +177,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                                             ),
                                             (
                                                 "capabilities",
-                                                mp::object_value(&[
+                                                mp::object_value([
                                                     (
                                                         "list_entries",
                                                         serde_json::Value::Bool(
@@ -266,7 +266,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                                             ),
                                             (
                                                 "inspection_path",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item).inspection_path.len()),
                                                 )]),
@@ -297,15 +297,15 @@ impl InterfaceContract for MemoryInspectionOutput {
                     ]),
                 ),
             ]),
-            Self::Entries(_field_0) => mp::object_value(&[
+            Self::Entries(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Entries".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("contract_code", mp::text(&(_field_0).contract_code)?),
                         (
                             "label",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).label.len()),
                             )]),
@@ -319,7 +319,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                         ),
                         (
                             "capabilities",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "list_entries",
                                     serde_json::Value::Bool((_field_0).capabilities.list_entries),
@@ -379,7 +379,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                         ("supported", serde_json::Value::Bool((_field_0).supported)),
                         (
                             "inspection_path",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).inspection_path.len()),
                             )]),
@@ -393,7 +393,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                                     .entries
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("contract_code", mp::text(&(item).contract_code)?),
                                             (
                                                 "group_code",
@@ -404,28 +404,28 @@ impl InterfaceContract for MemoryInspectionOutput {
                                             ),
                                             (
                                                 "entry_ref",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).entry_ref.len()),
                                                 )]),
                                             ),
                                             (
                                                 "key",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).key.len()),
                                                 )]),
                                             ),
                                             (
                                                 "inspection_path",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item).inspection_path.len()),
                                                 )]),
                                             ),
                                             (
                                                 "entry_kind",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).entry_kind.len()),
                                                 )]),
@@ -434,7 +434,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                                             (
                                                 "owner",
                                                 match (item).owner.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -483,7 +483,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                         (
                             "next_cursor",
                             match (_field_0).next_cursor.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -500,15 +500,15 @@ impl InterfaceContract for MemoryInspectionOutput {
                     ]),
                 ),
             ]),
-            Self::Stats(_field_0) => mp::object_value(&[
+            Self::Stats(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Stats".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("contract_code", mp::text(&(_field_0).contract_code)?),
                         (
                             "label",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).label.len()),
                             )]),
@@ -522,7 +522,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                         ),
                         (
                             "capabilities",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "list_entries",
                                     serde_json::Value::Bool((_field_0).capabilities.list_entries),
@@ -582,7 +582,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                         ("supported", serde_json::Value::Bool((_field_0).supported)),
                         (
                             "inspection_path",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).inspection_path.len()),
                             )]),
@@ -599,15 +599,15 @@ impl InterfaceContract for MemoryInspectionOutput {
                     ]),
                 ),
             ]),
-            Self::Tree(_field_0) => mp::object_value(&[
+            Self::Tree(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Tree".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("contract_code", mp::text(&(_field_0).contract_code)?),
                         (
                             "label",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).label.len()),
                             )]),
@@ -621,7 +621,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                         ),
                         (
                             "capabilities",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "list_entries",
                                     serde_json::Value::Bool((_field_0).capabilities.list_entries),
@@ -681,7 +681,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                         ("supported", serde_json::Value::Bool((_field_0).supported)),
                         (
                             "inspection_path",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).inspection_path.len()),
                             )]),
@@ -695,24 +695,24 @@ impl InterfaceContract for MemoryInspectionOutput {
                                     .nodes
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             (
                                                 "node_ref",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).node_ref.len()),
                                                 )]),
                                             ),
                                             (
                                                 "label",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).label.len()),
                                                 )]),
                                             ),
                                             (
                                                 "inspection_path",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item).inspection_path.len()),
                                                 )]),
@@ -730,7 +730,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                         (
                             "next_cursor",
                             match (_field_0).next_cursor.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -747,14 +747,14 @@ impl InterfaceContract for MemoryInspectionOutput {
                     ]),
                 ),
             ]),
-            Self::Revealed(_field_0) => mp::object_value(&[
+            Self::Revealed(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Revealed".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "metadata",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "contract_code",
                                     mp::text(&(_field_0).metadata.contract_code)?,
@@ -768,21 +768,21 @@ impl InterfaceContract for MemoryInspectionOutput {
                                 ),
                                 (
                                     "entry_ref",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0).metadata.entry_ref.len()),
                                     )]),
                                 ),
                                 (
                                     "key",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0).metadata.key.len()),
                                     )]),
                                 ),
                                 (
                                     "inspection_path",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "item_count",
                                         serde_json::json!((_field_0)
                                             .metadata
@@ -792,7 +792,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                                 ),
                                 (
                                     "entry_kind",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0).metadata.entry_kind.len()),
                                     )]),
@@ -801,7 +801,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                                 (
                                     "owner",
                                     match (_field_0).metadata.owner.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -846,14 +846,14 @@ impl InterfaceContract for MemoryInspectionOutput {
                         ),
                         (
                             "reveal_mode",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).reveal_mode.len()),
                             )]),
                         ),
                         (
                             "value_state",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).value_state.len()),
                             )]),
@@ -868,7 +868,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                         (
                             "value_preview",
                             match (_field_0).value_preview.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),

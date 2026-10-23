@@ -29,12 +29,12 @@ impl InterfaceContract for LogsDeleteInput {
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             ("application_id", mp::text_schema()),
             (
                 "scope",
                 mp::union_schema(vec![
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("mode", mp::tag_schema("all_time")),
                         (
                             "batch_size",
@@ -45,7 +45,7 @@ impl InterfaceContract for LogsDeleteInput {
                             mp::union_schema(vec![mp::text_schema(), json!({"type":"null"})]),
                         ),
                     ]),
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("mode", mp::tag_schema("time_range")),
                         ("started_at_from", mp::text_schema()),
                         ("started_at_to", mp::text_schema()),
@@ -82,7 +82,7 @@ impl InterfaceContract for LogsDeleteInput {
             None => serde_json::Value::Null,
         };
         let scope = match &self.scope {
-            AgentLogsDeleteScope::AllTime { .. } => mp::object_value(&[
+            AgentLogsDeleteScope::AllTime { .. } => mp::object_value([
                 ("mode", json!("all_time")),
                 ("batch_size", batch_size),
                 ("ingested_at_before", ingested_at_before),
@@ -91,7 +91,7 @@ impl InterfaceContract for LogsDeleteInput {
                 started_at_from,
                 started_at_to,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("mode", json!("time_range")),
                 ("started_at_from", mp::text(started_at_from)?),
                 ("started_at_to", mp::text(started_at_to)?),
@@ -99,7 +99,7 @@ impl InterfaceContract for LogsDeleteInput {
                 ("ingested_at_before", ingested_at_before),
             ]),
         };
-        Some(mp::object_value(&[
+        Some(mp::object_value([
             ("application_id", serde_json::json!(self.application_id)),
             ("scope", scope),
         ]))
@@ -125,7 +125,7 @@ impl InterfaceContract for LogsDeleteOutput {
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             ("deleted_records", mp::count_schema()),
             ("has_more", json!({"type":"boolean"})),
             ("ingested_at_before", mp::text_schema()),

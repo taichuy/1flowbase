@@ -36,11 +36,11 @@ pub(crate) enum AssistantWebSocketTicketInput {
 impl InterfaceContract for AssistantWebSocketTicketInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::union_schema(vec![mp::object_schema(&[
+        Some(mp::union_schema(vec![mp::object_schema([
             ("variant", mp::tag_schema("Create")),
             (
                 "body",
-                mp::object_schema(&[("application_id", mp::text_schema())]),
+                mp::object_schema([("application_id", mp::text_schema())]),
             ),
         ])]))
     }
@@ -49,11 +49,11 @@ impl InterfaceContract for AssistantWebSocketTicketInput {
         Some(match self {
             Self::Create {
                 body: _field_body, ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Create".to_owned())),
                 (
                     "body",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "application_id",
                         serde_json::Value::String((_field_body).application_id.to_string()),
                     )]),
@@ -73,14 +73,14 @@ pub(crate) enum AssistantWebSocketTicketOutput {
 impl InterfaceContract for AssistantWebSocketTicketOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::union_schema(vec![mp::object_schema(&[
+        Some(mp::union_schema(vec![mp::object_schema([
             ("variant", mp::tag_schema("Ticket")),
             (
                 "0",
-                mp::object_schema(&[
+                mp::object_schema([
                     (
                         "ticket",
-                        mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        mp::object_schema([("byte_count", mp::count_schema())]),
                     ),
                     ("protocol", mp::text_schema()),
                     ("expires_in_seconds", serde_json::json!({"type":"integer"})),
@@ -91,14 +91,14 @@ impl InterfaceContract for AssistantWebSocketTicketOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Ticket(_field_0) => mp::object_value(&[
+            Self::Ticket(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Ticket".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "ticket",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).ticket.len()),
                             )]),

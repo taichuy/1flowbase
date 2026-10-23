@@ -59,7 +59,7 @@ impl InterfaceContract for ApplicationDocsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Catalog")),
                 ("application_id", mp::text_schema()),
                 (
@@ -67,13 +67,13 @@ impl InterfaceContract for ApplicationDocsInput {
                     serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CategoryOperations")),
                 ("application_id", mp::text_schema()),
                 ("category_id", mp::text_schema()),
                 (
                     "query",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "locale",
                             serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
@@ -88,12 +88,12 @@ impl InterfaceContract for ApplicationDocsInput {
                         ),
                         (
                             "q",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CategoryOpenApi")),
                 ("application_id", mp::text_schema()),
                 ("category_id", mp::text_schema()),
@@ -102,7 +102,7 @@ impl InterfaceContract for ApplicationDocsInput {
                     serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("OperationOpenApi")),
                 ("application_id", mp::text_schema()),
                 ("operation_id", mp::text_schema()),
@@ -120,7 +120,7 @@ impl InterfaceContract for ApplicationDocsInput {
                 application_id: _field_application_id,
                 query_locale: _field_query_locale,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Catalog".to_owned())),
                 (
                     "application_id",
@@ -139,7 +139,7 @@ impl InterfaceContract for ApplicationDocsInput {
                 category_id: _field_category_id,
                 query: _field_query,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CategoryOperations".to_owned()),
@@ -151,7 +151,7 @@ impl InterfaceContract for ApplicationDocsInput {
                 ("category_id", mp::text(_field_category_id)?),
                 (
                     "query",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "locale",
                             match (_field_query).locale.as_ref() {
@@ -176,7 +176,7 @@ impl InterfaceContract for ApplicationDocsInput {
                         (
                             "q",
                             match (_field_query).q.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -191,7 +191,7 @@ impl InterfaceContract for ApplicationDocsInput {
                 category_id: _field_category_id,
                 query_locale: _field_query_locale,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CategoryOpenApi".to_owned()),
@@ -214,7 +214,7 @@ impl InterfaceContract for ApplicationDocsInput {
                 operation_id: _field_operation_id,
                 query_locale: _field_query_locale,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("OperationOpenApi".to_owned()),

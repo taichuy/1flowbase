@@ -90,16 +90,16 @@ impl InterfaceContract for FileStoragesInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[("variant", mp::tag_schema("List"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("List"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("Create")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("code", mp::text_schema()),
                         (
                             "title",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("driver_type", mp::text_schema()),
                         ("enabled", serde_json::json!({"type":"boolean"})),
@@ -109,15 +109,15 @@ impl InterfaceContract for FileStoragesInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Update")),
                 ("file_storage_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "title",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("enabled", serde_json::json!({"type":"boolean"})),
                         ("is_default", serde_json::json!({"type":"boolean"})),
@@ -126,7 +126,7 @@ impl InterfaceContract for FileStoragesInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Delete")),
                 ("file_storage_id", mp::text_schema()),
             ]),
@@ -136,17 +136,17 @@ impl InterfaceContract for FileStoragesInput {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
             Self::List { .. } => {
-                mp::object_value(&[("variant", serde_json::Value::String("List".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("List".to_owned()))])
             }
-            Self::Create(_field_0) => mp::object_value(&[
+            Self::Create(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Create".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("code", mp::text(&(_field_0).code)?),
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).title.len()),
                             )]),
@@ -163,15 +163,15 @@ impl InterfaceContract for FileStoragesInput {
                 file_storage_id: _field_file_storage_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Update".to_owned())),
                 ("file_storage_id", mp::text(_field_file_storage_id)?),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).title.len()),
                             )]),
@@ -189,7 +189,7 @@ impl InterfaceContract for FileStoragesInput {
             Self::Delete {
                 file_storage_id: _field_file_storage_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Delete".to_owned())),
                 ("file_storage_id", mp::text(_field_file_storage_id)?),
             ]),
@@ -214,23 +214,23 @@ impl InterfaceContract for FileStoragesOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("List")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("code",mp::text_schema()), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("driver_type",mp::text_schema()), ("enabled",serde_json::json!({"type":"boolean"})), ("is_default",serde_json::json!({"type":"boolean"})), ("config_json",mp::json_summary_schema()), ("rule_json",mp::json_summary_schema()), ("health_status",mp::object_schema(&[("byte_count",mp::count_schema())])), ("last_health_error",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("code",mp::text_schema()), ("title",mp::object_schema([("byte_count",mp::count_schema())])), ("driver_type",mp::text_schema()), ("enabled",serde_json::json!({"type":"boolean"})), ("is_default",serde_json::json!({"type":"boolean"})), ("config_json",mp::json_summary_schema()), ("rule_json",mp::json_summary_schema()), ("health_status",mp::object_schema([("byte_count",mp::count_schema())])), ("last_health_error",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Item")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         ("code", mp::text_schema()),
                         (
                             "title",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("driver_type", mp::text_schema()),
                         ("enabled", serde_json::json!({"type":"boolean"})),
@@ -239,22 +239,22 @@ impl InterfaceContract for FileStoragesOutput {
                         ("rule_json", mp::json_summary_schema()),
                         (
                             "health_status",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "last_health_error",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("Deleted"))]),
+            mp::object_schema([("variant", mp::tag_schema("Deleted"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::List(_field_0) => mp::object_value(&[
+            Self::List(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("List".to_owned())),
                 ("0", {
                     if (_field_0).len() > 32 {
@@ -264,12 +264,12 @@ impl InterfaceContract for FileStoragesOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("id", mp::text(&(item).id)?),
                                     ("code", mp::text(&(item).code)?),
                                     (
                                         "title",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).title.len()),
                                         )]),
@@ -281,7 +281,7 @@ impl InterfaceContract for FileStoragesOutput {
                                     ("rule_json", mp::json_summary(&(item).rule_json)),
                                     (
                                         "health_status",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).health_status.len()),
                                         )]),
@@ -289,7 +289,7 @@ impl InterfaceContract for FileStoragesOutput {
                                     (
                                         "last_health_error",
                                         match (item).last_health_error.as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -302,16 +302,16 @@ impl InterfaceContract for FileStoragesOutput {
                     )
                 }),
             ]),
-            Self::Item(_field_0) => mp::object_value(&[
+            Self::Item(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Item".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", mp::text(&(_field_0).id)?),
                         ("code", mp::text(&(_field_0).code)?),
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).title.len()),
                             )]),
@@ -323,7 +323,7 @@ impl InterfaceContract for FileStoragesOutput {
                         ("rule_json", mp::json_summary(&(_field_0).rule_json)),
                         (
                             "health_status",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).health_status.len()),
                             )]),
@@ -331,7 +331,7 @@ impl InterfaceContract for FileStoragesOutput {
                         (
                             "last_health_error",
                             match (_field_0).last_health_error.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -342,7 +342,7 @@ impl InterfaceContract for FileStoragesOutput {
                 ),
             ]),
             Self::Deleted => {
-                mp::object_value(&[("variant", serde_json::Value::String("Deleted".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("Deleted".to_owned()))])
             }
         })
     }

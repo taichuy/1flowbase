@@ -4,18 +4,18 @@ impl InterfaceContract for RoleAccessOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("DataModelOptions")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("code",mp::text_schema()), ("title",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("code",mp::text_schema()), ("title",mp::object_schema([("byte_count",mp::count_schema())]))])}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ConsolePolicyCatalog")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("schema_version", mp::text_schema()),
                         ("locale", mp::text_schema()),
                         (
@@ -24,56 +24,56 @@ impl InterfaceContract for RoleAccessOutput {
                         ),
                         (
                             "group_strategy_options",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("value",mp::object_schema(&[("byte_count",mp::count_schema())])), ("label",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("value",mp::object_schema([("byte_count",mp::count_schema())])), ("label",mp::object_schema([("byte_count",mp::count_schema())])), ("description",mp::object_schema([("byte_count",mp::count_schema())]))])}),
                         ),
                         (
                             "groups",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("kind",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("SettingsFeature"))]), mp::object_schema(&[("variant",mp::tag_schema("Other"))])])), ("group_id",mp::text_schema()), ("label",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("operations",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("kind",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("SettingsFeature"))]), mp::object_schema([("variant",mp::tag_schema("Other"))])])), ("group_id",mp::text_schema()), ("label",mp::object_schema([("byte_count",mp::count_schema())])), ("description",mp::object_schema([("byte_count",mp::count_schema())])), ("operations",mp::object_schema([("item_count",mp::count_schema())]))])}),
                         ),
                         (
                             "resources",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("resource_code",mp::text_schema()), ("label",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("actions",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("resource_code",mp::text_schema()), ("label",mp::object_schema([("byte_count",mp::count_schema())])), ("description",mp::object_schema([("byte_count",mp::count_schema())])), ("actions",mp::object_schema([("item_count",mp::count_schema())]))])}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("RoleConsolePolicy")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("role_code", mp::text_schema()),
                         (
                             "groups",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("kind",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("SettingsFeature"))]), mp::object_schema(&[("variant",mp::tag_schema("Other"))])])), ("group_id",mp::text_schema()), ("enabled",serde_json::json!({"type":"boolean"})), ("strategy",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Full"))]), mp::object_schema(&[("variant",mp::tag_schema("Custom"))])])), ("operations",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("kind",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("SettingsFeature"))]), mp::object_schema([("variant",mp::tag_schema("Other"))])])), ("group_id",mp::text_schema()), ("enabled",serde_json::json!({"type":"boolean"})), ("strategy",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Full"))]), mp::object_schema([("variant",mp::tag_schema("Custom"))])])), ("operations",mp::object_schema([("item_count",mp::count_schema())]))])}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Roles")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("code",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("introduction",mp::object_schema(&[("byte_count",mp::count_schema())])), ("scope_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("is_builtin",serde_json::json!({"type":"boolean"})), ("is_editable",serde_json::json!({"type":"boolean"})), ("auto_grant_new_permissions",serde_json::json!({"type":"boolean"})), ("is_default_member_role",serde_json::json!({"type":"boolean"})), ("permission_codes",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("code",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("introduction",mp::object_schema([("byte_count",mp::count_schema())])), ("scope_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("is_builtin",serde_json::json!({"type":"boolean"})), ("is_editable",serde_json::json!({"type":"boolean"})), ("auto_grant_new_permissions",serde_json::json!({"type":"boolean"})), ("is_default_member_role",serde_json::json!({"type":"boolean"})), ("permission_codes",mp::object_schema([("item_count",mp::count_schema())]))])}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Role")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("code", mp::text_schema()),
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "introduction",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "scope_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("is_builtin", serde_json::json!({"type":"boolean"})),
                         ("is_editable", serde_json::json!({"type":"boolean"})),
@@ -87,29 +87,29 @@ impl InterfaceContract for RoleAccessOutput {
                         ),
                         (
                             "permission_codes",
-                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                            mp::object_schema([("item_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("RolePermissions")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("role_code", mp::text_schema()),
                         (
                             "permission_codes",
-                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                            mp::object_schema([("item_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("RoleFrontstageRoutes")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("role_code", mp::text_schema()),
                         (
                             "checked_page_ids",
@@ -121,59 +121,59 @@ impl InterfaceContract for RoleAccessOutput {
                         ),
                         (
                             "tree",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("kind",mp::text_schema()), ("title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("slug",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("children",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("kind",mp::text_schema()), ("title",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("slug",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("children",mp::object_schema([("item_count",mp::count_schema())]))])}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("RoleDataPolicy")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("role_code", mp::text_schema()),
                         (
                             "default_policy",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 ("can_view", serde_json::json!({"type":"boolean"})),
                                 ("can_create", serde_json::json!({"type":"boolean"})),
                                 ("can_update", serde_json::json!({"type":"boolean"})),
                                 ("can_delete", serde_json::json!({"type":"boolean"})),
                                 (
                                     "default_view_scope",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 (
                                     "default_update_scope",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 (
                                     "default_delete_scope",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                             ]),
                         ),
                         (
                             "model_policies",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("data_model_id",mp::text_schema()), ("can_create_override",serde_json::json!({"anyOf": [serde_json::json!({"type":"boolean"}), {"type":"null"}]})), ("view_scope_override",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("update_scope_override",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("delete_scope_override",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("data_model_id",mp::text_schema()), ("can_create_override",serde_json::json!({"anyOf": [serde_json::json!({"type":"boolean"}), {"type":"null"}]})), ("view_scope_override",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("update_scope_override",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("delete_scope_override",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("PermissionOptions")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("code",mp::text_schema()), ("resource",mp::object_schema(&[("byte_count",mp::count_schema())])), ("action",mp::object_schema(&[("byte_count",mp::count_schema())])), ("scope",mp::object_schema(&[("byte_count",mp::count_schema())])), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("settings_feature",serde_json::json!({"anyOf": [mp::object_schema(&[("feature_id",mp::text_schema()), ("label_key",mp::object_schema(&[("byte_count",mp::count_schema())])), ("order",serde_json::json!({"type":"integer"}))]), {"type":"null"}]}))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("code",mp::text_schema()), ("resource",mp::object_schema([("byte_count",mp::count_schema())])), ("action",mp::object_schema([("byte_count",mp::count_schema())])), ("scope",mp::object_schema([("byte_count",mp::count_schema())])), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("settings_feature",serde_json::json!({"anyOf": [mp::object_schema([("feature_id",mp::text_schema()), ("label_key",mp::object_schema([("byte_count",mp::count_schema())])), ("order",serde_json::json!({"type":"integer"}))]), {"type":"null"}]}))])}),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("NoContent"))]),
+            mp::object_schema([("variant", mp::tag_schema("NoContent"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::DataModelOptions(_field_0) => mp::object_value(&[
+            Self::DataModelOptions(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("DataModelOptions".to_owned()),
@@ -186,12 +186,12 @@ impl InterfaceContract for RoleAccessOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("id", serde_json::Value::String((item).id.to_string())),
                                     ("code", mp::text(&(item).code)?),
                                     (
                                         "title",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).title.len()),
                                         )]),
@@ -202,14 +202,14 @@ impl InterfaceContract for RoleAccessOutput {
                     )
                 }),
             ]),
-            Self::ConsolePolicyCatalog(_field_0) => mp::object_value(&[
+            Self::ConsolePolicyCatalog(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ConsolePolicyCatalog".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("schema_version", mp::text(&(_field_0).schema_version)?),
                         ("locale", mp::text(&(_field_0).locale)?),
                         (
@@ -225,24 +225,24 @@ impl InterfaceContract for RoleAccessOutput {
                                     .group_strategy_options
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             (
                                                 "value",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).value.len()),
                                                 )]),
                                             ),
                                             (
                                                 "label",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).label.len()),
                                                 )]),
                                             ),
                                             (
                                                 "description",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).description.len()),
                                                 )]),
@@ -256,7 +256,7 @@ impl InterfaceContract for RoleAccessOutput {
                             if (_field_0).groups.len() > 32 {
                                 return None;
                             }
-                            serde_json::Value::Array((_field_0).groups.iter().map(|item| Some(mp::object_value(&[("kind",match &(item).kind {crate::routes::settings_group::roles::ConsolePolicyGroupKindBody::SettingsFeature => mp::object_value(&[("variant",serde_json::Value::String("SettingsFeature".to_owned()))]), crate::routes::settings_group::roles::ConsolePolicyGroupKindBody::Other => mp::object_value(&[("variant",serde_json::Value::String("Other".to_owned()))])}), ("group_id",mp::text(&(item).group_id)?), ("label",mp::object_value(&[("byte_count",serde_json::json!((item).label.len()))])), ("description",mp::object_value(&[("byte_count",serde_json::json!((item).description.len()))])), ("operations",mp::object_value(&[("item_count",serde_json::json!((item).operations.len()))]))]))).collect::<Option<Vec<_>>>()?)
+                            serde_json::Value::Array((_field_0).groups.iter().map(|item| Some(mp::object_value([("kind",match &(item).kind {crate::routes::settings_group::roles::ConsolePolicyGroupKindBody::SettingsFeature => mp::object_value([("variant",serde_json::Value::String("SettingsFeature".to_owned()))]), crate::routes::settings_group::roles::ConsolePolicyGroupKindBody::Other => mp::object_value([("variant",serde_json::Value::String("Other".to_owned()))])}), ("group_id",mp::text(&(item).group_id)?), ("label",mp::object_value([("byte_count",serde_json::json!((item).label.len()))])), ("description",mp::object_value([("byte_count",serde_json::json!((item).description.len()))])), ("operations",mp::object_value([("item_count",serde_json::json!((item).operations.len()))]))]))).collect::<Option<Vec<_>>>()?)
                         }),
                         ("resources", {
                             if (_field_0).resources.len() > 32 {
@@ -267,25 +267,25 @@ impl InterfaceContract for RoleAccessOutput {
                                     .resources
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("resource_code", mp::text(&(item).resource_code)?),
                                             (
                                                 "label",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).label.len()),
                                                 )]),
                                             ),
                                             (
                                                 "description",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).description.len()),
                                                 )]),
                                             ),
                                             (
                                                 "actions",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item).actions.len()),
                                                 )]),
@@ -298,25 +298,25 @@ impl InterfaceContract for RoleAccessOutput {
                     ]),
                 ),
             ]),
-            Self::RoleConsolePolicy(_field_0) => mp::object_value(&[
+            Self::RoleConsolePolicy(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("RoleConsolePolicy".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("role_code", mp::text(&(_field_0).role_code)?),
                         ("groups", {
                             if (_field_0).groups.len() > 32 {
                                 return None;
                             }
-                            serde_json::Value::Array((_field_0).groups.iter().map(|item| Some(mp::object_value(&[("kind",match &(item).kind {crate::routes::settings_group::roles::ConsolePolicyGroupKindBody::SettingsFeature => mp::object_value(&[("variant",serde_json::Value::String("SettingsFeature".to_owned()))]), crate::routes::settings_group::roles::ConsolePolicyGroupKindBody::Other => mp::object_value(&[("variant",serde_json::Value::String("Other".to_owned()))])}), ("group_id",mp::text(&(item).group_id)?), ("enabled",serde_json::Value::Bool((item).enabled)), ("strategy",match &(item).strategy {crate::routes::settings_group::roles::ConsolePolicyStrategyBody::Full => mp::object_value(&[("variant",serde_json::Value::String("Full".to_owned()))]), crate::routes::settings_group::roles::ConsolePolicyStrategyBody::Custom => mp::object_value(&[("variant",serde_json::Value::String("Custom".to_owned()))])}), ("operations",mp::object_value(&[("item_count",serde_json::json!((item).operations.len()))]))]))).collect::<Option<Vec<_>>>()?)
+                            serde_json::Value::Array((_field_0).groups.iter().map(|item| Some(mp::object_value([("kind",match &(item).kind {crate::routes::settings_group::roles::ConsolePolicyGroupKindBody::SettingsFeature => mp::object_value([("variant",serde_json::Value::String("SettingsFeature".to_owned()))]), crate::routes::settings_group::roles::ConsolePolicyGroupKindBody::Other => mp::object_value([("variant",serde_json::Value::String("Other".to_owned()))])}), ("group_id",mp::text(&(item).group_id)?), ("enabled",serde_json::Value::Bool((item).enabled)), ("strategy",match &(item).strategy {crate::routes::settings_group::roles::ConsolePolicyStrategyBody::Full => mp::object_value([("variant",serde_json::Value::String("Full".to_owned()))]), crate::routes::settings_group::roles::ConsolePolicyStrategyBody::Custom => mp::object_value([("variant",serde_json::Value::String("Custom".to_owned()))])}), ("operations",mp::object_value([("item_count",serde_json::json!((item).operations.len()))]))]))).collect::<Option<Vec<_>>>()?)
                         }),
                     ]),
                 ),
             ]),
-            Self::Roles(_field_0) => mp::object_value(&[
+            Self::Roles(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Roles".to_owned())),
                 ("0", {
                     if (_field_0).len() > 32 {
@@ -326,25 +326,25 @@ impl InterfaceContract for RoleAccessOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("code", mp::text(&(item).code)?),
                                     (
                                         "name",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).name.len()),
                                         )]),
                                     ),
                                     (
                                         "introduction",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).introduction.len()),
                                         )]),
                                     ),
                                     (
                                         "scope_kind",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).scope_kind.len()),
                                         )]),
@@ -361,7 +361,7 @@ impl InterfaceContract for RoleAccessOutput {
                                     ),
                                     (
                                         "permission_codes",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "item_count",
                                             serde_json::json!((item).permission_codes.len()),
                                         )]),
@@ -372,29 +372,29 @@ impl InterfaceContract for RoleAccessOutput {
                     )
                 }),
             ]),
-            Self::Role(_field_0) => mp::object_value(&[
+            Self::Role(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Role".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("code", mp::text(&(_field_0).code)?),
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "introduction",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).introduction.len()),
                             )]),
                         ),
                         (
                             "scope_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).scope_kind.len()),
                             )]),
@@ -414,7 +414,7 @@ impl InterfaceContract for RoleAccessOutput {
                         ),
                         (
                             "permission_codes",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).permission_codes.len()),
                             )]),
@@ -422,18 +422,18 @@ impl InterfaceContract for RoleAccessOutput {
                     ]),
                 ),
             ]),
-            Self::RolePermissions(_field_0) => mp::object_value(&[
+            Self::RolePermissions(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("RolePermissions".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("role_code", mp::text(&(_field_0).role_code)?),
                         (
                             "permission_codes",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).permission_codes.len()),
                             )]),
@@ -441,14 +441,14 @@ impl InterfaceContract for RoleAccessOutput {
                     ]),
                 ),
             ]),
-            Self::RoleFrontstageRoutes(_field_0) => mp::object_value(&[
+            Self::RoleFrontstageRoutes(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("RoleFrontstageRoutes".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("role_code", mp::text(&(_field_0).role_code)?),
                         ("checked_page_ids", {
                             if (_field_0).checked_page_ids.len() > 32 {
@@ -483,7 +483,7 @@ impl InterfaceContract for RoleAccessOutput {
                                     .tree
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             (
                                                 "id",
                                                 serde_json::Value::String((item).id.to_string()),
@@ -492,7 +492,7 @@ impl InterfaceContract for RoleAccessOutput {
                                             (
                                                 "title",
                                                 match (item).title.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -502,7 +502,7 @@ impl InterfaceContract for RoleAccessOutput {
                                             (
                                                 "slug",
                                                 match (item).slug.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -511,7 +511,7 @@ impl InterfaceContract for RoleAccessOutput {
                                             ),
                                             (
                                                 "children",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item).children.len()),
                                                 )]),
@@ -524,18 +524,18 @@ impl InterfaceContract for RoleAccessOutput {
                     ]),
                 ),
             ]),
-            Self::RoleDataPolicy(_field_0) => mp::object_value(&[
+            Self::RoleDataPolicy(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("RoleDataPolicy".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("role_code", mp::text(&(_field_0).role_code)?),
                         (
                             "default_policy",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "can_view",
                                     serde_json::Value::Bool((_field_0).default_policy.can_view),
@@ -554,7 +554,7 @@ impl InterfaceContract for RoleAccessOutput {
                                 ),
                                 (
                                     "default_view_scope",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0)
                                             .default_policy
@@ -564,7 +564,7 @@ impl InterfaceContract for RoleAccessOutput {
                                 ),
                                 (
                                     "default_update_scope",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0)
                                             .default_policy
@@ -574,7 +574,7 @@ impl InterfaceContract for RoleAccessOutput {
                                 ),
                                 (
                                     "default_delete_scope",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0)
                                             .default_policy
@@ -593,7 +593,7 @@ impl InterfaceContract for RoleAccessOutput {
                                     .model_policies
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             (
                                                 "data_model_id",
                                                 serde_json::Value::String(
@@ -610,7 +610,7 @@ impl InterfaceContract for RoleAccessOutput {
                                             (
                                                 "view_scope_override",
                                                 match (item).view_scope_override.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -620,7 +620,7 @@ impl InterfaceContract for RoleAccessOutput {
                                             (
                                                 "update_scope_override",
                                                 match (item).update_scope_override.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -630,7 +630,7 @@ impl InterfaceContract for RoleAccessOutput {
                                             (
                                                 "delete_scope_override",
                                                 match (item).delete_scope_override.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -645,7 +645,7 @@ impl InterfaceContract for RoleAccessOutput {
                     ]),
                 ),
             ]),
-            Self::PermissionOptions(_field_0) => mp::object_value(&[
+            Self::PermissionOptions(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("PermissionOptions".to_owned()),
@@ -658,32 +658,32 @@ impl InterfaceContract for RoleAccessOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("code", mp::text(&(item).code)?),
                                     (
                                         "resource",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).resource.len()),
                                         )]),
                                     ),
                                     (
                                         "action",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).action.len()),
                                         )]),
                                     ),
                                     (
                                         "scope",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).scope.len()),
                                         )]),
                                     ),
                                     (
                                         "name",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).name.len()),
                                         )]),
@@ -691,11 +691,11 @@ impl InterfaceContract for RoleAccessOutput {
                                     (
                                         "settings_feature",
                                         match (item).settings_feature.as_ref() {
-                                            Some(item) => mp::object_value(&[
+                                            Some(item) => mp::object_value([
                                                 ("feature_id", mp::text(&(item).feature_id)?),
                                                 (
                                                     "label_key",
-                                                    mp::object_value(&[(
+                                                    mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).label_key.len()),
                                                     )]),
@@ -712,7 +712,7 @@ impl InterfaceContract for RoleAccessOutput {
                 }),
             ]),
             Self::NoContent => {
-                mp::object_value(&[("variant", serde_json::Value::String("NoContent".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("NoContent".to_owned()))])
             }
         })
     }

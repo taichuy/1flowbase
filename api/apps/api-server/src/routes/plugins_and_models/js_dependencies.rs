@@ -100,14 +100,14 @@ pub(crate) struct JsDependenciesInput;
 impl InterfaceContract for JsDependenciesInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "kind",
             mp::tag_schema("JsDependenciesInput"),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "kind",
             serde_json::Value::String("JsDependenciesInput".to_owned()),
         )]))
@@ -122,14 +122,14 @@ pub(crate) struct JsDependenciesOutput(Vec<JsDependencyCatalogEntryResponse>);
 impl InterfaceContract for JsDependenciesOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "0",
-            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("installation_id",mp::text_schema()), ("provider_code",mp::text_schema()), ("plugin_id",mp::text_schema()), ("plugin_version",mp::text_schema()), ("alias",mp::object_schema(&[("byte_count",mp::count_schema())])), ("package",mp::object_schema(&[("byte_count",mp::count_schema())])), ("version",mp::text_schema()), ("target",mp::object_schema(&[("byte_count",mp::count_schema())])), ("artifact_path",mp::object_schema(&[("byte_count",mp::count_schema())])), ("integrity",mp::object_schema(&[("byte_count",mp::count_schema())])), ("permissions",mp::object_schema(&[("network",mp::object_schema(&[("byte_count",mp::count_schema())])), ("filesystem",mp::object_schema(&[("byte_count",mp::count_schema())])), ("env",mp::object_schema(&[("byte_count",mp::count_schema())]))]))])}),
+            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("installation_id",mp::text_schema()), ("provider_code",mp::text_schema()), ("plugin_id",mp::text_schema()), ("plugin_version",mp::text_schema()), ("alias",mp::object_schema([("byte_count",mp::count_schema())])), ("package",mp::object_schema([("byte_count",mp::count_schema())])), ("version",mp::text_schema()), ("target",mp::object_schema([("byte_count",mp::count_schema())])), ("artifact_path",mp::object_schema([("byte_count",mp::count_schema())])), ("integrity",mp::object_schema([("byte_count",mp::count_schema())])), ("permissions",mp::object_schema([("network",mp::object_schema([("byte_count",mp::count_schema())])), ("filesystem",mp::object_schema([("byte_count",mp::count_schema())])), ("env",mp::object_schema([("byte_count",mp::count_schema())]))]))])}),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[("0", {
+        Some(mp::object_value([("0", {
             if (self).0.len() > 32 {
                 return None;
             }
@@ -138,21 +138,21 @@ impl InterfaceContract for JsDependenciesOutput {
                     .0
                     .iter()
                     .map(|item| {
-                        Some(mp::object_value(&[
+                        Some(mp::object_value([
                             ("installation_id", mp::text(&(item).installation_id)?),
                             ("provider_code", mp::text(&(item).provider_code)?),
                             ("plugin_id", mp::text(&(item).plugin_id)?),
                             ("plugin_version", mp::text(&(item).plugin_version)?),
                             (
                                 "alias",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).alias.len()),
                                 )]),
                             ),
                             (
                                 "package",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).package.len()),
                                 )]),
@@ -160,45 +160,45 @@ impl InterfaceContract for JsDependenciesOutput {
                             ("version", mp::text(&(item).version)?),
                             (
                                 "target",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).target.len()),
                                 )]),
                             ),
                             (
                                 "artifact_path",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).artifact_path.len()),
                                 )]),
                             ),
                             (
                                 "integrity",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).integrity.len()),
                                 )]),
                             ),
                             (
                                 "permissions",
-                                mp::object_value(&[
+                                mp::object_value([
                                     (
                                         "network",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).permissions.network.len()),
                                         )]),
                                     ),
                                     (
                                         "filesystem",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).permissions.filesystem.len()),
                                         )]),
                                     ),
                                     (
                                         "env",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).permissions.env.len()),
                                         )]),

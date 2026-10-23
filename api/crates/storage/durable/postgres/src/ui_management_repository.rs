@@ -3,8 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use control_plane_contracts::ports::{
-    CreateUiCodeTemplateInput, CreateUiComponentRecordInput, OfficialUiComponentCatalogRecord,
-    ReviseUiCodeTemplateInput, UiComponentCatalogRepository, UiComponentRecordPatch,
+    ui_component_record_matches, CreateUiCodeTemplateInput, CreateUiComponentRecordInput,
+    ListUiComponentRecordsQuery, OfficialUiComponentCatalogRecord, ReviseUiCodeTemplateInput,
+    UiComponentCatalogRepository, UiComponentRecordPage, UiComponentRecordPatch,
     UiManagementRepository,
 };
 use domain::{
@@ -472,6 +473,92 @@ impl UiManagementRepository for PgControlPlaneStore {
             .into_iter()
             .map(map_component_record)
             .collect()
+    }
+
+    async fn list_ui_component_records_page(
+        &self,
+        query: ListUiComponentRecordsQuery,
+    ) -> Result<UiComponentRecordPage> {
+        let mut tx = self.pool().begin().await?;
+        sqlx::query("set transaction isolation level repeatable read, read only")
+            .execute(&mut *tx)
+            .await?;
+        let mut metadata = sqlx::query(
+            r#"select id, component_code, name, description, source, "group",
+                upstream_identity, upstream_version, version, keywords
+            from ui_component_records where scope_id = $1 order by name, component_code"#,
+        )
+        .bind(SYSTEM_SCOPE_ID)
+        .fetch_all(&mut *tx)
+        .await?;
+        if let Some(search) = query
+            .query
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let search = search.to_lowercase();
+            metadata.retain(|row| {
+                ui_component_record_matches(
+                    &search,
+                    [
+                        row.get("component_code"),
+                        row.get("name"),
+                        row.get("description"),
+                        row.get("source"),
+                        row.get("group"),
+                        row.get("upstream_identity"),
+                        row.get("upstream_version"),
+                        row.get("version"),
+                    ],
+                    &row.get::<Vec<String>, _>("keywords"),
+                )
+            });
+        }
+        metadata.sort_by(|left, right| {
+            left.get::<&str, _>("name")
+                .cmp(right.get::<&str, _>("name"))
+                .then_with(|| {
+                    left.get::<&str, _>("component_code")
+                        .cmp(right.get::<&str, _>("component_code"))
+                })
+        });
+        let total = metadata.len();
+        let offset = query.offset.min(total);
+        let limit = query.limit.max(1);
+        let end = offset.saturating_add(limit).min(total);
+        let ids: Vec<Uuid> = metadata[offset..end]
+            .iter()
+            .map(|row| row.get("id"))
+            .collect();
+        drop(metadata);
+        let items = if ids.is_empty() {
+            Vec::new()
+        } else {
+            let select = format!(
+                "{} join unnest($2::uuid[]) with ordinality as selected(id, position) using (id) where scope_id = $1 order by selected.position",
+                component_record_select()
+            );
+            // SQL safety: only the static component projection is interpolated; scope and page IDs are bound.
+            sqlx::query(sqlx::AssertSqlSafe(select.as_str()))
+                .bind(SYSTEM_SCOPE_ID)
+                .bind(&ids)
+                .fetch_all(&mut *tx)
+                .await?
+                .into_iter()
+                .map(map_component_record)
+                .collect::<Result<Vec<_>>>()?
+        };
+        tx.commit().await?;
+        let has_more = end < total;
+        Ok(UiComponentRecordPage {
+            items,
+            total,
+            offset,
+            limit,
+            has_more,
+            next_offset: has_more.then_some(end),
+        })
     }
 
     async fn get_ui_component_record(&self, id: Uuid) -> Result<Option<UiComponentRecord>> {

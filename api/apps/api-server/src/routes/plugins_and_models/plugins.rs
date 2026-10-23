@@ -494,6 +494,8 @@ pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
 
 pub(crate) mod extension_center;
 pub(crate) mod interface;
+mod official_install_command;
+pub(crate) use official_install_command::resolve_official_install_command;
 pub(crate) mod settings_routes;
 
 async fn invoke_plugin_interface(

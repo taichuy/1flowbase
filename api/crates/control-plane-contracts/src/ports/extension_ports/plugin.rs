@@ -567,6 +567,21 @@ pub struct ReplaceInstallationFrontendBlocksInput {
     pub entries: Vec<FrontendBlockCatalogRegistryInput>,
 }
 
+/// Only the selected default and its published body are needed by the workspace catalog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrontendBlockCatalogDefaultTemplate {
+    pub provider_code: String,
+    pub contribution_code: String,
+    pub published_revision: Option<FrontendBlockCatalogTemplateRevision>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrontendBlockCatalogTemplateRevision {
+    pub revision: i32,
+    pub source: String,
+    pub language: domain::UiCodeTemplateLanguage,
+}
+
 #[async_trait]
 pub trait FrontendBlockCatalogRepository: Send + Sync {
     async fn replace_installation_frontend_blocks(
@@ -597,7 +612,7 @@ pub trait FrontendBlockCatalogRepository: Send + Sync {
 
     async fn list_active_ui_code_templates_for_catalog(
         &self,
-    ) -> anyhow::Result<Vec<domain::UiCodeTemplate>> {
+    ) -> anyhow::Result<Vec<FrontendBlockCatalogDefaultTemplate>> {
         Ok(Vec::new())
     }
 }

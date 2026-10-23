@@ -80,14 +80,14 @@
 ### Good
 
 ```text
-web/packages/api-client/src/index.ts
-  fetchApiHealth()
+web/packages/api-client/src/console/frontend-blocks.ts
+  listConsoleFrontendBlocks()
 
-web/app/src/features/home/api/health.ts
-  homeHealthQueryOptions()
+web/app/src/features/frontstage/api/block-catalog.ts
+  fetchFrontstageBlockCatalog()
 
-web/app/src/features/home/pages/HomePage.tsx
-  useQuery(homeHealthQueryOptions())
+web/app/src/features/frontstage/hooks/use-frontstage-block-catalog.ts
+  useFrontstageBlockCatalog()
 ```
 
 底层请求、feature 消费、页面展示三层分开。

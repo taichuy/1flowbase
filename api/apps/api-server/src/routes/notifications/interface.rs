@@ -41,12 +41,10 @@ impl InterfaceContract for NotificationInput {
     const CONTRACT_ID: &'static str = "console-notifications-input";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
-        Some(crate::extension_bus::managed_projection::object_schema(&[
-            (
-                "operation",
-                crate::extension_bus::managed_projection::text_schema(),
-            ),
-        ]))
+        Some(crate::extension_bus::managed_projection::object_schema([(
+            "operation",
+            crate::extension_bus::managed_projection::text_schema(),
+        )]))
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(

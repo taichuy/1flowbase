@@ -5,8 +5,9 @@ use uuid::Uuid;
 
 use crate::{
     ports::{
-        CreateUiCodeTemplateInput, CreateUiComponentRecordInput, FrontendBlockCatalogRepository,
-        ReplaceInstallationFrontendBlocksInput, ReviseUiCodeTemplateInput, UiComponentRecordPatch,
+        ui_component_record_matches, CreateUiCodeTemplateInput, CreateUiComponentRecordInput,
+        FrontendBlockCatalogRepository, ReplaceInstallationFrontendBlocksInput,
+        ReviseUiCodeTemplateInput, UiComponentRecordPage, UiComponentRecordPatch,
         UiManagementRepository,
     },
     ui_management::{ListUiComponentRecordsQuery, UiManagementService},
@@ -100,7 +101,62 @@ impl UiManagementRepository for MemoryPersistedComponentCatalog {
     }
 
     async fn list_ui_component_records(&self) -> Result<Vec<UiComponentRecord>> {
-        Ok(self.records.clone())
+        panic!("paged catalog requests must use the page port")
+    }
+
+    async fn list_ui_component_records_page(
+        &self,
+        query: ListUiComponentRecordsQuery,
+    ) -> Result<UiComponentRecordPage> {
+        let search = query
+            .query
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_lowercase);
+        let mut records: Vec<_> = self
+            .records
+            .iter()
+            .filter(|record| {
+                search.as_deref().is_none_or(|search| {
+                    ui_component_record_matches(
+                        search,
+                        [
+                            &record.component_code,
+                            &record.name,
+                            &record.description,
+                            &record.source,
+                            &record.group,
+                            &record.upstream.identity,
+                            &record.upstream.version,
+                            &record.version,
+                        ],
+                        &record.keywords,
+                    )
+                })
+            })
+            .collect();
+        records.sort_by(|left, right| {
+            left.name
+                .cmp(&right.name)
+                .then_with(|| left.component_code.cmp(&right.component_code))
+        });
+        let total = records.len();
+        let offset = query.offset.min(total);
+        let limit = query.limit.max(1);
+        let end = offset.saturating_add(limit).min(total);
+        let has_more = end < total;
+        Ok(UiComponentRecordPage {
+            items: records[offset..end]
+                .iter()
+                .map(|record| (**record).clone())
+                .collect(),
+            total,
+            offset,
+            limit,
+            has_more,
+            next_offset: has_more.then_some(end),
+        })
     }
 
     async fn get_ui_component_record(&self, id: Uuid) -> Result<Option<UiComponentRecord>> {

@@ -4,90 +4,90 @@ impl InterfaceContract for ConsoleIdentityOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Session")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("actor", mp::json_summary_schema()),
                         (
                             "available_roles",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("code",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("scope_kind",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("code",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("scope_kind",mp::object_schema([("byte_count",mp::count_schema())]))])}),
                         ),
                         (
                             "active_role_permissions",
-                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                            mp::object_schema([("item_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Me")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         (
                             "nickname",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "introduction",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "preferred_locale",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         ("meta", mp::json_summary_schema()),
                         (
                             "effective_display_role",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "permissions",
-                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                            mp::object_schema([("item_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UserApiKeys")),
                 (
                     "0",
-                    mp::object_schema(&[(
+                    mp::object_schema([(
                         "items",
-                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("key_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("role_code",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("creator_user_id",mp::text_schema()), ("tenant_id",mp::text_schema()), ("scope_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("scope_id",mp::text_schema()), ("enabled",serde_json::json!({"type":"boolean"})), ("revoked",serde_json::json!({"type":"boolean"})), ("expires_at",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("last_used_at",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])}),
+                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("key_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("role_code",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("creator_user_id",mp::text_schema()), ("tenant_id",mp::text_schema()), ("scope_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("scope_id",mp::text_schema()), ("enabled",serde_json::json!({"type":"boolean"})), ("revoked",serde_json::json!({"type":"boolean"})), ("expires_at",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("last_used_at",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])}),
                     )]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UserApiKeyRoleOptions")),
                 (
                     "0",
-                    mp::object_schema(&[(
+                    mp::object_schema([(
                         "items",
-                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("code",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("scope_kind",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("code",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("scope_kind",mp::object_schema([("byte_count",mp::count_schema())]))])}),
                     )]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UserApiKeyCreated")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "key_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "role_code",
@@ -97,7 +97,7 @@ impl InterfaceContract for ConsoleIdentityOutput {
                         ("tenant_id", mp::text_schema()),
                         (
                             "scope_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("scope_id", mp::text_schema()),
                         ("enabled", serde_json::json!({"type":"boolean"})),
@@ -108,28 +108,28 @@ impl InterfaceContract for ConsoleIdentityOutput {
                         ),
                         (
                             "last_used_at",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         ("created_at", mp::text_schema()),
                         ("updated_at", mp::text_schema()),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UserApiKeyRevoked")),
-                ("0", mp::object_schema(&[("id", mp::text_schema())])),
+                ("0", mp::object_schema([("id", mp::text_schema())])),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("NoContent"))]),
+            mp::object_schema([("variant", mp::tag_schema("NoContent"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Session(_field_0) => mp::object_value(&[
+            Self::Session(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Session".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("actor", mp::json_summary(&(_field_0).actor)),
                         ("available_roles", {
                             if (_field_0).available_roles.len() > 32 {
@@ -140,18 +140,18 @@ impl InterfaceContract for ConsoleIdentityOutput {
                                     .available_roles
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("code", mp::text(&(item).code)?),
                                             (
                                                 "name",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "scope_kind",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).scope_kind.len()),
                                                 )]),
@@ -163,7 +163,7 @@ impl InterfaceContract for ConsoleIdentityOutput {
                         }),
                         (
                             "active_role_permissions",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).active_role_permissions.len()),
                             )]),
@@ -171,29 +171,29 @@ impl InterfaceContract for ConsoleIdentityOutput {
                     ]),
                 ),
             ]),
-            Self::Me(_field_0) => mp::object_value(&[
+            Self::Me(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Me".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", mp::text(&(_field_0).id)?),
                         (
                             "nickname",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).nickname.len()),
                             )]),
                         ),
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "introduction",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).introduction.len()),
                             )]),
@@ -201,7 +201,7 @@ impl InterfaceContract for ConsoleIdentityOutput {
                         (
                             "preferred_locale",
                             match (_field_0).preferred_locale.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -211,14 +211,14 @@ impl InterfaceContract for ConsoleIdentityOutput {
                         ("meta", mp::json_summary(&(_field_0).meta)),
                         (
                             "effective_display_role",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).effective_display_role.len()),
                             )]),
                         ),
                         (
                             "permissions",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).permissions.len()),
                             )]),
@@ -226,14 +226,14 @@ impl InterfaceContract for ConsoleIdentityOutput {
                     ]),
                 ),
             ]),
-            Self::UserApiKeys(_field_0) => mp::object_value(&[
+            Self::UserApiKeys(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UserApiKeys".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[("items", {
+                    mp::object_value([("items", {
                         if (_field_0).items.len() > 32 {
                             return None;
                         }
@@ -242,18 +242,18 @@ impl InterfaceContract for ConsoleIdentityOutput {
                                 .items
                                 .iter()
                                 .map(|item| {
-                                    Some(mp::object_value(&[
+                                    Some(mp::object_value([
                                         ("id", serde_json::Value::String((item).id.to_string())),
                                         (
                                             "name",
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).name.len()),
                                             )]),
                                         ),
                                         (
                                             "key_kind",
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).key_kind.len()),
                                             )]),
@@ -277,7 +277,7 @@ impl InterfaceContract for ConsoleIdentityOutput {
                                         ),
                                         (
                                             "scope_kind",
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).scope_kind.len()),
                                             )]),
@@ -298,7 +298,7 @@ impl InterfaceContract for ConsoleIdentityOutput {
                                         (
                                             "last_used_at",
                                             match (item).last_used_at.as_ref() {
-                                                Some(item) => mp::object_value(&[(
+                                                Some(item) => mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).len()),
                                                 )]),
@@ -314,14 +314,14 @@ impl InterfaceContract for ConsoleIdentityOutput {
                     })]),
                 ),
             ]),
-            Self::UserApiKeyRoleOptions(_field_0) => mp::object_value(&[
+            Self::UserApiKeyRoleOptions(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UserApiKeyRoleOptions".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[("items", {
+                    mp::object_value([("items", {
                         if (_field_0).items.len() > 32 {
                             return None;
                         }
@@ -330,18 +330,18 @@ impl InterfaceContract for ConsoleIdentityOutput {
                                 .items
                                 .iter()
                                 .map(|item| {
-                                    Some(mp::object_value(&[
+                                    Some(mp::object_value([
                                         ("code", mp::text(&(item).code)?),
                                         (
                                             "name",
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).name.len()),
                                             )]),
                                         ),
                                         (
                                             "scope_kind",
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).scope_kind.len()),
                                             )]),
@@ -353,25 +353,25 @@ impl InterfaceContract for ConsoleIdentityOutput {
                     })]),
                 ),
             ]),
-            Self::UserApiKeyCreated(_field_0) => mp::object_value(&[
+            Self::UserApiKeyCreated(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UserApiKeyCreated".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", serde_json::Value::String((_field_0).id.to_string())),
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "key_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).key_kind.len()),
                             )]),
@@ -393,7 +393,7 @@ impl InterfaceContract for ConsoleIdentityOutput {
                         ),
                         (
                             "scope_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).scope_kind.len()),
                             )]),
@@ -414,7 +414,7 @@ impl InterfaceContract for ConsoleIdentityOutput {
                         (
                             "last_used_at",
                             match (_field_0).last_used_at.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -426,21 +426,21 @@ impl InterfaceContract for ConsoleIdentityOutput {
                     ]),
                 ),
             ]),
-            Self::UserApiKeyRevoked(_field_0) => mp::object_value(&[
+            Self::UserApiKeyRevoked(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UserApiKeyRevoked".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "id",
                         serde_json::Value::String((_field_0).id.to_string()),
                     )]),
                 ),
             ]),
             Self::NoContent => {
-                mp::object_value(&[("variant", serde_json::Value::String("NoContent".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("NoContent".to_owned()))])
             }
         })
     }

@@ -879,10 +879,12 @@ export function useEmbeddedAssistantSession(
       return;
     }
 
+    let streamGeneration = streamGenerationRef.current;
     setStopping(true);
     try {
       if (!runId) {
         cancelActiveStream();
+        streamGeneration = streamGenerationRef.current;
         setStatus('cancelled');
         setMessages((current) =>
           current.map((message) =>
@@ -898,19 +900,31 @@ export function useEmbeddedAssistantSession(
         websocketControl.cancel(runId);
         return;
       }
-      await cancelConsoleFlowRun(runApplicationId, runId, csrfToken);
+      const detail = await cancelConsoleFlowRun(
+        runApplicationId,
+        runId,
+        csrfToken
+      );
+      if (streamGenerationRef.current !== streamGeneration) {
+        return;
+      }
+      const nextStatus = sessionStatusFromTerminalFlowRun(
+        detail.flow_run.status
+      );
       cancelActiveStream();
-      setStatus('cancelled');
+      streamGeneration = streamGenerationRef.current;
+      setStatus(nextStatus);
       setMessages((current) =>
         current.map((message) =>
-          message.role === 'assistant' &&
-          (message.runId === runId || message.status === 'running')
-            ? { ...message, status: 'cancelled' }
+          message.role === 'assistant' && message.runId === runId
+            ? { ...message, status: nextStatus }
             : message
         )
       );
     } finally {
-      setStopping(false);
+      if (streamGenerationRef.current === streamGeneration) {
+        setStopping(false);
+      }
     }
   }, [cancelActiveStream, csrfToken, status]);
 

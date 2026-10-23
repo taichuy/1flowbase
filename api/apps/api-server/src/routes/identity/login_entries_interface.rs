@@ -26,11 +26,11 @@ pub(crate) struct PublicLoginEntriesInput {
 impl InterfaceContract for PublicLoginEntriesInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[("locale", mp::text_schema())]))
+        Some(mp::object_schema([("locale", mp::text_schema())]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "locale",
             mp::text(self.locale.as_str())?,
         )]))
@@ -45,22 +45,22 @@ pub(crate) struct PublicLoginEntriesOutput(pub(crate) PublicLoginEntriesResponse
 impl InterfaceContract for PublicLoginEntriesOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "0",
-            mp::object_schema(&[
+            mp::object_schema([
                 ("default_login_entry_id", mp::text_schema()),
                 (
                     "login_entries",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("auth_type",mp::text_schema()), ("entry_action",serde_json::json!({"type":"string","maxLength":14,"enum":["render_ui","external_login"]})), ("is_builtin",serde_json::json!({"type":"boolean"})), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("sort_order",serde_json::json!({"type":"integer"})), ("public_ui_block",mp::object_schema(&[("byte_count",mp::count_schema())])), ("public_variables",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("auth_type",mp::text_schema()), ("entry_action",serde_json::json!({"type":"string","maxLength":14,"enum":["render_ui","external_login"]})), ("is_builtin",serde_json::json!({"type":"boolean"})), ("title",mp::object_schema([("byte_count",mp::count_schema())])), ("description",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("sort_order",serde_json::json!({"type":"integer"})), ("public_ui_block",mp::object_schema([("byte_count",mp::count_schema())])), ("public_variables",mp::object_schema([("item_count",mp::count_schema())]))])}),
                 ),
             ]),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "0",
-            mp::object_value(&[
+            mp::object_value([
                 (
                     "default_login_entry_id",
                     serde_json::Value::String((self).0.default_login_entry_id.to_string()),
@@ -75,14 +75,14 @@ impl InterfaceContract for PublicLoginEntriesOutput {
                             .login_entries
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("id", serde_json::Value::String((item).id.to_string())),
                                     ("auth_type", mp::text(&(item).auth_type)?),
                                     ("entry_action", serde_json::json!(item.entry_action)),
                                     ("is_builtin", serde_json::Value::Bool((item).is_builtin)),
                                     (
                                         "title",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).title.len()),
                                         )]),
@@ -90,7 +90,7 @@ impl InterfaceContract for PublicLoginEntriesOutput {
                                     (
                                         "description",
                                         match (item).description.as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -100,14 +100,14 @@ impl InterfaceContract for PublicLoginEntriesOutput {
                                     ("sort_order", serde_json::json!((item).sort_order)),
                                     (
                                         "public_ui_block",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).public_ui_block.len()),
                                         )]),
                                     ),
                                     (
                                         "public_variables",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "item_count",
                                             serde_json::json!((item).public_variables.len()),
                                         )]),
@@ -136,14 +136,14 @@ impl From<ApiError> for PublicLoginEntriesTargetError {
 impl InterfaceContract for PublicLoginEntriesTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "kind",
             mp::tag_schema("PublicLoginEntriesTargetError"),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "kind",
             serde_json::Value::String("PublicLoginEntriesTargetError".to_owned()),
         )]))

@@ -37,12 +37,10 @@ impl InterfaceContract for BrandingOutput {
     const CONTRACT_ID: &'static str = "system-branding-output";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<serde_json::Value> {
-        Some(crate::extension_bus::managed_projection::object_schema(&[
-            (
-                "system_name",
-                crate::extension_bus::managed_projection::text_schema(),
-            ),
-        ]))
+        Some(crate::extension_bus::managed_projection::object_schema([(
+            "system_name",
+            crate::extension_bus::managed_projection::text_schema(),
+        )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         Some(

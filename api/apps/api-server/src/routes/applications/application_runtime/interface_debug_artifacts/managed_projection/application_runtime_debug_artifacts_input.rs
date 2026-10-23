@@ -4,23 +4,23 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Get")),
                 ("application_id", mp::text_schema()),
                 ("artifact_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Resolve")),
                 ("application_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[(
+                    mp::object_schema([(
                         "artifact_refs",
                         serde_json::json!({"type":"array","maxItems":32,"items":mp::text_schema()}),
                     )]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Snapshot")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
@@ -34,7 +34,7 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsInput {
                 application_id: _field_application_id,
                 artifact_id: _field_artifact_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Get".to_owned())),
                 (
                     "application_id",
@@ -49,7 +49,7 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsInput {
                 application_id: _field_application_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Resolve".to_owned())),
                 (
                     "application_id",
@@ -57,7 +57,7 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[("artifact_refs", {
+                    mp::object_value([("artifact_refs", {
                         if (_field_body).artifact_refs.len() > 32 {
                             return None;
                         }
@@ -75,7 +75,7 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsInput {
                 application_id: _field_application_id,
                 run_id: _field_run_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Snapshot".to_owned())),
                 (
                     "application_id",

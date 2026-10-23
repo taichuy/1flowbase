@@ -58,10 +58,10 @@ macro_rules! private_contract {
             const CONTRACT_ID: &'static str = $id;
             const CONTRACT_VERSION: &'static str = "1";
             fn managed_projection_schema() -> Option<serde_json::Value> {
-                Some(crate::extension_bus::managed_projection::object_schema(&[]))
+                Some(crate::extension_bus::managed_projection::object_schema([]))
             }
             fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
-                Some(crate::extension_bus::managed_projection::object_value(&[]))
+                Some(crate::extension_bus::managed_projection::object_value([]))
             }
         }
     };

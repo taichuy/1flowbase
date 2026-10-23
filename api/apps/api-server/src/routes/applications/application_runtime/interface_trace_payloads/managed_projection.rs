@@ -4,20 +4,20 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("NodeContent")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
                 ("trace_node_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("NodeDetail")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
                 ("trace_node_id", mp::text_schema()),
                 ("detail_ref_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ToolCallbackContent")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
@@ -34,7 +34,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsInput {
                 run_id: _field_run_id,
                 trace_node_id: _field_trace_node_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("NodeContent".to_owned()),
@@ -55,7 +55,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsInput {
                 trace_node_id: _field_trace_node_id,
                 detail_ref_id: _field_detail_ref_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("NodeDetail".to_owned()),
@@ -77,7 +77,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsInput {
                 trace_node_id: _field_trace_node_id,
                 tool_call_id: _field_tool_call_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ToolCallbackContent".to_owned()),
@@ -104,36 +104,36 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("NodeContent")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("trace_node_id", mp::text_schema()),
                         (
                             "node_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "projection_status",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 (
                                     "projection_status",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 ("projection_version", serde_json::json!({"type":"integer"})),
                                 (
                                     "source_watermark",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 ("attempt_count", serde_json::json!({"type":"integer"})),
                                 (
                                     "last_attempt_at",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_success_at",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_error_code",
@@ -141,26 +141,26 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_stage",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_error_source_kind",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_error_source_locator",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_error_ref",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 ("retriable", serde_json::json!({"type":"boolean"})),
                             ]),
                         ),
                         (
                             "content_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("source_refs", mp::json_summary_schema()),
                         ("detail_refs", mp::json_summary_schema()),
@@ -168,36 +168,36 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("NodeDetail")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("trace_node_id", mp::text_schema()),
                         (
                             "node_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "projection_status",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 (
                                     "projection_status",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 ("projection_version", serde_json::json!({"type":"integer"})),
                                 (
                                     "source_watermark",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 ("attempt_count", serde_json::json!({"type":"integer"})),
                                 (
                                     "last_attempt_at",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_success_at",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_error_code",
@@ -205,19 +205,19 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_stage",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_error_source_kind",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_error_source_locator",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_error_ref",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 ("retriable", serde_json::json!({"type":"boolean"})),
                             ]),
@@ -225,40 +225,40 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                         ("detail_ref_id", mp::text_schema()),
                         (
                             "detail_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("source_refs", mp::json_summary_schema()),
                         ("payload", mp::json_summary_schema()),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ToolCallbackContent")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("trace_node_id", mp::text_schema()),
                         ("tool_call_id", mp::text_schema()),
                         (
                             "projection_status",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 (
                                     "projection_status",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 ("projection_version", serde_json::json!({"type":"integer"})),
                                 (
                                     "source_watermark",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 ("attempt_count", serde_json::json!({"type":"integer"})),
                                 (
                                     "last_attempt_at",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_success_at",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_error_code",
@@ -266,19 +266,19 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_stage",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_error_source_kind",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_error_source_locator",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "last_error_ref",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 ("retriable", serde_json::json!({"type":"boolean"})),
                             ]),
@@ -292,28 +292,28 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::NodeContent(_field_0) => mp::object_value(&[
+            Self::NodeContent(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("NodeContent".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("trace_node_id", mp::text(&(_field_0).trace_node_id)?),
                         (
                             "node_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).node_kind.len()),
                             )]),
                         ),
                         (
                             "projection_status",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "projection_status",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0)
                                             .projection_status
@@ -329,7 +329,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "source_watermark",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0)
                                             .projection_status
@@ -344,7 +344,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 (
                                     "last_attempt_at",
                                     match (_field_0).projection_status.last_attempt_at.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -354,7 +354,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 (
                                     "last_success_at",
                                     match (_field_0).projection_status.last_success_at.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -371,7 +371,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 (
                                     "last_error_stage",
                                     match (_field_0).projection_status.last_error_stage.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -385,7 +385,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                         .last_error_source_kind
                                         .as_ref()
                                     {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -399,7 +399,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                         .last_error_source_locator
                                         .as_ref()
                                     {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -409,7 +409,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 (
                                     "last_error_ref",
                                     match (_field_0).projection_status.last_error_ref.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -424,7 +424,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                         ),
                         (
                             "content_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).content_kind.len()),
                             )]),
@@ -435,28 +435,28 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                     ]),
                 ),
             ]),
-            Self::NodeDetail(_field_0) => mp::object_value(&[
+            Self::NodeDetail(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("NodeDetail".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("trace_node_id", mp::text(&(_field_0).trace_node_id)?),
                         (
                             "node_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).node_kind.len()),
                             )]),
                         ),
                         (
                             "projection_status",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "projection_status",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0)
                                             .projection_status
@@ -472,7 +472,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "source_watermark",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0)
                                             .projection_status
@@ -487,7 +487,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 (
                                     "last_attempt_at",
                                     match (_field_0).projection_status.last_attempt_at.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -497,7 +497,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 (
                                     "last_success_at",
                                     match (_field_0).projection_status.last_success_at.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -514,7 +514,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 (
                                     "last_error_stage",
                                     match (_field_0).projection_status.last_error_stage.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -528,7 +528,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                         .last_error_source_kind
                                         .as_ref()
                                     {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -542,7 +542,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                         .last_error_source_locator
                                         .as_ref()
                                     {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -552,7 +552,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 (
                                     "last_error_ref",
                                     match (_field_0).projection_status.last_error_ref.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -568,7 +568,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                         ("detail_ref_id", mp::text(&(_field_0).detail_ref_id)?),
                         (
                             "detail_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).detail_kind.len()),
                             )]),
@@ -578,22 +578,22 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                     ]),
                 ),
             ]),
-            Self::ToolCallbackContent(_field_0) => mp::object_value(&[
+            Self::ToolCallbackContent(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ToolCallbackContent".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("trace_node_id", mp::text(&(_field_0).trace_node_id)?),
                         ("tool_call_id", mp::text(&(_field_0).tool_call_id)?),
                         (
                             "projection_status",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "projection_status",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0)
                                             .projection_status
@@ -609,7 +609,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "source_watermark",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0)
                                             .projection_status
@@ -624,7 +624,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 (
                                     "last_attempt_at",
                                     match (_field_0).projection_status.last_attempt_at.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -634,7 +634,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 (
                                     "last_success_at",
                                     match (_field_0).projection_status.last_success_at.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -651,7 +651,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 (
                                     "last_error_stage",
                                     match (_field_0).projection_status.last_error_stage.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -665,7 +665,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                         .last_error_source_kind
                                         .as_ref()
                                     {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -679,7 +679,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                         .last_error_source_locator
                                         .as_ref()
                                     {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -689,7 +689,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 (
                                     "last_error_ref",
                                     match (_field_0).projection_status.last_error_ref.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),

@@ -56,132 +56,132 @@ impl InterfaceContract for MembershipInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[("variant", mp::tag_schema("ListMemberRoleOptions"))]),
-            mp::object_schema(&[("variant", mp::tag_schema("ListMembers"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("ListMemberRoleOptions"))]),
+            mp::object_schema([("variant", mp::tag_schema("ListMembers"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("CreateMember")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "nickname",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "introduction",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UpdateMember")),
                 ("member_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "nickname",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "introduction",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("DisableMember")),
                 ("member_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("EnableMember")),
                 ("member_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("DeleteMember")),
                 ("member_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ResetMember")),
                 ("member_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ReplaceMemberRoles")),
                 ("member_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[(
+                    mp::object_schema([(
                         "role_codes",
-                        mp::object_schema(&[("item_count", mp::count_schema())]),
+                        mp::object_schema([("item_count", mp::count_schema())]),
                     )]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("GetWorkspace"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("GetWorkspace"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("PatchWorkspace")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "introduction",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("ListWorkspaces"))]),
+            mp::object_schema([("variant", mp::tag_schema("ListWorkspaces"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::ListMemberRoleOptions => mp::object_value(&[(
+            Self::ListMemberRoleOptions => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ListMemberRoleOptions".to_owned()),
             )]),
-            Self::ListMembers { .. } => mp::object_value(&[(
+            Self::ListMembers { .. } => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ListMembers".to_owned()),
             )]),
-            Self::CreateMember(_field_0) => mp::object_value(&[
+            Self::CreateMember(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CreateMember".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "nickname",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).nickname.len()),
                             )]),
                         ),
                         (
                             "introduction",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).introduction.len()),
                             )]),
@@ -193,7 +193,7 @@ impl InterfaceContract for MembershipInput {
                 member_id: _field_member_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UpdateMember".to_owned()),
@@ -201,24 +201,24 @@ impl InterfaceContract for MembershipInput {
                 ("member_id", mp::text(_field_member_id)?),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).name.len()),
                             )]),
                         ),
                         (
                             "nickname",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).nickname.len()),
                             )]),
                         ),
                         (
                             "introduction",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).introduction.len()),
                             )]),
@@ -229,7 +229,7 @@ impl InterfaceContract for MembershipInput {
             Self::DisableMember {
                 member_id: _field_member_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("DisableMember".to_owned()),
@@ -239,7 +239,7 @@ impl InterfaceContract for MembershipInput {
             Self::EnableMember {
                 member_id: _field_member_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("EnableMember".to_owned()),
@@ -249,7 +249,7 @@ impl InterfaceContract for MembershipInput {
             Self::DeleteMember {
                 member_id: _field_member_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("DeleteMember".to_owned()),
@@ -259,7 +259,7 @@ impl InterfaceContract for MembershipInput {
             Self::ResetMember {
                 member_id: _field_member_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ResetMember".to_owned()),
@@ -270,7 +270,7 @@ impl InterfaceContract for MembershipInput {
                 member_id: _field_member_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ReplaceMemberRoles".to_owned()),
@@ -278,37 +278,37 @@ impl InterfaceContract for MembershipInput {
                 ("member_id", mp::text(_field_member_id)?),
                 (
                     "body",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "role_codes",
-                        mp::object_value(&[(
+                        mp::object_value([(
                             "item_count",
                             serde_json::json!((_field_body).role_codes.len()),
                         )]),
                     )]),
                 ),
             ]),
-            Self::GetWorkspace => mp::object_value(&[(
+            Self::GetWorkspace => mp::object_value([(
                 "variant",
                 serde_json::Value::String("GetWorkspace".to_owned()),
             )]),
-            Self::PatchWorkspace(_field_0) => mp::object_value(&[
+            Self::PatchWorkspace(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("PatchWorkspace".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "introduction",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).introduction.len()),
                             )]),
@@ -316,7 +316,7 @@ impl InterfaceContract for MembershipInput {
                     ]),
                 ),
             ]),
-            Self::ListWorkspaces => mp::object_value(&[(
+            Self::ListWorkspaces => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ListWorkspaces".to_owned()),
             )]),
@@ -340,81 +340,81 @@ impl InterfaceContract for MembershipOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("MemberRoleOptions")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("code",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("code",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())]))])}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Members")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("nickname",mp::object_schema(&[("byte_count",mp::count_schema())])), ("introduction",mp::object_schema(&[("byte_count",mp::count_schema())])), ("default_display_role",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("status",mp::text_schema()), ("role_codes",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("nickname",mp::object_schema([("byte_count",mp::count_schema())])), ("introduction",mp::object_schema([("byte_count",mp::count_schema())])), ("default_display_role",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("status",mp::text_schema()), ("role_codes",mp::object_schema([("item_count",mp::count_schema())]))])}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Member")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "nickname",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "introduction",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "default_display_role",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         ("status", mp::text_schema()),
                         (
                             "role_codes",
-                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                            mp::object_schema([("item_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Workspace")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "introduction",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Workspaces")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("introduction",mp::object_schema(&[("byte_count",mp::count_schema())])), ("is_current",serde_json::json!({"type":"boolean"}))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("introduction",mp::object_schema([("byte_count",mp::count_schema())])), ("is_current",serde_json::json!({"type":"boolean"}))])}),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("NoContent"))]),
+            mp::object_schema([("variant", mp::tag_schema("NoContent"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::MemberRoleOptions(_field_0) => mp::object_value(&[
+            Self::MemberRoleOptions(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("MemberRoleOptions".to_owned()),
@@ -427,11 +427,11 @@ impl InterfaceContract for MembershipOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("code", mp::text(&(item).code)?),
                                     (
                                         "name",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).name.len()),
                                         )]),
@@ -442,7 +442,7 @@ impl InterfaceContract for MembershipOutput {
                     )
                 }),
             ]),
-            Self::Members(_field_0) => mp::object_value(&[
+            Self::Members(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Members".to_owned())),
                 ("0", {
                     if (_field_0).len() > 32 {
@@ -452,25 +452,25 @@ impl InterfaceContract for MembershipOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("id", mp::text(&(item).id)?),
                                     (
                                         "name",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).name.len()),
                                         )]),
                                     ),
                                     (
                                         "nickname",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).nickname.len()),
                                         )]),
                                     ),
                                     (
                                         "introduction",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).introduction.len()),
                                         )]),
@@ -478,7 +478,7 @@ impl InterfaceContract for MembershipOutput {
                                     (
                                         "default_display_role",
                                         match (item).default_display_role.as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -488,7 +488,7 @@ impl InterfaceContract for MembershipOutput {
                                     ("status", mp::text(&(item).status)?),
                                     (
                                         "role_codes",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "item_count",
                                             serde_json::json!((item).role_codes.len()),
                                         )]),
@@ -499,29 +499,29 @@ impl InterfaceContract for MembershipOutput {
                     )
                 }),
             ]),
-            Self::Member(_field_0) => mp::object_value(&[
+            Self::Member(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Member".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", mp::text(&(_field_0).id)?),
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "nickname",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).nickname.len()),
                             )]),
                         ),
                         (
                             "introduction",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).introduction.len()),
                             )]),
@@ -529,7 +529,7 @@ impl InterfaceContract for MembershipOutput {
                         (
                             "default_display_role",
                             match (_field_0).default_display_role.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -539,7 +539,7 @@ impl InterfaceContract for MembershipOutput {
                         ("status", mp::text(&(_field_0).status)?),
                         (
                             "role_codes",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).role_codes.len()),
                             )]),
@@ -547,22 +547,22 @@ impl InterfaceContract for MembershipOutput {
                     ]),
                 ),
             ]),
-            Self::Workspace(_field_0) => mp::object_value(&[
+            Self::Workspace(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Workspace".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", mp::text(&(_field_0).id)?),
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "introduction",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).introduction.len()),
                             )]),
@@ -570,7 +570,7 @@ impl InterfaceContract for MembershipOutput {
                     ]),
                 ),
             ]),
-            Self::Workspaces(_field_0) => mp::object_value(&[
+            Self::Workspaces(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("Workspaces".to_owned()),
@@ -583,18 +583,18 @@ impl InterfaceContract for MembershipOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("id", mp::text(&(item).id)?),
                                     (
                                         "name",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).name.len()),
                                         )]),
                                     ),
                                     (
                                         "introduction",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).introduction.len()),
                                         )]),
@@ -607,7 +607,7 @@ impl InterfaceContract for MembershipOutput {
                 }),
             ]),
             Self::NoContent => {
-                mp::object_value(&[("variant", serde_json::Value::String("NoContent".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("NoContent".to_owned()))])
             }
         })
     }

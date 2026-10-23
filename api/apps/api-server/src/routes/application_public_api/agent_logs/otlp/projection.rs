@@ -6,7 +6,7 @@ impl InterfaceContract for Input {
     const CONTRACT_ID: &'static str = "application-agent-logs-otlp-input";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             ("kind", mp::tag_schema(Self::CONTRACT_ID)),
             ("byte_count", mp::count_schema()),
             ("format", mp::text_schema()),
@@ -23,7 +23,7 @@ impl InterfaceContract for Output {
     const CONTRACT_ID: &'static str = "application-agent-logs-otlp-output";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             ("kind", mp::tag_schema(Self::CONTRACT_ID)),
             ("accepted_spans", mp::count_schema()),
             ("rejected_spans", mp::count_schema()),
@@ -39,7 +39,7 @@ impl InterfaceContract for TargetError {
     const CONTRACT_ID: &'static str = "application-agent-logs-otlp-error";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "kind",
             mp::tag_schema(Self::CONTRACT_ID),
         )]))

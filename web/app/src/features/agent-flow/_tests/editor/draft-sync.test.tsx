@@ -95,6 +95,129 @@ afterEach(() => {
 });
 
 describe('useDraftSync', () => {
+  test('stops pending autosave when undo restores equal saved content', async () => {
+    vi.useFakeTimers();
+    const initialState = createInitialState();
+    const saveDraftOverride = vi.fn();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <AgentFlowEditorStoreProvider initialState={initialState}>
+        {children}
+      </AgentFlowEditorStoreProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        draftSync: useDraftSync({ applicationId: 'app-1', saveDraftOverride }),
+        setWorkingDocument: useAgentFlowEditorStore(
+          (state) => state.setWorkingDocument
+        ),
+        restorePreviousDocument: useAgentFlowEditorStore(
+          (state) => state.restorePreviousDocument
+        )
+      }),
+      { wrapper }
+    );
+
+    act(() => {
+      result.current.setWorkingDocument({ ...initialState.draft.document });
+    });
+    expect(result.current.draftSync.hasPendingChanges).toBe(false);
+    act(() => {
+      result.current.setWorkingDocument((document) => ({
+        ...document,
+        meta: { ...document.meta, name: 'Unsaved edit' }
+      }));
+    });
+    expect(result.current.draftSync.hasPendingChanges).toBe(true);
+    act(() => {
+      result.current.restorePreviousDocument();
+    });
+    expect(result.current.draftSync.hasPendingChanges).toBe(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(saveDraftOverride).not.toHaveBeenCalled();
+  });
+
+  test.each([false, true])(
+    'compares the latest document with normalized server state (in-flight edit: %s)',
+    async (editDuringSave) => {
+      const initialState = createInitialState();
+      let latestDocument = {
+        ...initialState.draft.document,
+        meta: { ...initialState.draft.document.meta, name: ' Submitted title ' }
+      };
+      const normalizedDocument = {
+        ...latestDocument,
+        meta: { ...latestDocument.meta, name: 'Submitted title' }
+      };
+      let finishSave!: (state: ReturnType<typeof createInitialState>) => void;
+      const saveDraftOverride = vi.fn(
+        () =>
+          new Promise<ReturnType<typeof createInitialState>>((resolve) => {
+            finishSave = resolve;
+          })
+      );
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <AgentFlowEditorStoreProvider initialState={initialState}>
+          {children}
+        </AgentFlowEditorStoreProvider>
+      );
+      const { result } = renderHook(
+        () => ({
+          draftSync: useDraftSync({
+            applicationId: 'app-1',
+            saveDraftOverride,
+            getCurrentDocument: () => latestDocument
+          }),
+          workingDocument: useAgentFlowEditorStore(
+            (state) => state.workingDocument
+          ),
+          lastSavedDocument: useAgentFlowEditorStore(
+            (state) => state.lastSavedDocument
+          ),
+          viewport: useAgentFlowEditorStore((state) => state.viewport),
+          setWorkingDocument: useAgentFlowEditorStore(
+            (state) => state.setWorkingDocument
+          )
+        }),
+        { wrapper }
+      );
+      act(() => {
+        result.current.setWorkingDocument(latestDocument);
+      });
+      let saving!: Promise<boolean>;
+      act(() => {
+        saving = result.current.draftSync.saveNow();
+      });
+      if (editDuringSave) {
+        latestDocument = {
+          ...latestDocument,
+          meta: { ...latestDocument.meta, name: 'Edited while saving' },
+          editor: {
+            ...latestDocument.editor,
+            viewport: { x: 350, y: 90, zoom: 0.75 }
+          }
+        };
+        act(() => {
+          result.current.setWorkingDocument(latestDocument);
+        });
+      }
+      await act(async () => {
+        finishSave(createInitialState(normalizedDocument));
+        expect(await saving).toBe(true);
+      });
+
+      expect(result.current.workingDocument).toBe(latestDocument);
+      expect(result.current.lastSavedDocument).toBe(normalizedDocument);
+      expect(result.current.viewport).toEqual(latestDocument.editor.viewport);
+      expect(result.current.draftSync.hasPendingChanges).toBe(true);
+      act(() => {
+        result.current.setWorkingDocument({ ...normalizedDocument });
+      });
+      expect(result.current.draftSync.hasPendingChanges).toBe(false);
+    }
+  );
+
   test('AC-011 blocks manual save for an incompatible Variable Aggregator candidate', async () => {
     const currentDocument = createVariableAggregatorDocument('number');
     const saveDraftOverride = vi.fn(async (input) =>

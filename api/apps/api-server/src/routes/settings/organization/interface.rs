@@ -41,7 +41,7 @@ impl InterfaceContract for OrganizationInput {
         Some(mp::union_schema(
             ["Access", "List", "Create", "Update", "Delete", "Replace"]
                 .into_iter()
-                .map(|tag| mp::object_schema(&[("variant", mp::tag_schema(tag))]))
+                .map(|tag| mp::object_schema([("variant", mp::tag_schema(tag))]))
                 .collect(),
         ))
     }
@@ -59,7 +59,7 @@ impl InterfaceContract for OrganizationOutput {
         Some(mp::union_schema(
             ["Access", "Departments", "Department", "Empty"]
                 .into_iter()
-                .map(|tag| mp::object_schema(&[("variant", mp::tag_schema(tag))]))
+                .map(|tag| mp::object_schema([("variant", mp::tag_schema(tag))]))
                 .collect(),
         ))
     }

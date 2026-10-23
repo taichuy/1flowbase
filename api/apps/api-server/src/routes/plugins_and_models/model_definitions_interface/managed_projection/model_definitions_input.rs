@@ -4,48 +4,48 @@ impl InterfaceContract for ModelDefinitionsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("List")),
                 (
                     "query",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "data_source_id",
                             serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
                         ),
                         (
                             "filter",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ListCompatibleTemplates")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("data_source_id", mp::text_schema()),
                         (
                             "resource_key",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("ListAgentFlowOptions"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("ListAgentFlowOptions"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("Create")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "scope_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "template_provider",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("template_code", mp::text_schema()),
                         (
@@ -56,11 +56,11 @@ impl InterfaceContract for ModelDefinitionsInput {
                         ("code", mp::text_schema()),
                         (
                             "title",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "description",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "status",
@@ -69,27 +69,27 @@ impl InterfaceContract for ModelDefinitionsInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("AdvisorFindings")),
                 ("model_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ListScopeGrants")),
                 ("model_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Update")),
                 ("model_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "title",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "description",
-                            serde_json::json!({"anyOf": [serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}), {"type":"null"}]}),
                         ),
                         (
                             "status",
@@ -102,16 +102,16 @@ impl InterfaceContract for ModelDefinitionsInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Delete")),
                 ("model_id", mp::text_schema()),
                 ("confirmed", serde_json::json!({"type":"boolean"})),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("BatchDelete")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "filter_by_tk",
                             serde_json::json!({"anyOf": [mp::json_summary_schema(), {"type":"null"}]}),
@@ -124,28 +124,28 @@ impl InterfaceContract for ModelDefinitionsInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CreateField")),
                 ("model_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("code", mp::text_schema()),
                         (
                             "title",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "description",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "external_field_key",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "field_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("is_required", serde_json::json!({"type":"boolean"})),
                         (
@@ -159,7 +159,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         ),
                         (
                             "display_interface",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         ("display_options", mp::json_summary_schema()),
                         (
@@ -170,20 +170,20 @@ impl InterfaceContract for ModelDefinitionsInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UpdateField")),
                 ("model_id", mp::text_schema()),
                 ("field_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "title",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "description",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         ("is_required", serde_json::json!({"type":"boolean"})),
                         (
@@ -197,34 +197,34 @@ impl InterfaceContract for ModelDefinitionsInput {
                         ),
                         (
                             "display_interface",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         ("display_options", mp::json_summary_schema()),
                         ("relation_options", mp::json_summary_schema()),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("DeleteField")),
                 ("model_id", mp::text_schema()),
                 ("field_id", mp::text_schema()),
                 ("confirmed", serde_json::json!({"type":"boolean"})),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CreateScopeGrant")),
                 ("model_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "scope_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("scope_id", mp::text_schema()),
                         ("enabled", serde_json::json!({"type":"boolean"})),
                         (
                             "permission_profile",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "confirm_unsafe_external_source_system_all",
@@ -233,20 +233,20 @@ impl InterfaceContract for ModelDefinitionsInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UpdateScopeGrant")),
                 ("model_id", mp::text_schema()),
                 ("grant_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "enabled",
                             serde_json::json!({"anyOf": [serde_json::json!({"type":"boolean"}), {"type":"null"}]}),
                         ),
                         (
                             "permission_profile",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "confirm_unsafe_external_source_system_all",
@@ -263,11 +263,11 @@ impl InterfaceContract for ModelDefinitionsInput {
             Self::List {
                 query: _field_query,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("List".to_owned())),
                 (
                     "query",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "data_source_id",
                             match (_field_query).data_source_id.as_ref() {
@@ -278,7 +278,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         (
                             "filter",
                             match (_field_query).filter.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -288,19 +288,19 @@ impl InterfaceContract for ModelDefinitionsInput {
                     ]),
                 ),
             ]),
-            Self::ListCompatibleTemplates(_field_0) => mp::object_value(&[
+            Self::ListCompatibleTemplates(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ListCompatibleTemplates".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("data_source_id", mp::text(&(_field_0).data_source_id)?),
                         (
                             "resource_key",
                             match (_field_0).resource_key.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -310,25 +310,25 @@ impl InterfaceContract for ModelDefinitionsInput {
                     ]),
                 ),
             ]),
-            Self::ListAgentFlowOptions => mp::object_value(&[(
+            Self::ListAgentFlowOptions => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ListAgentFlowOptions".to_owned()),
             )]),
-            Self::Create(_field_0) => mp::object_value(&[
+            Self::Create(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Create".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "scope_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).scope_kind.len()),
                             )]),
                         ),
                         (
                             "template_provider",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).template_provider.len()),
                             )]),
@@ -345,7 +345,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         ("code", mp::text(&(_field_0).code)?),
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).title.len()),
                             )]),
@@ -353,7 +353,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         (
                             "description",
                             match (_field_0).description.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -373,7 +373,7 @@ impl InterfaceContract for ModelDefinitionsInput {
             Self::AdvisorFindings {
                 model_id: _field_model_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("AdvisorFindings".to_owned()),
@@ -383,7 +383,7 @@ impl InterfaceContract for ModelDefinitionsInput {
             Self::ListScopeGrants {
                 model_id: _field_model_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ListScopeGrants".to_owned()),
@@ -394,16 +394,16 @@ impl InterfaceContract for ModelDefinitionsInput {
                 model_id: _field_model_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Update".to_owned())),
                 ("model_id", mp::text(_field_model_id)?),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "title",
                             match (_field_body).title.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -414,7 +414,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                             "description",
                             match (_field_body).description.as_ref() {
                                 Some(item) => match (item).as_ref() {
-                                    Some(item) => mp::object_value(&[(
+                                    Some(item) => mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).len()),
                                     )]),
@@ -444,19 +444,19 @@ impl InterfaceContract for ModelDefinitionsInput {
                 model_id: _field_model_id,
                 confirmed: _field_confirmed,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Delete".to_owned())),
                 ("model_id", mp::text(_field_model_id)?),
                 ("confirmed", serde_json::Value::Bool(*(_field_confirmed))),
             ]),
-            Self::BatchDelete(_field_0) => mp::object_value(&[
+            Self::BatchDelete(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("BatchDelete".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "filter_by_tk",
                             match (_field_0).filter_by_tk.as_ref() {
@@ -479,7 +479,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                 model_id: _field_model_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CreateField".to_owned()),
@@ -487,11 +487,11 @@ impl InterfaceContract for ModelDefinitionsInput {
                 ("model_id", mp::text(_field_model_id)?),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("code", mp::text(&(_field_body).code)?),
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).title.len()),
                             )]),
@@ -499,7 +499,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         (
                             "description",
                             match (_field_body).description.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -509,7 +509,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         (
                             "external_field_key",
                             match (_field_body).external_field_key.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -518,7 +518,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         ),
                         (
                             "field_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).field_kind.len()),
                             )]),
@@ -548,7 +548,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         (
                             "display_interface",
                             match (_field_body).display_interface.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -578,7 +578,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                 field_id: _field_field_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UpdateField".to_owned()),
@@ -587,10 +587,10 @@ impl InterfaceContract for ModelDefinitionsInput {
                 ("field_id", mp::text(_field_field_id)?),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).title.len()),
                             )]),
@@ -598,7 +598,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         (
                             "description",
                             match (_field_body).description.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -630,7 +630,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         (
                             "display_interface",
                             match (_field_body).display_interface.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -653,7 +653,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                 field_id: _field_field_id,
                 confirmed: _field_confirmed,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("DeleteField".to_owned()),
@@ -666,7 +666,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                 model_id: _field_model_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CreateScopeGrant".to_owned()),
@@ -674,10 +674,10 @@ impl InterfaceContract for ModelDefinitionsInput {
                 ("model_id", mp::text(_field_model_id)?),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "scope_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).scope_kind.len()),
                             )]),
@@ -689,7 +689,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         ("enabled", serde_json::Value::Bool((_field_body).enabled)),
                         (
                             "permission_profile",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).permission_profile.len()),
                             )]),
@@ -708,7 +708,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                 grant_id: _field_grant_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UpdateScopeGrant".to_owned()),
@@ -717,7 +717,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                 ("grant_id", mp::text(_field_grant_id)?),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "enabled",
                             match (_field_body).enabled.as_ref() {
@@ -728,7 +728,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         (
                             "permission_profile",
                             match (_field_body).permission_profile.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),

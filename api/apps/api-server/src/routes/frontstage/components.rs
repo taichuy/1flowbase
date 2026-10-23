@@ -197,14 +197,14 @@ impl InterfaceContract for FrontstageComponentsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("List")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "query",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "offset",
@@ -217,28 +217,25 @@ impl InterfaceContract for FrontstageComponentsInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("Get")), ("0", mp::text_schema())]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("Get")), ("0", mp::text_schema())]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("Asset")),
-                (
-                    "0",
-                    mp::object_schema(&[("byte_count", mp::count_schema())]),
-                ),
+                ("0", mp::object_schema([("byte_count", mp::count_schema())])),
             ]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::List(_field_0) => mp::object_value(&[
+            Self::List(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("List".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "query",
                             match (_field_0).query.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -262,15 +259,15 @@ impl InterfaceContract for FrontstageComponentsInput {
                     ]),
                 ),
             ]),
-            Self::Get(_field_0) => mp::object_value(&[
+            Self::Get(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Get".to_owned())),
                 ("0", serde_json::Value::String((_field_0).to_string())),
             ]),
-            Self::Asset(_field_0) => mp::object_value(&[
+            Self::Asset(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Asset".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[("byte_count", serde_json::json!((_field_0).len()))]),
+                    mp::object_value([("byte_count", serde_json::json!((_field_0).len()))]),
                 ),
             ]),
         })
@@ -293,14 +290,14 @@ impl InterfaceContract for FrontstageComponentsOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Page")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "items",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("scope_id",mp::text_schema()), ("component_code",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("import_code",mp::text_schema()), ("source_code",mp::text_schema()), ("source",mp::object_schema(&[("byte_count",mp::count_schema())])), ("group",mp::object_schema(&[("byte_count",mp::count_schema())])), ("upstream",mp::object_schema(&[("identity",mp::object_schema(&[("byte_count",mp::count_schema())])), ("version",mp::text_schema())])), ("version",mp::text_schema()), ("keywords",mp::object_schema(&[("item_count",mp::count_schema())])), ("catalog_updated_at",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("source_locator",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("source_checksum",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("scope_id",mp::text_schema()), ("component_code",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("description",mp::object_schema([("byte_count",mp::count_schema())])), ("import_code",mp::text_schema()), ("source_code",mp::text_schema()), ("source",mp::object_schema([("byte_count",mp::count_schema())])), ("group",mp::object_schema([("byte_count",mp::count_schema())])), ("upstream",mp::object_schema([("identity",mp::object_schema([("byte_count",mp::count_schema())])), ("version",mp::text_schema())])), ("version",mp::text_schema()), ("keywords",mp::object_schema([("item_count",mp::count_schema())])), ("catalog_updated_at",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("source_locator",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("source_checksum",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])}),
                         ),
                         ("total", serde_json::json!({"type":"integer"})),
                         ("offset", serde_json::json!({"type":"integer"})),
@@ -313,38 +310,38 @@ impl InterfaceContract for FrontstageComponentsOutput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Component")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         ("scope_id", mp::text_schema()),
                         ("component_code", mp::text_schema()),
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "description",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("import_code", mp::text_schema()),
                         ("source_code", mp::text_schema()),
                         (
                             "source",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "group",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "upstream",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 (
                                     "identity",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 ("version", mp::text_schema()),
                             ]),
@@ -352,36 +349,36 @@ impl InterfaceContract for FrontstageComponentsOutput {
                         ("version", mp::text_schema()),
                         (
                             "keywords",
-                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                            mp::object_schema([("item_count", mp::count_schema())]),
                         ),
                         (
                             "catalog_updated_at",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "source_locator",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "source_checksum",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         ("created_at", mp::text_schema()),
                         ("updated_at", mp::text_schema()),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("Asset"))]),
+            mp::object_schema([("variant", mp::tag_schema("Asset"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Page(_field_0) => mp::object_value(&[
+            Self::Page(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Page".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("items", {
                             if (_field_0).items.len() > 32 {
                                 return None;
@@ -391,20 +388,20 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                     .items
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("id", mp::text(&(item).id)?),
                                             ("scope_id", mp::text(&(item).scope_id)?),
                                             ("component_code", mp::text(&(item).component_code)?),
                                             (
                                                 "name",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "description",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).description.len()),
                                                 )]),
@@ -413,24 +410,24 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                             ("source_code", mp::text(&(item).source_code)?),
                                             (
                                                 "source",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).source.len()),
                                                 )]),
                                             ),
                                             (
                                                 "group",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).group.len()),
                                                 )]),
                                             ),
                                             (
                                                 "upstream",
-                                                mp::object_value(&[
+                                                mp::object_value([
                                                     (
                                                         "identity",
-                                                        mp::object_value(&[(
+                                                        mp::object_value([(
                                                             "byte_count",
                                                             serde_json::json!((item)
                                                                 .upstream
@@ -447,7 +444,7 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                             ("version", mp::text(&(item).version)?),
                                             (
                                                 "keywords",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item).keywords.len()),
                                                 )]),
@@ -455,7 +452,7 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                             (
                                                 "catalog_updated_at",
                                                 match (item).catalog_updated_at.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -465,7 +462,7 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                             (
                                                 "source_locator",
                                                 match (item).source_locator.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -475,7 +472,7 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                             (
                                                 "source_checksum",
                                                 match (item).source_checksum.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -503,24 +500,24 @@ impl InterfaceContract for FrontstageComponentsOutput {
                     ]),
                 ),
             ]),
-            Self::Component(_field_0) => mp::object_value(&[
+            Self::Component(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Component".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", mp::text(&(_field_0).id)?),
                         ("scope_id", mp::text(&(_field_0).scope_id)?),
                         ("component_code", mp::text(&(_field_0).component_code)?),
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "description",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).description.len()),
                             )]),
@@ -529,24 +526,24 @@ impl InterfaceContract for FrontstageComponentsOutput {
                         ("source_code", mp::text(&(_field_0).source_code)?),
                         (
                             "source",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).source.len()),
                             )]),
                         ),
                         (
                             "group",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).group.len()),
                             )]),
                         ),
                         (
                             "upstream",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "identity",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0).upstream.identity.len()),
                                     )]),
@@ -557,7 +554,7 @@ impl InterfaceContract for FrontstageComponentsOutput {
                         ("version", mp::text(&(_field_0).version)?),
                         (
                             "keywords",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).keywords.len()),
                             )]),
@@ -565,7 +562,7 @@ impl InterfaceContract for FrontstageComponentsOutput {
                         (
                             "catalog_updated_at",
                             match (_field_0).catalog_updated_at.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -575,7 +572,7 @@ impl InterfaceContract for FrontstageComponentsOutput {
                         (
                             "source_locator",
                             match (_field_0).source_locator.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -585,7 +582,7 @@ impl InterfaceContract for FrontstageComponentsOutput {
                         (
                             "source_checksum",
                             match (_field_0).source_checksum.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -598,7 +595,7 @@ impl InterfaceContract for FrontstageComponentsOutput {
                 ),
             ]),
             Self::Asset(_) => {
-                mp::object_value(&[("variant", serde_json::Value::String("Asset".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("Asset".to_owned()))])
             }
         })
     }

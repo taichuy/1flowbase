@@ -45,33 +45,33 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Snapshot")),
                 ("application_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Upsert")),
                 ("application_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("node_id", mp::text_schema()),
                         (
                             "variable_key",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("value", mp::json_summary_schema()),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Delete")),
                 ("application_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[(
+                    mp::object_schema([(
                         "keys",
-                        serde_json::json!({"anyOf": [serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("node_id",mp::text_schema()), ("variable_key",mp::object_schema(&[("byte_count",mp::count_schema())]))])}), {"type":"null"}]}),
+                        serde_json::json!({"anyOf": [serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("node_id",mp::text_schema()), ("variable_key",mp::object_schema([("byte_count",mp::count_schema())]))])}), {"type":"null"}]}),
                     )]),
                 ),
             ]),
@@ -83,7 +83,7 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesInput {
             Self::Snapshot {
                 application_id: _field_application_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Snapshot".to_owned())),
                 (
                     "application_id",
@@ -94,7 +94,7 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesInput {
                 application_id: _field_application_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Upsert".to_owned())),
                 (
                     "application_id",
@@ -102,11 +102,11 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("node_id", mp::text(&(_field_body).node_id)?),
                         (
                             "variable_key",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).variable_key.len()),
                             )]),
@@ -119,7 +119,7 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesInput {
                 application_id: _field_application_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Delete".to_owned())),
                 (
                     "application_id",
@@ -127,7 +127,7 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "keys",
                         match (_field_body).keys.as_ref() {
                             Some(item) => {
@@ -138,11 +138,11 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesInput {
                                     (item)
                                         .iter()
                                         .map(|item| {
-                                            Some(mp::object_value(&[
+                                            Some(mp::object_value([
                                                 ("node_id", mp::text(&(item).node_id)?),
                                                 (
                                                     "variable_key",
-                                                    mp::object_value(&[(
+                                                    mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item)
                                                             .variable_key
@@ -179,11 +179,11 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Snapshot")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("snapshot_schema_version", mp::text_schema()),
                         ("workspace_id", mp::text_schema()),
                         ("actor_user_id", mp::text_schema()),
@@ -191,15 +191,15 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesOutput {
                         ("flow_schema_version", mp::text_schema()),
                         (
                             "document_hash",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "latest_run_scope",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("flow_run_id",mp::text_schema()), ("run_mode",mp::object_schema(&[("byte_count",mp::count_schema())])), ("status",mp::text_schema()), ("target_node_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}))]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("flow_run_id",mp::text_schema()), ("run_mode",mp::object_schema([("byte_count",mp::count_schema())])), ("status",mp::text_schema()), ("target_node_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}))]), {"type":"null"}]}),
                         ),
                         (
                             "snapshot_completeness",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("source_flow_run_ids", mp::json_summary_schema()),
                         ("source_node_run_ids", mp::json_summary_schema()),
@@ -207,17 +207,17 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesOutput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("Updated"))]),
+            mp::object_schema([("variant", mp::tag_schema("Updated"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Snapshot(_field_0) => mp::object_value(&[
+            Self::Snapshot(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Snapshot".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "snapshot_schema_version",
                             mp::text(&(_field_0).snapshot_schema_version)?,
@@ -231,7 +231,7 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesOutput {
                         ),
                         (
                             "document_hash",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).document_hash.len()),
                             )]),
@@ -239,11 +239,11 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesOutput {
                         (
                             "latest_run_scope",
                             match (_field_0).latest_run_scope.as_ref() {
-                                Some(item) => mp::object_value(&[
+                                Some(item) => mp::object_value([
                                     ("flow_run_id", mp::text(&(item).flow_run_id)?),
                                     (
                                         "run_mode",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).run_mode.len()),
                                         )]),
@@ -262,7 +262,7 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesOutput {
                         ),
                         (
                             "snapshot_completeness",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).snapshot_completeness.len()),
                             )]),
@@ -283,7 +283,7 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesOutput {
                 ),
             ]),
             Self::Updated => {
-                mp::object_value(&[("variant", serde_json::Value::String("Updated".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("Updated".to_owned()))])
             }
         })
     }

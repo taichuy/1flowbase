@@ -20,9 +20,10 @@ pub(crate) const BINDING_ID: &str = "http.public.files.temporary.read.v1";
 pub(crate) struct TemporaryFileInput(pub control_plane::file_management::FileAccessKey, pub bool);
 impl InterfaceContract for TemporaryFileInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
-        Some(crate::extension_bus::managed_projection::object_schema(&[
-            ("preview", serde_json::json!({"type":"boolean"})),
-        ]))
+        Some(crate::extension_bus::managed_projection::object_schema([(
+            "preview",
+            serde_json::json!({"type":"boolean"}),
+        )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         Some(serde_json::json!({"preview":self.1}))
@@ -54,14 +55,14 @@ impl From<ApiError> for TemporaryFileTargetError {
 impl InterfaceContract for TemporaryFileTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "kind",
             mp::tag_schema("TemporaryFileTargetError"),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "kind",
             serde_json::Value::String("TemporaryFileTargetError".to_owned()),
         )]))

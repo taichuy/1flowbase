@@ -50,8 +50,8 @@ impl LlmToolCallbackArtifact {
         })
     }
 
-    fn summary_payload_base(&self) -> Map<String, Value> {
-        let Some(object) = json!({
+    pub(super) fn summary_payload(&self, artifact_id: Uuid) -> Value {
+        let mut payload = json!({
             "id": self.id,
             "name": self.name,
             "callback_status": self.callback_status(),
@@ -64,21 +64,15 @@ impl LlmToolCallbackArtifact {
             "call_usage": self.call_usage,
             "result_context_usage": self.result_context_usage,
             "duration_ms": self.duration_ms,
-            "route_trace": self.route_trace.as_ref().map(lightweight_route_trace_summary),
-        })
-        .as_object()
-        .cloned() else {
-            return Map::new();
-        };
-
-        object
-    }
-
-    pub(super) fn summary_payload(&self, artifact_id: Uuid) -> Value {
-        let mut object = self.summary_payload_base();
-        object.insert("artifact_ref".to_string(), json!(artifact_id.to_string()));
-
-        Value::Object(object)
+            "route_trace": null,
+            "artifact_ref": artifact_id.to_string(),
+        });
+        payload["route_trace"] = self
+            .route_trace
+            .as_ref()
+            .map(lightweight_route_trace_summary)
+            .unwrap_or(Value::Null);
+        payload
     }
 }
 
@@ -86,8 +80,7 @@ fn lightweight_route_trace_summary(route_trace: &Value) -> Value {
     let Some(route_trace_object) = route_trace.as_object() else {
         return route_trace.clone();
     };
-    let mut summary = route_trace_object.clone();
-    for field in [
+    let omitted_fields = [
         "arguments",
         "branch_traces",
         "callback_requests",
@@ -97,10 +90,22 @@ fn lightweight_route_trace_summary(route_trace: &Value) -> Value {
         "route_output",
         "tool_call",
         "tool_result",
-    ] {
+    ];
+    let mut summary: Map<String, Value> = route_trace_object
+        .iter()
+        .map(|(field, value)| {
+            let value = if omitted_fields.contains(&field.as_str()) {
+                Value::Null
+            } else {
+                value.clone()
+            };
+            (field.clone(), value)
+        })
+        .collect();
+    // Keep Map::remove's ordering semantics without cloning the discarded bodies.
+    for field in omitted_fields {
         summary.remove(field);
     }
-
     Value::Object(summary)
 }
 

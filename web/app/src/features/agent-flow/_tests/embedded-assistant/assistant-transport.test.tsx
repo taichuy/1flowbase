@@ -8,13 +8,84 @@ import {
   startConsoleAssistantRunWebSocket,
   startConsoleAssistantRunStream
 } from './assistant-fixture';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, renderHook, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
+import type {
+  ConsoleApplicationRunDetail,
+  ConsoleFlowDebugStreamHandlers
+} from '@1flowbase/api-client';
 
 import { AppProviders } from '../../../../app/AppProviders';
 import { EmbeddedAgentAssistant } from '../../components/embedded-assistant/EmbeddedAgentAssistant';
 import * as runtimeApi from '../../api/runtime';
+import { useEmbeddedAssistantSession } from '../../hooks/useEmbeddedAssistantSession';
 import { i18nText } from '../../../../shared/i18n/text';
+
+function cancellationRunDetail(
+  runId: string,
+  status = 'cancelled',
+  applicationId = 'flow-1'
+): ConsoleApplicationRunDetail {
+  return {
+    flow_run: {
+      id: runId,
+      application_id: applicationId,
+      flow_id: 'flow-1',
+      draft_id: 'draft-1',
+      compiled_plan_id: null,
+      run_mode: 'assistant_execution',
+      status,
+      target_node_id: null,
+      input_payload: {},
+      output_payload: {},
+      error_payload: null,
+      created_by: 'user-1',
+      started_at: '2026-10-23T00:00:00Z',
+      finished_at: '2026-10-23T00:00:01Z',
+      created_at: '2026-10-23T00:00:00Z'
+    },
+    node_runs: [],
+    checkpoints: [],
+    callback_tasks: [],
+    events: []
+  };
+}
+
+async function startHttpAssistantSession() {
+  const streams: {
+    controller: AbortController;
+    handlers: ConsoleFlowDebugStreamHandlers;
+  }[] = [];
+  vi.spyOn(runtimeApi, 'fetchApplicationRunDebugSnapshot').mockRejectedValue(
+    new Error('optional snapshot unavailable')
+  );
+  startConsoleAssistantRunWebSocket.mockRejectedValue(new Error('use SSE'));
+  startConsoleAssistantRunStream.mockImplementation(
+    (_input, _csrfToken, handlers: ConsoleFlowDebugStreamHandlers) => {
+      const controller = new AbortController();
+      streams.push({ controller, handlers });
+      handlers.getAbortController?.(controller);
+      handlers.onEvent({
+        type: 'flow_accepted',
+        run_id: `run-${streams.length}`,
+        status: 'queued'
+      });
+      return new Promise<void>((resolve) => {
+        controller.signal.addEventListener('abort', () => resolve(), {
+          once: true
+        });
+      });
+    }
+  );
+  const hook = renderHook(
+    ({ applicationId }) => useEmbeddedAssistantSession(applicationId),
+    { initialProps: { applicationId: 'flow-1' } }
+  );
+  await act(async () => {
+    void hook.result.current.submitPrompt('First run');
+  });
+  return { ...hook, streams };
+}
 
 describe('EmbeddedAgentAssistant', () => {
   setupEmbeddedAssistantFixture();
@@ -386,4 +457,151 @@ describe('EmbeddedAgentAssistant', () => {
     );
   });
 
+  test.each([
+    ['succeeded', 'completed', false],
+    ['succeeded', 'completed', true],
+    ['cancelled', 'cancelled', false]
+  ] as const)(
+    'uses HTTP cancellation winner %s as %s (completion already delivered: %s)',
+    async (backendStatus, expectedStatus, completedBeforeResponse) => {
+      let completeCancellation!: (detail: ConsoleApplicationRunDetail) => void;
+      cancelConsoleFlowRun.mockImplementation(
+        () =>
+          new Promise<ConsoleApplicationRunDetail>((resolve) => {
+            completeCancellation = resolve;
+          })
+      );
+      const { result, streams } = await startHttpAssistantSession();
+      let stopping!: Promise<void>;
+      act(() => {
+        stopping = result.current.stopRun();
+      });
+      expect(result.current.stopping).toBe(true);
+      if (completedBeforeResponse) {
+        await act(async () => {
+          streams[0].handlers.onEvent({
+            type: 'flow_finished',
+            run_id: 'run-1',
+            status: 'succeeded',
+            output: { answer: 'Already completed' }
+          });
+        });
+        expect(result.current.status).toBe('completed');
+      }
+      await act(async () => {
+        completeCancellation(cancellationRunDetail('run-1', backendStatus));
+        await stopping;
+      });
+
+      expect(cancelConsoleFlowRun).toHaveBeenCalledWith(
+        'flow-1',
+        'run-1',
+        'csrf-token'
+      );
+      expect(result.current.status).toBe(expectedStatus);
+      expect(result.current.messages.at(-1)).toMatchObject({
+        runId: 'run-1',
+        status: expectedStatus
+      });
+      if (completedBeforeResponse) {
+        expect(result.current.messages.at(-1)?.content).toBe('Already completed');
+      }
+      expect(result.current.stopping).toBe(false);
+      expect(streams[0].controller.signal.aborted).toBe(true);
+    }
+  );
+
+  test('keeps observing the run when HTTP cancellation is rejected', async () => {
+    cancelConsoleFlowRun.mockRejectedValue(new Error('Cancellation rejected'));
+    const { result, streams } = await startHttpAssistantSession();
+
+    await act(async () => {
+      await expect(result.current.stopRun()).rejects.toThrow(
+        'Cancellation rejected'
+      );
+    });
+
+    expect(result.current.status).toBe('running');
+    expect(result.current.messages.at(-1)?.status).toBe('running');
+    expect(result.current.stopping).toBe(false);
+    expect(streams[0].controller.signal.aborted).toBe(false);
+    await act(async () => {
+      streams[0].handlers.onEvent({
+        type: 'flow_finished',
+        run_id: 'run-1',
+        status: 'succeeded',
+        output: { answer: 'Finished after rejection' }
+      });
+    });
+    expect(result.current.status).toBe('completed');
+    expect(result.current.messages.at(-1)?.content).toBe(
+      'Finished after rejection'
+    );
+  });
+
+  test.each(['application', 'conversation', 'run'])(
+    'ignores a late HTTP cancellation after changing %s',
+    async (changedContext) => {
+      const cancellations: ((detail: ConsoleApplicationRunDetail) => void)[] = [];
+      cancelConsoleFlowRun.mockImplementation(
+        () =>
+          new Promise<ConsoleApplicationRunDetail>((resolve) => {
+            cancellations.push(resolve);
+          })
+      );
+      const { result, rerender, streams } = await startHttpAssistantSession();
+      let oldCancellation!: Promise<void>;
+      act(() => {
+        oldCancellation = result.current.stopRun();
+      });
+      await act(async () => {
+        if (changedContext === 'application') {
+          rerender({ applicationId: 'flow-2' });
+        } else if (changedContext === 'conversation') {
+          await result.current.restoreConversation({
+            conversationId: 'conversation-other',
+            latestFlowRunStatus: 'succeeded'
+          });
+        } else {
+          streams[0].handlers.onEvent({
+            type: 'flow_finished',
+            run_id: 'run-1',
+            status: 'succeeded',
+            output: { answer: 'First run finished' }
+          });
+        }
+      });
+      await act(async () => {
+        void result.current.submitPrompt('Second run');
+      });
+      let newCancellation!: Promise<void>;
+      act(() => {
+        newCancellation = result.current.stopRun();
+      });
+      const currentMessages = result.current.messages;
+      await act(async () => {
+        cancellations[0](cancellationRunDetail('run-1'));
+        await oldCancellation;
+      });
+
+      expect(result.current.activeRunId).toBe('run-2');
+      expect(result.current.status).toBe('running');
+      expect(result.current.messages).toBe(currentMessages);
+      expect(result.current.stopping).toBe(true);
+      expect(streams[1].controller.signal.aborted).toBe(false);
+
+      await act(async () => {
+        cancellations[1](
+          cancellationRunDetail(
+            'run-2',
+            'cancelled',
+            changedContext === 'application' ? 'flow-2' : 'flow-1'
+          )
+        );
+        await newCancellation;
+      });
+      expect(result.current.status).toBe('cancelled');
+      expect(result.current.stopping).toBe(false);
+    }
+  );
 });

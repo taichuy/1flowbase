@@ -4,17 +4,17 @@ impl InterfaceContract for UiManagementOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("PluginSettingsModuleAsset")),
                 ("sha256", mp::text_schema()),
                 ("media_type", mp::text_schema()),
                 ("byte_count", mp::count_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("PluginSettingsPage")),
                 (
                     "code_modules",
-                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                    mp::object_schema([("item_count", mp::count_schema())]),
                 ),
                 ("route_id", mp::text_schema()),
                 ("feature_id", mp::text_schema()),
@@ -23,7 +23,7 @@ impl InterfaceContract for UiManagementOutput {
                 ("contribution_code", mp::text_schema()),
                 (
                     "source",
-                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                    mp::object_schema([("byte_count", mp::count_schema())]),
                 ),
                 ("language", mp::text_schema()),
                 ("revision", serde_json::json!({"type":"integer"})),
@@ -33,51 +33,51 @@ impl InterfaceContract for UiManagementOutput {
                     serde_json::json!({"type":"boolean"}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Templates")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "default_template",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("provider_code",mp::text_schema()), ("contribution_code",mp::text_schema()), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("source",mp::object_schema(&[("byte_count",mp::count_schema())])), ("language",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Jsx"))]), mp::object_schema(&[("variant",mp::tag_schema("Tsx"))])])), ("version",mp::text_schema()), ("is_default",serde_json::json!({"type":"boolean"}))]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("provider_code",mp::text_schema()), ("contribution_code",mp::text_schema()), ("title",mp::object_schema([("byte_count",mp::count_schema())])), ("source",mp::object_schema([("byte_count",mp::count_schema())])), ("language",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Jsx"))]), mp::object_schema([("variant",mp::tag_schema("Tsx"))])])), ("version",mp::text_schema()), ("is_default",serde_json::json!({"type":"boolean"}))]), {"type":"null"}]}),
                         ),
                         (
                             "official",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("provider_code",mp::text_schema()), ("contribution_code",mp::text_schema()), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("source",mp::object_schema(&[("byte_count",mp::count_schema())])), ("language",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Jsx"))]), mp::object_schema(&[("variant",mp::tag_schema("Tsx"))])])), ("version",mp::text_schema()), ("is_default",serde_json::json!({"type":"boolean"}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("provider_code",mp::text_schema()), ("contribution_code",mp::text_schema()), ("title",mp::object_schema([("byte_count",mp::count_schema())])), ("source",mp::object_schema([("byte_count",mp::count_schema())])), ("language",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Jsx"))]), mp::object_schema([("variant",mp::tag_schema("Tsx"))])])), ("version",mp::text_schema()), ("is_default",serde_json::json!({"type":"boolean"}))])}),
                         ),
                         (
                             "managed",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("provider_code",mp::text_schema()), ("contribution_code",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("latest_revision",mp::object_schema(&[("revision",serde_json::json!({"type":"integer"})), ("source",mp::object_schema(&[("byte_count",mp::count_schema())])), ("language",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Jsx"))]), mp::object_schema(&[("variant",mp::tag_schema("Tsx"))])])), ("is_published",serde_json::json!({"type":"boolean"}))])), ("published_revision",serde_json::json!({"anyOf": [mp::object_schema(&[("revision",serde_json::json!({"type":"integer"})), ("source",mp::object_schema(&[("byte_count",mp::count_schema())])), ("language",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Jsx"))]), mp::object_schema(&[("variant",mp::tag_schema("Tsx"))])])), ("is_published",serde_json::json!({"type":"boolean"}))]), {"type":"null"}]})), ("is_default",serde_json::json!({"type":"boolean"})), ("owner_plugin_code",serde_json::json!({"anyOf":[mp::text_schema(),{"type":"null"}]})), ("owner_feature_id",serde_json::json!({"anyOf":[mp::text_schema(),{"type":"null"}]})), ("applied_plugin_version",serde_json::json!({"anyOf":[mp::text_schema(),{"type":"null"}]})), ("overwrite_on_plugin_upgrade",serde_json::json!({"type":"boolean"}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("provider_code",mp::text_schema()), ("contribution_code",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("latest_revision",mp::object_schema([("revision",serde_json::json!({"type":"integer"})), ("source",mp::object_schema([("byte_count",mp::count_schema())])), ("language",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Jsx"))]), mp::object_schema([("variant",mp::tag_schema("Tsx"))])])), ("is_published",serde_json::json!({"type":"boolean"}))])), ("published_revision",serde_json::json!({"anyOf": [mp::object_schema([("revision",serde_json::json!({"type":"integer"})), ("source",mp::object_schema([("byte_count",mp::count_schema())])), ("language",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Jsx"))]), mp::object_schema([("variant",mp::tag_schema("Tsx"))])])), ("is_published",serde_json::json!({"type":"boolean"}))]), {"type":"null"}]})), ("is_default",serde_json::json!({"type":"boolean"})), ("owner_plugin_code",serde_json::json!({"anyOf":[mp::text_schema(),{"type":"null"}]})), ("owner_feature_id",serde_json::json!({"anyOf":[mp::text_schema(),{"type":"null"}]})), ("applied_plugin_version",serde_json::json!({"anyOf":[mp::text_schema(),{"type":"null"}]})), ("overwrite_on_plugin_upgrade",serde_json::json!({"type":"boolean"}))])}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Template")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         ("provider_code", mp::text_schema()),
                         ("contribution_code", mp::text_schema()),
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "latest_revision",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 ("revision", serde_json::json!({"type":"integer"})),
                                 (
                                     "source",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 (
                                     "language",
                                     mp::union_schema(vec![
-                                        mp::object_schema(&[("variant", mp::tag_schema("Jsx"))]),
-                                        mp::object_schema(&[("variant", mp::tag_schema("Tsx"))]),
+                                        mp::object_schema([("variant", mp::tag_schema("Jsx"))]),
+                                        mp::object_schema([("variant", mp::tag_schema("Tsx"))]),
                                     ]),
                                 ),
                                 ("is_published", serde_json::json!({"type":"boolean"})),
@@ -85,7 +85,7 @@ impl InterfaceContract for UiManagementOutput {
                         ),
                         (
                             "published_revision",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("revision",serde_json::json!({"type":"integer"})), ("source",mp::object_schema(&[("byte_count",mp::count_schema())])), ("language",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Jsx"))]), mp::object_schema(&[("variant",mp::tag_schema("Tsx"))])])), ("is_published",serde_json::json!({"type":"boolean"}))]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("revision",serde_json::json!({"type":"integer"})), ("source",mp::object_schema([("byte_count",mp::count_schema())])), ("language",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Jsx"))]), mp::object_schema([("variant",mp::tag_schema("Tsx"))])])), ("is_published",serde_json::json!({"type":"boolean"}))]), {"type":"null"}]}),
                         ),
                         ("is_default", serde_json::json!({"type":"boolean"})),
                         (
@@ -107,45 +107,45 @@ impl InterfaceContract for UiManagementOutput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Components")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("scope_id",mp::text_schema()), ("component_code",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("import_code",mp::text_schema()), ("source_code",mp::text_schema()), ("source",mp::object_schema(&[("byte_count",mp::count_schema())])), ("group",mp::object_schema(&[("byte_count",mp::count_schema())])), ("upstream",mp::object_schema(&[("identity",mp::object_schema(&[("byte_count",mp::count_schema())])), ("version",mp::text_schema())])), ("version",mp::text_schema()), ("keywords",mp::object_schema(&[("item_count",mp::count_schema())])), ("catalog_updated_at",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("source_locator",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("source_checksum",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("scope_id",mp::text_schema()), ("component_code",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("description",mp::object_schema([("byte_count",mp::count_schema())])), ("import_code",mp::text_schema()), ("source_code",mp::text_schema()), ("source",mp::object_schema([("byte_count",mp::count_schema())])), ("group",mp::object_schema([("byte_count",mp::count_schema())])), ("upstream",mp::object_schema([("identity",mp::object_schema([("byte_count",mp::count_schema())])), ("version",mp::text_schema())])), ("version",mp::text_schema()), ("keywords",mp::object_schema([("item_count",mp::count_schema())])), ("catalog_updated_at",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("source_locator",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("source_checksum",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Component")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         ("scope_id", mp::text_schema()),
                         ("component_code", mp::text_schema()),
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "description",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("import_code", mp::text_schema()),
                         ("source_code", mp::text_schema()),
                         (
                             "source",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "group",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "upstream",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 (
                                     "identity",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 ("version", mp::text_schema()),
                             ]),
@@ -153,132 +153,132 @@ impl InterfaceContract for UiManagementOutput {
                         ("version", mp::text_schema()),
                         (
                             "keywords",
-                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                            mp::object_schema([("item_count", mp::count_schema())]),
                         ),
                         (
                             "catalog_updated_at",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "source_locator",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "source_checksum",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         ("created_at", mp::text_schema()),
                         ("updated_at", mp::text_schema()),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CatalogIndex")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("catalog_version", mp::text_schema()),
                         (
                             "generated_at",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("page_size", serde_json::json!({"type":"integer"})),
                         ("total_components", serde_json::json!({"type":"integer"})),
                         (
                             "source_fingerprint",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CatalogPage")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("catalog_version", mp::text_schema()),
                         ("total_components", serde_json::json!({"type":"integer"})),
                         ("page_size", serde_json::json!({"type":"integer"})),
                         ("page", serde_json::json!({"type":"integer"})),
                         (
                             "cursor",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "next_cursor",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "records",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("component_code",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("import_code",mp::text_schema()), ("source_code",mp::text_schema()), ("source",mp::object_schema(&[("byte_count",mp::count_schema())])), ("group",mp::object_schema(&[("byte_count",mp::count_schema())])), ("upstream",mp::object_schema(&[("identity",mp::object_schema(&[("byte_count",mp::count_schema())])), ("version",mp::text_schema())])), ("version",mp::text_schema()), ("keywords",mp::object_schema(&[("item_count",mp::count_schema())])), ("catalog_updated_at",mp::object_schema(&[("byte_count",mp::count_schema())])), ("source_locator",mp::object_schema(&[("byte_count",mp::count_schema())])), ("source_checksum",mp::object_schema(&[("byte_count",mp::count_schema())])), ("local_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("component_code",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("description",mp::object_schema([("byte_count",mp::count_schema())])), ("import_code",mp::text_schema()), ("source_code",mp::text_schema()), ("source",mp::object_schema([("byte_count",mp::count_schema())])), ("group",mp::object_schema([("byte_count",mp::count_schema())])), ("upstream",mp::object_schema([("identity",mp::object_schema([("byte_count",mp::count_schema())])), ("version",mp::text_schema())])), ("version",mp::text_schema()), ("keywords",mp::object_schema([("item_count",mp::count_schema())])), ("catalog_updated_at",mp::object_schema([("byte_count",mp::count_schema())])), ("source_locator",mp::object_schema([("byte_count",mp::count_schema())])), ("source_checksum",mp::object_schema([("byte_count",mp::count_schema())])), ("local_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}))])}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CatalogSearch")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("catalog_version", mp::text_schema()),
                         ("page", serde_json::json!({"type":"integer"})),
                         ("page_size", serde_json::json!({"type":"integer"})),
                         ("total_entries", serde_json::json!({"type":"integer"})),
                         (
                             "entries",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("component_code",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("source",mp::object_schema(&[("byte_count",mp::count_schema())])), ("group",mp::object_schema(&[("byte_count",mp::count_schema())])), ("upstream",mp::object_schema(&[("identity",mp::object_schema(&[("byte_count",mp::count_schema())])), ("version",mp::text_schema())])), ("version",mp::text_schema()), ("keywords",mp::object_schema(&[("item_count",mp::count_schema())])), ("catalog_page",serde_json::json!({"type":"integer"})), ("local_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("component_code",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("description",mp::object_schema([("byte_count",mp::count_schema())])), ("source",mp::object_schema([("byte_count",mp::count_schema())])), ("group",mp::object_schema([("byte_count",mp::count_schema())])), ("upstream",mp::object_schema([("identity",mp::object_schema([("byte_count",mp::count_schema())])), ("version",mp::text_schema())])), ("version",mp::text_schema()), ("keywords",mp::object_schema([("item_count",mp::count_schema())])), ("catalog_page",serde_json::json!({"type":"integer"})), ("local_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}))])}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CatalogUpdateStatus")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("catalog_version", mp::text_schema()),
                         (
                             "source_fingerprint",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("update_available", serde_json::json!({"type":"boolean"})),
                         (
                             "groups",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("source",mp::object_schema(&[("byte_count",mp::count_schema())])), ("group",mp::object_schema(&[("byte_count",mp::count_schema())])), ("remote_records",serde_json::json!({"type":"integer"})), ("new_or_updated_records",serde_json::json!({"type":"integer"})), ("removed_records",serde_json::json!({"type":"integer"})), ("update_available",serde_json::json!({"type":"boolean"}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("source",mp::object_schema([("byte_count",mp::count_schema())])), ("group",mp::object_schema([("byte_count",mp::count_schema())])), ("remote_records",serde_json::json!({"type":"integer"})), ("new_or_updated_records",serde_json::json!({"type":"integer"})), ("removed_records",serde_json::json!({"type":"integer"})), ("update_available",serde_json::json!({"type":"boolean"}))])}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CatalogComponent")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("component_code", mp::text_schema()),
                         (
                             "name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "description",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("import_code", mp::text_schema()),
                         ("source_code", mp::text_schema()),
                         (
                             "source",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "group",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "upstream",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 (
                                     "identity",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 ("version", mp::text_schema()),
                             ]),
@@ -286,19 +286,19 @@ impl InterfaceContract for UiManagementOutput {
                         ("version", mp::text_schema()),
                         (
                             "keywords",
-                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                            mp::object_schema([("item_count", mp::count_schema())]),
                         ),
                         (
                             "catalog_updated_at",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "source_locator",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "source_checksum",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "local_version",
@@ -307,33 +307,33 @@ impl InterfaceContract for UiManagementOutput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CatalogSync")),
                 (
                     "0",
-                    mp::object_schema(&[(
+                    mp::object_schema([(
                         "synchronized_records",
                         serde_json::json!({"type":"integer"}),
                     )]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("NoContent"))]),
+            mp::object_schema([("variant", mp::tag_schema("NoContent"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::PluginSettingsModuleAsset(asset) => mp::object_value(&[
+            Self::PluginSettingsModuleAsset(asset) => mp::object_value([
                 ("variant", serde_json::json!("PluginSettingsModuleAsset")),
                 ("sha256", mp::text(&asset.sha256)?),
                 ("media_type", mp::text(&asset.media_type)?),
                 ("byte_count", serde_json::json!(asset.bytes.len())),
             ]),
-            Self::PluginSettingsPage(page) => mp::object_value(&[
+            Self::PluginSettingsPage(page) => mp::object_value([
                 ("variant", serde_json::json!("PluginSettingsPage")),
                 (
                     "code_modules",
-                    mp::object_value(&[("item_count", serde_json::json!(page.code_modules.len()))]),
+                    mp::object_value([("item_count", serde_json::json!(page.code_modules.len()))]),
                 ),
                 ("route_id", mp::text(&page.route_id)?),
                 ("feature_id", mp::text(&page.feature_id)?),
@@ -342,7 +342,7 @@ impl InterfaceContract for UiManagementOutput {
                 ("contribution_code", mp::text(&page.contribution_code)?),
                 (
                     "source",
-                    mp::object_value(&[("byte_count", serde_json::json!(page.source.len()))]),
+                    mp::object_value([("byte_count", serde_json::json!(page.source.len()))]),
                 ),
                 ("language", mp::text(page.language.as_str())?),
                 ("revision", serde_json::json!(page.revision)),
@@ -355,27 +355,27 @@ impl InterfaceContract for UiManagementOutput {
                     serde_json::json!(page.overwrite_on_plugin_upgrade),
                 ),
             ]),
-            Self::Templates(_field_0) => mp::object_value(&[
+            Self::Templates(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Templates".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "default_template",
                             match (_field_0).default_template.as_ref() {
-                                Some(item) => mp::object_value(&[
+                                Some(item) => mp::object_value([
                                     ("provider_code", mp::text(&(item).provider_code)?),
                                     ("contribution_code", mp::text(&(item).contribution_code)?),
                                     (
                                         "title",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).title.len()),
                                         )]),
                                     ),
                                     (
                                         "source",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).source.len()),
                                         )]),
@@ -384,13 +384,13 @@ impl InterfaceContract for UiManagementOutput {
                                         "language",
                                         match &(item).language {
                                             domain::ui_management::UiCodeTemplateLanguage::Jsx => {
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "variant",
                                                     serde_json::Value::String("Jsx".to_owned()),
                                                 )])
                                             }
                                             domain::ui_management::UiCodeTemplateLanguage::Tsx => {
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "variant",
                                                     serde_json::Value::String("Tsx".to_owned()),
                                                 )])
@@ -407,22 +407,22 @@ impl InterfaceContract for UiManagementOutput {
                             if (_field_0).official.len() > 32 {
                                 return None;
                             }
-                            serde_json::Value::Array((_field_0).official.iter().map(|item| Some(mp::object_value(&[("provider_code",mp::text(&(item).provider_code)?), ("contribution_code",mp::text(&(item).contribution_code)?), ("title",mp::object_value(&[("byte_count",serde_json::json!((item).title.len()))])), ("source",mp::object_value(&[("byte_count",serde_json::json!((item).source.len()))])), ("language",match &(item).language {domain::ui_management::UiCodeTemplateLanguage::Jsx => mp::object_value(&[("variant",serde_json::Value::String("Jsx".to_owned()))]), domain::ui_management::UiCodeTemplateLanguage::Tsx => mp::object_value(&[("variant",serde_json::Value::String("Tsx".to_owned()))])}), ("version",mp::text(&(item).version)?), ("is_default",serde_json::Value::Bool((item).is_default))]))).collect::<Option<Vec<_>>>()?)
+                            serde_json::Value::Array((_field_0).official.iter().map(|item| Some(mp::object_value([("provider_code",mp::text(&(item).provider_code)?), ("contribution_code",mp::text(&(item).contribution_code)?), ("title",mp::object_value([("byte_count",serde_json::json!((item).title.len()))])), ("source",mp::object_value([("byte_count",serde_json::json!((item).source.len()))])), ("language",match &(item).language {domain::ui_management::UiCodeTemplateLanguage::Jsx => mp::object_value([("variant",serde_json::Value::String("Jsx".to_owned()))]), domain::ui_management::UiCodeTemplateLanguage::Tsx => mp::object_value([("variant",serde_json::Value::String("Tsx".to_owned()))])}), ("version",mp::text(&(item).version)?), ("is_default",serde_json::Value::Bool((item).is_default))]))).collect::<Option<Vec<_>>>()?)
                         }),
                         ("managed", {
                             if (_field_0).managed.len() > 32 {
                                 return None;
                             }
-                            serde_json::Value::Array((_field_0).managed.iter().map(|item| Some(mp::object_value(&[("id",mp::text(&(item).id)?), ("provider_code",mp::text(&(item).provider_code)?), ("contribution_code",mp::text(&(item).contribution_code)?), ("name",mp::object_value(&[("byte_count",serde_json::json!((item).name.len()))])), ("latest_revision",mp::object_value(&[("revision",serde_json::json!((item).latest_revision.revision)), ("source",mp::object_value(&[("byte_count",serde_json::json!((item).latest_revision.source.len()))])), ("language",match &(item).latest_revision.language {domain::ui_management::UiCodeTemplateLanguage::Jsx => mp::object_value(&[("variant",serde_json::Value::String("Jsx".to_owned()))]), domain::ui_management::UiCodeTemplateLanguage::Tsx => mp::object_value(&[("variant",serde_json::Value::String("Tsx".to_owned()))])}), ("is_published",serde_json::Value::Bool((item).latest_revision.is_published))])), ("published_revision",match (item).published_revision.as_ref() { Some(item) => mp::object_value(&[("revision",serde_json::json!((item).revision)), ("source",mp::object_value(&[("byte_count",serde_json::json!((item).source.len()))])), ("language",match &(item).language {domain::ui_management::UiCodeTemplateLanguage::Jsx => mp::object_value(&[("variant",serde_json::Value::String("Jsx".to_owned()))]), domain::ui_management::UiCodeTemplateLanguage::Tsx => mp::object_value(&[("variant",serde_json::Value::String("Tsx".to_owned()))])}), ("is_published",serde_json::Value::Bool((item).is_published))]), None => serde_json::Value::Null }), ("is_default",serde_json::Value::Bool((item).is_default)), ("owner_plugin_code",match (item).owner_plugin_code.as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }), ("owner_feature_id",match (item).owner_feature_id.as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }), ("applied_plugin_version",match (item).applied_plugin_version.as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }), ("overwrite_on_plugin_upgrade",serde_json::Value::Bool((item).overwrite_on_plugin_upgrade))]))).collect::<Option<Vec<_>>>()?)
+                            serde_json::Value::Array((_field_0).managed.iter().map(|item| Some(mp::object_value([("id",mp::text(&(item).id)?), ("provider_code",mp::text(&(item).provider_code)?), ("contribution_code",mp::text(&(item).contribution_code)?), ("name",mp::object_value([("byte_count",serde_json::json!((item).name.len()))])), ("latest_revision",mp::object_value([("revision",serde_json::json!((item).latest_revision.revision)), ("source",mp::object_value([("byte_count",serde_json::json!((item).latest_revision.source.len()))])), ("language",match &(item).latest_revision.language {domain::ui_management::UiCodeTemplateLanguage::Jsx => mp::object_value([("variant",serde_json::Value::String("Jsx".to_owned()))]), domain::ui_management::UiCodeTemplateLanguage::Tsx => mp::object_value([("variant",serde_json::Value::String("Tsx".to_owned()))])}), ("is_published",serde_json::Value::Bool((item).latest_revision.is_published))])), ("published_revision",match (item).published_revision.as_ref() { Some(item) => mp::object_value([("revision",serde_json::json!((item).revision)), ("source",mp::object_value([("byte_count",serde_json::json!((item).source.len()))])), ("language",match &(item).language {domain::ui_management::UiCodeTemplateLanguage::Jsx => mp::object_value([("variant",serde_json::Value::String("Jsx".to_owned()))]), domain::ui_management::UiCodeTemplateLanguage::Tsx => mp::object_value([("variant",serde_json::Value::String("Tsx".to_owned()))])}), ("is_published",serde_json::Value::Bool((item).is_published))]), None => serde_json::Value::Null }), ("is_default",serde_json::Value::Bool((item).is_default)), ("owner_plugin_code",match (item).owner_plugin_code.as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }), ("owner_feature_id",match (item).owner_feature_id.as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }), ("applied_plugin_version",match (item).applied_plugin_version.as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }), ("overwrite_on_plugin_upgrade",serde_json::Value::Bool((item).overwrite_on_plugin_upgrade))]))).collect::<Option<Vec<_>>>()?)
                         }),
                     ]),
                 ),
             ]),
-            Self::Template(_field_0) => mp::object_value(&[
+            Self::Template(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Template".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", mp::text(&(_field_0).id)?),
                         ("provider_code", mp::text(&(_field_0).provider_code)?),
                         (
@@ -431,21 +431,21 @@ impl InterfaceContract for UiManagementOutput {
                         ),
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "latest_revision",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "revision",
                                     serde_json::json!((_field_0).latest_revision.revision),
                                 ),
                                 (
                                     "source",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0).latest_revision.source.len()),
                                     )]),
@@ -454,13 +454,13 @@ impl InterfaceContract for UiManagementOutput {
                                     "language",
                                     match &(_field_0).latest_revision.language {
                                         domain::ui_management::UiCodeTemplateLanguage::Jsx => {
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "variant",
                                                 serde_json::Value::String("Jsx".to_owned()),
                                             )])
                                         }
                                         domain::ui_management::UiCodeTemplateLanguage::Tsx => {
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "variant",
                                                 serde_json::Value::String("Tsx".to_owned()),
                                             )])
@@ -478,11 +478,11 @@ impl InterfaceContract for UiManagementOutput {
                         (
                             "published_revision",
                             match (_field_0).published_revision.as_ref() {
-                                Some(item) => mp::object_value(&[
+                                Some(item) => mp::object_value([
                                     ("revision", serde_json::json!((item).revision)),
                                     (
                                         "source",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).source.len()),
                                         )]),
@@ -491,13 +491,13 @@ impl InterfaceContract for UiManagementOutput {
                                         "language",
                                         match &(item).language {
                                             domain::ui_management::UiCodeTemplateLanguage::Jsx => {
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "variant",
                                                     serde_json::Value::String("Jsx".to_owned()),
                                                 )])
                                             }
                                             domain::ui_management::UiCodeTemplateLanguage::Tsx => {
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "variant",
                                                     serde_json::Value::String("Tsx".to_owned()),
                                                 )])
@@ -538,7 +538,7 @@ impl InterfaceContract for UiManagementOutput {
                     ]),
                 ),
             ]),
-            Self::Components(_field_0) => mp::object_value(&[
+            Self::Components(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("Components".to_owned()),
@@ -551,20 +551,20 @@ impl InterfaceContract for UiManagementOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("id", mp::text(&(item).id)?),
                                     ("scope_id", mp::text(&(item).scope_id)?),
                                     ("component_code", mp::text(&(item).component_code)?),
                                     (
                                         "name",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).name.len()),
                                         )]),
                                     ),
                                     (
                                         "description",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).description.len()),
                                         )]),
@@ -573,24 +573,24 @@ impl InterfaceContract for UiManagementOutput {
                                     ("source_code", mp::text(&(item).source_code)?),
                                     (
                                         "source",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).source.len()),
                                         )]),
                                     ),
                                     (
                                         "group",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).group.len()),
                                         )]),
                                     ),
                                     (
                                         "upstream",
-                                        mp::object_value(&[
+                                        mp::object_value([
                                             (
                                                 "identity",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item)
                                                         .upstream
@@ -604,7 +604,7 @@ impl InterfaceContract for UiManagementOutput {
                                     ("version", mp::text(&(item).version)?),
                                     (
                                         "keywords",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "item_count",
                                             serde_json::json!((item).keywords.len()),
                                         )]),
@@ -612,7 +612,7 @@ impl InterfaceContract for UiManagementOutput {
                                     (
                                         "catalog_updated_at",
                                         match (item).catalog_updated_at.as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -622,7 +622,7 @@ impl InterfaceContract for UiManagementOutput {
                                     (
                                         "source_locator",
                                         match (item).source_locator.as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -632,7 +632,7 @@ impl InterfaceContract for UiManagementOutput {
                                     (
                                         "source_checksum",
                                         match (item).source_checksum.as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -647,24 +647,24 @@ impl InterfaceContract for UiManagementOutput {
                     )
                 }),
             ]),
-            Self::Component(_field_0) => mp::object_value(&[
+            Self::Component(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Component".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", mp::text(&(_field_0).id)?),
                         ("scope_id", mp::text(&(_field_0).scope_id)?),
                         ("component_code", mp::text(&(_field_0).component_code)?),
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "description",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).description.len()),
                             )]),
@@ -673,24 +673,24 @@ impl InterfaceContract for UiManagementOutput {
                         ("source_code", mp::text(&(_field_0).source_code)?),
                         (
                             "source",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).source.len()),
                             )]),
                         ),
                         (
                             "group",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).group.len()),
                             )]),
                         ),
                         (
                             "upstream",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "identity",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0).upstream.identity.len()),
                                     )]),
@@ -701,7 +701,7 @@ impl InterfaceContract for UiManagementOutput {
                         ("version", mp::text(&(_field_0).version)?),
                         (
                             "keywords",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).keywords.len()),
                             )]),
@@ -709,7 +709,7 @@ impl InterfaceContract for UiManagementOutput {
                         (
                             "catalog_updated_at",
                             match (_field_0).catalog_updated_at.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -719,7 +719,7 @@ impl InterfaceContract for UiManagementOutput {
                         (
                             "source_locator",
                             match (_field_0).source_locator.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -729,7 +729,7 @@ impl InterfaceContract for UiManagementOutput {
                         (
                             "source_checksum",
                             match (_field_0).source_checksum.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -741,18 +741,18 @@ impl InterfaceContract for UiManagementOutput {
                     ]),
                 ),
             ]),
-            Self::CatalogIndex(_field_0) => mp::object_value(&[
+            Self::CatalogIndex(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CatalogIndex".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("catalog_version", mp::text(&(_field_0).catalog_version)?),
                         (
                             "generated_at",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).generated_at.len()),
                             )]),
@@ -764,7 +764,7 @@ impl InterfaceContract for UiManagementOutput {
                         ),
                         (
                             "source_fingerprint",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).source_fingerprint.len()),
                             )]),
@@ -772,14 +772,14 @@ impl InterfaceContract for UiManagementOutput {
                     ]),
                 ),
             ]),
-            Self::CatalogPage(_field_0) => mp::object_value(&[
+            Self::CatalogPage(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CatalogPage".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("catalog_version", mp::text(&(_field_0).catalog_version)?),
                         (
                             "total_components",
@@ -789,7 +789,7 @@ impl InterfaceContract for UiManagementOutput {
                         ("page", serde_json::json!((_field_0).page)),
                         (
                             "cursor",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).cursor.len()),
                             )]),
@@ -797,7 +797,7 @@ impl InterfaceContract for UiManagementOutput {
                         (
                             "next_cursor",
                             match (_field_0).next_cursor.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -813,18 +813,18 @@ impl InterfaceContract for UiManagementOutput {
                                     .records
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("component_code", mp::text(&(item).component_code)?),
                                             (
                                                 "name",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "description",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).description.len()),
                                                 )]),
@@ -833,24 +833,24 @@ impl InterfaceContract for UiManagementOutput {
                                             ("source_code", mp::text(&(item).source_code)?),
                                             (
                                                 "source",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).source.len()),
                                                 )]),
                                             ),
                                             (
                                                 "group",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).group.len()),
                                                 )]),
                                             ),
                                             (
                                                 "upstream",
-                                                mp::object_value(&[
+                                                mp::object_value([
                                                     (
                                                         "identity",
-                                                        mp::object_value(&[(
+                                                        mp::object_value([(
                                                             "byte_count",
                                                             serde_json::json!((item)
                                                                 .upstream
@@ -867,14 +867,14 @@ impl InterfaceContract for UiManagementOutput {
                                             ("version", mp::text(&(item).version)?),
                                             (
                                                 "keywords",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item).keywords.len()),
                                                 )]),
                                             ),
                                             (
                                                 "catalog_updated_at",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item)
                                                         .catalog_updated_at
@@ -883,14 +883,14 @@ impl InterfaceContract for UiManagementOutput {
                                             ),
                                             (
                                                 "source_locator",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).source_locator.len()),
                                                 )]),
                                             ),
                                             (
                                                 "source_checksum",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).source_checksum.len()),
                                                 )]),
@@ -910,14 +910,14 @@ impl InterfaceContract for UiManagementOutput {
                     ]),
                 ),
             ]),
-            Self::CatalogSearch(_field_0) => mp::object_value(&[
+            Self::CatalogSearch(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CatalogSearch".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("catalog_version", mp::text(&(_field_0).catalog_version)?),
                         ("page", serde_json::json!((_field_0).page)),
                         ("page_size", serde_json::json!((_field_0).page_size)),
@@ -931,42 +931,42 @@ impl InterfaceContract for UiManagementOutput {
                                     .entries
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("component_code", mp::text(&(item).component_code)?),
                                             (
                                                 "name",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "description",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).description.len()),
                                                 )]),
                                             ),
                                             (
                                                 "source",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).source.len()),
                                                 )]),
                                             ),
                                             (
                                                 "group",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).group.len()),
                                                 )]),
                                             ),
                                             (
                                                 "upstream",
-                                                mp::object_value(&[
+                                                mp::object_value([
                                                     (
                                                         "identity",
-                                                        mp::object_value(&[(
+                                                        mp::object_value([(
                                                             "byte_count",
                                                             serde_json::json!((item)
                                                                 .upstream
@@ -983,7 +983,7 @@ impl InterfaceContract for UiManagementOutput {
                                             ("version", mp::text(&(item).version)?),
                                             (
                                                 "keywords",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item).keywords.len()),
                                                 )]),
@@ -1007,18 +1007,18 @@ impl InterfaceContract for UiManagementOutput {
                     ]),
                 ),
             ]),
-            Self::CatalogUpdateStatus(_field_0) => mp::object_value(&[
+            Self::CatalogUpdateStatus(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CatalogUpdateStatus".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("catalog_version", mp::text(&(_field_0).catalog_version)?),
                         (
                             "source_fingerprint",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).source_fingerprint.len()),
                             )]),
@@ -1036,17 +1036,17 @@ impl InterfaceContract for UiManagementOutput {
                                     .groups
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             (
                                                 "source",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).source.len()),
                                                 )]),
                                             ),
                                             (
                                                 "group",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).group.len()),
                                                 )]),
@@ -1075,25 +1075,25 @@ impl InterfaceContract for UiManagementOutput {
                     ]),
                 ),
             ]),
-            Self::CatalogComponent(_field_0) => mp::object_value(&[
+            Self::CatalogComponent(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CatalogComponent".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("component_code", mp::text(&(_field_0).component_code)?),
                         (
                             "name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "description",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).description.len()),
                             )]),
@@ -1102,24 +1102,24 @@ impl InterfaceContract for UiManagementOutput {
                         ("source_code", mp::text(&(_field_0).source_code)?),
                         (
                             "source",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).source.len()),
                             )]),
                         ),
                         (
                             "group",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).group.len()),
                             )]),
                         ),
                         (
                             "upstream",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "identity",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0).upstream.identity.len()),
                                     )]),
@@ -1130,28 +1130,28 @@ impl InterfaceContract for UiManagementOutput {
                         ("version", mp::text(&(_field_0).version)?),
                         (
                             "keywords",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).keywords.len()),
                             )]),
                         ),
                         (
                             "catalog_updated_at",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).catalog_updated_at.len()),
                             )]),
                         ),
                         (
                             "source_locator",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).source_locator.len()),
                             )]),
                         ),
                         (
                             "source_checksum",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).source_checksum.len()),
                             )]),
@@ -1166,21 +1166,21 @@ impl InterfaceContract for UiManagementOutput {
                     ]),
                 ),
             ]),
-            Self::CatalogSync(_field_0) => mp::object_value(&[
+            Self::CatalogSync(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CatalogSync".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "synchronized_records",
                         serde_json::json!((_field_0).synchronized_records),
                     )]),
                 ),
             ]),
             Self::NoContent => {
-                mp::object_value(&[("variant", serde_json::Value::String("NoContent".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("NoContent".to_owned()))])
             }
         })
     }

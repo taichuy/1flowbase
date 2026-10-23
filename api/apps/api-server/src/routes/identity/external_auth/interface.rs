@@ -107,10 +107,10 @@ macro_rules! opaque_contract {
             const CONTRACT_ID: &'static str = $id;
             const CONTRACT_VERSION: &'static str = "1";
             fn managed_projection_schema() -> Option<serde_json::Value> {
-                Some(crate::extension_bus::managed_projection::object_schema(&[]))
+                Some(crate::extension_bus::managed_projection::object_schema([]))
             }
             fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
-                Some(crate::extension_bus::managed_projection::object_value(&[]))
+                Some(crate::extension_bus::managed_projection::object_value([]))
             }
         }
     };
@@ -123,11 +123,11 @@ impl InterfaceContract for AuthorizeInput {
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[("login_entry_id", mp::text_schema())]))
+        Some(mp::object_schema([("login_entry_id", mp::text_schema())]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "login_entry_id",
             mp::text(&self.0.to_string())?,
         )]))
@@ -138,16 +138,16 @@ impl InterfaceContract for AuthorizeOutput {
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "authorization_url",
-            mp::object_schema(&[("byte_count", mp::count_schema())]),
+            mp::object_schema([("byte_count", mp::count_schema())]),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "authorization_url",
-            mp::object_value(&[(
+            mp::object_value([(
                 "byte_count",
                 serde_json::json!(self.authorization_url.len()),
             )]),
@@ -158,15 +158,13 @@ impl InterfaceContract for TargetError {
     const CONTRACT_ID: &'static str = "external-auth-error";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<serde_json::Value> {
-        Some(crate::extension_bus::managed_projection::object_schema(&[
-            (
-                "kind",
-                crate::extension_bus::managed_projection::tag_schema("ExternalAuthTargetError"),
-            ),
-        ]))
+        Some(crate::extension_bus::managed_projection::object_schema([(
+            "kind",
+            crate::extension_bus::managed_projection::tag_schema("ExternalAuthTargetError"),
+        )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
-        Some(crate::extension_bus::managed_projection::object_value(&[(
+        Some(crate::extension_bus::managed_projection::object_value([(
             "kind",
             serde_json::json!("ExternalAuthTargetError"),
         )]))

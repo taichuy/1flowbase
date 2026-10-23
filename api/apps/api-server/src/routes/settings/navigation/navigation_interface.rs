@@ -21,7 +21,7 @@ pub(crate) enum ConsoleNavigationInput {
 impl InterfaceContract for ConsoleNavigationInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::union_schema(vec![mp::object_schema(&[(
+        Some(mp::union_schema(vec![mp::object_schema([(
             "variant",
             mp::tag_schema("Get"),
         )])]))
@@ -30,7 +30,7 @@ impl InterfaceContract for ConsoleNavigationInput {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
             Self::Get => {
-                mp::object_value(&[("variant", serde_json::Value::String("Get".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("Get".to_owned()))])
             }
         })
     }
@@ -46,22 +46,22 @@ pub(crate) enum ConsoleNavigationOutput {
 impl InterfaceContract for ConsoleNavigationOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::union_schema(vec![mp::object_schema(&[
+        Some(mp::union_schema(vec![mp::object_schema([
             ("variant", mp::tag_schema("Navigation")),
             (
                 "0",
-                mp::object_schema(&[
+                mp::object_schema([
                     (
                         "route_definitions",
-                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("route_id",mp::text_schema()), ("surface_key",mp::object_schema(&[("byte_count",mp::count_schema())])), ("path",mp::object_schema(&[("byte_count",mp::count_schema())])), ("surface_kind",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("route_id",mp::text_schema()), ("surface_key",mp::object_schema([("byte_count",mp::count_schema())])), ("path",mp::object_schema([("byte_count",mp::count_schema())])), ("surface_kind",mp::object_schema([("byte_count",mp::count_schema())]))])}),
                     ),
                     (
                         "navigation_items",
-                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("item_id",mp::text_schema()), ("route_id",mp::text_schema()), ("parent_item_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("label_key",mp::object_schema(&[("byte_count",mp::count_schema())])), ("navigation_slot",mp::object_schema(&[("byte_count",mp::count_schema())])), ("order",serde_json::json!({"type":"integer"}))])}),
+                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("item_id",mp::text_schema()), ("route_id",mp::text_schema()), ("parent_item_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("label_key",mp::object_schema([("byte_count",mp::count_schema())])), ("navigation_slot",mp::object_schema([("byte_count",mp::count_schema())])), ("order",serde_json::json!({"type":"integer"}))])}),
                     ),
                     (
                         "permission_bindings",
-                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("binding_id",mp::text_schema()), ("route_id",mp::text_schema()), ("permission_codes",mp::object_schema(&[("item_count",mp::count_schema())])), ("requirement",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("binding_id",mp::text_schema()), ("route_id",mp::text_schema()), ("permission_codes",mp::object_schema([("item_count",mp::count_schema())])), ("requirement",mp::object_schema([("byte_count",mp::count_schema())]))])}),
                     ),
                 ]),
             ),
@@ -70,14 +70,14 @@ impl InterfaceContract for ConsoleNavigationOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Navigation(_field_0) => mp::object_value(&[
+            Self::Navigation(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("Navigation".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("route_definitions", {
                             if (_field_0).route_definitions.len() > 32 {
                                 return None;
@@ -87,25 +87,25 @@ impl InterfaceContract for ConsoleNavigationOutput {
                                     .route_definitions
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("route_id", mp::text(&(item).route_id)?),
                                             (
                                                 "surface_key",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).surface_key.len()),
                                                 )]),
                                             ),
                                             (
                                                 "path",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).path.len()),
                                                 )]),
                                             ),
                                             (
                                                 "surface_kind",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).surface_kind.len()),
                                                 )]),
@@ -124,7 +124,7 @@ impl InterfaceContract for ConsoleNavigationOutput {
                                     .navigation_items
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("item_id", mp::text(&(item).item_id)?),
                                             ("route_id", mp::text(&(item).route_id)?),
                                             (
@@ -136,14 +136,14 @@ impl InterfaceContract for ConsoleNavigationOutput {
                                             ),
                                             (
                                                 "label_key",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).label_key.len()),
                                                 )]),
                                             ),
                                             (
                                                 "navigation_slot",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).navigation_slot.len()),
                                                 )]),
@@ -163,12 +163,12 @@ impl InterfaceContract for ConsoleNavigationOutput {
                                     .permission_bindings
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("binding_id", mp::text(&(item).binding_id)?),
                                             ("route_id", mp::text(&(item).route_id)?),
                                             (
                                                 "permission_codes",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item)
                                                         .permission_codes
@@ -177,7 +177,7 @@ impl InterfaceContract for ConsoleNavigationOutput {
                                             ),
                                             (
                                                 "requirement",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).requirement.len()),
                                                 )]),

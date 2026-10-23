@@ -5,7 +5,7 @@ impl InterfaceContract for ExchangeInput {
     const CONTRACT_ID: &'static str = "console-application-log-exchange-input";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             ("application_id", mp::text_schema()),
             ("action", mp::text_schema()),
             (
@@ -30,7 +30,7 @@ impl InterfaceContract for ExchangeOutput {
     const CONTRACT_ID: &'static str = "console-application-log-exchange-output";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             ("action", mp::text_schema()),
             (
                 "records",

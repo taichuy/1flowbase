@@ -59,30 +59,30 @@ impl InterfaceContract for FileTablesInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[("variant", mp::tag_schema("List"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("List"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("Create")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("bound_storage_id", nullable_storage_id_schema()),
                         ("code", mp::text_schema()),
                         (
                             "title",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Bind")),
                 ("file_table_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[("bound_storage_id", nullable_storage_id_schema())]),
+                    mp::object_schema([("bound_storage_id", nullable_storage_id_schema())]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Delete")),
                 ("file_table_id", mp::text_schema()),
             ]),
@@ -92,13 +92,13 @@ impl InterfaceContract for FileTablesInput {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
             Self::List { .. } => {
-                mp::object_value(&[("variant", serde_json::Value::String("List".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("List".to_owned()))])
             }
-            Self::Create(_field_0) => mp::object_value(&[
+            Self::Create(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Create".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "bound_storage_id",
                             storage_id_projection(&(_field_0).bound_storage_id)?,
@@ -106,7 +106,7 @@ impl InterfaceContract for FileTablesInput {
                         ("code", mp::text(&(_field_0).code)?),
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).title.len()),
                             )]),
@@ -118,12 +118,12 @@ impl InterfaceContract for FileTablesInput {
                 file_table_id: _field_file_table_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Bind".to_owned())),
                 ("file_table_id", mp::text(_field_file_table_id)?),
                 (
                     "body",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "bound_storage_id",
                         storage_id_projection(&(_field_body).bound_storage_id)?,
                     )]),
@@ -132,7 +132,7 @@ impl InterfaceContract for FileTablesInput {
             Self::Delete {
                 file_table_id: _field_file_table_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Delete".to_owned())),
                 ("file_table_id", mp::text(_field_file_table_id)?),
             ]),
@@ -153,34 +153,34 @@ impl InterfaceContract for FileTablesOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("List")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("code",mp::text_schema()), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("scope_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("scope_id",mp::text_schema()), ("model_definition_id",mp::text_schema()), ("bound_storage_id",nullable_storage_id_schema()), ("bound_storage_title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("is_builtin",serde_json::json!({"type":"boolean"})), ("is_default",serde_json::json!({"type":"boolean"})), ("status",mp::text_schema())])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("code",mp::text_schema()), ("title",mp::object_schema([("byte_count",mp::count_schema())])), ("scope_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("scope_id",mp::text_schema()), ("model_definition_id",mp::text_schema()), ("bound_storage_id",nullable_storage_id_schema()), ("bound_storage_title",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("is_builtin",serde_json::json!({"type":"boolean"})), ("is_default",serde_json::json!({"type":"boolean"})), ("status",mp::text_schema())])}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Item")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         ("code", mp::text_schema()),
                         (
                             "title",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "scope_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("scope_id", mp::text_schema()),
                         ("model_definition_id", mp::text_schema()),
                         ("bound_storage_id", nullable_storage_id_schema()),
                         (
                             "bound_storage_title",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         ("is_builtin", serde_json::json!({"type":"boolean"})),
                         ("is_default", serde_json::json!({"type":"boolean"})),
@@ -188,13 +188,13 @@ impl InterfaceContract for FileTablesOutput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("Deleted"))]),
+            mp::object_schema([("variant", mp::tag_schema("Deleted"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::List(_field_0) => mp::object_value(&[
+            Self::List(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("List".to_owned())),
                 ("0", {
                     if (_field_0).len() > 32 {
@@ -204,19 +204,19 @@ impl InterfaceContract for FileTablesOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("id", mp::text(&(item).id)?),
                                     ("code", mp::text(&(item).code)?),
                                     (
                                         "title",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).title.len()),
                                         )]),
                                     ),
                                     (
                                         "scope_kind",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).scope_kind.len()),
                                         )]),
@@ -233,7 +233,7 @@ impl InterfaceContract for FileTablesOutput {
                                     (
                                         "bound_storage_title",
                                         match (item).bound_storage_title.as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -249,23 +249,23 @@ impl InterfaceContract for FileTablesOutput {
                     )
                 }),
             ]),
-            Self::Item(_field_0) => mp::object_value(&[
+            Self::Item(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Item".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", mp::text(&(_field_0).id)?),
                         ("code", mp::text(&(_field_0).code)?),
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).title.len()),
                             )]),
                         ),
                         (
                             "scope_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).scope_kind.len()),
                             )]),
@@ -282,7 +282,7 @@ impl InterfaceContract for FileTablesOutput {
                         (
                             "bound_storage_title",
                             match (_field_0).bound_storage_title.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -296,7 +296,7 @@ impl InterfaceContract for FileTablesOutput {
                 ),
             ]),
             Self::Deleted => {
-                mp::object_value(&[("variant", serde_json::Value::String("Deleted".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("Deleted".to_owned()))])
             }
         })
     }

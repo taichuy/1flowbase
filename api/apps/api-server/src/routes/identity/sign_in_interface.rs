@@ -30,16 +30,16 @@ pub(crate) struct PublicSignInInput(pub(crate) LoginCommand);
 impl InterfaceContract for PublicSignInInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "0",
-            mp::object_schema(&[("login_entry_id", mp::text_schema())]),
+            mp::object_schema([("login_entry_id", mp::text_schema())]),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "0",
-            mp::object_value(&[(
+            mp::object_value([(
                 "login_entry_id",
                 serde_json::Value::String((self).0.login_entry_id.to_string()),
             )]),
@@ -55,22 +55,22 @@ pub(crate) struct PublicSignInOutput(pub(crate) LoginResult);
 impl InterfaceContract for PublicSignInOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "0",
-            mp::object_schema(&[(
+            mp::object_schema([(
                 "actor",
-                mp::object_schema(&[
+                mp::object_schema([
                     ("user_id", mp::text_schema()),
                     ("tenant_id", mp::text_schema()),
                     ("current_workspace_id", mp::text_schema()),
                     (
                         "effective_display_role",
-                        mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        mp::object_schema([("byte_count", mp::count_schema())]),
                     ),
                     ("is_root", serde_json::json!({"type":"boolean"})),
                     (
                         "permissions",
-                        mp::object_schema(&[("item_count", mp::count_schema())]),
+                        mp::object_schema([("item_count", mp::count_schema())]),
                     ),
                 ]),
             )]),
@@ -78,11 +78,11 @@ impl InterfaceContract for PublicSignInOutput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "0",
-            mp::object_value(&[(
+            mp::object_value([(
                 "actor",
-                mp::object_value(&[
+                mp::object_value([
                     (
                         "user_id",
                         serde_json::Value::String((self).0.actor.user_id.to_string()),
@@ -97,7 +97,7 @@ impl InterfaceContract for PublicSignInOutput {
                     ),
                     (
                         "effective_display_role",
-                        mp::object_value(&[(
+                        mp::object_value([(
                             "byte_count",
                             serde_json::json!((self).0.actor.effective_display_role.len()),
                         )]),
@@ -105,7 +105,7 @@ impl InterfaceContract for PublicSignInOutput {
                     ("is_root", serde_json::Value::Bool((self).0.actor.is_root)),
                     (
                         "permissions",
-                        mp::object_value(&[(
+                        mp::object_value([(
                             "item_count",
                             serde_json::json!((self).0.actor.permissions.len()),
                         )]),
@@ -124,14 +124,14 @@ pub(crate) struct PublicSignInTargetError(pub(crate) ApiError);
 impl InterfaceContract for PublicSignInTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "kind",
             mp::tag_schema("PublicSignInTargetError"),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "kind",
             serde_json::Value::String("PublicSignInTargetError".to_owned()),
         )]))

@@ -52,8 +52,8 @@ impl InterfaceContract for SystemInterfaceInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[("variant", mp::tag_schema("ReleaseStatus"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("ReleaseStatus"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("RuntimeProfile")),
                 (
                     "query_locale",
@@ -61,15 +61,15 @@ impl InterfaceContract for SystemInterfaceInput {
                 ),
                 (
                     "explicit_header_locale",
-                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                 ),
                 (
                     "accept_language",
-                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("ProcessList"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("ProcessList"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("TerminateProcess")),
                 ("pid", serde_json::json!({"type":"integer"})),
             ]),
@@ -78,7 +78,7 @@ impl InterfaceContract for SystemInterfaceInput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::ReleaseStatus => mp::object_value(&[(
+            Self::ReleaseStatus => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ReleaseStatus".to_owned()),
             )]),
@@ -87,7 +87,7 @@ impl InterfaceContract for SystemInterfaceInput {
                 explicit_header_locale: _field_explicit_header_locale,
                 accept_language: _field_accept_language,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("RuntimeProfile".to_owned()),
@@ -103,7 +103,7 @@ impl InterfaceContract for SystemInterfaceInput {
                     "explicit_header_locale",
                     match (_field_explicit_header_locale).as_ref() {
                         Some(item) => {
-                            mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                            mp::object_value([("byte_count", serde_json::json!((item).len()))])
                         }
                         None => serde_json::Value::Null,
                     },
@@ -112,17 +112,17 @@ impl InterfaceContract for SystemInterfaceInput {
                     "accept_language",
                     match (_field_accept_language).as_ref() {
                         Some(item) => {
-                            mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                            mp::object_value([("byte_count", serde_json::json!((item).len()))])
                         }
                         None => serde_json::Value::Null,
                     },
                 ),
             ]),
-            Self::ProcessList => mp::object_value(&[(
+            Self::ProcessList => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ProcessList".to_owned()),
             )]),
-            Self::TerminateProcess { pid: _field_pid } => mp::object_value(&[
+            Self::TerminateProcess { pid: _field_pid } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("TerminateProcess".to_owned()),

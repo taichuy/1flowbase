@@ -4,58 +4,58 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[("variant", mp::tag_schema("LogQuery"))]),
-            mp::object_schema(&[("variant", mp::tag_schema("RecordRead"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("LogQuery"))]),
+            mp::object_schema([("variant", mp::tag_schema("RecordRead"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("WorkflowTrajectoryPage")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("WorkflowTrajectoryBody")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ClientTrajectoryPage")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ClientTrajectorySection")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("RunTrajectoryPage")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("RunPayload")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
                 ("section", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("TrajectoryPage")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
                 ("node_run_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("TrajectoryBody")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
                 ("node_run_id", mp::text_schema()),
                 ("event_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ListRuns")),
                 ("application_id", mp::text_schema()),
                 (
                     "query",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "page",
                             serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
@@ -70,37 +70,37 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         ),
                         (
                             "sort_by",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "sort_order",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "cache_mode",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ListConversationMessages")),
                 ("application_id", mp::text_schema()),
                 ("conversation_id", mp::text_schema()),
                 (
                     "query",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "around_run_id",
                             serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
                         ),
                         (
                             "before",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "after",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "limit",
@@ -109,24 +109,24 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ListRunConversationMessages")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
                 (
                     "query",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "around_run_id",
                             serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
                         ),
                         (
                             "before",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "after",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "limit",
@@ -135,23 +135,23 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("GetRunOverview")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("GetTraceTree")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("GetTraceChildren")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
                 (
                     "query",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("parent_trace_node_id", mp::text_schema()),
                         (
                             "page_size",
@@ -159,40 +159,40 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         ),
                         (
                             "cursor",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("GetResumeTimeline")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("GetResumeTimelineSummary")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("GetRunNodeLastRun")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
                 ("node_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("GetMonitoringReport")),
                 ("application_id", mp::text_schema()),
                 (
                     "query",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "from",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "to",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "time_range_days",
@@ -200,22 +200,22 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         ),
                         (
                             "bucket",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("GetRuntimeActivity")),
                 ("application_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("GetRuntimeDebugStream")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
                 (
                     "query",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "from_sequence",
                             serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
@@ -227,7 +227,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("GetNodeLastRun")),
                 ("application_id", mp::text_schema()),
                 ("node_id", mp::text_schema()),
@@ -244,7 +244,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
             | Self::QueryConversationTrajectory { .. }
             | Self::ConversationTrajectorySection { .. }
             | Self::QueryRecordTrajectory { .. } => {
-                mp::object_value(&[("variant", serde_json::json!("LogQuery"))])
+                mp::object_value([("variant", serde_json::json!("LogQuery"))])
             }
             Self::RecordTraceTree { .. }
             | Self::RecordTraceChildren { .. }
@@ -252,13 +252,13 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
             | Self::GetRecord { .. }
             | Self::RecordClientTrajectoryPage { .. }
             | Self::RecordClientTrajectorySection { .. } => {
-                mp::object_value(&[("variant", serde_json::json!("RecordRead"))])
+                mp::object_value([("variant", serde_json::json!("RecordRead"))])
             }
             Self::WorkflowTrajectoryPage {
                 application_id,
                 run_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::json!("WorkflowTrajectoryPage")),
                 ("application_id", serde_json::json!(application_id)),
                 ("run_id", serde_json::json!(run_id)),
@@ -267,7 +267,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 application_id,
                 run_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::json!("WorkflowTrajectoryBody")),
                 ("application_id", serde_json::json!(application_id)),
                 ("run_id", serde_json::json!(run_id)),
@@ -277,7 +277,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 application_id,
                 run_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::json!("ClientTrajectoryPage")),
                 ("application_id", serde_json::json!(application_id)),
                 ("run_id", serde_json::json!(run_id)),
@@ -286,7 +286,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 application_id,
                 run_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::json!("ClientTrajectorySection")),
                 ("application_id", serde_json::json!(application_id)),
                 ("run_id", serde_json::json!(run_id)),
@@ -327,7 +327,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 application_id: _field_application_id,
                 query: _field_query,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("ListRuns".to_owned())),
                 (
                     "application_id",
@@ -335,7 +335,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 ),
                 (
                     "query",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "page",
                             match (_field_query).page.as_ref() {
@@ -360,7 +360,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         (
                             "sort_by",
                             match (_field_query).sort_by.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -370,7 +370,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         (
                             "sort_order",
                             match (_field_query).sort_order.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -380,7 +380,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         (
                             "cache_mode",
                             match (_field_query).cache_mode.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -395,7 +395,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 conversation_id: _field_conversation_id,
                 query: _field_query,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ListConversationMessages".to_owned()),
@@ -407,7 +407,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 ("conversation_id", mp::text(_field_conversation_id)?),
                 (
                     "query",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "around_run_id",
                             match (_field_query).around_run_id.as_ref() {
@@ -418,7 +418,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         (
                             "before",
                             match (_field_query).before.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -428,7 +428,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         (
                             "after",
                             match (_field_query).after.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -450,7 +450,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 run_id: _field_run_id,
                 query: _field_query,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ListRunConversationMessages".to_owned()),
@@ -465,7 +465,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 ),
                 (
                     "query",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "around_run_id",
                             match (_field_query).around_run_id.as_ref() {
@@ -476,7 +476,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         (
                             "before",
                             match (_field_query).before.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -486,7 +486,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         (
                             "after",
                             match (_field_query).after.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -507,7 +507,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 application_id: _field_application_id,
                 run_id: _field_run_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("GetRunOverview".to_owned()),
@@ -525,7 +525,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 application_id: _field_application_id,
                 run_id: _field_run_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("GetTraceTree".to_owned()),
@@ -544,7 +544,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 run_id: _field_run_id,
                 query: _field_query,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("GetTraceChildren".to_owned()),
@@ -559,7 +559,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 ),
                 (
                     "query",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "parent_trace_node_id",
                             mp::text(&(_field_query).parent_trace_node_id)?,
@@ -574,7 +574,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         (
                             "cursor",
                             match (_field_query).cursor.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -588,7 +588,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 application_id: _field_application_id,
                 run_id: _field_run_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("GetResumeTimeline".to_owned()),
@@ -606,7 +606,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 application_id: _field_application_id,
                 run_id: _field_run_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("GetResumeTimelineSummary".to_owned()),
@@ -625,7 +625,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 run_id: _field_run_id,
                 node_id: _field_node_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("GetRunNodeLastRun".to_owned()),
@@ -644,7 +644,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 application_id: _field_application_id,
                 query: _field_query,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("GetMonitoringReport".to_owned()),
@@ -655,11 +655,11 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 ),
                 (
                     "query",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "from",
                             match (_field_query).from.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -669,7 +669,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         (
                             "to",
                             match (_field_query).to.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -686,7 +686,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         (
                             "bucket",
                             match (_field_query).bucket.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -699,7 +699,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
             Self::GetRuntimeActivity {
                 application_id: _field_application_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("GetRuntimeActivity".to_owned()),
@@ -714,7 +714,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 run_id: _field_run_id,
                 query: _field_query,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("GetRuntimeDebugStream".to_owned()),
@@ -729,7 +729,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 ),
                 (
                     "query",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "from_sequence",
                             match (_field_query).from_sequence.as_ref() {
@@ -751,7 +751,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                 application_id: _field_application_id,
                 node_id: _field_node_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("GetNodeLastRun".to_owned()),

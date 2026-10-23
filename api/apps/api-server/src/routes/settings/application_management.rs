@@ -70,14 +70,14 @@ pub struct ApplicationManagementPageResponse {
 impl InterfaceContract for ApplicationManagementQueryParams {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             (
                 "filter",
-                serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
             ),
             (
                 "sort",
-                serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
             ),
             (
                 "page",
@@ -91,12 +91,12 @@ impl InterfaceContract for ApplicationManagementQueryParams {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[
+        Some(mp::object_value([
             (
                 "filter",
                 match (self).filter.as_ref() {
                     Some(item) => {
-                        mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                        mp::object_value([("byte_count", serde_json::json!((item).len()))])
                     }
                     None => serde_json::Value::Null,
                 },
@@ -105,7 +105,7 @@ impl InterfaceContract for ApplicationManagementQueryParams {
                 "sort",
                 match (self).sort.as_ref() {
                     Some(item) => {
-                        mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                        mp::object_value([("byte_count", serde_json::json!((item).len()))])
                     }
                     None => serde_json::Value::Null,
                 },
@@ -133,10 +133,10 @@ impl InterfaceContract for ApplicationManagementQueryParams {
 impl InterfaceContract for ApplicationManagementPageResponse {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             (
                 "items",
-                serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("application_type",mp::text_schema()), ("workflow_trigger_type",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("icon",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("icon_type",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("icon_background",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_by",mp::object_schema(&[("byte_count",mp::count_schema())])), ("created_by_display_name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema()), ("tags",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())]))])})), ("publication_status",mp::object_schema(&[("byte_count",mp::count_schema())])), ("api_enabled",serde_json::json!({"type":"boolean"}))])}),
+                serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("application_type",mp::text_schema()), ("workflow_trigger_type",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("description",mp::object_schema([("byte_count",mp::count_schema())])), ("icon",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("icon_type",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("icon_background",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_by",mp::object_schema([("byte_count",mp::count_schema())])), ("created_by_display_name",mp::object_schema([("byte_count",mp::count_schema())])), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema()), ("tags",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())]))])})), ("publication_status",mp::object_schema([("byte_count",mp::count_schema())])), ("api_enabled",serde_json::json!({"type":"boolean"}))])}),
             ),
             ("total", serde_json::json!({"type":"integer"})),
             ("page", serde_json::json!({"type":"integer"})),
@@ -145,7 +145,7 @@ impl InterfaceContract for ApplicationManagementPageResponse {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[
+        Some(mp::object_value([
             ("items", {
                 if (self).items.len() > 32 {
                     return None;
@@ -155,7 +155,7 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                         .items
                         .iter()
                         .map(|item| {
-                            Some(mp::object_value(&[
+                            Some(mp::object_value([
                                 ("id", mp::text(&(item).id)?),
                                 ("application_type", mp::text(&(item).application_type)?),
                                 (
@@ -167,14 +167,14 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                                 ),
                                 (
                                     "name",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).name.len()),
                                     )]),
                                 ),
                                 (
                                     "description",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).description.len()),
                                     )]),
@@ -182,7 +182,7 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                                 (
                                     "icon",
                                     match (item).icon.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -199,7 +199,7 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                                 (
                                     "icon_background",
                                     match (item).icon_background.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -208,14 +208,14 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                                 ),
                                 (
                                     "created_by",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).created_by.len()),
                                     )]),
                                 ),
                                 (
                                     "created_by_display_name",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).created_by_display_name.len()),
                                     )]),
@@ -231,11 +231,11 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                                             .tags
                                             .iter()
                                             .map(|item| {
-                                                Some(mp::object_value(&[
+                                                Some(mp::object_value([
                                                     ("id", mp::text(&(item).id)?),
                                                     (
                                                         "name",
-                                                        mp::object_value(&[(
+                                                        mp::object_value([(
                                                             "byte_count",
                                                             serde_json::json!((item).name.len()),
                                                         )]),
@@ -248,7 +248,7 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                                 ("api_enabled", serde_json::json!(item.api_enabled)),
                                 (
                                     "publication_status",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).publication_status.len()),
                                     )]),

@@ -644,7 +644,6 @@
       "web/app/src/shared/schema-ui/v1/contracts/overlay-shell-schema.ts",
       "web/app/src/shared/schema-ui/v1/runtime/SchemaRenderer.tsx",
       "web/app/src/shared/schema-ui/v1/overlay-shell/SchemaDockPanel.tsx",
-      "web/app/src/shared/schema-ui/v1/overlay-shell/SchemaDrawerPanel.tsx",
       "web/app/src/features/applications/pages/ApplicationDetailPage.tsx",
       "web/app/src/features/applications/components/ApplicationSectionState.tsx",
       "web/app/src/features/applications/lib/application-sections.tsx",

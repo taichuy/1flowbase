@@ -7,7 +7,7 @@ impl InterfaceContract for DataSourcesOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::AgentFlowOptions(_field_0) => mp::object_value(&[
+            Self::AgentFlowOptions(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("AgentFlowOptions".to_owned()),
@@ -20,21 +20,21 @@ impl InterfaceContract for DataSourcesOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     (
                                         "data_source_instance_id",
                                         mp::text(&(item).data_source_instance_id)?,
                                     ),
                                     (
                                         "display_name",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).display_name.len()),
                                         )]),
                                     ),
                                     (
                                         "capability",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).capability.len()),
                                         )]),
@@ -45,11 +45,11 @@ impl InterfaceContract for DataSourcesOutput {
                     )
                 }),
             ]),
-            Self::Catalog(_field_0) => mp::object_value(&[
+            Self::Catalog(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Catalog".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[("entries", {
+                    mp::object_value([("entries", {
                         if (_field_0).entries.len() > 32 {
                             return None;
                         }
@@ -58,14 +58,14 @@ impl InterfaceContract for DataSourcesOutput {
                                 .entries
                                 .iter()
                                 .map(|item| {
-                                    Some(mp::object_value(&[
+                                    Some(mp::object_value([
                                         ("installation_id", mp::text(&(item).installation_id)?),
                                         ("source_code", mp::text(&(item).source_code)?),
                                         ("plugin_id", mp::text(&(item).plugin_id)?),
                                         ("plugin_version", mp::text(&(item).plugin_version)?),
                                         (
                                             "display_name",
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).display_name.len()),
                                             )]),
@@ -73,7 +73,7 @@ impl InterfaceContract for DataSourcesOutput {
                                         ("protocol", mp::text(&(item).protocol)?),
                                         (
                                             "config_schema",
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "item_count",
                                                 serde_json::json!((item).config_schema.len()),
                                             )]),
@@ -85,7 +85,7 @@ impl InterfaceContract for DataSourcesOutput {
                     })]),
                 ),
             ]),
-            Self::List(_field_0) => mp::object_value(&[
+            Self::List(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("List".to_owned())),
                 ("0", {
                     if (_field_0).len() > 32 {
@@ -95,11 +95,11 @@ impl InterfaceContract for DataSourcesOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("id", mp::text(&(item).id)?),
                                     (
                                         "display_name",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).display_name.len()),
                                         )]),
@@ -109,7 +109,7 @@ impl InterfaceContract for DataSourcesOutput {
                                     ("fixed", serde_json::Value::Bool((item).fixed)),
                                     (
                                         "default_data_model_status",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item)
                                                 .default_data_model_status
@@ -118,7 +118,7 @@ impl InterfaceContract for DataSourcesOutput {
                                     ),
                                     (
                                         "capabilities",
-                                        mp::object_value(&[
+                                        mp::object_value([
                                             (
                                                 "can_update_defaults",
                                                 serde_json::Value::Bool(
@@ -163,14 +163,14 @@ impl InterfaceContract for DataSourcesOutput {
                                             DataSourceBackendResponse::Core {
                                                 durable_backend: _field_durable_backend,
                                                 ..
-                                            } => mp::object_value(&[
+                                            } => mp::object_value([
                                                 (
                                                     "variant",
                                                     serde_json::Value::String("Core".to_owned()),
                                                 ),
                                                 (
                                                     "durable_backend",
-                                                    mp::object_value(&[(
+                                                    mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!(
                                                             (_field_durable_backend).len()
@@ -188,7 +188,7 @@ impl InterfaceContract for DataSourcesOutput {
                                                     _field_catalog_last_error_message,
                                                 catalog_refreshed_at: _field_catalog_refreshed_at,
                                                 ..
-                                            } => mp::object_value(&[
+                                            } => mp::object_value([
                                                 (
                                                     "variant",
                                                     serde_json::Value::String(
@@ -207,7 +207,7 @@ impl InterfaceContract for DataSourcesOutput {
                                                 (
                                                     "catalog_refresh_status",
                                                     match (_field_catalog_refresh_status).as_ref() {
-                                                        Some(item) => mp::object_value(&[(
+                                                        Some(item) => mp::object_value([(
                                                             "byte_count",
                                                             serde_json::json!((item).len()),
                                                         )]),
@@ -219,7 +219,7 @@ impl InterfaceContract for DataSourcesOutput {
                                                     match (_field_catalog_last_error_message)
                                                         .as_ref()
                                                     {
-                                                        Some(item) => mp::object_value(&[(
+                                                        Some(item) => mp::object_value([(
                                                             "byte_count",
                                                             serde_json::json!((item).len()),
                                                         )]),
@@ -229,7 +229,7 @@ impl InterfaceContract for DataSourcesOutput {
                                                 (
                                                     "catalog_refreshed_at",
                                                     match (_field_catalog_refreshed_at).as_ref() {
-                                                        Some(item) => mp::object_value(&[(
+                                                        Some(item) => mp::object_value([(
                                                             "byte_count",
                                                             serde_json::json!((item).len()),
                                                         )]),
@@ -245,18 +245,18 @@ impl InterfaceContract for DataSourcesOutput {
                     )
                 }),
             ]),
-            Self::DataSource(_field_0) => mp::object_value(&[
+            Self::DataSource(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("DataSource".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", mp::text(&(_field_0).id)?),
                         (
                             "display_name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).display_name.len()),
                             )]),
@@ -266,14 +266,14 @@ impl InterfaceContract for DataSourcesOutput {
                         ("fixed", serde_json::Value::Bool((_field_0).fixed)),
                         (
                             "default_data_model_status",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).default_data_model_status.len()),
                             )]),
                         ),
                         (
                             "capabilities",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "can_update_defaults",
                                     serde_json::Value::Bool(
@@ -316,11 +316,11 @@ impl InterfaceContract for DataSourcesOutput {
                                 DataSourceBackendResponse::Core {
                                     durable_backend: _field_durable_backend,
                                     ..
-                                } => mp::object_value(&[
+                                } => mp::object_value([
                                     ("variant", serde_json::Value::String("Core".to_owned())),
                                     (
                                         "durable_backend",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((_field_durable_backend).len()),
                                         )]),
@@ -334,7 +334,7 @@ impl InterfaceContract for DataSourcesOutput {
                                     catalog_last_error_message: _field_catalog_last_error_message,
                                     catalog_refreshed_at: _field_catalog_refreshed_at,
                                     ..
-                                } => mp::object_value(&[
+                                } => mp::object_value([
                                     (
                                         "variant",
                                         serde_json::Value::String("RuntimeExtension".to_owned()),
@@ -345,7 +345,7 @@ impl InterfaceContract for DataSourcesOutput {
                                     (
                                         "catalog_refresh_status",
                                         match (_field_catalog_refresh_status).as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -355,7 +355,7 @@ impl InterfaceContract for DataSourcesOutput {
                                     (
                                         "catalog_last_error_message",
                                         match (_field_catalog_last_error_message).as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -365,7 +365,7 @@ impl InterfaceContract for DataSourcesOutput {
                                     (
                                         "catalog_refreshed_at",
                                         match (_field_catalog_refreshed_at).as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -378,21 +378,21 @@ impl InterfaceContract for DataSourcesOutput {
                     ]),
                 ),
             ]),
-            Self::Validation(_field_0) => mp::object_value(&[
+            Self::Validation(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("Validation".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "data_source",
-                            mp::object_value(&[
+                            mp::object_value([
                                 ("id", mp::text(&(_field_0).data_source.id)?),
                                 (
                                     "display_name",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0)
                                             .data_source
@@ -411,7 +411,7 @@ impl InterfaceContract for DataSourcesOutput {
                                 ),
                                 (
                                     "default_data_model_status",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0)
                                             .data_source
@@ -421,7 +421,7 @@ impl InterfaceContract for DataSourcesOutput {
                                 ),
                                 (
                                     "capabilities",
-                                    mp::object_value(&[
+                                    mp::object_value([
                                         (
                                             "can_update_defaults",
                                             serde_json::Value::Bool(
@@ -481,14 +481,14 @@ impl InterfaceContract for DataSourcesOutput {
                                         DataSourceBackendResponse::Core {
                                             durable_backend: _field_durable_backend,
                                             ..
-                                        } => mp::object_value(&[
+                                        } => mp::object_value([
                                             (
                                                 "variant",
                                                 serde_json::Value::String("Core".to_owned()),
                                             ),
                                             (
                                                 "durable_backend",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!(
                                                         (_field_durable_backend).len()
@@ -505,7 +505,7 @@ impl InterfaceContract for DataSourcesOutput {
                                                 _field_catalog_last_error_message,
                                             catalog_refreshed_at: _field_catalog_refreshed_at,
                                             ..
-                                        } => mp::object_value(&[
+                                        } => mp::object_value([
                                             (
                                                 "variant",
                                                 serde_json::Value::String(
@@ -518,7 +518,7 @@ impl InterfaceContract for DataSourcesOutput {
                                             (
                                                 "catalog_refresh_status",
                                                 match (_field_catalog_refresh_status).as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -528,7 +528,7 @@ impl InterfaceContract for DataSourcesOutput {
                                             (
                                                 "catalog_last_error_message",
                                                 match (_field_catalog_last_error_message).as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -538,7 +538,7 @@ impl InterfaceContract for DataSourcesOutput {
                                             (
                                                 "catalog_refreshed_at",
                                                 match (_field_catalog_refreshed_at).as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -554,11 +554,11 @@ impl InterfaceContract for DataSourcesOutput {
                     ]),
                 ),
             ]),
-            Self::Resources(_field_0) => mp::object_value(&[
+            Self::Resources(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Resources".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("entries", {
                             if (_field_0).entries.len() > 32 {
                                 return None;
@@ -568,31 +568,31 @@ impl InterfaceContract for DataSourcesOutput {
                                     .entries
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             (
                                                 "resource_key",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).resource_key.len()),
                                                 )]),
                                             ),
                                             (
                                                 "display_name",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).display_name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "resource_kind",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).resource_kind.len()),
                                                 )]),
                                             ),
                                             (
                                                 "capabilities",
-                                                mp::object_value(&[
+                                                mp::object_value([
                                                     (
                                                         "supports_list",
                                                         serde_json::Value::Bool(
@@ -681,7 +681,7 @@ impl InterfaceContract for DataSourcesOutput {
                         }),
                         (
                             "refresh_status",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).refresh_status.len()),
                             )]),
@@ -689,7 +689,7 @@ impl InterfaceContract for DataSourcesOutput {
                         (
                             "last_error_message",
                             match (_field_0).last_error_message.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -699,7 +699,7 @@ impl InterfaceContract for DataSourcesOutput {
                         (
                             "refreshed_at",
                             match (_field_0).refreshed_at.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -709,18 +709,18 @@ impl InterfaceContract for DataSourcesOutput {
                     ]),
                 ),
             ]),
-            Self::Preview(_field_0) => mp::object_value(&[
+            Self::Preview(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Preview".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("expires_at", mp::text(&(_field_0).expires_at)?),
                         (
                             "output",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "rows",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "item_count",
                                         serde_json::json!((_field_0).output.rows.len()),
                                     )]),
@@ -728,7 +728,7 @@ impl InterfaceContract for DataSourcesOutput {
                                 (
                                     "next_cursor",
                                     match (_field_0).output.next_cursor.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -741,15 +741,15 @@ impl InterfaceContract for DataSourcesOutput {
                 ),
             ]),
             Self::Model(_field_0) => {
-                mp::object_value(&[
+                mp::object_value([
                     ("variant", serde_json::Value::String("Model".to_owned())),
                     (
                         "0",
-                        mp::object_value(&[
+                        mp::object_value([
                             ("id", mp::text(&(_field_0).id)?),
                             (
                                 "scope_kind",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((_field_0).scope_kind.len()),
                                 )]),
@@ -758,7 +758,7 @@ impl InterfaceContract for DataSourcesOutput {
                             ("code", mp::text(&(_field_0).code)?),
                             (
                                 "title",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((_field_0).title.len()),
                                 )]),
@@ -766,7 +766,7 @@ impl InterfaceContract for DataSourcesOutput {
                             (
                                 "description",
                                 match (_field_0).description.as_ref() {
-                                    Some(item) => mp::object_value(&[(
+                                    Some(item) => mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).len()),
                                     )]),
@@ -776,7 +776,7 @@ impl InterfaceContract for DataSourcesOutput {
                             ("status", mp::text(&(_field_0).status)?),
                             (
                                 "runtime_availability",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((_field_0).runtime_availability.len()),
                                 )]),
@@ -790,7 +790,7 @@ impl InterfaceContract for DataSourcesOutput {
                             ),
                             (
                                 "source_kind",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((_field_0).source_kind.len()),
                                 )]),
@@ -798,7 +798,7 @@ impl InterfaceContract for DataSourcesOutput {
                             (
                                 "external_resource_key",
                                 match (_field_0).external_resource_key.as_ref() {
-                                    Some(item) => mp::object_value(&[(
+                                    Some(item) => mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).len()),
                                     )]),
@@ -814,7 +814,7 @@ impl InterfaceContract for DataSourcesOutput {
                             ),
                             (
                                 "template_provider",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((_field_0).template_provider.len()),
                                 )]),
@@ -824,7 +824,7 @@ impl InterfaceContract for DataSourcesOutput {
                             (
                                 "template_summary",
                                 match (_field_0).template_summary.as_ref() {
-                                    Some(item) => mp::object_value(&[(
+                                    Some(item) => mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).len()),
                                     )]),
@@ -833,21 +833,21 @@ impl InterfaceContract for DataSourcesOutput {
                             ),
                             (
                                 "physical_table_name",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((_field_0).physical_table_name.len()),
                                 )]),
                             ),
                             (
                                 "acl_namespace",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((_field_0).acl_namespace.len()),
                                 )]),
                             ),
                             (
                                 "audit_namespace",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((_field_0).audit_namespace.len()),
                                 )]),
@@ -855,7 +855,7 @@ impl InterfaceContract for DataSourcesOutput {
                             (
                                 "builtin_kind",
                                 match (_field_0).builtin_kind.as_ref() {
-                                    Some(item) => mp::object_value(&[(
+                                    Some(item) => mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).len()),
                                     )]),
@@ -864,7 +864,7 @@ impl InterfaceContract for DataSourcesOutput {
                             ),
                             (
                                 "capabilities",
-                                mp::object_value(&[
+                                mp::object_value([
                                     (
                                         "can_delete",
                                         serde_json::Value::Bool((_field_0).capabilities.can_delete),
@@ -883,7 +883,7 @@ impl InterfaceContract for DataSourcesOutput {
                                     ),
                                     (
                                         "record",
-                                        mp::object_value(&[
+                                        mp::object_value([
                                             (
                                                 "can_list",
                                                 serde_json::Value::Bool(
@@ -922,7 +922,7 @@ impl InterfaceContract for DataSourcesOutput {
                                 if (_field_0).fields.len() > 32 {
                                     return None;
                                 }
-                                serde_json::Value::Array((_field_0).fields.iter().map(|item| Some(mp::object_value(&[("id",mp::text(&(item).id)?), ("code",mp::text(&(item).code)?), ("title",mp::object_value(&[("byte_count",serde_json::json!((item).title.len()))])), ("description",match (item).description.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("physical_column_name",mp::object_value(&[("byte_count",serde_json::json!((item).physical_column_name.len()))])), ("external_field_key",match (item).external_field_key.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("field_kind",mp::object_value(&[("byte_count",serde_json::json!((item).field_kind.len()))])), ("is_system",serde_json::Value::Bool((item).is_system)), ("is_writable",serde_json::Value::Bool((item).is_writable)), ("is_required",serde_json::Value::Bool((item).is_required)), ("api_required",serde_json::Value::Bool((item).api_required)), ("is_unique",serde_json::Value::Bool((item).is_unique)), ("default_value",match (item).default_value.as_ref() { Some(item) => mp::json_summary(item), None => serde_json::Value::Null }), ("display_interface",match (item).display_interface.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("display_options",mp::json_summary(&(item).display_options)), ("relation_target_model_id",match (item).relation_target_model_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("relation_options",mp::json_summary(&(item).relation_options)), ("sort_order",serde_json::json!((item).sort_order)), ("capabilities",mp::object_value(&[("ownership",mp::object_value(&[("byte_count",serde_json::json!((item).capabilities.ownership.len()))])), ("can_update_presentation_metadata",serde_json::Value::Bool((item).capabilities.can_update_presentation_metadata)), ("can_update_physical_metadata",serde_json::Value::Bool((item).capabilities.can_update_physical_metadata)), ("can_delete",serde_json::Value::Bool((item).capabilities.can_delete))]))]))).collect::<Option<Vec<_>>>()?)
+                                serde_json::Value::Array((_field_0).fields.iter().map(|item| Some(mp::object_value([("id",mp::text(&(item).id)?), ("code",mp::text(&(item).code)?), ("title",mp::object_value([("byte_count",serde_json::json!((item).title.len()))])), ("description",match (item).description.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("physical_column_name",mp::object_value([("byte_count",serde_json::json!((item).physical_column_name.len()))])), ("external_field_key",match (item).external_field_key.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("field_kind",mp::object_value([("byte_count",serde_json::json!((item).field_kind.len()))])), ("is_system",serde_json::Value::Bool((item).is_system)), ("is_writable",serde_json::Value::Bool((item).is_writable)), ("is_required",serde_json::Value::Bool((item).is_required)), ("api_required",serde_json::Value::Bool((item).api_required)), ("is_unique",serde_json::Value::Bool((item).is_unique)), ("default_value",match (item).default_value.as_ref() { Some(item) => mp::json_summary(item), None => serde_json::Value::Null }), ("display_interface",match (item).display_interface.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("display_options",mp::json_summary(&(item).display_options)), ("relation_target_model_id",match (item).relation_target_model_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("relation_options",mp::json_summary(&(item).relation_options)), ("sort_order",serde_json::json!((item).sort_order)), ("capabilities",mp::object_value([("ownership",mp::object_value([("byte_count",serde_json::json!((item).capabilities.ownership.len()))])), ("can_update_presentation_metadata",serde_json::Value::Bool((item).capabilities.can_update_presentation_metadata)), ("can_update_physical_metadata",serde_json::Value::Bool((item).capabilities.can_update_physical_metadata)), ("can_delete",serde_json::Value::Bool((item).capabilities.can_delete))]))]))).collect::<Option<Vec<_>>>()?)
                             }),
                         ]),
                     ),

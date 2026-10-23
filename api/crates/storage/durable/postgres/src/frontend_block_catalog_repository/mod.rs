@@ -1,7 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::ports::{
-    FrontendBlockCatalogRepository, ReplaceInstallationFrontendBlocksInput,
+    FrontendBlockCatalogDefaultTemplate, FrontendBlockCatalogRepository,
+    FrontendBlockCatalogTemplateRevision, ReplaceInstallationFrontendBlocksInput,
     RetainedFrontendModuleAsset,
 };
 use sqlx::Row;
@@ -228,7 +229,33 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
 
     async fn list_active_ui_code_templates_for_catalog(
         &self,
-    ) -> Result<Vec<domain::UiCodeTemplate>> {
-        control_plane_contracts::ports::UiManagementRepository::list_ui_code_templates(self).await
+    ) -> Result<Vec<FrontendBlockCatalogDefaultTemplate>> {
+        sqlx::query(
+            r#"select t.provider_code, t.contribution_code, published.revision,
+                published.source, published.language
+            from ui_code_templates t
+            join ui_code_template_defaults defaults on defaults.template_id = t.id
+            join ui_code_template_revisions latest on latest.template_id = t.id and latest.is_latest
+            left join ui_code_template_revisions published on published.template_id = t.id and published.is_published
+            order by t.name, t.id"#,
+        )
+        .fetch_all(self.pool())
+        .await?
+        .into_iter()
+        .map(|row| {
+            let published_revision = row.get::<Option<i32>, _>("revision").map(|revision| -> Result<_> {
+                Ok(FrontendBlockCatalogTemplateRevision {
+                    revision,
+                    source: row.get("source"),
+                    language: domain::UiCodeTemplateLanguage::try_from(row.get::<&str, _>("language"))?,
+                })
+            }).transpose()?;
+            Ok(FrontendBlockCatalogDefaultTemplate {
+                provider_code: row.get("provider_code"),
+                contribution_code: row.get("contribution_code"),
+                published_revision,
+            })
+        })
+        .collect()
     }
 }

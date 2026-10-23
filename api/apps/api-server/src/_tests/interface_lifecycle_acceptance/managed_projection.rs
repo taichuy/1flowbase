@@ -14,11 +14,92 @@ use interface_runtime::{InterfaceContract, ManagedInterfaceProjection};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+use crate::extension_bus::managed_projection as mp;
 use crate::routes::sign_in_interface::{
     PublicSignInInput, PublicSignInOutput, PublicSignInTargetError,
 };
 
 const SECRET: &str = "ROOT_2014_CREDENTIAL_SENTINEL_never_export";
+
+#[test]
+fn managed_projection_object_values_move_owned_children() {
+    let text = "nested value 雪".to_owned();
+    let text_ptr = text.as_ptr();
+    let items = vec![Value::String(text), Value::Null, Value::Bool(true)];
+    let items_ptr = items.as_ptr();
+    let value = mp::object_value(vec![
+        ("duplicate", json!(0)),
+        ("items", Value::Array(items)),
+        ("duplicate", json!(1)),
+    ]);
+
+    assert_eq!(
+        value,
+        json!({"duplicate": 1, "items": ["nested value 雪", null, true]})
+    );
+    let items = value["items"].as_array().unwrap();
+    assert_eq!(items.as_ptr(), items_ptr, "the array allocation is moved");
+    assert_eq!(items[0].as_str().unwrap().as_ptr(), text_ptr);
+    assert_eq!(mp::object_value([]), json!({}));
+}
+
+#[test]
+fn managed_projection_object_schemas_preserve_order_and_move_children() {
+    let field_name = "名称".to_owned();
+    let text = "schema 雪".to_owned();
+    let text_ptr = text.as_ptr();
+    let child = mp::object_value([
+        ("type", Value::String("string".to_owned())),
+        ("const", Value::String(text)),
+    ]);
+    let fields = vec![
+        ("z", json!({"type": "null"})),
+        (field_name.as_str(), child),
+        ("z", mp::count_schema()),
+    ];
+    let fields = fields.into_iter();
+    let schema = mp::object_schema(fields);
+    let expected = json!({
+        "type": "object",
+        "properties": {
+            "z": {"type": "integer", "minimum": 0},
+            "名称": {"type": "string", "const": "schema 雪"}
+        },
+        "required": ["z", "名称", "z"],
+        "additionalProperties": false
+    });
+
+    assert_eq!(schema, expected);
+    assert_eq!(
+        serde_json::to_string(&schema).unwrap(),
+        serde_json::to_string(&expected).unwrap()
+    );
+    assert_eq!(
+        schema["properties"]["名称"]["const"]
+            .as_str()
+            .unwrap()
+            .as_ptr(),
+        text_ptr
+    );
+    assert_eq!(
+        mp::object_schema([]),
+        json!({"type": "object", "properties": {}, "required": [], "additionalProperties": false})
+    );
+}
+
+#[test]
+fn managed_projection_union_schemas_move_variant_arrays() {
+    let variants = vec![json!({"type": "null"}), mp::text_schema()];
+    let variants_ptr = variants.as_ptr();
+    let schema = mp::union_schema(variants);
+
+    assert_eq!(
+        schema,
+        json!({"oneOf": [{"type": "null"}, {"type": "string", "maxLength": 256}]})
+    );
+    assert_eq!(schema["oneOf"].as_array().unwrap().as_ptr(), variants_ptr);
+    assert_eq!(mp::union_schema(vec![]), json!({"oneOf": []}));
+}
 
 fn view<T: InterfaceContract>(value: &T) -> ManagedInterfaceView {
     let projected = ManagedInterfaceProjection::from_contract(value)

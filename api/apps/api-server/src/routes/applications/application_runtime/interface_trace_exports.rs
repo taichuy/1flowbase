@@ -42,12 +42,12 @@ impl InterfaceContract for ApplicationRuntimeTraceExportsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ExportRun")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ExportSelectedRuns")),
                 ("application_id", mp::text_schema()),
                 (
@@ -64,7 +64,7 @@ impl InterfaceContract for ApplicationRuntimeTraceExportsInput {
                 application_id: _field_application_id,
                 run_id: _field_run_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("ExportRun".to_owned())),
                 (
                     "application_id",
@@ -79,7 +79,7 @@ impl InterfaceContract for ApplicationRuntimeTraceExportsInput {
                 application_id: _field_application_id,
                 run_ids: _field_run_ids,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ExportSelectedRuns".to_owned()),
@@ -120,15 +120,15 @@ pub(crate) enum ApplicationRuntimeTraceExportsOutput {
 impl InterfaceContract for ApplicationRuntimeTraceExportsOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::union_schema(vec![mp::object_schema(&[
+        Some(mp::union_schema(vec![mp::object_schema([
             ("variant", mp::tag_schema("Download")),
             (
                 "0",
-                mp::object_schema(&[
+                mp::object_schema([
                     ("content_type", mp::text_schema()),
                     (
                         "body",
-                        mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        mp::object_schema([("byte_count", mp::count_schema())]),
                     ),
                 ]),
             ),
@@ -137,15 +137,15 @@ impl InterfaceContract for ApplicationRuntimeTraceExportsOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Download(_field_0) => mp::object_value(&[
+            Self::Download(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Download".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("content_type", mp::text((_field_0).content_type)?),
                         (
                             "body",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).body.len()),
                             )]),

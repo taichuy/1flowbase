@@ -41,35 +41,35 @@ pub(crate) struct RuntimeModelOperationInput {
 impl InterfaceContract for RuntimeModelOperationInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             (
                 "method",
                 mp::union_schema(vec![
-                    mp::object_schema(&[("variant", mp::tag_schema("Get"))]),
-                    mp::object_schema(&[("variant", mp::tag_schema("Post"))]),
-                    mp::object_schema(&[("variant", mp::tag_schema("Put"))]),
-                    mp::object_schema(&[("variant", mp::tag_schema("Patch"))]),
-                    mp::object_schema(&[("variant", mp::tag_schema("Delete"))]),
+                    mp::object_schema([("variant", mp::tag_schema("Get"))]),
+                    mp::object_schema([("variant", mp::tag_schema("Post"))]),
+                    mp::object_schema([("variant", mp::tag_schema("Put"))]),
+                    mp::object_schema([("variant", mp::tag_schema("Patch"))]),
+                    mp::object_schema([("variant", mp::tag_schema("Delete"))]),
                 ]),
             ),
             ("model_code", mp::text_schema()),
             (
                 "path",
-                mp::object_schema(&[("byte_count", mp::count_schema())]),
+                mp::object_schema([("byte_count", mp::count_schema())]),
             ),
             (
                 "query",
-                serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
             ),
             (
                 "body",
-                mp::object_schema(&[("byte_count", mp::count_schema())]),
+                mp::object_schema([("byte_count", mp::count_schema())]),
             ),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[("method",match &(self).method {extension_contracts::data_model_template_contract::DataModelOperationMethod::Get => mp::object_value(&[("variant",serde_json::Value::String("Get".to_owned()))]), extension_contracts::data_model_template_contract::DataModelOperationMethod::Post => mp::object_value(&[("variant",serde_json::Value::String("Post".to_owned()))]), extension_contracts::data_model_template_contract::DataModelOperationMethod::Put => mp::object_value(&[("variant",serde_json::Value::String("Put".to_owned()))]), extension_contracts::data_model_template_contract::DataModelOperationMethod::Patch => mp::object_value(&[("variant",serde_json::Value::String("Patch".to_owned()))]), extension_contracts::data_model_template_contract::DataModelOperationMethod::Delete => mp::object_value(&[("variant",serde_json::Value::String("Delete".to_owned()))])}), ("model_code",mp::text(&(self).model_code)?), ("path",mp::object_value(&[("byte_count",serde_json::json!((self).path.len()))])), ("query",match (self).query.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("body",mp::object_value(&[("byte_count",serde_json::json!((self).body.len()))]))]))
+        Some(mp::object_value([("method",match &(self).method {extension_contracts::data_model_template_contract::DataModelOperationMethod::Get => mp::object_value([("variant",serde_json::Value::String("Get".to_owned()))]), extension_contracts::data_model_template_contract::DataModelOperationMethod::Post => mp::object_value([("variant",serde_json::Value::String("Post".to_owned()))]), extension_contracts::data_model_template_contract::DataModelOperationMethod::Put => mp::object_value([("variant",serde_json::Value::String("Put".to_owned()))]), extension_contracts::data_model_template_contract::DataModelOperationMethod::Patch => mp::object_value([("variant",serde_json::Value::String("Patch".to_owned()))]), extension_contracts::data_model_template_contract::DataModelOperationMethod::Delete => mp::object_value([("variant",serde_json::Value::String("Delete".to_owned()))])}), ("model_code",mp::text(&(self).model_code)?), ("path",mp::object_value([("byte_count",serde_json::json!((self).path.len()))])), ("query",match (self).query.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("body",mp::object_value([("byte_count",serde_json::json!((self).body.len()))]))]))
     }
 
     const CONTRACT_ID: &'static str = "runtime-model-operation-input";
@@ -90,12 +90,12 @@ pub(crate) struct RuntimeModelOperationOutput {
 impl InterfaceContract for RuntimeModelOperationOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             (
                 "status",
                 mp::union_schema(vec![
-                    mp::object_schema(&[("variant", mp::tag_schema("Ok"))]),
-                    mp::object_schema(&[("variant", mp::tag_schema("Created"))]),
+                    mp::object_schema([("variant", mp::tag_schema("Ok"))]),
+                    mp::object_schema([("variant", mp::tag_schema("Created"))]),
                 ]),
             ),
             ("data", mp::json_summary_schema()),
@@ -103,14 +103,14 @@ impl InterfaceContract for RuntimeModelOperationOutput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[
+        Some(mp::object_value([
             (
                 "status",
                 match &(self).status {
                     RuntimeModelOperationStatus::Ok => {
-                        mp::object_value(&[("variant", serde_json::Value::String("Ok".to_owned()))])
+                        mp::object_value([("variant", serde_json::Value::String("Ok".to_owned()))])
                     }
-                    RuntimeModelOperationStatus::Created => mp::object_value(&[(
+                    RuntimeModelOperationStatus::Created => mp::object_value([(
                         "variant",
                         serde_json::Value::String("Created".to_owned()),
                     )]),
@@ -129,14 +129,14 @@ pub(crate) struct RuntimeModelOperationTargetError(pub(crate) ApiError);
 impl InterfaceContract for RuntimeModelOperationTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "kind",
             mp::tag_schema("RuntimeModelOperationTargetError"),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "kind",
             serde_json::Value::String("RuntimeModelOperationTargetError".to_owned()),
         )]))

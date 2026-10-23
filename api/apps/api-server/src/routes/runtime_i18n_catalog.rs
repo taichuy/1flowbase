@@ -54,11 +54,11 @@ pub(crate) struct RuntimeI18nInput {
 impl InterfaceContract for RuntimeI18nInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[("locale", mp::text_schema())]))
+        Some(mp::object_schema([("locale", mp::text_schema())]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[("locale", mp::text(&(self).locale)?)]))
+        Some(mp::object_value([("locale", mp::text(&(self).locale)?)]))
     }
 
     const CONTRACT_ID: &'static str = "console-runtime-i18n-input";
@@ -71,17 +71,17 @@ pub(crate) struct RuntimeI18nOutput {
 impl InterfaceContract for RuntimeI18nOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "payload",
-            serde_json::json!({"anyOf": [mp::object_schema(&[("catalog_revision",serde_json::json!({"type":"integer"})), ("locale",mp::text_schema()), ("digest",mp::object_schema(&[("byte_count",mp::count_schema())])), ("messages",mp::object_schema(&[("item_count",mp::count_schema())]))]), {"type":"null"}]}),
+            serde_json::json!({"anyOf": [mp::object_schema([("catalog_revision",serde_json::json!({"type":"integer"})), ("locale",mp::text_schema()), ("digest",mp::object_schema([("byte_count",mp::count_schema())])), ("messages",mp::object_schema([("item_count",mp::count_schema())]))]), {"type":"null"}]}),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "payload",
             match (self).payload.as_ref() {
-                Some(item) => mp::object_value(&[
+                Some(item) => mp::object_value([
                     (
                         "catalog_revision",
                         serde_json::json!((item).catalog_revision),
@@ -89,11 +89,11 @@ impl InterfaceContract for RuntimeI18nOutput {
                     ("locale", mp::text(&(item).locale)?),
                     (
                         "digest",
-                        mp::object_value(&[("byte_count", serde_json::json!((item).digest.len()))]),
+                        mp::object_value([("byte_count", serde_json::json!((item).digest.len()))]),
                     ),
                     (
                         "messages",
-                        mp::object_value(&[(
+                        mp::object_value([(
                             "item_count",
                             serde_json::json!((item).messages.len()),
                         )]),

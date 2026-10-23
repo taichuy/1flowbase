@@ -539,14 +539,14 @@ pub(crate) struct FrontstageDataCapabilitiesInput;
 impl InterfaceContract for FrontstageDataCapabilitiesInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "kind",
             mp::tag_schema("FrontstageDataCapabilitiesInput"),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "kind",
             serde_json::Value::String("FrontstageDataCapabilitiesInput".to_owned()),
         )]))
@@ -560,29 +560,29 @@ pub(crate) struct FrontstageDataCapabilitiesOutput(FrontstageDataCapabilitiesRes
 impl InterfaceContract for FrontstageDataCapabilitiesOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "0",
-            mp::object_schema(&[
+            mp::object_schema([
                 (
                     "queries",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("kind",mp::text_schema()), ("params_schema",mp::json_summary_schema()), ("result_schema",mp::json_summary_schema())])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("kind",mp::text_schema()), ("params_schema",mp::json_summary_schema()), ("result_schema",mp::json_summary_schema())])}),
                 ),
                 (
                     "actions",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("kind",mp::text_schema()), ("params_schema",mp::json_summary_schema()), ("result_schema",mp::json_summary_schema())])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("kind",mp::text_schema()), ("params_schema",mp::json_summary_schema()), ("result_schema",mp::json_summary_schema())])}),
                 ),
                 (
                     "models",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("code",mp::text_schema()), ("scope_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("fields",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("code",mp::text_schema()), ("scope_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("fields",mp::object_schema([("item_count",mp::count_schema())]))])}),
                 ),
             ]),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "0",
-            mp::object_value(&[
+            mp::object_value([
                 ("queries", {
                     if (self).0.queries.len() > 32 {
                         return None;
@@ -593,7 +593,7 @@ impl InterfaceContract for FrontstageDataCapabilitiesOutput {
                             .queries
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("id", mp::text(&(item).id)?),
                                     ("kind", mp::text(&(item).kind)?),
                                     ("params_schema", mp::json_summary(&(item).params_schema)),
@@ -613,7 +613,7 @@ impl InterfaceContract for FrontstageDataCapabilitiesOutput {
                             .actions
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("id", mp::text(&(item).id)?),
                                     ("kind", mp::text(&(item).kind)?),
                                     ("params_schema", mp::json_summary(&(item).params_schema)),
@@ -633,18 +633,18 @@ impl InterfaceContract for FrontstageDataCapabilitiesOutput {
                             .models
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("code", mp::text(&(item).code)?),
                                     (
                                         "scope_kind",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).scope_kind.len()),
                                         )]),
                                     ),
                                     (
                                         "fields",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "item_count",
                                             serde_json::json!((item).fields.len()),
                                         )]),

@@ -46,28 +46,28 @@ pub(crate) struct FrontstageCallableDispatchInput {
 impl InterfaceContract for FrontstageCallableDispatchInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             ("page_id", mp::text_schema()),
             ("tab_id", mp::text_schema()),
             (
                 "body",
-                mp::object_schema(&[
+                mp::object_schema([
                     ("block_id", mp::text_schema()),
                     ("method", mp::text_schema()),
                     (
                         "path",
-                        mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        mp::object_schema([("byte_count", mp::count_schema())]),
                     ),
                     (
                         "request",
-                        mp::object_schema(&[
+                        mp::object_schema([
                             (
                                 "path",
-                                mp::object_schema(&[("item_count", mp::count_schema())]),
+                                mp::object_schema([("item_count", mp::count_schema())]),
                             ),
                             (
                                 "query",
-                                mp::object_schema(&[("item_count", mp::count_schema())]),
+                                mp::object_schema([("item_count", mp::count_schema())]),
                             ),
                             ("body", mp::json_summary_schema()),
                         ]),
@@ -78,34 +78,34 @@ impl InterfaceContract for FrontstageCallableDispatchInput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[
+        Some(mp::object_value([
             ("page_id", mp::text(&(self).page_id)?),
             ("tab_id", mp::text(&(self).tab_id)?),
             (
                 "body",
-                mp::object_value(&[
+                mp::object_value([
                     ("block_id", mp::text(&(self).body.block_id)?),
                     ("method", mp::text(&(self).body.method)?),
                     (
                         "path",
-                        mp::object_value(&[(
+                        mp::object_value([(
                             "byte_count",
                             serde_json::json!((self).body.path.len()),
                         )]),
                     ),
                     (
                         "request",
-                        mp::object_value(&[
+                        mp::object_value([
                             (
                                 "path",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "item_count",
                                     serde_json::json!((self).body.request.path.len()),
                                 )]),
                             ),
                             (
                                 "query",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "item_count",
                                     serde_json::json!((self).body.request.query.len()),
                                 )]),
@@ -133,33 +133,33 @@ impl InterfaceContract for FrontstageCallableDispatchOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Json")),
                 ("0", mp::json_summary_schema()),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("NoContent"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("NoContent"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("Media")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("status", serde_json::json!({"type":"integer"})),
                         (
                             "body",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Target")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("status", serde_json::json!({"type":"integer"})),
                         (
                             "body",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
@@ -169,22 +169,22 @@ impl InterfaceContract for FrontstageCallableDispatchOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Json(_field_0) => mp::object_value(&[
+            Self::Json(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Json".to_owned())),
                 ("0", mp::json_summary(_field_0)),
             ]),
             Self::NoContent => {
-                mp::object_value(&[("variant", serde_json::Value::String("NoContent".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("NoContent".to_owned()))])
             }
-            Self::Media(_field_0) => mp::object_value(&[
+            Self::Media(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Media".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("status", serde_json::json!((_field_0).status)),
                         (
                             "body",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).body.len()),
                             )]),
@@ -192,15 +192,15 @@ impl InterfaceContract for FrontstageCallableDispatchOutput {
                     ]),
                 ),
             ]),
-            Self::Target(_field_0) => mp::object_value(&[
+            Self::Target(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Target".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("status", serde_json::json!((_field_0).status)),
                         (
                             "body",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).body.len()),
                             )]),

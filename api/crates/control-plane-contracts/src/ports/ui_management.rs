@@ -8,6 +8,33 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
+pub struct ListUiComponentRecordsQuery {
+    pub query: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct UiComponentRecordPage {
+    pub items: Vec<UiComponentRecord>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub has_more: bool,
+    pub next_offset: Option<usize>,
+}
+
+/// Uses the same Unicode lowercase and literal substring semantics for every adapter.
+pub fn ui_component_record_matches(search: &str, fields: [&str; 8], keywords: &[String]) -> bool {
+    fields
+        .iter()
+        .any(|value| value.to_lowercase().contains(search))
+        || keywords
+            .iter()
+            .any(|keyword| keyword.to_lowercase().contains(search))
+}
+
+#[derive(Debug, Clone)]
 pub struct CreateUiCodeTemplateInput {
     pub provider_code: String,
     pub contribution_code: String,
@@ -207,6 +234,11 @@ pub trait UiManagementRepository: Send + Sync {
     async fn delete_ui_code_template(&self, template_id: Uuid) -> Result<bool>;
 
     async fn list_ui_component_records(&self) -> Result<Vec<UiComponentRecord>>;
+    /// Filters metadata and loads only the selected page bodies from one consistent snapshot.
+    async fn list_ui_component_records_page(
+        &self,
+        query: ListUiComponentRecordsQuery,
+    ) -> Result<UiComponentRecordPage>;
     async fn get_ui_component_record(&self, id: Uuid) -> Result<Option<UiComponentRecord>>;
     async fn create_ui_component_record(
         &self,

@@ -38,13 +38,13 @@ impl InterfaceContract for DocsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[("variant", mp::tag_schema("Catalog"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("Catalog"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("CategoryOperations")),
                 ("category_id", mp::text_schema()),
                 (
                     "query",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "offset",
                             serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
@@ -55,16 +55,16 @@ impl InterfaceContract for DocsInput {
                         ),
                         (
                             "q",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CategoryOpenApi")),
                 ("category_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("OperationOpenApi")),
                 ("operation_id", mp::text_schema()),
             ]),
@@ -74,13 +74,13 @@ impl InterfaceContract for DocsInput {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
             Self::Catalog => {
-                mp::object_value(&[("variant", serde_json::Value::String("Catalog".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("Catalog".to_owned()))])
             }
             Self::CategoryOperations {
                 category_id: _field_category_id,
                 query: _field_query,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CategoryOperations".to_owned()),
@@ -88,7 +88,7 @@ impl InterfaceContract for DocsInput {
                 ("category_id", mp::text(_field_category_id)?),
                 (
                     "query",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "offset",
                             match (_field_query).offset.as_ref() {
@@ -106,7 +106,7 @@ impl InterfaceContract for DocsInput {
                         (
                             "q",
                             match (_field_query).q.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -119,7 +119,7 @@ impl InterfaceContract for DocsInput {
             Self::CategoryOpenApi {
                 category_id: _field_category_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CategoryOpenApi".to_owned()),
@@ -129,7 +129,7 @@ impl InterfaceContract for DocsInput {
             Self::OperationOpenApi {
                 operation_id: _field_operation_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("OperationOpenApi".to_owned()),

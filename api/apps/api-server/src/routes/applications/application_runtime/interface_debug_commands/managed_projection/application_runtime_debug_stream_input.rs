@@ -4,12 +4,12 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Start")),
                 ("application_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("input_payload", mp::json_summary_schema()),
                         (
                             "document",
@@ -19,7 +19,7 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
                 ),
                 (
                     "stream_query",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "from_sequence",
                             serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
@@ -31,7 +31,7 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Subscribe")),
                 ("application_id", mp::text_schema()),
                 ("run_id", mp::text_schema()),
@@ -50,7 +50,7 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
                 body: _field_body,
                 stream_query: _field_stream_query,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Start".to_owned())),
                 (
                     "application_id",
@@ -58,7 +58,7 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "input_payload",
                             mp::json_summary(&(_field_body).input_payload),
@@ -74,7 +74,7 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
                 ),
                 (
                     "stream_query",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "from_sequence",
                             match (_field_stream_query).from_sequence.as_ref() {
@@ -97,7 +97,7 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
                 run_id: _field_run_id,
                 from_sequence: _field_from_sequence,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Subscribe".to_owned())),
                 (
                     "application_id",

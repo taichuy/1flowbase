@@ -26,7 +26,7 @@ macro_rules! contract {
             const CONTRACT_VERSION: &'static str = "1";
             fn managed_projection_schema() -> Option<serde_json::Value> {
                 use crate::extension_bus::managed_projection as mp;
-                Some(mp::object_schema(&[("kind", mp::tag_schema($id))]))
+                Some(mp::object_schema([("kind", mp::tag_schema($id))]))
             }
             fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
                 Some(serde_json::json!({"kind": $id}))

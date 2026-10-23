@@ -44,34 +44,34 @@ impl InterfaceContract for CacheInspectionInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[("variant", mp::tag_schema("Overview"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("Overview"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("Entries")),
                 ("domain_code", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Reveal")),
                 ("domain_code", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[(
+                    mp::object_schema([(
                         "key",
-                        mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        mp::object_schema([("byte_count", mp::count_schema())]),
                     )]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ClearEntry")),
                 ("domain_code", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[(
+                    mp::object_schema([(
                         "key",
-                        mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        mp::object_schema([("byte_count", mp::count_schema())]),
                     )]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ClearDomain")),
                 ("domain_code", mp::text_schema()),
             ]),
@@ -81,12 +81,12 @@ impl InterfaceContract for CacheInspectionInput {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
             Self::Overview => {
-                mp::object_value(&[("variant", serde_json::Value::String("Overview".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("Overview".to_owned()))])
             }
             Self::Entries {
                 domain_code: _field_domain_code,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Entries".to_owned())),
                 ("domain_code", mp::text(_field_domain_code)?),
             ]),
@@ -94,14 +94,14 @@ impl InterfaceContract for CacheInspectionInput {
                 domain_code: _field_domain_code,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Reveal".to_owned())),
                 ("domain_code", mp::text(_field_domain_code)?),
                 (
                     "body",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "key",
-                        mp::object_value(&[(
+                        mp::object_value([(
                             "byte_count",
                             serde_json::json!((_field_body).key.len()),
                         )]),
@@ -112,7 +112,7 @@ impl InterfaceContract for CacheInspectionInput {
                 domain_code: _field_domain_code,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ClearEntry".to_owned()),
@@ -120,9 +120,9 @@ impl InterfaceContract for CacheInspectionInput {
                 ("domain_code", mp::text(_field_domain_code)?),
                 (
                     "body",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "key",
-                        mp::object_value(&[(
+                        mp::object_value([(
                             "byte_count",
                             serde_json::json!((_field_body).key.len()),
                         )]),
@@ -132,7 +132,7 @@ impl InterfaceContract for CacheInspectionInput {
             Self::ClearDomain {
                 domain_code: _field_domain_code,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ClearDomain".to_owned()),
@@ -158,11 +158,11 @@ impl InterfaceContract for CacheInspectionOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Overview")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "provider_code",
                             serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
@@ -170,7 +170,7 @@ impl InterfaceContract for CacheInspectionOutput {
                         ("can_manage", serde_json::json!({"type":"boolean"})),
                         (
                             "capabilities",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 ("list_domains", serde_json::json!({"type":"boolean"})),
                                 ("list_entries", serde_json::json!({"type":"boolean"})),
                                 ("reveal_value", serde_json::json!({"type":"boolean"})),
@@ -180,20 +180,20 @@ impl InterfaceContract for CacheInspectionOutput {
                         ),
                         (
                             "domains",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("domain_code",mp::text_schema()), ("entry_count",serde_json::json!({"type":"integer"})), ("total_value_size_bytes",serde_json::json!({"type":"integer"}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("domain_code",mp::text_schema()), ("entry_count",serde_json::json!({"type":"integer"})), ("total_value_size_bytes",serde_json::json!({"type":"integer"}))])}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Entries")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("domain_code", mp::text_schema()),
                         (
                             "capabilities",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 ("list_domains", serde_json::json!({"type":"boolean"})),
                                 ("list_entries", serde_json::json!({"type":"boolean"})),
                                 ("reveal_value", serde_json::json!({"type":"boolean"})),
@@ -203,23 +203,23 @@ impl InterfaceContract for CacheInspectionOutput {
                         ),
                         (
                             "entries",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("domain_code",mp::text_schema()), ("key",mp::object_schema(&[("byte_count",mp::count_schema())])), ("value_size_bytes",serde_json::json!({"type":"integer"})), ("ttl_seconds",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("created_at_unix",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("expires_at_unix",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("domain_code",mp::text_schema()), ("key",mp::object_schema([("byte_count",mp::count_schema())])), ("value_size_bytes",serde_json::json!({"type":"integer"})), ("ttl_seconds",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("created_at_unix",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("expires_at_unix",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}))])}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Revealed")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "metadata",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 ("domain_code", mp::text_schema()),
                                 (
                                     "key",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 ("value_size_bytes", serde_json::json!({"type":"integer"})),
                                 (
@@ -240,18 +240,18 @@ impl InterfaceContract for CacheInspectionOutput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("EntryCleared")),
                 (
                     "0",
-                    mp::object_schema(&[("cleared", serde_json::json!({"type":"boolean"}))]),
+                    mp::object_schema([("cleared", serde_json::json!({"type":"boolean"}))]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("DomainCleared")),
                 (
                     "0",
-                    mp::object_schema(&[("cleared_count", serde_json::json!({"type":"integer"}))]),
+                    mp::object_schema([("cleared_count", serde_json::json!({"type":"integer"}))]),
                 ),
             ]),
         ]))
@@ -259,11 +259,11 @@ impl InterfaceContract for CacheInspectionOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Overview(_field_0) => mp::object_value(&[
+            Self::Overview(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Overview".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "provider_code",
                             match (_field_0).provider_code.as_ref() {
@@ -274,7 +274,7 @@ impl InterfaceContract for CacheInspectionOutput {
                         ("can_manage", serde_json::Value::Bool((_field_0).can_manage)),
                         (
                             "capabilities",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "list_domains",
                                     serde_json::Value::Bool((_field_0).capabilities.list_domains),
@@ -306,7 +306,7 @@ impl InterfaceContract for CacheInspectionOutput {
                                     .domains
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("domain_code", mp::text(&(item).domain_code)?),
                                             ("entry_count", serde_json::json!((item).entry_count)),
                                             (
@@ -321,15 +321,15 @@ impl InterfaceContract for CacheInspectionOutput {
                     ]),
                 ),
             ]),
-            Self::Entries(_field_0) => mp::object_value(&[
+            Self::Entries(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Entries".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("domain_code", mp::text(&(_field_0).domain_code)?),
                         (
                             "capabilities",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "list_domains",
                                     serde_json::Value::Bool((_field_0).capabilities.list_domains),
@@ -361,11 +361,11 @@ impl InterfaceContract for CacheInspectionOutput {
                                     .entries
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("domain_code", mp::text(&(item).domain_code)?),
                                             (
                                                 "key",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).key.len()),
                                                 )]),
@@ -403,18 +403,18 @@ impl InterfaceContract for CacheInspectionOutput {
                     ]),
                 ),
             ]),
-            Self::Revealed(_field_0) => mp::object_value(&[
+            Self::Revealed(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Revealed".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "metadata",
-                            mp::object_value(&[
+                            mp::object_value([
                                 ("domain_code", mp::text(&(_field_0).metadata.domain_code)?),
                                 (
                                     "key",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0).metadata.key.len()),
                                     )]),
@@ -450,24 +450,24 @@ impl InterfaceContract for CacheInspectionOutput {
                     ]),
                 ),
             ]),
-            Self::EntryCleared(_field_0) => mp::object_value(&[
+            Self::EntryCleared(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("EntryCleared".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[("cleared", serde_json::Value::Bool((_field_0).cleared))]),
+                    mp::object_value([("cleared", serde_json::Value::Bool((_field_0).cleared))]),
                 ),
             ]),
-            Self::DomainCleared(_field_0) => mp::object_value(&[
+            Self::DomainCleared(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("DomainCleared".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "cleared_count",
                         serde_json::json!((_field_0).cleared_count),
                     )]),

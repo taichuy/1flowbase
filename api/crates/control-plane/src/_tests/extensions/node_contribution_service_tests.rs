@@ -16,8 +16,9 @@ use control_plane::{
         ApplicationNodeRuntimeStatus, ApplicationNodeSourceKind, ListApplicationNodesQuery,
     },
     ports::{
-        AuthRepository, FrontendBlockCatalogRepository, JsDependencyRepository,
-        NodeContributionRepository, PluginRepository, ReplaceInstallationFrontendBlocksInput,
+        AuthRepository, FrontendBlockCatalogDefaultTemplate, FrontendBlockCatalogRepository,
+        FrontendBlockCatalogTemplateRevision, JsDependencyRepository, NodeContributionRepository,
+        PluginRepository, ReplaceInstallationFrontendBlocksInput,
         ReplaceInstallationJsDependenciesInput, RoleConsolePolicyReader,
     },
 };
@@ -82,6 +83,28 @@ struct MemoryNodeContributionRepository {
     actor: ActorContext,
     entries: Arc<RwLock<Vec<NodeContributionRegistryEntry>>>,
     console_policies: Vec<domain::RoleConsolePolicy>,
+    frontend: Arc<RwLock<FrontendCatalogFixture>>,
+}
+
+#[derive(Default)]
+struct FrontendCatalogFixture {
+    blocks: Vec<domain::FrontendBlockCatalogEntry>,
+    defaults: Vec<FrontendBlockCatalogDefaultTemplate>,
+    installations: Vec<domain::PluginInstallationRecord>,
+    artifacts: Vec<domain::PluginArtifactInstanceRecord>,
+    assignments: Vec<domain::PluginAssignmentRecord>,
+    reads: Vec<String>,
+    fail_on: Option<String>,
+}
+
+impl FrontendCatalogFixture {
+    fn read(&mut self, operation: String) -> Result<()> {
+        self.reads.push(operation.clone());
+        if self.fail_on.as_ref() == Some(&operation) {
+            anyhow::bail!("fixture read failed: {operation}");
+        }
+        Ok(())
+    }
 }
 
 impl MemoryNodeContributionRepository {
@@ -90,6 +113,7 @@ impl MemoryNodeContributionRepository {
             actor,
             entries: Arc::new(RwLock::new(entries)),
             console_policies: Vec::new(),
+            frontend: Arc::new(RwLock::new(FrontendCatalogFixture::default())),
         }
     }
 
@@ -260,7 +284,17 @@ impl FrontendBlockCatalogRepository for MemoryNodeContributionRepository {
         _node_id: &str,
         _workspace_id: Uuid,
     ) -> Result<Vec<domain::FrontendBlockCatalogEntry>> {
-        Ok(Vec::new())
+        let mut state = self.frontend.write().await;
+        state.read("blocks".into())?;
+        Ok(state.blocks.clone())
+    }
+
+    async fn list_active_ui_code_templates_for_catalog(
+        &self,
+    ) -> Result<Vec<FrontendBlockCatalogDefaultTemplate>> {
+        let mut state = self.frontend.write().await;
+        state.read("defaults".into())?;
+        Ok(state.defaults.clone())
     }
 }
 
@@ -275,9 +309,15 @@ impl PluginRepository for MemoryNodeContributionRepository {
 
     async fn get_installation(
         &self,
-        _installation_id: Uuid,
+        installation_id: Uuid,
     ) -> Result<Option<domain::PluginInstallationRecord>> {
-        Ok(None)
+        let mut state = self.frontend.write().await;
+        state.read(format!("installation:{installation_id}"))?;
+        Ok(state
+            .installations
+            .iter()
+            .find(|installation| installation.id == installation_id)
+            .cloned())
     }
 
     async fn list_installations(&self) -> Result<Vec<domain::PluginInstallationRecord>> {
@@ -330,10 +370,18 @@ impl PluginRepository for MemoryNodeContributionRepository {
 
     async fn get_artifact_instance(
         &self,
-        _node_id: &str,
-        _installation_id: Uuid,
+        node_id: &str,
+        installation_id: Uuid,
     ) -> Result<Option<domain::PluginArtifactInstanceRecord>> {
-        Ok(None)
+        let mut state = self.frontend.write().await;
+        state.read(format!("artifact:{node_id}:{installation_id}"))?;
+        Ok(state
+            .artifacts
+            .iter()
+            .find(|artifact| {
+                artifact.installation_id == installation_id && artifact.node_id == node_id
+            })
+            .cloned())
     }
 
     async fn list_artifact_instances(
@@ -354,7 +402,9 @@ impl PluginRepository for MemoryNodeContributionRepository {
         &self,
         _workspace_id: Uuid,
     ) -> Result<Vec<domain::PluginAssignmentRecord>> {
-        Ok(Vec::new())
+        let mut state = self.frontend.write().await;
+        state.read("assignments".into())?;
+        Ok(state.assignments.clone())
     }
 
     async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {
@@ -750,4 +800,296 @@ async fn ac_1281_js_dependencies_legacy_only_does_not_authorize() {
         })
         .await
         .is_err());
+}
+
+fn frontend_candidate(
+    workspace_id: Uuid,
+    version: &str,
+) -> control_plane::frontend_block_catalog::FrontendContributionCandidate {
+    let now = time::OffsetDateTime::UNIX_EPOCH;
+    let id = Uuid::now_v7();
+    let installation = domain::PluginInstallationRecord {
+        id,
+        scope_id: domain::SYSTEM_SCOPE_ID,
+        category: domain::ExtensionCategory::CapabilityPlugins,
+        organization: "fixture".into(),
+        provider_code: "fixture.frontend".into(),
+        plugin_id: format!("fixture.frontend@{version}"),
+        plugin_version: version.into(),
+        contract_version: "1flowbase.capability/v1".into(),
+        protocol: "stdio_json".into(),
+        display_name: "Frontend fixture".into(),
+        source_kind: "uploaded".into(),
+        trust_level: "checksum_only".into(),
+        verification_status: domain::PluginVerificationStatus::Valid,
+        desired_state: domain::PluginDesiredState::ActiveRequested,
+        expected_checksum: Some("fixture-checksum".into()),
+        signature_status: domain::ExtensionSignatureStatus::Missing,
+        signature_algorithm: None,
+        signing_key_id: None,
+        legacy_manifest_compatibility: None,
+        metadata_json: serde_json::json!({}),
+        is_system_reserved: false,
+        created_by: Uuid::nil(),
+        updated_by: None,
+        created_at: now,
+        updated_at: now,
+    };
+    let artifact = domain::PluginArtifactInstanceRecord {
+        node_id: "test-node".into(),
+        installation_id: id,
+        local_version: Some(version.into()),
+        local_checksum: installation.expected_checksum.clone(),
+        local_path: None,
+        package_path: None,
+        manifest_fingerprint: None,
+        artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+        runtime_status: domain::PluginRuntimeStatus::Inactive,
+        availability_status: domain::PluginAvailabilityStatus::Available,
+        checked_at: now,
+        last_error: None,
+        is_current: true,
+    };
+    let assignment = domain::PluginAssignmentRecord {
+        id: Uuid::now_v7(),
+        installation_id: id,
+        workspace_id,
+        provider_code: installation.provider_code.clone(),
+        assigned_by: Uuid::nil(),
+        created_at: now,
+    };
+    let catalog_entry = domain::FrontendBlockCatalogEntry {
+        installation_id: id,
+        provider_code: installation.provider_code.clone(),
+        plugin_id: installation.plugin_id.clone(),
+        plugin_version: version.into(),
+        contribution_code: "hero".into(),
+        title: "Hero".into(),
+        runtime: "native_react".into(),
+        entry: "blocks/hero.js".into(),
+        code_template: Some("official".into()),
+        code_template_version: Some("official-v1".into()),
+        code_template_language: Some("jsx".into()),
+        code_modules: vec![],
+        context_contract: domain::FrontendBlockContextContract {
+            primitives: vec![],
+            input_schema: serde_json::json!({}),
+        },
+        permissions: domain::FrontendBlockPermissions {
+            network: "none".into(),
+            storage: "none".into(),
+            secrets: "none".into(),
+        },
+        ui_capabilities: vec![],
+    };
+    control_plane::frontend_block_catalog::FrontendContributionCandidate {
+        workspace_id,
+        installation,
+        artifact,
+        assignment: Some(assignment),
+        catalog_entry,
+    }
+}
+
+#[tokio::test]
+async fn frontend_catalog_reuses_request_facts_with_first_defaults_assignments_and_entry_validation(
+) {
+    let workspace_id = Uuid::now_v7();
+    let repository =
+        MemoryNodeContributionRepository::new(actor_with_permissions(workspace_id, &[]), vec![])
+            .with_console_operation("other.frontend-blocks", "frontend_blocks.view");
+    let first = frontend_candidate(workspace_id, "1.0.0");
+    let second = frontend_candidate(workspace_id, "2.0.0");
+    let mut secondary = first.catalog_entry.clone();
+    secondary.contribution_code = "secondary".into();
+    let mut stale_version = first.catalog_entry.clone();
+    stale_version.plugin_version = "old".into();
+    let mut invalid_runtime = first.catalog_entry.clone();
+    invalid_runtime.runtime = "unsupported".into();
+    let mut invalid_assignment = second.assignment.clone().unwrap();
+    invalid_assignment.workspace_id = Uuid::now_v7();
+    let mut later_invalid = first.assignment.clone().unwrap();
+    later_invalid.provider_code = "wrong-provider".into();
+    let template = |code: &str, revision: Option<i32>| FrontendBlockCatalogDefaultTemplate {
+        provider_code: first.installation.provider_code.clone(),
+        contribution_code: code.into(),
+        published_revision: revision.map(|revision| FrontendBlockCatalogTemplateRevision {
+            revision,
+            source: format!("managed {revision}"),
+            language: domain::UiCodeTemplateLanguage::Tsx,
+        }),
+    };
+    {
+        let mut state = repository.frontend.write().await;
+        state.installations = vec![first.installation.clone(), second.installation.clone()];
+        state.artifacts = vec![first.artifact.clone(), second.artifact.clone()];
+        state.assignments = vec![
+            first.assignment.clone().unwrap(),
+            later_invalid,
+            invalid_assignment,
+            second.assignment.clone().unwrap(),
+        ];
+        state.defaults = vec![
+            template("hero", Some(2)),
+            template("hero", Some(99)),
+            template("secondary", None),
+            template("secondary", Some(99)),
+        ];
+        state.blocks = vec![
+            first.catalog_entry.clone(),
+            second.catalog_entry.clone(),
+            stale_version,
+            invalid_runtime,
+            secondary,
+        ];
+    }
+    let service = FrontendBlockCatalogService::new(
+        repository.clone(),
+        "test-node",
+        frontend_contribution_graph(),
+    )
+    .unwrap();
+    let view = service
+        .list_frontend_blocks(ListFrontendBlockCatalogQuery {
+            actor_user_id: Uuid::now_v7(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        view.entries
+            .iter()
+            .map(|entry| entry.catalog_entry.contribution_code.as_str())
+            .collect::<Vec<_>>(),
+        ["hero", "secondary"]
+    );
+    assert_eq!(
+        view.entries[0].catalog_entry.code_template.as_deref(),
+        Some("managed 2")
+    );
+    assert_eq!(
+        view.entries[0]
+            .catalog_entry
+            .code_template_version
+            .as_deref(),
+        Some("managed-r2")
+    );
+    assert_eq!(
+        view.entries[0]
+            .catalog_entry
+            .code_template_language
+            .as_deref(),
+        Some("tsx")
+    );
+    assert_eq!(
+        view.entries[1].catalog_entry.code_template.as_deref(),
+        Some("official")
+    );
+    let expected_reads = vec![
+        "blocks".into(),
+        "defaults".into(),
+        "assignments".into(),
+        format!("installation:{}", first.installation.id),
+        format!("artifact:test-node:{}", first.installation.id),
+        format!("installation:{}", second.installation.id),
+        format!("artifact:test-node:{}", second.installation.id),
+    ];
+    {
+        let mut state = repository.frontend.write().await;
+        assert_eq!(state.reads, expected_reads);
+        state.reads.clear();
+        state.installations[0].plugin_version = "changed-between-requests".into();
+    }
+    assert!(service
+        .list_frontend_blocks(ListFrontendBlockCatalogQuery {
+            actor_user_id: Uuid::now_v7()
+        })
+        .await
+        .unwrap()
+        .entries
+        .is_empty());
+    assert_eq!(repository.frontend.read().await.reads, expected_reads);
+    let other_node =
+        FrontendBlockCatalogService::new(repository, "other-node", frontend_contribution_graph())
+            .unwrap();
+    assert!(other_node
+        .list_frontend_blocks(ListFrontendBlockCatalogQuery {
+            actor_user_id: Uuid::now_v7()
+        })
+        .await
+        .unwrap()
+        .entries
+        .is_empty());
+}
+
+#[tokio::test]
+async fn frontend_catalog_missing_facts_are_reused_and_read_errors_keep_lazy_order() {
+    let workspace_id = Uuid::now_v7();
+    let repository =
+        MemoryNodeContributionRepository::new(actor_with_permissions(workspace_id, &[]), vec![])
+            .with_console_operation("other.frontend-blocks", "frontend_blocks.view");
+    let missing = frontend_candidate(workspace_id, "1");
+    let no_artifact = frontend_candidate(workspace_id, "1");
+    let failing = frontend_candidate(workspace_id, "1");
+    let unread = frontend_candidate(workspace_id, "1");
+    let failure = format!("artifact:test-node:{}", failing.installation.id);
+    {
+        let mut state = repository.frontend.write().await;
+        state.installations = vec![
+            no_artifact.installation.clone(),
+            failing.installation.clone(),
+            unread.installation,
+        ];
+        state.blocks = vec![
+            missing.catalog_entry.clone(),
+            missing.catalog_entry,
+            no_artifact.catalog_entry.clone(),
+            no_artifact.catalog_entry,
+            failing.catalog_entry,
+            unread.catalog_entry,
+        ];
+        state.fail_on = Some(failure.clone());
+    }
+    let service = FrontendBlockCatalogService::new(
+        repository.clone(),
+        "test-node",
+        frontend_contribution_graph(),
+    )
+    .unwrap();
+    let error = service
+        .list_frontend_blocks(ListFrontendBlockCatalogQuery {
+            actor_user_id: Uuid::now_v7(),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(error.to_string(), format!("fixture read failed: {failure}"));
+    {
+        let mut state = repository.frontend.write().await;
+        assert_eq!(
+            state.reads,
+            vec![
+                "blocks".into(),
+                "defaults".into(),
+                "assignments".into(),
+                format!("installation:{}", missing.installation.id),
+                format!("installation:{}", no_artifact.installation.id),
+                format!("artifact:test-node:{}", no_artifact.installation.id),
+                format!("installation:{}", failing.installation.id),
+                failure
+            ]
+        );
+        state.blocks.clear();
+        state.reads.clear();
+    }
+    assert!(service
+        .list_frontend_blocks(ListFrontendBlockCatalogQuery {
+            actor_user_id: Uuid::now_v7()
+        })
+        .await
+        .unwrap()
+        .entries
+        .is_empty());
+    assert_eq!(
+        repository.frontend.read().await.reads,
+        ["blocks", "defaults", "assignments"]
+    );
 }

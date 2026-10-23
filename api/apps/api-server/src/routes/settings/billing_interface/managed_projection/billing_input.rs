@@ -7,14 +7,14 @@ impl InterfaceContract for BillingInput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::ListPricingRules(_field_0) => mp::object_value(&[
+            Self::ListPricingRules(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ListPricingRules".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "provider_code",
                             match (_field_0).provider_code.as_ref() {
@@ -39,7 +39,7 @@ impl InterfaceContract for BillingInput {
                         (
                             "source_kind",
                             match (_field_0).source_kind.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -63,14 +63,14 @@ impl InterfaceContract for BillingInput {
                     ]),
                 ),
             ]),
-            Self::CreatePricingRule(_field_0) => mp::object_value(&[
+            Self::CreatePricingRule(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CreatePricingRule".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "id",
                             match (_field_0).id.as_ref() {
@@ -103,7 +103,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "timezone",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).timezone.len()),
                             )]),
@@ -112,7 +112,7 @@ impl InterfaceContract for BillingInput {
                         (
                             "local_time_start",
                             match (_field_0).local_time_start.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -122,7 +122,7 @@ impl InterfaceContract for BillingInput {
                         (
                             "local_time_end",
                             match (_field_0).local_time_end.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -135,7 +135,7 @@ impl InterfaceContract for BillingInput {
                         (
                             "source_kind",
                             match (_field_0).source_kind.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -159,7 +159,7 @@ impl InterfaceContract for BillingInput {
                         (
                             "source_checksum",
                             match (_field_0).source_checksum.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -180,7 +180,7 @@ impl InterfaceContract for BillingInput {
                 id: _field_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UpdatePricingRule".to_owned()),
@@ -188,7 +188,7 @@ impl InterfaceContract for BillingInput {
                 ("id", serde_json::Value::String((_field_id).to_string())),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "id",
                             match (_field_body).id.as_ref() {
@@ -221,7 +221,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "timezone",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).timezone.len()),
                             )]),
@@ -233,7 +233,7 @@ impl InterfaceContract for BillingInput {
                         (
                             "local_time_start",
                             match (_field_body).local_time_start.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -243,7 +243,7 @@ impl InterfaceContract for BillingInput {
                         (
                             "local_time_end",
                             match (_field_body).local_time_end.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -256,7 +256,7 @@ impl InterfaceContract for BillingInput {
                         (
                             "source_kind",
                             match (_field_body).source_kind.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -280,7 +280,7 @@ impl InterfaceContract for BillingInput {
                         (
                             "source_checksum",
                             match (_field_body).source_checksum.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -297,21 +297,21 @@ impl InterfaceContract for BillingInput {
                     ]),
                 ),
             ]),
-            Self::DeletePricingRule { id: _field_id, .. } => mp::object_value(&[
+            Self::DeletePricingRule { id: _field_id, .. } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("DeletePricingRule".to_owned()),
                 ),
                 ("id", serde_json::Value::String((_field_id).to_string())),
             ]),
-            Self::GetPricingCatalog(_field_0) => mp::object_value(&[
+            Self::GetPricingCatalog(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("GetPricingCatalog".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "provider_code",
                             match (_field_0).provider_code.as_ref() {
@@ -344,16 +344,16 @@ impl InterfaceContract for BillingInput {
                 ),
             ]),
             Self::SyncPricingCatalog => {
-                mp::object_value(&[("variant", serde_json::json!("SyncPricingCatalog"))])
+                mp::object_value([("variant", serde_json::json!("SyncPricingCatalog"))])
             }
-            Self::ImportPricingCatalog(_field_0) => mp::object_value(&[
+            Self::ImportPricingCatalog(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ImportPricingCatalog".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[("catalog_ids", {
+                    mp::object_value([("catalog_ids", {
                         if (_field_0).catalog_ids.len() > 32 {
                             return None;
                         }
@@ -367,14 +367,14 @@ impl InterfaceContract for BillingInput {
                     })]),
                 ),
             ]),
-            Self::ListCreditAccounts(_field_0) => mp::object_value(&[
+            Self::ListCreditAccounts(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ListCreditAccounts".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "limit",
                             match (_field_0).limit.as_ref() {
@@ -416,7 +416,7 @@ impl InterfaceContract for BillingInput {
             Self::GetCreditAccount {
                 user_id: _field_user_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("GetCreditAccount".to_owned()),
@@ -426,14 +426,14 @@ impl InterfaceContract for BillingInput {
                     serde_json::Value::String((_field_user_id).to_string()),
                 ),
             ]),
-            Self::ListCreditLedger(_field_0) => mp::object_value(&[
+            Self::ListCreditLedger(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ListCreditLedger".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "limit",
                             match (_field_0).limit.as_ref() {
@@ -476,7 +476,7 @@ impl InterfaceContract for BillingInput {
                 user_id: _field_user_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("GrantCredit".to_owned()),
@@ -487,11 +487,11 @@ impl InterfaceContract for BillingInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "amount",
                             match (_field_body).amount.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -500,7 +500,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "reason",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).reason.len()),
                             )]),
@@ -521,7 +521,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "idempotency_key",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).idempotency_key.len()),
                             )]),
@@ -540,7 +540,7 @@ impl InterfaceContract for BillingInput {
                 user_id: _field_user_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ChargeCredit".to_owned()),
@@ -551,11 +551,11 @@ impl InterfaceContract for BillingInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "amount",
                             match (_field_body).amount.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -564,7 +564,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "reason",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).reason.len()),
                             )]),
@@ -585,7 +585,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "idempotency_key",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).idempotency_key.len()),
                             )]),
@@ -604,7 +604,7 @@ impl InterfaceContract for BillingInput {
                 user_id: _field_user_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("AdjustCredit".to_owned()),
@@ -615,11 +615,11 @@ impl InterfaceContract for BillingInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "amount",
                             match (_field_body).amount.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -628,7 +628,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "reason",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).reason.len()),
                             )]),
@@ -649,7 +649,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "idempotency_key",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).idempotency_key.len()),
                             )]),
@@ -668,7 +668,7 @@ impl InterfaceContract for BillingInput {
                 user_id: _field_user_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("EnableCharge".to_owned()),
@@ -679,11 +679,11 @@ impl InterfaceContract for BillingInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "amount",
                             match (_field_body).amount.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -692,7 +692,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "reason",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).reason.len()),
                             )]),
@@ -713,7 +713,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "idempotency_key",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).idempotency_key.len()),
                             )]),
@@ -732,7 +732,7 @@ impl InterfaceContract for BillingInput {
                 user_id: _field_user_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("DisableCharge".to_owned()),
@@ -743,11 +743,11 @@ impl InterfaceContract for BillingInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "amount",
                             match (_field_body).amount.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -756,7 +756,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "reason",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).reason.len()),
                             )]),
@@ -777,7 +777,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "idempotency_key",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).idempotency_key.len()),
                             )]),
@@ -796,7 +796,7 @@ impl InterfaceContract for BillingInput {
                 user_id: _field_user_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("RefundCredit".to_owned()),
@@ -807,11 +807,11 @@ impl InterfaceContract for BillingInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "amount",
                             match (_field_body).amount.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -820,7 +820,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "reason",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).reason.len()),
                             )]),
@@ -841,7 +841,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "idempotency_key",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).idempotency_key.len()),
                             )]),

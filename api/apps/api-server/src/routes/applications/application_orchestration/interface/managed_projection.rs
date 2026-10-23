@@ -4,43 +4,43 @@ impl InterfaceContract for ApplicationOrchestrationInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Get")),
                 ("application_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("SaveDraft")),
                 ("application_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("document", mp::json_summary_schema()),
                         (
                             "change_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "summary",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("RestoreVersion")),
                 ("application_id", mp::text_schema()),
                 ("version_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UpdateVersion")),
                 ("application_id", mp::text_schema()),
                 ("version_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "summary",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "summary_is_custom",
@@ -53,46 +53,46 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("PreviewUploadedArchive")),
                 ("application_count", mp::count_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ImportUploadedArchive")),
                 ("application_count", mp::count_schema()),
                 ("selection_count", mp::count_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ExportArchive")),
                 (
                     "0",
-                    mp::object_schema(&[(
+                    mp::object_schema([(
                         "application_ids",
                         serde_json::json!({"type":"array","maxItems":32,"items":mp::text_schema()}),
                     )]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("PreviewInstalledArchive")),
                 ("0", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ImportInstalledArchive")),
                 ("installation_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "name",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "description",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "integrity_override",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("reason",mp::object_schema(&[("byte_count",mp::count_schema())])), ("acknowledged_warnings",mp::object_schema(&[("item_count",mp::count_schema())]))]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("reason",mp::object_schema([("byte_count",mp::count_schema())])), ("acknowledged_warnings",mp::object_schema([("item_count",mp::count_schema())]))]), {"type":"null"}]}),
                         ),
                     ]),
                 ),
@@ -105,7 +105,7 @@ impl InterfaceContract for ApplicationOrchestrationInput {
             Self::Get {
                 application_id: _field_application_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Get".to_owned())),
                 (
                     "application_id",
@@ -116,7 +116,7 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                 application_id: _field_application_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("SaveDraft".to_owned())),
                 (
                     "application_id",
@@ -124,18 +124,18 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("document", mp::json_summary(&(_field_body).document)),
                         (
                             "change_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).change_kind.len()),
                             )]),
                         ),
                         (
                             "summary",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_body).summary.len()),
                             )]),
@@ -147,7 +147,7 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                 application_id: _field_application_id,
                 version_id: _field_version_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("RestoreVersion".to_owned()),
@@ -166,7 +166,7 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                 version_id: _field_version_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UpdateVersion".to_owned()),
@@ -181,11 +181,11 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "summary",
                             match (_field_body).summary.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -209,7 +209,7 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                     ]),
                 ),
             ]),
-            Self::PreviewUploadedArchive(package) => mp::object_value(&[
+            Self::PreviewUploadedArchive(package) => mp::object_value([
                 ("variant", serde_json::json!("PreviewUploadedArchive")),
                 (
                     "application_count",
@@ -220,7 +220,7 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                 package,
                 selections,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::json!("ImportUploadedArchive")),
                 (
                     "application_count",
@@ -228,14 +228,14 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                 ),
                 ("selection_count", serde_json::json!(selections.len())),
             ]),
-            Self::ExportArchive(_field_0) => mp::object_value(&[
+            Self::ExportArchive(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ExportArchive".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[("application_ids", {
+                    mp::object_value([("application_ids", {
                         if (_field_0).application_ids.len() > 32 {
                             return None;
                         }
@@ -249,7 +249,7 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                     })]),
                 ),
             ]),
-            Self::PreviewInstalledArchive(_field_0) => mp::object_value(&[
+            Self::PreviewInstalledArchive(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("PreviewInstalledArchive".to_owned()),
@@ -260,7 +260,7 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                 installation_id: _field_installation_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ImportInstalledArchive".to_owned()),
@@ -271,11 +271,11 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                 ),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "name",
                             match (_field_body).name.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -285,7 +285,7 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                         (
                             "description",
                             match (_field_body).description.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -295,17 +295,17 @@ impl InterfaceContract for ApplicationOrchestrationInput {
                         (
                             "integrity_override",
                             match (_field_body).integrity_override.as_ref() {
-                                Some(item) => mp::object_value(&[
+                                Some(item) => mp::object_value([
                                     (
                                         "reason",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).reason.len()),
                                         )]),
                                     ),
                                     (
                                         "acknowledged_warnings",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "item_count",
                                             serde_json::json!((item).acknowledged_warnings.len()),
                                         )]),
@@ -328,15 +328,15 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("State")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("flow_id", mp::text_schema()),
                         (
                             "draft",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 ("id", mp::text_schema()),
                                 ("flow_id", mp::text_schema()),
                                 ("document", mp::json_summary_schema()),
@@ -345,11 +345,11 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                         ),
                         (
                             "messages",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("key",mp::object_schema(&[("byte_count",mp::count_schema())])), ("text",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("key",mp::object_schema([("byte_count",mp::count_schema())])), ("text",mp::object_schema([("byte_count",mp::count_schema())]))])}),
                         ),
                         (
                             "versions",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("sequence",serde_json::json!({"type":"integer"})), ("trigger",mp::object_schema(&[("byte_count",mp::count_schema())])), ("change_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("summary",mp::object_schema(&[("byte_count",mp::count_schema())])), ("summary_is_custom",serde_json::json!({"type":"boolean"})), ("is_user_protected",serde_json::json!({"type":"boolean"})), ("is_current_publication",serde_json::json!({"type":"boolean"})), ("created_at",mp::text_schema())])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("sequence",serde_json::json!({"type":"integer"})), ("trigger",mp::object_schema([("byte_count",mp::count_schema())])), ("change_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("summary",mp::object_schema([("byte_count",mp::count_schema())])), ("summary_is_custom",serde_json::json!({"type":"boolean"})), ("is_user_protected",serde_json::json!({"type":"boolean"})), ("is_current_publication",serde_json::json!({"type":"boolean"})), ("created_at",mp::text_schema())])}),
                         ),
                         (
                             "autosave_interval_seconds",
@@ -362,37 +362,37 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ArchivePreview")),
                 ("application_count", mp::count_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ArchiveBatchImport")),
                 ("succeeded_count", mp::count_schema()),
                 ("failed_count", mp::count_schema()),
                 ("partial_count", mp::count_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ArchiveImport")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "application",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 ("id", mp::text_schema()),
                                 ("application_type", mp::text_schema()),
                                 (
                                     "name",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 (
                                     "description",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 (
                                     "icon",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "icon_type",
@@ -400,22 +400,22 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                 ),
                                 (
                                     "icon_background",
-                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                 ),
                                 (
                                     "created_by",
-                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                    mp::object_schema([("byte_count", mp::count_schema())]),
                                 ),
                                 ("updated_at", mp::text_schema()),
                             ]),
                         ),
                         (
                             "orchestration",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 ("flow_id", mp::text_schema()),
                                 (
                                     "draft",
-                                    mp::object_schema(&[
+                                    mp::object_schema([
                                         ("id", mp::text_schema()),
                                         ("flow_id", mp::text_schema()),
                                         ("document", mp::json_summary_schema()),
@@ -424,11 +424,11 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                 ),
                                 (
                                     "messages",
-                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                    mp::object_schema([("item_count", mp::count_schema())]),
                                 ),
                                 (
                                     "versions",
-                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                    mp::object_schema([("item_count", mp::count_schema())]),
                                 ),
                                 (
                                     "autosave_interval_seconds",
@@ -442,29 +442,23 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                         ),
                         (
                             "preview",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 ("schema_version", mp::text_schema()),
                                 (
                                     "application",
-                                    mp::object_schema(&[
+                                    mp::object_schema([
                                         ("application_type", mp::text_schema()),
                                         (
                                             "name",
-                                            mp::object_schema(&[(
-                                                "byte_count",
-                                                mp::count_schema(),
-                                            )]),
+                                            mp::object_schema([("byte_count", mp::count_schema())]),
                                         ),
                                         (
                                             "description",
-                                            mp::object_schema(&[(
-                                                "byte_count",
-                                                mp::count_schema(),
-                                            )]),
+                                            mp::object_schema([("byte_count", mp::count_schema())]),
                                         ),
                                         (
                                             "icon",
-                                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                         ),
                                         (
                                             "icon_type",
@@ -472,17 +466,17 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                         ),
                                         (
                                             "icon_background",
-                                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                         ),
                                     ]),
                                 ),
                                 (
                                     "dependencies",
-                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                    mp::object_schema([("item_count", mp::count_schema())]),
                                 ),
                                 (
                                     "unresolved_nodes",
-                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                    mp::object_schema([("item_count", mp::count_schema())]),
                                 ),
                                 ("document", mp::json_summary_schema()),
                             ]),
@@ -490,49 +484,43 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("InstalledArchivePreview")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("extension_installation_id", mp::text_schema()),
                         (
                             "application_status",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "integrity_warnings",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("code",mp::text_schema()), ("message",mp::object_schema(&[("byte_count",mp::count_schema())])), ("overridable",serde_json::json!({"type":"boolean"}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("code",mp::text_schema()), ("message",mp::object_schema([("byte_count",mp::count_schema())])), ("overridable",serde_json::json!({"type":"boolean"}))])}),
                         ),
                         (
                             "required_integrity_override",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("warnings",mp::object_schema(&[("item_count",mp::count_schema())])), ("compatibility",serde_json::json!({"anyOf": [mp::object_schema(&[("reason",mp::object_schema(&[("byte_count",mp::count_schema())])), ("current_host_version",mp::text_schema()), ("minimum_host_version",mp::text_schema())]), {"type":"null"}]}))]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("warnings",mp::object_schema([("item_count",mp::count_schema())])), ("compatibility",serde_json::json!({"anyOf": [mp::object_schema([("reason",mp::object_schema([("byte_count",mp::count_schema())])), ("current_host_version",mp::text_schema()), ("minimum_host_version",mp::text_schema())]), {"type":"null"}]}))]), {"type":"null"}]}),
                         ),
                         (
                             "preview",
-                            mp::object_schema(&[
+                            mp::object_schema([
                                 ("schema_version", mp::text_schema()),
                                 (
                                     "application",
-                                    mp::object_schema(&[
+                                    mp::object_schema([
                                         ("application_type", mp::text_schema()),
                                         (
                                             "name",
-                                            mp::object_schema(&[(
-                                                "byte_count",
-                                                mp::count_schema(),
-                                            )]),
+                                            mp::object_schema([("byte_count", mp::count_schema())]),
                                         ),
                                         (
                                             "description",
-                                            mp::object_schema(&[(
-                                                "byte_count",
-                                                mp::count_schema(),
-                                            )]),
+                                            mp::object_schema([("byte_count", mp::count_schema())]),
                                         ),
                                         (
                                             "icon",
-                                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                         ),
                                         (
                                             "icon_type",
@@ -540,17 +528,17 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                         ),
                                         (
                                             "icon_background",
-                                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                                         ),
                                     ]),
                                 ),
                                 (
                                     "dependencies",
-                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                    mp::object_schema([("item_count", mp::count_schema())]),
                                 ),
                                 (
                                     "unresolved_nodes",
-                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                    mp::object_schema([("item_count", mp::count_schema())]),
                                 ),
                                 ("document", mp::json_summary_schema()),
                             ]),
@@ -558,15 +546,15 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ExportedArchive")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("content_type", mp::text_schema()),
                         (
                             "document",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
@@ -576,15 +564,15 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::State(_field_0) => mp::object_value(&[
+            Self::State(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("State".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("flow_id", mp::text(&(_field_0).flow_id)?),
                         (
                             "draft",
-                            mp::object_value(&[
+                            mp::object_value([
                                 ("id", mp::text(&(_field_0).draft.id)?),
                                 ("flow_id", mp::text(&(_field_0).draft.flow_id)?),
                                 ("document", mp::json_summary(&(_field_0).draft.document)),
@@ -600,17 +588,17 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                     .messages
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             (
                                                 "key",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).key.len()),
                                                 )]),
                                             ),
                                             (
                                                 "text",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).text.len()),
                                                 )]),
@@ -629,26 +617,26 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                     .versions
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("id", mp::text(&(item).id)?),
                                             ("sequence", serde_json::json!((item).sequence)),
                                             (
                                                 "trigger",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).trigger.len()),
                                                 )]),
                                             ),
                                             (
                                                 "change_kind",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).change_kind.len()),
                                                 )]),
                                             ),
                                             (
                                                 "summary",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).summary.len()),
                                                 )]),
@@ -684,14 +672,14 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                     ]),
                 ),
             ]),
-            Self::ArchivePreview(preview) => mp::object_value(&[
+            Self::ArchivePreview(preview) => mp::object_value([
                 ("variant", serde_json::json!("ArchivePreview")),
                 (
                     "application_count",
                     serde_json::json!(preview.applications.len()),
                 ),
             ]),
-            Self::ArchiveBatchImport(results) => mp::object_value(&[
+            Self::ArchiveBatchImport(results) => mp::object_value([
                 ("variant", serde_json::json!("ArchiveBatchImport")),
                 (
                     "succeeded_count",
@@ -700,17 +688,17 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                 ("failed_count", serde_json::json!(results.failed_count)),
                 ("partial_count", serde_json::json!(results.partial_count)),
             ]),
-            Self::ArchiveImport(_field_0) => mp::object_value(&[
+            Self::ArchiveImport(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ArchiveImport".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "application",
-                            mp::object_value(&[
+                            mp::object_value([
                                 ("id", mp::text(&(_field_0).application.id)?),
                                 (
                                     "application_type",
@@ -718,14 +706,14 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                 ),
                                 (
                                     "name",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0).application.name.len()),
                                     )]),
                                 ),
                                 (
                                     "description",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0).application.description.len()),
                                     )]),
@@ -733,7 +721,7 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                 (
                                     "icon",
                                     match (_field_0).application.icon.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -750,7 +738,7 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                 (
                                     "icon_background",
                                     match (_field_0).application.icon_background.as_ref() {
-                                        Some(item) => mp::object_value(&[(
+                                        Some(item) => mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).len()),
                                         )]),
@@ -759,7 +747,7 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                 ),
                                 (
                                     "created_by",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((_field_0).application.created_by.len()),
                                     )]),
@@ -769,11 +757,11 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                         ),
                         (
                             "orchestration",
-                            mp::object_value(&[
+                            mp::object_value([
                                 ("flow_id", mp::text(&(_field_0).orchestration.flow_id)?),
                                 (
                                     "draft",
-                                    mp::object_value(&[
+                                    mp::object_value([
                                         ("id", mp::text(&(_field_0).orchestration.draft.id)?),
                                         (
                                             "flow_id",
@@ -793,14 +781,14 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                 ),
                                 (
                                     "messages",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "item_count",
                                         serde_json::json!((_field_0).orchestration.messages.len()),
                                     )]),
                                 ),
                                 (
                                     "versions",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "item_count",
                                         serde_json::json!((_field_0).orchestration.versions.len()),
                                     )]),
@@ -821,14 +809,14 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                         ),
                         (
                             "preview",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "schema_version",
                                     mp::text(&(_field_0).preview.schema_version)?,
                                 ),
                                 (
                                     "application",
-                                    mp::object_value(&[
+                                    mp::object_value([
                                         (
                                             "application_type",
                                             mp::text(
@@ -837,7 +825,7 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                         ),
                                         (
                                             "name",
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((_field_0)
                                                     .preview
@@ -848,7 +836,7 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                         ),
                                         (
                                             "description",
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((_field_0)
                                                     .preview
@@ -860,7 +848,7 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                         (
                                             "icon",
                                             match (_field_0).preview.application.icon.as_ref() {
-                                                Some(item) => mp::object_value(&[(
+                                                Some(item) => mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).len()),
                                                 )]),
@@ -883,7 +871,7 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                                 .icon_background
                                                 .as_ref()
                                             {
-                                                Some(item) => mp::object_value(&[(
+                                                Some(item) => mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).len()),
                                                 )]),
@@ -894,14 +882,14 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                 ),
                                 (
                                     "dependencies",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "item_count",
                                         serde_json::json!((_field_0).preview.dependencies.len()),
                                     )]),
                                 ),
                                 (
                                     "unresolved_nodes",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "item_count",
                                         serde_json::json!((_field_0)
                                             .preview
@@ -915,21 +903,21 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                     ]),
                 ),
             ]),
-            Self::InstalledArchivePreview(_field_0) => mp::object_value(&[
+            Self::InstalledArchivePreview(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("InstalledArchivePreview".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "extension_installation_id",
                             mp::text(&(_field_0).extension_installation_id)?,
                         ),
                         (
                             "application_status",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).application_status.len()),
                             )]),
@@ -943,11 +931,11 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                     .integrity_warnings
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("code", mp::text(&(item).code)?),
                                             (
                                                 "message",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).message.len()),
                                                 )]),
@@ -964,10 +952,10 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                         (
                             "required_integrity_override",
                             match (_field_0).required_integrity_override.as_ref() {
-                                Some(item) => mp::object_value(&[
+                                Some(item) => mp::object_value([
                                     (
                                         "warnings",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "item_count",
                                             serde_json::json!((item).warnings.len()),
                                         )]),
@@ -975,10 +963,10 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                     (
                                         "compatibility",
                                         match (item).compatibility.as_ref() {
-                                            Some(item) => mp::object_value(&[
+                                            Some(item) => mp::object_value([
                                                 (
                                                     "reason",
-                                                    mp::object_value(&[(
+                                                    mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).reason.len()),
                                                     )]),
@@ -1001,14 +989,14 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                         ),
                         (
                             "preview",
-                            mp::object_value(&[
+                            mp::object_value([
                                 (
                                     "schema_version",
                                     mp::text(&(_field_0).preview.schema_version)?,
                                 ),
                                 (
                                     "application",
-                                    mp::object_value(&[
+                                    mp::object_value([
                                         (
                                             "application_type",
                                             mp::text(
@@ -1017,7 +1005,7 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                         ),
                                         (
                                             "name",
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((_field_0)
                                                     .preview
@@ -1028,7 +1016,7 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                         ),
                                         (
                                             "description",
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((_field_0)
                                                     .preview
@@ -1040,7 +1028,7 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                         (
                                             "icon",
                                             match (_field_0).preview.application.icon.as_ref() {
-                                                Some(item) => mp::object_value(&[(
+                                                Some(item) => mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).len()),
                                                 )]),
@@ -1063,7 +1051,7 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                                 .icon_background
                                                 .as_ref()
                                             {
-                                                Some(item) => mp::object_value(&[(
+                                                Some(item) => mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).len()),
                                                 )]),
@@ -1074,14 +1062,14 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                                 ),
                                 (
                                     "dependencies",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "item_count",
                                         serde_json::json!((_field_0).preview.dependencies.len()),
                                     )]),
                                 ),
                                 (
                                     "unresolved_nodes",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "item_count",
                                         serde_json::json!((_field_0)
                                             .preview
@@ -1095,18 +1083,18 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
                     ]),
                 ),
             ]),
-            Self::ExportedArchive(_field_0) => mp::object_value(&[
+            Self::ExportedArchive(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ExportedArchive".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("content_type", mp::text((_field_0).content_type)?),
                         (
                             "document",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).document.len()),
                             )]),

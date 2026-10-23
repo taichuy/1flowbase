@@ -72,23 +72,23 @@ pub struct BlockContextContractResponse {
 impl InterfaceContract for BlockContextContractResponse {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             ("schema_version", mp::text_schema()),
             ("contract_version", mp::text_schema()),
             ("block_sdk_version", mp::text_schema()),
             (
                 "entries",
-                serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("key",mp::object_schema(&[("byte_count",mp::count_schema())])), ("kind",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Object"))]), mp::object_schema(&[("variant",mp::tag_schema("Function"))])])), ("nullable",serde_json::json!({"type":"boolean"})), ("type_name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("members",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("kind",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Property"))]), mp::object_schema(&[("variant",mp::tag_schema("Method"))])])), ("type_name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())]))])}))])}),
+                serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("key",mp::object_schema([("byte_count",mp::count_schema())])), ("kind",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Object"))]), mp::object_schema([("variant",mp::tag_schema("Function"))])])), ("nullable",serde_json::json!({"type":"boolean"})), ("type_name",mp::object_schema([("byte_count",mp::count_schema())])), ("description",mp::object_schema([("byte_count",mp::count_schema())])), ("members",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("name",mp::object_schema([("byte_count",mp::count_schema())])), ("kind",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Property"))]), mp::object_schema([("variant",mp::tag_schema("Method"))])])), ("type_name",mp::object_schema([("byte_count",mp::count_schema())])), ("description",mp::object_schema([("byte_count",mp::count_schema())]))])}))])}),
             ),
             (
                 "non_context_symbols",
-                mp::object_schema(&[("item_count", mp::count_schema())]),
+                mp::object_schema([("item_count", mp::count_schema())]),
             ),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[
+        Some(mp::object_value([
             ("schema_version", mp::text(&(self).schema_version)?),
             ("contract_version", mp::text(&(self).contract_version)?),
             ("block_sdk_version", mp::text(&(self).block_sdk_version)?),
@@ -101,10 +101,10 @@ impl InterfaceContract for BlockContextContractResponse {
                         .entries
                         .iter()
                         .map(|item| {
-                            Some(mp::object_value(&[
+                            Some(mp::object_value([
                                 (
                                     "key",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).key.len()),
                                     )]),
@@ -112,11 +112,11 @@ impl InterfaceContract for BlockContextContractResponse {
                                 (
                                     "kind",
                                     match &(item).kind {
-                                        BlockContextEntryKind::Object => mp::object_value(&[(
+                                        BlockContextEntryKind::Object => mp::object_value([(
                                             "variant",
                                             serde_json::Value::String("Object".to_owned()),
                                         )]),
-                                        BlockContextEntryKind::Function => mp::object_value(&[(
+                                        BlockContextEntryKind::Function => mp::object_value([(
                                             "variant",
                                             serde_json::Value::String("Function".to_owned()),
                                         )]),
@@ -125,14 +125,14 @@ impl InterfaceContract for BlockContextContractResponse {
                                 ("nullable", serde_json::Value::Bool((item).nullable)),
                                 (
                                     "type_name",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).type_name.len()),
                                     )]),
                                 ),
                                 (
                                     "description",
-                                    mp::object_value(&[(
+                                    mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).description.len()),
                                     )]),
@@ -146,10 +146,10 @@ impl InterfaceContract for BlockContextContractResponse {
                                             .members
                                             .iter()
                                             .map(|item| {
-                                                Some(mp::object_value(&[
+                                                Some(mp::object_value([
                                                     (
                                                         "name",
-                                                        mp::object_value(&[(
+                                                        mp::object_value([(
                                                             "byte_count",
                                                             serde_json::json!((item).name.len()),
                                                         )]),
@@ -158,7 +158,7 @@ impl InterfaceContract for BlockContextContractResponse {
                                                         "kind",
                                                         match &(item).kind {
                                                             BlockContextMemberKind::Property => {
-                                                                mp::object_value(&[(
+                                                                mp::object_value([(
                                                                     "variant",
                                                                     serde_json::Value::String(
                                                                         "Property".to_owned(),
@@ -166,7 +166,7 @@ impl InterfaceContract for BlockContextContractResponse {
                                                                 )])
                                                             }
                                                             BlockContextMemberKind::Method => {
-                                                                mp::object_value(&[(
+                                                                mp::object_value([(
                                                                     "variant",
                                                                     serde_json::Value::String(
                                                                         "Method".to_owned(),
@@ -177,7 +177,7 @@ impl InterfaceContract for BlockContextContractResponse {
                                                     ),
                                                     (
                                                         "type_name",
-                                                        mp::object_value(&[(
+                                                        mp::object_value([(
                                                             "byte_count",
                                                             serde_json::json!((item)
                                                                 .type_name
@@ -186,7 +186,7 @@ impl InterfaceContract for BlockContextContractResponse {
                                                     ),
                                                     (
                                                         "description",
-                                                        mp::object_value(&[(
+                                                        mp::object_value([(
                                                             "byte_count",
                                                             serde_json::json!((item)
                                                                 .description
@@ -205,7 +205,7 @@ impl InterfaceContract for BlockContextContractResponse {
             }),
             (
                 "non_context_symbols",
-                mp::object_value(&[(
+                mp::object_value([(
                     "item_count",
                     serde_json::json!((self).non_context_symbols.len()),
                 )]),
@@ -284,14 +284,14 @@ pub struct BlockContextContractInput;
 impl InterfaceContract for BlockContextContractInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "kind",
             mp::tag_schema("BlockContextContractInput"),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "kind",
             serde_json::Value::String("BlockContextContractInput".to_owned()),
         )]))

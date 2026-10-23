@@ -11,8 +11,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 
 const schemaRuntimeSpies = vi.hoisted(() => ({
-  resolveAgentFlowNodeSchema: vi.fn(),
-  SchemaDrawerPanel: vi.fn()
+  resolveAgentFlowNodeSchema: vi.fn()
 }));
 
 vi.mock('../../schema/node-schema-registry', async () => {
@@ -28,13 +27,6 @@ vi.mock('../../schema/node-schema-registry', async () => {
     })
   };
 });
-
-vi.mock(
-  '../../../../shared/schema-ui/v1/overlay-shell/SchemaDrawerPanel',
-  () => ({
-    SchemaDrawerPanel: schemaRuntimeSpies.SchemaDrawerPanel
-  })
-);
 
 import * as orchestrationApi from '../../api/orchestration';
 import * as nodeContributionsApi from '../../api/application-node-catalog';
@@ -187,21 +179,6 @@ afterEach(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   schemaRuntimeSpies.resolveAgentFlowNodeSchema.mockClear();
-  schemaRuntimeSpies.SchemaDrawerPanel.mockReset();
-  schemaRuntimeSpies.SchemaDrawerPanel.mockImplementation(
-    ({
-      children,
-      schema
-    }: {
-      children?: ReactNode;
-      schema: { title: string };
-    }) => (
-      <div data-testid="mock-schema-drawer">
-        <div data-testid="mock-schema-drawer-title">{schema.title}</div>
-        {children}
-      </div>
-    )
-  );
   resetAuthStore();
   useAuthStore.getState().setAuthenticated({
     csrfToken: 'csrf-123',
@@ -773,7 +750,6 @@ describe('AgentFlowEditorShell', () => {
   }, 20_000);
 
   test('restores a history version into the current draft', async () => {
-    schemaRuntimeSpies.SchemaDrawerPanel.mockClear();
     const versions = [
       {
         id: 'version-1',

@@ -10,15 +10,15 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Content(_field_0) => mp::object_value(&[
+            Self::Content(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Content".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("content_type", mp::text(&(_field_0).content_type)?),
                         (
                             "bytes",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).bytes.len()),
                             )]),
@@ -26,11 +26,11 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
                     ]),
                 ),
             ]),
-            Self::Resolved(_field_0) => mp::object_value(&[
+            Self::Resolved(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Resolved".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[("artifacts", {
+                    mp::object_value([("artifacts", {
                         if (_field_0).artifacts.len() > 32 {
                             return None;
                         }
@@ -39,10 +39,10 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
                                 .artifacts
                                 .iter()
                                 .map(|item| {
-                                    Some(mp::object_value(&[
+                                    Some(mp::object_value([
                                         (
                                             "artifact_ref",
-                                            mp::object_value(&[(
+                                            mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).artifact_ref.len()),
                                             )]),
@@ -56,7 +56,7 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
                     })]),
                 ),
             ]),
-            Self::Snapshot(detail) => mp::object_value(&[
+            Self::Snapshot(detail) => mp::object_value([
                 ("variant", serde_json::Value::String("Snapshot".to_owned())),
                 ("0", managed_detail_projection::project(detail)?),
             ]),

@@ -533,3 +533,62 @@ fn llm_tool_callback_count_ignores_bodies_runtime_facts_and_route_traces() {
         1
     );
 }
+
+#[test]
+fn llm_tool_callback_summary_preserves_trace_fields_and_full_artifact() {
+    let rounds = json!([{"tool_calls": [{"id": "call_summary", "name": "lookup"}]}]);
+    let trace = json!({
+        "tool_call_id": "call_summary",
+        "arguments": {"private": "argument body"},
+        "status": "succeeded",
+        "branch_traces": [{"private": "branch body"}],
+        "callback_requests": ["callback body"],
+        "events": ["event body"],
+        "final_output": "final body",
+        "main_resume_output": "resume body",
+        "route_output": "route body",
+        "tool_call": {"private": "call body"},
+        "tool_result": {"private": "result body"},
+        "unknown_extension": {"retained": true},
+        "nullable_extension": null
+    });
+    let mut callbacks = collect_llm_tool_callbacks(&rounds, &HashMap::new());
+    attach_inline_route_traces(
+        &mut callbacks,
+        &[json!({"visible_internal_llm_tool_trace": [trace.clone()]})],
+    );
+    let summary = callbacks[0].summary_payload(Uuid::nil());
+    assert_eq!(summary["execution_status"], "succeeded");
+    assert_eq!(summary["artifact_ref"], Uuid::nil().to_string());
+    assert_eq!(
+        summary["route_trace"],
+        json!({
+            "tool_call_id": "call_summary", "status": "succeeded",
+            "unknown_extension": {"retained": true}, "nullable_extension": null
+        })
+    );
+    let mut retained = trace.as_object().unwrap().clone();
+    for field in [
+        "arguments",
+        "branch_traces",
+        "callback_requests",
+        "events",
+        "final_output",
+        "main_resume_output",
+        "route_output",
+        "tool_call",
+        "tool_result",
+    ] {
+        retained.remove(field);
+    }
+    assert_eq!(
+        summary["route_trace"].to_string(),
+        Value::Object(retained).to_string()
+    );
+    assert_eq!(callbacks[0].detail_payload()["route_trace"], trace);
+    assert!(
+        collect_llm_tool_callbacks(&rounds, &HashMap::new())[0].summary_payload(Uuid::nil())
+            ["route_trace"]
+            .is_null()
+    );
+}

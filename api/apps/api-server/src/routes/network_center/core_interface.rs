@@ -49,51 +49,51 @@ impl InterfaceContract for NetworkCenterInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[("variant", mp::tag_schema("ListProviders"))]),
-            mp::object_schema(&[("variant", mp::tag_schema("ListProviderTypes"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("ListProviders"))]),
+            mp::object_schema([("variant", mp::tag_schema("ListProviderTypes"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("CreateProvider")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("installation_id", mp::text_schema()),
                         (
                             "display_name",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "description",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("config", mp::json_summary_schema()),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UpdateProviderLifecycle")),
                 ("id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[("lifecycle", mp::text_schema())]),
+                    mp::object_schema([("lifecycle", mp::text_schema())]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("SyncProvider")),
                 ("id", mp::text_schema()),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("ListRoutes"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("ListRoutes"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("CreateRoute")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "consumer_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "consumer_reference",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "pool_member_ids",
@@ -103,12 +103,12 @@ impl InterfaceContract for NetworkCenterInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("UpdateRoute")),
                 ("route_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "pool_member_ids",
                             serde_json::json!({"type":"array","maxItems":32,"items":mp::text_schema()}),
@@ -117,7 +117,7 @@ impl InterfaceContract for NetworkCenterInput {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("DeleteRoute")),
                 ("route_id", mp::text_schema()),
             ]),
@@ -126,33 +126,33 @@ impl InterfaceContract for NetworkCenterInput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::ListProviders => mp::object_value(&[(
+            Self::ListProviders => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ListProviders".to_owned()),
             )]),
-            Self::ListProviderTypes => mp::object_value(&[(
+            Self::ListProviderTypes => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ListProviderTypes".to_owned()),
             )]),
-            Self::CreateProvider(_field_0) => mp::object_value(&[
+            Self::CreateProvider(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CreateProvider".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("installation_id", mp::text(&(_field_0).installation_id)?),
                         (
                             "display_name",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).display_name.len()),
                             )]),
                         ),
                         (
                             "description",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).description.len()),
                             )]),
@@ -165,7 +165,7 @@ impl InterfaceContract for NetworkCenterInput {
                 id: _field_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UpdateProviderLifecycle".to_owned()),
@@ -173,31 +173,31 @@ impl InterfaceContract for NetworkCenterInput {
                 ("id", mp::text(_field_id)?),
                 (
                     "body",
-                    mp::object_value(&[("lifecycle", mp::text(&(_field_body).lifecycle)?)]),
+                    mp::object_value([("lifecycle", mp::text(&(_field_body).lifecycle)?)]),
                 ),
             ]),
-            Self::SyncProvider { id: _field_id, .. } => mp::object_value(&[
+            Self::SyncProvider { id: _field_id, .. } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("SyncProvider".to_owned()),
                 ),
                 ("id", mp::text(_field_id)?),
             ]),
-            Self::ListRoutes => mp::object_value(&[(
+            Self::ListRoutes => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ListRoutes".to_owned()),
             )]),
-            Self::CreateRoute(_field_0) => mp::object_value(&[
+            Self::CreateRoute(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CreateRoute".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "consumer_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).consumer_kind.len()),
                             )]),
@@ -205,7 +205,7 @@ impl InterfaceContract for NetworkCenterInput {
                         (
                             "consumer_reference",
                             match (_field_0).consumer_reference.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -232,7 +232,7 @@ impl InterfaceContract for NetworkCenterInput {
                 route_id: _field_route_id,
                 body: _field_body,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("UpdateRoute".to_owned()),
@@ -240,7 +240,7 @@ impl InterfaceContract for NetworkCenterInput {
                 ("route_id", mp::text(_field_route_id)?),
                 (
                     "body",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("pool_member_ids", {
                             if (_field_body).pool_member_ids.len() > 32 {
                                 return None;
@@ -260,7 +260,7 @@ impl InterfaceContract for NetworkCenterInput {
             Self::DeleteRoute {
                 route_id: _field_route_id,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("DeleteRoute".to_owned()),
@@ -287,44 +287,44 @@ impl InterfaceContract for NetworkCenterOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Providers")),
                 (
                     "0",
                     serde_json::json!({"type":"array","maxItems":32,"items":provider::provider_schema()}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ProviderTypes")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("installation_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("provider_code",mp::text_schema()), ("display_name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("form_schema",mp::json_summary_schema())])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("installation_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("provider_code",mp::text_schema()), ("display_name",mp::object_schema([("byte_count",mp::count_schema())])), ("form_schema",mp::json_summary_schema())])}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Provider")),
                 ("0", provider::provider_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Routes")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("consumer_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("consumer_reference",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("pool_member_ids",serde_json::json!({"type":"array","maxItems":32,"items":mp::text_schema()})), ("enabled",serde_json::json!({"type":"boolean"})), ("failure_policy",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("consumer_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("consumer_reference",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("pool_member_ids",serde_json::json!({"type":"array","maxItems":32,"items":mp::text_schema()})), ("enabled",serde_json::json!({"type":"boolean"})), ("failure_policy",mp::object_schema([("byte_count",mp::count_schema())]))])}),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Route")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         (
                             "consumer_kind",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "consumer_reference",
-                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                         ),
                         (
                             "pool_member_ids",
@@ -333,18 +333,18 @@ impl InterfaceContract for NetworkCenterOutput {
                         ("enabled", serde_json::json!({"type":"boolean"})),
                         (
                             "failure_policy",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("Deleted"))]),
+            mp::object_schema([("variant", mp::tag_schema("Deleted"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Providers(_field_0) => mp::object_value(&[
+            Self::Providers(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Providers".to_owned())),
                 ("0", {
                     if (_field_0).len() > 32 {
@@ -358,7 +358,7 @@ impl InterfaceContract for NetworkCenterOutput {
                     )
                 }),
             ]),
-            Self::ProviderTypes(_field_0) => mp::object_value(&[
+            Self::ProviderTypes(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ProviderTypes".to_owned()),
@@ -371,7 +371,7 @@ impl InterfaceContract for NetworkCenterOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     (
                                         "installation_id",
                                         match (item).installation_id.as_ref() {
@@ -382,7 +382,7 @@ impl InterfaceContract for NetworkCenterOutput {
                                     ("provider_code", mp::text(&(item).provider_code)?),
                                     (
                                         "display_name",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).display_name.len()),
                                         )]),
@@ -394,11 +394,11 @@ impl InterfaceContract for NetworkCenterOutput {
                     )
                 }),
             ]),
-            Self::Provider(_field_0) => mp::object_value(&[
+            Self::Provider(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Provider".to_owned())),
                 ("0", provider::provider_projection(_field_0)?),
             ]),
-            Self::Routes(_field_0) => mp::object_value(&[
+            Self::Routes(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Routes".to_owned())),
                 ("0", {
                     if (_field_0).len() > 32 {
@@ -408,11 +408,11 @@ impl InterfaceContract for NetworkCenterOutput {
                         (_field_0)
                             .iter()
                             .map(|item| {
-                                Some(mp::object_value(&[
+                                Some(mp::object_value([
                                     ("id", mp::text(&(item).id)?),
                                     (
                                         "consumer_kind",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).consumer_kind.len()),
                                         )]),
@@ -420,7 +420,7 @@ impl InterfaceContract for NetworkCenterOutput {
                                     (
                                         "consumer_reference",
                                         match (item).consumer_reference.as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -442,7 +442,7 @@ impl InterfaceContract for NetworkCenterOutput {
                                     ("enabled", serde_json::Value::Bool((item).enabled)),
                                     (
                                         "failure_policy",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).failure_policy.len()),
                                         )]),
@@ -453,15 +453,15 @@ impl InterfaceContract for NetworkCenterOutput {
                     )
                 }),
             ]),
-            Self::Route(_field_0) => mp::object_value(&[
+            Self::Route(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Route".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", mp::text(&(_field_0).id)?),
                         (
                             "consumer_kind",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).consumer_kind.len()),
                             )]),
@@ -469,7 +469,7 @@ impl InterfaceContract for NetworkCenterOutput {
                         (
                             "consumer_reference",
                             match (_field_0).consumer_reference.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -491,7 +491,7 @@ impl InterfaceContract for NetworkCenterOutput {
                         ("enabled", serde_json::Value::Bool((_field_0).enabled)),
                         (
                             "failure_policy",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).failure_policy.len()),
                             )]),
@@ -500,7 +500,7 @@ impl InterfaceContract for NetworkCenterOutput {
                 ),
             ]),
             Self::Deleted => {
-                mp::object_value(&[("variant", serde_json::Value::String("Deleted".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("Deleted".to_owned()))])
             }
         })
     }

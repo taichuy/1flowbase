@@ -37,9 +37,13 @@ Application and console API documentation share the named, read-only projection 
 
 Network provider lists, single-provider results, and proxy-pool results share one named read-only projection. Debug Snapshot and Run share the inner `ApplicationRunDetailResponse` projection and schema, while each interface retains its outer tag and Interface Contract ID. Sharing preserves field selection, summaries, nulls, and existing observation bounds; it does not serialize the complete DTO.
 
-MCP discovery builds a borrowed tool index within each catalog query, preserving catalog order, visibility, aliases, child counts, and final truncation. The index is not retained across requests. Run-log statistics traverse and deduplicate callback identities directly; the display owner still constructs complete debug artifacts, bodies, status, and route traces. Counting no longer constructs those artifacts.
+MCP discovery builds a borrowed tool index within each catalog query, preserving catalog order, visibility, aliases, child counts, and final truncation. The index is not retained across requests. Run-log statistics traverse and deduplicate callback identities directly; the display owner still constructs complete debug artifacts, bodies, status, and route traces. Counting no longer constructs those artifacts. Summaries copy only retained field values; complete raw debug artifacts remain stored.
+
+Managed projection builders take ownership of newly constructed JSON fields and move their child values. Existing owners still determine field whitelists, schemas, observation bounds, and serialization order. Common plugin, model-provider, and network-plugin entry points share official installation command preparation while retaining their own operation authorization, execution, and response mapping.
 
 The application list is served by application management at `/settings/applications`; detail pages retain `/applications/:applicationId/*`. The old list without a route consumer and isolated historical helpers are not additional runtime entrypoints. Current pages retain forms, archive import/export and extension-template installation.
+
+Component catalog pagination filters and sorts lightweight metadata, then reads source bodies only for the selected page within one read-only snapshot; string matching and ordering retain their Rust semantics. The frontend block catalog reads only published default-template bodies and indexes templates and assignments, reusing installation facts within one request. The resolver still checks each contribution’s permissions, version, and assets.
 
 ## Maintenance boundary
 

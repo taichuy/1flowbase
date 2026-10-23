@@ -3,11 +3,11 @@ use super::*;
 impl InterfaceContract for NativeGetRunInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[("0", mp::text_schema())]))
+        Some(mp::object_schema([("0", mp::text_schema())]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "0",
             serde_json::Value::String((self).0.to_string()),
         )]))
@@ -22,9 +22,9 @@ pub(crate) struct NativeGetRunOutput(pub(crate) NativeRunResponse);
 impl InterfaceContract for NativeGetRunOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "0",
-            mp::object_schema(&[
+            mp::object_schema([
                 ("id", mp::text_schema()),
                 ("application_id", mp::text_schema()),
                 ("publication_version_id", mp::text_schema()),
@@ -33,7 +33,7 @@ impl InterfaceContract for NativeGetRunOutput {
                 ("metadata", mp::json_summary_schema()),
                 (
                     "answer",
-                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                 ),
                 (
                     "answer_segments",
@@ -65,9 +65,9 @@ impl InterfaceContract for NativeGetRunOutput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "0",
-            mp::object_value(&[
+            mp::object_value([
                 ("id", serde_json::Value::String((self).0.id.to_string())),
                 (
                     "application_id",
@@ -87,7 +87,7 @@ impl InterfaceContract for NativeGetRunOutput {
                     "answer",
                     match (self).0.answer.as_ref() {
                         Some(item) => {
-                            mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                            mp::object_value([("byte_count", serde_json::json!((item).len()))])
                         }
                         None => serde_json::Value::Null,
                     },
@@ -148,11 +148,11 @@ pub(crate) struct NativeCancelRunInput(pub(crate) Uuid);
 impl InterfaceContract for NativeCancelRunInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[("0", mp::text_schema())]))
+        Some(mp::object_schema([("0", mp::text_schema())]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "0",
             serde_json::Value::String((self).0.to_string()),
         )]))
@@ -167,9 +167,9 @@ pub(crate) struct NativeCancelRunOutput(pub(crate) NativeRunResponse);
 impl InterfaceContract for NativeCancelRunOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "0",
-            mp::object_schema(&[
+            mp::object_schema([
                 ("id", mp::text_schema()),
                 ("application_id", mp::text_schema()),
                 ("publication_version_id", mp::text_schema()),
@@ -178,7 +178,7 @@ impl InterfaceContract for NativeCancelRunOutput {
                 ("metadata", mp::json_summary_schema()),
                 (
                     "answer",
-                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                 ),
                 (
                     "answer_segments",
@@ -210,9 +210,9 @@ impl InterfaceContract for NativeCancelRunOutput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "0",
-            mp::object_value(&[
+            mp::object_value([
                 ("id", serde_json::Value::String((self).0.id.to_string())),
                 (
                     "application_id",
@@ -232,7 +232,7 @@ impl InterfaceContract for NativeCancelRunOutput {
                     "answer",
                     match (self).0.answer.as_ref() {
                         Some(item) => {
-                            mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                            mp::object_value([("byte_count", serde_json::json!((item).len()))])
                         }
                         None => serde_json::Value::Null,
                     },
@@ -298,7 +298,7 @@ pub(crate) struct NativeResumeRunInput {
 impl InterfaceContract for NativeResumeRunInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[
+        Some(mp::object_schema([
             ("run_id", mp::text_schema()),
             ("callback_task_id", mp::text_schema()),
             ("response_payload", mp::json_summary_schema()),
@@ -310,7 +310,7 @@ impl InterfaceContract for NativeResumeRunInput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[
+        Some(mp::object_value([
             (
                 "run_id",
                 serde_json::Value::String((self).run_id.to_string()),
@@ -342,9 +342,9 @@ pub(crate) struct NativeResumeRunOutput(pub(crate) NativeRunResponse);
 impl InterfaceContract for NativeResumeRunOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "0",
-            mp::object_schema(&[
+            mp::object_schema([
                 ("id", mp::text_schema()),
                 ("application_id", mp::text_schema()),
                 ("publication_version_id", mp::text_schema()),
@@ -353,7 +353,7 @@ impl InterfaceContract for NativeResumeRunOutput {
                 ("metadata", mp::json_summary_schema()),
                 (
                     "answer",
-                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
                 ),
                 (
                     "answer_segments",
@@ -385,9 +385,9 @@ impl InterfaceContract for NativeResumeRunOutput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[(
+        Some(mp::object_value([(
             "0",
-            mp::object_value(&[
+            mp::object_value([
                 ("id", serde_json::Value::String((self).0.id.to_string())),
                 (
                     "application_id",
@@ -407,7 +407,7 @@ impl InterfaceContract for NativeResumeRunOutput {
                     "answer",
                     match (self).0.answer.as_ref() {
                         Some(item) => {
-                            mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                            mp::object_value([("byte_count", serde_json::json!((item).len()))])
                         }
                         None => serde_json::Value::Null,
                     },

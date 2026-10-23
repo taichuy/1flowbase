@@ -102,13 +102,13 @@ impl InterfaceContract for BusinessFilesInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CreateShareLink")),
                 ("file_table_id", mp::text_schema()),
                 ("record_id", mp::text_schema()),
                 ("expires_in_seconds", mp::count_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Upload")),
                 (
                     "file_table_id",
@@ -120,10 +120,10 @@ impl InterfaceContract for BusinessFilesInput {
                 ),
                 (
                     "bytes",
-                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                    mp::object_schema([("byte_count", mp::count_schema())]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ImportRemote")),
                 (
                     "file_table_id",
@@ -131,7 +131,7 @@ impl InterfaceContract for BusinessFilesInput {
                 ),
                 ("file_id", mp::text_schema()),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("ReadContent")),
                 ("preview", serde_json::json!({"type":"boolean"})),
                 ("file_table_id", mp::text_schema()),
@@ -146,7 +146,7 @@ impl InterfaceContract for BusinessFilesInput {
                 file_table_id,
                 record_id,
                 expires_in_seconds,
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::json!("CreateShareLink")),
                 ("file_table_id", mp::text(file_table_id)?),
                 ("record_id", mp::text(record_id)?),
@@ -157,7 +157,7 @@ impl InterfaceContract for BusinessFilesInput {
                 content_type: _field_content_type,
                 bytes: _field_bytes,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::Value::String("Upload".to_owned())),
                 (
                     "file_table_id",
@@ -175,13 +175,13 @@ impl InterfaceContract for BusinessFilesInput {
                 ),
                 (
                     "bytes",
-                    mp::object_value(&[("byte_count", serde_json::json!((_field_bytes).len()))]),
+                    mp::object_value([("byte_count", serde_json::json!((_field_bytes).len()))]),
                 ),
             ]),
             Self::ImportRemote {
                 file_table_id,
                 file,
-            } => mp::object_value(&[
+            } => mp::object_value([
                 ("variant", serde_json::json!("ImportRemote")),
                 (
                     "file_table_id",
@@ -198,7 +198,7 @@ impl InterfaceContract for BusinessFilesInput {
                 record_id: _field_record_id,
                 preview,
                 ..
-            } => mp::object_value(&[
+            } => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("ReadContent".to_owned()),
@@ -226,30 +226,30 @@ impl InterfaceContract for BusinessFilesOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[("variant", mp::tag_schema("ShareLink"))]),
-            mp::object_schema(&[
+            mp::object_schema([("variant", mp::tag_schema("ShareLink"))]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("Uploaded")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("file_table_id", mp::text_schema()),
                         ("storage_id", mp::text_schema()),
                         ("record", mp::json_summary_schema()),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[("variant", mp::tag_schema("Content"))]),
+            mp::object_schema([("variant", mp::tag_schema("Content"))]),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::ShareLink(_) => mp::object_value(&[("variant", serde_json::json!("ShareLink"))]),
-            Self::Uploaded(_field_0) => mp::object_value(&[
+            Self::ShareLink(_) => mp::object_value([("variant", serde_json::json!("ShareLink"))]),
+            Self::Uploaded(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Uploaded".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("file_table_id", mp::text(&(_field_0).file_table_id)?),
                         ("storage_id", mp::text(&(_field_0).storage_id)?),
                         ("record", mp::json_summary(&(_field_0).record)),
@@ -257,7 +257,7 @@ impl InterfaceContract for BusinessFilesOutput {
                 ),
             ]),
             Self::Content(_) => {
-                mp::object_value(&[("variant", serde_json::Value::String("Content".to_owned()))])
+                mp::object_value([("variant", serde_json::Value::String("Content".to_owned()))])
             }
         })
     }

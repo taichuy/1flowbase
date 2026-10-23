@@ -30,12 +30,10 @@ impl InterfaceContract for TemplateInput {
     const CONTRACT_ID: &'static str = "api-server.console-system-templates.input";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
-        Some(crate::extension_bus::managed_projection::object_schema(&[
-            (
-                "operation",
-                json!({"type":"string","maxLength":16,"enum":["catalog","export","preview","install"]}),
-            ),
-        ]))
+        Some(crate::extension_bus::managed_projection::object_schema([(
+            "operation",
+            json!({"type":"string","maxLength":16,"enum":["catalog","export","preview","install"]}),
+        )]))
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
@@ -47,9 +45,10 @@ impl InterfaceContract for TemplateOutput {
     const CONTRACT_ID: &'static str = "api-server.console-system-templates.output";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
-        Some(crate::extension_bus::managed_projection::object_schema(&[
-            ("completed", json!({"type":"boolean"})),
-        ]))
+        Some(crate::extension_bus::managed_projection::object_schema([(
+            "completed",
+            json!({"type":"boolean"}),
+        )]))
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(json!({"completed":true}))

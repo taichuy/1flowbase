@@ -1,5 +1,9 @@
 use anyhow::Result;
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    path::PathBuf,
+    sync::Arc,
+};
 use uuid::Uuid;
 
 mod frontend_contribution;
@@ -193,12 +197,20 @@ where
             .repository
             .list_active_ui_code_templates_for_catalog()
             .await?;
+        let mut default_by_contribution = HashMap::with_capacity(managed_defaults.len());
+        for template in &managed_defaults {
+            default_by_contribution
+                .entry((
+                    template.provider_code.as_str(),
+                    template.contribution_code.as_str(),
+                ))
+                .or_insert(template);
+        }
         for entry in &mut entries {
-            let Some(template) = managed_defaults.iter().find(|template| {
-                template.is_default
-                    && template.provider_code == entry.provider_code
-                    && template.contribution_code == entry.contribution_code
-            }) else {
+            let Some(template) = default_by_contribution.get(&(
+                entry.provider_code.as_str(),
+                entry.contribution_code.as_str(),
+            )) else {
                 continue;
             };
             let Some(revision) = template.published_revision.as_ref() else {
@@ -231,28 +243,41 @@ where
     R: FrontendBlockCatalogRepository + PluginRepository,
 {
     let assignments = repository.list_assignments(workspace_id).await?;
+    let mut assignment_by_installation = HashMap::with_capacity(assignments.len());
+    for assignment in assignments {
+        assignment_by_installation
+            .entry(assignment.installation_id)
+            .or_insert(assignment);
+    }
+    // Reuse the first observed identity facts only within this request. Asset and resolver
+    // checks still run for each contribution after the original ordered read phase.
+    let mut installation_facts = HashMap::new();
     let mut candidates = Vec::with_capacity(catalog_entries.len());
     for catalog_entry in catalog_entries {
-        let Some(installation) = repository
-            .get_installation(catalog_entry.installation_id)
-            .await?
-        else {
+        let facts = match installation_facts.entry(catalog_entry.installation_id) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                let facts = match repository
+                    .get_installation(catalog_entry.installation_id)
+                    .await?
+                {
+                    Some(installation) => repository
+                        .get_artifact_instance(node_id, installation.id)
+                        .await?
+                        .map(|artifact| (installation, artifact)),
+                    None => None,
+                };
+                entry.insert(facts)
+            }
+        };
+        let Some((installation, artifact)) = facts else {
             continue;
         };
-        let Some(artifact) = repository
-            .get_artifact_instance(node_id, installation.id)
-            .await?
-        else {
-            continue;
-        };
-        let assignment = assignments
-            .iter()
-            .find(|assignment| assignment.installation_id == installation.id)
-            .cloned();
+        let assignment = assignment_by_installation.get(&installation.id).cloned();
         candidates.push(FrontendContributionCandidate {
             workspace_id,
-            installation,
-            artifact,
+            installation: installation.clone(),
+            artifact: artifact.clone(),
             assignment,
             catalog_entry,
         });

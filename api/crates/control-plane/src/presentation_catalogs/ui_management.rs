@@ -43,22 +43,7 @@ pub struct EffectiveUiCodeTemplate {
     pub is_default: bool,
 }
 
-#[derive(Debug, Clone)]
-pub struct ListUiComponentRecordsQuery {
-    pub query: Option<String>,
-    pub offset: usize,
-    pub limit: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct UiComponentRecordPage {
-    pub items: Vec<UiComponentRecord>,
-    pub total: usize,
-    pub offset: usize,
-    pub limit: usize,
-    pub has_more: bool,
-    pub next_offset: Option<usize>,
-}
+pub use crate::ports::{ListUiComponentRecordsQuery, UiComponentRecordPage};
 
 pub struct UiManagementService<R> {
     repository: R,
@@ -354,34 +339,7 @@ where
         &self,
         query: ListUiComponentRecordsQuery,
     ) -> Result<UiComponentRecordPage> {
-        let mut records = self.repository.list_ui_component_records().await?;
-        if let Some(search) = query
-            .query
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            let search = search.to_lowercase();
-            records.retain(|record| component_record_matches(record, &search));
-        }
-        records.sort_by(|left, right| {
-            left.name
-                .cmp(&right.name)
-                .then_with(|| left.component_code.cmp(&right.component_code))
-        });
-        let total = records.len();
-        let offset = query.offset.min(total);
-        let limit = query.limit.max(1);
-        let end = offset.saturating_add(limit).min(total);
-        let has_more = end < total;
-        Ok(UiComponentRecordPage {
-            items: records[offset..end].to_vec(),
-            total,
-            offset,
-            limit,
-            has_more,
-            next_offset: has_more.then_some(end),
-        })
+        self.repository.list_ui_component_records_page(query).await
     }
 
     pub async fn get_component_record(&self, id: Uuid) -> Result<UiComponentRecord> {
@@ -449,23 +407,4 @@ where
             Err(ControlPlaneError::NotFound("ui_component_record").into())
         }
     }
-}
-
-fn component_record_matches(record: &UiComponentRecord, search: &str) -> bool {
-    [
-        record.component_code.as_str(),
-        record.name.as_str(),
-        record.description.as_str(),
-        record.source.as_str(),
-        record.group.as_str(),
-        record.upstream.identity.as_str(),
-        record.upstream.version.as_str(),
-        record.version.as_str(),
-    ]
-    .iter()
-    .any(|value| value.to_lowercase().contains(search))
-        || record
-            .keywords
-            .iter()
-            .any(|keyword| keyword.to_lowercase().contains(search))
 }

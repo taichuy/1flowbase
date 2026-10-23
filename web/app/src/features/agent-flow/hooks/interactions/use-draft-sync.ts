@@ -43,6 +43,7 @@ export function useDraftSync({
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const workingDocument = useAgentFlowEditorStore(selectWorkingDocument);
   const lastSavedDocument = useAgentFlowEditorStore(selectLastSavedDocument);
+  const hasPendingChanges = useAgentFlowEditorStore((state) => state.isDirty);
   const autosaveIntervalMs = useAgentFlowEditorStore(
     (state) => state.autosaveIntervalMs
   );
@@ -59,12 +60,6 @@ export function useDraftSync({
   );
   const saveInFlightRef = useRef(false);
   const saveNowRef = useRef<() => Promise<boolean>>(async () => false);
-  const hasPendingChanges =
-    JSON.stringify(workingDocument) !== JSON.stringify(lastSavedDocument);
-
-  useEffect(() => {
-    setSyncState({ isDirty: hasPendingChanges });
-  }, [hasPendingChanges, setSyncState]);
 
   async function saveNow() {
     if (saveInFlightRef.current) {
@@ -109,9 +104,6 @@ export function useDraftSync({
       syncSavedServerState(nextState, latestWorkingDocument);
       setSyncState({
         autosaveStatus: 'saved',
-        isDirty:
-          JSON.stringify(latestWorkingDocument) !==
-          JSON.stringify(nextState.draft.document),
         lastChangeKind: input.change_kind,
         lastChangeSummary: input.summary
       });
@@ -144,8 +136,7 @@ export function useDraftSync({
       replaceFromServerState(nextState);
       setSyncState({
         autosaveStatus: 'idle',
-        isRestoringVersion: false,
-        isDirty: false
+        isRestoringVersion: false
       });
     } catch {
       setSyncState({

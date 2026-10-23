@@ -13,36 +13,36 @@ impl DocsOutputProjection<'_> {
     pub(crate) fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("Catalog")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         (
                             "title",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         ("version", mp::text_schema()),
                         (
                             "categories",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("label",mp::object_schema(&[("byte_count",mp::count_schema())])), ("operation_count",serde_json::json!({"type":"integer"}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("label",mp::object_schema([("byte_count",mp::count_schema())])), ("operation_count",serde_json::json!({"type":"integer"}))])}),
                         ),
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("CategoryOperations")),
                 (
                     "0",
-                    mp::object_schema(&[
+                    mp::object_schema([
                         ("id", mp::text_schema()),
                         (
                             "label",
-                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
                         (
                             "operations",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("method",mp::text_schema()), ("path",mp::object_schema(&[("byte_count",mp::count_schema())])), ("summary",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("description",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("tags",mp::object_schema(&[("item_count",mp::count_schema())])), ("group",mp::object_schema(&[("byte_count",mp::count_schema())])), ("deprecated",serde_json::json!({"type":"boolean"}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("method",mp::text_schema()), ("path",mp::object_schema([("byte_count",mp::count_schema())])), ("summary",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("description",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("tags",mp::object_schema([("item_count",mp::count_schema())])), ("group",mp::object_schema([("byte_count",mp::count_schema())])), ("deprecated",serde_json::json!({"type":"boolean"}))])}),
                         ),
                         ("total", serde_json::json!({"type":"integer"})),
                         ("offset", serde_json::json!({"type":"integer"})),
@@ -55,7 +55,7 @@ impl DocsOutputProjection<'_> {
                     ]),
                 ),
             ]),
-            mp::object_schema(&[
+            mp::object_schema([
                 ("variant", mp::tag_schema("OpenApi")),
                 ("0", mp::json_summary_schema()),
             ]),
@@ -64,14 +64,14 @@ impl DocsOutputProjection<'_> {
     pub(crate) fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Catalog(_field_0) => mp::object_value(&[
+            Self::Catalog(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Catalog".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).title.len()),
                             )]),
@@ -86,11 +86,11 @@ impl DocsOutputProjection<'_> {
                                     .categories
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("id", mp::text(&(item).id)?),
                                             (
                                                 "label",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).label.len()),
                                                 )]),
@@ -107,18 +107,18 @@ impl DocsOutputProjection<'_> {
                     ]),
                 ),
             ]),
-            Self::CategoryOperations(_field_0) => mp::object_value(&[
+            Self::CategoryOperations(_field_0) => mp::object_value([
                 (
                     "variant",
                     serde_json::Value::String("CategoryOperations".to_owned()),
                 ),
                 (
                     "0",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", mp::text(&(_field_0).id)?),
                         (
                             "label",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((_field_0).label.len()),
                             )]),
@@ -132,12 +132,12 @@ impl DocsOutputProjection<'_> {
                                     .operations
                                     .iter()
                                     .map(|item| {
-                                        Some(mp::object_value(&[
+                                        Some(mp::object_value([
                                             ("id", mp::text(&(item).id)?),
                                             ("method", mp::text(&(item).method)?),
                                             (
                                                 "path",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).path.len()),
                                                 )]),
@@ -145,7 +145,7 @@ impl DocsOutputProjection<'_> {
                                             (
                                                 "summary",
                                                 match (item).summary.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -155,7 +155,7 @@ impl DocsOutputProjection<'_> {
                                             (
                                                 "description",
                                                 match (item).description.as_ref() {
-                                                    Some(item) => mp::object_value(&[(
+                                                    Some(item) => mp::object_value([(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
                                                     )]),
@@ -164,14 +164,14 @@ impl DocsOutputProjection<'_> {
                                             ),
                                             (
                                                 "tags",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "item_count",
                                                     serde_json::json!((item).tags.len()),
                                                 )]),
                                             ),
                                             (
                                                 "group",
-                                                mp::object_value(&[(
+                                                mp::object_value([(
                                                     "byte_count",
                                                     serde_json::json!((item).group.len()),
                                                 )]),
@@ -199,7 +199,7 @@ impl DocsOutputProjection<'_> {
                     ]),
                 ),
             ]),
-            Self::OpenApi(_field_0) => mp::object_value(&[
+            Self::OpenApi(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("OpenApi".to_owned())),
                 ("0", mp::json_summary(_field_0)),
             ]),

@@ -8,10 +8,10 @@ use super::ApplicationRunDetailResponse;
 
 pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_json::Value> {
     use crate::extension_bus::managed_projection as mp;
-    Some(mp::object_value(&[
+    Some(mp::object_value([
         (
             "run",
-            mp::object_value(&[
+            mp::object_value([
                 ("id", mp::text(&(detail).run.id)?),
                 ("application_id", mp::text(&(detail).run.application_id)?),
                 (
@@ -20,14 +20,14 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                 ),
                 (
                     "run_object_kind",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "byte_count",
                         serde_json::json!((detail).run.run_object_kind.len()),
                     )]),
                 ),
                 (
                     "run_kind",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "byte_count",
                         serde_json::json!((detail).run.run_kind.len()),
                     )]),
@@ -35,21 +35,18 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                 ("status", mp::text(&(detail).run.status)?),
                 (
                     "title",
-                    mp::object_value(&[(
-                        "byte_count",
-                        serde_json::json!((detail).run.title.len()),
-                    )]),
+                    mp::object_value([("byte_count", serde_json::json!((detail).run.title.len()))]),
                 ),
                 (
                     "execution_stage",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "byte_count",
                         serde_json::json!((detail).run.execution_stage.len()),
                     )]),
                 ),
                 (
                     "invocation_source",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "byte_count",
                         serde_json::json!((detail).run.invocation_source.len()),
                     )]),
@@ -58,14 +55,14 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                     "compatibility_mode",
                     match (detail).run.compatibility_mode.as_ref() {
                         Some(item) => {
-                            mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                            mp::object_value([("byte_count", serde_json::json!((item).len()))])
                         }
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "subject",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("kind", mp::text(&(detail).run.subject.kind)?),
                         (
                             "id",
@@ -92,7 +89,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                 ),
                 (
                     "principal",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("kind", mp::text(&(detail).run.principal.kind)?),
                         (
                             "id",
@@ -104,7 +101,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                         (
                             "display_name",
                             match (detail).run.principal.display_name.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -115,7 +112,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                 ),
                 (
                     "correlation",
-                    mp::object_value(&[
+                    mp::object_value([
                         (
                             "publication_version_id",
                             match (detail).run.correlation.publication_version_id.as_ref() {
@@ -126,7 +123,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                         (
                             "external_user",
                             match (detail).run.correlation.external_user.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -150,7 +147,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                         (
                             "compatibility_mode",
                             match (detail).run.correlation.compatibility_mode.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -160,7 +157,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                         (
                             "idempotency_key",
                             match (detail).run.correlation.idempotency_key.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -171,7 +168,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                 ),
                 (
                     "started_at",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "byte_count",
                         serde_json::json!((detail).run.started_at.len()),
                     )]),
@@ -180,7 +177,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                     "finished_at",
                     match (detail).run.finished_at.as_ref() {
                         Some(item) => {
-                            mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                            mp::object_value([("byte_count", serde_json::json!((item).len()))])
                         }
                         None => serde_json::Value::Null,
                     },
@@ -191,7 +188,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
         ),
         (
             "statistics",
-            mp::object_value(&[
+            mp::object_value([
                 (
                     "input_cache_hit_rate",
                     match (detail).statistics.input_cache_hit_rate.as_ref() {
@@ -211,11 +208,11 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
         ),
         (
             "detail",
-            mp::object_value(&[
+            mp::object_value([
                 ("kind", mp::text(&(detail).detail.kind)?),
                 (
                     "flow_run",
-                    mp::object_value(&[
+                    mp::object_value([
                         ("id", mp::text(&(detail).detail.flow_run.id)?),
                         (
                             "application_id",
@@ -232,7 +229,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                         ),
                         (
                             "run_mode",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((detail).detail.flow_run.run_mode.len()),
                             )]),
@@ -247,7 +244,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                         ),
                         (
                             "title",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((detail).detail.flow_run.title.len()),
                             )]),
@@ -269,7 +266,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                         (
                             "query",
                             match (detail).detail.flow_run.query.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -279,7 +276,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                         (
                             "model",
                             match (detail).detail.flow_run.model.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -303,14 +300,14 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                         ),
                         (
                             "created_by",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((detail).detail.flow_run.created_by.len()),
                             )]),
                         ),
                         (
                             "started_at",
-                            mp::object_value(&[(
+                            mp::object_value([(
                                 "byte_count",
                                 serde_json::json!((detail).detail.flow_run.started_at.len()),
                             )]),
@@ -318,7 +315,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                         (
                             "finished_at",
                             match (detail).detail.flow_run.finished_at.as_ref() {
-                                Some(item) => mp::object_value(&[(
+                                Some(item) => mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).len()),
                                 )]),
@@ -338,11 +335,11 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                 (
                     "answer_snapshot",
                     match (detail).detail.answer_snapshot.as_ref() {
-                        Some(item) => mp::object_value(&[
+                        Some(item) => mp::object_value([
                             ("kind", mp::text(&(item).kind)?),
                             (
                                 "text",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).text.len()),
                                 )]),
@@ -351,7 +348,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                             ("complete", serde_json::Value::Bool((item).complete)),
                             (
                                 "materialized_from",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).materialized_from.len()),
                                 )]),
@@ -390,35 +387,35 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                 ),
                 (
                     "node_runs",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "item_count",
                         serde_json::json!((detail).detail.node_runs.len()),
                     )]),
                 ),
                 (
                     "checkpoints",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "item_count",
                         serde_json::json!((detail).detail.checkpoints.len()),
                     )]),
                 ),
                 (
                     "callback_tasks",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "item_count",
                         serde_json::json!((detail).detail.callback_tasks.len()),
                     )]),
                 ),
                 (
                     "events",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "item_count",
                         serde_json::json!((detail).detail.events.len()),
                     )]),
                 ),
                 (
                     "stitched_trace",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "item_count",
                         serde_json::json!((detail).detail.stitched_trace.len()),
                     )]),
@@ -427,7 +424,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
         ),
         (
             "flow_run",
-            mp::object_value(&[
+            mp::object_value([
                 ("id", mp::text(&(detail).flow_run.id)?),
                 (
                     "application_id",
@@ -444,7 +441,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                 ),
                 (
                     "run_mode",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "byte_count",
                         serde_json::json!((detail).flow_run.run_mode.len()),
                     )]),
@@ -459,7 +456,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                 ),
                 (
                     "title",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "byte_count",
                         serde_json::json!((detail).flow_run.title.len()),
                     )]),
@@ -482,7 +479,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                     "query",
                     match (detail).flow_run.query.as_ref() {
                         Some(item) => {
-                            mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                            mp::object_value([("byte_count", serde_json::json!((item).len()))])
                         }
                         None => serde_json::Value::Null,
                     },
@@ -491,7 +488,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                     "model",
                     match (detail).flow_run.model.as_ref() {
                         Some(item) => {
-                            mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                            mp::object_value([("byte_count", serde_json::json!((item).len()))])
                         }
                         None => serde_json::Value::Null,
                     },
@@ -513,14 +510,14 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                 ),
                 (
                     "created_by",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "byte_count",
                         serde_json::json!((detail).flow_run.created_by.len()),
                     )]),
                 ),
                 (
                     "started_at",
-                    mp::object_value(&[(
+                    mp::object_value([(
                         "byte_count",
                         serde_json::json!((detail).flow_run.started_at.len()),
                     )]),
@@ -529,7 +526,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                     "finished_at",
                     match (detail).flow_run.finished_at.as_ref() {
                         Some(item) => {
-                            mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                            mp::object_value([("byte_count", serde_json::json!((item).len()))])
                         }
                         None => serde_json::Value::Null,
                     },
@@ -541,17 +538,17 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
         (
             "answer_snapshot",
             match (detail).answer_snapshot.as_ref() {
-                Some(item) => mp::object_value(&[
+                Some(item) => mp::object_value([
                     ("kind", mp::text(&(item).kind)?),
                     (
                         "text",
-                        mp::object_value(&[("byte_count", serde_json::json!((item).text.len()))]),
+                        mp::object_value([("byte_count", serde_json::json!((item).text.len()))]),
                     ),
                     ("output_payload", mp::json_summary(&(item).output_payload)),
                     ("complete", serde_json::Value::Bool((item).complete)),
                     (
                         "materialized_from",
-                        mp::object_value(&[(
+                        mp::object_value([(
                             "byte_count",
                             serde_json::json!((item).materialized_from.len()),
                         )]),
@@ -591,7 +588,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
         (
             "context_snapshot",
             match (detail).context_snapshot.as_ref() {
-                Some(item) => mp::object_value(&[
+                Some(item) => mp::object_value([
                     ("event_type", mp::text(&(item).event_type)?),
                     ("event_id", mp::text(&(item).event_id)?),
                     ("run_id", mp::text(&(item).run_id)?),
@@ -613,18 +610,18 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                     ),
                     (
                         "measurement",
-                        mp::object_value(&[
+                        mp::object_value([
                             ("method", mp::text(&(item).measurement.method)?),
                             (
                                 "accuracy",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).measurement.accuracy.len()),
                                 )]),
                             ),
                             (
                                 "coverage",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).measurement.coverage.len()),
                                 )]),
@@ -649,14 +646,14 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                     .node_runs
                     .iter()
                     .map(|item| {
-                        Some(mp::object_value(&[
+                        Some(mp::object_value([
                             ("id", mp::text(&(item).id)?),
                             ("flow_run_id", mp::text(&(item).flow_run_id)?),
                             ("node_id", mp::text(&(item).node_id)?),
                             ("node_type", mp::text(&(item).node_type)?),
                             (
                                 "node_alias",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).node_alias.len()),
                                 )]),
@@ -679,7 +676,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                             ("debug_payload", mp::json_summary(&(item).debug_payload)),
                             (
                                 "started_at",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).started_at.len()),
                                 )]),
@@ -687,7 +684,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                             (
                                 "finished_at",
                                 match (item).finished_at.as_ref() {
-                                    Some(item) => mp::object_value(&[(
+                                    Some(item) => mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).len()),
                                     )]),
@@ -708,7 +705,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                     .checkpoints
                     .iter()
                     .map(|item| {
-                        Some(mp::object_value(&[
+                        Some(mp::object_value([
                             ("id", mp::text(&(item).id)?),
                             ("flow_run_id", mp::text(&(item).flow_run_id)?),
                             (
@@ -721,7 +718,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                             ("status", mp::text(&(item).status)?),
                             (
                                 "reason",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).reason.len()),
                                 )]),
@@ -753,13 +750,13 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                     .callback_tasks
                     .iter()
                     .map(|item| {
-                        Some(mp::object_value(&[
+                        Some(mp::object_value([
                             ("id", mp::text(&(item).id)?),
                             ("flow_run_id", mp::text(&(item).flow_run_id)?),
                             ("node_run_id", mp::text(&(item).node_run_id)?),
                             (
                                 "callback_kind",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "byte_count",
                                     serde_json::json!((item).callback_kind.len()),
                                 )]),
@@ -784,7 +781,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                             (
                                 "completed_at",
                                 match (item).completed_at.as_ref() {
-                                    Some(item) => mp::object_value(&[(
+                                    Some(item) => mp::object_value([(
                                         "byte_count",
                                         serde_json::json!((item).len()),
                                     )]),
@@ -805,7 +802,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                     .events
                     .iter()
                     .map(|item| {
-                        Some(mp::object_value(&[
+                        Some(mp::object_value([
                             ("id", mp::text(&(item).id)?),
                             ("flow_run_id", mp::text(&(item).flow_run_id)?),
                             (
@@ -833,10 +830,10 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                     .stitched_trace
                     .iter()
                     .map(|item| {
-                        Some(mp::object_value(&[
+                        Some(mp::object_value([
                             (
                                 "source_flow_run",
-                                mp::object_value(&[
+                                mp::object_value([
                                     ("id", mp::text(&(item).source_flow_run.id)?),
                                     (
                                         "application_id",
@@ -853,7 +850,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                                     ),
                                     (
                                         "run_mode",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item)
                                                 .source_flow_run
@@ -871,7 +868,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                                     ),
                                     (
                                         "title",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item).source_flow_run.title.len()),
                                         )]),
@@ -897,7 +894,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                                     (
                                         "query",
                                         match (item).source_flow_run.query.as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -907,7 +904,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                                     (
                                         "model",
                                         match (item).source_flow_run.model.as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -931,7 +928,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                                     ),
                                     (
                                         "created_by",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item)
                                                 .source_flow_run
@@ -941,7 +938,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                                     ),
                                     (
                                         "started_at",
-                                        mp::object_value(&[(
+                                        mp::object_value([(
                                             "byte_count",
                                             serde_json::json!((item)
                                                 .source_flow_run
@@ -952,7 +949,7 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                                     (
                                         "finished_at",
                                         match (item).source_flow_run.finished_at.as_ref() {
-                                            Some(item) => mp::object_value(&[(
+                                            Some(item) => mp::object_value([(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
                                             )]),
@@ -965,21 +962,21 @@ pub(super) fn project(detail: &ApplicationRunDetailResponse) -> Option<serde_jso
                             ),
                             (
                                 "node_runs",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "item_count",
                                     serde_json::json!((item).node_runs.len()),
                                 )]),
                             ),
                             (
                                 "callback_tasks",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "item_count",
                                     serde_json::json!((item).callback_tasks.len()),
                                 )]),
                             ),
                             (
                                 "events",
-                                mp::object_value(&[(
+                                mp::object_value([(
                                     "item_count",
                                     serde_json::json!((item).events.len()),
                                 )]),

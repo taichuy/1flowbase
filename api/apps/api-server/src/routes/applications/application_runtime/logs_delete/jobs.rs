@@ -46,17 +46,17 @@ impl InterfaceContract for JobInput {
             .clone();
         create.push((
             "input",
-            mp::object_schema(&[("job_id", mp::text_schema()), ("scope", scope)]),
+            mp::object_schema([("job_id", mp::text_schema()), ("scope", scope)]),
         ));
         let mut get = base("get");
         get.push(("job_id", mp::text_schema()));
         let mut stop = base("stop");
         stop.push(("job_id", mp::text_schema()));
         Some(mp::union_schema(vec![
-            mp::object_schema(&create),
-            mp::object_schema(&get),
-            mp::object_schema(&base("latest")),
-            mp::object_schema(&stop),
+            mp::object_schema(create),
+            mp::object_schema(get),
+            mp::object_schema(base("latest")),
+            mp::object_schema(stop),
         ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
@@ -110,10 +110,10 @@ impl InterfaceContract for JobOutput {
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
+        Some(mp::object_schema([(
             "job",
             mp::union_schema(vec![
-                mp::object_schema(&[
+                mp::object_schema([
                     ("job_id", mp::text_schema()),
                     ("application_id", mp::text_schema()),
                     (
@@ -249,7 +249,7 @@ impl InterfaceContract for PreviewOutput {
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[("total_records", mp::count_schema())]))
+        Some(mp::object_schema([("total_records", mp::count_schema())]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         Some(json!({"total_records":self.total_records}))
