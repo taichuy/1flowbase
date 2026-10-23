@@ -446,6 +446,16 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         }
     }
 
+    #[tracing::instrument(
+        name = "provider_invocation",
+        skip_all,
+        fields(
+            provider_invocation_id = input.trace_context.get("provider_invocation_id").map(String::as_str),
+            provider_instance_id = %input.provider_instance_id,
+            model = %input.model,
+            deadline_unix_ms = context.deadline_unix_ms,
+        )
+    )]
     async fn invoke_stream_with_execution_context(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
@@ -457,7 +467,12 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         let binding = self.resolve_model_provider_binding(installation)?;
         binding.require_provider_code(&input.provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
+        tracing::debug!(stage = "provider_load", "provider invocation stage entered");
         self.ensure_provider_loaded(&binding).await?;
+        tracing::debug!(
+            stage = "network_egress",
+            "provider invocation stage entered"
+        );
         let scope = match self.network_egress.as_ref() {
             Some(network_egress) => {
                 network_egress
@@ -482,6 +497,10 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             actor_id: context.actor_id.map(|value| value.to_string()),
             deadline_unix_ms: context.deadline_unix_ms,
         };
+        tracing::debug!(
+            stage = "transport_admission",
+            "provider invocation stage entered"
+        );
         let transport_invocation = self
             .services
             .transport_sessions
@@ -492,12 +511,20 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             // dropping this future also retains the prepared reservation's owner.
             let request = runtime_execution_request(&binding, input, Some(principal))?;
             if let Some(prepared) = transport_invocation.as_ref() {
+                tracing::debug!(
+                    stage = "dispatch_claim",
+                    "provider invocation stage entered"
+                );
                 self.services
                     .transport_sessions
                     .claim_dispatch(prepared)
                     .await?;
             }
             // No await between claiming dispatch and polling the runtime future.
+            tracing::debug!(
+                stage = "runtime_execution",
+                "provider invocation stage entered"
+            );
             self.services
                 .orchestration_backend
                 .execute_stream(request, sinks)
@@ -511,6 +538,10 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         }
         .await;
         if let Some(prepared) = transport_invocation {
+            tracing::debug!(
+                stage = "transport_completion",
+                "provider invocation stage entered"
+            );
             let completion = self
                 .services
                 .transport_sessions
@@ -518,12 +549,21 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                 .await;
             invocation = preserve_provider_invocation_outcome(invocation, completion);
         }
+        tracing::debug!(
+            stage = "network_egress_release",
+            "provider invocation stage entered"
+        );
         let release = match scope {
             Some(scope) => scope.release().await,
             None => Ok(()),
         };
         let result = preserve_provider_invocation_outcome(invocation, release);
         finish_runtime_activity(activity, &result);
+        tracing::debug!(
+            stage = "completed",
+            succeeded = result.is_ok(),
+            "provider invocation stage entered"
+        );
         result
     }
 

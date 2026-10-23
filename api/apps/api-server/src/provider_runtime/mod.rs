@@ -71,7 +71,7 @@ mod provider_port;
 mod transport_session_lifecycle;
 
 pub(crate) use transport_session_lifecycle::{
-    TransportConnectionScope, TransportTerminationNotice,
+    TransportConnectionScope, TransportConnectionScopeGuard, TransportTerminationNotice,
 };
 
 use distribution_registry::EffectiveProviderDistributionSnapshot;
@@ -324,6 +324,10 @@ impl ApiRuntimeServices {
 
     pub(crate) fn open_transport_connection_scope(&self) -> Arc<TransportConnectionScope> {
         self.transport_sessions.open_connection_scope()
+    }
+
+    pub(crate) fn open_http_transport_scope(&self) -> TransportConnectionScopeGuard {
+        self.transport_sessions.open_http_connection_scope()
     }
 
     pub(crate) async fn close_transport_connection_scope(&self, scope: &TransportConnectionScope) {

@@ -61,6 +61,7 @@ use crate::{
 
 pub(crate) mod chat_usage;
 mod compact;
+pub(crate) mod http_delivery;
 mod model_list;
 mod response_dispatch;
 use response_dispatch::dispatch_response_for_endpoint;
@@ -570,6 +571,10 @@ async fn create_response_for_endpoint(
     body: Bytes,
     endpoint: OpenAiResponsesEndpoint,
 ) -> Result<Response, OpenAiRouteError> {
+    // Delivery may disappear while dispatch is still preparing or collecting a
+    // unary result. This owner survives only as long as the request/response,
+    // independently of the durable execution's completion owner.
+    let delivery_scope = state.provider_runtime.open_http_transport_scope();
     let recorder = client_observer::recorder(&state, ClientTrajectoryTransport::Http);
     if recorder
         .record(ClientTrajectoryFrameKind::Request, &body)
@@ -588,7 +593,7 @@ async fn create_response_for_endpoint(
             body: OpenAiResponseBody::Raw(body),
             endpoint,
             delivery: OpenAiResponseDelivery::Http,
-            transport_connection_scope: None,
+            transport_connection_scope: Some(delivery_scope.id().to_string()),
             recorder: Some(recorder),
         },
         None,
@@ -606,7 +611,10 @@ async fn create_response_for_endpoint(
             .into_response()
         }
     };
-    Ok(client_observer::observe_response(response, capture))
+    Ok(http_delivery::bind_response(
+        client_observer::observe_response(response, capture),
+        delivery_scope,
+    ))
 }
 
 pub(crate) async fn prepare_typed_response_turn(

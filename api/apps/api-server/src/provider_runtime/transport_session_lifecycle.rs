@@ -65,7 +65,34 @@ pub(crate) struct TransportTerminationNotice {
 /// the same client thread identity. This is a bounded attachment to the registry.
 pub(crate) struct TransportConnectionScope {
     id: String,
+    carrier: ProviderClientTransport,
     state: StdMutex<TransportConnectionBindings>,
+}
+
+/// The delivery owns this guard, not the execution or a clone of the scope.
+/// Closing may await coordinator locks, so Drop transfers the whole close future
+/// to an independent task rather than letting request cancellation interrupt it.
+pub(crate) struct TransportConnectionScopeGuard {
+    scope: Arc<TransportConnectionScope>,
+    on_close: Option<Box<dyn FnOnce() + Send + Sync>>,
+}
+
+impl TransportConnectionScopeGuard {
+    pub(crate) fn id(&self) -> &str {
+        self.scope.id()
+    }
+
+    pub(crate) fn close(&mut self) {
+        if let Some(close) = self.on_close.take() {
+            close();
+        }
+    }
+}
+
+impl Drop for TransportConnectionScopeGuard {
+    fn drop(&mut self) {
+        self.close();
+    }
 }
 
 #[derive(Default)]
@@ -79,6 +106,7 @@ impl TransportConnectionScope {
     pub(crate) fn for_test(lease: InvocationLease) -> Arc<Self> {
         Arc::new(Self {
             id: uuid::Uuid::now_v7().to_string(),
+            carrier: ProviderClientTransport::Websocket,
             state: StdMutex::new(TransportConnectionBindings {
                 closed: false,
                 leases: BTreeMap::from([(lease.fence.session_id.as_str().into(), lease)]),
@@ -276,8 +304,30 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
     }
 
     pub(crate) fn open_connection_scope(&self) -> Arc<TransportConnectionScope> {
+        self.open_scope(ProviderClientTransport::Websocket)
+    }
+
+    pub(crate) fn open_http_connection_scope(self: &Arc<Self>) -> TransportConnectionScopeGuard {
+        let scope = self.open_scope(ProviderClientTransport::Http);
+        let coordinator = Arc::clone(self);
+        let closing_scope = Arc::clone(&scope);
+        // Capture the runtime while opening the request. The response body may
+        // later be dropped outside its task's runtime context.
+        let runtime = tokio::runtime::Handle::current();
+        TransportConnectionScopeGuard {
+            scope,
+            on_close: Some(Box::new(move || {
+                runtime.spawn(async move {
+                    coordinator.close_connection_scope(&closing_scope).await;
+                });
+            })),
+        }
+    }
+
+    fn open_scope(&self, carrier: ProviderClientTransport) -> Arc<TransportConnectionScope> {
         let scope = Arc::new(TransportConnectionScope {
             id: uuid::Uuid::now_v7().to_string(),
+            carrier,
             state: StdMutex::new(TransportConnectionBindings::default()),
         });
         let mut scopes = self.connection_scopes.lock().expect("transport scopes");
