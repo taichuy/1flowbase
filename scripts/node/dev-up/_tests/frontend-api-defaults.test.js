@@ -4,15 +4,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
-const homeApiPath = path.join(
+const frontstageApiPath = path.join(
   repoRoot,
   "web",
   "app",
   "src",
   "features",
-  "home",
+  "frontstage",
   "api",
-  "health.ts",
+  "block-catalog.ts",
 );
 const apiClientPath = path.join(
   repoRoot,
@@ -34,13 +34,13 @@ const envExamplePath = path.join(repoRoot, "web", "app", ".env.example");
 const viteConfigPath = path.join(repoRoot, "web", "app", "vite.config.ts");
 
 test("frontend API defaults use same-origin requests with development proxy fallback", () => {
-  const homeApiSource = fs.readFileSync(homeApiPath, "utf8");
+  const frontstageApiSource = fs.readFileSync(frontstageApiPath, "utf8");
   const apiClientSource = fs.readFileSync(apiClientPath, "utf8");
   const transportSource = fs.readFileSync(transportPath, "utf8");
   const envExampleSource = fs.readFileSync(envExamplePath, "utf8");
   const viteConfigSource = fs.readFileSync(viteConfigPath, "utf8");
 
-  assert.match(homeApiSource, /getDefaultApiBaseUrl/u);
+  assert.match(frontstageApiSource, /getDefaultApiBaseUrl/u);
   assert.match(apiClientSource, /transport/u);
   assert.match(transportSource, /locationLike\?\.hostname/u);
   assert.match(transportSource, /locationLike\.origin/u);

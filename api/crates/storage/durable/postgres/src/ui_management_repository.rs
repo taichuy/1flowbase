@@ -536,9 +536,10 @@ impl UiManagementRepository for PgControlPlaneStore {
             Vec::new()
         } else {
             let select = format!(
-                "{} join unnest($2::uuid[]) with ordinality as selected(id, position) using (id) where scope_id = $1 order by selected.position",
+                "{} join unnest($2::uuid[]) with ordinality as selected(id, position) using (id) where scope_id = $1 and id = any($2) order by selected.position",
                 component_record_select()
             );
+            // The repeated ID predicate bounds source projection before the ordering join.
             // SQL safety: only the static component projection is interpolated; scope and page IDs are bound.
             sqlx::query(sqlx::AssertSqlSafe(select.as_str()))
                 .bind(SYSTEM_SCOPE_ID)

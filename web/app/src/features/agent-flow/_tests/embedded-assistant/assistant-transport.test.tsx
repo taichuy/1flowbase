@@ -77,14 +77,14 @@ async function startHttpAssistantSession() {
       });
     }
   );
-  const hook = renderHook(
+  const view = renderHook(
     ({ applicationId }) => useEmbeddedAssistantSession(applicationId),
     { initialProps: { applicationId: 'flow-1' } }
   );
   await act(async () => {
-    void hook.result.current.submitPrompt('First run');
+    void view.result.current.submitPrompt('First run');
   });
-  return { ...hook, streams };
+  return { ...view, streams };
 }
 
 describe('EmbeddedAgentAssistant', () => {

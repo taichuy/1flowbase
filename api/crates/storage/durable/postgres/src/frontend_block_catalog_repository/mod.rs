@@ -230,13 +230,19 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
     async fn list_active_ui_code_templates_for_catalog(
         &self,
     ) -> Result<Vec<FrontendBlockCatalogDefaultTemplate>> {
+        // Fix the narrow eligible set before PostgreSQL can project published bodies at a join input.
         sqlx::query(
-            r#"select t.provider_code, t.contribution_code, published.revision,
+            r#"with catalog_templates as materialized (
+                select t.id, t.name, t.provider_code, t.contribution_code
+                from ui_code_templates t
+                join ui_code_template_defaults defaults on defaults.template_id = t.id
+                join ui_code_template_revisions latest on latest.template_id = t.id and latest.is_latest
+            )
+            select t.provider_code, t.contribution_code, published.revision,
                 published.source, published.language
-            from ui_code_templates t
-            join ui_code_template_defaults defaults on defaults.template_id = t.id
-            join ui_code_template_revisions latest on latest.template_id = t.id and latest.is_latest
+            from catalog_templates t
             left join ui_code_template_revisions published on published.template_id = t.id and published.is_published
+                and published.template_id = any(array(select id from catalog_templates))
             order by t.name, t.id"#,
         )
         .fetch_all(self.pool())
