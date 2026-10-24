@@ -116,7 +116,10 @@ test('script runner executes every selected file under its budget and propagates
       });
     `);
   }
-  const deps = { repoRoot, env: process.env, runtimeConfig: { scripts: { testConcurrency: 1 } }, writeStdout() {}, writeStderr() {} };
+  const fixtureEnv = { ...process.env };
+  // This fixture launches a real runner, not a recursive invocation of the parent test.
+  delete fixtureEnv.NODE_TEST_CONTEXT;
+  const deps = { repoRoot, env: fixtureEnv, runtimeConfig: { scripts: { testConcurrency: 1 } }, writeStdout() {}, writeStderr() {} };
   assert.equal(main([], deps), 0);
   assert.deepEqual(fs.readFileSync(path.join(repoRoot, 'executed.txt'), 'utf8').trim().split('\n').sort(), ['first', 'second', 'third']);
   fs.writeFileSync(path.join(testDir, 'failure.test.js'), "require('node:test')('reject wrong result', () => require('node:assert/strict').equal(2 + 2, 5));");
