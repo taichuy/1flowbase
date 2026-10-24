@@ -2,6 +2,11 @@
 
 [中文](README.md#门禁执行与结果复用)
 
+Static i18n reference analysis looks up every source-directory ancestor in the
+existing owner Map. Nested owners, the appShell route case, and explicit namespace
+references remain recognized. Unused-key warnings, other severities, and report
+ordering are unchanged; the lookup introduces no persistent cache.
+
 Full project acceptance uses `clippy --all-targets` to type-check the same package
 groups. Its CI matrix and required receipts omit the three redundant `cargo check`
 shards. The PR baseline has no Clippy step and keeps those check shards. Explicit

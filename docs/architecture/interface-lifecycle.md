@@ -33,6 +33,10 @@ MCP discovery 在单次目录查询内建立借用的工具索引，保留目录
 
 受管投影构造器取得新建 JSON 字段的所有权并移动子值，字段白名单、schema、观察边界和序列化顺序仍由原 owner 决定。通用插件、模型供应商和网络插件复用官方安装命令准备；各入口的操作授权、执行与响应映射继续独立。
 
+官方插件目录在单次读取内按 provider 聚合安装状态，保留 `Assigned > Installed > Uninstalled > NotInstalled`；缺失本地快照仍按 Missing 判断，只有受管类型的 Missing 映射为 Uninstalled。Family 列表借用同一批安装记录，只在输出边界构造版本和本地产物投影，不跨请求缓存状态。MCP 模板补齐按实例索引快照，以 group path 和 `(group_path, tool_id)` 判重，保留模板原项优先与快照追加顺序；授权与工作区快照仍由原 service 承担。
+
+Agent Flow 草稿的画布投影与直接下游查询使用调用内节点索引和目标集合；索引不承担服务端业务状态。容器可见性、原节点/边顺序、重复 ID 的首项 source 查询和 answer 节点的插入规则保持原样。
+
 组件目录分页在同一只读快照中先筛选和排序轻量元数据，再读取当前页源码；字符串匹配和排序保留 Rust 语义。前端区块目录仅读取默认模板的已发布正文，并在单次请求内索引模板与 assignment、复用安装身份；逐项权限、版本和资产校验仍由 resolver 执行。
 
 前端应用列表由 `/settings/applications` 的应用管理页面提供，应用详情继续使用 `/applications/:applicationId/*`。无路由消费者的旧列表和独立历史 helper 不构成第二套运行入口；表单、归档导入导出及扩展模板安装继续由当前页面消费。

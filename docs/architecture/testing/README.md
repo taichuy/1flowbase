@@ -14,6 +14,8 @@
 
 [English](gate-execution.en.md)
 
+- i18n 静态引用沿源码目录的所有祖先查询既有 owner Map，保留嵌套 owner、路由 appShell 特例和显式 namespace 引用。此索引只用于查找；unused key 的 warning、其他错误级别和报告顺序不变，不建立持久缓存。
+
 - 完整体检的 `clippy --all-targets` 同时承担对应包的类型检查，CI matrix 与默认汇总不再重复要求相同配置的三个 `cargo check` 分片。PR 基线没有 Clippy，继续保留 check；定向 check 命令仍可独立使用。feature 专项和行为测试不由 Clippy 替代。
 - API 普通四分片与 coverage 四分片的 package、默认 features、nextest partition 和实际 test identity 并集相同，完整 CI 由 coverage 一次承担行为与覆盖率验收。控制平面、orchestration-runtime、runtime-extension-host 和 storage-durable-postgres 的完整包行为测试同样交给各自 coverage owner；前三者另保留显式 `cargo test --doc`，包括 Host compile-fail 用例和未来文档示例。仅 `QUALITY_GATE_SCOPE=ci` 的普通 runtime/storage 分片省略这三个重复包；独立手动 / PR shard、`test-backend` 与 `verify-backend all` 保留原测试集合。control-plane-postgres-tests 的四分片与第一分片的 SQL 报表集成继续运行。
 - API coverage 分片成功执行非零用例后才写回执；merge 核对同 SHA、package/partition、实际通过数、inventory 与非空 profile 数量，再验证完整、不重叠的可执行用例并集。ignored 单独按全量集合计数，不能把 nextest 的 partition/filter skipped 当作 ignored，也不能用旧产物补缺失分片。
