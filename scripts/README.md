@@ -274,6 +274,8 @@ CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" \
 
 ### `node scripts/node/test-scripts.js [filter ...]`
 
+使用原生 Node test runner，`scripts.testConcurrency` 在 `.1flowbase.verify.local.json` 中覆盖本地并发；默认 `max(1, floor(可用 CPU / 2))`，CI 使用全部 runner CPU。与前端 / Cargo 配置各自独立，保留文件隔离和完整发现集合；无匹配 selector 仍报错。consumer contract 入口复用 `frontend.vitestMaxWorkers`，不另写并发常量。
+
 运行 `scripts/node/**/_tests/*.js` 下的 Node 脚本测试。
 
 ```bash
