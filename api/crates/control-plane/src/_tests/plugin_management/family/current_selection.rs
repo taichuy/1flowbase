@@ -58,6 +58,22 @@ fn selection_service(
     )
 }
 
+async fn upgrade_selection(
+    repository: &MemoryPluginManagementRepository,
+) -> Result<domain::PluginTaskRecord> {
+    fn require_send<T: Send>(value: T) -> T {
+        value
+    }
+    let service = selection_service(repository);
+    require_send(service.upgrade_latest(UpgradeLatestPluginFamilyCommand {
+        actor_user_id: repository.actor.user_id,
+        provider_code: "openai_compatible".into(),
+        compatibility_override: None,
+        risk_override: None,
+    }))
+    .await
+}
+
 async fn assign_workspace(repository: &MemoryPluginManagementRepository) {
     let installation = seed_selection(
         repository,
@@ -112,15 +128,7 @@ async fn family_selection_native_requires_exactly_one_matching_target_before_oth
         targets.insert(0, unrelated);
         repository.set_native_targets(targets).await;
 
-        let error = selection_service(&repository)
-            .upgrade_latest(UpgradeLatestPluginFamilyCommand {
-                actor_user_id: repository.actor.user_id,
-                provider_code: "openai_compatible".into(),
-                compatibility_override: None,
-                risk_override: None,
-            })
-            .await
-            .unwrap_err();
+        let error = upgrade_selection(&repository).await.unwrap_err();
         assert!(
             matches!(error.downcast_ref::<ControlPlaneError>(),
             Some(ControlPlaneError::Conflict(reason)) if *reason == if target_count == 1 {
@@ -157,15 +165,7 @@ async fn family_selection_rejects_native_target_outside_native_family() {
     repository
         .set_native_targets(vec![native_target(workspace.id)])
         .await;
-    let error = selection_service(&repository)
-        .upgrade_latest(UpgradeLatestPluginFamilyCommand {
-            actor_user_id: repository.actor.user_id,
-            provider_code: "openai_compatible".into(),
-            compatibility_override: None,
-            risk_override: None,
-        })
-        .await
-        .unwrap_err();
+    let error = upgrade_selection(&repository).await.unwrap_err();
     assert!(matches!(
         error.downcast_ref::<ControlPlaneError>(),
         Some(ControlPlaneError::NotFound("native_plugin_installation"))

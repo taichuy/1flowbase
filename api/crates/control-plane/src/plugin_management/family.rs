@@ -603,11 +603,7 @@ where
     ) -> Result<domain::PluginInstallationRecord> {
         let mut family = self.repository.list_installations().await?;
         family.retain(|installation| installation.provider_code == provider_code);
-        let mut native = family
-            .iter()
-            .filter(|installation| is_host_extension_installation(installation))
-            .peekable();
-        if native.peek().is_some() {
+        if family.iter().any(is_host_extension_installation) {
             let targets = self.repository.list_native_plugin_targets().await?;
             let mut matches = targets
                 .iter()
@@ -615,31 +611,38 @@ where
             let (Some(target), None) = (matches.next(), matches.next()) else {
                 return Err(ControlPlaneError::Conflict("native_plugin_selection_required").into());
             };
-            return native
-                .find(|installation| installation.id == target.installation_id)
-                .cloned()
+            return family
+                .into_iter()
+                .find(|installation| {
+                    is_host_extension_installation(installation)
+                        && installation.id == target.installation_id
+                })
                 .ok_or_else(|| ControlPlaneError::NotFound("native_plugin_installation").into());
         }
-        let mut system_managed = family
-            .iter()
-            .filter(|installation| {
-                domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
-                    == domain::SYSTEM_SCOPE_ID
-            })
-            .peekable();
-        if system_managed.peek().is_some() {
-            let mut active = system_managed.filter(|installation| {
-                installation.desired_state == domain::PluginDesiredState::ActiveRequested
-            });
-            let current = active
-                .next()
-                .ok_or(ControlPlaneError::NotFound("managed_active_installation"))?;
-            if active.next().is_some() {
-                return Err(
-                    ControlPlaneError::Conflict("managed_active_installation_ambiguous").into(),
-                );
+        {
+            // End iterator borrows before the workspace repository awaits.
+            let mut system_managed = family
+                .iter()
+                .filter(|installation| {
+                    domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+                        == domain::SYSTEM_SCOPE_ID
+                })
+                .peekable();
+            if system_managed.peek().is_some() {
+                let mut active = system_managed.filter(|installation| {
+                    installation.desired_state == domain::PluginDesiredState::ActiveRequested
+                });
+                let current = active
+                    .next()
+                    .ok_or(ControlPlaneError::NotFound("managed_active_installation"))?;
+                if active.next().is_some() {
+                    return Err(ControlPlaneError::Conflict(
+                        "managed_active_installation_ambiguous",
+                    )
+                    .into());
+                }
+                return Ok(current.clone());
             }
-            return Ok(current.clone());
         }
         let assignment = self
             .repository
