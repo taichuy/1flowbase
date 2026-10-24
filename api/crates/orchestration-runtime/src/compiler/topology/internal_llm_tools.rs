@@ -1,5 +1,23 @@
 use super::*;
 
+// Borrow source edges once; node adjacency loses the handles needed by both consumers.
+pub(super) struct VisibleInternalLlmToolEdges<'a> {
+    by_source: BTreeMap<&'a str, Vec<&'a CompiledEdge>>,
+}
+
+impl<'a> VisibleInternalLlmToolEdges<'a> {
+    pub(super) fn new(edges: &'a [CompiledEdge]) -> Self {
+        let mut by_source = BTreeMap::<_, Vec<_>>::new();
+        for edge in edges {
+            by_source
+                .entry(edge.source.as_str())
+                .or_default()
+                .push(edge);
+        }
+        Self { by_source }
+    }
+}
+
 pub(super) fn validate_llm_context_policies(
     nodes: &BTreeMap<String, CompiledNode>,
 ) -> Vec<CompileIssue> {
@@ -42,7 +60,7 @@ pub(super) fn validate_llm_context_policies(
 
 pub(super) fn materialize_visible_internal_llm_tool_targets(
     nodes: &mut BTreeMap<String, CompiledNode>,
-    edges: &[CompiledEdge],
+    edges: &VisibleInternalLlmToolEdges<'_>,
 ) -> Vec<CompileIssue> {
     let mut issues = Vec::new();
 
@@ -68,7 +86,8 @@ pub(super) fn materialize_visible_internal_llm_tool_targets(
                 .or_else(|| tool.get("name"))
                 .and_then(Value::as_str)
                 .map(str::trim)
-                .filter(|value| !value.is_empty());
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
             let Some(connector_id) = connector_id else {
                 issues.push(CompileIssue {
                     field_path: None,
@@ -81,15 +100,19 @@ pub(super) fn materialize_visible_internal_llm_tool_targets(
                 });
                 continue;
             };
-            let source_handle = visible_internal_llm_tool_source_handle(connector_id);
-            let matching_edges = edges
-                .iter()
+            let mut matching_targets = edges
+                .by_source
+                .get(node_id.as_str())
+                .into_iter()
+                .flatten()
                 .filter(|edge| {
-                    edge.source == node_id && edge.source_handle.as_deref() == Some(&source_handle)
+                    visible_internal_llm_tool_connector_id_from_source_handle(
+                        edge.source_handle.as_deref(),
+                    ) == Some(connector_id.as_str())
                 })
-                .collect::<Vec<_>>();
+                .map(|edge| edge.target.as_str());
 
-            if matching_edges.is_empty() {
+            let Some(first_target) = matching_targets.next() else {
                 issues.push(CompileIssue {
                     field_path: None,
                     node_id: node_id.clone(),
@@ -103,7 +126,7 @@ pub(super) fn materialize_visible_internal_llm_tool_targets(
             };
             let tool_mode = visible_internal_llm_tool_mode_value(tool)
                 .unwrap_or_else(|| TOOL_MODE_AGENT.to_string());
-            if matching_edges.len() > 1 && tool_mode != TOOL_MODE_FUSION {
+            if tool_mode != TOOL_MODE_FUSION && matching_targets.next().is_some() {
                 issues.push(CompileIssue {
                     field_path: None,
                     node_id: node_id.clone(),
@@ -119,15 +142,15 @@ pub(super) fn materialize_visible_internal_llm_tool_targets(
             if let Some(tool_object) = tool.as_object_mut() {
                 tool_object.insert(
                     "target_node_id".to_string(),
-                    Value::String(matching_edges[0].target.clone()),
+                    Value::String(first_target.to_string()),
                 );
                 if tool_mode == TOOL_MODE_FUSION {
                     tool_object.insert(
                         "target_node_ids".to_string(),
                         Value::Array(
-                            matching_edges
-                                .iter()
-                                .map(|edge| Value::String(edge.target.clone()))
+                            std::iter::once(first_target)
+                                .chain(matching_targets)
+                                .map(|target| Value::String(target.to_string()))
                                 .collect(),
                         ),
                     );
@@ -141,7 +164,7 @@ pub(super) fn materialize_visible_internal_llm_tool_targets(
 
 pub(super) fn validate_visible_internal_llm_tool_branches(
     nodes: &BTreeMap<String, CompiledNode>,
-    edges: &[CompiledEdge],
+    edges: &VisibleInternalLlmToolEdges<'_>,
 ) -> Vec<CompileIssue> {
     let mut issues = Vec::new();
 
@@ -187,13 +210,9 @@ pub(super) fn validate_visible_internal_llm_tool_branches(
                 continue;
             }
 
-            let reachable_node_ids = target_node_ids
-                .iter()
-                .flat_map(|target_node_id| {
-                    visible_internal_llm_tool_branch_node_ids(target_node_id, nodes, edges)
-                })
-                .collect::<BTreeSet<_>>();
-            let tool_result_node_ids = reachable_node_ids
+            let reachable_node_ids =
+                visible_internal_llm_tool_branch_node_ids(&target_node_ids, nodes, edges);
+            let tool_result_count = reachable_node_ids
                 .iter()
                 .filter(|node_id| {
                     nodes
@@ -201,10 +220,9 @@ pub(super) fn validate_visible_internal_llm_tool_branches(
                         .map(|reachable| reachable.node_type == TOOL_RESULT_NODE_TYPE)
                         .unwrap_or(false)
                 })
-                .cloned()
-                .collect::<Vec<_>>();
+                .count();
 
-            if tool_result_node_ids.is_empty() {
+            if tool_result_count == 0 {
                 issues.push(CompileIssue {
                     field_path: None,
                     node_id: node.node_id.clone(),
@@ -214,7 +232,7 @@ pub(super) fn validate_visible_internal_llm_tool_branches(
                         node.node_id
                     ),
                 });
-            } else if tool_result_node_ids.len() > 1 {
+            } else if tool_result_count > 1 {
                 issues.push(CompileIssue {
                     field_path: None,
                     node_id: node.node_id.clone(),
@@ -305,20 +323,18 @@ pub(super) fn materialize_visible_internal_llm_tool_policy(tool: &mut Value) {
     );
 }
 
-pub(super) fn visible_internal_llm_tool_entries(node: &CompiledNode) -> Vec<&Value> {
+pub(super) fn visible_internal_llm_tool_entries(
+    node: &CompiledNode,
+) -> impl Iterator<Item = &Value> {
     node.config
         .get("visible_internal_llm_tools")
         .or_else(|| node.config.get("visibleInternalLlmTools"))
         .and_then(Value::as_array)
-        .map(|tools| {
-            tools
-                .iter()
-                .filter(|tool| {
-                    tool.get("type").and_then(Value::as_str) == Some(VISIBLE_INTERNAL_LLM_TOOL_TYPE)
-                })
-                .collect()
+        .into_iter()
+        .flatten()
+        .filter(|tool| {
+            tool.get("type").and_then(Value::as_str) == Some(VISIBLE_INTERNAL_LLM_TOOL_TYPE)
         })
-        .unwrap_or_default()
 }
 
 pub(super) fn visible_internal_llm_tool_mode_value(tool: &Value) -> Option<String> {
@@ -373,12 +389,12 @@ pub(super) fn visible_internal_llm_tool_target_node_ids(tool: &Value) -> Vec<Str
 }
 
 pub(super) fn visible_internal_llm_tool_branch_node_ids(
-    target_node_id: &str,
+    target_node_ids: &[String],
     nodes: &BTreeMap<String, CompiledNode>,
-    edges: &[CompiledEdge],
+    edges: &VisibleInternalLlmToolEdges<'_>,
 ) -> BTreeSet<String> {
     let mut visited = BTreeSet::new();
-    let mut queue = VecDeque::from([target_node_id.to_string()]);
+    let mut queue = VecDeque::from(target_node_ids.to_vec());
 
     while let Some(node_id) = queue.pop_front() {
         if !visited.insert(node_id.clone()) {
@@ -393,17 +409,15 @@ pub(super) fn visible_internal_llm_tool_branch_node_ids(
             continue;
         }
 
-        for edge in edges.iter().filter(|edge| edge.source == node_id) {
-            if edge.source_handle.as_deref() == Some(ERROR_BRANCH_SOURCE_HANDLE)
-                || visible_internal_llm_tool_connector_id_from_source_handle(
-                    edge.source_handle.as_deref(),
-                )
-                .is_some()
-            {
-                continue;
-            }
-
-            queue.push_back(edge.target.clone());
+        if let Some(outgoing) = edges.by_source.get(node_id.as_str()) {
+            queue.extend(outgoing.iter().filter_map(|edge| {
+                (edge.source_handle.as_deref() != Some(ERROR_BRANCH_SOURCE_HANDLE)
+                    && visible_internal_llm_tool_connector_id_from_source_handle(
+                        edge.source_handle.as_deref(),
+                    )
+                    .is_none())
+                .then(|| edge.target.clone())
+            }));
         }
     }
 

@@ -223,6 +223,48 @@ fn compile_rejects_duplicate_answer_presentation_reference() {
 }
 
 #[test]
+fn answer_presentation_preserves_duplicate_and_first_reversed_dependency_diagnostics() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    add_second_llm_and_answer(
+        &mut document,
+        "{{node-llm-2.text}}{{node-llm-2.alternate}}{{node-llm-2.text}}{{node-start.query}}{{node-llm.text}}",
+        true,
+    );
+    document["graph"]["nodes"][2]["outputs"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "key": "alternate", "title": "Alternate", "valueType": "string" }));
+
+    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
+    let issues = orchestration_runtime::answer_presentation::validate_answer_presentation(&plan);
+    assert_eq!(
+        issues
+            .iter()
+            .map(|issue| (&issue.code, issue.message.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                &CompileIssueCode::DuplicateAnswerPresentationReference,
+                "answer presentation references node-llm-2.text more than once"
+            ),
+            (
+                &CompileIssueCode::InvalidAnswerPresentationOrder,
+                "answer presentation places node-llm-2 before its dependency node-start"
+            ),
+            (
+                &CompileIssueCode::InvalidAnswerPresentationOrder,
+                "answer presentation places node-llm-2 before its dependency node-start"
+            ),
+            (
+                &CompileIssueCode::InvalidAnswerPresentationOrder,
+                "answer presentation places node-llm-2 before its dependency node-start"
+            ),
+        ]
+    );
+}
+
+#[test]
 fn compile_allows_parallel_answer_references_in_template_order() {
     let flow_id = Uuid::now_v7();
     let mut document = sample_document(flow_id);

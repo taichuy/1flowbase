@@ -48,10 +48,10 @@ test('buildCommand runs node --test over discovered script tests', () => {
     path.join(repoRoot, 'scripts', 'node', 'page-debug', '_tests', 'core.test.js'),
   ];
 
-  assert.deepEqual(buildCommand({ repoRoot, files }), {
+  assert.deepEqual(buildCommand({ repoRoot, files, runtimeConfig: { scripts: { testConcurrency: 2 } } }), {
     label: 'scripts-node-tests',
     command: process.execPath,
-    args: ['--test', ...files],
+    args: ['--test', '--test-concurrency=2', ...files],
     cwd: repoRoot,
   });
 });
@@ -63,6 +63,7 @@ test('main runs filtered script tests and captures warning output', () => {
   const status = main(['page-debug'], {
     repoRoot,
     env: {},
+    runtimeConfig: { scripts: { testConcurrency: 1 } },
     listTestFilesImpl() {
       return [
         path.join(repoRoot, 'scripts', 'node', 'dev-up', '_tests', 'core.test.js'),
@@ -87,10 +88,40 @@ test('main runs filtered script tests and captures warning output', () => {
   assert.equal(calls[0].command, process.execPath);
   assert.deepEqual(calls[0].args, [
     '--test',
+    '--test-concurrency=1',
     path.join(repoRoot, 'scripts', 'node', 'page-debug', '_tests', 'core.test.js'),
   ]);
 
   const warningLogPath = path.join(repoRoot, 'tmp', 'test-governance', 'test-scripts.warnings.log');
   assert.equal(fs.existsSync(warningLogPath), true);
   assert.match(fs.readFileSync(warningLogPath, 'utf8'), /warning: node:test advisory/u);
+});
+
+
+test('script runner executes every selected file under its budget and propagates test failure', (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'node-budget-execution-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const testDir = path.join(repoRoot, 'scripts/node/budget/_tests');
+  fs.mkdirSync(testDir, { recursive: true });
+  for (const name of ['first', 'second', 'third']) {
+    fs.writeFileSync(path.join(testDir, `${name}.test.js`), `
+      const test = require('node:test');
+      const fs = require('node:fs');
+      test('${name}', async () => {
+        fs.mkdirSync('active-worker');
+        try {
+          await new Promise(resolve => setTimeout(resolve, 25));
+          fs.appendFileSync('executed.txt', '${name}\\n');
+        } finally { fs.rmdirSync('active-worker'); }
+      });
+    `);
+  }
+  const fixtureEnv = { ...process.env };
+  // This fixture launches a real runner, not a recursive invocation of the parent test.
+  delete fixtureEnv.NODE_TEST_CONTEXT;
+  const deps = { repoRoot, env: fixtureEnv, runtimeConfig: { scripts: { testConcurrency: 1 } }, writeStdout() {}, writeStderr() {} };
+  assert.equal(main([], deps), 0);
+  assert.deepEqual(fs.readFileSync(path.join(repoRoot, 'executed.txt'), 'utf8').trim().split('\n').sort(), ['first', 'second', 'third']);
+  fs.writeFileSync(path.join(testDir, 'failure.test.js'), "require('node:test')('reject wrong result', () => require('node:assert/strict').equal(2 + 2, 5));");
+  assert.notEqual(main(['failure.test.js'], deps), 0);
 });

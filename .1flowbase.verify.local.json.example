@@ -11,5 +11,8 @@
   "locks": {
     "waitTimeoutMinutes": 30,
     "pollIntervalMs": 5000
+  },
+  "scripts": {
+    "testConcurrency": 1
   }
 }

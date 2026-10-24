@@ -29,6 +29,7 @@ test("loadVerifyRuntimeConfig returns defaults when local config is absent", () 
   });
 
   assert.deepEqual(config, {
+    scripts: { testConcurrency: 4 },
     backend: {
       cargoJobs: 4,
       cargoTestThreads: 4,
@@ -125,6 +126,7 @@ test("loadVerifyRuntimeConfig applies local overrides when config file exists", 
   });
 
   assert.deepEqual(config, {
+    scripts: { testConcurrency: 4 },
     backend: {
       cargoJobs: 3,
       cargoTestThreads: 2,
@@ -308,6 +310,7 @@ test("loadVerifyRuntimeConfig merges backend and lock overrides field by field",
   });
 
   assert.deepEqual(config, {
+    scripts: { testConcurrency: 4 },
     backend: {
       cargoJobs: 3,
       cargoTestThreads: 4,
@@ -353,6 +356,7 @@ test("loadVerifyRuntimeConfig uses full runner capacity and ignores local config
   });
 
   assert.deepEqual(config, {
+    scripts: { testConcurrency: 10 },
     backend: {
       cargoJobs: 10,
       cargoTestThreads: 10,

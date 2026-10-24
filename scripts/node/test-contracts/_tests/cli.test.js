@@ -17,11 +17,11 @@ const CONTRACT_TEST_FILES = [
 test('buildCommands targets the shared model provider contract consumers', () => {
   const repoRoot = '/repo-root';
 
-  assert.deepEqual(buildCommands({ repoRoot }), [
+  assert.deepEqual(buildCommands({ repoRoot, runtimeConfig: { frontend: { vitestMaxWorkers: 1 } } }), [
     {
       label: 'model-provider-contract-tests',
       command: 'pnpm',
-      args: ['--dir', 'web/app', 'exec', 'vitest', 'run', ...CONTRACT_TEST_FILES],
+      args: ['--dir', 'web/app', 'exec', 'vitest', 'run', '--maxWorkers=1', ...CONTRACT_TEST_FILES],
       cwd: repoRoot,
     },
   ]);
@@ -29,6 +29,7 @@ test('buildCommands targets the shared model provider contract consumers', () =>
 
 test('main runs the contract gate and captures advisory output', async () => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-test-contracts-'));
+  fs.writeFileSync(path.join(repoRoot, '.1flowbase.verify.local.json'), JSON.stringify({ frontend: { vitestMaxWorkers: 1 } }));
   const calls = [];
 
   const status = await main([], {
@@ -51,7 +52,7 @@ test('main runs the contract gate and captures advisory output', async () => {
   assert.equal(calls.length, 1);
   assert.deepEqual(
     calls[0].args,
-    ['--dir', 'web/app', 'exec', 'vitest', 'run', ...CONTRACT_TEST_FILES]
+    ['--dir', 'web/app', 'exec', 'vitest', 'run', '--maxWorkers=1', ...CONTRACT_TEST_FILES]
   );
 
   const warningLogPath = path.join(

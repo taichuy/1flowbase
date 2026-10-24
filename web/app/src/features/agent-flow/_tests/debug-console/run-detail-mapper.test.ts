@@ -35,6 +35,135 @@ function baseDetail(): FlowDebugRunDetail {
 }
 
 describe('run detail mapper', () => {
+  test.each(['root', 'detail'] as const)(
+    'keeps stitched node and callback order isolated per trace from %s',
+    (location) => {
+      const detail = baseDetail();
+      const nodeRun = (
+        id: string
+      ): FlowDebugRunDetail['node_runs'][number] => ({
+        id,
+        flow_run_id: 'source-1',
+        node_id: id,
+        node_type: 'llm',
+        node_alias: id,
+        status: 'succeeded',
+        input_payload: { query: id },
+        output_payload: {},
+        error_payload: null,
+        metrics_payload: {},
+        debug_payload: { preserved: id },
+        started_at: detail.flow_run.started_at,
+        finished_at: null
+      });
+      const callback = (
+        id: string,
+        node_run_id: string
+      ): FlowDebugRunDetail['callback_tasks'][number] => ({
+        id,
+        node_run_id,
+        flow_run_id: 'source-1',
+        callback_kind: 'llm_tool_calls',
+        status: 'completed',
+        request_payload: {},
+        response_payload: {},
+        external_ref_payload: null,
+        created_at: detail.flow_run.started_at,
+        completed_at: detail.flow_run.finished_at
+      });
+      const stitched = [
+        {
+          source_flow_run: { ...detail.flow_run, id: 'source-1' },
+          node_runs: ['b', 'a', 'empty', 'a'].map(nodeRun),
+          callback_tasks: [
+            callback('a-2', 'a'),
+            callback('b-1', 'b'),
+            callback('a-1', 'a'),
+            callback('a-1', 'a'),
+            callback('orphan', 'missing')
+          ],
+          events: []
+        },
+        {
+          source_flow_run: { ...detail.flow_run, id: 'source-2' },
+          node_runs: [nodeRun('a')],
+          callback_tasks: [callback('second', 'a')],
+          events: []
+        }
+      ];
+      detail.node_runs = [nodeRun('current')];
+      if (location === 'root') detail.stitched_trace = stitched;
+      else
+        detail.detail = {
+          ...detail,
+          kind: 'agent_flow',
+          stitched_trace: stitched
+        };
+
+      const items = mapRunDetailToTrace(detail);
+      expect(items.map((item) => item.nodeRunId)).toEqual([
+        'current',
+        'b',
+        'a',
+        'empty',
+        'a',
+        'a'
+      ]);
+      expect(items.slice(1).map((item) => item.debugPayload)).toEqual([
+        {
+          preserved: 'b',
+          stitched_trace_source: {
+            source_flow_run_id: 'source-1',
+            source_node_run_id: 'b',
+            callback_task_ids: ['b-1']
+          }
+        },
+        {
+          preserved: 'a',
+          stitched_trace_source: {
+            source_flow_run_id: 'source-1',
+            source_node_run_id: 'a',
+            callback_task_ids: ['a-2', 'a-1', 'a-1']
+          }
+        },
+        {
+          preserved: 'empty',
+          stitched_trace_source: {
+            source_flow_run_id: 'source-1',
+            source_node_run_id: 'empty',
+            callback_task_ids: []
+          }
+        },
+        {
+          preserved: 'a',
+          stitched_trace_source: {
+            source_flow_run_id: 'source-1',
+            source_node_run_id: 'a',
+            callback_task_ids: ['a-2', 'a-1', 'a-1']
+          }
+        },
+        {
+          preserved: 'a',
+          stitched_trace_source: {
+            source_flow_run_id: 'source-2',
+            source_node_run_id: 'a',
+            callback_task_ids: ['second']
+          }
+        }
+      ]);
+      expect(items[1].inputPayload).toBe(
+        stitched[0].node_runs[0].input_payload
+      );
+      expect(items[2].debugPayload?.stitched_trace_source).not.toBe(
+        items[4].debugPayload?.stitched_trace_source
+      );
+      detail.stitched_trace = [];
+      expect(mapRunDetailToTrace(detail).map((item) => item.nodeRunId)).toEqual(
+        ['current']
+      );
+    }
+  );
+
   test('prefers provider error message over structural error kind text', () => {
     const detail = baseDetail();
     detail.flow_run.output_payload = {
@@ -371,7 +500,9 @@ describe('run detail mapper', () => {
       }
     ];
 
-    expect(collectLlmToolCallbacks(mapRunDetailToTrace(detail)[0]?.debugPayload)).toMatchObject([
+    expect(
+      collectLlmToolCallbacks(mapRunDetailToTrace(detail)[0]?.debugPayload)
+    ).toMatchObject([
       {
         id: 'call-weather',
         callbackStatus: 'returned',

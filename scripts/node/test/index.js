@@ -127,22 +127,12 @@ async function runBackend(argv = [], deps = {}) {
   });
 }
 
-function buildContractsCommands({ repoRoot }) {
-  return [
-    {
-      label: "model-provider-contract-tests",
-      command: "pnpm",
-      args: [
-        "--dir",
-        "web/app",
-        "exec",
-        "vitest",
-        "run",
-        ...CONTRACT_TEST_FILES,
-      ],
-      cwd: repoRoot,
-    },
-  ];
+function buildContractsCommands({ repoRoot, runtimeConfig = loadVerifyRuntimeConfig({ repoRoot }) }) {
+  return [{
+    ...buildVitestCommand({ mode: "run", runtimeConfig, passThroughArgs: CONTRACT_TEST_FILES }),
+    label: "model-provider-contract-tests",
+    cwd: repoRoot,
+  }];
 }
 
 function usageContracts(writeStdout = (text) => process.stdout.write(text)) {
@@ -171,7 +161,7 @@ async function runContracts(argv = [], deps = {}) {
     lockMode: "heavy",
     commandDisplay: "node scripts/node/cli/quality/test-contracts.js",
     runtimeConfig,
-    commands: buildContractsCommands({ repoRoot }),
+    commands: buildContractsCommands({ repoRoot, runtimeConfig }),
     spawnSyncImpl: deps.spawnSyncImpl,
     writeStdout: deps.writeStdout,
     writeStderr: deps.writeStderr,
@@ -449,11 +439,11 @@ function selectTestFiles(files, filters) {
   );
 }
 
-function buildScriptTestCommand({ repoRoot, files, env = process.env }) {
+function buildScriptTestCommand({ repoRoot, files, env = process.env, runtimeConfig = loadVerifyRuntimeConfig({ repoRoot, env }) }) {
   return {
     label: "scripts-node-tests",
     command: resolveNodeBinaryFromPath(env),
-    args: ["--test", ...files],
+    args: ["--test", `--test-concurrency=${runtimeConfig.scripts.testConcurrency}`, ...files],
     cwd: repoRoot,
   };
 }
@@ -497,6 +487,7 @@ function runScripts(argv = [], deps = {}) {
         repoRoot,
         files: selectedFiles,
         env: deps.env || process.env,
+        runtimeConfig: deps.runtimeConfig,
       }),
     ],
     spawnSyncImpl: deps.spawnSyncImpl,

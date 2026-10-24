@@ -305,20 +305,33 @@ pub(super) fn build_nodes_and_topology(
             .expect("validated target indegree must exist") += 1;
     }
 
-    compile_issues.extend(materialize_visible_internal_llm_tool_targets(
-        &mut nodes,
-        &compiled_edges,
-    ));
-    compile_issues.extend(validate_visible_internal_llm_tool_branches(
-        &nodes,
-        &compiled_edges,
-    ));
+    if nodes
+        .values()
+        .any(|node| node.node_type == "llm" && visible_internal_llm_tools_enabled(node))
+    {
+        let tool_edges = VisibleInternalLlmToolEdges::new(&compiled_edges);
+        compile_issues.extend(materialize_visible_internal_llm_tool_targets(
+            &mut nodes,
+            &tool_edges,
+        ));
+        compile_issues.extend(validate_visible_internal_llm_tool_branches(
+            &nodes,
+            &tool_edges,
+        ));
+    }
 
-    for node in nodes.values_mut() {
-        node.dependency_node_ids
-            .sort_by_key(|node_id| node_order_index(&node_order, node_id));
-        node.downstream_node_ids
-            .sort_by_key(|node_id| node_order_index(&node_order, node_id));
+    {
+        let node_rank = node_order
+            .iter()
+            .enumerate()
+            .map(|(rank, node_id)| (node_id.as_str(), rank))
+            .collect::<BTreeMap<_, _>>();
+        for node in nodes.values_mut() {
+            node.dependency_node_ids
+                .sort_by_key(|node_id| node_rank[node_id.as_str()]);
+            node.downstream_node_ids
+                .sort_by_key(|node_id| node_rank[node_id.as_str()]);
+        }
     }
 
     let mut queue = VecDeque::new();
@@ -798,10 +811,6 @@ fn visible_internal_llm_tool_connector_id_from_source_handle(
     source_handle?.strip_prefix(VISIBLE_INTERNAL_LLM_TOOL_SOURCE_HANDLE_PREFIX)
 }
 
-fn visible_internal_llm_tool_source_handle(connector_id: &str) -> String {
-    format!("{VISIBLE_INTERNAL_LLM_TOOL_SOURCE_HANDLE_PREFIX}{connector_id}")
-}
-
 fn collect_if_else_branch_source_handles(
     nodes: &BTreeMap<String, CompiledNode>,
 ) -> Result<BTreeMap<String, BTreeSet<String>>> {
@@ -941,13 +950,6 @@ fn context_policy_selector(node: &CompiledNode) -> Option<Vec<String>> {
                 .collect::<Vec<_>>()
         })
         .filter(|selector| selector.len() >= 2)
-}
-
-fn node_order_index(node_order: &[String], node_id: &str) -> usize {
-    node_order
-        .iter()
-        .position(|candidate| candidate == node_id)
-        .unwrap_or(usize::MAX)
 }
 
 mod output_selectors;

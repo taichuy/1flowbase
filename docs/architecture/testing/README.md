@@ -36,6 +36,8 @@ API coverage 使用 [LLVM 原生 `%Nm` 合并池](https://clang.llvm.org/docs/So
 
 本地后端预算使用 `min(CPU 容量, max(4, floor(CPU 容量 / 2)))` 和 `min(有效内存容量, max(8 GiB, 有效内存容量 / 2))`。CPU 和内存配额由 `dev-rust.slice` 聚合，父组和前端默认不限。GitHub Actions 的验证与预热使用全部 runner CPU，不施加本地内存配额。具体安装与系统限制由 [scripts/README](../../../scripts/README.md) 维护，不扩展为跨前端、数据库和其他会话的实时准入系统。
 
+Node 脚本测试同样消费 `.1flowbase.verify.local.json`：`scripts.testConcurrency` 控制原生 `node --test-concurrency`，本地默认 `max(1, floor(可用 CPU / 2))`，CI 使用 runner CPU 数；不改变文件选择、测试隔离或失败退出。前端 consumer contracts 复用已有 Vitest 命令构造器与 `frontend.vitestMaxWorkers`。这约束 worker 数，不代替操作系统内存配额。L1 可指定目标文件，L2 保留 PR 契约/构建集合，L3 保留完整回归。
+
 迁移拒绝场景使用同一正式迁移集，并让预期失败的迁移独占连接、返回错误后显式关闭，避免失败留下的 session advisory lock 等待连接池淘汰。正常迁移仍走生产入口；保留原子回滚、账务、历史 checksum 等断言，不通过关闭生产迁移锁或删除失败场景加速。
 
 API 通用 fixture 通过 `PostgresTestSchema::create()` 为每个测试创建独立空数据库和 schema，显式设置 startup search_path，再执行生产 Migrator 和完整业务 bootstrap。文件目录同样逐 fixture 隔离；数据库 guard 只回收自己拥有的临时库。历史迁移与恢复 fixture 保留各自原有入口。
@@ -139,3 +141,6 @@ Trace projection 的写入对象由 `control-plane-contracts` 管理。共享 al
 项目体检和手动运行默认使用 React Doctor `--full`，强制覆盖全应用源文件，配置中的 diff 范围不能缩小扫描。PR 默认 diff，可用 `REACT_DOCTOR_SCAN_MODE=full|diff` 显式指定；收据分别保留请求/实际 scan mode 与 candidate/base，实际 mode 不匹配立即失败。changedFiles 只记录变更元数据，不冒称 full 扫描清单；全量诊断需逐项结算。
 
 全量诊断涵盖 `web/app/src`、构建/Vite owner 和 `package.json` 的依赖图；这些路径同样逐项审查。大型审查数据采用 schemaVersion 2：入口 `reviewFiles` 明确列出按 owner 收纳的 manifest，每项仍绑定完整源文件和证据摘要；缺失、重复、越界分组或工具版本不匹配不能部分接受。schemaVersion 1 保留为单文件读取契约。
+
+
+i18n 检查在一次运行内共享 locale 与前端源码文件清单；bootstrap 静态可达模块的内容同时用于 namespace 和引用分析，其余源码逐文件读取，不保留全仓正文缓存。后续运行重新枚举和读取；语言文件规则、owner 边界、findings 顺序与 severity 不变。

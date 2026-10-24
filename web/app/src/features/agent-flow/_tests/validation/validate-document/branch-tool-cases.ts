@@ -354,4 +354,159 @@ describe('validateDocument branches and tools', () => {
       ])
     );
   });
+
+  test('keeps tool traversal boundaries through missing nodes, cycles and duplicate edges', () => {
+    const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+    const llmNode = document.graph.nodes.find(
+      (node) => node.id === 'node-llm'
+    )!;
+    llmNode.config.visible_internal_llm_tools_enabled = true;
+    llmNode.config.visible_internal_llm_tools = [
+      {
+        type: 'visible_internal_llm_tool',
+        tool_name: 'inspect_context',
+        connector_id: 'inspect_context',
+        target_node_id: 'node-missing'
+      }
+    ];
+    document.graph.nodes.push(
+      createNodeDocument('template_transform', 'node-tool-transform'),
+      createNodeDocument('tool_result', 'node-tool-result'),
+      createNodeDocument('llm', 'node-excluded-llm'),
+      createNodeDocument('tool_result', 'node-excluded-result')
+    );
+    const addEdge = (
+      source: string,
+      target: string,
+      sourceHandle: string | null = null
+    ) => {
+      document.graph.edges.push({
+        id: `tool-edge-${document.graph.edges.length}`,
+        source,
+        target,
+        sourceHandle,
+        targetHandle: null,
+        containerId: null,
+        points: []
+      });
+    };
+    addEdge(
+      llmNode.id,
+      'node-missing',
+      'visible_internal_llm_tool:inspect_context'
+    );
+    addEdge('node-missing', 'node-tool-transform');
+    addEdge('node-tool-transform', 'node-missing');
+    addEdge('node-tool-transform', 'node-tool-result');
+    addEdge('node-tool-transform', 'node-tool-result');
+    addEdge(
+      'node-tool-transform',
+      'node-excluded-llm',
+      ERROR_BRANCH_SOURCE_HANDLE
+    );
+    addEdge(
+      'node-tool-transform',
+      'node-excluded-llm',
+      'visible_internal_llm_tool:nested'
+    );
+    addEdge('node-tool-result', 'node-excluded-llm');
+    addEdge('node-excluded-llm', 'node-excluded-result');
+    const toolIssues = () =>
+      validateDocument(document).filter(
+        (issue) =>
+          issue.nodeId === llmNode.id &&
+          issue.fieldKey?.startsWith('config.visible_internal_llm_tools')
+      );
+
+    expect(toolIssues()).toEqual([]);
+
+    // The next validation must use the edited edges rather than a cached index.
+    document.graph.edges = document.graph.edges.filter(
+      (edge) =>
+        edge.source !== 'node-tool-transform' ||
+        edge.target !== 'node-tool-result'
+    );
+    expect(toolIssues()).toEqual([
+      expect.objectContaining({ title: '工具分支缺少 Tool Result' })
+    ]);
+  });
+
+  test('preserves tool and connector order with independent starts and repeated connectors', () => {
+    const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+    const llmNode = document.graph.nodes.find(
+      (node) => node.id === 'node-llm'
+    )!;
+    llmNode.config.visible_internal_llm_tools_enabled = true;
+    llmNode.config.visible_internal_llm_tools = ['first', 'second'].map(
+      (name) => ({
+        type: 'visible_internal_llm_tool',
+        tool_name: name,
+        connector_id: name,
+        target_node_id: 'node-missing-result'
+      })
+    );
+    document.graph.nodes.push(
+      createNodeDocument('llm', 'node-missing-result'),
+      createNodeDocument('template_transform', 'node-two-results'),
+      createNodeDocument('tool_result', 'node-tool-result-1'),
+      createNodeDocument('tool_result', 'node-tool-result-2')
+    );
+    const addEdge = (
+      source: string,
+      target: string,
+      sourceHandle: string | null = null
+    ) => {
+      document.graph.edges.push({
+        id: `tool-edge-${document.graph.edges.length}`,
+        source,
+        target,
+        sourceHandle,
+        targetHandle: null,
+        containerId: null,
+        points: []
+      });
+    };
+    // Edges from another tool appear first globally; tool configuration order wins.
+    addEdge(llmNode.id, 'node-two-results', 'visible_internal_llm_tool:second');
+    addEdge(
+      llmNode.id,
+      'node-missing-result',
+      'visible_internal_llm_tool:first'
+    );
+    addEdge(llmNode.id, 'node-two-results', 'visible_internal_llm_tool:first');
+    addEdge(
+      llmNode.id,
+      'node-missing-result',
+      'visible_internal_llm_tool:first'
+    );
+    addEdge('node-two-results', 'node-tool-result-1');
+    addEdge('node-two-results', 'node-tool-result-2');
+
+    const issues = validateDocument(document).filter(
+      (issue) =>
+        issue.nodeId === llmNode.id &&
+        issue.fieldKey?.startsWith('config.visible_internal_llm_tools')
+    );
+    expect(issues.map((issue) => issue.fieldKey)).toEqual([
+      'config.visible_internal_llm_tools_enabled',
+      'config.visible_internal_llm_tools.0.internal_llm_node_policy',
+      'config.visible_internal_llm_tools_enabled',
+      'config.visible_internal_llm_tools_enabled',
+      'config.visible_internal_llm_tools.0.internal_llm_node_policy',
+      'config.visible_internal_llm_tools_enabled'
+    ]);
+    expect(
+      issues
+        .filter(
+          (issue) =>
+            issue.fieldKey === 'config.visible_internal_llm_tools_enabled'
+        )
+        .map((issue) => issue.title)
+    ).toEqual([
+      '工具分支缺少 Tool Result',
+      '工具分支存在多个 Tool Result',
+      '工具分支缺少 Tool Result',
+      '工具分支存在多个 Tool Result'
+    ]);
+  });
 });

@@ -369,3 +369,117 @@ fn compile_variable_aggregator_rejects_incompatible_or_unknown_run_level_types()
             .expect_err("incompatible and unknown run-level types must be rejected");
     }
 }
+
+#[test]
+fn answer_aggregator_stream_sources_preserve_branch_reachability_and_exclusivity() {
+    use orchestration_runtime::answer_presentation::AnswerPresentationPlan;
+
+    // Direct targets exercise zero-length reachability; a shared target must belong to both handles.
+    for (indirect, merged, repeated_source) in [
+        (false, false, false),
+        (true, false, false),
+        (false, true, false),
+        (false, false, true),
+    ] {
+        let flow_id = Uuid::now_v7();
+        let mut document = sample_document(flow_id);
+        add_second_llm_and_answer(
+            &mut document,
+            "{{node-aggregator.value}}{{node-aggregator.other}}",
+            false,
+        );
+        let nodes = document["graph"]["nodes"].as_array_mut().unwrap();
+        let mut branch = nodes[1].clone();
+        branch["id"] = json!("node-if");
+        branch["type"] = json!("if_else");
+        branch["config"] = json!({});
+        branch["outputs"] = json!([]);
+        branch["bindings"] = json!({ "branches": { "kind": "if_else_branches", "value": {
+            "branches": [
+                { "id": "if", "kind": "if", "title": "If", "sourceHandle": "if",
+                  "condition": { "operator": "and", "conditions": [{ "kind": "rule",
+                    "left": ["node-start", "query"], "comparator": "contains",
+                    "right": { "kind": "constant", "value": "vip" } }] } },
+                { "id": "else", "kind": "else", "title": "Else", "sourceHandle": "else" }
+            ]
+        } } });
+        let mut aggregator = branch.clone();
+        aggregator["id"] = json!("node-aggregator");
+        aggregator["type"] = json!("variable_aggregator");
+        let second_source = if repeated_source {
+            "node-llm"
+        } else {
+            "node-llm-2"
+        };
+        let groups = ["value", "other"].map(|key| {
+            json!({ "key": key, "valueType": "string",
+                "candidates": [["node-llm", "text"], [second_source, "text"]] })
+        });
+        aggregator["bindings"] =
+            json!({ "groups": { "kind": "variable_groups", "value": groups } });
+        let outputs = ["value", "other"]
+            .map(|key| json!({ "key": key, "title": key, "valueType": "string" }));
+        aggregator["outputs"] = json!(outputs);
+        if indirect {
+            let mut intermediate = nodes[1].clone();
+            intermediate["id"] = json!("node-intermediate");
+            nodes.push(intermediate);
+        }
+        nodes.extend([branch, aggregator]);
+        let mut edges = vec![
+            ("node-start", "node-if", None),
+            (
+                "node-if",
+                if indirect {
+                    "node-intermediate"
+                } else {
+                    "node-llm"
+                },
+                Some("if"),
+            ),
+            ("node-if", "node-llm-2", Some("else")),
+            ("node-llm", "node-aggregator", None),
+            ("node-llm-2", "node-aggregator", None),
+            ("node-aggregator", "node-answer", None),
+        ];
+        if indirect {
+            edges.push(("node-intermediate", "node-llm", None));
+        }
+        if merged {
+            edges.push(("node-if", "node-llm", Some("else")));
+        }
+        document["graph"]["edges"] = Value::Array(
+            edges
+                .into_iter()
+                .enumerate()
+                .map(|(index, (source, target, handle))| {
+                    json!({ "id": format!("edge-{index}"), "source": source, "target": target,
+                    "sourceHandle": handle, "targetHandle": null })
+                })
+                .collect(),
+        );
+
+        let plan =
+            FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
+        let presentation = AnswerPresentationPlan::from_plan(&plan).unwrap();
+        let expected_sources = if merged || repeated_source { 0 } else { 2 };
+        assert_eq!(
+            presentation.stream_sources.len(),
+            expected_sources,
+            "indirect={indirect}, merged={merged}, repeated_source={repeated_source}"
+        );
+        for sources in presentation.stream_sources.values() {
+            assert_eq!(
+                sources
+                    .iter()
+                    .map(|source| source.node_id.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["node-llm", "node-llm-2"]
+            );
+        }
+        assert!(!plan
+            .compile_issues
+            .iter()
+            .any(|issue| issue.code == CompileIssueCode::InvalidAnswerPresentationOrder));
+    }
+}

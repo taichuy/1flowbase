@@ -49,6 +49,8 @@ Agent Flow draft canvas projection and direct-downstream queries use call-local 
 
 The application list is served by application management at `/settings/applications`; detail pages retain `/applications/:applicationId/*`. The old list without a route consumer and isolated historical helpers are not additional runtime entrypoints. Current pages retain forms, archive import/export and extension-template installation.
 
+Graph compilation indexes declaration order to sort dependencies and downstream nodes stably. The compiler and editor each index outgoing edges within one validation call. Tool branches still exclude error and tool-connector edges and stop at Tool Result nodes; original edges and diagnostic order remain intact. Answer presentation reuses the compiled plan's ancestor relationships for order and branch exclusivity without retaining a transitive closure. Debug history groups callback IDs separately for each source run, preserving node and callback order without sharing indexes across runs.
+
 Component catalog pagination filters and sorts lightweight metadata, then reads source bodies only for the selected page within one read-only snapshot; string matching and ordering retain their Rust semantics. The frontend block catalog reads only published default-template bodies and indexes templates and assignments, reusing installation facts within one request. The resolver still checks each contribution’s permissions, version, and assets.
 
 ## Maintenance boundary
