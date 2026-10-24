@@ -25,6 +25,8 @@ function buildApiServerShardCommands({ repoRoot, shardIndex, shardCount, cargoTe
 
   return [
     { command: 'cargo', args: ['llvm-cov', 'show-env', '--sh'], cwd: path.join(repoRoot, 'api') },
+    // report scans cached executables too; rebuild only the measured package.
+    { command: 'cargo', args: ['clean', '--package', API_SERVER_PACKAGE], cwd: path.join(repoRoot, 'api') },
     { command: 'cargo', args: ['nextest', 'list', ...common, '--message-format', 'json'], cwd: path.join(repoRoot, 'api') },
     {
       command: 'cargo',
@@ -257,25 +259,26 @@ function run(command, {
 function runApiServerShard({
   repoRoot, shardIndex, shardCount, cargoTestThreads, env = process.env, spawnSyncImpl, writeStdout, writeStderr,
 }) {
-  const commands = buildApiServerShardCommands({ repoRoot, shardIndex, shardCount, cargoTestThreads });
-  const shardDir = path.dirname(commands[2].profilePattern);
+  const [showEnv, cleanObjects, listTests, runTests] = buildApiServerShardCommands({ repoRoot, shardIndex, shardCount, cargoTestThreads });
+  const shardDir = path.dirname(runTests.profilePattern);
   fs.rmSync(shardDir, { recursive: true, force: true });
   fs.mkdirSync(shardDir, { recursive: true });
   if (!env.QUALITY_GATE_TARGET_SHA?.trim()) throw new Error('coverage shard requires a frozen SHA');
-  const llvmEnv = parseLlvmCovEnvironment(run(commands[0], { env, spawnSyncImpl, capture: true }));
+  const llvmEnv = parseLlvmCovEnvironment(run(showEnv, { env, spawnSyncImpl, capture: true }));
   const instrumentedEnv = {
     ...env,
     ...llvmEnv,
-    LLVM_PROFILE_FILE: commands[2].profilePattern,
+    LLVM_PROFILE_FILE: runTests.profilePattern,
     CARGO_PROFILE_TEST_DEBUG: '0',
     RUST_MIN_STACK: String(8 * 1024 * 1024),
   };
-  const inventoryText = run(commands[1], { env: instrumentedEnv, spawnSyncImpl, capture: true });
+  run(cleanObjects, { env: instrumentedEnv, spawnSyncImpl });
+  const inventoryText = run(listTests, { env: instrumentedEnv, spawnSyncImpl, capture: true });
   const inventory = JSON.parse(inventoryText);
   fs.writeFileSync(path.join(shardDir, `inventory-${shardIndex}.json`), `${JSON.stringify(inventory)}\n`, 'utf8');
   const testCount = collectNextestTestIds(inventory).length;
   if (testCount === 0) throw new Error('coverage shard inventory has no runnable tests');
-  const execution = parseNextestSummary(run(commands[2], {
+  const execution = parseNextestSummary(run(runTests, {
     env: instrumentedEnv, spawnSyncImpl, writeStdout, writeStderr,
     logPrefix: path.join(shardDir, `nextest-${shardIndex}`),
   }));
@@ -344,6 +347,8 @@ function mergeApiServerShadow({
   const showEnv = { command: 'cargo', args: ['llvm-cov', 'show-env', '--sh'], cwd: apiCwd };
   const llvmEnv = parseLlvmCovEnvironment(run(showEnv, { env, spawnSyncImpl, capture: true }));
   const instrumentedEnv = { ...env, ...llvmEnv, CARGO_PROFILE_TEST_DEBUG: '0' };
+  run({ command: 'cargo', args: ['clean', '--package', API_SERVER_PACKAGE], cwd: apiCwd },
+    { env: instrumentedEnv, spawnSyncImpl });
   const fullInventory = JSON.parse(run({
     command: 'cargo', args: ['nextest', 'list', '--package', API_SERVER_PACKAGE, '--message-format', 'json'], cwd: apiCwd,
   }, { env: instrumentedEnv, spawnSyncImpl, capture: true }));
@@ -353,15 +358,24 @@ function mergeApiServerShadow({
   }
   run({
     command: 'cargo',
-    args: ['llvm-cov', 'report', '--package', API_SERVER_PACKAGE, '--json', '--summary-only', '--output-path', mergedPath],
+    args: ['llvm-cov', 'report', '--package', API_SERVER_PACKAGE, '--json', '--summary-only', '--verbose', '--output-path', mergedPath],
     cwd: apiCwd,
   }, { env: instrumentedEnv, spawnSyncImpl });
   const mergedSummary = readJson(mergedPath);
+  const coverage = validateCoverageSummary(mergedSummary);
+  const staleSources = mergedSummary.data[0].files
+    .map((file) => file.filename.replaceAll('\\', '/'))
+    .filter((filename) => filename.includes(API_SERVER_SOURCE_MARKER))
+    .filter((filename) => !fs.existsSync(path.join(repoRoot,
+      filename.slice(filename.indexOf(API_SERVER_SOURCE_MARKER) + 1))));
+  if (staleSources.length) {
+    throw new Error(`API coverage contains sources absent from the candidate: ${staleSources.join(', ')}`);
+  }
   const evidence = {
     sha: [...shas][0],
     inventory: inventoryResult,
     shards: metadata,
-    coverage: validateCoverageSummary(mergedSummary),
+    coverage,
   };
   if (monolithicPath) {
     evidence.comparison = compareCoverageSummaries(readJson(monolithicPath), mergedSummary);

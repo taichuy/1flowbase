@@ -35,10 +35,11 @@ test('API coverage shadow shard uses the stable nextest hash partition', () => {
 
   assert.deepEqual(commands.map((command) => command.args), [
     ['llvm-cov', 'show-env', '--sh'],
+    ['clean', '--package', 'api-server'],
     ['nextest', 'list', '--package', 'api-server', '--partition', 'hash:2/4', '--message-format', 'json'],
     ['nextest', 'run', '--package', 'api-server', '--partition', 'hash:2/4', '--test-threads', '4', '--no-fail-fast', '--no-tests=fail'],
   ]);
-  assert.match(commands[2].profilePattern, /coverage-shadow\/api-server\/shard-2\/shard-2-%4m\.profraw$/u);
+  assert.match(commands[3].profilePattern, /coverage-shadow\/api-server\/shard-2\/shard-2-%4m\.profraw$/u);
 });
 
 test('llvm-cov environment parser accepts Cargo ANSI color output', () => {
@@ -166,12 +167,16 @@ test('shard orchestration fails closed when nextest execution fails', () => {
     env: { QUALITY_GATE_TARGET_SHA: 'abc' },
     writeStdout() {},
     writeStderr() {},
-    spawnSyncImpl(_command, _args, options) {
+    spawnSyncImpl(_command, args, options) {
       call += 1;
       if (call === 1) {
         return { status: 0, stdout: "export RUSTC_WRAPPER='/bin/cov'\nexport CARGO_LLVM_COV='1'\n" };
       }
-      if (call === 2) return { status: 0, stdout: JSON.stringify(inventory(['a'])) };
+      if (call === 2) {
+        assert.deepEqual(args, ['clean', '--package', 'api-server']);
+        return { status: 0, stdout: '' };
+      }
+      if (call === 3) return { status: 0, stdout: JSON.stringify(inventory(['a'])) };
       testEnv = options.env;
       return { status: 7, stdout: '', stderr: 'failed' };
     },
@@ -211,12 +216,14 @@ test('merge rejects shard and monolithic artifacts from a different SHA before r
   }), /same frozen SHA/u);
 });
 
-test('enforced merge gathers all profiles and writes standalone coverage evidence', () => {
+test('enforced merge rebuilds measured objects, gathers profiles and writes current-source evidence', (t) => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverage-shadow-merge-ok-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
   const shardRoot = path.join(repoRoot, 'tmp/test-governance/coverage-shadow/api-server/downloaded');
   const targetDir = path.join(repoRoot, 'tmp/coverage-target');
   fs.mkdirSync(shardRoot, { recursive: true });
-  fs.mkdirSync(path.join(repoRoot, 'api'), { recursive: true });
+  fs.mkdirSync(path.join(repoRoot, 'api/apps/api-server/src'), { recursive: true });
+  fs.writeFileSync(path.join(repoRoot, 'api/apps/api-server/src/lib.rs'), '// candidate source');
   for (let index = 1; index <= 4; index += 1) {
     fs.writeFileSync(path.join(shardRoot, `inventory-${index}.json`), JSON.stringify(inventory([String(index)])));
     fs.writeFileSync(path.join(shardRoot, `metadata-${index}.json`), JSON.stringify({
@@ -244,7 +251,11 @@ test('enforced merge gathers all profiles and writes standalone coverage evidenc
       if (call === 1) {
         return { status: 0, stdout: "export RUSTC_WRAPPER='/bin/cov'\nexport CARGO_LLVM_COV='1'\n" };
       }
-      if (call === 2) return { status: 0, stdout: JSON.stringify(inventory(['1', '2', '3', '4'])) };
+      if (call === 2) {
+        assert.deepEqual(args, ['clean', '--package', 'api-server']);
+        return { status: 0, stdout: '' };
+      }
+      if (call === 3) return { status: 0, stdout: JSON.stringify(inventory(['1', '2', '3', '4'])) };
       const outputPath = args.at(-1);
       fs.writeFileSync(outputPath, JSON.stringify(summary));
       return { status: 0, stdout: '' };

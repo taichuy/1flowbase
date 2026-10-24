@@ -28,6 +28,8 @@
 
 API coverage 使用 [LLVM 原生 `%Nm` 合并池](https://clang.llvm.org/docs/SourceBasedCodeCoverage.html)：N 来自当前测试并行度，每个二进制由运行时加锁合并；不再用 `%p` 为每个测试进程留下完整 profile。分片集合、执行计数、SHA 与覆盖率阈值不变。首分片先在同一真实插桩二进制上比较逐进程与池化的完整 coverage counters，并以丢失一次执行作为反例；证明失败则该分片不能产生成功收据。等价证据随首分片 artifact 保留，最终仍合并全部 API 测试的 profiles。
 
+`cargo llvm-cov report` 会扫描 target 中的可执行对象，包括旧缓存。分片和 merge 在建立当前 inventory 前使用原生 `cargo clean --package api-server` 重建被测包，避免旧对象把已删除源码或旧实例化计入分母；其它依赖缓存及已构建的 SDK worker 保留。此做法沿用 [cargo-llvm-cov 的测量包清理机制](https://github.com/taiki-e/cargo-llvm-cov/blob/v0.9.1/src/clean.rs)，不通过源码排除提高覆盖率。merge 拒绝当前不存在的 API-owned source，并保留 LLVM 实际对象列表日志；线上受控缓存反例验证污染被发现、清理后当前计数与干净基准一致。
+
 统一治理验收需要冻结候选的全量 Rust 测试和完整 CI：记录通过、失败、忽略/跳过数及核心场景清单，分别量化编译、测试、CI 墙钟时间和累计 runner 时间。根收据须满足前述 candidate、component 与成功条件；局部脚本通过不能结算整体任务。合并重复执行允许执行次数减少，但核心场景不得缺失。历史时间只作注明源码、环境、缓存差异的参考；未测量值保留未知。
 
 本地后端预算使用 `min(CPU 容量, max(4, floor(CPU 容量 / 2)))` 和 `min(有效内存容量, max(8 GiB, 有效内存容量 / 2))`。CPU 和内存配额由 `dev-rust.slice` 聚合，父组和前端默认不限。GitHub Actions 的验证与预热使用全部 runner CPU，不施加本地内存配额。具体安装与系统限制由 [scripts/README](../../../scripts/README.md) 维护，不扩展为跨前端、数据库和其他会话的实时准入系统。

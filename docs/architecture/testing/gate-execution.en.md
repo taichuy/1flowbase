@@ -82,6 +82,17 @@ omitting one execution must change the counters. A failed proof prevents a
 successful shard receipt. The proof travels with shard one's artifact; final
 coverage still merges profiles from the complete API test suite.
 
+`cargo llvm-cov report` scans executables in the target directory, including old
+cached objects. Before building the current inventory, both shards and merge use
+native `cargo clean --package api-server` to rebuild the measured package. This
+prevents retired source and old instantiations from inflating denominators while
+preserving other dependency caches and existing SDK workers. It follows
+[cargo-llvm-cov's measured-package cleanup](https://github.com/taiki-e/cargo-llvm-cov/blob/v0.9.1/src/clean.rs),
+without excluding source to improve coverage. Merge rejects API-owned files absent
+from the candidate and logs the actual LLVM object list. The CI cache probe must
+detect stale-object contamination and recover the same current counters as a clean
+baseline after package cleanup.
+
 Unified governance acceptance requires full Rust tests and complete CI on a frozen
 candidate. Record passed, failed, ignored/skipped tests and core scenarios, plus
 compilation time, test time, CI wall time, and cumulative runner time. The aggregate

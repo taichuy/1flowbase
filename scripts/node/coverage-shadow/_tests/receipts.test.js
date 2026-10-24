@@ -137,6 +137,7 @@ test('successful shard persists raw output and metadata only after exact runnabl
     writeStdout(text) { echoedStdout += text; }, writeStderr(text) { echoedStderr += text; },
     spawnSyncImpl(_command, args, options) {
       if (args[1] === 'show-env') return { status: 0, stdout: llvmEnvironment };
+      if (args[0] === 'clean') return { status: 0, stdout: '' };
       if (args[1] === 'list') return { status: 0, stdout: JSON.stringify(inventory(['1'], ['later'])) };
       fs.writeFileSync(options.env.LLVM_PROFILE_FILE.replace(/%\d*m/gu, 'binary_0'), 'profile');
       fs.writeSync(options.stdio[1], rawStdout);
@@ -173,6 +174,7 @@ test('failed, empty or incomplete shard execution cannot leave a successful rece
       writeStdout() {}, writeStderr() {},
       spawnSyncImpl(_command, args, options) {
         if (args[1] === 'show-env') return { status: 0, stdout: llvmEnvironment };
+        if (args[0] === 'clean') return { status: 0, stdout: '' };
         if (args[1] === 'list') return { status: 0, stdout: JSON.stringify(inventory(scenario.emptyInventory ? [] : ['1'], ['later'])) };
         if (!scenario.noProfile) fs.writeFileSync(options.env.LLVM_PROFILE_FILE.replace(/%\d*m/gu, 'binary_0'), 'profile');
         fs.writeSync(options.stdio[2], scenario.output || '');
@@ -201,8 +203,10 @@ test('merge refuses old or missing receipts and unexpected profiles before any C
   }
 });
 
-test('merge rejects duplicate inventories, stale report reuse and below-threshold coverage', (t) => {
-  for (const mode of ['duplicate', 'stale', 'threshold']) {
+test('merge rejects duplicate inventories, stale reports, low coverage and retired source objects', (t) => {
+  const errors = { duplicate: /duplicate=1, missing=1/u, stale: /api-server-merged.json/u,
+    threshold: /below 60/u, retired: /sources absent from the candidate/u };
+  for (const mode of Object.keys(errors)) {
     const { repoRoot, root, directory, finalPath } = prepareMerge(t);
     fs.mkdirSync(path.dirname(finalPath), { recursive: true });
     for (const file of [finalPath, path.join(root, 'api-server-merged.json'), path.join(root, 'equivalence.json')]) {
@@ -214,12 +218,13 @@ test('merge rejects duplicate inventories, stale report reuse and below-threshol
       repoRoot, shardCount: 4, env: { QUALITY_GATE_TARGET_SHA: sha },
       spawnSyncImpl(_command, args) {
         if (args[1] === 'show-env') return { status: 0, stdout: llvmEnvironment };
+        if (args[0] === 'clean') return { status: 0, stdout: '' };
         if (args[1] === 'list') return { status: 0, stdout: JSON.stringify(inventory(['1', '2', '3', '4'], ['later'])) };
         reports += 1;
-        if (mode !== 'stale') fs.writeFileSync(args.at(-1), JSON.stringify(summary(5)));
+        if (mode !== 'stale') fs.writeFileSync(args.at(-1), JSON.stringify(summary(mode === 'retired' ? 8 : 5)));
         return { status: 0, stdout: '' };
       },
-    }), mode === 'duplicate' ? /duplicate=1, missing=1/u : mode === 'stale' ? /api-server-merged.json/u : /below 60/u);
+    }), errors[mode]);
     assert.equal(reports, mode === 'duplicate' ? 0 : 1);
     assert.equal(fs.existsSync(finalPath), false);
     assert.equal(fs.existsSync(path.join(root, 'equivalence.json')), false);
