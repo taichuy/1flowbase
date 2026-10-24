@@ -662,12 +662,13 @@ test('collectI18nHygieneFindings retains nested owners without matching adjacent
       { shared: 'Shared', stale: 'Stale' });
   }
   writeFile(repoRoot, `${child}/component.ts`, "export const labelKey = 'shared';\n");
+  writeFile(repoRoot, `${adjacent}/component.ts`, "export const labelKey = 'stale';\n");
 
   const unused = collectI18nHygieneFindings({ repoRoot })
     .filter((finding) => finding.rule === 'unused-i18n-key');
 
   assert.deepEqual(unused.map(({ owner, key }) => `${owner}:${key}`).sort(), [
-    `${parent}:stale`, `${child}:stale`, `${adjacent}:shared`, `${adjacent}:stale`
+    `${parent}:stale`, `${child}:stale`, `${adjacent}:shared`
   ].sort());
   assert.ok(unused.every((finding) => finding.severity === 'warning'));
 });
