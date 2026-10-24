@@ -81,7 +81,8 @@ export function buildNodeDependencyMap(
 
 function collectNodeAncestors(
   dependencies: Map<string, Set<string>>,
-  nodeId: string
+  nodeId: string,
+  firstLaterNodeId: string
 ): Set<string> {
   const stack = [nodeId];
   const visited = new Set<string>();
@@ -96,6 +97,7 @@ function collectNodeAncestors(
 
     for (const dependency of dependencies.get(current) ?? []) {
       ancestors.add(dependency);
+      if (dependency === firstLaterNodeId) return ancestors;
       stack.push(dependency);
     }
   }
@@ -142,20 +144,22 @@ export function validateAnswerPresentationReferences(
     );
   }
 
-  const ancestorsByNode = new Map<string, Set<string>>();
   for (let index = 0; index < references.length; index += 1) {
     const current = references[index];
+    let ancestors: Set<string> | undefined;
     for (
       let laterIndex = index + 1;
       laterIndex < references.length;
       laterIndex += 1
     ) {
       const later = references[laterIndex];
-      let ancestors = ancestorsByNode.get(current.nodeId);
-      if (!ancestors) {
-        ancestors = collectNodeAncestors(dependencies, current.nodeId);
-        ancestorsByNode.set(current.nodeId, ancestors);
-      }
+      // A first-candidate hit ends this reference. Otherwise the completed
+      // traversal can answer all remaining candidates without another DFS.
+      ancestors ??= collectNodeAncestors(
+        dependencies,
+        current.nodeId,
+        later.nodeId
+      );
       if (!ancestors.has(later.nodeId)) {
         continue;
       }

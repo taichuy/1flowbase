@@ -17,9 +17,9 @@ flowchart LR
 
 这是逻辑调用关系，不是 Cargo 依赖图。认证由宿主 factory 在业务 Kernel Resolve 前完成，细节见[契约与身份](#contracts-and-identity)。`public / console / runtime` 等入口分区也不是上图四个责任平面；同一入口分区的请求仍经过各责任平面。
 
-编辑器的容器复制和删除由 `document/transforms/container.ts` 共同收集后代：本次调用建立父容器索引，按原节点顺序做游标 BFS，保留防环、复制碰撞和引用重映射。变量选择由 `selector-options.ts` 一次逆向遍历同时收集可见节点与工具参数；同字段工具仍按 BFS / 原边顺序 first-wins，起点只有被回边指向时才进入可见祖先集合。前端答案校验按本次调用的 distinct source 惰性收集依赖祖先，保留重复引用和首个顺序错误，终点出边检查复用 source Set。索引不跨请求或文档修改保存。
+编辑器的容器复制和删除由 `document/transforms/container.ts` 共同收集后代：本次调用建立父容器索引，按原节点顺序做游标 BFS，保留防环、复制碰撞和引用重映射。变量选择由 `selector-options.ts` 一次逆向遍历同时收集可见节点与工具参数；同字段工具仍按 BFS / 原边顺序 first-wins，起点只有被回边指向时才进入可见祖先集合。前端答案校验对每个当前引用保留首个后续候选命中即停止；首个候选不可达时，才复用本次已完整收集的祖先集合判断其他候选。该引用完成后释放集合，辅助空间为 O(V)，保留重复引用和首个顺序错误，终点出边检查复用 source Set。索引不跨请求或文档修改保存。
 
-插件 family 的当前版本选择仍归 `PluginManagementService`：native 精确 target 优先，其次 system-managed 唯一 active，最后 workspace assignment。筛选复用 repository 返回的 Vec 与借用迭代器，只有选中的安装记录才克隆；存在上级作用域但无有效唯一选择时，保留原错误，不能回退到 workspace。
+插件 family 的当前版本选择仍归 `PluginManagementService`：native 精确 target 优先，其次 system-managed 唯一 active，最后 workspace assignment。筛选复用 repository 返回的 Vec 与借用迭代器，native 直接移出选中的安装记录，system-managed 只克隆选中项；借用迭代器不跨越 await；存在上级作用域但无有效唯一选择时，保留原错误，不能回退到 workspace。
 
 ## 业务处理的共享边界
 

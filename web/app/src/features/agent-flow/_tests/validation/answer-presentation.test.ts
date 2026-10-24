@@ -119,3 +119,30 @@ test('dependency closure includes bindings and edges while terminal diagnostics 
     'first-terminal-outgoing-edge'
   ]);
 });
+
+test('early order violations do not materialize every ancestor in a cycle', () => {
+  const count = 100;
+  let expansions = 0;
+  class CountedDependencies extends Map<string, Set<string>> {
+    override get(nodeId: string) {
+      expansions += 1;
+      return super.get(nodeId);
+    }
+  }
+  const dependencies = new CountedDependencies(
+    Array.from({ length: count }, (_, index) => [
+      `node${index}`,
+      new Set([`node${(index + 1) % count}`])
+    ])
+  );
+  const issues = presentationIssues(
+    Array.from({ length: count }, (_, index) => `{{node${index}.result}}`).join(
+      ' '
+    ),
+    dependencies
+  );
+  expect(issues).toHaveLength(count - 1);
+  expect(issues[0].message).toContain('node1.result');
+  expect(issues.at(-1)?.message).toContain('node99.result');
+  expect(expansions).toBeLessThanOrEqual(count);
+});
