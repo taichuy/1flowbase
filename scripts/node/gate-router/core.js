@@ -268,7 +268,7 @@ function isBackendConsistencyFile(filePath) {
 }
 
 function isStateProtocolFile(filePath) {
-  return /^scripts\/node\/(?:acp-claude-smoke\/|cli\/acp-claude-smoke\.js$|verify-state-protocols(?:\.js|\/))/u.test(filePath)
+  return /^scripts\/node\/(?:acp-claude-smoke\/|cli\/acp-claude-smoke\.js$|verify\/state-protocols\.js$|verify-state-protocols(?:\.js|\/))/u.test(filePath)
     || /^api\/apps\/api-server\/src\/routes\/application_public_api\/(?:anthropic\.rs$|compat_sse(?:\/|\.rs$))/u.test(filePath);
 }
 

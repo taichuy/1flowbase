@@ -164,3 +164,15 @@ test('unknown backend owners retain all-shard fallback', () => {
       'repo-backend-check-core-libs', 'repo-backend-check-runtime-storage', 'repo-backend-check-apps',
     ]);
 });
+
+
+test('state protocol owner and wrapper changes route independently, unrelated verification does not', () => {
+  for (const file of [
+    'scripts/node/verify/state-protocols.js',
+    'scripts/node/verify-state-protocols.js',
+    'scripts/node/verify-state-protocols/_tests/executed-evidence.test.js',
+  ]) {
+    assert(routeChangedFiles([file]).some((route) => route.scope === 'state-protocols'), file);
+  }
+  assert(!routeChangedFiles(['scripts/node/verify/coverage.js']).some((route) => route.scope === 'state-protocols'));
+});
