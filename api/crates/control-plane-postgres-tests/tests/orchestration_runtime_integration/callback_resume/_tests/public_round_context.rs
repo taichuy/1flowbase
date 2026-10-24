@@ -262,16 +262,19 @@ async fn compact_previous_context_reads_exact_round_without_large_payloads() {
         .split_once("\"#)")
         .unwrap()
         .0;
-    let plan: Value = sqlx::query_scalar(&format!("explain (analyze, format json) {statement}"))
-        .bind(seeded.workspace_id)
-        .bind(seeded.application_id)
-        .bind(key)
-        .bind(seeded.actor_user_id)
-        .bind(&response_id)
-        .bind(Some(run.id))
-        .fetch_one(store.pool())
-        .await
-        .unwrap();
+    // Audited: statement comes only from compile-time adapter source; values stay bound.
+    let plan: Value = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "explain (analyze, format json) {statement}"
+    )))
+    .bind(seeded.workspace_id)
+    .bind(seeded.application_id)
+    .bind(key)
+    .bind(seeded.actor_user_id)
+    .bind(&response_id)
+    .bind(Some(run.id))
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
     fn assert_provider_fallback_skipped(value: &Value) -> bool {
         if value.get("Subplan Name").and_then(Value::as_str) == Some("CTE provider_run_ids") {
             assert_eq!(value["Actual Rows"].as_f64(), Some(0.0));
