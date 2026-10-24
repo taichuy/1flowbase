@@ -14,12 +14,6 @@ function buildCiCommands({ repoRoot, env = process.env }) {
       cwd: repoRoot,
     },
     {
-      label: 'ci-backend-consistency',
-      command: nodeBinary,
-      args: [resolveScriptsNodeCliEntry(repoRoot, 'verify'), 'backend-consistency'],
-      cwd: repoRoot,
-    },
-    {
       label: 'ci-coverage-all',
       command: nodeBinary,
       args: [resolveScriptsNodeCliEntry(repoRoot, 'verify'), 'coverage', 'all'],
@@ -31,7 +25,7 @@ function buildCiCommands({ repoRoot, env = process.env }) {
 function usageCi(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
     'Usage: node scripts/node/verify-ci.js\n'
-      + 'Runs: verify-repo + verify-backend-consistency + verify-coverage all\n'
+      + 'Runs: verify-repo (including protected consistency/seed evidence) + verify-coverage all\n'
   );
 }
 
