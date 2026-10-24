@@ -79,30 +79,36 @@ export function buildNodeDependencyMap(
   return dependencies;
 }
 
-function nodeDependsOn(
+function collectNodeAncestors(
   dependencies: Map<string, Set<string>>,
   nodeId: string,
-  dependencyNodeId: string
-): boolean {
+  firstLaterNodeId: string
+): Set<string> {
   const stack = [nodeId];
-  const visited = new Set<string>();
+  const ancestors = new Set<string>();
+  let reachesStart = false;
 
   while (stack.length > 0) {
     const current = stack.pop();
-    if (!current || visited.has(current)) {
+    if (!current || ancestors.has(current)) {
       continue;
     }
-    visited.add(current);
+    ancestors.add(current);
 
     for (const dependency of dependencies.get(current) ?? []) {
-      if (dependency === dependencyNodeId) {
-        return true;
+      if (dependency === firstLaterNodeId) {
+        ancestors.add(dependency);
+        return ancestors;
       }
+      if (dependency === nodeId) reachesStart = true;
+      if (!dependency) ancestors.add(dependency);
       stack.push(dependency);
     }
   }
 
-  return false;
+  // The traversal seed is an ancestor only if an edge leads back to it.
+  if (!reachesStart) ancestors.delete(nodeId);
+  return ancestors;
 }
 
 function formatAnswerPresentationReference(
@@ -146,8 +152,21 @@ export function validateAnswerPresentationReferences(
 
   for (let index = 0; index < references.length; index += 1) {
     const current = references[index];
-    for (const later of references.slice(index + 1)) {
-      if (!nodeDependsOn(dependencies, current.nodeId, later.nodeId)) {
+    let ancestors: Set<string> | undefined;
+    for (
+      let laterIndex = index + 1;
+      laterIndex < references.length;
+      laterIndex += 1
+    ) {
+      const later = references[laterIndex];
+      // A first-candidate hit ends this reference. Otherwise the completed
+      // traversal can answer all remaining candidates without another DFS.
+      ancestors ??= collectNodeAncestors(
+        dependencies,
+        current.nodeId,
+        later.nodeId
+      );
+      if (!ancestors.has(later.nodeId)) {
         continue;
       }
 
@@ -177,10 +196,13 @@ export function validateTerminalTopology(
   issues: AgentFlowIssue[],
   document: FlowAuthoringDocument
 ) {
+  const sourceNodeIds = new Set(
+    document.graph.edges.map((edge) => edge.source)
+  );
   for (const node of document.graph.nodes.filter(
     (candidate) => candidate.type === 'answer'
   )) {
-    if (document.graph.edges.some((edge) => edge.source === node.id)) {
+    if (sourceNodeIds.has(node.id)) {
       issues.push({
         id: `${node.id}-terminal-outgoing-edge`,
         scope: 'node',

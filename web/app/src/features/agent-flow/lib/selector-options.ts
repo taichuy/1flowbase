@@ -66,33 +66,6 @@ function outputSelectorValue(
   ];
 }
 
-function collectUpstreamNodeIds(
-  document: FlowAuthoringDocument,
-  nodeId: string
-): Set<string> {
-  const visited = new Set<string>();
-  const queue = [nodeId];
-
-  while (queue.length > 0) {
-    const currentNodeId = queue.shift();
-
-    if (!currentNodeId) {
-      continue;
-    }
-
-    for (const edge of document.graph.edges) {
-      if (edge.target !== currentNodeId || visited.has(edge.source)) {
-        continue;
-      }
-
-      visited.add(edge.source);
-      queue.push(edge.source);
-    }
-  }
-
-  return visited;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -119,10 +92,17 @@ function jsonSchemaPropertyValueType(property: unknown) {
   return 'json';
 }
 
-function visibleInternalLlmToolArgumentOptions(
+function collectUpstreamSelectorContext(
   document: FlowAuthoringDocument,
   nodeId: string
-): FlowSelectorOption[] {
+) {
+  const visibleNodeIds = new Set<string>();
+  const incomingEdges = new Map<string, typeof document.graph.edges>();
+  for (const edge of document.graph.edges) {
+    const incoming = incomingEdges.get(edge.target) ?? [];
+    incoming.push(edge);
+    incomingEdges.set(edge.target, incoming);
+  }
   const visitedNodeIds = new Set<string>();
   const queue = [nodeId];
   const optionsByField = new Map<string, FlowSelectorOption>();
@@ -133,9 +113,8 @@ function visibleInternalLlmToolArgumentOptions(
   type InternalTool = ReturnType<typeof getLlmVisibleInternalTools>[number];
   const toolsByNodeId = new Map<string, Map<string, InternalTool>>();
 
-
-  while (queue.length > 0) {
-    const currentNodeId = queue.shift();
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const currentNodeId = queue[cursor];
 
     if (!currentNodeId || visitedNodeIds.has(currentNodeId)) {
       continue;
@@ -143,11 +122,9 @@ function visibleInternalLlmToolArgumentOptions(
 
     visitedNodeIds.add(currentNodeId);
 
-    for (const edge of document.graph.edges) {
-      if (edge.target !== currentNodeId) {
-        continue;
-      }
-
+    for (const edge of incomingEdges.get(currentNodeId) ?? []) {
+      // The seed is visible only if an incoming path reaches it again.
+      visibleNodeIds.add(edge.source);
       queue.push(edge.source);
 
       const connectorId = parseLlmToolSourceHandleId(edge.sourceHandle);
@@ -204,7 +181,7 @@ function visibleInternalLlmToolArgumentOptions(
     }
   }
 
-  return [...optionsByField.values()];
+  return { visibleNodeIds, toolArgumentOptions: [...optionsByField.values()] };
 }
 
 export function listVisibleSelectorOptions(
@@ -213,7 +190,8 @@ export function listVisibleSelectorOptions(
   environmentVariables: AgentFlowEnvironmentVariable[] = [],
   workflowTriggerContext: unknown = null
 ): FlowSelectorOption[] {
-  const visibleNodeIds = collectUpstreamNodeIds(document, nodeId);
+  const { visibleNodeIds, toolArgumentOptions } =
+    collectUpstreamSelectorContext(document, nodeId);
   const isWorkflowDocument = document.graph.nodes.some(
     (node) => node.type === 'workflow_start'
   );
@@ -293,11 +271,6 @@ export function listVisibleSelectorOptions(
           };
         })
     );
-
-  const toolArgumentOptions = visibleInternalLlmToolArgumentOptions(
-    document,
-    nodeId
-  );
 
   return [
     ...systemOptions,

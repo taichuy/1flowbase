@@ -1008,3 +1008,6 @@ async fn ac_2153_version_switch_publishes_all_workspace_demand_and_retains_artif
 }
 #[path = "family/family_uninstall.rs"]
 mod family_uninstall;
+
+#[path = "family/current_selection.rs"]
+mod current_selection;

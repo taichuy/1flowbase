@@ -5,6 +5,7 @@ pub(crate) struct MemoryPluginManagementRepository {
     pub(crate) actor: ActorContext,
     installation_lease: Arc<tokio::sync::Mutex<()>>,
     installations: Arc<RwLock<HashMap<Uuid, PluginInstallationRecord>>>,
+    native_targets: Arc<RwLock<Vec<domain::NativePluginTarget>>>,
     artifact_instances: Arc<RwLock<HashMap<(String, Uuid), PluginArtifactInstanceRecord>>>,
     artifact_cleanups: Arc<RwLock<HashMap<Uuid, domain::PluginArtifactCleanupRecord>>>,
     catalog_projections: Arc<RwLock<HashMap<Uuid, PluginPackageCatalogProjectionRecord>>>,
@@ -37,6 +38,7 @@ impl MemoryPluginManagementRepository {
             actor,
             installation_lease: Arc::new(tokio::sync::Mutex::new(())),
             installations: Arc::new(RwLock::new(HashMap::new())),
+            native_targets: Arc::new(RwLock::new(Vec::new())),
             artifact_instances: Arc::new(RwLock::new(HashMap::new())),
             artifact_cleanups: Arc::new(RwLock::new(HashMap::new())),
             catalog_projections: Arc::new(RwLock::new(HashMap::new())),
@@ -58,6 +60,10 @@ impl MemoryPluginManagementRepository {
             fail_family_uninstall_commit_after_artifact: Arc::new(RwLock::new(None)),
             console_policies: Arc::new(RwLock::new(Vec::new())),
         }
+    }
+
+    pub(crate) async fn set_native_targets(&self, targets: Vec<domain::NativePluginTarget>) {
+        *self.native_targets.write().await = targets;
     }
 
     pub(crate) async fn set_console_operation(
@@ -584,6 +590,10 @@ impl PluginRepository for MemoryPluginManagementRepository {
 
     async fn list_installations(&self) -> Result<Vec<PluginInstallationRecord>> {
         Ok(self.installations.read().await.values().cloned().collect())
+    }
+
+    async fn list_native_plugin_targets(&self) -> Result<Vec<domain::NativePluginTarget>> {
+        Ok(self.native_targets.read().await.clone())
     }
 
     async fn upsert_plugin_package_catalog_projection(

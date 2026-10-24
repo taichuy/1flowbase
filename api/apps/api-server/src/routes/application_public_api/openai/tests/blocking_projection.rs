@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn openai_continuation_inputs_are_translated_to_native() {
+fn openai_chat_tools_are_translated_to_native() {
     let chat =
         control_plane::application_public_api::compat::openai::translate_chat_completion_request(
             json!({
@@ -12,15 +12,6 @@ fn openai_continuation_inputs_are_translated_to_native() {
         )
         .expect("tool definitions should enter a Native run");
     assert_eq!(chat.request.inputs.as_value()["tools"][0]["name"], "lookup");
-
-    let responses =
-        control_plane::application_public_api::compat::openai::translate_response_request(json!({
-            "model": "1flowbase",
-            "input": "continue",
-            "previous_response_id": "resp_11111111-1111-1111-1111-111111111111"
-        }))
-        .expect("previous_response_id should be resolved by the route");
-    assert_eq!(responses.request.query, "continue");
 }
 
 // #2036 AC-003: blocking Responses uses formal current-round items, preserving

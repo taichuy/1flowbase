@@ -7,6 +7,7 @@ const { spawnSync } = require('node:child_process');
 const { buildCommands, main, parseBackendCliArgs } = require('../../verify-backend.js');
 const { BACKEND_TEST_SHARDS } = require('../../verify/backend-targets.js');
 const { runBackendCommandSequence } = require('../../verify/backend.js');
+const { workspaceEvidence } = require('../../verify/_tests/cargo-workspace-fixture.js');
 
 function getExpectedParallelism() {
   return typeof os.availableParallelism === 'function'
@@ -333,12 +334,19 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
       '#!/usr/bin/env bash',
       'printf "%s\\n" "$*" >> "$VERIFY_BACKEND_LOG"',
       'printf "warning: backend advisory\\n" >&2',
-      'if [ "$1" = test ]; then printf "test result: ok. 1 passed; 0 failed; 0 ignored;\\n"; fi',
+      'if [ "$1" = test ]; then',
+      '  if [ "$2" = --workspace ]; then',
+      '    cat "$VERIFY_BACKEND_STDOUT"; cat "$VERIFY_BACKEND_STDERR" >&2',
+      '  else printf "test result: ok. 1 passed; 0 failed; 0 ignored;\\n"; fi',
+      'fi',
       'exit 0',
     ].join('\n')
   );
   fs.chmodSync(fakeCargoPath, 0o755);
 
+  const evidence = workspaceEvidence();
+  fs.writeFileSync(path.join(tempDir, 'stdout.log'), evidence.stdout);
+  fs.writeFileSync(path.join(tempDir, 'stderr.log'), evidence.stderr);
   const result = spawnSync('node', [scriptPath], {
     cwd: repoRoot,
     env: {
@@ -346,6 +354,8 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
       CI: 'true',
       PATH: `${fakeBinDir}:${process.env.PATH ?? ''}`,
       VERIFY_BACKEND_LOG: logPath,
+      VERIFY_BACKEND_STDOUT: path.join(tempDir, 'stdout.log'),
+      VERIFY_BACKEND_STDERR: path.join(tempDir, 'stderr.log'),
       ONEFLOWBASE_WARNING_OUTPUT_DIR: warningOutputDir,
     },
     encoding: 'utf8',
@@ -358,7 +368,7 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
     .trim()
     .split('\n');
 
-  assert.equal(invocations.length, 11);
+  assert.equal(invocations.length, 9);
   assert.match(invocations[1], new RegExp(`clippy --workspace --all-targets --jobs ${expectedParallelism} -- -D warnings`));
   assert.equal(invocations.filter((invocation) => invocation.startsWith('test --workspace ')).length, 1);
   assert.equal(invocations.some((invocation) => /orchestration_runtime_.*media|visible_internal_llm_tool_media/u.test(invocation)), false);
@@ -512,6 +522,9 @@ test('standalone image selections and the full workspace require their own execu
                   ? args[0] === 'test' && args.includes('--workspace')
                   : args.includes('orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models');
                 const stdout = args[0] === 'test' ? 'test result: ok. 3 passed; 0 failed;' : '';
+                if (selected && target === 'all' && expected === 0) {
+                  return { status: 0, ...workspaceEvidence() };
+                }
                 return { status: 0, stdout: selected ? output : stdout, stderr: '' };
               },
             });
@@ -605,5 +618,24 @@ test('nextest CLI shards retain native no-tests enforcement without libtest pars
       });
       assert.equal(status, exitCode);
     } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
+  }
+});
+
+test('workspace reuse requires each protected selector and preserves fail-fast execution', () => {
+  const command = buildCommands({ cargoJobs: 2, cargoTestThreads: 2, repoRoot: '/repo-root', env: {} }).at(-1);
+  for (const missing of command.requiredTestTargets) {
+    const calls = [];
+    let diagnostic = '';
+    const status = runBackendCommandSequence({
+      repoRoot: '/repo-root', env: {}, commands: [command, { label: 'must-not-run', command: 'node', args: [] }],
+      writeStdout() {}, writeStderr(text) { diagnostic += text; },
+      spawnSyncImpl(_command, args) {
+        calls.push(args);
+        return { status: 0, ...workspaceEvidence(missing.label) };
+      },
+    });
+    assert.equal(status, 1, missing.label);
+    assert.equal(calls.length, 1, missing.label);
+    assert.ok(diagnostic.includes(missing.label), diagnostic);
   }
 });

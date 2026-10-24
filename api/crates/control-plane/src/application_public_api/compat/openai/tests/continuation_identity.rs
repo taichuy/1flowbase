@@ -595,6 +595,7 @@ fn semantic_cursor_extends_compact_predecessor_without_transcript_materializatio
     let expected = super::super::history::completed_history(&delta, Some(&prefix), &[])
         .unwrap()
         .unwrap();
+    assert_eq!(translated.request.query, "second");
     assert_eq!(
         translated.request.metadata.responses_input_history(),
         Some(&expected)
