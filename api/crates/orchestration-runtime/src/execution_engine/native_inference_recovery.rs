@@ -6,7 +6,12 @@ pub fn validate_native_inference_recovery_scope(plan: &CompiledPlan, node_id: &s
     recovery_scope(plan, node_id).map(|_| ())
 }
 
-fn recovery_scope(plan: &CompiledPlan, node_id: &str) -> Result<BTreeSet<String>> {
+struct RecoveryScope<'a> {
+    node_ids: BTreeSet<String>,
+    positions: BTreeMap<&'a str, usize>,
+}
+
+fn recovery_scope<'a>(plan: &'a CompiledPlan, node_id: &str) -> Result<RecoveryScope<'a>> {
     let selected = plan
         .nodes
         .get(node_id)
@@ -27,6 +32,7 @@ fn recovery_scope(plan: &CompiledPlan, node_id: &str) -> Result<BTreeSet<String>
     if positions.len() != plan.topological_order.len() || !positions.contains_key(node_id) {
         return Err(anyhow!("native_recovery_scope_invalid"));
     }
+    let edge_index = CompiledEdgeIndex::new(&plan.edges);
     let mut visited = BTreeSet::new();
     let mut pending = vec![node_id.to_string()];
     while let Some(id) = pending.pop() {
@@ -51,9 +57,8 @@ fn recovery_scope(plan: &CompiledPlan, node_id: &str) -> Result<BTreeSet<String>
                 .map(String::as_str)
                 .collect()
         } else {
-            plan.edges
-                .iter()
-                .filter(|edge| edge.source == id)
+            edge_index
+                .outgoing(&id)
                 .map(|edge| edge.target.as_str())
                 .collect()
         };
@@ -68,7 +73,10 @@ fn recovery_scope(plan: &CompiledPlan, node_id: &str) -> Result<BTreeSet<String>
             pending.push(target.to_string());
         }
     }
-    Ok(visited)
+    Ok(RecoveryScope {
+        node_ids: visited,
+        positions,
+    })
 }
 
 pub async fn recover_native_inference_with_runtime_context_and_lifecycle<I>(
@@ -94,15 +102,14 @@ where
         return Err(anyhow!("native_recovery_checkpoint_mismatch"));
     }
     for active in &checkpoint.active_node_ids {
-        if plan
-            .topological_order
-            .iter()
-            .position(|id| id == active)
-            .is_none_or(|index| index >= checkpoint.next_node_index && !scope.contains(active))
-        {
+        if scope.positions.get(active.as_str()).is_none_or(|index| {
+            *index >= checkpoint.next_node_index && !scope.node_ids.contains(active)
+        }) {
             return Err(anyhow!("native_recovery_parallel_scope_unsupported"));
         }
     }
+    // Admission-only graph views need not remain in the future during provider I/O.
+    drop(scope);
     // The full, admitted native request already carries the consumed outputs. Dropping the
     // pending state prevents cursor reuse, callback re-consumption and tool delivery replay.
     let mut variables = checkpoint.variable_pool.clone();

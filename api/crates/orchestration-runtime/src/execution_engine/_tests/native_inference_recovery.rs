@@ -78,7 +78,7 @@ fn actual_four_llm_shape_admits_each_selected_llm_without_other_routes() {
     for selected in ["llm-a", "llm-b", "llm-c", "llm-d"] {
         let scope = recovery_scope(&plan, selected).unwrap();
         assert_eq!(
-            scope,
+            scope.node_ids,
             BTreeSet::from([
                 selected.into(),
                 "aggregate".into(),
@@ -116,6 +116,79 @@ fn downstream_side_effect_second_llm_and_backward_edge_are_rejected() {
         target_handle: None,
     });
     assert!(validate_native_inference_recovery_scope(&plan, "llm-b").is_err());
+}
+
+#[test]
+fn indexed_recovery_checks_full_large_tail_and_edgeless_fallback() {
+    let count = 1400;
+    let mut plan = routed_plan();
+    plan.nodes = (0..count)
+        .map(|i| {
+            let id = format!("tail-{i:04}");
+            let mut node = node(&id, if i == 0 { "llm" } else { "answer" });
+            if i + 1 < count {
+                node.downstream_node_ids.push(format!("tail-{:04}", i + 1));
+            }
+            (id, node)
+        })
+        .collect();
+    plan.topological_order = (0..count).map(|i| format!("tail-{i:04}")).collect();
+    plan.edges = (1..count)
+        .map(|i| CompiledEdge {
+            edge_id: i.to_string(),
+            source: format!("tail-{:04}", i - 1),
+            target: format!("tail-{i:04}"),
+            source_handle: Some("error".into()),
+            target_handle: None,
+        })
+        .collect();
+    let expected = plan.topological_order.iter().cloned().collect();
+    {
+        let scope = recovery_scope(&plan, "tail-0000").unwrap();
+        assert_eq!(scope.node_ids, expected);
+        for (index, id) in plan.topological_order.iter().enumerate() {
+            assert_eq!(scope.positions.get(id.as_str()), Some(&index));
+        }
+        assert_eq!(scope.positions.get("missing"), None);
+    }
+    plan.edges.clear();
+    assert_eq!(
+        recovery_scope(&plan, "tail-0000").unwrap().node_ids,
+        expected
+    );
+    // The edge-less fallback still inspects an inadmissible late side effect.
+    plan.nodes.get_mut("tail-1399").unwrap().node_type = "sql".into();
+    assert_eq!(
+        recovery_scope(&plan, "tail-0000")
+            .err()
+            .unwrap()
+            .to_string(),
+        "native_recovery_scope_unsupported"
+    );
+}
+
+#[test]
+fn recovery_keeps_error_edges_and_rejects_ambiguous_positions() {
+    let mut plan = routed_plan();
+    plan.nodes
+        .insert("side-effect".into(), node("side-effect", "sql"));
+    plan.topological_order.push("side-effect".into());
+    plan.edges.push(CompiledEdge {
+        edge_id: "error-side-effect".into(),
+        source: "llm-b".into(),
+        target: "side-effect".into(),
+        source_handle: Some("error".into()),
+        target_handle: None,
+    });
+    assert_eq!(
+        recovery_scope(&plan, "llm-b").err().unwrap().to_string(),
+        "native_recovery_scope_unsupported"
+    );
+    plan.topological_order.push("llm-b".into());
+    assert_eq!(
+        recovery_scope(&plan, "llm-b").err().unwrap().to_string(),
+        "native_recovery_scope_invalid"
+    );
 }
 
 #[derive(Default)]
@@ -283,6 +356,22 @@ async fn real_engine_recovers_one_of_four_llms_and_inherits_budget_without_recon
         );
         assert_eq!(directive.policy.budget().max_inner_attempts, 1);
     }
+    let mut missing = checkpoint.clone();
+    missing.active_node_ids.push("unknown-active-node".into());
+    let missing_error = recover_native_inference_with_runtime_context_and_lifecycle(
+        &plan,
+        &missing,
+        "llm-b",
+        ExecutionRuntimeContext::default(),
+        &invoker,
+        &NoopExecutionLifecycle,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        missing_error.to_string(),
+        "native_recovery_parallel_scope_unsupported"
+    );
     let mut parallel = checkpoint;
     parallel.active_node_ids.push("llm-c".into());
     assert!(recover_native_inference_with_runtime_context_and_lifecycle(
