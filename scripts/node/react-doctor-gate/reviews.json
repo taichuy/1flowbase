@@ -141,6 +141,7 @@
     "scripts/node/react-doctor-gate/reviews/src/shared/ui/window-workspace/reviews.json",
     "scripts/node/react-doctor-gate/reviews/src/state/reviews.json",
     "scripts/node/react-doctor-gate/reviews/src/style-boundary/scene-fixtures/reviews.json",
-    "scripts/node/react-doctor-gate/reviews/vite/reviews.json"
+    "scripts/node/react-doctor-gate/reviews/vite/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/_tests/validation/validate-document/reviews.json"
   ]
 }
