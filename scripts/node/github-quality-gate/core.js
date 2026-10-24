@@ -854,7 +854,7 @@ async function runQualityGateAggregate({
   let prCommentUrl = '';
   if (publishPrComment) {
     if (!githubToken || !prNumber) {
-      writeStderr('[1flowbase-quality-gate] skipped PR report comment: github_token and pr_number are required\n');
+      await writeStderr('[1flowbase-quality-gate] skipped PR report comment: github_token and pr_number are required\n');
     } else {
       try {
         const comment = await upsertPrCommentImpl({
@@ -866,7 +866,7 @@ async function runQualityGateAggregate({
         });
         prCommentUrl = comment.html_url || '';
       } catch (error) {
-        writeStderr(`[1flowbase-quality-gate] failed to publish PR report comment: ${error.message}\n`);
+        await writeStderr(`[1flowbase-quality-gate] failed to publish PR report comment: ${error.message}\n`);
       }
     }
   }

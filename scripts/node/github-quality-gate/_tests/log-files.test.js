@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { once } = require('node:events');
-const { runQualityGate } = require('../core.js');
+const { runQualityGate, runQualityGateAggregate } = require('../core.js');
 const { runGateCommand, combineGateLogs, readFailureExcerpt } = require('../log-files.js');
 
 function fixture(t) {
@@ -152,4 +152,26 @@ test('failure excerpts preserve anchor priority, distant summary and tail across
   write(['x'.repeat(65535), '中文\r', 'last', ...Array(100).fill('')]);
   assert.equal(readFailureExcerpt(logPath), `${'x'.repeat(65535)}\n中文\nlast`);
   assert.equal(readFailureExcerpt(path.join(root, 'missing')), '');
+});
+
+
+test('aggregate completion awaits asynchronous PR-comment diagnostics on both warning paths', async (t) => {
+  for (const authorized of [false, true]) {
+    const repoRoot = fixture(t);
+    let written = false;
+    let diagnostic = '';
+    await runQualityGateAggregate({
+      repoRoot, expectedScopes: ['repo-tooling'], publishPrComment: true,
+      githubToken: authorized ? 'fixture-token' : '', prNumber: authorized ? 1 : 0,
+      env: { GITHUB_SHA: 'a'.repeat(40) },
+      upsertPrCommentImpl() { throw new Error('fixture publication failed'); },
+      async writeStderr(text) {
+        await new Promise((resolve) => setImmediate(resolve));
+        diagnostic += text;
+        written = true;
+      },
+    });
+    assert.equal(written, true, 'aggregate returned before diagnostic delivery');
+    assert.match(diagnostic, authorized ? /failed to publish/u : /skipped PR report comment/u);
+  }
 });
