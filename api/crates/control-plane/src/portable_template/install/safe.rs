@@ -1,5 +1,5 @@
 use super::*;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 pub(crate) fn native_kind(kind: &str) -> bool {
     matches!(
@@ -194,52 +194,78 @@ pub fn plan_native_template(
         })
         .map(|p| p.desired.key.source_id.clone())
         .collect();
-    loop {
-        let mut changed = false;
-        for item in &mut plan {
-            if item.decision.reason().is_some() {
-                continue;
+    // Keep plan ordinals stable; dependencies are source identities across kinds.
+    let mut dependents: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    {
+        let ordinals: BTreeMap<_, _> = plan
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                (
+                    (
+                        item.desired.key.kind.as_str(),
+                        item.desired.key.source_id.as_str(),
+                    ),
+                    i,
+                )
+            })
+            .collect();
+        let mut link = |kind: &str, source: &str, parent: String| {
+            if let Some(&ordinal) = ordinals.get(&(kind, source)) {
+                dependents.entry(parent).or_default().push(ordinal);
             }
-            let source = &item.desired.key.source_id;
-            let missing_parent = match item.desired.key.kind.as_str() {
-                "page" => package
-                    .pages
-                    .iter()
-                    .find(|p| p.id.to_string() == *source)
-                    .and_then(|p| p.parent_id)
-                    .is_some_and(|id| unavailable.contains(&id.to_string())),
-                "tab" | "tab_document" => package.pages.iter().any(|p| {
-                    unavailable.contains(&p.id.to_string())
-                        && p.tabs.iter().any(|t| t.id.to_string() == *source)
-                }),
-                "block" => package.pages.iter().any(|p| {
-                    p.tabs.iter().any(|t| {
-                        t.blocks.iter().any(|b| {
-                            b.block_id == *source
-                                && (unavailable.contains(&p.id.to_string())
-                                    || unavailable.contains(&t.id.to_string())
-                                    || b.parent_block_id
-                                        .as_ref()
-                                        .is_some_and(|id| unavailable.contains(id)))
-                        })
-                    })
-                }),
-                "model_field" => package.data_models.iter().any(|m| {
-                    unavailable.contains(&m.id.to_string())
-                        && m.fields.iter().any(|f| f.id.to_string() == *source)
-                }),
-                "page_visibility" => serde_json::from_str::<Vec<String>>(source)
-                    .ok()
-                    .is_some_and(|parts| parts.iter().take(2).any(|id| unavailable.contains(id))),
-                _ => false,
-            };
-            if missing_parent {
-                item.decision = TemplateMergeDecision::SkipUserDeleted;
-                changed |= unavailable.insert(source.clone());
+        };
+        let mut pages_seen = BTreeSet::new();
+        for page in &package.pages {
+            let page_id = page.id.to_string();
+            // Page lookup historically uses the first match, unlike the any-match
+            // relations below, which retain every enclosing parent.
+            if pages_seen.insert(page.id) {
+                if let Some(parent) = page.parent_id {
+                    link("page", &page_id, parent.to_string());
+                }
+            }
+            for tab in &page.tabs {
+                let tab_id = tab.id.to_string();
+                link("tab", &tab_id, page_id.clone());
+                link("tab_document", &tab_id, page_id.clone());
+                for block in &tab.blocks {
+                    link("block", &block.block_id, page_id.clone());
+                    link("block", &block.block_id, tab_id.clone());
+                    if let Some(parent) = &block.parent_block_id {
+                        link("block", &block.block_id, parent.clone());
+                    }
+                }
             }
         }
-        if !changed {
-            break;
+        for model in &package.data_models {
+            for field in &model.fields {
+                link("model_field", &field.id.to_string(), model.id.to_string());
+            }
+        }
+    }
+    for (ordinal, item) in plan.iter().enumerate() {
+        if item.desired.key.kind == "page_visibility" {
+            if let Ok(parts) = serde_json::from_str::<Vec<String>>(&item.desired.key.source_id) {
+                for parent in parts.into_iter().take(2) {
+                    dependents.entry(parent).or_default().push(ordinal);
+                }
+            }
+        }
+    }
+    let mut pending: VecDeque<_> = unavailable.iter().cloned().collect();
+    while let Some(parent) = pending.pop_front() {
+        if let Some(children) = dependents.remove(&parent) {
+            for ordinal in children {
+                let item = &mut plan[ordinal];
+                if item.decision.reason().is_some() {
+                    continue;
+                }
+                item.decision = TemplateMergeDecision::SkipUserDeleted;
+                if unavailable.insert(item.desired.key.source_id.clone()) {
+                    pending.push_back(item.desired.key.source_id.clone());
+                }
+            }
         }
     }
     Ok(plan)
