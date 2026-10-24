@@ -65,7 +65,7 @@ pub(super) async fn find(
                 .unwrap_or(false)
         {
             super::responses_raw_answer::read(
-                &mut **transaction
+                transaction
                     .as_mut()
                     .expect("raw original is read inside its snapshot"),
                 workspace_id,

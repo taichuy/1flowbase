@@ -2,8 +2,8 @@ const path = require('node:path');
 const { buildCargoCommandEnv, getRepoRoot, runCommandSequence, runManagedCommandSequence } = require('../testing/warning-capture.js');
 const { loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
 const { resolveNodeBinaryFromPath } = require('../testing/node-runtime.js');
-const { BACKEND_SHARDS, BACKEND_TEST_SHARDS, IMAGE_LLM_VISION_GATE_TARGETS, OFFICIAL_I18N_SEED_GATE_TARGETS } = require('./backend-targets.js');
-const { parseCargoTestCounts } = require('./cargo-test-results.js');
+const { BACKEND_SHARDS, BACKEND_TEST_SHARDS, BACKEND_CONSISTENCY_TARGETS, IMAGE_LLM_VISION_GATE_TARGETS, OFFICIAL_I18N_SEED_GATE_TARGETS } = require('./backend-targets.js');
+const { parseCargoTestCounts, requireCargoTestTargets } = require('./cargo-test-results.js');
 const { buildHistoryMaintenanceCommands } = require('./history-maintenance.js');
 const { resolveScriptsNodeCliEntry } = require("./command-paths.js");
 
@@ -260,9 +260,11 @@ function buildBackendCommands({
     buildRustBackendStaticGateCommand({ repoRoot, env }),
     buildBackendFmtCommand({ cargoJobs }),
     buildBackendCargoCommand({ target: 'clippy', cargoJobs, cargoTestThreads, incremental }),
-    ...buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, incremental }),
     ...buildHistoryMaintenanceCommands({ cargoJobs, cargoTestThreads, incremental }),
-    buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental }),
+    {
+      ...buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental }),
+      requiredTestTargets: [...BACKEND_CONSISTENCY_TARGETS, ...OFFICIAL_I18N_SEED_GATE_TARGETS],
+    },
   ];
 }
 
@@ -322,6 +324,14 @@ function runBackendCommandSequence(sequenceOptions) {
           `${command.label}: no executed passing tests; refusing empty or failed protected Cargo gate\n`,
         );
         return 1;
+      }
+      if (result.status === 0 && command.requiredTestTargets) {
+        try {
+          requireCargoTestTargets(result, command.requiredTestTargets);
+        } catch (error) {
+          (sequenceOptions.writeStderr || process.stderr.write.bind(process.stderr))(`${error.message}\n`);
+          return 1;
+        }
       }
     },
   });

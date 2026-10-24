@@ -9,7 +9,10 @@ import '../../../workflow/register';
 import { classifyDocumentChange } from '../../lib/document/change-kind';
 import { createEdgeDocument } from '../../lib/document/edge-factory';
 import { createNodeDocument } from '../../lib/document/node-factory';
-import { getContainerPathForNode } from '../../lib/document/transforms/container';
+import {
+  collectContainerSubgraphNodeIds,
+  getContainerPathForNode
+} from '../../lib/document/transforms/container';
 import { duplicateNodeSubgraph } from '../../lib/document/transforms/duplicate';
 import {
   removeEdge,
@@ -865,4 +868,61 @@ describe('agent flow document transforms', () => {
       ])
     );
   });
+});
+
+test('container closure keeps breadth-first sibling order and terminates nested cycles', () => {
+  const document = createDefaultAgentFlowDocument({ flowId: 'closure' });
+  document.graph.nodes = [
+    { ...createNodeDocument('code', 'deep'), containerId: 'left' },
+    { ...createNodeDocument('loop', 'root'), containerId: 'deep' },
+    { ...createNodeDocument('code', 'right'), containerId: 'root' },
+    { ...createNodeDocument('iteration', 'left'), containerId: 'root' },
+    createNodeDocument('code', 'root-copy'),
+    createNodeDocument('code', 'root-copy-2')
+  ];
+  document.graph.edges = [
+    createEdgeDocument({
+      id: 'inner',
+      source: 'root',
+      target: 'left',
+      containerId: 'root'
+    }),
+    createEdgeDocument({
+      id: 'inner-copy',
+      source: 'root-copy',
+      target: 'root-copy-2'
+    })
+  ];
+  expect(collectContainerSubgraphNodeIds(document, 'root')).toEqual([
+    'root',
+    'right',
+    'left',
+    'deep'
+  ]);
+  const copied = duplicateNodeSubgraph(document, { nodeId: 'root' });
+  expect(
+    copied.graph.nodes.slice(document.graph.nodes.length).map((node) => node.id)
+  ).toEqual(['deep-copy', 'root-copy-3', 'right-copy', 'left-copy']);
+  expect(
+    copied.graph.nodes.find((node) => node.id === 'root-copy-3')?.containerId
+  ).toBe('deep-copy');
+  expect(copied.graph.edges.at(-1)).toMatchObject({
+    id: 'inner-copy-2',
+    source: 'root-copy-3',
+    target: 'left-copy',
+    containerId: 'root-copy-3'
+  });
+  expect(
+    removeNodeSubgraph(document, { nodeId: 'root' }).graph.nodes.map(
+      (node) => node.id
+    )
+  ).toEqual(['root-copy', 'root-copy-2']);
+  expect(duplicateNodeSubgraph(document, { nodeId: 'missing' })).toBe(document);
+  expect(removeNodeSubgraph(document, { nodeId: 'missing' })).toBe(document);
+  expect(
+    duplicateNodeSubgraph(document, { nodeId: 'deep' }).graph.nodes
+  ).toHaveLength(7);
+  expect(
+    removeNodeSubgraph(document, { nodeId: 'deep' }).graph.nodes
+  ).toHaveLength(2);
 });

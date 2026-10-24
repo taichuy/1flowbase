@@ -1,3 +1,4 @@
+import { collectContainerSubgraphNodeIds } from './container';
 import type {
   FlowAuthoringDocument,
   FlowBinding,
@@ -180,34 +181,6 @@ export function moveNodes(
   };
 }
 
-function collectNodeIdsToRemove(
-  document: FlowAuthoringDocument,
-  rootNodeId: string
-) {
-  const queue = [rootNodeId];
-  const collectedIds: string[] = [];
-  const visited = new Set<string>();
-
-  while (queue.length > 0) {
-    const currentNodeId = queue.shift();
-
-    if (!currentNodeId || visited.has(currentNodeId)) {
-      continue;
-    }
-
-    visited.add(currentNodeId);
-    collectedIds.push(currentNodeId);
-
-    for (const candidate of document.graph.nodes) {
-      if (candidate.containerId === currentNodeId) {
-        queue.push(candidate.id);
-      }
-    }
-  }
-
-  return collectedIds;
-}
-
 export function removeNodeSubgraph(
   document: FlowAuthoringDocument,
   payload: { nodeId: string }
@@ -219,7 +192,7 @@ export function removeNodeSubgraph(
   }
 
   const removedNodeIds = new Set(
-    collectNodeIdsToRemove(document, payload.nodeId)
+    collectContainerSubgraphNodeIds(document, payload.nodeId)
   );
 
   return {

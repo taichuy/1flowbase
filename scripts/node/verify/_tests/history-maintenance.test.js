@@ -9,9 +9,18 @@ const { buildGateCommand, DEFAULT_AGGREGATE_SCOPES } = require('../../github-qua
 const options = { cargoJobs: 3, cargoTestThreads: 2, repoRoot: '/repo', env: {} };
 test('complete backend acceptance includes seed and feature-gated maintenance evidence', () => {
   const all = buildBackendCommands(options);
-  for (const target of ['official-i18n-seed', 'history-maintenance']) {
+  for (const target of ['history-maintenance']) {
     const focused = buildBackendCommands({ ...options, target });
     for (const command of focused) assert.deepEqual(all.find((entry) => entry.label === command.label), command);
+  }
+  const workspace = all.filter((command) => command.args.includes('--workspace') && command.args[0] === 'test');
+  assert.equal(workspace.length, 1);
+  const seed = buildBackendCommands({ ...options, target: 'official-i18n-seed' });
+  for (const command of seed) {
+    assert.equal(all.some((entry) => entry.label === command.label), false);
+    const evidence = workspace[0].requiredTestTargets.find((entry) => entry.label === command.label);
+    assert.equal(evidence.packageName, command.args[2]);
+    assert.equal(evidence.filter, command.args[5]);
   }
   const commands = buildBackendCommands({ ...options, target: 'history-maintenance' });
   const tests = commands.filter((entry) => entry.args[0] === 'test');

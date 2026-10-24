@@ -410,14 +410,18 @@ pub(super) fn visible_internal_llm_tool_branch_node_ids(
         }
 
         if let Some(outgoing) = edges.by_source.get(node_id.as_str()) {
-            queue.extend(outgoing.iter().filter_map(|edge| {
-                (edge.source_handle.as_deref() != Some(ERROR_BRANCH_SOURCE_HANDLE)
-                    && visible_internal_llm_tool_connector_id_from_source_handle(
-                        edge.source_handle.as_deref(),
-                    )
-                    .is_none())
-                .then(|| edge.target.clone())
-            }));
+            queue.extend(
+                outgoing
+                    .iter()
+                    .filter(|edge| {
+                        edge.source_handle.as_deref() != Some(ERROR_BRANCH_SOURCE_HANDLE)
+                            && visible_internal_llm_tool_connector_id_from_source_handle(
+                                edge.source_handle.as_deref(),
+                            )
+                            .is_none()
+                    })
+                    .map(|edge| edge.target.clone()),
+            );
         }
     }
 

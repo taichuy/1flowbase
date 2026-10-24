@@ -26,9 +26,7 @@ use control_plane::application_public_api::{
         OpenAiCompatError, OpenAiCompatibleModel, OpenAiPreviousResponseContext,
         OpenAiResponsesEndpoint, OpenAiResponsesEnvelope,
     },
-    native::{
-        ApplicationNativeRunService, NativeRunResult, NativeRunStatus, NativeRunValidationError,
-    },
+    native::{NativeRunResult, NativeRunStatus, NativeRunValidationError},
     protocol_translation::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport, TranslationReportBuilder,
         TranslationSafeRepresentation,
@@ -980,13 +978,6 @@ struct LoadedOpenAiPreviousResponseContext {
     flow_run_id: Uuid,
     session_identity: Option<String>,
     translation: OpenAiPreviousResponseContext,
-}
-
-fn string_value(value: &Value, field: &str) -> Option<String> {
-    value
-        .get(field)
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
 }
 
 fn openai_invalid_request(param: &'static str, message: impl Into<String>) -> OpenAiRouteError {

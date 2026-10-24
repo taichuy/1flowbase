@@ -44,6 +44,8 @@ API 通用 fixture 通过 `PostgresTestSchema::create()` 为每个测试创建�
 
 ## 执行证据与日志资源
 
+本地完整 `verify-ci` 运行 `verify-repo` 后运行 `verify-coverage all`。后端全量 workspace 测试同时提供原有 17 个 consistency 与 2 个 official seed 选择的执行证据，因此不再额外启动这 19 条 Cargo 命令。`cargo-test-results.js` 将 Cargo stderr 的二进制启动顺序与 stdout 的 libtest suite 配对，在对应 binary 中核对原 filter 的实际 `ok` 记录；缺失启动/suite、错误 owner、空选择或全部 ignored 均拒绝复用。总通过数不能代替逐选择证据。独立 consistency / seed 命令、PR 门禁、history-maintenance 特殊 feature、普通与 coverage 的不同运行条件继续保留。
+
 普通 `cargo test` 分片、定向测试和专项由 `verify/backend.js` 统一要求实际通过数大于零且失败数为零。只有 ignored、缺失 summary 或编译成功不能通过。nextest 分片保留原生 `--no-tests=fail`；空 doctest 的合法性仍由 coverage owner 按原契约判断。`warning-capture.js` 接受命令完成校验返回的非零状态，立即停止后续命令；子进程原始非零退出码优先保留。consistency 收据仍列明未执行的后续 target，coverage 清理仍在结束路径执行。
 
 Cargo summary 解析先调用 Node 原生 `stripVTControlCharacters` 规范化一次，再扫描全部 summary；日志长度为 L、summary 数为 K 时，从重复规范化的 O(K×L) 改为 O(L+K)，计数语义不变。
