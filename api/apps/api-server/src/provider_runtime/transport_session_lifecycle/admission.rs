@@ -8,31 +8,20 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         context: &ProviderRuntimeExecutionContext,
     ) -> anyhow::Result<Option<PreparedTransportInvocation>> {
         let connection_scope_id = take_transport_connection_scope(input);
+        // Cursor-free HTTP fallback is meaningful even without a logical session.
+        // A validated WebSocket delivery below overrides this default carrier.
         if input.protocol == "openai_responses" {
-            // A cursor-free native HTTP request is also the client's recovery
-            // path after WebSocket retries. Preserve that carrier choice rather
-            // than selecting the same failed transport again. An HTTP delta can
-            // still continue a provider-owned WebSocket cursor.
-            input.client_transport = connection_scope_id
-                .as_ref()
-                .map(|_| ProviderClientTransport::Websocket)
-                .or_else(|| {
-                    input.native_transport.as_ref().and_then(|native| {
-                        let has_cursor = native
-                            .wire_body
-                            .get("previous_response_id")
-                            .is_some_and(|value| !value.is_null());
-                        (!has_cursor).then_some(ProviderClientTransport::Http)
-                    })
-                });
+            input.client_transport = input.native_transport.as_ref().and_then(|native| {
+                let has_cursor = native
+                    .wire_body
+                    .get("previous_response_id")
+                    .is_some_and(|value| !value.is_null());
+                (!has_cursor).then_some(ProviderClientTransport::Http)
+            });
         }
         let Some(protocol_session_id) = protocol_session_id(input) else {
             return Ok(None);
         };
-        let transport = selected_responses_transport(input)?;
-        let recovery_directive = input
-            .recovery_directive()
-            .map_err(|_| transport_error("provider_recovery_directive_invalid"))?;
         let scope_requested = connection_scope_id.is_some();
 
         let owner_id = TransportOwnerId::new(protocol_session_id.to_string())?;
@@ -54,6 +43,19 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 admission_details(&session_id, None, None, None, scope_requested),
             ));
         }
+        let carrier = self
+            .admission_scope(connection_scope_id.as_deref(), &session_id)?
+            .map(|scope| scope.carrier);
+        // Delivery ownership and wire transport are independent host facts. An
+        // HTTP scope must not turn a cursor-free fallback back into WebSocket;
+        // cursor-based HTTP continuations retain the existing provider policy.
+        if carrier == Some(ProviderClientTransport::Websocket) {
+            input.client_transport = Some(ProviderClientTransport::Websocket);
+        }
+        let transport = selected_responses_transport(input)?;
+        let recovery_directive = input
+            .recovery_directive()
+            .map_err(|_| transport_error("provider_recovery_directive_invalid"))?;
         let target = TransportRuntimeTargetId::new(target_id.to_string())?;
         let provider_id = TransportProviderId::new(input.provider_instance_id.clone())?;
         let invocation_deadline = u64::try_from(context.deadline_unix_ms)
