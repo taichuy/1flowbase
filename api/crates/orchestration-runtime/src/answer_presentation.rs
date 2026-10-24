@@ -161,6 +161,7 @@ fn branch_memberships(
     plan: &CompiledPlan,
     target_node_id: &str,
 ) -> BTreeMap<String, BTreeSet<String>> {
+    let ancestors = dependency_ancestors(plan, target_node_id);
     let mut memberships = BTreeMap::<String, BTreeSet<String>>::new();
     for edge in &plan.edges {
         let Some(source_handle) = edge.source_handle.as_ref() else {
@@ -171,7 +172,7 @@ fn branch_memberships(
             .get(&edge.source)
             .map(|node| node.node_type.as_str())
             != Some("if_else")
-            || !is_reachable(plan, &edge.target, target_node_id)
+            || (edge.target != target_node_id && !ancestors.contains(edge.target.as_str()))
         {
             continue;
         }
@@ -181,26 +182,6 @@ fn branch_memberships(
             .insert(source_handle.clone());
     }
     memberships
-}
-
-fn is_reachable(plan: &CompiledPlan, start_node_id: &str, target_node_id: &str) -> bool {
-    let mut stack = vec![start_node_id];
-    let mut visited = BTreeSet::new();
-    while let Some(current) = stack.pop() {
-        if current == target_node_id {
-            return true;
-        }
-        if !visited.insert(current) {
-            continue;
-        }
-        stack.extend(
-            plan.edges
-                .iter()
-                .filter(|edge| edge.source == current)
-                .map(|edge| edge.target.as_str()),
-        );
-    }
-    false
 }
 
 pub fn validate_answer_presentation(plan: &CompiledPlan) -> Vec<CompileIssue> {
@@ -224,11 +205,16 @@ pub fn validate_answer_presentation(plan: &CompiledPlan) -> Vec<CompileIssue> {
             }
         }
 
-        for (position, (_, left_node_id, _)) in outputs.iter().enumerate() {
+        for (position, (_, left_node_id, _)) in outputs
+            .iter()
+            .enumerate()
+            .take(outputs.len().saturating_sub(1))
+        {
+            let ancestors = dependency_ancestors(plan, left_node_id);
             for (_, right_node_id, _) in outputs.iter().skip(position + 1) {
-                if depends_on(plan, left_node_id, right_node_id) {
+                if ancestors.contains(right_node_id) {
                     issues.push(CompileIssue {
-            field_path: None,
+                        field_path: None,
                         node_id: presentation.answer_node_id.clone(),
                         code: CompileIssueCode::InvalidAnswerPresentationOrder,
                         message: format!(
@@ -244,26 +230,27 @@ pub fn validate_answer_presentation(plan: &CompiledPlan) -> Vec<CompileIssue> {
     issues
 }
 
-fn depends_on(plan: &CompiledPlan, node_id: &str, dependency_node_id: &str) -> bool {
-    let mut stack = vec![node_id];
-    let mut visited = BTreeSet::new();
+// Compiled dependencies are the deduplicated incoming edges established by topology compilation.
+// Keep this set local to one source rather than retaining a transitive closure for the plan.
+fn dependency_ancestors<'a>(plan: &'a CompiledPlan, node_id: &str) -> BTreeSet<&'a str> {
+    let mut stack = plan
+        .nodes
+        .get(node_id)
+        .into_iter()
+        .flat_map(|node| node.dependency_node_ids.iter().map(String::as_str))
+        .collect::<Vec<_>>();
+    let mut ancestors = BTreeSet::new();
 
     while let Some(current) = stack.pop() {
-        if !visited.insert(current.to_string()) {
+        if !ancestors.insert(current) {
             continue;
         }
-        let Some(node) = plan.nodes.get(current) else {
-            continue;
-        };
-        for dependency in &node.dependency_node_ids {
-            if dependency == dependency_node_id {
-                return true;
-            }
-            stack.push(dependency);
+        if let Some(node) = plan.nodes.get(current) {
+            stack.extend(node.dependency_node_ids.iter().map(String::as_str));
         }
     }
 
-    false
+    ancestors
 }
 
 fn first_output_key(node: &CompiledNode) -> String {
