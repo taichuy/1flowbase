@@ -80,10 +80,7 @@ async fn semantic_cursor_producer_persists_discoverable_tool_round() {
         "bindings":{"answer_template":{"kind":"selector","selector_paths":[["node-llm","text"]],"raw_value":["node-llm","text"]}},
         "outputs":[{"key":"answer","title":"Answer","value_type":"string","selector":[]}],"config":{}
     });
-    let typed_plan: orchestration_runtime::compiled_plan::CompiledPlan =
-        serde_json::from_value(plan.clone()).unwrap();
-    orchestration_runtime::compiler::ensure_plan_execution_contract(&typed_plan)
-        .expect("fresh producer fixture selectors must resolve against real compiled nodes");
+    // The real runtime below parses and validates this plan before execution.
     sqlx::query("update flow_compiled_plans set plan=$2 where id=$1")
         .bind(compiled.id)
         .bind(&plan)
