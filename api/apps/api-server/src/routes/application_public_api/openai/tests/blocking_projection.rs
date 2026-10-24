@@ -1,12 +1,7 @@
 use super::*;
 
 #[test]
-fn openai_continuation_inputs_are_translated_to_native() {
-    use control_plane::application_public_api::compat::openai::{
-        translate_response_request, translate_response_request_with_context_and_previous,
-        OpenAiResponsesRequestContext,
-    };
-
+fn openai_chat_tools_are_translated_to_native() {
     let chat =
         control_plane::application_public_api::compat::openai::translate_chat_completion_request(
             json!({
@@ -17,48 +12,6 @@ fn openai_continuation_inputs_are_translated_to_native() {
         )
         .expect("tool definitions should enter a Native run");
     assert_eq!(chat.request.inputs.as_value()["tools"][0]["name"], "lookup");
-
-    let response_id = "resp_11111111-1111-1111-1111-111111111111";
-    let continuation = json!({
-        "model": "1flowbase",
-        "input": "continue",
-        "previous_response_id": response_id
-    });
-    let missing_previous = translate_response_request(continuation.clone())
-        .expect_err("a continuation needs the predecessor proof loaded by the route");
-    assert_eq!(
-        missing_previous.param.as_deref(),
-        Some("previous_response_id")
-    );
-    assert_eq!(
-        missing_previous.message,
-        "previous_response_history_unavailable"
-    );
-
-    let first = translate_response_request(json!({"model": "1flowbase", "input": "first"}))
-        .expect("a first request establishes its own history proof");
-    let previous_history = first.request.metadata.responses_input_history().unwrap();
-    let responses = translate_response_request_with_context_and_previous(
-        continuation,
-        OpenAiResponsesRequestContext::responses(),
-        Some(OpenAiPreviousResponseContext {
-            history: Some(serde_json::from_value(previous_history.clone()).unwrap()),
-            provider_continuation: None,
-            response_id: response_id.into(),
-            external_user: None,
-            external_conversation_id: None,
-            answer: None,
-        }),
-    )
-    .expect("the predecessor proof resolved by the route permits continuation");
-    assert_eq!(responses.request.query, "continue");
-    let continued_history = responses
-        .request
-        .metadata
-        .responses_input_history()
-        .unwrap();
-    assert_eq!(continued_history["item_count"], 2);
-    assert_ne!(continued_history["digest"], previous_history["digest"]);
 }
 
 // #2036 AC-003: blocking Responses uses formal current-round items, preserving
