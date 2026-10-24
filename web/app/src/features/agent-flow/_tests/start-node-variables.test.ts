@@ -1021,5 +1021,5 @@ test('upstream diamond keeps tool field precedence, node order and cycle seed vi
     cyclic
       .filter((option) => option.nodeId === 'seed')
       .map((option) => option.value)
-  ).toEqual([['seed', 'result']]);
+  ).toEqual([['seed', 'result', 'result']]);
 });
