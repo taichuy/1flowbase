@@ -331,7 +331,7 @@ node scripts/node/verify.js ci
 - `cargo fmt --all --check`
 - `cargo clippy --workspace --all-targets -D warnings`
 - `cargo test --workspace`
-- image-llm、official-i18n-seed、history-maintenance 专项场景
+- workspace 执行中的 consistency / official-i18n-seed 场景逐项核验；history-maintenance 特殊 feature 专项场景
 
 `clippy --all-targets` 同时承担类型检查；独立 `check` 目标仍供 PR 与定向诊断使用。
 `clippy/check` 可用 `core-libs`、`runtime-storage`、`apps` 分片；`test` 另支持
@@ -361,7 +361,7 @@ storage-durable-postgres 的重复包测试交给 coverage。control-plane-postg
 
 ### `node scripts/node/verify-ci.js`
 
-本地串行组合入口，当前执行 `verify-repo`、`verify-backend-consistency` 与 `verify-coverage all`。
+本地串行组合入口，执行 `verify-repo` 与 `verify-coverage all`。workspace 测试按原 package / target / filter 核对 17 个 consistency 和 2 个 official seed 选择的实际通过记录，不再另启动 19 条 Cargo 命令；缺失、空选择、全部 ignored 或错误 binary 均拒绝复用。独立 `backend-consistency` / `official-i18n-seed` 入口保持可用。
 GitHub `quality-gate.yml scope=ci` 使用 24 个必需 component 的并行执行计划：
 consistency 三组、official-i18n-seed 与 image-llm-vision 的默认 feature 用例已由普通 / coverage
 包测试完整覆盖，不再重复执行专项 owner；专项手动入口及 PR 门禁继续保留。

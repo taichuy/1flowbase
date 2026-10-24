@@ -17,6 +17,10 @@ flowchart LR
 
 这是逻辑调用关系，不是 Cargo 依赖图。认证由宿主 factory 在业务 Kernel Resolve 前完成，细节见[契约与身份](#contracts-and-identity)。`public / console / runtime` 等入口分区也不是上图四个责任平面；同一入口分区的请求仍经过各责任平面。
 
+编辑器的容器复制和删除由 `document/transforms/container.ts` 共同收集后代：本次调用建立父容器索引，按原节点顺序做游标 BFS，保留防环、复制碰撞和引用重映射。变量选择由 `selector-options.ts` 一次逆向遍历同时收集可见节点与工具参数；同字段工具仍按 BFS / 原边顺序 first-wins，起点只有被回边指向时才进入可见祖先集合。前端答案校验按本次调用的 distinct source 惰性收集依赖祖先，保留重复引用和首个顺序错误，终点出边检查复用 source Set。索引不跨请求或文档修改保存。
+
+插件 family 的当前版本选择仍归 `PluginManagementService`：native 精确 target 优先，其次 system-managed 唯一 active，最后 workspace assignment。筛选复用 repository 返回的 Vec 与借用迭代器，只有选中的安装记录才克隆；存在上级作用域但无有效唯一选择时，保留原错误，不能回退到 workspace。
+
 ## 业务处理的共享边界
 
 列表过滤的字符串入口只编译一次 `ResourceFilterExpr`，内存筛选和数据库查询消费同一已验证表达式。批量选择仍要求显式主键或非空过滤条件；无效 JSON、运算符与操作数由过滤器 owner 拒绝。Resource Action 的实际分派继续由 Kernel 与 Registry 承担，未接入生产的独立 Hook Pipeline 不作为执行层。
