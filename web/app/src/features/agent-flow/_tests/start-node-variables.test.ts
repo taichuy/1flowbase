@@ -6,6 +6,7 @@ import {
 } from '@1flowbase/flow-schema';
 
 import { buildFlowDebugRunInput } from '../api/runtime';
+import { createEdgeDocument } from '../lib/document/edge-factory';
 import { createNodeDocument } from '../lib/document/node-factory';
 import {
   isSelectorVisible,
@@ -928,4 +929,97 @@ describe('start node variables', () => {
       expect.not.objectContaining({ source: expect.anything() })
     ]);
   });
+});
+
+test('upstream diamond keeps tool field precedence, node order and cycle seed visibility', () => {
+  const document = createDefaultAgentFlowDocument({ flowId: 'upstream' });
+  const toolNode = (id: string, type: string, enabled = true) => ({
+    ...createNodeDocument('llm', id),
+    outputs: [{ key: 'text', title: id, valueType: 'string' }],
+    config: {
+      visible_internal_llm_tools_enabled: enabled,
+      visible_internal_llm_tools: [
+        {
+          type: 'visible_internal_llm_tool',
+          tool_name: 'fallback',
+          connector_id: 'connector',
+          target_node_id: 'seed',
+          input_schema: {
+            type: 'object',
+            properties: { shared: { type }, [id]: { type: 'string' } }
+          }
+        },
+        {
+          type: 'visible_internal_llm_tool',
+          tool_name: 'duplicate',
+          connector_id: 'connector',
+          target_node_id: 'seed',
+          input_schema: {
+            type: 'object',
+            properties: { duplicate: { type: 'string' } }
+          }
+        }
+      ]
+    }
+  });
+  const seed = createNodeDocument('code', 'seed');
+  seed.outputs = [{ key: 'result', title: 'result', valueType: 'string' }];
+  const far = toolNode('far', 'boolean');
+  const farTools = far.config.visible_internal_llm_tools;
+  farTools[0].connector_id = '';
+  document.graph.nodes = [
+    far,
+    toolNode('right', 'number'),
+    seed,
+    toolNode('left', 'string'),
+    toolNode('disabled', 'boolean', false),
+    toolNode('left', 'boolean')
+  ];
+  const edge = (source: string, target: string, connector = 'connector') =>
+    createEdgeDocument({
+      id: `${source}-${target}`,
+      source,
+      target,
+      sourceHandle: `visible_internal_llm_tool:${connector}`
+    });
+  document.graph.edges = [
+    edge('disabled', 'seed'),
+    edge('left', 'seed'),
+    edge('right', 'seed'),
+    edge('far', 'left', 'fallback'),
+    edge('far', 'right', 'fallback')
+  ];
+  const options = listVisibleSelectorOptions(document, 'seed');
+  expect(
+    options
+      .filter((option) => option.nodeId === 'visible_internal_llm_tool')
+      .map((option) => [option.outputKey, option.valueType])
+  ).toEqual([
+    ['shared', 'string'],
+    ['left', 'string'],
+    ['right', 'string'],
+    ['far', 'string']
+  ]);
+  expect(
+    options
+      .filter(
+        (option) =>
+          option.outputKey === 'text' &&
+          document.graph.nodes.some((node) => node.id === option.nodeId)
+      )
+      .map((option) => option.nodeId)
+  ).toEqual(['far', 'right', 'left', 'disabled', 'left']);
+  expect(options.some((option) => option.nodeId === 'seed')).toBe(false);
+  document.graph.edges.push(edge('seed', 'far'));
+  const cyclic = listVisibleSelectorOptions(document, 'seed');
+  expect(
+    cyclic.filter((option) => option.nodeId === 'visible_internal_llm_tool')
+  ).toEqual(
+    options.filter((option) => option.nodeId === 'visible_internal_llm_tool')
+  );
+  expect(
+    cyclic
+      .filter((option) => option.nodeId === 'seed')
+      .map((option) => option.value)
+  ).toEqual([['seed', 'result']]);
 });
