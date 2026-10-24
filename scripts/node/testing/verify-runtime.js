@@ -15,7 +15,7 @@ const HEAVY_VERIFY_LOCK_DIR = path.join(
 const DEFAULT_WAIT_TIMEOUT_MINUTES = 30;
 const DEFAULT_POLL_INTERVAL_MS = 5000;
 // Local heuristic: reserve CPU headroom for the OS, browser helpers, and test cleanup.
-const LOCAL_VITEST_CPU_SHARE = 0.5;
+const LOCAL_NODE_TEST_CPU_SHARE = 0.5;
 
 function isCiEnvironment(env = process.env) {
   return (
@@ -98,7 +98,7 @@ function resolveFrontendDefaults(availableParallelism) {
   );
   const vitestMaxWorkers = Math.max(
     1,
-    Math.floor(parallelism * LOCAL_VITEST_CPU_SHARE),
+    Math.floor(parallelism * LOCAL_NODE_TEST_CPU_SHARE),
   );
 
   return {
@@ -553,7 +553,7 @@ function resolveRuntimeConfig(config, availableParallelism) {
   assertKnownKeys(
     "verify runtime config",
     config,
-    new Set(["backend", "frontend", "locks"]),
+    new Set(["backend", "frontend", "scripts", "locks"]),
   );
   const backendDefaults = resolveCargoDefaults(availableParallelism);
   const frontendDefaults = resolveFrontendDefaults(availableParallelism);
@@ -565,6 +565,7 @@ function resolveRuntimeConfig(config, availableParallelism) {
     config.frontend === undefined
       ? {}
       : assertPlainObject("frontend", config.frontend);
+  const scriptsConfig = config.scripts === undefined ? {} : assertPlainObject("scripts", config.scripts);
   const locksConfig =
     config.locks === undefined ? {} : assertPlainObject("locks", config.locks);
 
@@ -578,6 +579,7 @@ function resolveRuntimeConfig(config, availableParallelism) {
     frontendConfig,
     new Set(["turboConcurrency", "vitestMaxWorkers"]),
   );
+  assertKnownKeys("scripts", scriptsConfig, new Set(["testConcurrency"]));
   assertKnownKeys(
     "locks",
     locksConfig,
@@ -597,6 +599,7 @@ function resolveRuntimeConfig(config, availableParallelism) {
     frontendConfig.turboConcurrency ?? frontendDefaults.turboConcurrency;
   const vitestMaxWorkers =
     frontendConfig.vitestMaxWorkers ?? frontendDefaults.vitestMaxWorkers;
+  const testConcurrency = scriptsConfig.testConcurrency ?? frontendDefaults.vitestMaxWorkers;
   const waitTimeoutMinutes =
     locksConfig.waitTimeoutMinutes ?? DEFAULT_WAIT_TIMEOUT_MINUTES;
   const pollIntervalMs = locksConfig.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -606,6 +609,7 @@ function resolveRuntimeConfig(config, availableParallelism) {
   assertBoolean("backend.incremental", incremental);
   assertPositiveInteger("frontend.turboConcurrency", turboConcurrency);
   assertPositiveInteger("frontend.vitestMaxWorkers", vitestMaxWorkers);
+  assertPositiveInteger("scripts.testConcurrency", testConcurrency);
   assertPositiveInteger("locks.waitTimeoutMinutes", waitTimeoutMinutes);
   assertPositiveInteger("locks.pollIntervalMs", pollIntervalMs);
 
@@ -631,7 +635,12 @@ function resolveRuntimeConfig(config, availableParallelism) {
     );
   }
 
+  if (testConcurrency > availableParallelism) {
+    throw new Error("scripts.testConcurrency must not exceed availableParallelism");
+  }
+
   return {
+    scripts: { testConcurrency },
     backend: {
       cargoJobs,
       cargoTestThreads,
@@ -661,6 +670,7 @@ function loadVerifyRuntimeConfig({
   if (isCiEnvironment(env)) {
     return resolveRuntimeConfig(
       {
+        scripts: { testConcurrency: availableParallelism },
         backend: {
           cargoJobs: availableParallelism,
           cargoTestThreads: availableParallelism,
