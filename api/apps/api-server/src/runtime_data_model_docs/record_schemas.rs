@@ -203,6 +203,9 @@ pub(super) fn record_schema(
 }
 
 pub(super) fn record_field_schema(field: &domain::ModelFieldRecord) -> Value {
+    if field.field_kind == domain::ModelFieldKind::ManyToMany {
+        return json!({"type":"array", "items":{"anyOf":[{"type":"string","format":"uuid"},{"type":"object"}]}, "description":"Related record IDs, or records when expanded; empty relations return []."});
+    }
     let schema = field_schema(field);
     if field.is_required {
         schema
@@ -244,9 +247,11 @@ pub(super) fn field_schema(field: &domain::ModelFieldRecord) -> Value {
         }
         // JSON fields may contain arrays or scalars as well as objects.
         domain::ModelFieldKind::Json => Value::Bool(true),
-        domain::ModelFieldKind::ManyToOne
-        | domain::ModelFieldKind::OneToMany
-        | domain::ModelFieldKind::ManyToMany => json!({
+        domain::ModelFieldKind::ManyToMany => json!({
+            "type": "array", "items": {"type":"string", "format":"uuid"},
+            "description": "Replace the relation set with these record IDs. [] clears it; omission on update preserves it."
+        }),
+        domain::ModelFieldKind::ManyToOne | domain::ModelFieldKind::OneToMany => json!({
             "type": "string",
             "format": "uuid",
             "description": "Relation record id or relation expansion target."

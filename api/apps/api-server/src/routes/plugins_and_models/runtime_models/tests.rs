@@ -238,3 +238,18 @@ fn runtime_record_response_derives_principal_from_run_credentials() {
         }
     }
 }
+
+#[tokio::test]
+async fn many_to_many_invalid_relation_field_maps_to_http_400() {
+    let response = map_runtime_error(
+        runtime_core::runtime_engine::RuntimeModelError::InvalidOperationField("tags".into())
+            .into(),
+    )
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body["code"], "runtime_operation_field");
+}

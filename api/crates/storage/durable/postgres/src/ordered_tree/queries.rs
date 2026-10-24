@@ -327,6 +327,20 @@ async fn fetch_page(
         .bind(context.max_depth.map(i64::from)).bind(context.prefix.as_ref().map(|prefix| format!("{}%", escape_like_prefix(prefix))))
         .bind(anchor.as_ref().map(|anchor| anchor.ranks.clone())).bind(anchor.as_ref().map(|anchor| anchor.ids.clone()))
         .bind(i64::from(limit) + 1).fetch_all(&mut *conn).await?;
+    let mut records: Vec<Value> = rows
+        .iter_mut()
+        .map(|row| std::mem::take(&mut row.0))
+        .collect();
+    crate::runtime_record_repository::many_to_many::hydrate_relations(
+        conn,
+        metadata,
+        None,
+        &mut records,
+    )
+    .await?;
+    for (row, record) in rows.iter_mut().zip(records) {
+        row.0 = record;
+    }
     let has_more = rows.len() > limit as usize;
     if has_more {
         rows.pop();
@@ -462,7 +476,7 @@ async fn ancestor_records(
     tree_partition_id: Uuid,
     node_id: Uuid,
 ) -> Result<Vec<Value>> {
-    let records: Vec<Value> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+    let mut records: Vec<Value> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         r#"
         select row_to_json(node)
         from {table_name} target
@@ -477,7 +491,14 @@ async fn ancestor_records(
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(node_id)
-    .fetch_all(pool)
+    .fetch_all(&mut *pool)
+    .await?;
+    crate::runtime_record_repository::many_to_many::hydrate_relations(
+        pool,
+        metadata,
+        None,
+        &mut records,
+    )
     .await?;
     Ok(records)
 }

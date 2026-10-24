@@ -682,6 +682,9 @@ async fn insert_node(
         if field.is_system || !field.is_writable {
             return Err(OrderedTreeCommandError::FieldNotWritable(field_code.clone()).into());
         }
+        if field.field_kind == domain::ModelFieldKind::ManyToMany {
+            continue;
+        }
         if !columns.insert(field.physical_column_name.clone()) {
             return Err(anyhow!(
                 "duplicate physical field column: {}",
@@ -722,6 +725,16 @@ async fn insert_node(
         .execute(&mut **tx)
         .await
         .map_err(map_structure_write_error)?;
+    crate::runtime_record_repository::many_to_many::replace_relations(
+        tx,
+        metadata,
+        node_id,
+        scope_id,
+        None,
+        nullable_actor(actor_user_id),
+        payload,
+    )
+    .await?;
     Ok(())
 }
 

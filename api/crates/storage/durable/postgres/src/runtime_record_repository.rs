@@ -1,3 +1,5 @@
+pub(crate) mod many_to_many;
+
 use std::{collections::HashSet, future::Future};
 
 use anyhow::{anyhow, Result};
@@ -283,7 +285,7 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
         list_builder.push_bind(offset);
         list_builder.push(") t");
 
-        let rows = self
+        let mut rows = self
             .run_runtime_query(
                 metadata,
                 list_builder
@@ -291,6 +293,13 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
                     .fetch_all(self.pool()),
             )
             .await?;
+        many_to_many::hydrate_relations(
+            &mut *self.pool().acquire().await?,
+            metadata,
+            query.owner_user_id,
+            &mut rows,
+        )
+        .await?;
         let mut items = Vec::with_capacity(rows.len());
         for row in rows {
             let normalized = normalize_record(metadata, row);
@@ -338,7 +347,18 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
             )
             .await?;
 
-        Ok(row.map(|value| normalize_record(metadata, value)))
+        let mut rows: Vec<Value> = row.into_iter().collect();
+        many_to_many::hydrate_relations(
+            &mut *self.pool().acquire().await?,
+            metadata,
+            owner_user_id,
+            &mut rows,
+        )
+        .await?;
+        Ok(rows
+            .into_iter()
+            .next()
+            .map(|value| normalize_record(metadata, value)))
     }
 
     async fn create_record(
@@ -362,6 +382,9 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
                 .ok_or_else(|| anyhow!("undeclared field code: {field_code}"))?;
             if field.field_kind == domain::ModelFieldKind::FilePreviewUrl {
                 return Err(anyhow!("computed field is not writable"));
+            }
+            if field.field_kind == domain::ModelFieldKind::ManyToMany {
+                continue;
             }
             if !declared_physical_columns.insert(field.physical_column_name.clone()) {
                 return Err(anyhow!(
@@ -417,8 +440,23 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
             push_runtime_insert_column_value(&mut builder, column)?;
         }
         builder.push(")");
-        self.run_runtime_query(metadata, builder.build().execute(self.pool()))
-            .await?;
+        let mut tx = self.pool().begin().await?;
+        if let Err(error) = builder.build().execute(&mut *tx).await {
+            // Release the connection before the health mapper writes through the pool.
+            tx.rollback().await?;
+            return Err(self.map_runtime_storage_error(metadata, error).await);
+        }
+        many_to_many::replace_relations(
+            &mut tx,
+            metadata,
+            record_id,
+            lookup_scope_id.unwrap_or(scope_id),
+            None,
+            actor_user_id,
+            &payload,
+        )
+        .await?;
+        tx.commit().await?;
 
         self.get_record(metadata, lookup_scope_id, None, &record_id.to_string())
             .await?
@@ -478,6 +516,9 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
             if field.field_kind == domain::ModelFieldKind::FilePreviewUrl {
                 return Err(anyhow!("computed field is not writable"));
             }
+            if field.field_kind == domain::ModelFieldKind::ManyToMany {
+                continue;
+            }
             if !declared_physical_columns.insert(field.physical_column_name.clone()) {
                 return Err(anyhow!(
                     "duplicate physical field column: {}",
@@ -525,8 +566,36 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
         append_owner_scope_clause(&mut builder, owner_user_id);
         builder.push(" and id = ");
         builder.push_bind(record_id);
-        self.run_runtime_query(metadata, builder.build().execute(self.pool()))
-            .await?;
+        let mut tx = self.pool().begin().await?;
+        // UPDATE locks the source row, serializing concurrent replacement of its relation sets.
+        builder.push(" returning ");
+        if metadata_uses_scope_column(metadata) {
+            builder.push(&scope_column_name);
+        } else {
+            builder.push_bind(scope_id.unwrap_or(Uuid::nil()));
+        }
+        let actual_scope = match builder
+            .build_query_scalar::<Uuid>()
+            .fetch_optional(&mut *tx)
+            .await
+        {
+            Ok(scope) => scope.ok_or_else(|| anyhow!("runtime record not found"))?,
+            Err(error) => {
+                tx.rollback().await?;
+                return Err(self.map_runtime_storage_error(metadata, error).await);
+            }
+        };
+        many_to_many::replace_relations(
+            &mut tx,
+            metadata,
+            lookup_record_id,
+            actual_scope,
+            owner_user_id,
+            actor_user_id,
+            &payload,
+        )
+        .await?;
+        tx.commit().await?;
 
         let lookup_scope_id =
             payload_scope_id.or_else(|| metadata_scope_filter(metadata, scope_id));
@@ -614,6 +683,27 @@ impl PgControlPlaneStore {
                     .await?
                     .unwrap_or(Value::Null);
                     object.insert(field.code.clone(), expanded);
+                }
+                domain::ModelFieldKind::ManyToMany => {
+                    let target_id = field
+                        .relation_target_model_id
+                        .ok_or_else(|| anyhow!("missing relation target"))?;
+                    let target = self
+                        .available_relation_target_metadata(target_id)
+                        .await?
+                        .ok_or_else(|| anyhow!("relation target unavailable"))?;
+                    let mut expanded = Vec::new();
+                    if let Some(ids) = object.get(&field.code).and_then(Value::as_array) {
+                        for id in ids.iter().filter_map(Value::as_str) {
+                            if let Some(record) = self
+                                .get_record(&target, scope_id, owner_user_id, id)
+                                .await?
+                            {
+                                expanded.push(record);
+                            }
+                        }
+                    }
+                    object.insert(field.code.clone(), Value::Array(expanded));
                 }
                 domain::ModelFieldKind::OneToMany => {
                     let Some(target_model_id) = field.relation_target_model_id else {

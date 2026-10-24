@@ -582,6 +582,7 @@ fn descriptor_operation_definition(
 #[cfg(test)]
 mod tests {
     use super::*;
+    include!("runtime_data_model_docs/_tests/many_to_many_schema.rs");
 
     #[test]
     fn json_field_contract_accepts_array_runtime_values() {
