@@ -1178,4 +1178,3 @@ function createDeferred() {
 
   return { promise, resolve, reject };
 }
-

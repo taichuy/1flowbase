@@ -6,7 +6,7 @@ const path = require('node:path');
 const { loadVerifyRuntimeConfig, LOCAL_VERIFY_CONFIG_FILE } = require('../verify-runtime.js');
 
 test("script test concurrency reserves half the local CPUs and validates explicit overrides", (t) => {
-  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'script-concurrency-')); 
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'script-concurrency-'));
   t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
   for (const [availableParallelism, expected] of [[1, 1], [4, 2], [8, 4], [20, 10]]) {
     assert.equal(loadVerifyRuntimeConfig({ repoRoot, env: {}, availableParallelism }).scripts.testConcurrency, expected);
