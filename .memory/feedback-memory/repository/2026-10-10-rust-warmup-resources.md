@@ -2,12 +2,12 @@
 memory_type: feedback
 feedback_category: repository
 topic: Rust 预热顺序与可迁移资源预算
-summary: 开源开发环境自动适配资源，Rust 以 2 CPU / 8 GiB 为预算目标下限，低配允许超过半机；预热先获取依赖再分阶段编译，保留内存保护。
+summary: Rust 预算遵循最新用户偏好并适配环境；预热分阶段，资源反馈后将昂贵宿主构建与回归转 CI，不原样重跑或放大本地预算。
 keywords: [Rust, cargoJobs, cargoTestThreads, reset-rust-cache, 预热]
 match_when: [诊断 Rust 编译耗时, 修改 Rust 缓存清理与预热流程]
 created_at: 2026-10-10 10
-updated_at: 2026-10-19 10
-last_verified_at: 2026-10-19 10
+updated_at: 2026-10-24 07
+last_verified_at: 2026-10-24 07
 decision_policy: direct_reference
 scope: [scripts/node/reset-rust-cache, .1flowbase.verify.local.json]
 ---
@@ -35,3 +35,15 @@ scope: [scripts/node/reset-rust-cache, .1flowbase.verify.local.json]
 ## 适用场景
 
 Rust 冷构建、缓存清理、预热脚本与 AI 开发验证成本优化。
+
+## 用户终止重型验证后的处理
+
+- 规则：用户因资源消耗手动终止本地大型宿主编译后，该任务不原样重跑、不提高本地资源预算；将后续重型构建和回归移到 GitHub Actions，下载候选产物在本地做必要的运行验证。
+- 原因：2026-10-24 弱网修复的 api-server lib-test 编译运行约 551 秒后被用户主动终止。SIGTERM 应归因为用户取消，不能猜为 OOM，也不能将零用例视作测试失败或通过。
+- 适用场景：资源消耗已影响用户正常工作的 Rust 宿主验证；历史预热预算数字以 `.memory/user-memory.md` 的最新偏好为准，不借此修改通用预算配置。
+
+## 半机配额与整机卡顿的边界
+
+- 规则：用户反馈 Rust 测试导致系统卡顿时，核对实际限制和故障时段的整机资源证据；不能仅凭并发为半数或 MemoryMax 为半机就断言不会影响桌面。定向测试的准入需考虑实际编译目标成本，沿用重型后端门禁默认 CI 的偏好，不擅自扩大成全系统实时调度。
+- 原因：2026-10-24 用户再次指出半机限制下仍接近宕机；历史采样证实该次 rustc 常驻内存约占整机 31% 时，整机已出现持续内存回收阻塞和高内核 CPU，取消编译后压力恢复。Rust 组额度不能代表整机仍有足够余量。
+- 适用场景：大型 Rust 宿主测试、重门禁资源事故诊断及本地/CI 执行位置选择。
