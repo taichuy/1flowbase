@@ -6,13 +6,13 @@ const path = require('node:path');
 
 const { buildCommands, main } = require('../../verify-repo.js');
 
-test('PR frontend fails when its targeted contracts fail', async () => {
+test('PR frontend propagates the combined contract and smoke suite failure', async () => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'frontend-pr-contracts-'));
   try {
     const status = await main(['frontend-pr'], {
       repoRoot, env: {}, writeStdout() {}, writeStderr() {},
       spawnSyncImpl(_command, args) {
-        return { status: args.at(-1) === 'contracts' ? 1 : 0, stdout: '', stderr: '' };
+        return { status: args.at(-1) === 'pr' ? 1 : 0, stdout: '', stderr: '' };
       },
     });
     assert.equal(status, 1);
@@ -42,7 +42,7 @@ test('buildCommands can select repository gate slices for parallel CI jobs', () 
   );
   assert.deepEqual(
     buildCommands({ repoRoot, target: 'frontend-pr' }).map((command) => command.label),
-    ['repo-dev-experience', 'repo-vite-lazy-deps-gate', 'repo-contract-tests', 'repo-frontend-pr']
+    ['repo-dev-experience', 'repo-vite-lazy-deps-gate', 'repo-frontend-pr']
   );
   assert.deepEqual(
     buildCommands({ repoRoot, target: 'backend' }).map((command) => command.label),
@@ -148,11 +148,10 @@ test('main runs the requested frontend PR repository gate slice', async () => {
   });
 
   assert.equal(status, 0);
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 3);
   assert.deepEqual(calls[0].args, [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'dev-experience']);
   assert.deepEqual(calls[1].args, [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'vite-lazy-deps-gate']);
-  assert.deepEqual(calls[2].args, [path.join(repoRoot, 'scripts', 'node', 'test.js'), 'contracts']);
-  assert.deepEqual(calls[3].args, [path.join(repoRoot, 'scripts', 'node', 'test.js'), 'frontend', 'pr']);
+  assert.deepEqual(calls[2].args, [path.join(repoRoot, 'scripts', 'node', 'test.js'), 'frontend', 'pr']);
 });
 
 test('main passes the inherited lock token through every repository gate command', async () => {

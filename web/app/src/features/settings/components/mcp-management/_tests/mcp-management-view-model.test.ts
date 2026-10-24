@@ -240,4 +240,43 @@ describe('mcp management view model', () => {
       ]
     });
   });
+
+  test('shares deep ancestors while preserving scoped roots, sibling order and every binding', () => {
+    const input = {
+      instance: { id: 'i', instance_id: 'ops', name: 'Ops', default_entry_path: '/ops' },
+      groups: ['/ops/shared/z', '/ops/shared/a', '/outside', '/ops/shared'].map((path, index) => ({
+        id: `g${index}`, instance_record_id: 'i', path, display_name: path,
+        description_short: null, enabled: true, sort_order: -index
+      })),
+      bindings: Array.from({ length: 50 }, (_, index) => ({
+        id: `b${index}`, instance_record_id: 'i', tool_record_id: 'missing',
+        group_path: index % 2 ? '/ops/shared/a/deep' : '/ops/shared/z/deep',
+        tool_id: `tool_${index}`, display_alias: null, visible: true, sort_order: index
+      })),
+      tools: []
+    };
+    const [root] = buildMcpDirectoryTreeData(input);
+    expect(root?.children?.map((node) => node.path)).toEqual(['/ops/shared']);
+    const branches = root?.children?.[0]?.children;
+    expect(branches?.map((node) => node.path)).toEqual(['/ops/shared/a', '/ops/shared/z']);
+    for (const [branch, parity] of [[0, 1], [1, 0]] as const) {
+      expect(branches?.[branch]?.children?.[0]?.children?.map((node) => node.binding_id))
+        .toEqual(input.bindings.filter((_, index) => index % 2 === parity).map((binding) => binding.id));
+    }
+  });
+
+  test('keeps first appearance for collation ties and last group metadata for duplicate paths', () => {
+    const paths = ['/ops/é', '/ops/e\u0301', '/ops/é'];
+    const [root] = buildMcpDirectoryTreeData({
+      instance: { id: 'i', instance_id: 'ops', name: 'Ops', default_entry_path: '/ops' },
+      groups: paths.map((path, index) => ({
+        id: `g${index}`, instance_record_id: 'i', path, display_name: `Group ${index}`,
+        description_short: null, enabled: true, sort_order: 0
+      })),
+      bindings: [], tools: []
+    });
+    expect(root?.children?.map((node) => [node.path, node.title])).toEqual([
+      ['/ops/é', 'Group 2'], ['/ops/e\u0301', 'Group 1']
+    ]);
+  });
 });

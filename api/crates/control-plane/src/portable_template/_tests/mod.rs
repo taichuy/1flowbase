@@ -536,3 +536,5 @@ fn selected_translations_can_be_exported_without_native_resources() {
     .to_string()
     .contains("missing_i18n_key"));
 }
+
+mod native_plan;

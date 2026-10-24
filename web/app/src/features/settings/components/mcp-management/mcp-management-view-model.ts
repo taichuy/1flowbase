@@ -139,7 +139,8 @@ export function buildMcpDirectoryTreeData({
 
   const registerPath = (rawPath: string) => {
     let path = normalizeMcpDirectoryPath(rawPath);
-    while (path !== rootPath && path !== '/') {
+    // Registered paths already contain every ancestor up to the instance root.
+    while (path !== rootPath && path !== '/' && !directoryPaths.has(path)) {
       directoryPaths.add(path);
       path = parentDirectoryPath(path);
     }
@@ -149,17 +150,7 @@ export function buildMcpDirectoryTreeData({
   for (const binding of instanceBindings) registerPath(binding.group_path);
 
   const groupNodeByPath = new Map<string, McpDirectoryTreeNode>();
-  const sortedPaths = Array.from(directoryPaths).sort((left, right) => {
-    const leftGroup = groupByPath.get(left);
-    const rightGroup = groupByPath.get(right);
-    return (
-      (leftGroup?.sort_order ?? Number.MAX_SAFE_INTEGER) -
-        (rightGroup?.sort_order ?? Number.MAX_SAFE_INTEGER) ||
-      left.localeCompare(right)
-    );
-  });
-
-  for (const path of sortedPaths) {
+  for (const path of directoryPaths) {
     const group = groupByPath.get(path);
     groupNodeByPath.set(path, {
       key: `group:${path}`,

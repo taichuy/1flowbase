@@ -22,7 +22,7 @@
 - `verify/backend.js` 是后端 Cargo 命令和受保护场景执行校验的 owner；无参数 `test-backend` 与 `verify-backend all` 执行静态检查和一次 workspace 测试，图像/多模态场景已由该集合覆盖。独立 `image-llm-vision` 专项仍可运行。每条受保护测试仍须实际执行非零用例，邻接成功、全部 ignored、编译成功和缺失日志不能填补证据。
 - `tooling data-contracts` 使用同一份 migration inventory 和源码分析结果，生成原有 schema、raw JSONB、query-contract、capacity JSON/Markdown 报告。schema error 和 query-contract failure 继续阻断；raw JSONB、增长规划和未测量容量保留原来的 advisory / unverified 语义。查询契约等必需配置缺失或损坏时继续失败。独立报告入口仍服务于定向诊断。
 - 专项测试与全量测试只有在用例及运行条件等价时才能复用结果；nextest/libtest、线程栈、feature 和 coverage instrumentation 的差异需要单独判断。已核对实际用例 identity 的 consistency-control-runtime/storage/api、official-i18n-seed、image-llm-vision 默认 feature 场景由普通 / coverage 包测试完整执行，完整 CI 不再重跑这五个专项 owner，必需 component 从 29 降为 24。专项手动入口及 PR 的 seed / image-llm 门禁保持有效；history-maintenance 的特殊 feature 和独有场景继续单独执行。四基座、coverage 阈值和缺失 / 失败 / 错误 SHA receipt 的拒绝条件不变。
-- 五个前端 consumer contract 用例由前端验收拥有：`frontend-pr` 显式运行 contracts；仓库级 `frontend/all` 通过常规测试与 page-regression 的并集覆盖全部用例，tooling 不再重复执行。`test-frontend full` 单独不包含全部页面回归，不能作为该并集的替代。
+- 五个前端 consumer contract 文件由前端验收拥有：`test-frontend pr` 将 contracts 与 PR smoke 文件交给同一次 Vitest 执行，沿用逐文件隔离、资源预算与失败退出；独立 contracts 入口仍可用于定向验证。仓库级 `frontend/all` 通过常规测试与 page-regression 的并集覆盖全部用例，tooling 不重复执行。`test-frontend full` 单独不包含全部页面回归，不能作为该并集的替代。
 
 开发定向入口直接把选择条件交给原生 runner：`test-backend.js --package <crate> [--lib | --test <target> | --bin <target>] [--filter <name>] [--exact]`，以及 `test-frontend.js fast [--] <file> [-t <pattern>]`。后端选择须带 package；不支持、缺值或冲突参数在启动前报错，不能静默扩大成全量测试。前端显式文件不继承快速套件排除名单，未指定文件仍保留该范围；定向执行通过独占的原生 Vitest JSON 报告核验非零通过，不能把全部 skipped 当成功。资源预算继续生效；完整 CI 在既有 owner 中实际运行一条 Rust 和一条前端定向命令。
 

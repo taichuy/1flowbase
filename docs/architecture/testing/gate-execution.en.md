@@ -53,9 +53,11 @@ features and unique cases of history-maintenance retain a separate owner.
 Foundation gates, coverage thresholds and rejection of missing, failed or
 wrong-SHA receipts remain unchanged.
 
-The frontend owns the five consumer-contract tests. `frontend-pr` runs the targeted
-contracts explicitly; repository `frontend/all` covers them through the union of
-normal tests and page regression. Tooling no longer executes them again.
+The frontend owns the five consumer-contract files. `test-frontend pr` combines
+contracts and PR smoke files in one Vitest invocation, retaining per-file isolation,
+resource budgets, and failure exit status. The standalone contracts entry remains
+available. Repository `frontend/all` covers the same files through the union of
+normal tests and page regression. Tooling does not execute them again.
 `test-frontend full` alone does not include the entire page-regression suite.
 
 Scoped developer commands pass selections to the native runner:

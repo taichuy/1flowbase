@@ -1,5 +1,6 @@
 use super::*;
-use std::collections::{BTreeMap, BTreeSet};
+use std::cell::OnceCell;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 pub(crate) fn native_kind(kind: &str) -> bool {
     matches!(
@@ -29,6 +30,15 @@ pub fn template_baseline_scope(
     }
 }
 
+// Ordinals preserve the original first-match rule, including ID-or-code lookups.
+fn first_ordinals<'a, T, K: Ord>(items: &'a [T], key: impl Fn(&'a T) -> K) -> BTreeMap<K, usize> {
+    let mut index = BTreeMap::new();
+    for (ordinal, item) in items.iter().enumerate() {
+        index.entry(key(item)).or_insert(ordinal);
+    }
+    index
+}
+
 /// Reconstruct references to generated roots, code artifacts and flow IDs from the
 /// authenticated snapshot; this maps identity only and does not adopt any baseline.
 pub fn map_existing_template_identities(
@@ -41,55 +51,90 @@ pub fn map_existing_template_identities(
             .and_then(|v| v.parse().ok())
             .unwrap_or(id)
     };
+    let model_ids = OnceCell::new();
+    let builtin_codes = OnceCell::new();
+    let page_ids = OnceCell::new();
+    let application_ids = OnceCell::new();
+    let mut fields = BTreeMap::new();
+    let mut tabs = BTreeMap::new();
+    let mut blocks = BTreeMap::new();
     for model in &package.data_models {
-        let existing = target.data_models.iter().find(|item| {
-            if model.builtin {
-                item.builtin && item.code == model.code
-            } else {
-                item.id == mapped(identities, model.id)
-            }
-        });
-        if let Some(existing) = existing {
+        let ordinal = if model.builtin {
+            builtin_codes
+                .get_or_init(|| {
+                    let mut index = BTreeMap::new();
+                    for (ordinal, model) in target.data_models.iter().enumerate() {
+                        if model.builtin {
+                            index.entry(model.code.as_str()).or_insert(ordinal);
+                        }
+                    }
+                    index
+                })
+                .get(model.code.as_str())
+        } else {
+            model_ids
+                .get_or_init(|| first_ordinals(&target.data_models, |m| m.id))
+                .get(&mapped(identities, model.id))
+        };
+        if let Some(&ordinal) = ordinal {
+            let existing = &target.data_models[ordinal];
             identities.insert(model.id.to_string(), existing.id.to_string());
             for field in &model.fields {
-                if let Some(current) = existing
-                    .fields
-                    .iter()
-                    .find(|item| item.id == mapped(identities, field.id) || item.code == field.code)
-                {
+                let (field_ids, field_codes) = fields.entry(ordinal).or_insert_with(|| {
+                    (
+                        first_ordinals(&existing.fields, |f| f.id),
+                        first_ordinals(&existing.fields, |f| f.code.as_str()),
+                    )
+                });
+                let ordinal = field_ids
+                    .get(&mapped(identities, field.id))
+                    .into_iter()
+                    .chain(field_codes.get(field.code.as_str()))
+                    .min();
+                if let Some(&ordinal) = ordinal {
+                    let current = &existing.fields[ordinal];
                     identities.insert(field.id.to_string(), current.id.to_string());
                 }
             }
         }
     }
     for page in &package.pages {
-        if let Some(existing) = target
-            .pages
-            .iter()
-            .find(|item| item.id == mapped(identities, page.id))
+        if let Some(&page_ordinal) = page_ids
+            .get_or_init(|| first_ordinals(&target.pages, |p| p.id))
+            .get(&mapped(identities, page.id))
         {
+            let existing = &target.pages[page_ordinal];
             identities.insert(page.id.to_string(), existing.id.to_string());
             for tab in &page.tabs {
-                let current = existing
-                    .tabs
-                    .iter()
-                    .find(|item| item.id == mapped(identities, tab.id))
+                let (tab_ids, default_tab) = tabs.entry(page_ordinal).or_insert_with(|| {
+                    (
+                        first_ordinals(&existing.tabs, |t| t.id),
+                        existing.tabs.iter().position(|t| t.is_default),
+                    )
+                });
+                let ordinal = tab_ids
+                    .get(&mapped(identities, tab.id))
+                    .copied()
                     .or_else(|| {
                         (tab.is_default && !identities.contains_key(&tab.id.to_string()))
-                            .then(|| existing.tabs.iter().find(|t| t.is_default))
+                            .then_some(*default_tab)
                             .flatten()
                     });
-                if let Some(current) = current {
+                if let Some(ordinal) = ordinal {
+                    let current = &existing.tabs[ordinal];
                     identities.insert(tab.id.to_string(), current.id.to_string());
                     identities.insert(
                         tab.document_root_uid.clone(),
                         current.document_root_uid.clone(),
                     );
                     for block in &tab.blocks {
+                        let block_ids =
+                            blocks.entry((page_ordinal, ordinal)).or_insert_with(|| {
+                                first_ordinals(&current.blocks, |b| b.block_id.as_str())
+                            });
                         let id = identities.get(&block.block_id).unwrap_or(&block.block_id);
-                        if let Some(current_block) =
-                            current.blocks.iter().find(|b| &b.block_id == id)
-                        {
+                        if let Some(&ordinal) = block_ids.get(id.as_str()) {
+                            let current_block = &current.blocks[ordinal];
                             identities
                                 .insert(block.block_id.clone(), current_block.block_id.clone());
                             identities
@@ -122,11 +167,11 @@ pub fn map_existing_template_identities(
         }
     }
     for app in &package.applications {
-        if let Some(existing) = target
-            .applications
-            .iter()
-            .find(|item| item.id == mapped(identities, app.id))
+        if let Some(&ordinal) = application_ids
+            .get_or_init(|| first_ordinals(&target.applications, |a| a.id))
+            .get(&mapped(identities, app.id))
         {
+            let existing = &target.applications[ordinal];
             identities.insert(app.id.to_string(), existing.id.to_string());
             if let Some(target_flow) = existing
                 .flow_document
@@ -194,52 +239,78 @@ pub fn plan_native_template(
         })
         .map(|p| p.desired.key.source_id.clone())
         .collect();
-    loop {
-        let mut changed = false;
-        for item in &mut plan {
-            if item.decision.reason().is_some() {
-                continue;
+    // Keep plan ordinals stable; dependencies are source identities across kinds.
+    let mut dependents: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    {
+        let ordinals: BTreeMap<_, _> = plan
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                (
+                    (
+                        item.desired.key.kind.as_str(),
+                        item.desired.key.source_id.as_str(),
+                    ),
+                    i,
+                )
+            })
+            .collect();
+        let mut link = |kind: &str, source: &str, parent: String| {
+            if let Some(&ordinal) = ordinals.get(&(kind, source)) {
+                dependents.entry(parent).or_default().push(ordinal);
             }
-            let source = &item.desired.key.source_id;
-            let missing_parent = match item.desired.key.kind.as_str() {
-                "page" => package
-                    .pages
-                    .iter()
-                    .find(|p| p.id.to_string() == *source)
-                    .and_then(|p| p.parent_id)
-                    .is_some_and(|id| unavailable.contains(&id.to_string())),
-                "tab" | "tab_document" => package.pages.iter().any(|p| {
-                    unavailable.contains(&p.id.to_string())
-                        && p.tabs.iter().any(|t| t.id.to_string() == *source)
-                }),
-                "block" => package.pages.iter().any(|p| {
-                    p.tabs.iter().any(|t| {
-                        t.blocks.iter().any(|b| {
-                            b.block_id == *source
-                                && (unavailable.contains(&p.id.to_string())
-                                    || unavailable.contains(&t.id.to_string())
-                                    || b.parent_block_id
-                                        .as_ref()
-                                        .is_some_and(|id| unavailable.contains(id)))
-                        })
-                    })
-                }),
-                "model_field" => package.data_models.iter().any(|m| {
-                    unavailable.contains(&m.id.to_string())
-                        && m.fields.iter().any(|f| f.id.to_string() == *source)
-                }),
-                "page_visibility" => serde_json::from_str::<Vec<String>>(source)
-                    .ok()
-                    .is_some_and(|parts| parts.iter().take(2).any(|id| unavailable.contains(id))),
-                _ => false,
-            };
-            if missing_parent {
-                item.decision = TemplateMergeDecision::SkipUserDeleted;
-                changed |= unavailable.insert(source.clone());
+        };
+        let mut pages_seen = BTreeSet::new();
+        for page in &package.pages {
+            let page_id = page.id.to_string();
+            // Page lookup historically uses the first match, unlike the any-match
+            // relations below, which retain every enclosing parent.
+            if pages_seen.insert(page.id) {
+                if let Some(parent) = page.parent_id {
+                    link("page", &page_id, parent.to_string());
+                }
+            }
+            for tab in &page.tabs {
+                let tab_id = tab.id.to_string();
+                link("tab", &tab_id, page_id.clone());
+                link("tab_document", &tab_id, page_id.clone());
+                for block in &tab.blocks {
+                    link("block", &block.block_id, page_id.clone());
+                    link("block", &block.block_id, tab_id.clone());
+                    if let Some(parent) = &block.parent_block_id {
+                        link("block", &block.block_id, parent.clone());
+                    }
+                }
             }
         }
-        if !changed {
-            break;
+        for model in &package.data_models {
+            for field in &model.fields {
+                link("model_field", &field.id.to_string(), model.id.to_string());
+            }
+        }
+    }
+    for (ordinal, item) in plan.iter().enumerate() {
+        if item.desired.key.kind == "page_visibility" {
+            if let Ok(parts) = serde_json::from_str::<Vec<String>>(&item.desired.key.source_id) {
+                for parent in parts.into_iter().take(2) {
+                    dependents.entry(parent).or_default().push(ordinal);
+                }
+            }
+        }
+    }
+    let mut pending: VecDeque<_> = unavailable.iter().cloned().collect();
+    while let Some(parent) = pending.pop_front() {
+        if let Some(children) = dependents.remove(&parent) {
+            for ordinal in children {
+                let item = &mut plan[ordinal];
+                if item.decision.reason().is_some() {
+                    continue;
+                }
+                item.decision = TemplateMergeDecision::SkipUserDeleted;
+                if unavailable.insert(item.desired.key.source_id.clone()) {
+                    pending.push_back(item.desired.key.source_id.clone());
+                }
+            }
         }
     }
     Ok(plan)

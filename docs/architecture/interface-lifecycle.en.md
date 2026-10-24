@@ -33,6 +33,10 @@ Editor copy and removal share call-local container descendant collection in `doc
 
 ## Shared business processing
 
+Native template planning indexes parent identities to plan ordinals within each call and propagates unavailable identities through a work queue. Source IDs remain shared across resource kinds, existing skip reasons remain intact, and plan output order is preserved. Target identity indexes retain the original first matching ordinal; field ID-or-code lookup selects the earlier match and reads the current identity map at every lookup. Indexes do not outlive a call. Transactions, owner receipts, and baseline recovery remain with the installation service.
+
+The frontend MCP directory view model reuses the ancestor closure of registered paths and sorts children once after assembly. Stable ties, instance roots, and all bindings are preserved; directory indexes do not own backend permissions or business state.
+
 List-filter text is compiled into `ResourceFilterExpr` once. In-memory filtering and repository queries consume the validated expression. Bulk selection still requires explicit primary keys or a nonempty filter; the filter owner rejects invalid JSON, operators and operands. Actual Resource Action dispatch remains with its Kernel and Registry, without a separate unused Hook Pipeline.
 
 Protocol adapters collect decisions in an exclusively mutable `TranslationReportBuilder`. A source-path index supports lookup while the ordered decisions retain insertion order. Finalization returns the existing `TranslationReport` DTO; mutable or deserialized DTOs never carry a stale side index. Duplicate decisions, the first conflict and protocol error ordering retain their contracts.

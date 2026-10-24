@@ -81,14 +81,17 @@ test("buildCommands maps full layer to lint, test, build and all style boundarie
   ]);
 });
 
-test("pr layer runs lint, PR smoke tests, and build without style-boundary", () => {
+test("pr layer runs contracts and smoke tests together between lint and build", () => {
   const repoRoot = "/repo-root";
 
   const commands = buildCommands({ layer: "pr", repoRoot });
   assert.deepEqual(commands.map((command) => command.label), [
     "frontend-lint", "frontend-pr-smoke-test", "frontend-build",
   ]);
-  assert.deepEqual(commands[1].args, ["--dir", "web/app", "test:pr"]);
+  const contracts = require("../../cli/quality/test-contracts.js").buildCommands({ repoRoot });
+  const contractFiles = contracts[0].args.filter((arg) => arg.startsWith("src/"));
+  assert.equal(contractFiles.length, 5);
+  assert.deepEqual(commands[1].args, ["--dir", "web/app", "test:pr", ...contractFiles]);
 });
 
 test("page-regression layer runs the long-term page regression suite", () => {
