@@ -1,4 +1,7 @@
-import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
+import type {
+  FlowAuthoringDocument,
+  FlowNodeDocument
+} from '@1flowbase/flow-schema';
 
 import type { AgentFlowCanvasEdge } from '../../components/canvas/node-types';
 import { MAIN_SOURCE_HANDLE_ID } from '../canvas/handle-ids';
@@ -13,11 +16,13 @@ export function toCanvasEdges(
     onInsertNode: (edgeId: string, option: NodePickerOption) => void;
   }
 ): AgentFlowCanvasEdge[] {
-  const visibleNodeIds = new Set(
-    document.graph.nodes
-      .filter((node) => node.containerId === activeContainerId)
-      .map((node) => node.id)
-  );
+  const nodesById = new Map<string, FlowNodeDocument>();
+  const visibleNodeIds = new Set<string>();
+  for (const node of document.graph.nodes) {
+    // Keep the first-match behavior of node lookup, including duplicate IDs.
+    if (!nodesById.has(node.id)) nodesById.set(node.id, node);
+    if (node.containerId === activeContainerId) visibleNodeIds.add(node.id);
+  }
 
   return document.graph.edges
     .filter(
@@ -27,9 +32,7 @@ export function toCanvasEdges(
         visibleNodeIds.has(edge.target)
     )
     .map((edge) => {
-      const sourceNode = document.graph.nodes.find(
-        (node) => node.id === edge.source
-      );
+      const sourceNode = nodesById.get(edge.source);
       const canInsertNode = sourceNode?.type !== 'answer';
 
       return {
