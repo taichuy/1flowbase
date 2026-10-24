@@ -907,11 +907,9 @@ async fn load_previous_response_context_for_actor(
     let Some(response_id) = previous_response_id else {
         return Ok(None);
     };
-    let service = ApplicationNativeRunService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store());
-    let semantic = state
+    let mut contexts = state
         .store
-        .find_semantic_responses_callbacks_by_response_id(
+        .find_published_responses_contexts(
             actor.workspace_id,
             actor.application_id,
             actor.api_key_id,
@@ -920,7 +918,7 @@ async fn load_previous_response_context_for_actor(
         )
         .await
         .map_err(native::service_error)?;
-    if semantic.len() > 1 {
+    if contexts.len() > 1 {
         return Err(native::service_error(
             control_plane::errors::ControlPlaneError::Conflict(
                 "responses_tool_output_ambiguous_round",
@@ -929,36 +927,15 @@ async fn load_previous_response_context_for_actor(
         )
         .into());
     }
-    let run = if let Some(callback) = semantic.first() {
-        service
-            .get_native_run_for_actor(actor.clone(), callback.flow_run_id)
-            .await
-            .map_err(native::native_error)?
-    } else {
-        match run_id_from_response_id(response_id) {
-            Ok(run_id) => match service
-                .get_native_run_for_actor(actor.clone(), run_id)
-                .await
-            {
-                Ok(run) => run,
-                Err(NativeRunValidationError::NotFound) => service
-                    .get_native_run_by_provider_response_id_for_actor(actor.clone(), response_id)
-                    .await
-                    .map_err(native::native_error)?,
-                Err(error) => return Err(native::native_error(error).into()),
-            },
-            Err(_) => service
-                .get_native_run_by_provider_response_id_for_actor(actor, response_id)
-                .await
-                .map_err(native::native_error)?,
-        }
-    };
-    ensure_previous_response_is_usable(&run)?;
+    let context = contexts
+        .pop()
+        .ok_or_else(|| native::native_error(NativeRunValidationError::NotFound))?;
+    ensure_previous_response_is_usable(context.status)?;
     let provider_continuation = state
         .infrastructure
         .provider_transport_store()
         .get_continuation(ProviderContinuationSlotId::for_response_round(
-            run.id,
+            context.flow_run_id,
             run_id_from_response_id(response_id)?,
         ))
         .await
@@ -970,23 +947,26 @@ async fn load_previous_response_context_for_actor(
             ))
         })?;
     Ok(Some(LoadedOpenAiPreviousResponseContext {
-        flow_run_id: run.id,
+        flow_run_id: context.flow_run_id,
         session_identity: provider_continuation
             .as_ref()
             .and_then(|continuation| continuation.session_identity())
             .map(str::to_owned),
         translation: OpenAiPreviousResponseContext {
+            history: context.history,
             provider_continuation,
             response_id: response_id.to_string(),
-            external_user: string_value(&run.metadata, "external_user"),
-            external_conversation_id: string_value(&run.metadata, "external_conversation_id"),
-            answer: run.answer,
+            external_user: context.external_user,
+            external_conversation_id: context.external_conversation_id,
+            answer: context.answer,
         },
     }))
 }
 
-fn ensure_previous_response_is_usable(run: &NativeRunResult) -> Result<(), OpenAiRouteError> {
-    if run.status == NativeRunStatus::Cancelled {
+fn ensure_previous_response_is_usable(
+    status: domain::FlowRunStatus,
+) -> Result<(), OpenAiRouteError> {
+    if status == domain::FlowRunStatus::Cancelled {
         return Err(OpenAiRouteError::Native(native::NativeApiError::new(
             StatusCode::CONFLICT,
             "previous_response_not_usable",

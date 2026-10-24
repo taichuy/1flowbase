@@ -83,9 +83,13 @@ async fn aged_native_receipt_attaches_with_live_execution_lease_and_reclaims_onl
         .await
         .unwrap()
         .unwrap();
-    let (runtime, provider, _package) =
-        semantic_runtime::seed_runtime_consumer(&store, &seeded, &compiled, &waiting.checkpoint)
-            .await;
+    let (runtime, provider, _package) = semantic_runtime::seed_runtime_consumer(
+        &store,
+        &seeded,
+        &compiled,
+        Some(&waiting.checkpoint),
+    )
+    .await;
     let service = ApplicationPublishedCallbackResumeService::new(store.clone(), runtime);
     let command = ResumePublishedCallbackCommand {
         responses_continuation: None,

@@ -1,7 +1,29 @@
 use super::*;
+#[path = "responses_context.rs"]
+mod responses_context;
 
 #[async_trait]
 impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
+    async fn find_published_responses_contexts(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        actor_user_id: Uuid,
+        response_id: &str,
+    ) -> Result<Vec<control_plane_contracts::application_public_runtime::PublishedResponsesContext>>
+    {
+        responses_context::find(
+            self,
+            workspace_id,
+            application_id,
+            api_key_id,
+            actor_user_id,
+            response_id,
+        )
+        .await
+    }
+
     async fn get_published_flow_run(
         &self,
         flow_run_id: Uuid,

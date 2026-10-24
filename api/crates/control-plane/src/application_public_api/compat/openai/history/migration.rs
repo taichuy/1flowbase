@@ -7,7 +7,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use super::{append_digest, History};
+use super::{append_digest, History, HistoryExt};
 
 #[path = "migration/legacy.rs"]
 mod legacy;

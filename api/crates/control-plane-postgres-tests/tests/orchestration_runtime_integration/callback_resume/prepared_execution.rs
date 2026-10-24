@@ -117,9 +117,13 @@ async fn fixture(tool_count: usize) -> Fixture {
         ),
         response_mode: Some("streaming".into()),
     };
-    let (runtime, provider, package) =
-        semantic_runtime::seed_runtime_consumer(&store, &seeded, &compiled, &waiting.checkpoint)
-            .await;
+    let (runtime, provider, package) = semantic_runtime::seed_runtime_consumer(
+        &store,
+        &seeded,
+        &compiled,
+        Some(&waiting.checkpoint),
+    )
+    .await;
     let service = Arc::new(ApplicationPublishedCallbackResumeService::new(
         store.clone(),
         runtime,

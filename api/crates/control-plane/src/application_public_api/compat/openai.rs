@@ -77,6 +77,7 @@ pub struct OpenAiCompatError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenAiPreviousResponseContext {
+    pub history: Option<domain::orchestration::ResponsesHistoryProof>,
     pub provider_continuation: Option<crate::ports::ProviderContinuation>,
     pub response_id: String,
     pub external_user: Option<String>,

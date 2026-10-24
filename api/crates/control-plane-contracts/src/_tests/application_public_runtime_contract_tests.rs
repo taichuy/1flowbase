@@ -76,3 +76,34 @@ fn continuation_transfers_host_history_without_trusting_wire_metadata() {
             .is_none()
     );
 }
+
+#[test]
+fn public_responses_predecessor_contract_is_a_three_field_v3_proof() {
+    use crate::application_public_runtime::PublishedResponsesContext;
+    use domain::orchestration::ResponsesHistoryProof;
+    let proof = ResponsesHistoryProof {
+        version: 3,
+        item_count: 1_000_000,
+        digest: "a".repeat(64),
+    };
+    assert!(proof.validate().is_ok());
+    let encoded = serde_json::to_value(&proof).unwrap();
+    assert_eq!(encoded.as_object().unwrap().len(), 3);
+    assert!(encoded.get("output").is_none());
+    assert!(encoded.get("items").is_none());
+    let context = PublishedResponsesContext {
+        flow_run_id: uuid::Uuid::nil(),
+        status: domain::FlowRunStatus::Succeeded,
+        external_user: None,
+        external_conversation_id: None,
+        answer: None,
+        history: Some(proof.clone()),
+    };
+    assert_eq!(context.history.unwrap(), proof);
+    let mut invalid = proof;
+    invalid.version = 2;
+    assert!(invalid.validate().is_err());
+    invalid.version = 3;
+    invalid.digest.replace_range(0..1, "z");
+    assert!(invalid.validate().is_err());
+}

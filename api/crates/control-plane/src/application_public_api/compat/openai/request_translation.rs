@@ -332,6 +332,18 @@ fn translate_indexed_response_request(
     mut report: TranslationReportBuilder,
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let object = openai_request_object(&request, &mut report)?;
+    if let (Some(requested), Some(previous)) = (
+        object.get("previous_response_id").and_then(Value::as_str),
+        previous_response.as_ref(),
+    ) {
+        if requested != previous.response_id {
+            return Err(OpenAiCompatError::invalid(
+                "previous_response_id",
+                "previous_response_context_mismatch",
+            )
+            .with_report(report));
+        }
+    }
     let mut protocol_context = capture_client_protocol_body(
         ClientProtocolIngressPolicy::OpenAiResponses,
         object,
@@ -523,8 +535,26 @@ fn translate_indexed_response_request(
             ProviderTransportPayload::openai_responses_configuration_digest(&request)
                 .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?,
         );
+        let predecessor = previous_response
+            .as_ref()
+            .and_then(|previous| previous.history.as_ref());
+        if object
+            .get("previous_response_id")
+            .is_some_and(|id| !id.is_null())
+            && predecessor.is_none()
+        {
+            return Err(OpenAiCompatError::invalid(
+                "previous_response_id",
+                "previous_response_history_unavailable",
+            )
+            .with_report(report));
+        }
+        let predecessor = predecessor
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?;
         metadata.set_responses_input_history(
-            super::history::completed_history(&request, None, &[])
+            super::history::completed_history(&request, predecessor.as_ref(), &[])
                 .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?,
         );
     }

@@ -943,9 +943,13 @@ async fn semantic_receipt_conflict_and_crash_retry_preserve_context_and_one_clai
         response_payload: grant.payload().clone(),
         response_mode: Some("streaming".into()),
     };
-    let (runtime, provider, _package) =
-        semantic_runtime::seed_runtime_consumer(&store, &seeded, &compiled, &waiting.checkpoint)
-            .await;
+    let (runtime, provider, _package) = semantic_runtime::seed_runtime_consumer(
+        &store,
+        &seeded,
+        &compiled,
+        Some(&waiting.checkpoint),
+    )
+    .await;
     let service = Arc::new(ApplicationPublishedCallbackResumeService::new(
         store.clone(),
         runtime,
@@ -1179,3 +1183,6 @@ async fn replay_gc_callback_checkpoint_reads_version_locator_and_preserves_legac
         "legacy recovery still receives its complete original snapshot"
     );
 }
+
+#[path = "callback_resume/_tests/public_round_context.rs"]
+mod public_round_context;

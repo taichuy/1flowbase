@@ -6,6 +6,7 @@ use super::*;
 fn issue_2028_native_function_result_inherits_provider_continuation() {
     let body = json!({"model":"fixture","previous_response_id":"resp_public","input":[{"type":"function_call_output","call_id":"call_original","output":"random-result"}]});
     let previous = OpenAiPreviousResponseContext {
+        history: None,
         provider_continuation: Some(
             crate::ports::ProviderContinuation::new(
                 "resp_upstream",
@@ -526,6 +527,7 @@ fn issue_2046_request_index_owns_the_continuation_identity() {
         envelope,
         OpenAiResponsesRequestContext::responses(),
         Some(OpenAiPreviousResponseContext {
+            history: None,
             provider_continuation: Some(
                 crate::ports::ProviderContinuation::new(
                     "resp_round",
@@ -567,4 +569,45 @@ fn openai_text_translation_preserves_nul_and_literal_escape_in_each_content_shap
     .unwrap();
     assert_eq!(mapped.text, text);
     assert_eq!(mapped.content_blocks.unwrap()[0]["text"], json!(text));
+}
+
+#[test]
+fn semantic_cursor_extends_compact_predecessor_without_transcript_materialization() {
+    let first = json!({"model":"fixture", "input":[{"role":"user","content":"first"}]});
+    let prefix = super::super::history::completed_history(&first, None, &[])
+        .unwrap()
+        .unwrap();
+    let previous = OpenAiPreviousResponseContext {
+        history: Some(serde_json::from_value(prefix.clone()).unwrap()),
+        provider_continuation: None,
+        response_id: "resp_first".into(),
+        external_user: None,
+        external_conversation_id: None,
+        answer: Some("prior answer".into()),
+    };
+    let delta = json!({"model":"fixture", "previous_response_id":"resp_first", "input":[{"role":"user","content":"second"}]});
+    let translated = translate_response_request_with_context_and_previous(
+        delta.clone(),
+        OpenAiResponsesRequestContext::responses(),
+        Some(previous.clone()),
+    )
+    .unwrap();
+    let expected = super::super::history::completed_history(&delta, Some(&prefix), &[])
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        translated.request.metadata.responses_input_history(),
+        Some(&expected)
+    );
+    assert_eq!(expected["version"], 3);
+    assert_eq!(expected["item_count"], 2);
+    assert_eq!(expected["digest"].as_str().unwrap().len(), 64);
+    let mut invalid = previous;
+    invalid.history.as_mut().unwrap().version = 2;
+    assert!(translate_response_request_with_context_and_previous(
+        delta,
+        OpenAiResponsesRequestContext::responses(),
+        Some(invalid),
+    )
+    .is_err());
 }

@@ -822,6 +822,7 @@ fn d6_ac_001_mcp_approval_response_remains_opaque_with_provider_continuation() {
         }),
         OpenAiResponsesRequestContext::responses(),
         Some(OpenAiPreviousResponseContext {
+            history: None,
             provider_continuation: None,
             response_id: "resp_provider_owned".to_string(),
             external_user: None,
@@ -939,14 +940,15 @@ fn ac_003_native_responses_replay_preserves_opaque_item_identity_without_semanti
 }
 
 #[test]
-fn ac_002_previous_response_id_is_accepted_for_route_context_resolution() {
-    let translated = translate_response_request(json!({
+fn semantic_previous_response_id_requires_verified_predecessor_proof() {
+    let error = translate_response_request(json!({
         "model": "deepseek-v4-flash",
         "input": [{"role": "user", "content": [{"type": "input_text", "text": "Continue"}]}],
         "previous_response_id": "resp_11111111-1111-1111-1111-111111111111"
     }))
-    .expect("previous_response_id should be accepted");
-    assert_eq!(translated.request.query, "Continue");
+    .expect_err("a semantic delta cannot invent a predecessor proof");
+    assert_eq!(error.param.as_deref(), Some("previous_response_id"));
+    assert_eq!(error.message, "previous_response_history_unavailable");
 }
 
 #[path = "_tests/chat_reasoning_content.rs"]

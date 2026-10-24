@@ -1,6 +1,6 @@
 use super::*;
 use crate::application_public_api::callback_resume;
-use serde_json::json;
+use serde_json::{json, Value};
 
 #[async_trait]
 impl ApplicationJsDependencySelectionRepository for ApplicationPublicApiTestRepository {
@@ -360,6 +360,84 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
 
 #[async_trait]
 impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublicApiTestRepository {
+    async fn find_published_responses_contexts(
+        &self,
+        _workspace_id: Uuid,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        actor_user_id: Uuid,
+        response_id: &str,
+    ) -> Result<Vec<control_plane_contracts::application_public_runtime::PublishedResponsesContext>>
+    {
+        let inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        let scoped = |run: &&domain::FlowRunRecord| {
+            run.application_id == application_id
+                && run.api_key_id == Some(api_key_id)
+                && run.created_by == actor_user_id
+                && run.run_mode == domain::FlowRunMode::PublishedApiRun
+        };
+        let mut rounds = Vec::new();
+        for callback in inner.callback_tasks.values() {
+            let Some(run) = inner.flow_runs.get(&callback.flow_run_id).filter(scoped) else {
+                continue;
+            };
+            let proof = if callback
+                .request_payload
+                .pointer("/responses_round/response_id")
+                .and_then(Value::as_str)
+                == Some(response_id)
+            {
+                callback.request_payload.pointer("/responses_round/history")
+            } else if callback
+                .request_payload
+                .pointer("/provider_metadata/native_response/response_id")
+                .and_then(Value::as_str)
+                == Some(response_id)
+            {
+                callback
+                    .request_payload
+                    .pointer("/provider_metadata/native_response/history")
+            } else {
+                continue;
+            };
+            rounds.push((run, proof));
+        }
+        if rounds.is_empty() {
+            for run in inner.flow_runs.values().filter(scoped) {
+                if format!("resp_{}", run.id) != response_id
+                    && run
+                        .output_payload
+                        .pointer("/responses_round/response_id")
+                        .and_then(Value::as_str)
+                        != Some(response_id)
+                {
+                    continue;
+                }
+                let proof = (run
+                    .output_payload
+                    .pointer("/responses_round/response_id")
+                    .and_then(Value::as_str)
+                    == Some(response_id))
+                .then(|| run.output_payload.pointer("/responses_round/history"))
+                .flatten();
+                rounds.push((run, proof));
+            }
+        }
+        rounds.into_iter().map(|(run, proof)| {
+            let history = proof.filter(|v| !v.is_null()).cloned()
+                .map(serde_json::from_value::<domain::orchestration::ResponsesHistoryProof>).transpose()?;
+            if let Some(proof) = &history { proof.validate().map_err(anyhow::Error::msg)?; }
+            Ok(control_plane_contracts::application_public_runtime::PublishedResponsesContext {
+                flow_run_id: run.id, status: run.status,
+                external_user: run.external_user.clone(), external_conversation_id: run.external_conversation_id.clone(),
+                answer: run.output_payload.get("answer").and_then(Value::as_str).map(str::to_owned), history,
+            })
+        }).collect()
+    }
+
     async fn get_published_flow_run(
         &self,
         flow_run_id: Uuid,

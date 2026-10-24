@@ -140,12 +140,12 @@ fn responses_usage_details_unary_preserves_totals_and_default() {
 
 #[test]
 fn issue_2048_cancelled_previous_response_status_is_not_continuable() {
-    let error = ensure_previous_response_is_usable(&blocking_run(NativeRunStatus::Cancelled))
+    let error = ensure_previous_response_is_usable(domain::FlowRunStatus::Cancelled)
         .expect_err("a superseded response must fail before capsule lookup");
     let response = error.into_response();
 
     assert_eq!(response.status(), StatusCode::CONFLICT);
-    assert!(ensure_previous_response_is_usable(&blocking_run(NativeRunStatus::Succeeded)).is_ok());
+    assert!(ensure_previous_response_is_usable(domain::FlowRunStatus::Succeeded).is_ok());
 }
 
 #[test]

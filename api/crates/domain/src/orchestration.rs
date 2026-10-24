@@ -1,5 +1,7 @@
 mod responses_continuation;
-pub use responses_continuation::{ResponsesContinuation, ResponsesRoundEvidence};
+pub use responses_continuation::{
+    ResponsesContinuation, ResponsesHistoryProof, ResponsesRoundEvidence,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use time::OffsetDateTime;

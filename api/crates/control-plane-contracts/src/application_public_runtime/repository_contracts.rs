@@ -273,8 +273,30 @@ pub struct PublishedRunStreamState {
     pub latest_pending_callback: Option<PublishedRunPendingCallback>,
 }
 
+/// Bounded predecessor projection. It intentionally excludes request/output payloads,
+/// tool results, raw JSON originals, and Responses output item arrays.
+#[derive(Debug, Clone)]
+pub struct PublishedResponsesContext {
+    pub flow_run_id: Uuid,
+    pub status: domain::FlowRunStatus,
+    pub external_user: Option<String>,
+    pub external_conversation_id: Option<String>,
+    pub answer: Option<String>,
+    pub history: Option<domain::orchestration::ResponsesHistoryProof>,
+}
+
 #[async_trait]
 pub trait ApplicationPublishedRunControlRepository: Send + Sync {
+    /// Scoped exact public round lookup; multiple rows are an ambiguity, never a winner.
+    async fn find_published_responses_contexts(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        actor_user_id: Uuid,
+        response_id: &str,
+    ) -> Result<Vec<PublishedResponsesContext>>;
+
     async fn get_published_flow_run(
         &self,
         flow_run_id: Uuid,

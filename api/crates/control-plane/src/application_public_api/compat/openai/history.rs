@@ -1,6 +1,5 @@
 //! Ordered proof of the complete Responses history. Only current-format hashes are persisted.
 use anyhow::{ensure, Result};
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
@@ -21,15 +20,15 @@ fn normalize_item(item: &Value) -> Result<Value> {
     canonical::normalize_item(item)
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct History {
-    version: u32,
-    item_count: usize,
-    digest: String,
+type History = domain::orchestration::ResponsesHistoryProof;
+
+trait HistoryExt: Sized {
+    fn empty() -> Self;
+    fn parse(value: &Value) -> Result<Self>;
+    fn append(&mut self, item: &Value) -> Result<()>;
 }
 
-impl History {
+impl HistoryExt for History {
     fn empty() -> Self {
         Self {
             version: CURRENT_VERSION,
@@ -45,14 +44,7 @@ impl History {
         ensure!(!value.is_null(), "native_history_evidence_missing");
         let history: Self = serde_json::from_value(value.clone())
             .map_err(|_| anyhow::anyhow!("native_history_evidence_invalid"))?;
-        ensure!(
-            history.digest.len() == 64 && history.digest.bytes().all(|c| c.is_ascii_hexdigit()),
-            "native_history_evidence_invalid"
-        );
-        ensure!(
-            history.version == CURRENT_VERSION,
-            "native_history_version_unsupported"
-        );
+        history.validate().map_err(anyhow::Error::msg)?;
         Ok(history)
     }
 

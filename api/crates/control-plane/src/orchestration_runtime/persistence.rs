@@ -388,6 +388,17 @@ where
             }
             let mut snapshot = snapshot.clone();
             if wait.callback_kind == "llm_tool_calls" {
+                if responses_round.is_none()
+                    && flow_run
+                        .input_payload
+                        .pointer("/sys/responses_configuration_digest")
+                        .is_some()
+                    && request_payload
+                        .pointer("/provider_metadata/native_response")
+                        .is_none()
+                {
+                    return Err(anyhow!("responses_history_evidence_missing"));
+                }
                 if let Some((round_id, prefix)) = &responses_round {
                     let output = match answer_presentation {
                         Some(cursor) => cursor.lock().await.responses_output(flow_run.id),

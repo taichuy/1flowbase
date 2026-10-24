@@ -21,6 +21,8 @@ pub(super) struct PausedProvider {
     pub release: Arc<tokio::sync::Semaphore>,
     pub inputs: Arc<Mutex<Vec<ProviderInvocationInput>>>,
     pub executions: Arc<AtomicUsize>,
+    pub transport_store: Arc<storage_ephemeral::MemoryProviderTransportStore>,
+    pub results: Arc<Mutex<std::collections::VecDeque<ProviderInvocationResult>>>,
 }
 impl PausedProvider {
     pub fn new() -> Self {
@@ -29,6 +31,10 @@ impl PausedProvider {
             release: Arc::new(tokio::sync::Semaphore::new(0)),
             inputs: Arc::new(Mutex::new(vec![])),
             executions: Arc::new(AtomicUsize::new(0)),
+            transport_store: Arc::new(storage_ephemeral::MemoryProviderTransportStore::new(
+                Duration::minutes(5),
+            )),
+            results: Arc::new(Mutex::new(std::collections::VecDeque::new())),
         }
     }
     pub async fn wait_until_entered(&self) {
@@ -80,11 +86,13 @@ impl ProviderRuntimePort for PausedProvider {
         self.executions.fetch_add(1, Ordering::SeqCst);
         Ok(ProviderRuntimeInvocationOutput {
             events: vec![],
-            result: ProviderInvocationResult {
-                final_content: Some("recovered".into()),
-                finish_reason: Some(ProviderFinishReason::Stop),
-                ..Default::default()
-            },
+            result: self.results.lock().unwrap().pop_front().unwrap_or_else(|| {
+                ProviderInvocationResult {
+                    final_content: Some("recovered".into()),
+                    finish_reason: Some(ProviderFinishReason::Stop),
+                    ..Default::default()
+                }
+            }),
         })
     }
 }
@@ -124,7 +132,7 @@ pub(super) async fn seed_runtime_consumer(
     store: &PgControlPlaneStore,
     seeded: &RuntimeSeedState,
     compiled: &domain::CompiledPlanRecord,
-    checkpoint: &domain::CheckpointRecord,
+    checkpoint: Option<&domain::CheckpointRecord>,
 ) -> (
     control_plane::orchestration_runtime::OrchestrationRuntimeService<
         PgControlPlaneStore,
@@ -264,25 +272,25 @@ pub(super) async fn seed_runtime_consumer(
         .execute(store.pool())
         .await
         .unwrap();
-    let snapshot = json!({"node-llm":{"__llm_tool_callback":{"callback_kind":"llm_tool_calls","pending_tool_calls":[{"id":"call-1-0","name":"Bash","arguments":{"command":"step-1-0"}}],"system":[],"history":[{"role":"user","content":"original"},{"role":"assistant","content":"","tool_calls":[{"id":"call-1-0","name":"Bash","arguments":{"command":"step-1-0"}}]}]}}});
-    sqlx::query(
-        "update flow_run_checkpoints set locator_payload=$2, variable_snapshot=$3 where id=$1",
-    )
-    .bind(checkpoint.id)
-    .bind(json!({"node_id":"node-llm","next_node_index":0,"active_node_ids":["node-llm"]}))
-    .bind(snapshot)
-    .execute(store.pool())
-    .await
-    .unwrap();
+    if let Some(checkpoint) = checkpoint {
+        let snapshot = json!({"node-llm":{"__llm_tool_callback":{"callback_kind":"llm_tool_calls","pending_tool_calls":[{"id":"call-1-0","name":"Bash","arguments":{"command":"step-1-0"}}],"system":[],"history":[{"role":"user","content":"original"},{"role":"assistant","content":"","tool_calls":[{"id":"call-1-0","name":"Bash","arguments":{"command":"step-1-0"}}]}]}}});
+        sqlx::query(
+            "update flow_run_checkpoints set locator_payload=$2, variable_snapshot=$3 where id=$1",
+        )
+        .bind(checkpoint.id)
+        .bind(json!({"node_id":"node-llm","next_node_index":0,"active_node_ids":["node-llm"]}))
+        .bind(snapshot)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    }
     let provider = PausedProvider::new();
     let runtime = control_plane::orchestration_runtime::OrchestrationRuntimeService::new(
         store.clone(),
         provider.clone(),
         Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
         "fixture-key",
-        Arc::new(storage_ephemeral::MemoryProviderTransportStore::new(
-            Duration::minutes(5),
-        )),
+        provider.transport_store.clone(),
         false,
     )
     .with_node_artifact_context("semantic-fixture", root.0.clone());
