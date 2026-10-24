@@ -185,3 +185,91 @@ fn native_plan_fields_and_visibility_follow_sources_but_not_role_codes() {
         ]
     );
 }
+
+#[test]
+fn native_identity_fields_choose_first_or_match_and_read_prior_writes() {
+    let field = |id, code: &str| {
+        serde_json::from_value::<PortableModelField>(json!({
+            "id":Uuid::from_u128(id), "code":code, "title":"Field", "field_kind":"string",
+            "is_system":false, "is_required":false, "api_required":false, "is_unique":false,
+            "display_options":{}, "relation_options":{}
+        }))
+        .unwrap()
+    };
+    let mut target = snapshot();
+    let mut builtin = model(2, "builtin");
+    builtin.builtin = true;
+    builtin.fields = vec![field(11, "early"), field(12, "late"), field(13, "early")];
+    // A non-builtin code match must not hide the later builtin match.
+    target.data_models = vec![model(1, "builtin"), builtin.clone(), model(2, "duplicate")];
+    let mut source = snapshot();
+    builtin.id = Uuid::from_u128(3);
+    builtin.fields = vec![field(12, "early"), field(12, "absent")];
+    source.data_models = vec![builtin.clone(), builtin];
+    let mut ids = BTreeMap::new();
+    map_existing_template_identities(&source, &target, &mut ids);
+    assert_eq!(
+        ids,
+        BTreeMap::from([
+            (
+                Uuid::from_u128(3).to_string(),
+                Uuid::from_u128(2).to_string()
+            ),
+            (
+                Uuid::from_u128(12).to_string(),
+                Uuid::from_u128(11).to_string()
+            ),
+        ])
+    );
+}
+
+#[test]
+fn native_identity_default_tabs_preserve_first_match_and_mapping_presence() {
+    let mut source = snapshot();
+    source.pages = vec![group(1, None)];
+    let mut source_tab = tab();
+    source_tab.id = Uuid::from_u128(21);
+    source_tab.document_root_uid = "source-root".into();
+    source_tab.blocks[0].code_ref = "source-code".into();
+    source_tab.blocks[0].runtime_descriptor = json!({
+        "contribution":{"pluginId":"p", "pluginVersion":"1", "code":"c"},
+        "catalog":{"installationId":"source-install"}
+    });
+    source.pages[0].tabs.push(source_tab);
+    let mut target = source.clone();
+    target.pages[0].tabs[0].id = Uuid::from_u128(20);
+    target.pages[0].tabs[0].document_root_uid = "target-root".into();
+    target.pages[0].tabs[0].blocks[0].code_ref = "target-code".into();
+    target.pages[0].tabs[0].blocks[0].runtime_descriptor["catalog"]["installationId"] =
+        json!("target-install");
+    let mut duplicate = target.pages[0].tabs[0].clone();
+    duplicate.document_root_uid = "wrong-root".into();
+    target.pages[0].tabs.push(duplicate);
+    source.pages.push(source.pages[0].clone());
+
+    let mut ids = BTreeMap::from([(Uuid::from_u128(21).to_string(), "invalid-uuid".into())]);
+    map_existing_template_identities(&source, &target, &mut ids);
+    assert!(!ids.contains_key("source-root"));
+    ids.clear();
+    map_existing_template_identities(&source, &target, &mut ids);
+    assert_eq!(
+        ids.get("source-root").map(String::as_str),
+        Some("target-root")
+    );
+    assert_eq!(
+        ids.get("source-code").map(String::as_str),
+        Some("target-code")
+    );
+    assert_eq!(
+        ids.get("source-install").map(String::as_str),
+        Some("target-install")
+    );
+    assert_eq!(
+        ids.get(&Uuid::from_u128(21).to_string()),
+        Some(&Uuid::from_u128(20).to_string())
+    );
+    ids.clear();
+    target.pages[0].tabs[0].blocks[0].runtime_descriptor["contribution"]["code"] = json!("other");
+    map_existing_template_identities(&source, &target, &mut ids);
+    assert!(!ids.contains_key("source-install"));
+}

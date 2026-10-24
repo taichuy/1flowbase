@@ -29,6 +29,15 @@ pub fn template_baseline_scope(
     }
 }
 
+// Ordinals preserve the original first-match rule, including ID-or-code lookups.
+fn first_ordinals<'a, T, K: Ord>(items: &'a [T], key: impl Fn(&'a T) -> K) -> BTreeMap<K, usize> {
+    let mut index = BTreeMap::new();
+    for (ordinal, item) in items.iter().enumerate() {
+        index.entry(key(item)).or_insert(ordinal);
+    }
+    index
+}
+
 /// Reconstruct references to generated roots, code artifacts and flow IDs from the
 /// authenticated snapshot; this maps identity only and does not adopt any baseline.
 pub fn map_existing_template_identities(
@@ -41,45 +50,79 @@ pub fn map_existing_template_identities(
             .and_then(|v| v.parse().ok())
             .unwrap_or(id)
     };
+    let model_ids = first_ordinals(&target.data_models, |m| m.id);
+    let mut builtin_codes = BTreeMap::new();
+    for (ordinal, model) in target.data_models.iter().enumerate() {
+        if model.builtin {
+            builtin_codes.entry(model.code.as_str()).or_insert(ordinal);
+        }
+    }
+    let fields: Vec<_> = target
+        .data_models
+        .iter()
+        .map(|model| {
+            (
+                first_ordinals(&model.fields, |f| f.id),
+                first_ordinals(&model.fields, |f| f.code.as_str()),
+            )
+        })
+        .collect();
+    let page_ids = first_ordinals(&target.pages, |p| p.id);
+    let tabs: Vec<_> = target
+        .pages
+        .iter()
+        .map(|page| {
+            (
+                first_ordinals(&page.tabs, |t| t.id),
+                page.tabs.iter().position(|t| t.is_default),
+                page.tabs
+                    .iter()
+                    .map(|tab| first_ordinals(&tab.blocks, |b| b.block_id.as_str()))
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    let application_ids = first_ordinals(&target.applications, |a| a.id);
     for model in &package.data_models {
-        let existing = target.data_models.iter().find(|item| {
-            if model.builtin {
-                item.builtin && item.code == model.code
-            } else {
-                item.id == mapped(identities, model.id)
-            }
-        });
-        if let Some(existing) = existing {
+        let ordinal = if model.builtin {
+            builtin_codes.get(model.code.as_str())
+        } else {
+            model_ids.get(&mapped(identities, model.id))
+        };
+        if let Some(&ordinal) = ordinal {
+            let existing = &target.data_models[ordinal];
+            let (field_ids, field_codes) = &fields[ordinal];
             identities.insert(model.id.to_string(), existing.id.to_string());
             for field in &model.fields {
-                if let Some(current) = existing
-                    .fields
-                    .iter()
-                    .find(|item| item.id == mapped(identities, field.id) || item.code == field.code)
-                {
+                let ordinal = field_ids
+                    .get(&mapped(identities, field.id))
+                    .into_iter()
+                    .chain(field_codes.get(field.code.as_str()))
+                    .min();
+                if let Some(&ordinal) = ordinal {
+                    let current = &existing.fields[ordinal];
                     identities.insert(field.id.to_string(), current.id.to_string());
                 }
             }
         }
     }
     for page in &package.pages {
-        if let Some(existing) = target
-            .pages
-            .iter()
-            .find(|item| item.id == mapped(identities, page.id))
-        {
+        if let Some(&ordinal) = page_ids.get(&mapped(identities, page.id)) {
+            let existing = &target.pages[ordinal];
+            let (tab_ids, default_tab, blocks) = &tabs[ordinal];
             identities.insert(page.id.to_string(), existing.id.to_string());
             for tab in &page.tabs {
-                let current = existing
-                    .tabs
-                    .iter()
-                    .find(|item| item.id == mapped(identities, tab.id))
+                let ordinal = tab_ids
+                    .get(&mapped(identities, tab.id))
+                    .copied()
                     .or_else(|| {
                         (tab.is_default && !identities.contains_key(&tab.id.to_string()))
-                            .then(|| existing.tabs.iter().find(|t| t.is_default))
+                            .then_some(*default_tab)
                             .flatten()
                     });
-                if let Some(current) = current {
+                if let Some(ordinal) = ordinal {
+                    let current = &existing.tabs[ordinal];
+                    let block_ids = &blocks[ordinal];
                     identities.insert(tab.id.to_string(), current.id.to_string());
                     identities.insert(
                         tab.document_root_uid.clone(),
@@ -87,9 +130,8 @@ pub fn map_existing_template_identities(
                     );
                     for block in &tab.blocks {
                         let id = identities.get(&block.block_id).unwrap_or(&block.block_id);
-                        if let Some(current_block) =
-                            current.blocks.iter().find(|b| &b.block_id == id)
-                        {
+                        if let Some(&ordinal) = block_ids.get(id.as_str()) {
+                            let current_block = &current.blocks[ordinal];
                             identities
                                 .insert(block.block_id.clone(), current_block.block_id.clone());
                             identities
@@ -122,11 +164,8 @@ pub fn map_existing_template_identities(
         }
     }
     for app in &package.applications {
-        if let Some(existing) = target
-            .applications
-            .iter()
-            .find(|item| item.id == mapped(identities, app.id))
-        {
+        if let Some(&ordinal) = application_ids.get(&mapped(identities, app.id)) {
+            let existing = &target.applications[ordinal];
             identities.insert(app.id.to_string(), existing.id.to_string());
             if let Some(target_flow) = existing
                 .flow_document
