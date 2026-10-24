@@ -542,8 +542,8 @@ async fn compact_previous_context_reads_exact_round_without_large_payloads() {
     ).expect("a native predecessor's compact public proof also supports the semantic successor");
     // Historical callback proof takes precedence over mutable flow/native output.
     let callback_id = Uuid::now_v7();
-    sqlx::query("insert into flow_run_callback_tasks(id,flow_run_id,node_run_id,callback_kind,status,request_payload) values($1,$2,$3,'llm_tool_calls','pending',$4)")
-        .bind(callback_id).bind(run.id).bind(node.id).bind(json!({"responses_round":{"response_id":response_id,"history":proof,"output":[]}})).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into flow_run_callback_tasks(id,flow_run_id,node_run_id,callback_kind,status,request_payload,scope_id) values($1,$2,$3,'llm_tool_calls','pending',$4,$5)")
+        .bind(callback_id).bind(run.id).bind(node.id).bind(json!({"responses_round":{"response_id":response_id,"history":proof,"output":[]}})).bind(seeded.workspace_id).execute(store.pool()).await.unwrap();
     sqlx::query("update node_run_records set output_payload='{}'::jsonb where id=$1")
         .bind(node.id)
         .execute(store.pool())
@@ -561,7 +561,7 @@ async fn compact_previous_context_reads_exact_round_without_large_payloads() {
     );
     sqlx::query("update flow_run_callback_tasks set request_payload=jsonb_set(request_payload, '{responses_round,history,version}', '3'::jsonb) where id=$1")
         .bind(callback_id).execute(store.pool()).await.unwrap();
-    sqlx::query("insert into flow_run_callback_tasks(id,flow_run_id,node_run_id,callback_kind,status,request_payload) select $2,flow_run_id,node_run_id,callback_kind,status,request_payload from flow_run_callback_tasks where id=$1")
+    sqlx::query("insert into flow_run_callback_tasks(id,flow_run_id,node_run_id,callback_kind,status,request_payload,scope_id) select $2,flow_run_id,node_run_id,callback_kind,status,request_payload,scope_id from flow_run_callback_tasks where id=$1")
         .bind(callback_id).bind(Uuid::now_v7()).execute(store.pool()).await.unwrap();
     assert_eq!(
         lookup().await.unwrap().len(),
