@@ -1,4 +1,5 @@
 use super::*;
+use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 pub(crate) fn native_kind(kind: &str) -> bool {
@@ -50,50 +51,41 @@ pub fn map_existing_template_identities(
             .and_then(|v| v.parse().ok())
             .unwrap_or(id)
     };
-    let model_ids = first_ordinals(&target.data_models, |m| m.id);
-    let mut builtin_codes = BTreeMap::new();
-    for (ordinal, model) in target.data_models.iter().enumerate() {
-        if model.builtin {
-            builtin_codes.entry(model.code.as_str()).or_insert(ordinal);
-        }
-    }
-    let fields: Vec<_> = target
-        .data_models
-        .iter()
-        .map(|model| {
-            (
-                first_ordinals(&model.fields, |f| f.id),
-                first_ordinals(&model.fields, |f| f.code.as_str()),
-            )
-        })
-        .collect();
-    let page_ids = first_ordinals(&target.pages, |p| p.id);
-    let tabs: Vec<_> = target
-        .pages
-        .iter()
-        .map(|page| {
-            (
-                first_ordinals(&page.tabs, |t| t.id),
-                page.tabs.iter().position(|t| t.is_default),
-                page.tabs
-                    .iter()
-                    .map(|tab| first_ordinals(&tab.blocks, |b| b.block_id.as_str()))
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .collect();
-    let application_ids = first_ordinals(&target.applications, |a| a.id);
+    let model_ids = OnceCell::new();
+    let builtin_codes = OnceCell::new();
+    let page_ids = OnceCell::new();
+    let application_ids = OnceCell::new();
+    let mut fields = BTreeMap::new();
+    let mut tabs = BTreeMap::new();
+    let mut blocks = BTreeMap::new();
     for model in &package.data_models {
         let ordinal = if model.builtin {
-            builtin_codes.get(model.code.as_str())
+            builtin_codes
+                .get_or_init(|| {
+                    let mut index = BTreeMap::new();
+                    for (ordinal, model) in target.data_models.iter().enumerate() {
+                        if model.builtin {
+                            index.entry(model.code.as_str()).or_insert(ordinal);
+                        }
+                    }
+                    index
+                })
+                .get(model.code.as_str())
         } else {
-            model_ids.get(&mapped(identities, model.id))
+            model_ids
+                .get_or_init(|| first_ordinals(&target.data_models, |m| m.id))
+                .get(&mapped(identities, model.id))
         };
         if let Some(&ordinal) = ordinal {
             let existing = &target.data_models[ordinal];
-            let (field_ids, field_codes) = &fields[ordinal];
             identities.insert(model.id.to_string(), existing.id.to_string());
             for field in &model.fields {
+                let (field_ids, field_codes) = fields.entry(ordinal).or_insert_with(|| {
+                    (
+                        first_ordinals(&existing.fields, |f| f.id),
+                        first_ordinals(&existing.fields, |f| f.code.as_str()),
+                    )
+                });
                 let ordinal = field_ids
                     .get(&mapped(identities, field.id))
                     .into_iter()
@@ -107,11 +99,19 @@ pub fn map_existing_template_identities(
         }
     }
     for page in &package.pages {
-        if let Some(&ordinal) = page_ids.get(&mapped(identities, page.id)) {
-            let existing = &target.pages[ordinal];
-            let (tab_ids, default_tab, blocks) = &tabs[ordinal];
+        if let Some(&page_ordinal) = page_ids
+            .get_or_init(|| first_ordinals(&target.pages, |p| p.id))
+            .get(&mapped(identities, page.id))
+        {
+            let existing = &target.pages[page_ordinal];
             identities.insert(page.id.to_string(), existing.id.to_string());
             for tab in &page.tabs {
+                let (tab_ids, default_tab) = tabs.entry(page_ordinal).or_insert_with(|| {
+                    (
+                        first_ordinals(&existing.tabs, |t| t.id),
+                        existing.tabs.iter().position(|t| t.is_default),
+                    )
+                });
                 let ordinal = tab_ids
                     .get(&mapped(identities, tab.id))
                     .copied()
@@ -122,13 +122,16 @@ pub fn map_existing_template_identities(
                     });
                 if let Some(ordinal) = ordinal {
                     let current = &existing.tabs[ordinal];
-                    let block_ids = &blocks[ordinal];
                     identities.insert(tab.id.to_string(), current.id.to_string());
                     identities.insert(
                         tab.document_root_uid.clone(),
                         current.document_root_uid.clone(),
                     );
                     for block in &tab.blocks {
+                        let block_ids =
+                            blocks.entry((page_ordinal, ordinal)).or_insert_with(|| {
+                                first_ordinals(&current.blocks, |b| b.block_id.as_str())
+                            });
                         let id = identities.get(&block.block_id).unwrap_or(&block.block_id);
                         if let Some(&ordinal) = block_ids.get(id.as_str()) {
                             let current_block = &current.blocks[ordinal];
@@ -164,7 +167,10 @@ pub fn map_existing_template_identities(
         }
     }
     for app in &package.applications {
-        if let Some(&ordinal) = application_ids.get(&mapped(identities, app.id)) {
+        if let Some(&ordinal) = application_ids
+            .get_or_init(|| first_ordinals(&target.applications, |a| a.id))
+            .get(&mapped(identities, app.id))
+        {
             let existing = &target.applications[ordinal];
             identities.insert(app.id.to_string(), existing.id.to_string());
             if let Some(target_flow) = existing
