@@ -374,3 +374,156 @@ fn compile_if_else_rejects_multiple_else_branches() {
         .to_string()
         .contains("if_else node node-if must include only one else branch"));
 }
+
+#[test]
+fn compile_topology_preserves_document_rank_and_duplicate_edge_queue_order() {
+    let mut document = branch_document(Uuid::nil());
+    let edges = document["graph"]["edges"].as_array_mut().unwrap();
+    edges.swap(1, 2);
+    let mut duplicate = edges[1].clone();
+    duplicate["id"] = json!("duplicate-else");
+    edges.push(duplicate);
+
+    let plan = FlowCompiler::compile(Uuid::nil(), "stable", &document, &compile_context()).unwrap();
+    assert_eq!(
+        plan.nodes["node-if"].downstream_node_ids,
+        ["node-answer-if", "node-answer-else"]
+    );
+    assert_eq!(
+        plan.nodes["node-answer-else"].dependency_node_ids,
+        ["node-if"]
+    );
+    assert_eq!(
+        plan.topological_order,
+        [
+            "node-start",
+            "node-if",
+            "node-answer-if",
+            "node-answer-else"
+        ]
+    );
+    assert_eq!(
+        plan.edges
+            .iter()
+            .map(|edge| edge.edge_id.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "edge-start-if",
+            "edge-else-answer",
+            "edge-if-answer",
+            "duplicate-else"
+        ]
+    );
+}
+
+fn indexed_visible_tool_document() -> Value {
+    let mut document = sample_document(Uuid::nil());
+    let mut nested = document["graph"]["nodes"][1].clone();
+    nested["id"] = json!("root-a");
+    nested["config"]["visible_internal_llm_tools_enabled"] = json!(true);
+    nested["config"]["visible_internal_llm_tools"] = json!([{
+        "type": "visible_internal_llm_tool", "connector_id": "nested"
+    }]);
+    document["graph"]["nodes"][1]["config"]["visible_internal_llm_tools_enabled"] = json!(true);
+    document["graph"]["nodes"][1]["config"]["visible_internal_llm_tools"] = json!([{
+        "type": "visible_internal_llm_tool", "connector_id": "panel", "tool_mode": "fusion",
+        "internal_llm_node_policy": "allowed"
+    }]);
+    let mut after_result = document["graph"]["nodes"][1].clone();
+    after_result["id"] = json!("after-result");
+    after_result["config"]["visible_internal_llm_tools_enabled"] = json!(false);
+    let nodes = document["graph"]["nodes"].as_array_mut().unwrap();
+    nodes.push(nested);
+    nodes.push(
+        json!({"id":"root-b", "type":"template_transform", "alias":"Root B",
+        "containerId":null, "config":{"error_policy":"error_branch"},
+        "bindings":{}, "outputs":[]}),
+    );
+    for id in ["shared-result", "excluded-result"] {
+        nodes.push(
+            json!({"id":id, "type":"tool_result", "alias":id, "containerId":null,
+            "config":{}, "bindings":{"result_template":{"kind":"templated_text","value":"ok"}},
+            "outputs":[{"key":"result","title":"Result","valueType":"string"}]}),
+        );
+    }
+    nodes.push(after_result);
+    let edges = document["graph"]["edges"].as_array_mut().unwrap();
+    for (index, target) in ["root-b", "root-a", "root-b"].into_iter().enumerate() {
+        edges.push(
+            json!({"id":format!("panel-{index}"),"source":"node-llm","target":target,
+            "sourceHandle":"visible_internal_llm_tool:panel"}),
+        );
+    }
+    for (index, (source, target, handle)) in [
+        ("root-a", "shared-result", None),
+        ("root-b", "shared-result", None),
+        (
+            "root-b",
+            "excluded-result",
+            Some(ERROR_BRANCH_SOURCE_HANDLE),
+        ),
+        (
+            "root-a",
+            "excluded-result",
+            Some("visible_internal_llm_tool:nested"),
+        ),
+        ("shared-result", "after-result", None),
+        ("after-result", "excluded-result", None),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        edges.push(
+            json!({"id":format!("branch-{index}"),"source":source,"target":target,
+            "sourceHandle":handle}),
+        );
+    }
+    document
+}
+
+#[test]
+fn compile_visible_tool_index_preserves_fusion_targets_and_branch_boundaries() {
+    let document = indexed_visible_tool_document();
+    let plan =
+        FlowCompiler::compile(Uuid::nil(), "indexed", &document, &compile_context()).unwrap();
+    assert!(plan.compile_issues.is_empty(), "{:?}", plan.compile_issues);
+    let tool = &plan.nodes["node-llm"].config["visible_internal_llm_tools"][0];
+    assert_eq!(tool["target_node_id"], json!("root-b"));
+    assert_eq!(
+        tool["target_node_ids"],
+        json!(["root-b", "root-a", "root-b"])
+    );
+    assert_eq!(
+        plan.nodes["shared-result"].dependency_node_ids,
+        ["root-a", "root-b"]
+    );
+}
+
+#[test]
+fn compile_visible_tool_index_preserves_duplicate_agent_and_complete_branch_issues() {
+    for (mode, messages) in [
+        ("agent", vec![
+            "node node-llm visible_internal_llm_tool connector panel has multiple graph edges",
+        ]),
+        ("fusion", vec![
+            "node node-llm visible_internal_llm_tool connector panel has multiple reachable tool_result nodes",
+            "node node-llm visible_internal_llm_tool connector panel reaches LLM node root-a without internal_llm_node_policy allowed",
+        ]),
+    ] {
+        let mut document = indexed_visible_tool_document();
+        let tool = &mut document["graph"]["nodes"][1]["config"]["visible_internal_llm_tools"][0];
+        tool["tool_mode"] = json!(mode);
+        tool["internal_llm_node_policy"] = json!("forbidden");
+        // Ordinary instead of error edge: two results and root-a's LLM become reachable.
+        let edges = document["graph"]["edges"].as_array_mut().unwrap();
+        edges.iter_mut().find(|edge| edge["id"] == "branch-2").unwrap()["sourceHandle"] = Value::Null;
+        let plan = FlowCompiler::compile(Uuid::nil(), mode, &document, &compile_context()).unwrap();
+        assert_eq!(plan.compile_issues.len(), messages.len());
+        for (issue, message) in plan.compile_issues.iter().zip(messages) {
+            assert_eq!(issue.node_id, "node-llm");
+            assert_eq!(issue.code, CompileIssueCode::InvalidVisibleInternalLlmTool);
+            assert_eq!(issue.field_path, None);
+            assert_eq!(issue.message, message);
+        }
+    }
+}
