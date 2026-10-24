@@ -601,41 +601,34 @@ where
         workspace_id: Uuid,
         provider_code: &str,
     ) -> Result<domain::PluginInstallationRecord> {
-        let family = self
-            .repository
-            .list_installations()
-            .await?
-            .into_iter()
-            .filter(|i| i.provider_code == provider_code)
-            .collect::<Vec<_>>();
-        let native = family
+        let mut family = self.repository.list_installations().await?;
+        family.retain(|installation| installation.provider_code == provider_code);
+        let mut native = family
             .iter()
             .filter(|installation| is_host_extension_installation(installation))
-            .cloned()
-            .collect::<Vec<_>>();
-        if !native.is_empty() {
+            .peekable();
+        if native.peek().is_some() {
             let targets = self.repository.list_native_plugin_targets().await?;
-            let matches = targets
-                .into_iter()
-                .filter(|t| t.artifact_id == provider_code)
-                .collect::<Vec<_>>();
-            if matches.len() != 1 {
+            let mut matches = targets
+                .iter()
+                .filter(|target| target.artifact_id == provider_code);
+            let (Some(target), None) = (matches.next(), matches.next()) else {
                 return Err(ControlPlaneError::Conflict("native_plugin_selection_required").into());
-            }
+            };
             return native
-                .into_iter()
-                .find(|i| i.id == matches[0].installation_id)
+                .find(|installation| installation.id == target.installation_id)
+                .cloned()
                 .ok_or_else(|| ControlPlaneError::NotFound("native_plugin_installation").into());
         }
-        let system_managed = family
+        let mut system_managed = family
             .iter()
             .filter(|installation| {
                 domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
                     == domain::SYSTEM_SCOPE_ID
             })
-            .collect::<Vec<_>>();
-        if !system_managed.is_empty() {
-            let mut active = system_managed.into_iter().filter(|installation| {
+            .peekable();
+        if system_managed.peek().is_some() {
+            let mut active = system_managed.filter(|installation| {
                 installation.desired_state == domain::PluginDesiredState::ActiveRequested
             });
             let current = active
