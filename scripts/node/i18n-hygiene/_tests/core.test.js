@@ -749,3 +749,37 @@ test('a distinct third translation does not hide a repeated vector', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+
+test('one scan reuses its frontend inventory and bootstrap reads without caching later edits', (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-scan-reuse-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const owner = 'web/app/src/features/example';
+  const bootstrap = 'web/app/src/shared/i18n/app-i18n.ts';
+  const registry = 'web/app/src/shared/i18n/registry.ts';
+  writeI18nPair(repoRoot, owner, { title: '标题' }, { title: 'Title' });
+  writeFile(repoRoot, bootstrap, "import './registry';");
+  writeFile(repoRoot, registry, "import './app-i18n';\nimport exampleZh from '../../features/example/i18n/zh_Hans.json';\nconst resources = { example: exampleZh };\ni18nText('example', 'title');");
+  const reads = new Map();
+  const walks = new Map();
+  for (const [method, counts] of [['readFileSync', reads], ['readdirSync', walks]]) {
+    const original = fs[method];
+    t.mock.method(fs, method, (...args) => {
+      const file = String(args[0]);
+      counts.set(file, (counts.get(file) || 0) + 1);
+      return original(...args);
+    });
+  }
+
+  assert.deepEqual(collectI18nHygieneFindings({ repoRoot }), []);
+  assert.equal(walks.get(path.join(repoRoot, 'web/app/src')), 1);
+  assert.equal(reads.get(path.join(repoRoot, bootstrap)), 1);
+  assert.equal(reads.get(path.join(repoRoot, registry)), 1);
+  assert.ok([...walks.values()].every((count) => count === 1));
+
+  writeFile(repoRoot, registry, "import './app-i18n';");
+  const nextFindings = collectI18nHygieneFindings({ repoRoot });
+  assert.deepEqual(nextFindings.map(({ rule, severity, key }) => ({ rule, severity, key })), [
+    { rule: 'unused-i18n-key', severity: 'warning', key: 'title' }
+  ]);
+});

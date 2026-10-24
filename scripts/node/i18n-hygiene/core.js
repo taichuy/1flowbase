@@ -107,23 +107,24 @@ function walkFiles(rootPath, collected = []) {
   return collected;
 }
 
-function collectI18nJsonFiles(repoRoot) {
+function collectI18nSourceFiles(repoRoot) {
   return I18N_ROOTS.flatMap((entry) => walkFiles(path.join(repoRoot, entry)))
     .map((absolutePath) => ({
       absolutePath,
       relativePath: normalizePath(path.relative(repoRoot, absolutePath))
-    }))
+    }));
+}
+
+function collectI18nJsonFiles(repoRoot, sourceFiles = collectI18nSourceFiles(repoRoot)) {
+  return sourceFiles
     .filter(({ relativePath }) => /\/i18n\/[^/]+\.json$/u.test(relativePath))
     .filter(({ relativePath }) => !GENERATED_PLUGIN_ARTIFACT_PATTERN.test(relativePath))
     .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
 }
 
-function collectFrontendSourceFiles(repoRoot) {
-  return walkFiles(path.join(repoRoot, FRONTEND_SOURCE_ROOT))
-    .map((absolutePath) => ({
-      absolutePath,
-      relativePath: normalizePath(path.relative(repoRoot, absolutePath))
-    }))
+function collectFrontendSourceFiles(sourceFiles) {
+  return sourceFiles
+    .filter(({ relativePath }) => relativePath.startsWith(`${FRONTEND_SOURCE_ROOT}/`))
     .filter(({ relativePath }) =>
       FRONTEND_SOURCE_EXTENSIONS.has(path.extname(relativePath))
     )
@@ -132,25 +133,8 @@ function collectFrontendSourceFiles(repoRoot) {
 }
 
 function schemeForOwner(owner) {
-  if (owner.startsWith('web/app/src/')) {
-    return {
-      name: 'frontend',
-      locales: I18N_LOCALES,
-      canonicalFileName(fileName) {
-        const normalized = fileName.toLowerCase().replace(/-/gu, '_');
-        if (normalized === 'zh_hans.json' || normalized === 'zh_cn.json') {
-          return 'zh_Hans.json';
-        }
-        if (normalized === 'en_us.json' || normalized === 'en.json') {
-          return 'en_US.json';
-        }
-        return null;
-      }
-    };
-  }
-
   return {
-    name: 'provider',
+    name: owner.startsWith(`${FRONTEND_SOURCE_ROOT}/`) ? 'frontend' : 'provider',
     locales: I18N_LOCALES,
     canonicalFileName(fileName) {
       const normalized = fileName.toLowerCase().replace(/-/gu, '_');
@@ -372,15 +356,13 @@ function groupBy(values, resolveKey) {
 function collectFrontendI18nModules(repoRoot) {
   const sourceRoot = path.resolve(repoRoot, FRONTEND_SOURCE_ROOT);
   const pending = [path.join(repoRoot, FRONTEND_I18N_BOOTSTRAP)];
-  const visited = new Set();
-  const modules = [];
+  const modules = new Map();
 
   while (pending.length > 0) {
     const absolutePath = pending.pop();
-    if (visited.has(absolutePath) || !fs.existsSync(absolutePath)) continue;
-    visited.add(absolutePath);
+    if (modules.has(absolutePath) || !fs.existsSync(absolutePath)) continue;
     const content = fs.readFileSync(absolutePath, 'utf8');
-    modules.push({ absolutePath, content });
+    modules.set(absolutePath, content);
     const moduleImportPattern =
       /\bfrom\s*['"](\.[^'"]+)['"]|\bimport\s*(?:\(\s*)?['"](\.[^'"]+)['"]/gu;
     let match = moduleImportPattern.exec(content);
@@ -406,11 +388,10 @@ function collectFrontendI18nModules(repoRoot) {
   return modules;
 }
 
-function collectFrontendNamespaceOwners(repoRoot) {
+function collectFrontendNamespaceOwners(repoRoot, modules) {
   const ownersByNamespace = new Map();
 
-  const modules = collectFrontendI18nModules(repoRoot);
-  for (const { absolutePath: appI18nPath, content: appI18nContent } of modules) {
+  for (const [appI18nPath, appI18nContent] of modules) {
     const importOwnersByBinding = new Map();
     const staticImportPattern =
       /import\s+([A-Za-z][A-Za-z0-9]*)\s+from\s+['"]([^'"]+\/i18n\/(?:zh_Hans|en_US)\.json)['"]/gu;
@@ -540,13 +521,14 @@ function addFrontendI18nReference({
 function collectFrontendI18nReferences({
   repoRoot,
   ownerKeys,
-  namespaceOwners = collectFrontendNamespaceOwners(repoRoot)
+  sourceFiles
 }) {
   const referencesByOwner = new Map();
-  const files = collectFrontendSourceFiles(repoRoot);
+  const modules = collectFrontendI18nModules(repoRoot);
+  const namespaceOwners = collectFrontendNamespaceOwners(repoRoot, modules);
 
-  for (const file of files) {
-    const content = fs.readFileSync(file.absolutePath, 'utf8');
+  for (const file of collectFrontendSourceFiles(sourceFiles)) {
+    const content = modules.get(file.absolutePath) ?? fs.readFileSync(file.absolutePath, 'utf8');
     const stringLiterals = extractStaticStringLiterals(content);
     const inferredOwners = inferFrontendI18nOwnersForSource({
       relativePath: file.relativePath,
@@ -886,7 +868,7 @@ function collectFrontendOwnerKeyData(entries) {
   return { entriesByOwnerKey, ownerKeys };
 }
 
-function collectUnusedFrontendI18nKeyFindings({ repoRoot, entries }) {
+function collectUnusedFrontendI18nKeyFindings({ repoRoot, entries, sourceFiles }) {
   const findings = [];
   const { entriesByOwnerKey, ownerKeys } = collectFrontendOwnerKeyData(entries);
 
@@ -896,7 +878,8 @@ function collectUnusedFrontendI18nKeyFindings({ repoRoot, entries }) {
 
   const referencesByOwner = collectFrontendI18nReferences({
     repoRoot,
-    ownerKeys
+    ownerKeys,
+    sourceFiles
   });
 
   for (const [owner, keys] of ownerKeys) {
@@ -931,7 +914,8 @@ function collectI18nHygieneFindings({
   repoRoot = getRepoRoot(),
   includeCrossOwnerWarnings = false
 } = {}) {
-  const files = collectI18nJsonFiles(repoRoot);
+  const sourceFiles = collectI18nSourceFiles(repoRoot);
+  const files = collectI18nJsonFiles(repoRoot, sourceFiles);
   const owners = groupBy(files, (file) =>
     ownerFromRelativePath(file.relativePath)
   );
@@ -957,7 +941,8 @@ function collectI18nHygieneFindings({
   findings.push(
     ...collectUnusedFrontendI18nKeyFindings({
       repoRoot,
-      entries: parsed.entries
+      entries: parsed.entries,
+      sourceFiles
     })
   );
 
