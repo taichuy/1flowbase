@@ -2,6 +2,7 @@ const { boundIssueBody, appendStepSummary } = require('./report-output.js');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { runGateCommand, combineGateLogs, readFailureExcerpt } = require('./log-files.js');
 
 const { getRepoRoot } = require('../testing/warning-capture.js');
 const {
@@ -33,9 +34,6 @@ const BACKEND_CONSISTENCY_TARGET_REPORT_FILE = 'backend-consistency-targets.json
 const SECURITY_RISK_REPORT_FILE = 'security-risk.json';
 const VALID_REPORT_TYPES = new Set(['ci', 'cd']);
 const PR_REPORT_MARKER = '<!-- 1flowbase-quality-gate-pr-report -->';
-const MAX_GATE_OUTPUT_BYTES = 64 * 1024 * 1024;
-const FAILURE_EXCERPT_MAX_LINES = 80;
-const ANSI_CONTROL_SEQUENCE_PATTERN = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\)|[@-Z\\-_])/gu;
 
 function parseBooleanInput(value) {
   if (value === undefined || value === null || value === '') {
@@ -142,59 +140,6 @@ function listFilesBySuffix(rootDir, suffix, excludedDirectories = new Set()) {
 
   walk(rootDir);
   return collected.sort();
-}
-
-function readFailureExcerpt(logPath) {
-  if (!fs.existsSync(logPath)) {
-    return '';
-  }
-
-  const lines = stripAnsiControlSequences(fs.readFileSync(logPath, 'utf8'))
-    .trimEnd()
-    .split(/\r?\n/u);
-  return selectFailureExcerpt(lines).trim();
-}
-
-function stripAnsiControlSequences(value) {
-  return value.replace(ANSI_CONTROL_SEQUENCE_PATTERN, '');
-}
-
-function selectFailureExcerpt(lines) {
-  const rustFailuresIndex = lines.findIndex((line) => line.trim() === 'failures:');
-  if (rustFailuresIndex >= 0) {
-    return excerptFromAnchorWithSummary({
-      lines,
-      anchorIndex: rustFailuresIndex,
-      summaryIndex: lines.findIndex((line) => /test result: FAILED/u.test(line)),
-    });
-  }
-
-  const panicIndex = lines.findIndex((line) => /\bpanicked at\b/u.test(line));
-  if (panicIndex >= 0) {
-    return excerptFromAnchorWithSummary({
-      lines,
-      anchorIndex: Math.max(0, panicIndex - 2),
-      summaryIndex: lines.findIndex((line) => /test result: FAILED/u.test(line)),
-    });
-  }
-
-  return lines.slice(-FAILURE_EXCERPT_MAX_LINES).join('\n');
-}
-
-function excerptFromAnchorWithSummary({ lines, anchorIndex, summaryIndex }) {
-  const summaryWillBeAppended = summaryIndex >= anchorIndex + FAILURE_EXCERPT_MAX_LINES;
-  const bodyLineBudget = summaryWillBeAppended
-    ? FAILURE_EXCERPT_MAX_LINES - 2
-    : FAILURE_EXCERPT_MAX_LINES;
-  const endIndex = Math.min(lines.length, anchorIndex + bodyLineBudget);
-  const excerptLines = lines.slice(anchorIndex, endIndex);
-
-  if (summaryWillBeAppended) {
-    excerptLines.push('...');
-    excerptLines.push(lines[summaryIndex]);
-  }
-
-  return excerptLines.join('\n');
 }
 
 function toRepoRelative(repoRoot, filePath) {
@@ -815,42 +760,6 @@ function buildPullRequestReportComment(markdown) {
   return `${PR_REPORT_MARKER}\n${markdown}`;
 }
 
-function runGateCommand({
-  commandSpec,
-  env,
-  logPath,
-  spawnSyncImpl = spawnSync,
-  writeStdout = (text) => process.stdout.write(text),
-  writeStderr = (text) => process.stderr.write(text),
-}) {
-  const result = spawnSyncImpl(commandSpec.command, commandSpec.args, {
-    cwd: commandSpec.cwd,
-    env,
-    encoding: 'utf8',
-    maxBuffer: MAX_GATE_OUTPUT_BYTES,
-    stdio: ['inherit', 'pipe', 'pipe'],
-  });
-
-  if (result.error) {
-    throw result.error;
-  }
-
-  const stdout = result.stdout || '';
-  const stderr = result.stderr || '';
-
-  if (stdout) {
-    writeStdout(stdout);
-  }
-
-  if (stderr) {
-    writeStderr(stderr);
-  }
-
-  fs.writeFileSync(logPath, `${stdout}${stderr}`, 'utf8');
-
-  return result.status ?? 1;
-}
-
 async function runQualityGateAggregate({
   repoRoot = getRepoRoot(),
   artifactRoot = path.join(OUTPUT_ROOT, 'parallel'),
@@ -867,7 +776,7 @@ async function runQualityGateAggregate({
   listOpenQualityGateIssuesImpl = listOpenQualityGateIssuesWithGitHubApi,
   closeIssueImpl = closeIssueWithGitHubApi,
   upsertPrCommentImpl = upsertIssueCommentWithMarker,
-  writeStderr = (text) => process.stderr.write(text),
+  writeStderr = (text) => fs.writeSync(process.stderr.fd, text),
 } = {}) {
   const normalizedReportType = normalizeReportType(reportType);
   const outputDir = ensureOutputDir(repoRoot);
@@ -877,23 +786,7 @@ async function runQualityGateAggregate({
   });
   const timestamp = formatTimestamp(nowImpl());
   const aggregateLogPath = path.join(outputDir, 'quality-gate.latest.log');
-  fs.writeFileSync(
-    aggregateLogPath,
-    componentArtifacts
-      .map((artifact) => {
-        const componentLogPath = path.join(artifact.artifactPath, 'quality-gate.latest.log');
-        const componentLog = fs.existsSync(componentLogPath)
-          ? fs.readFileSync(componentLogPath, 'utf8').trimEnd()
-          : '';
-
-        return [
-          `===== ${artifact.scope} (${artifact.artifactName}) =====`,
-          componentLog,
-        ].filter(Boolean).join('\n');
-      })
-      .join('\n\n'),
-    'utf8'
-  );
+  combineGateLogs(aggregateLogPath, componentArtifacts);
 
   let issueUrl = '';
   const report = buildAggregateReport({
@@ -1011,8 +904,8 @@ async function runQualityGate({
   createIssueImpl = createIssueWithGitHubApi,
   listOpenQualityGateIssuesImpl = listOpenQualityGateIssuesWithGitHubApi,
   closeIssueImpl = closeIssueWithGitHubApi,
-  writeStdout = (text) => process.stdout.write(text),
-  writeStderr = (text) => process.stderr.write(text),
+  writeStdout = (text) => fs.writeSync(process.stdout.fd, text),
+  writeStderr = (text) => fs.writeSync(process.stderr.fd, text),
 } = {}) {
   const normalizedReportType = normalizeReportType(reportType);
   const outputDir = ensureOutputDir(repoRoot);
