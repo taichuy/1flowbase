@@ -15,7 +15,87 @@ pub(super) async fn find(
     let public_run_id = response_id
         .strip_prefix("resp_")
         .and_then(|id| Uuid::parse_str(id).ok());
-    let rows = sqlx::query(r#"
+    let mut rows = sqlx::query(CONTEXT_SQL)
+        .bind(workspace_id)
+        .bind(application_id)
+        .bind(api_key_id)
+        .bind(actor_user_id)
+        .bind(response_id)
+        .bind(public_run_id)
+        .fetch_all(store.pool())
+        .await?;
+    // The ordinary scalar path keeps one query. Only original-output streaming
+    // needs a snapshot shared by proof/status selection and the subsequent chunks.
+    let mut transaction = None;
+    if rows.len() == 1
+        && rows[0]
+            .get::<Option<bool>, _>("answer_original_present")
+            .unwrap_or(false)
+    {
+        let mut snapshot = store.pool().begin().await?;
+        sqlx::query("set transaction isolation level repeatable read read only")
+            .execute(&mut *snapshot)
+            .await?;
+        rows = sqlx::query(CONTEXT_SQL)
+            .bind(workspace_id)
+            .bind(application_id)
+            .bind(api_key_id)
+            .bind(actor_user_id)
+            .bind(response_id)
+            .bind(public_run_id)
+            .fetch_all(&mut *snapshot)
+            .await?;
+        transaction = Some(snapshot);
+    }
+
+    let unambiguous = rows.len() == 1;
+    let mut contexts = Vec::with_capacity(rows.len());
+    for row in rows {
+        let history = row
+            .get::<Option<Value>, _>("history")
+            .map(serde_json::from_value::<domain::orchestration::ResponsesHistoryProof>)
+            .transpose()?;
+        if let Some(proof) = &history {
+            proof.validate().map_err(anyhow::Error::msg)?;
+        }
+        let flow_run_id = row.get("flow_run_id");
+        let answer = if unambiguous
+            && row
+                .get::<Option<bool>, _>("answer_original_present")
+                .unwrap_or(false)
+        {
+            super::responses_raw_answer::read(
+                &mut **transaction
+                    .as_mut()
+                    .expect("raw original is read inside its snapshot"),
+                workspace_id,
+                application_id,
+                api_key_id,
+                actor_user_id,
+                flow_run_id,
+            )
+            .await?
+        } else {
+            row.get::<Option<String>, _>("answer")
+                .map(|scalar| serde_json::from_str::<String>(&scalar))
+                .transpose()?
+        };
+        contexts.push(PublishedResponsesContext {
+            flow_run_id,
+            status: parse_flow_run_status(row.get::<String, _>("status").as_str())?,
+            external_user: row.get("external_user"),
+            external_conversation_id: row.get("external_conversation_id"),
+            answer,
+            history,
+        });
+    }
+    if let Some(snapshot) = transaction {
+        snapshot.commit().await?;
+    }
+    Ok(contexts)
+}
+
+const CONTEXT_SQL: &str = r#"
         with callback_rounds as (
             select c.flow_run_id,
                 case when c.request_payload #>> '{responses_round,response_id}' = $5
@@ -80,40 +160,18 @@ pub(super) async fn find(
             case when f.status in ('succeeded', 'incomplete')
                 or (f.status in ('failed', 'cancelled', 'waiting_callback', 'waiting_human')
                     and f.output_payload -> '__canonical_answer_presentation' = 'true'::jsonb)
-                then case when json_typeof(answer.scalar) = 'string' then answer.scalar::text end
+                then case when not (f.raw_json_payloads ? 'output_payload')
+                    and jsonb_typeof(coalesce(f.output_payload -> 'answer', f.output_payload -> 'text', f.output_payload -> 'output')) = 'string'
+                    then coalesce(f.output_payload -> 'answer', f.output_payload -> 'text', f.output_payload -> 'output')::text end
             end as answer,
+            (f.raw_json_payloads ? 'output_payload') and (
+                f.status in ('succeeded', 'incomplete')
+                or (f.status in ('failed', 'cancelled', 'waiting_callback', 'waiting_human')
+                    and f.output_payload -> '__canonical_answer_presentation' = 'true'::jsonb)
+            ) as answer_original_present,
             case when rounds.proof is not null and rounds.proof <> 'null'::jsonb
                 then jsonb_build_object('version', rounds.proof -> 'version',
                     'item_count', rounds.proof -> 'item_count', 'digest', rounds.proof -> 'digest') end as history
         from rounds join flow_runs f on f.id = rounds.flow_run_id
-        -- Only the actually consumed answer scalar may use the lossless original.
-        -- The rolling proof above always comes directly from the compact JSONB slots.
-        cross join lateral (select runtime_original_json(f.output_payload, f.raw_json_payloads, 'output_payload') as original) lossless
-        cross join lateral (select coalesce(lossless.original -> 'answer', lossless.original -> 'text', lossless.original -> 'output') as scalar) answer
         order by f.id
-    "#)
-    .bind(workspace_id).bind(application_id).bind(api_key_id).bind(actor_user_id).bind(response_id).bind(public_run_id)
-    .fetch_all(store.pool()).await?;
-    rows.into_iter()
-        .map(|row| {
-            let history = row
-                .get::<Option<Value>, _>("history")
-                .map(serde_json::from_value::<domain::orchestration::ResponsesHistoryProof>)
-                .transpose()?;
-            if let Some(proof) = &history {
-                proof.validate().map_err(anyhow::Error::msg)?;
-            }
-            Ok(PublishedResponsesContext {
-                flow_run_id: row.get("flow_run_id"),
-                status: parse_flow_run_status(row.get::<String, _>("status").as_str())?,
-                external_user: row.get("external_user"),
-                external_conversation_id: row.get("external_conversation_id"),
-                answer: row
-                    .get::<Option<String>, _>("answer")
-                    .map(|scalar| serde_json::from_str::<String>(&scalar))
-                    .transpose()?,
-                history,
-            })
-        })
-        .collect()
-}
+    "#;

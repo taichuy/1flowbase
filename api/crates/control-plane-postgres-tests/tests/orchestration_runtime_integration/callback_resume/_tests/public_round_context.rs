@@ -55,8 +55,8 @@ async fn semantic_cursor_producer_persists_discoverable_tool_round() {
             "raw_value":[{"id":"user","role":"user","content":{"kind":"templated_text","value":"{{node-start.query}}"}}]}))
         .execute(store.pool()).await.unwrap();
     let version = Uuid::now_v7();
-    sqlx::query("insert into flow_versions (id,flow_id,sequence,trigger,change_kind,summary,document,created_by) select $1,$2,coalesce(max(sequence),0)+1,'autosave','logical','round fixture','{}'::jsonb,$3 from flow_versions where flow_id=$2")
-        .bind(version).bind(seeded.flow_id).bind(seeded.actor_user_id).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into flow_versions (id,flow_id,sequence,trigger,change_kind,summary,document,created_by,scope_id) select $1,$2,coalesce(max(sequence),0)+1,'autosave','logical','round fixture','{}'::jsonb,$3,$4 from flow_versions where flow_id=$2")
+        .bind(version).bind(seeded.flow_id).bind(seeded.actor_user_id).bind(seeded.workspace_id).execute(store.pool()).await.unwrap();
     store.create_active_application_publication_version(&CreateApplicationPublicationVersionInput {
         actor_user_id: seeded.actor_user_id, application_id: seeded.application_id,
         mapping_snapshot: ApplicationApiMappingConfig::default_native(), extension_slug: None, api_enabled: true,
@@ -255,11 +255,54 @@ async fn compact_previous_context_reads_exact_round_without_large_payloads() {
     // provider/node/span locator discovery, regardless of application history size.
     let adapter = include_str!(concat!(env!("CARGO_MANIFEST_DIR"),
         "/../storage/durable/postgres/src/orchestration_runtime_repository/repository_ports/responses_context.rs"));
-    let statement = adapter
+    let raw_adapter = include_str!(concat!(env!("CARGO_MANIFEST_DIR"),
+        "/../storage/durable/postgres/src/orchestration_runtime_repository/repository_ports/responses_raw_answer.rs"));
+    let raw_statement = raw_adapter
         .split_once("sqlx::query(r#\"")
         .unwrap()
         .1
         .split_once("\"#)")
+        .unwrap()
+        .0;
+    let raw_plan: Value = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "explain (analyze, verbose, format json) {raw_statement}"
+    )))
+    .bind(run.id)
+    .bind(seeded.workspace_id)
+    .bind(seeded.application_id)
+    .bind(key)
+    .bind(seeded.actor_user_id)
+    .bind(64 * 1024_i32)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    fn assert_only_offsets_sorted(node: &Value) -> bool {
+        if node.get("Node Type").and_then(Value::as_str) == Some("Sort") {
+            let output = node["Output"].as_array().expect("verbose sort output");
+            assert!(
+                output.iter().all(|expression| {
+                    let expression = expression.as_str().unwrap();
+                    !expression.contains("substring") && !expression.contains("body")
+                }),
+                "raw output chunk bodies must be projected after the offset sort: {node}"
+            );
+            return true;
+        }
+        match node {
+            Value::Object(fields) => fields.values().any(assert_only_offsets_sorted),
+            Value::Array(items) => items.iter().any(assert_only_offsets_sorted),
+            _ => false,
+        }
+    }
+    assert!(
+        assert_only_offsets_sorted(&raw_plan),
+        "raw stream must order byte offsets explicitly"
+    );
+    let statement = adapter
+        .split_once("const CONTEXT_SQL: &str = r#\"")
+        .unwrap()
+        .1
+        .split_once("\"#;")
         .unwrap()
         .0;
     // Audited: statement comes only from compile-time adapter source; values stay bound.

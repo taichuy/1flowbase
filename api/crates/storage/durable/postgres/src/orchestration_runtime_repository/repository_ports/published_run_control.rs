@@ -1,6 +1,8 @@
 use super::*;
 #[path = "responses_context.rs"]
 mod responses_context;
+#[path = "responses_raw_answer.rs"]
+mod responses_raw_answer;
 
 #[async_trait]
 impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {

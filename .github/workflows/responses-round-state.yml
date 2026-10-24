@@ -66,6 +66,8 @@ jobs:
       - name: Real database callback lifecycle and narrow-read regressions
         run: |
           out=tmp/test-governance/responses-round-state/ci
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib responses_raw_answer > "$out/raw-answer.log" 2>&1 || { tail -c 6000 "$out/raw-answer.log"; exit 1; }
+          node scripts/node/verify/cargo-test-results.js "$out/raw-answer.log"
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration callback_resume -- --test-threads=1 > "$out/postgres.log" 2>&1 || { tail -c 6000 "$out/postgres.log"; exit 1; }
           node scripts/node/verify/cargo-test-results.js "$out/postgres.log"
       - name: API consumers and previous response regression
