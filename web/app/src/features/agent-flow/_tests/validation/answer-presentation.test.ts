@@ -85,6 +85,18 @@ test('a source depends on itself only when a dependency cycle returns to it', ()
   expect(issues[0].title).toBe('Answer 展示顺序违反执行依赖');
   expect(issues[0].message).toContain('A.first');
   expect(issues[0].message).toContain('A.second');
+  const laterSelfTemplate = '{{a.first}} {{missing.result}} {{a.second}}';
+  for (const cyclic of [false, true]) {
+    expect(
+      presentationIssues(
+        laterSelfTemplate,
+        new Map([
+          ['a', new Set(['b'])],
+          ['b', new Set(cyclic ? ['a'] : [])]
+        ])
+      )
+    ).toHaveLength(cyclic ? 1 : 0);
+  }
 });
 
 test('dependency closure includes bindings and edges while terminal diagnostics keep document order', () => {

@@ -85,23 +85,29 @@ function collectNodeAncestors(
   firstLaterNodeId: string
 ): Set<string> {
   const stack = [nodeId];
-  const visited = new Set<string>();
   const ancestors = new Set<string>();
+  let reachesStart = false;
 
   while (stack.length > 0) {
     const current = stack.pop();
-    if (!current || visited.has(current)) {
+    if (!current || ancestors.has(current)) {
       continue;
     }
-    visited.add(current);
+    ancestors.add(current);
 
     for (const dependency of dependencies.get(current) ?? []) {
-      ancestors.add(dependency);
-      if (dependency === firstLaterNodeId) return ancestors;
+      if (dependency === firstLaterNodeId) {
+        ancestors.add(dependency);
+        return ancestors;
+      }
+      if (dependency === nodeId) reachesStart = true;
+      if (!dependency) ancestors.add(dependency);
       stack.push(dependency);
     }
   }
 
+  // The traversal seed is an ancestor only if an edge leads back to it.
+  if (!reachesStart) ancestors.delete(nodeId);
   return ancestors;
 }
 
