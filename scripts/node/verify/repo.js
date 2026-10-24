@@ -98,12 +98,6 @@ function buildRepoCommands({ repoRoot, env = process.env, target = 'all' }) {
     devExperienceCommand,
     viteLazyDepsCommand,
     {
-      label: 'repo-contract-tests',
-      command: nodeBinary,
-      args: [resolveScriptsNodeCliEntry(repoRoot, 'test'), 'contracts'],
-      cwd: repoRoot,
-    },
-    {
       label: 'repo-frontend-pr',
       command: nodeBinary,
       args: [resolveScriptsNodeCliEntry(repoRoot, 'test'), 'frontend', 'pr'],

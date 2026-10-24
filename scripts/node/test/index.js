@@ -253,7 +253,7 @@ function buildFrontendCommands({ layer, repoRoot, env = process.env, passThrough
       {
         label: "frontend-pr-smoke-test",
         command: "pnpm",
-        args: ["--dir", "web/app", "test:pr"],
+        args: ["--dir", "web/app", "test:pr", ...CONTRACT_TEST_FILES],
         cwd: ".",
       },
       {
