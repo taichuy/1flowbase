@@ -22,20 +22,45 @@ pub fn initial_active_node_ids(plan: &CompiledPlan) -> BTreeSet<String> {
         .collect()
 }
 
-fn outgoing_edges<'a>(
-    plan: &'a CompiledPlan,
-    node_id: &'a str,
-) -> impl Iterator<Item = &'a CompiledEdge> + 'a {
-    plan.edges.iter().filter(move |edge| edge.source == node_id)
-}
-
+// Keep the public single-activation entry point; execution loops reuse the index below.
 pub fn activate_downstream_nodes(
     plan: &CompiledPlan,
     active_node_ids: &mut BTreeSet<String>,
     node: &CompiledNode,
     selected_source_handle: Option<&str>,
 ) -> bool {
-    if plan.edges.is_empty() {
+    activate_targets(
+        plan.edges.is_empty(),
+        plan.edges.iter().filter(|edge| edge.source == node.node_id),
+        active_node_ids,
+        node,
+        selected_source_handle,
+    )
+}
+
+pub(crate) fn activate_indexed_downstream_nodes(
+    index: &CompiledEdgeIndex<'_>,
+    active_node_ids: &mut BTreeSet<String>,
+    node: &CompiledNode,
+    selected_source_handle: Option<&str>,
+) -> bool {
+    activate_targets(
+        index.is_empty(),
+        index.outgoing(&node.node_id),
+        active_node_ids,
+        node,
+        selected_source_handle,
+    )
+}
+
+fn activate_targets<'a>(
+    no_edges: bool,
+    edges: impl Iterator<Item = &'a CompiledEdge>,
+    active_node_ids: &mut BTreeSet<String>,
+    node: &CompiledNode,
+    selected_source_handle: Option<&str>,
+) -> bool {
+    if no_edges {
         let mut activated = false;
         for target_node_id in &node.downstream_node_ids {
             active_node_ids.insert(target_node_id.clone());
@@ -46,7 +71,7 @@ pub fn activate_downstream_nodes(
 
     let mut activated = false;
 
-    for edge in outgoing_edges(plan, &node.node_id) {
+    for edge in edges {
         if node.node_type == "if_else" && edge.source_handle.as_deref() != selected_source_handle {
             continue;
         }

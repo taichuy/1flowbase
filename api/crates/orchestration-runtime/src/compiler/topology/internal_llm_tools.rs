@@ -1,23 +1,5 @@
 use super::*;
 
-// Borrow source edges once; node adjacency loses the handles needed by both consumers.
-pub(super) struct VisibleInternalLlmToolEdges<'a> {
-    by_source: BTreeMap<&'a str, Vec<&'a CompiledEdge>>,
-}
-
-impl<'a> VisibleInternalLlmToolEdges<'a> {
-    pub(super) fn new(edges: &'a [CompiledEdge]) -> Self {
-        let mut by_source = BTreeMap::<_, Vec<_>>::new();
-        for edge in edges {
-            by_source
-                .entry(edge.source.as_str())
-                .or_default()
-                .push(edge);
-        }
-        Self { by_source }
-    }
-}
-
 pub(super) fn validate_llm_context_policies(
     nodes: &BTreeMap<String, CompiledNode>,
 ) -> Vec<CompileIssue> {
@@ -60,7 +42,7 @@ pub(super) fn validate_llm_context_policies(
 
 pub(super) fn materialize_visible_internal_llm_tool_targets(
     nodes: &mut BTreeMap<String, CompiledNode>,
-    edges: &VisibleInternalLlmToolEdges<'_>,
+    edges: &CompiledEdgeIndex<'_>,
 ) -> Vec<CompileIssue> {
     let mut issues = Vec::new();
 
@@ -101,10 +83,7 @@ pub(super) fn materialize_visible_internal_llm_tool_targets(
                 continue;
             };
             let mut matching_targets = edges
-                .by_source
-                .get(node_id.as_str())
-                .into_iter()
-                .flatten()
+                .outgoing(&node_id)
                 .filter(|edge| {
                     visible_internal_llm_tool_connector_id_from_source_handle(
                         edge.source_handle.as_deref(),
@@ -164,7 +143,7 @@ pub(super) fn materialize_visible_internal_llm_tool_targets(
 
 pub(super) fn validate_visible_internal_llm_tool_branches(
     nodes: &BTreeMap<String, CompiledNode>,
-    edges: &VisibleInternalLlmToolEdges<'_>,
+    edges: &CompiledEdgeIndex<'_>,
 ) -> Vec<CompileIssue> {
     let mut issues = Vec::new();
 
@@ -391,7 +370,7 @@ pub(super) fn visible_internal_llm_tool_target_node_ids(tool: &Value) -> Vec<Str
 pub(super) fn visible_internal_llm_tool_branch_node_ids(
     target_node_ids: &[String],
     nodes: &BTreeMap<String, CompiledNode>,
-    edges: &VisibleInternalLlmToolEdges<'_>,
+    edges: &CompiledEdgeIndex<'_>,
 ) -> BTreeSet<String> {
     let mut visited = BTreeSet::new();
     let mut queue = VecDeque::from(target_node_ids.to_vec());
@@ -409,20 +388,18 @@ pub(super) fn visible_internal_llm_tool_branch_node_ids(
             continue;
         }
 
-        if let Some(outgoing) = edges.by_source.get(node_id.as_str()) {
-            queue.extend(
-                outgoing
-                    .iter()
-                    .filter(|edge| {
-                        edge.source_handle.as_deref() != Some(ERROR_BRANCH_SOURCE_HANDLE)
-                            && visible_internal_llm_tool_connector_id_from_source_handle(
-                                edge.source_handle.as_deref(),
-                            )
-                            .is_none()
-                    })
-                    .map(|edge| edge.target.clone()),
-            );
-        }
+        queue.extend(
+            edges
+                .outgoing(&node_id)
+                .filter(|edge| {
+                    edge.source_handle.as_deref() != Some(ERROR_BRANCH_SOURCE_HANDLE)
+                        && visible_internal_llm_tool_connector_id_from_source_handle(
+                            edge.source_handle.as_deref(),
+                        )
+                        .is_none()
+                })
+                .map(|edge| edge.target.clone()),
+        );
     }
 
     visited

@@ -29,8 +29,8 @@ use crate::{
         BindingResolutionIssue,
     },
     compiled_plan::{
-        CompiledEdge, CompiledLlmRuntime, CompiledNode, CompiledPlan, CompiledPluginRuntime,
-        LlmRoutingMode,
+        CompiledEdge, CompiledEdgeIndex, CompiledLlmRuntime, CompiledNode, CompiledPlan,
+        CompiledPluginRuntime, LlmRoutingMode,
     },
     execution_state::{
         compact_operation_receipt_from_traces, count_tokens_receipt_from_traces,

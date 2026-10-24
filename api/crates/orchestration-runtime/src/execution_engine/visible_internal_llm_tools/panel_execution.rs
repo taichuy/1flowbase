@@ -25,6 +25,7 @@ pub(super) enum BoundedParallelPanelExecution {
 
 pub(super) struct BoundedParallelPanelContext<'a, I: ?Sized> {
     pub(super) plan: &'a CompiledPlan,
+    pub(super) edge_index: &'a CompiledEdgeIndex<'a>,
     pub(super) runtime_context: &'a ExecutionRuntimeContext,
     pub(super) invoker: &'a I,
     pub(super) main_node_id: &'a str,
@@ -179,7 +180,7 @@ where
                     node.node_id.clone(),
                     project_node_variable_payload(&node, &node_output.output_payload)?,
                 );
-                activate_downstream_nodes(plan, active_node_ids, &node, None);
+                activate_indexed_downstream_nodes(context.edge_index, active_node_ids, &node, None);
             }
             VisibleInternalLlmToolNodeExecution::Waiting(wait) => {
                 let waiting_branch_text = wait

@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde_json::{json, Map, Value};
 
 use crate::{
-    compiled_plan::{CompiledNode, CompiledPlan},
+    compiled_plan::{CompiledEdgeIndex, CompiledNode, CompiledPlan},
     execution_state::NodeExecutionFailure,
     node_error_policy::{
         error_default_output, node_error_policy, NodeErrorPolicy, ERROR_BRANCH_SOURCE_HANDLE,
@@ -12,12 +12,13 @@ use crate::{
 };
 
 use super::{
-    branching::activate_downstream_nodes, first_output_key, project_node_variable_payload,
+    branching::activate_indexed_downstream_nodes, first_output_key, project_node_variable_payload,
     LlmFailureProjection,
 };
 
 pub(super) struct NodeErrorPolicyApplication<'a> {
     pub(super) plan: &'a CompiledPlan,
+    pub(super) edge_index: &'a CompiledEdgeIndex<'a>,
     pub(super) failed_node_index: usize,
     pub(super) active_node_ids: &'a mut BTreeSet<String>,
     pub(super) variable_pool: &'a mut Map<String, Value>,
@@ -33,6 +34,7 @@ pub(super) fn apply_node_error_policy(
 ) -> Result<Option<NodeExecutionFailure>> {
     let NodeErrorPolicyApplication {
         plan,
+        edge_index,
         failed_node_index,
         active_node_ids,
         variable_pool,
@@ -55,7 +57,7 @@ pub(super) fn apply_node_error_policy(
                 node.node_id.clone(),
                 project_node_variable_payload(node, &default_output_payload)?,
             );
-            activate_downstream_nodes(plan, active_node_ids, node, None);
+            activate_indexed_downstream_nodes(edge_index, active_node_ids, node, None);
             Ok(None)
         }
         NodeErrorPolicy::ErrorBranch => {
@@ -63,8 +65,8 @@ pub(super) fn apply_node_error_policy(
                 node.node_id.clone(),
                 project_node_variable_payload(node, output_payload)?,
             );
-            if activate_downstream_nodes(
-                plan,
+            if activate_indexed_downstream_nodes(
+                edge_index,
                 active_node_ids,
                 node,
                 Some(ERROR_BRANCH_SOURCE_HANDLE),
@@ -95,7 +97,12 @@ pub(super) fn apply_node_error_policy(
                 }
 
                 let mut next_active_node_ids = active_node_ids.clone();
-                activate_downstream_nodes(plan, &mut next_active_node_ids, node, None);
+                activate_indexed_downstream_nodes(
+                    edge_index,
+                    &mut next_active_node_ids,
+                    node,
+                    None,
+                );
                 if legacy_terminal_templates_can_receive_failure_output(
                     plan,
                     failed_node_index,

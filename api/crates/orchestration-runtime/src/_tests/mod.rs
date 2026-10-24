@@ -5,6 +5,7 @@ mod code_runtime_tests;
 mod compiled_plan_compatibility_tests;
 mod compiler_tests;
 mod execution_engine_tests;
+mod graph_algorithms;
 mod llm_prompt_messages_validation_tests;
 mod llm_response_format_tests;
 mod llm_route_projection_tests;

@@ -16,6 +16,7 @@ where
     synchronize_runtime_global_variables(plan, &mut variable_pool, runtime_context);
     let mut runtime_context = runtime_context.clone();
     runtime_context.refresh_frozen_run_tools(plan, &variable_pool);
+    let edge_index = CompiledEdgeIndex::new(&plan.edges);
     let mut node_traces = Vec::new();
     let mut pending_failure: Option<NodeExecutionFailure> = None;
     let mut active_node_ids = active_node_ids.unwrap_or_else(|| initial_active_node_ids(plan));
@@ -182,6 +183,7 @@ where
                     complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
+                        edge_index: &edge_index,
                         failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
@@ -251,6 +253,7 @@ where
                     complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
+                        edge_index: &edge_index,
                         failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
@@ -295,6 +298,7 @@ where
                     complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
+                        edge_index: &edge_index,
                         failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
@@ -338,6 +342,7 @@ where
                     complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
+                        edge_index: &edge_index,
                         failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
@@ -383,6 +388,7 @@ where
                     complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
+                        edge_index: &edge_index,
                         failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
@@ -404,7 +410,12 @@ where
                 }
 
                 if let Some(callback) = execution.pending_callback {
-                    activate_downstream_nodes(plan, &mut active_node_ids, node, None);
+                    activate_indexed_downstream_nodes(
+                        &edge_index,
+                        &mut active_node_ids,
+                        node,
+                        None,
+                    );
                     return Ok(FlowDebugExecutionOutcome {
                         stop_reason: ExecutionStopReason::WaitingCallback(PendingCallbackTask {
                             node_id: node.node_id.clone(),
@@ -465,6 +476,7 @@ where
                     complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
+                        edge_index: &edge_index,
                         failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
@@ -552,7 +564,7 @@ where
                     debug_payload: json!({}),
                     provider_events: Vec::new(),
                 });
-                activate_downstream_nodes(plan, &mut active_node_ids, node, None);
+                activate_indexed_downstream_nodes(&edge_index, &mut active_node_ids, node, None);
                 return Ok(FlowDebugExecutionOutcome {
                     stop_reason: ExecutionStopReason::WaitingHuman(PendingHumanInput {
                         node_id: node.node_id.clone(),
@@ -581,7 +593,7 @@ where
                     debug_payload: json!({}),
                     provider_events: Vec::new(),
                 });
-                activate_downstream_nodes(plan, &mut active_node_ids, node, None);
+                activate_indexed_downstream_nodes(&edge_index, &mut active_node_ids, node, None);
                 return Ok(FlowDebugExecutionOutcome {
                     stop_reason: ExecutionStopReason::WaitingCallback(PendingCallbackTask {
                         node_id: node.node_id.clone(),
@@ -624,6 +636,7 @@ where
                     complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
+                        edge_index: &edge_index,
                         failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
@@ -667,6 +680,7 @@ where
                     complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
+                        edge_index: &edge_index,
                         failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
@@ -729,8 +743,8 @@ where
                 domain::AiNativeOperation::Generate(_)
             )
         {
-            activate_downstream_nodes(
-                plan,
+            activate_indexed_downstream_nodes(
+                &edge_index,
                 &mut active_node_ids,
                 node,
                 selected_source_handle.as_deref(),

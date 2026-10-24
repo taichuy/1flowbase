@@ -917,6 +917,8 @@ mod answer_and_failover;
 mod branches;
 mod failures_and_parameters;
 mod fee_lifecycle;
+#[path = "../graph_algorithms/execution.rs"]
+mod graph_pressure;
 mod http_request;
 mod human_and_tool_resume;
 mod llm_context;

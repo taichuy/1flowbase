@@ -142,6 +142,8 @@ where
     let tool_call = context.tool_call;
     let tool = context.tool;
 
+    let edge_index = CompiledEdgeIndex::new(&plan.edges);
+
     for node_id in &plan.topological_order {
         if !active_node_ids.contains(node_id) {
             continue;
@@ -152,6 +154,7 @@ where
         if let Some(panel_execution) = execute_bounded_parallel_panel(
             BoundedParallelPanelContext {
                 plan,
+                edge_index: &edge_index,
                 runtime_context,
                 invoker,
                 main_node_id,
@@ -337,7 +340,7 @@ where
                 },
             ));
         }
-        activate_downstream_nodes(plan, &mut active_node_ids, node, None);
+        activate_indexed_downstream_nodes(&edge_index, &mut active_node_ids, node, None);
     }
 
     variable_pool.remove(VISIBLE_INTERNAL_LLM_TOOL_VARIABLE);

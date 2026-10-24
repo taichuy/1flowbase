@@ -29,6 +29,33 @@ pub struct CompiledEdge {
     pub target_handle: Option<String>,
 }
 
+/// A call-scoped view: preserves edge order/duplicates and borrows the immutable plan.
+/// Keep this outside the serialized plan so edits and resumes cannot retain a stale index.
+pub(crate) struct CompiledEdgeIndex<'a> {
+    by_source: BTreeMap<&'a str, Vec<&'a CompiledEdge>>,
+}
+
+impl<'a> CompiledEdgeIndex<'a> {
+    pub(crate) fn new(edges: &'a [CompiledEdge]) -> Self {
+        let mut by_source = BTreeMap::<_, Vec<_>>::new();
+        for edge in edges {
+            by_source
+                .entry(edge.source.as_str())
+                .or_default()
+                .push(edge);
+        }
+        Self { by_source }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.by_source.is_empty()
+    }
+
+    pub(crate) fn outgoing(&self, node_id: &str) -> impl Iterator<Item = &'a CompiledEdge> + '_ {
+        self.by_source.get(node_id).into_iter().flatten().copied()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompiledNode {
     pub node_id: String,

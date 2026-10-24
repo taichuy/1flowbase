@@ -309,7 +309,7 @@ pub(super) fn build_nodes_and_topology(
         .values()
         .any(|node| node.node_type == "llm" && visible_internal_llm_tools_enabled(node))
     {
-        let tool_edges = VisibleInternalLlmToolEdges::new(&compiled_edges);
+        let tool_edges = CompiledEdgeIndex::new(&compiled_edges);
         compile_issues.extend(materialize_visible_internal_llm_tool_targets(
             &mut nodes,
             &tool_edges,
@@ -689,7 +689,7 @@ fn node_depends_on(
     let mut visited = BTreeSet::new();
 
     while let Some(current) = stack.pop() {
-        if !visited.insert(current.to_string()) {
+        if !visited.insert(current) {
             continue;
         }
         let Some(node) = nodes.get(current) else {
@@ -705,6 +705,10 @@ fn node_depends_on(
 
     false
 }
+
+#[cfg(test)]
+#[path = "../_tests/graph_algorithms/reachability.rs"]
+mod reachability_tests;
 
 pub(super) fn validate_executable_node_types(
     nodes: &BTreeMap<String, CompiledNode>,
