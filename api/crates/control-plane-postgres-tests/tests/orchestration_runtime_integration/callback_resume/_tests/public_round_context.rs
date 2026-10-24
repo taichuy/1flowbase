@@ -39,6 +39,11 @@ async fn actor(
     }
 }
 
+async fn runtime_evidence(store: &PgControlPlaneStore, flow_run_id: Uuid) -> Vec<Value> {
+    sqlx::query_scalar("select jsonb_build_object('sequence', sequence, 'event_type', event_type, 'payload', payload) from runtime_events where flow_run_id=$1 order by sequence")
+        .bind(flow_run_id).fetch_all(store.pool()).await.unwrap()
+}
+
 // The full producer chain is intentional: a seeded responses_round would miss the bug.
 #[tokio::test]
 async fn semantic_cursor_producer_persists_discoverable_tool_round() {
@@ -49,22 +54,74 @@ async fn semantic_cursor_producer_persists_discoverable_tool_round() {
     let compiled = seed_compiled_plan(&store, &seeded).await;
     let (runtime, provider, _package) =
         semantic_runtime::seed_runtime_consumer(&store, &seeded, &compiled, None).await;
-    // Use the actual mapped user query as the LLM prompt, rather than a checkpoint fixture.
-    sqlx::query("update flow_compiled_plans set plan=jsonb_set(plan, '{nodes,node-llm,bindings,prompt_messages}', $2) where id=$1")
-        .bind(compiled.id).bind(json!({"kind":"prompt_messages", "selector_paths":[["node-start","query"]],
-            "raw_value":[{"id":"user","role":"user","content":{"kind":"templated_text","value":"{{node-start.query}}"}}]}))
-        .execute(store.pool()).await.unwrap();
+    // Fresh generation needs the complete executable start -> llm -> answer graph.
+    // The checkpoint-only helper intentionally has no start; borrowing that graph
+    // made node-start.query a reference to a nonexistent compiled node.
+    let mut plan: Value = sqlx::query_scalar("select plan from flow_compiled_plans where id=$1")
+        .bind(compiled.id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    plan["topological_order"] = json!(["node-start", "node-llm", "node-answer"]);
+    plan["nodes"]["node-start"] = json!({
+        "node_id":"node-start","node_type":"start","alias":"Start","container_id":null,
+        "dependency_node_ids":[],"downstream_node_ids":["node-llm"],"bindings":{},
+        "outputs":[{"key":"query","title":"Query","value_type":"string","selector":[]}],"config":{}
+    });
+    plan["nodes"]["node-llm"]["dependency_node_ids"] = json!(["node-start"]);
+    plan["nodes"]["node-llm"]["downstream_node_ids"] = json!(["node-answer"]);
+    plan["nodes"]["node-llm"]["bindings"]["prompt_messages"] = json!({
+        "kind":"prompt_messages", "selector_paths":[["node-start","query"]],
+        "raw_value":[{"id":"user","role":"user","content":{"kind":"templated_text","value":"{{node-start.query}}"}}]
+    });
+    plan["nodes"]["node-answer"] = json!({
+        "node_id":"node-answer","node_type":"answer","alias":"Answer","container_id":null,
+        "dependency_node_ids":["node-llm"],"downstream_node_ids":[],
+        "bindings":{"answer_template":{"kind":"selector","selector_paths":[["node-llm","text"]],"raw_value":["node-llm","text"]}},
+        "outputs":[{"key":"answer","title":"Answer","value_type":"string","selector":[]}],"config":{}
+    });
+    let typed_plan: orchestration_runtime::compiled_plan::CompiledPlan =
+        serde_json::from_value(plan.clone()).unwrap();
+    orchestration_runtime::compiler::ensure_plan_execution_contract(&typed_plan)
+        .expect("fresh producer fixture selectors must resolve against real compiled nodes");
+    sqlx::query("update flow_compiled_plans set plan=$2 where id=$1")
+        .bind(compiled.id)
+        .bind(&plan)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let document = json!({"schema_version":"1flowbase.flow/v2","graph":{
+        "nodes":[
+            {"id":"node-start","type":"start","config":{"model_list":["1flowbase"]}},
+            {"id":"node-llm","type":"llm","config":plan["nodes"]["node-llm"]["config"]},
+            {"id":"node-answer","type":"answer","config":{"answer_template":{"kind":"selector","value":["node-llm","text"]}}}
+        ],
+        "edges":[{"id":"start-llm","source":"node-start","target":"node-llm"},
+            {"id":"llm-answer","source":"node-llm","target":"node-answer"}]
+    }});
     let version = Uuid::now_v7();
-    sqlx::query("insert into flow_versions (id,flow_id,sequence,trigger,change_kind,summary,document,created_by,scope_id) select $1,$2,coalesce(max(sequence),0)+1,'autosave','logical','round fixture','{}'::jsonb,$3,$4 from flow_versions where flow_id=$2")
-        .bind(version).bind(seeded.flow_id).bind(seeded.actor_user_id).bind(seeded.workspace_id).execute(store.pool()).await.unwrap();
-    store.create_active_application_publication_version(&CreateApplicationPublicationVersionInput {
-        actor_user_id: seeded.actor_user_id, application_id: seeded.application_id,
-        mapping_snapshot: ApplicationApiMappingConfig::default_native(), extension_slug: None, api_enabled: true,
-        compiled_plan_id: compiled.id, flow_id: seeded.flow_id, flow_version_id: version,
-        flow_schema_version: "1flowbase.flow/v2".into(), document_hash: "round-fixture".into(),
-        document_snapshot: json!({"graph":{"nodes":[{"id":"node-start","type":"start","config":{"model_list":["1flowbase"]}}]}}),
-        runtime_profile_snapshot: json!({}), output_selector: json!({}), dependency_snapshot: vec![],
-    }).await.unwrap();
+    sqlx::query("insert into flow_versions (id,flow_id,sequence,trigger,change_kind,summary,document,created_by,scope_id) select $1,$2,coalesce(max(sequence),0)+1,'autosave','logical','round fixture',$5,$3,$4 from flow_versions where flow_id=$2")
+        .bind(version).bind(seeded.flow_id).bind(seeded.actor_user_id).bind(seeded.workspace_id)
+        .bind(&document).execute(store.pool()).await.unwrap();
+    store
+        .create_active_application_publication_version(&CreateApplicationPublicationVersionInput {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            mapping_snapshot: ApplicationApiMappingConfig::default_native(),
+            extension_slug: None,
+            api_enabled: true,
+            compiled_plan_id: compiled.id,
+            flow_id: seeded.flow_id,
+            flow_version_id: version,
+            flow_schema_version: compiled.schema_version.clone(),
+            document_hash: compiled.document_hash.clone(),
+            document_snapshot: document,
+            runtime_profile_snapshot: json!({}),
+            output_selector: json!({}),
+            dependency_snapshot: vec![],
+        })
+        .await
+        .unwrap();
     let key = seed_application_api_key(&store, &seeded).await;
     let actor = actor(&store, &seeded, key).await;
     let native = ApplicationNativeRunService::new(store.clone());
@@ -84,6 +141,19 @@ async fn semantic_cursor_producer_persists_discoverable_tool_round() {
         )
         .await
         .unwrap();
+    assert_eq!(
+        first_run
+            .node_input_payload
+            .pointer("/node-start/query")
+            .and_then(Value::as_str),
+        Some("first")
+    );
+    assert_eq!(
+        first_run
+            .node_input_payload
+            .pointer("/sys/responses_input_history/item_count"),
+        Some(&json!(1))
+    );
     if let Some(envelope) = first_protocol_context {
         provider
             .transport_store
@@ -107,7 +177,24 @@ async fn semantic_cursor_producer_persists_discoverable_tool_round() {
         )
         .await
         .unwrap();
-    assert_eq!(result.flow_run.status, FlowRunStatus::Succeeded);
+    let first_events = if result.flow_run.status != FlowRunStatus::Succeeded {
+        runtime_evidence(&store, first_run.id).await
+    } else {
+        vec![]
+    };
+    assert_eq!(
+        result.flow_run.status,
+        FlowRunStatus::Succeeded,
+        "fresh producer failed: error={:?}; output={:?}; nodes={:?}; provider_inputs={:?}; runtime_events={:?}",
+        result.flow_run.error_payload,
+        result.flow_run.output_payload,
+        result
+            .node_runs
+            .iter()
+            .map(|node| (&node.node_id, &node.error_payload, &node.debug_payload))
+            .collect::<Vec<_>>(),
+        provider.inputs.lock().unwrap(), first_events
+    );
     let first_id = format!("resp_{}", first_run.id);
     let mut contexts = store
         .find_published_responses_contexts(
@@ -142,6 +229,13 @@ async fn semantic_cursor_producer_persists_discoverable_tool_round() {
         )
         .await
         .unwrap();
+    assert_eq!(
+        second_run
+            .node_input_payload
+            .pointer("/node-start/query")
+            .and_then(Value::as_str),
+        Some("use child")
+    );
     if let Some(envelope) = second_protocol_context {
         provider
             .transport_store
@@ -179,7 +273,24 @@ async fn semantic_cursor_producer_persists_discoverable_tool_round() {
         )
         .await
         .unwrap();
-    assert_eq!(waiting.flow_run.status, FlowRunStatus::WaitingCallback);
+    let second_events = if waiting.flow_run.status != FlowRunStatus::WaitingCallback {
+        runtime_evidence(&store, second_run.id).await
+    } else {
+        vec![]
+    };
+    assert_eq!(
+        waiting.flow_run.status,
+        FlowRunStatus::WaitingCallback,
+        "semantic delta failed: error={:?}; output={:?}; nodes={:?}; provider_inputs={:?}; runtime_events={:?}",
+        waiting.flow_run.error_payload,
+        waiting.flow_run.output_payload,
+        waiting
+            .node_runs
+            .iter()
+            .map(|node| (&node.node_id, &node.error_payload, &node.debug_payload))
+            .collect::<Vec<_>>(),
+        provider.inputs.lock().unwrap(), second_events
+    );
     let callbacks = store
         .find_semantic_responses_callbacks_by_call_ids(
             seeded.workspace_id,
@@ -230,6 +341,7 @@ async fn compact_previous_context_reads_exact_round_without_large_payloads() {
         None,
     )
     .await;
+    let node = seed_node_run(&store, &run, OffsetDateTime::now_utc()).await;
     let key = seed_application_api_key(&store, &seeded).await;
     let response_id = format!("resp_{}", run.id);
     let proof = current_callback_history_fixture();
@@ -419,7 +531,6 @@ async fn compact_previous_context_reads_exact_round_without_large_payloads() {
     .unwrap();
     assert!(lookup().await.unwrap()[0].history.is_none());
     // Native terminal proof is selected only for this exact public round.
-    let node = seed_node_run(&store, &run, OffsetDateTime::now_utc()).await;
     sqlx::query("update node_run_records set output_payload=$2 where id=$1").bind(node.id)
         .bind(json!({"provider_metadata":{"native_response":{"response_id":response_id,"history":proof}}})).execute(store.pool()).await.unwrap();
     let native_context = lookup().await.unwrap().pop().unwrap();

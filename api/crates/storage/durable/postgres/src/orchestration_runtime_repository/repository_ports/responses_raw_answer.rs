@@ -1,6 +1,6 @@
 use super::*;
 use futures_util::TryStreamExt;
-use serde::de::{IgnoredAny, MapAccess, SeqAccess, Visitor};
+use serde::de::{DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use std::io::{self, Cursor, Read};
 use tokio::sync::mpsc;
@@ -17,15 +17,52 @@ pub(super) async fn read(
     actor_user_id: Uuid,
     flow_run_id: Uuid,
 ) -> Result<Option<String>> {
+    // First select field presence and its last duplicate occurrence while ignoring
+    // every value. Only the second pass allocates the one scalar actually needed.
+    let target = stream(
+        connection,
+        workspace_id,
+        application_id,
+        api_key_id,
+        actor_user_id,
+        flow_run_id,
+        |reader| parse(reader, Inspect),
+    )
+    .await?;
+    let Some(target) = target else {
+        return Ok(None);
+    };
+    stream(
+        connection,
+        workspace_id,
+        application_id,
+        api_key_id,
+        actor_user_id,
+        flow_run_id,
+        move |reader| parse(reader, Extract(target)),
+    )
+    .await
+}
+
+async fn stream<T: Send + 'static>(
+    connection: &mut sqlx::PgConnection,
+    workspace_id: Uuid,
+    application_id: Uuid,
+    api_key_id: Uuid,
+    actor_user_id: Uuid,
+    flow_run_id: Uuid,
+    parse_pass: impl FnOnce(ChunkReader) -> serde_json::Result<T> + Send + 'static,
+) -> Result<T> {
     let (sender, receiver) = mpsc::channel(2);
     let parser = tokio::task::spawn_blocking(move || {
-        parse(ChunkReader {
+        parse_pass(ChunkReader {
             receiver,
             current: Cursor::new(Vec::new()),
         })
     });
-    // This rare branch scans one original output over the wire. PostgreSQL may
-    // materialize it internally; Rust never receives or deserializes a whole body.
+    // Each pass sequentially scans one original output over the wire, in the
+    // caller's same read-only snapshot. PostgreSQL may materialize it internally;
+    // Rust never receives or deserializes a whole body.
     let mut chunks = sqlx::query(r#"
         with original as materialized (
             select convert_to(f.raw_json_payloads ->> 'output_payload', 'UTF8') as body
@@ -92,7 +129,10 @@ impl Read for ChunkReader {
     }
 }
 
-fn parse(reader: impl Read) -> serde_json::Result<Option<String>> {
+fn parse<T: Default>(
+    reader: impl Read,
+    seed: impl for<'de> DeserializeSeed<'de, Value = T>,
+) -> serde_json::Result<T> {
     let mut reader = io::BufReader::new(reader);
     // Non-object roots have no answer fields. Let serde skip them without ever
     // allocating a scalar body as a String or building a generic Value.
@@ -110,47 +150,91 @@ fn parse(reader: impl Read) -> serde_json::Result<Option<String>> {
     };
     let mut decoder = serde_json::Deserializer::from_reader(reader);
     let answer = if is_object {
-        Answer::deserialize(&mut decoder)?.0
+        seed.deserialize(&mut decoder)?
     } else {
         IgnoredAny::deserialize(&mut decoder)?;
-        None
+        T::default()
     };
     decoder.end()?;
     Ok(answer)
 }
 
-struct Answer(Option<String>);
-impl<'de> Deserialize<'de> for Answer {
-    fn deserialize<D: Deserializer<'de>>(decoder: D) -> Result<Self, D::Error> {
-        struct Fields;
-        impl<'de> Visitor<'de> for Fields {
-            type Value = Answer;
-            fn expecting(&self, out: &mut std::fmt::Formatter) -> std::fmt::Result {
-                out.write_str("an output object")
-            }
-            fn visit_map<M: MapAccess<'de>>(self, mut fields: M) -> Result<Answer, M::Error> {
-                let mut priority = 3;
-                let mut selected = None;
-                while let Some(key) = fields.next_key::<String>()? {
-                    let rank = match key.as_str() {
-                        "answer" => 0,
-                        "text" => 1,
-                        "output" => 2,
-                        _ => 3,
-                    };
-                    if rank < 3 && rank <= priority {
-                        priority = rank;
-                        // Drop any lower priority answer before reading the replacement.
-                        drop(selected.take());
-                        selected = fields.next_value::<StringOrNone>()?.0;
-                    } else {
-                        fields.next_value::<IgnoredAny>()?;
-                    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Target {
+    rank: usize,
+    occurrence: usize,
+}
+fn rank(key: &str) -> usize {
+    match key {
+        "answer" => 0,
+        "text" => 1,
+        "output" => 2,
+        _ => 3,
+    }
+}
+
+struct Inspect;
+impl<'de> DeserializeSeed<'de> for Inspect {
+    type Value = Option<Target>;
+    fn deserialize<D: Deserializer<'de>>(self, decoder: D) -> Result<Self::Value, D::Error> {
+        decoder.deserialize_map(self)
+    }
+}
+impl<'de> Visitor<'de> for Inspect {
+    type Value = Option<Target>;
+    fn expecting(&self, out: &mut std::fmt::Formatter) -> std::fmt::Result {
+        out.write_str("an output object")
+    }
+    fn visit_map<M: MapAccess<'de>>(self, mut fields: M) -> Result<Self::Value, M::Error> {
+        let mut occurrences = [0usize; 3];
+        let mut target: Option<Target> = None;
+        while let Some(key) = fields.next_key::<String>()? {
+            let rank = rank(&key);
+            if rank < 3 {
+                occurrences[rank] = occurrences[rank]
+                    .checked_add(1)
+                    .ok_or_else(|| serde::de::Error::custom("answer occurrence overflow"))?;
+                if target.is_none_or(|target| rank <= target.rank) {
+                    target = Some(Target {
+                        rank,
+                        occurrence: occurrences[rank],
+                    });
                 }
-                Ok(Answer(selected))
             }
+            fields.next_value::<IgnoredAny>()?;
         }
-        decoder.deserialize_map(Fields)
+        Ok(target)
+    }
+}
+
+struct Extract(Target);
+impl<'de> DeserializeSeed<'de> for Extract {
+    type Value = Option<String>;
+    fn deserialize<D: Deserializer<'de>>(self, decoder: D) -> Result<Self::Value, D::Error> {
+        decoder.deserialize_map(self)
+    }
+}
+impl<'de> Visitor<'de> for Extract {
+    type Value = Option<String>;
+    fn expecting(&self, out: &mut std::fmt::Formatter) -> std::fmt::Result {
+        out.write_str("an output object")
+    }
+    fn visit_map<M: MapAccess<'de>>(self, mut fields: M) -> Result<Self::Value, M::Error> {
+        let mut occurrence = 0usize;
+        let mut selected = None;
+        while let Some(key) = fields.next_key::<String>()? {
+            if rank(&key) == self.0.rank {
+                occurrence = occurrence
+                    .checked_add(1)
+                    .ok_or_else(|| serde::de::Error::custom("answer occurrence overflow"))?;
+                if occurrence == self.0.occurrence {
+                    selected = fields.next_value::<StringOrNone>()?.0;
+                    continue;
+                }
+            }
+            fields.next_value::<IgnoredAny>()?;
+        }
+        Ok(selected)
     }
 }
 
