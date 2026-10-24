@@ -319,41 +319,35 @@ function mapNodeRunToTraceItem({
   };
 }
 
-function stitchedTraceDebugPayload({
-  nodeRun,
-  trace
-}: {
-  nodeRun: FlowDebugRunDetail['node_runs'][number];
-  trace: NonNullable<FlowDebugRunDetail['stitched_trace']>[number];
-}) {
-  const callbackTaskIds = trace.callback_tasks
-    .filter((task) => task.node_run_id === nodeRun.id)
-    .map((task) => task.id);
-
-  return {
-    ...nodeRunDebugPayload(nodeRun),
-    stitched_trace_source: {
-      source_flow_run_id: trace.source_flow_run.id,
-      source_node_run_id: nodeRun.id,
-      callback_task_ids: callbackTaskIds
-    }
-  };
-}
-
 function mapStitchedTraceToTraceItems(
   detail: FlowDebugRunDetail
 ): AgentFlowTraceItem[] {
   const stitchedTrace =
     detail.stitched_trace ?? detail.detail?.stitched_trace ?? [];
 
-  return stitchedTrace.flatMap((trace) =>
-    trace.node_runs.map((nodeRun) =>
+  return stitchedTrace.flatMap((trace) => {
+    const callbackTaskIdsByNodeRun = new Map<string, string[]>();
+    for (const task of trace.callback_tasks) {
+      const ids = callbackTaskIdsByNodeRun.get(task.node_run_id);
+      if (ids) ids.push(task.id);
+      else callbackTaskIdsByNodeRun.set(task.node_run_id, [task.id]);
+    }
+
+    return trace.node_runs.map((nodeRun) =>
       mapNodeRunToTraceItem({
-        debugPayload: stitchedTraceDebugPayload({ nodeRun, trace }),
-        nodeRun
+        nodeRun,
+        debugPayload: {
+          ...nodeRunDebugPayload(nodeRun),
+          stitched_trace_source: {
+            source_flow_run_id: trace.source_flow_run.id,
+            source_node_run_id: nodeRun.id,
+            callback_task_ids:
+              callbackTaskIdsByNodeRun.get(nodeRun.id)?.slice() ?? []
+          }
+        }
       })
-    )
-  );
+    );
+  });
 }
 
 export function mapRunDetailToTrace(
