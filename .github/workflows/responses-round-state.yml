@@ -47,6 +47,8 @@ jobs:
           git rev-parse HEAD > tmp/test-governance/responses-round-state/ci/source-sha.txt
           jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
           echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
+      - name: Populate locked workspace metadata dependencies
+        run: cargo fetch --locked --manifest-path api/Cargo.toml
       - name: Adapter dependency boundary
         run: |
           out=tmp/test-governance/responses-round-state/ci

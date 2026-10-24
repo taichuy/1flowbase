@@ -251,6 +251,66 @@ async fn compact_previous_context_reads_exact_round_without_large_payloads() {
     let contexts = lookup().await.unwrap();
     assert_eq!(contexts.len(), 1);
     assert_eq!(contexts[0].answer.as_deref(), Some(answer));
+    // EXPLAIN the adapter's actual statement. Public IDs must not execute historical
+    // provider/node/span locator discovery, regardless of application history size.
+    let adapter = include_str!(concat!(env!("CARGO_MANIFEST_DIR"),
+        "/../storage/durable/postgres/src/orchestration_runtime_repository/repository_ports/responses_context.rs"));
+    let statement = adapter
+        .split_once("sqlx::query(r#\"")
+        .unwrap()
+        .1
+        .split_once("\"#)")
+        .unwrap()
+        .0;
+    let plan: Value = sqlx::query_scalar(&format!("explain (analyze, format json) {statement}"))
+        .bind(seeded.workspace_id)
+        .bind(seeded.application_id)
+        .bind(key)
+        .bind(seeded.actor_user_id)
+        .bind(&response_id)
+        .bind(Some(run.id))
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    fn assert_provider_fallback_skipped(value: &Value) -> bool {
+        if value.get("Subplan Name").and_then(Value::as_str) == Some("CTE provider_run_ids") {
+            assert_eq!(value["Actual Rows"].as_u64(), Some(0));
+            fn assert_no_historical_reads(node: &Value) {
+                if node
+                    .get("Relation Name")
+                    .and_then(Value::as_str)
+                    .is_some_and(|relation| {
+                        matches!(
+                            relation,
+                            "flow_runs" | "node_runs" | "node_run_details" | "runtime_spans"
+                        )
+                    })
+                {
+                    assert_eq!(
+                        node["Actual Loops"].as_u64(),
+                        Some(0),
+                        "a scoped public PK match must skip historical provider discovery: {node}"
+                    );
+                }
+                if let Some(children) = node.get("Plans").and_then(Value::as_array) {
+                    for child in children {
+                        assert_no_historical_reads(child);
+                    }
+                }
+            }
+            assert_no_historical_reads(value);
+            return true;
+        }
+        match value {
+            Value::Object(fields) => fields.values().any(assert_provider_fallback_skipped),
+            Value::Array(items) => items.iter().any(assert_provider_fallback_skipped),
+            _ => false,
+        }
+    }
+    assert!(
+        assert_provider_fallback_skipped(&plan),
+        "EXPLAIN must include the actual fallback branch"
+    );
     assert_eq!(
         serde_json::to_value(contexts[0].history.as_ref().unwrap()).unwrap(),
         proof
