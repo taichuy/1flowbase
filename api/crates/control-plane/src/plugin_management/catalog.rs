@@ -572,44 +572,42 @@ where
             .list_official_catalog_for_workspace(actor.current_workspace_id)
             .await?;
         let normalized_entries = normalize_official_entries(official_snapshot.entries);
+        let mut install_status_by_provider = HashMap::new();
+        for installation in &installations {
+            let artifact_status = artifact_snapshots
+                .get(&installation.id)
+                .map_or(domain::PluginArtifactInstanceStatus::Missing, |snapshot| {
+                    snapshot.artifact_status
+                });
+            let status = install_status_by_provider
+                .entry(installation.provider_code.as_str())
+                .or_insert(OfficialPluginInstallStatus::NotInstalled);
+            if artifact_status.is_ready() {
+                if assigned_installation_ids.contains(&installation.id) {
+                    *status = OfficialPluginInstallStatus::Assigned;
+                } else if *status != OfficialPluginInstallStatus::Assigned {
+                    *status = OfficialPluginInstallStatus::Installed;
+                }
+            } else if artifact_status == domain::PluginArtifactInstanceStatus::Missing
+                && matches!(
+                    installation.category,
+                    domain::ExtensionCategory::RuntimeExtensions
+                        | domain::ExtensionCategory::CapabilityPlugins
+                )
+                && *status == OfficialPluginInstallStatus::NotInstalled
+            {
+                *status = OfficialPluginInstallStatus::Uninstalled;
+            }
+        }
 
         let entries = normalized_entries
             .into_iter()
             .filter(|entry| filter.matches_plugin_type(&entry.plugin_type))
             .map(|entry| {
-                let matching_installations = installations
-                    .iter()
-                    .filter(|installation| installation.provider_code == entry.provider_code)
-                    .collect::<Vec<_>>();
-                let ready_installations = matching_installations
-                    .iter()
+                let install_status = install_status_by_provider
+                    .get(entry.provider_code.as_str())
                     .copied()
-                    .filter(|installation| {
-                        local_artifact_snapshot(&artifact_snapshots, &self.node_id, installation)
-                            .artifact_status
-                            .is_ready()
-                    })
-                    .collect::<Vec<_>>();
-                let install_status = if ready_installations
-                    .iter()
-                    .any(|installation| assigned_installation_ids.contains(&installation.id))
-                {
-                    OfficialPluginInstallStatus::Assigned
-                } else if !ready_installations.is_empty() {
-                    OfficialPluginInstallStatus::Installed
-                } else if matching_installations.iter().any(|installation| {
-                    matches!(
-                        installation.category,
-                        domain::ExtensionCategory::RuntimeExtensions
-                            | domain::ExtensionCategory::CapabilityPlugins
-                    ) && local_artifact_snapshot(&artifact_snapshots, &self.node_id, installation)
-                        .artifact_status
-                        == domain::PluginArtifactInstanceStatus::Missing
-                }) {
-                    OfficialPluginInstallStatus::Uninstalled
-                } else {
-                    OfficialPluginInstallStatus::NotInstalled
-                };
+                    .unwrap_or(OfficialPluginInstallStatus::NotInstalled);
                 let display_name =
                     resolve_official_i18n_value(&entry.i18n_summary, &locales, "provider.label")
                         .or_else(|| {
@@ -722,11 +720,11 @@ where
             .collect::<HashMap<_, _>>();
         let mut installation_map = HashMap::new();
         let mut installations_by_provider =
-            HashMap::<String, Vec<domain::PluginInstallationRecord>>::new();
-        for installation in installations {
-            installation_map.insert(installation.id, installation.clone());
+            HashMap::<&str, Vec<&domain::PluginInstallationRecord>>::new();
+        for installation in &installations {
+            installation_map.insert(installation.id, installation);
             installations_by_provider
-                .entry(installation.provider_code.clone())
+                .entry(installation.provider_code.as_str())
                 .or_default()
                 .push(installation);
         }
@@ -746,14 +744,14 @@ where
             }
             let current = installation_map
                 .get(&assignment.installation_id)
-                .cloned()
+                .copied()
                 .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-            if !is_model_provider_installation(&current) {
+            if !is_model_provider_installation(current) {
                 continue;
             }
             let namespace = plugin_namespace(&current.provider_code);
             let current_local_artifact =
-                local_artifact_snapshot(&artifact_snapshots, &self.node_id, &current);
+                local_artifact_snapshot(&artifact_snapshots, &self.node_id, current);
             if !current_local_artifact.artifact_status.is_ready() {
                 continue;
             }
@@ -766,30 +764,26 @@ where
                 .get(&assignment.provider_code)
                 .cloned();
             let installed_versions = installations_by_provider
-                .get(&assignment.provider_code)
+                .get(assignment.provider_code.as_str())
                 .into_iter()
                 .flatten()
-                .map(|installation| PluginInstalledVersionView {
-                    installation_id: installation.id,
-                    plugin_version: installation.plugin_version.clone(),
-                    source_kind: installation.source_kind.clone(),
-                    trust_level: installation.trust_level.clone(),
-                    desired_state: installation.desired_state.as_str().to_string(),
-                    availability_status: local_artifact_snapshot(
-                        &artifact_snapshots,
-                        &self.node_id,
-                        installation,
-                    )
-                    .availability_status
-                    .as_str()
-                    .to_string(),
-                    local_artifact: local_artifact_snapshot(
-                        &artifact_snapshots,
-                        &self.node_id,
-                        installation,
-                    ),
-                    created_at: installation.created_at,
-                    is_current: installation.id == current.id,
+                .map(|installation| {
+                    let local_artifact =
+                        local_artifact_snapshot(&artifact_snapshots, &self.node_id, installation);
+                    PluginInstalledVersionView {
+                        installation_id: installation.id,
+                        plugin_version: installation.plugin_version.clone(),
+                        source_kind: installation.source_kind.clone(),
+                        trust_level: installation.trust_level.clone(),
+                        desired_state: installation.desired_state.as_str().to_string(),
+                        availability_status: local_artifact
+                            .availability_status
+                            .as_str()
+                            .to_string(),
+                        local_artifact,
+                        created_at: installation.created_at,
+                        is_current: installation.id == current.id,
+                    }
                 })
                 .collect();
 

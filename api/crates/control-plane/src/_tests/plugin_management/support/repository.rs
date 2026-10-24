@@ -143,6 +143,39 @@ impl MemoryPluginManagementRepository {
         self.artifact_snapshot_updates.read().await.len()
     }
 
+    pub(crate) async fn set_installation_category(
+        &self,
+        installation_id: Uuid,
+        category: ExtensionCategory,
+    ) {
+        self.installations
+            .write()
+            .await
+            .get_mut(&installation_id)
+            .expect("test installation must exist")
+            .category = category;
+    }
+
+    pub(crate) async fn set_installation_created_at(
+        &self,
+        installation_id: Uuid,
+        created_at: OffsetDateTime,
+    ) {
+        self.installations
+            .write()
+            .await
+            .get_mut(&installation_id)
+            .expect("test installation must exist")
+            .created_at = created_at;
+    }
+
+    pub(crate) async fn remove_artifact_snapshot(&self, node_id: &str, installation_id: Uuid) {
+        self.artifact_instances
+            .write()
+            .await
+            .remove(&(node_id.to_string(), installation_id));
+    }
+
     pub(crate) async fn set_expected_checksum(
         &self,
         installation_id: Uuid,

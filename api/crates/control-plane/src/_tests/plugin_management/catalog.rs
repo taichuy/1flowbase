@@ -26,6 +26,9 @@ use super::support::{
     MemoryProviderRuntime,
 };
 
+#[path = "catalog/aggregation.rs"]
+mod aggregation;
+
 #[tokio::test]
 async fn ac_001_ac_003_family_fetches_current_catalog_and_reports_openai_update() {
     #[derive(Clone)]
