@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
+const { once } = require('node:events');
 const { runQualityGate } = require('../core.js');
 const { runGateCommand, combineGateLogs, readFailureExcerpt } = require('../log-files.js');
 
@@ -45,16 +47,16 @@ test('real gate output beyond the old 64 MiB limit retains complete logs and fai
   fs.readSync(descriptor, header, 0, 7, 0);
   fs.closeSync(descriptor);
   assert.equal(header.toString(), 'HEADER\n');
-  assert.match(fs.readFileSync(result.reportJsonPath, 'utf8'), /完整诊断/u);
+  assert.match(fs.readFileSync(result.reportPath, 'utf8'), /完整诊断/u);
   assert.match(readFailureExcerpt(logPath), /TAIL/u);
   assert.deepEqual(fs.readdirSync(path.dirname(logPath)).filter((name) => name.startsWith('.gate-stderr-')), []);
 });
 
-test('descriptor replay preserves UTF-8 across chunks, stdout/stderr separation and success', (t) => {
+test('descriptor replay preserves UTF-8 across chunks, stdout/stderr separation and success', async (t) => {
   const root = fixture(t);
   let stdout = '';
   let stderr = '';
-  const status = runGateCommand({
+  const status = await runGateCommand({
     commandSpec: { command: process.execPath, args: ['-e', `
       const fs = require('node:fs');
       fs.writeSync(1, 'x'.repeat(65535) + '边界😀\\n');
@@ -70,23 +72,23 @@ test('descriptor replay preserves UTF-8 across chunks, stdout/stderr separation 
   assert.equal(fs.readFileSync(path.join(root, 'gate.log'), 'utf8'), stdout + stderr);
 });
 
-test('spawn failure and signals retain diagnostics and fail instead of producing success', (t) => {
+test('spawn failure and signals retain diagnostics and fail instead of producing success', async (t) => {
   const root = fixture(t);
   const logPath = path.join(root, 'gate.log');
   const common = { logPath, writeStdout() {}, writeStderr() {} };
-  assert.equal(runGateCommand({ ...common,
+  assert.equal(await runGateCommand({ ...common,
     commandSpec: { command: path.join(root, 'does-not-exist'), args: [], cwd: root },
   }), 1);
   assert.match(fs.readFileSync(logPath, 'utf8'), /ENOENT/u);
   if (process.platform !== 'win32') {
-    assert.equal(runGateCommand({ ...common,
+    assert.equal(await runGateCommand({ ...common,
       commandSpec: { command: process.execPath, args: ['-e', "require('node:fs').writeSync(2, 'before signal\\n'); process.kill(process.pid, 'SIGTERM')"], cwd: root },
     }), 1);
     assert.match(fs.readFileSync(logPath, 'utf8'), /before signal\nCommand terminated by SIGTERM/u);
   }
 });
 
-test('aggregate logs retain component order, complete bytes and missing-log headers', (t) => {
+test('aggregate logs retain component order, complete bytes and missing-log headers', async (t) => {
   const root = fixture(t);
   const artifacts = ['one', 'two', 'missing'].map((scope) => ({ scope, artifactName: `test-${scope}`, artifactPath: path.join(root, scope) }));
   for (const artifact of artifacts.slice(0, 2)) {
@@ -94,8 +96,46 @@ test('aggregate logs retain component order, complete bytes and missing-log head
     fs.writeFileSync(path.join(artifact.artifactPath, 'quality-gate.latest.log'), `${artifact.scope}\n\n`);
   }
   const logPath = path.join(root, 'combined.log');
-  combineGateLogs(logPath, artifacts);
+  await combineGateLogs(logPath, artifacts);
   assert.equal(fs.readFileSync(logPath, 'utf8'), '===== one (test-one) =====\none\n\n\n\n===== two (test-two) =====\ntwo\n\n\n\n===== missing (test-missing) =====\n');
+});
+
+test('native console replay waits for a slow pipe without EAGAIN or truncated output', { timeout: 10000 }, async (t) => {
+  const root = fixture(t);
+  const modulePath = require.resolve('../log-files.js');
+  const code = `
+    const { runGateCommand } = require(${JSON.stringify(modulePath)});
+    runGateCommand({
+      commandSpec: { command: process.execPath, args: ['-e', 'require("node:fs").writeSync(1, "x".repeat(2 * 1024 * 1024)); require("node:fs").writeSync(2, "complete\\\\n");'] },
+      logPath: ${JSON.stringify(path.join(root, 'gate.log'))}
+    }).then((status) => { process.exitCode = status; });
+  `;
+  const child = spawn(process.execPath, ['-e', code], { stdio: ['ignore', 'pipe', 'pipe'] });
+  t.after(() => { if (child.exitCode === null) child.kill(); });
+  let stdoutBytes = 0;
+  let stderr = '';
+  child.stdout.on('data', (chunk) => { stdoutBytes += chunk.length; });
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+  child.stdout.pause();
+  const resume = setTimeout(() => child.stdout.resume(), 300);
+  t.after(() => clearTimeout(resume));
+  const [exitCode, signal] = await once(child, 'close');
+  assert.equal(signal, null);
+  assert.equal(exitCode, 0, stderr);
+  assert.equal(stdoutBytes, 2 * 1024 * 1024);
+  assert.equal(stderr, 'complete\n');
+});
+
+test('console delivery failure preserves both artifact streams and removes temporary files', async (t) => {
+  const root = fixture(t);
+  const logPath = path.join(root, 'gate.log');
+  await assert.rejects(runGateCommand({
+    commandSpec: { command: process.execPath, args: ['-e', 'console.log("out"); console.error("diagnostic")'] },
+    logPath,
+    writeStdout() { throw new Error('closed console'); },
+  }), /closed console/u);
+  assert.equal(fs.readFileSync(logPath, 'utf8'), 'out\ndiagnostic\n');
+  assert.deepEqual(fs.readdirSync(root), ['gate.log']);
 });
 
 test('failure excerpts preserve anchor priority, distant summary and tail across line boundaries', (t) => {

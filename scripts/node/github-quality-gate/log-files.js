@@ -7,25 +7,35 @@ const { stripVTControlCharacters } = require('node:util');
 // An I/O chunk size, not an output limit. Complete logs remain on disk.
 const CHUNK_BYTES = 64 * 1024;
 
-function copyLog(source, destination, writeOutput) {
+function writeStream(stream, text) {
+  return new Promise((resolve, reject) => {
+    stream.write(text, (error) => error ? reject(error) : resolve());
+  });
+}
+
+const writeProcessStdout = (text) => writeStream(process.stdout, text);
+const writeProcessStderr = (text) => writeStream(process.stderr, text);
+
+async function copyLog(source, destination, writeOutput, remaining = Infinity) {
   const input = fs.openSync(source, 'r');
   const buffer = Buffer.allocUnsafe(CHUNK_BYTES);
   const decoder = new StringDecoder('utf8');
   try {
     let length;
-    while ((length = fs.readSync(input, buffer)) > 0) {
+    while (remaining > 0 && (length = fs.readSync(input, buffer, 0, Math.min(buffer.length, remaining))) > 0) {
+      remaining -= length;
       if (destination !== undefined) fs.writeFileSync(destination, buffer.subarray(0, length));
-      if (writeOutput) writeOutput(decoder.write(buffer.subarray(0, length)));
+      if (writeOutput) await writeOutput(decoder.write(buffer.subarray(0, length)));
     }
-    if (writeOutput) writeOutput(decoder.end());
+    if (writeOutput) await writeOutput(decoder.end());
   } finally {
     fs.closeSync(input);
   }
 }
 
-function runGateCommand({ commandSpec, env, logPath, spawnSyncImpl = spawnSync,
-  writeStdout = (text) => fs.writeSync(process.stdout.fd, text),
-  writeStderr = (text) => fs.writeSync(process.stderr.fd, text) }) {
+async function runGateCommand({ commandSpec, env, logPath, spawnSyncImpl = spawnSync,
+  writeStdout = writeProcessStdout,
+  writeStderr = writeProcessStderr }) {
   const temporary = fs.mkdtempSync(path.join(path.dirname(logPath), '.gate-stderr-'));
   const stderrPath = path.join(temporary, 'stderr.log');
   const output = fs.openSync(logPath, 'w');
@@ -40,13 +50,16 @@ function runGateCommand({ commandSpec, env, logPath, spawnSyncImpl = spawnSync,
     // returns null here and never retains a second copy of the child log.
     if (result.stdout) fs.writeFileSync(output, result.stdout);
     if (result.stderr) fs.writeFileSync(errorOutput, result.stderr);
-    copyLog(logPath, undefined, writeStdout);
-    copyLog(stderrPath, output, writeStderr);
-    if (result.error || result.signal) {
-      const diagnostic = `${result.error?.message || `Command terminated by ${result.signal}`}\n`;
-      fs.writeFileSync(output, diagnostic);
-      writeStderr(diagnostic);
-    }
+    const stdoutBytes = fs.fstatSync(output).size;
+    await copyLog(stderrPath, output);
+    const diagnostic = result.error || result.signal
+      ? `${result.error?.message || `Command terminated by ${result.signal}`}\n` : '';
+    if (diagnostic) fs.writeFileSync(output, diagnostic);
+    // Commit both streams to the artifact before console replay; a closed or
+    // slow CI pipe must not discard the diagnostic stream during cleanup.
+    await copyLog(logPath, undefined, writeStdout, stdoutBytes);
+    await copyLog(stderrPath, undefined, writeStderr);
+    if (diagnostic) await writeStderr(diagnostic);
     return result.error ? 1 : (result.status ?? 1);
   } finally {
     fs.closeSync(output);
@@ -55,14 +68,14 @@ function runGateCommand({ commandSpec, env, logPath, spawnSyncImpl = spawnSync,
   }
 }
 
-function combineGateLogs(logPath, artifacts) {
+async function combineGateLogs(logPath, artifacts) {
   const output = fs.openSync(logPath, 'w');
   try {
     for (const [index, artifact] of artifacts.entries()) {
       if (index > 0) fs.writeFileSync(output, '\n\n');
       fs.writeFileSync(output, `===== ${artifact.scope} (${artifact.artifactName}) =====\n`);
       const componentLogPath = path.join(artifact.artifactPath, 'quality-gate.latest.log');
-      if (fs.existsSync(componentLogPath)) copyLog(componentLogPath, output);
+      if (fs.existsSync(componentLogPath)) await copyLog(componentLogPath, output);
     }
   } finally {
     fs.closeSync(output);
@@ -134,4 +147,4 @@ function readFailureExcerpt(logPath) {
   return selected.lines.join('\n').trim();
 }
 
-module.exports = { runGateCommand, combineGateLogs, readFailureExcerpt };
+module.exports = { runGateCommand, combineGateLogs, readFailureExcerpt, writeProcessStdout, writeProcessStderr };

@@ -2,7 +2,7 @@ const { boundIssueBody, appendStepSummary } = require('./report-output.js');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { runGateCommand, combineGateLogs, readFailureExcerpt } = require('./log-files.js');
+const { runGateCommand, combineGateLogs, readFailureExcerpt, writeProcessStdout, writeProcessStderr } = require('./log-files.js');
 
 const { getRepoRoot } = require('../testing/warning-capture.js');
 const {
@@ -776,7 +776,7 @@ async function runQualityGateAggregate({
   listOpenQualityGateIssuesImpl = listOpenQualityGateIssuesWithGitHubApi,
   closeIssueImpl = closeIssueWithGitHubApi,
   upsertPrCommentImpl = upsertIssueCommentWithMarker,
-  writeStderr = (text) => fs.writeSync(process.stderr.fd, text),
+  writeStderr = writeProcessStderr,
 } = {}) {
   const normalizedReportType = normalizeReportType(reportType);
   const outputDir = ensureOutputDir(repoRoot);
@@ -786,7 +786,7 @@ async function runQualityGateAggregate({
   });
   const timestamp = formatTimestamp(nowImpl());
   const aggregateLogPath = path.join(outputDir, 'quality-gate.latest.log');
-  combineGateLogs(aggregateLogPath, componentArtifacts);
+  await combineGateLogs(aggregateLogPath, componentArtifacts);
 
   let issueUrl = '';
   const report = buildAggregateReport({
@@ -904,14 +904,14 @@ async function runQualityGate({
   createIssueImpl = createIssueWithGitHubApi,
   listOpenQualityGateIssuesImpl = listOpenQualityGateIssuesWithGitHubApi,
   closeIssueImpl = closeIssueWithGitHubApi,
-  writeStdout = (text) => fs.writeSync(process.stdout.fd, text),
-  writeStderr = (text) => fs.writeSync(process.stderr.fd, text),
+  writeStdout = writeProcessStdout,
+  writeStderr = writeProcessStderr,
 } = {}) {
   const normalizedReportType = normalizeReportType(reportType);
   const outputDir = ensureOutputDir(repoRoot);
   const logPath = path.join(outputDir, 'quality-gate.latest.log');
   const commandSpec = buildGateCommand({ repoRoot, scope });
-  const gateExitCode = runGateCommand({
+  const gateExitCode = await runGateCommand({
     commandSpec,
     env,
     logPath,
