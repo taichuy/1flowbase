@@ -1,3 +1,4 @@
+import { collectContainerSubgraphNodeIds } from './container';
 import type {
   FlowAuthoringDocument,
   FlowNodeDocument
@@ -6,34 +7,6 @@ import type {
 import { getNodeById } from '../selectors';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { transformNodeSelectorReferences } from './selector-references';
-
-function collectDuplicatedNodeIds(
-  document: FlowAuthoringDocument,
-  rootNodeId: string
-) {
-  const queue = [rootNodeId];
-  const collectedIds: string[] = [];
-  const visited = new Set<string>();
-
-  while (queue.length > 0) {
-    const currentNodeId = queue.shift();
-
-    if (!currentNodeId || visited.has(currentNodeId)) {
-      continue;
-    }
-
-    visited.add(currentNodeId);
-    collectedIds.push(currentNodeId);
-
-    for (const candidate of document.graph.nodes) {
-      if (candidate.containerId === currentNodeId) {
-        queue.push(candidate.id);
-      }
-    }
-  }
-
-  return collectedIds;
-}
 
 function availableCopyId(existingIds: ReadonlySet<string>, sourceId: string) {
   let nextId = `${sourceId}-copy`;
@@ -67,7 +40,7 @@ function getNodeIdsToDuplicate(
   sourceNode: FlowNodeDocument
 ) {
   return sourceNode.type === 'iteration' || sourceNode.type === 'loop'
-    ? collectDuplicatedNodeIds(document, sourceNode.id)
+    ? collectContainerSubgraphNodeIds(document, sourceNode.id)
     : [sourceNode.id];
 }
 
