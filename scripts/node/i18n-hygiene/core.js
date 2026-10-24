@@ -509,8 +509,12 @@ function inferFrontendI18nOwnersForSource({
     }
   }
 
-  for (const owner of ownerKeys.keys()) {
-    if (relativePath.startsWith(`${owner}/`)) {
+  for (
+    let owner = path.posix.dirname(relativePath);
+    owner !== '.' && owner !== '/';
+    owner = path.posix.dirname(owner)
+  ) {
+    if (ownerKeys.has(owner)) {
       owners.add(owner);
     }
   }

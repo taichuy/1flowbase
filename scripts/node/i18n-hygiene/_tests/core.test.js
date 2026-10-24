@@ -650,6 +650,28 @@ test('collectI18nHygieneFindings keeps same-owner labelKey literals as frontend 
   assert.deepEqual(unusedKeys, ['auto.stale']);
 });
 
+test('collectI18nHygieneFindings retains nested owners without matching adjacent prefixes', (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-i18n-nested-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const parent = 'web/app/src/features/example';
+  const child = `${parent}/nested`;
+  const adjacent = `${parent}-other`;
+  for (const owner of [parent, child, adjacent]) {
+    writeI18nPair(repoRoot, owner,
+      { shared: '共享', stale: '废弃' },
+      { shared: 'Shared', stale: 'Stale' });
+  }
+  writeFile(repoRoot, `${child}/component.ts`, "export const labelKey = 'shared';\n");
+
+  const unused = collectI18nHygieneFindings({ repoRoot })
+    .filter((finding) => finding.rule === 'unused-i18n-key');
+
+  assert.deepEqual(unused.map(({ owner, key }) => `${owner}:${key}`).sort(), [
+    `${parent}:stale`, `${child}:stale`, `${adjacent}:shared`, `${adjacent}:stale`
+  ].sort());
+  assert.ok(unused.every((finding) => finding.severity === 'warning'));
+});
+
 test('collectI18nHygieneFindings does not report provider i18n keys as unused frontend keys', () => {
   const repoRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), 'oneflowbase-i18n-provider-unused-')
