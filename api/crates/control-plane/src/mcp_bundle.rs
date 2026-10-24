@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use anyhow::Result;
 use semver::Version;
@@ -130,46 +130,65 @@ where
         let snapshot = self
             .load_mcp_bundle_workspace_snapshot(actor.current_workspace_id)
             .await?;
+        let mut groups_by_instance: HashMap<Uuid, Vec<&domain::McpGroupRecord>> = HashMap::new();
+        for group in &snapshot.groups {
+            groups_by_instance
+                .entry(group.instance_record_id)
+                .or_default()
+                .push(group);
+        }
+        let mut bindings_by_instance: HashMap<Uuid, Vec<&domain::McpToolBindingRecord>> =
+            HashMap::new();
+        for binding in &snapshot.bindings {
+            bindings_by_instance
+                .entry(binding.instance_record_id)
+                .or_default()
+                .push(binding);
+        }
+
         for instance in &mut package.instances {
             let Some(existing) = snapshot.instances.get(&instance.instance_id) else {
                 continue;
             };
-            for group in snapshot
-                .groups
-                .iter()
-                .filter(|group| group.instance_record_id == existing.id)
-            {
-                if !instance
+            if let Some(groups) = groups_by_instance.get(&existing.id) {
+                let mut group_paths = instance
                     .groups
                     .iter()
-                    .any(|candidate| candidate.path == group.path)
-                {
-                    instance.groups.push(domain::McpBundleGroup {
+                    .map(|group| group.path.as_str())
+                    .collect::<HashSet<_>>();
+                let preserved_groups = groups
+                    .iter()
+                    .filter(|group| group_paths.insert(group.path.as_str()))
+                    .map(|group| domain::McpBundleGroup {
                         path: group.path.clone(),
                         display_name: group.display_name.clone(),
                         description_short: group.description_short.clone(),
                         enabled: group.enabled,
                         sort_order: group.sort_order,
-                    });
-                }
+                    })
+                    .collect::<Vec<_>>();
+                instance.groups.extend(preserved_groups);
             }
-            for binding in snapshot
-                .bindings
-                .iter()
-                .filter(|binding| binding.instance_record_id == existing.id)
-            {
-                if !instance.bindings.iter().any(|candidate| {
-                    candidate.group_path == binding.group_path
-                        && candidate.tool_id == binding.tool_id
-                }) {
-                    instance.bindings.push(domain::McpBundleToolBinding {
+            if let Some(bindings) = bindings_by_instance.get(&existing.id) {
+                let mut binding_keys = instance
+                    .bindings
+                    .iter()
+                    .map(|binding| (binding.group_path.as_str(), binding.tool_id.as_str()))
+                    .collect::<HashSet<_>>();
+                let preserved_bindings = bindings
+                    .iter()
+                    .filter(|binding| {
+                        binding_keys.insert((binding.group_path.as_str(), binding.tool_id.as_str()))
+                    })
+                    .map(|binding| domain::McpBundleToolBinding {
                         group_path: binding.group_path.clone(),
                         tool_id: binding.tool_id.clone(),
                         display_alias: binding.display_alias.clone(),
                         visible: binding.visible,
                         sort_order: binding.sort_order,
-                    });
-                }
+                    })
+                    .collect::<Vec<_>>();
+                instance.bindings.extend(preserved_bindings);
             }
         }
         Ok(package)

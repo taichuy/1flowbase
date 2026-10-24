@@ -1,6 +1,176 @@
 use super::*;
 
 #[tokio::test]
+async fn preserve_instance_entries_keeps_package_duplicates_and_appends_snapshot_order_per_instance(
+) {
+    let actor_user_id = Uuid::from_u128(310);
+    let workspace_id = Uuid::from_u128(320);
+    let first_id = Uuid::from_u128(330);
+    let second_id = Uuid::from_u128(331);
+    let unmentioned_id = Uuid::from_u128(332);
+    let foreign_id = Uuid::from_u128(333);
+    let group = |path: &str, name: &str, enabled, sort_order| domain::McpBundleGroup {
+        path: path.into(),
+        display_name: name.into(),
+        description_short: Some(format!("Description for {name}")),
+        enabled,
+        sort_order,
+    };
+    let bundle_binding = |path: &str, tool_id: &str, alias: &str, visible, sort_order| {
+        domain::McpBundleToolBinding {
+            group_path: path.into(),
+            tool_id: tool_id.into(),
+            display_alias: Some(alias.into()),
+            visible,
+            sort_order,
+        }
+    };
+    let mut package = managed_frontstage_package("1.0.2");
+    package.instances[0].groups = vec![
+        group("/shared", "Template first", false, 5),
+        group("/shared", "Template duplicate", true, -5),
+    ];
+    package.instances[0].bindings = vec![
+        bundle_binding("/shared", "shared_tool", "Template first", false, 5),
+        bundle_binding("/shared", "shared_tool", "Template duplicate", true, -5),
+    ];
+    let mut second = package.instances[0].clone();
+    second.instance_id = "second_browser".into();
+    second.groups.clear();
+    second.bindings.clear();
+    let mut missing = package.instances[0].clone();
+    missing.instance_id = "missing_browser".into();
+    package.instances.extend([second, missing]);
+
+    let first_zebra = group("/zebra", "First zebra", false, 20);
+    let first_alpha = group("/alpha", "First alpha", true, -20);
+    let second_shared = group("/shared", "Second shared", false, 10);
+    let second_alpha = group("/alpha", "Second alpha", true, -10);
+    let first_zebra_binding = bundle_binding("/zebra", "shared_tool", "First zebra", false, 20);
+    let first_zebra_other = bundle_binding("/zebra", "other_tool", "First other tool", true, 0);
+    let first_alpha_binding = bundle_binding("/alpha", "shared_tool", "First alpha", true, -20);
+    let second_shared_binding =
+        bundle_binding("/shared", "shared_tool", "Second shared", false, 10);
+    let second_alpha_binding = bundle_binding("/alpha", "shared_tool", "Second alpha", true, -10);
+    let mut expected = package.clone();
+    expected.instances[0]
+        .groups
+        .extend([first_zebra.clone(), first_alpha.clone()]);
+    expected.instances[0].bindings.extend([
+        first_zebra_binding.clone(),
+        first_zebra_other.clone(),
+        first_alpha_binding.clone(),
+    ]);
+    expected.instances[1].groups = vec![second_shared.clone(), second_alpha.clone()];
+    expected.instances[1].bindings =
+        vec![second_shared_binding.clone(), second_alpha_binding.clone()];
+
+    let instance = |id, instance_id: &str, workspace_id| domain::McpInstanceRecord {
+        id,
+        workspace_id,
+        instance_id: instance_id.into(),
+        name: instance_id.into(),
+        description_short: None,
+        status: domain::McpInstanceStatus::Enabled,
+        default_entry_path: "/shared".into(),
+        webmcp_exposure: domain::WebMcpExposure::Disabled,
+        managed_by: None,
+        created_by: actor_user_id,
+        updated_by: actor_user_id,
+        created_at: OffsetDateTime::UNIX_EPOCH,
+        updated_at: OffsetDateTime::UNIX_EPOCH,
+    };
+    let group_record =
+        |id: u128, instance_record_id, group: domain::McpBundleGroup| domain::McpGroupRecord {
+            id: Uuid::from_u128(id),
+            instance_record_id,
+            path: group.path,
+            display_name: group.display_name,
+            description_short: group.description_short,
+            enabled: group.enabled,
+            sort_order: group.sort_order,
+            created_by: actor_user_id,
+            updated_by: actor_user_id,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
+        };
+    let binding_record = |id, instance_record_id, bundle: domain::McpBundleToolBinding| {
+        let mut record = binding(id, &bundle.tool_id);
+        record.instance_record_id = instance_record_id;
+        record.group_path = bundle.group_path;
+        record.display_alias = bundle.display_alias;
+        record.visible = bundle.visible;
+        record.sort_order = bundle.sort_order;
+        record.created_by = actor_user_id;
+        record.updated_by = actor_user_id;
+        record
+    };
+    let repository = McpBundleFixtureRepository::with_export_snapshot(McpBundleExportSnapshot {
+        actor: domain::ActorContext::root(actor_user_id, workspace_id, "root"),
+        instances: vec![
+            instance(second_id, "second_browser", workspace_id),
+            instance(first_id, "frontstage_browser", workspace_id),
+            instance(unmentioned_id, "unmentioned_browser", workspace_id),
+            instance(foreign_id, "missing_browser", Uuid::from_u128(321)),
+        ],
+        groups: vec![
+            group_record(1, second_id, second_shared),
+            group_record(2, first_id, first_zebra),
+            group_record(3, first_id, group("/shared", "Snapshot conflict", true, 0)),
+            group_record(4, unmentioned_id, group("/ignored", "Unmentioned", true, 0)),
+            group_record(5, first_id, group("/zebra", "Later zebra", true, -1)),
+            group_record(6, second_id, second_alpha),
+            group_record(7, second_id, group("/shared", "Later shared", true, -1)),
+            group_record(8, first_id, first_alpha),
+            group_record(9, foreign_id, group("/foreign", "Foreign", true, 0)),
+        ],
+        bindings: vec![
+            binding_record(1, second_id, second_shared_binding),
+            binding_record(
+                2,
+                first_id,
+                bundle_binding("/shared", "shared_tool", "Snapshot conflict", true, 0),
+            ),
+            binding_record(3, first_id, first_zebra_binding),
+            binding_record(4, first_id, first_zebra_other),
+            binding_record(
+                5,
+                first_id,
+                bundle_binding("/zebra", "shared_tool", "Later zebra", true, -1),
+            ),
+            binding_record(
+                6,
+                unmentioned_id,
+                bundle_binding("/ignored", "shared_tool", "Unmentioned", true, 0),
+            ),
+            binding_record(
+                7,
+                second_id,
+                bundle_binding("/shared", "shared_tool", "Later shared", true, -1),
+            ),
+            binding_record(8, first_id, first_alpha_binding),
+            binding_record(9, second_id, second_alpha_binding),
+            binding_record(
+                10,
+                foreign_id,
+                bundle_binding("/foreign", "shared_tool", "Foreign", true, 0),
+            ),
+        ],
+        policies: Vec::new(),
+        tools: Vec::new(),
+        connections: Vec::new(),
+    });
+
+    let merged = McpManagementService::new(repository.clone())
+        .preserve_unmentioned_instance_entries(actor_user_id, package)
+        .await
+        .unwrap();
+
+    assert_eq!(merged, expected);
+    assert!(repository.replace_inputs().is_empty());
+}
+
+#[tokio::test]
 async fn bundle_preview_and_import_preserve_shared_tool_impact_and_atomic_replace_input() {
     let actor_user_id = Uuid::from_u128(110);
     let workspace_id = Uuid::from_u128(120);
