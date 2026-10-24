@@ -130,3 +130,11 @@ not remove raw diagnostics or relax review of new rules. Sign-in filing HTML
 explicitly trusts publishers authorized by `system.branding.save`; its review binds
 both write authorization and verbatim rendering evidence. This does not authorize
 arbitrary untrusted HTML.
+
+## Execution evidence and log resources
+
+Ordinary libtest shards require executed passing tests and zero failures, just like protected selections. Completion validation can stop the command sequence immediately; the original nonzero child exit code takes precedence. Nextest retains its native `--no-tests=fail`; coverage retains the existing empty-doctest contract and cleanup behavior. Cargo summaries normalize ANSI once before scanning, reducing O(K×L) repeated normalization to O(L+K).
+
+The outer quality gate writes stdout directly to the permanent log and stderr to an exclusive temporary file, then replays bounded chunks and appends stderr in the existing stdout/stderr order. Aggregate logs copy each component without retaining their combined text. Failure excerpts preserve the 80-line window, Rust failure/panic priority and distant failure summary; memory depends on retained windows and the longest line rather than all log lines. Complete artifact logs remain intact.
+
+The inner synchronous runner retains its existing 16 MiB capture budget. On capture/spawn errors it preserves available diagnostics before failing. Removing the outer 64 MiB duplicate buffer does not remove that inner budget or constrain the RSS of test processes. Record detection retention, PR feedback P50/P95 with sample counts, runner minutes, peak local RSS/OOM and net governance lines; historical runs with different source/cache states are context, not causal controls. Test inventories and the Level 1/2/3 responsibilities remain unchanged.

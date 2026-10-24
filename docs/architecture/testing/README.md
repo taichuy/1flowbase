@@ -38,6 +38,18 @@ API coverage 使用 [LLVM 原生 `%Nm` 合并池](https://clang.llvm.org/docs/So
 
 API 通用 fixture 通过 `PostgresTestSchema::create()` 为每个测试创建独立空数据库和 schema，显式设置 startup search_path，再执行生产 Migrator 和完整业务 bootstrap。文件目录同样逐 fixture 隔离；数据库 guard 只回收自己拥有的临时库。历史迁移与恢复 fixture 保留各自原有入口。
 
+## 执行证据与日志资源
+
+普通 `cargo test` 分片、定向测试和专项由 `verify/backend.js` 统一要求实际通过数大于零且失败数为零。只有 ignored、缺失 summary 或编译成功不能通过。nextest 分片保留原生 `--no-tests=fail`；空 doctest 的合法性仍由 coverage owner 按原契约判断。`warning-capture.js` 接受命令完成校验返回的非零状态，立即停止后续命令；子进程原始非零退出码优先保留。consistency 收据仍列明未执行的后续 target，coverage 清理仍在结束路径执行。
+
+Cargo summary 解析先调用 Node 原生 `stripVTControlCharacters` 规范化一次，再扫描全部 summary；日志长度为 L、summary 数为 K 时，从重复规范化的 O(K×L) 改为 O(L+K)，计数语义不变。
+
+`github-quality-gate/log-files.js` 拥有外层进程日志与聚合 I/O：子进程 stdout 直接写正式日志、stderr 写本次独占临时文件，结束后有界转发并追加 stderr，保留原 stdout→stderr 日志顺序与退出码。聚合逐文件复制，保留全部字节；不再把 scope 输出或所有 component 日志拼成大字符串。失败摘要扫描日志并保留原有 80 行窗口、Rust failures/panic 优先级和远端失败 summary。I/O 内存不随完整日志增长；摘要内存与保留窗口及最长单行有关。临时 stderr 在 finally 回收。
+
+内层同步命令仍使用现有 16 MiB 捕获预算；发生 ENOBUFS 等错误时，先转发并保存已经捕获的诊断，再失败退出，不能把部分输出当成完整执行证据。外层移除 64 MiB 重复缓冲限制不代表内层预算已取消，也不代表整个 runner 的 RSS 不再受测试进程影响。
+
+性能结算分别记录缺陷检测保留率、PR 反馈 P50/P95（含样本数）、runner 总分钟、本地峰值 RSS/OOM 和治理净行数。历史不同源码/缓存样本不能作为因果对照；只有单次候选运行时报告该次耗时，分位数写未测。Level 1 继续提供定向快速反馈，Level 2 保留当前 PR 契约与集成门禁，Level 3 由完整 CI/coverage 承担回归；本优化不删减测试集合。
+
 ## 静态规则与结构所有权
 
 `check-rust-backend` 管理第一方 Rust 代码，排除 `api/vendor/` 的上游源码和安装产物。第三方漏洞与容器环境警告单列归因；不能借此排除第一方调用路径，也不能用路径包含 vendor 字样代替明确目录边界。测试中的合法失败注入与生产 panic 分别判断。
