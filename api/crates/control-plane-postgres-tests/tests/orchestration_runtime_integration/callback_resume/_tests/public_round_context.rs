@@ -274,7 +274,7 @@ async fn compact_previous_context_reads_exact_round_without_large_payloads() {
         .unwrap();
     fn assert_provider_fallback_skipped(value: &Value) -> bool {
         if value.get("Subplan Name").and_then(Value::as_str) == Some("CTE provider_run_ids") {
-            assert_eq!(value["Actual Rows"].as_u64(), Some(0));
+            assert_eq!(value["Actual Rows"].as_f64(), Some(0.0));
             fn assert_no_historical_reads(node: &Value) {
                 if node
                     .get("Relation Name")
