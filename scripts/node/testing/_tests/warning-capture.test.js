@@ -235,3 +235,99 @@ test('runCommandSequence removes stale warning logs before a clean run', () => {
   assert.equal(secondStatus, 0);
   assert.equal(fs.existsSync(warningLogPath), false);
 });
+
+test('completion status stops later child processes and preserves process and act failures', () => {
+  for (const [childStatus, completionStatus, actWarning, expected] of [
+    [0, undefined, false, 0],
+    [0, 0, false, 0],
+    [0, 7, false, 7],
+    [23, 7, false, 23],
+    [0, 7, true, 1],
+  ]) {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'command-completion-'));
+    try {
+      const marker = path.join(repoRoot, 'later-child-started');
+      const output = actWarning
+        ? 'An update to Table inside a test was not wrapped in act(...).'
+        : 'test result: ok. 0 passed; 0 failed;';
+      let stdout = '';
+      let stderr = '';
+      let completions = 0;
+      const status = runCommandSequence({
+        repoRoot, env: {}, scope: 'completion-status',
+        commands: [
+          { label: 'first', command: process.execPath, args: ['-e',
+            `process.stdout.write(${JSON.stringify(output)}); process.exitCode = ${childStatus};`] },
+          { label: 'later', command: process.execPath, args: ['-e',
+            `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'started');`] },
+        ],
+        writeStdout(text) { stdout += text; },
+        writeStderr(text) { stderr += text; },
+        onCommandComplete({ command, result }) {
+          completions += 1;
+          if (command.label === 'first') {
+            assert.equal(result.status, childStatus);
+            return completionStatus;
+          }
+        },
+      });
+      assert.equal(status, expected);
+      assert.equal(stdout, output);
+      assert.equal(completions, expected === 0 ? 2 : 1);
+      assert.equal(fs.existsSync(marker), expected === 0);
+      if (actWarning) assert.match(stderr, /test-fidelity.*first/u);
+    } finally {
+      fs.rmSync(repoRoot, { recursive: true, force: true });
+    }
+  }
+});
+
+test('spawn errors retain available output and failure diagnostics before being rethrown', () => {
+  for (const code of ['ENOBUFS', 'ENOENT']) {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-error-evidence-'));
+    try {
+      const logPath = path.join(repoRoot, 'tmp/test-governance/spawn-error.warnings.log');
+      const error = Object.assign(new Error('spawnSync cargo buffer exhausted'), { code });
+      let stdout = '';
+      let stderr = '';
+      let calls = 0;
+      let completionCalls = 0;
+      assert.throws(() => runCommandSequence({
+        repoRoot, env: {}, scope: 'spawn-error',
+        commands: [
+          { label: 'failed-spawn', command: path.join(repoRoot, 'missing-executable'), args: [] },
+          { label: 'must-not-start', command: process.execPath, args: [] },
+        ],
+        spawnSyncImpl(...args) {
+          calls += 1;
+          return code === 'ENOENT' ? spawnSync(...args) : {
+            error, status: null, stdout: 'partial test output\n',
+            stderr: '   Compiling interrupted-crate\nwarning: partial diagnostic\n',
+          };
+        },
+        writeStdout(text) { stdout += text; },
+        writeStderr(text) { stderr += text; },
+        onCommandComplete() { completionCalls += 1; },
+      }), (caught) => {
+        assert.equal(caught.code, code);
+        if (code === 'ENOBUFS') assert.equal(caught, error);
+        assert.ok(fs.existsSync(logPath), 'failure evidence must exist before the throw');
+        assert.ok(stderr.includes(code), 'the diagnostic must be emitted before the throw');
+        return true;
+      });
+      const log = fs.readFileSync(logPath, 'utf8');
+      assert.equal(calls, 1);
+      assert.equal(completionCalls, 0);
+      assert.match(log, /step=failed-spawn/u);
+      assert.ok(log.includes(code));
+      if (code === 'ENOBUFS') {
+        assert.equal(stdout, 'partial test output\n');
+        assert.match(stderr, /Compiling interrupted-crate\nwarning: partial diagnostic/u);
+        assert.match(log, /\[stdout\]\npartial test output/u);
+        assert.match(log, /Compiling interrupted-crate\nwarning: partial diagnostic/u);
+      }
+    } finally {
+      fs.rmSync(repoRoot, { recursive: true, force: true });
+    }
+  }
+});

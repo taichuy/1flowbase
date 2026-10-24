@@ -16,6 +16,7 @@ test('each control-plane coverage command requires its own executed passing test
     for (const [output, expected] of [
       ['', 1],
       ['test result: ok. 0 passed; 0 failed; 15 ignored;', 1],
+      ['Finished test profile [unoptimized] target(s)', 1],
       ['test result: FAILED. 1 passed; 1 failed;', 1],
       ['test result: ok. 1 passed; 0 failed;', 0],
       ['test result: \u001b[32mok\u001b[0m. 2 passed; 0 failed;', 0],
@@ -28,6 +29,8 @@ test('each control-plane coverage command requires its own executed passing test
         });
         let diagnostics = '';
         let reportsRead = 0;
+        const startedLabels = [];
+        let cleanupCalls = 0;
         const status = await main(['backend', 'control-plane'], {
           repoRoot, env: {},
           runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 2 } },
@@ -36,6 +39,8 @@ test('each control-plane coverage command requires its own executed passing test
           spawnSyncImpl(_command, args) {
             const selected = commands.find(command =>
               JSON.stringify(command.args) === JSON.stringify(args));
+            if (args[1] === 'clean') cleanupCalls += 1;
+            else startedLabels.push(selected?.label);
             return {
               status: 0,
               stdout: args[1] === 'clean'
@@ -54,6 +59,10 @@ test('each control-plane coverage command requires its own executed passing test
         });
         assert.equal(status, expected, `${label}: ${output}`);
         assert.equal(reportsRead > 0, expected === 0);
+        assert.equal(cleanupCalls, 2, 'cleanup must run after an evidence failure');
+        const failedIndex = commands.findIndex(command => command.label === label);
+        assert.deepEqual(startedLabels, (expected === 0 ? commands : commands.slice(0, failedIndex + 1))
+          .map(command => command.label));
         if (expected) assert.ok(diagnostics.includes(`${label}: no executed passing tests`));
       } finally {
         fs.rmSync(repoRoot, { recursive: true, force: true });

@@ -418,13 +418,13 @@ async function runCoverage(argv = [], deps = {}) {
               ? counts.passedCount !== null && counts.passedCount >= 0
               : counts.passedCount > 0;
             if (!(executed && counts.failedCount === 0)) {
-              status = 1;
               (deps.writeStderr || process.stderr.write.bind(process.stderr))(
                 `${command.label}: ${isDoctest ? 'no successful doctest result' : 'no executed passing tests'}; refusing invalid coverage evidence\n`,
               );
+              return 1;
             }
           },
-        }) || status;
+        });
 
         if (status === 0) {
           status = reportCoverageThresholds({

@@ -6,12 +6,13 @@ function parseCargoTestCounts(output) {
     failedCount: null,
   };
   const pattern = /test result:\s+(?:ok|FAILED)\.\s+(\d+) passed;\s+(\d+) failed;/gu;
-  let match = pattern.exec(stripVTControlCharacters(output));
+  const normalizedOutput = stripVTControlCharacters(output);
+  let match = pattern.exec(normalizedOutput);
 
   while (match) {
     counts.passedCount = (counts.passedCount ?? 0) + Number.parseInt(match[1], 10);
     counts.failedCount = (counts.failedCount ?? 0) + Number.parseInt(match[2], 10);
-    match = pattern.exec(stripVTControlCharacters(output));
+    match = pattern.exec(normalizedOutput);
   }
 
   return counts;

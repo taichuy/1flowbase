@@ -111,6 +111,7 @@ function buildBackendCargoCommand({
 
     return {
       label: `cargo-test${labelSuffix}`,
+      requireExecutedTests: true,
       command: 'cargo',
       args: [
         'test', ...packageArgs, ...(testSelection?.targetArgs ?? []),
@@ -172,10 +173,7 @@ function buildBackendTestCommands({
 }) {
   return [
     buildRustBackendStaticGateCommand({ repoRoot, env }),
-    {
-      ...buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental, testSelection: selection }),
-      requireExecutedTests: true,
-    },
+    buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental, testSelection: selection }),
   ];
 }
 
@@ -264,10 +262,7 @@ function buildBackendCommands({
     buildBackendCargoCommand({ target: 'clippy', cargoJobs, cargoTestThreads, incremental }),
     ...buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, incremental }),
     ...buildHistoryMaintenanceCommands({ cargoJobs, cargoTestThreads, incremental }),
-    {
-      ...buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental }),
-      requireExecutedTests: true,
-    },
+    buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental }),
   ];
 }
 
@@ -303,18 +298,17 @@ function usageBackend(writeStdout = (text) => process.stdout.write(text)) {
 }
 
 function runBackendCommandSequence(sequenceOptions) {
-  let emptySelection = false;
-  const status = runCommandSequence({
+  return runCommandSequence({
     ...sequenceOptions,
     onCommandComplete({ command, result }) {
       if (command.label === 'model-usage-report-postgres') {
         const output = `${result.stdout || ''}\n${result.stderr || ''}`;
         const count = (name) => Number(output.match(new RegExp(`^# ${name} (\\d+)$`, 'mu'))?.[1] ?? NaN);
         if (result.status === 0 && !(count('tests') > 0 && count('pass') === count('tests') && count('fail') === 0 && count('skipped') === 0)) {
-          emptySelection = true;
           (sequenceOptions.writeStderr || process.stderr.write.bind(process.stderr))(
             `${command.label}: no complete passing SQL evidence; refusing empty or skipped PostgreSQL gate\n`,
           );
+          return 1;
         }
         return;
       }
@@ -324,14 +318,13 @@ function runBackendCommandSequence(sequenceOptions) {
         && !command.label.startsWith('cargo-test-history-maintenance-')) return;
       const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
       if (result.status === 0 && !(counts.passedCount > 0 && counts.failedCount === 0)) {
-        emptySelection = true;
         (sequenceOptions.writeStderr || process.stderr.write.bind(process.stderr))(
           `${command.label}: no executed passing tests; refusing empty or failed protected Cargo gate\n`,
         );
+        return 1;
       }
     },
   });
-  return status || (emptySelection ? 1 : 0);
 }
 
 async function runBackend(argv = [], deps = {}) {

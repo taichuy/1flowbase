@@ -187,9 +187,6 @@ function runCommandSequence({
       stdio: ['inherit', 'pipe', 'pipe'],
     });
 
-    if (result.error) {
-      throw result.error;
-    }
     const finishedAtMs = nowImpl();
 
     if (result.stdout) {
@@ -200,7 +197,14 @@ function runCommandSequence({
       writeStderr(result.stderr);
     }
 
-    const warningStderr = result.status === 0
+    const spawnErrorDiagnostic = result.error
+      ? `[spawn-error] ${command.label}: ${result.error.code ? `${result.error.code}: ` : ''}${result.error.message}\n`
+      : '';
+    if (spawnErrorDiagnostic) {
+      writeStderr(spawnErrorDiagnostic);
+    }
+
+    const warningStderr = result.status === 0 && !result.error
       ? filterSuccessfulWarningStderr(result.stderr)
       : result.stderr;
     const stdoutHasActWarning = REACT_ACT_WARNING_PATTERN.test(
@@ -208,7 +212,8 @@ function runCommandSequence({
     );
     const warningOutput = [
       warningStderr,
-      stdoutHasActWarning ? `[stdout]\n${result.stdout}` : '',
+      (stdoutHasActWarning || result.error) && result.stdout ? `[stdout]\n${result.stdout}` : '',
+      spawnErrorDiagnostic,
     ].filter(Boolean).join('\n');
 
     if (warningOutput) {
@@ -221,14 +226,16 @@ function runCommandSequence({
       });
     }
 
-    if (onCommandComplete) {
-      onCommandComplete({
-        command,
-        result,
-        startedAtMs,
-        finishedAtMs,
-      });
+    if (result.error) {
+      throw result.error;
     }
+
+    const completionStatus = onCommandComplete?.({
+      command,
+      result,
+      startedAtMs,
+      finishedAtMs,
+    }) ?? 0;
 
     if (result.status !== 0) {
       return result.status ?? 1;
@@ -239,6 +246,10 @@ function runCommandSequence({
     ))) {
       writeStderr(`[test-fidelity] ${command.label}: React work escaped the awaited act boundary; see the full command log.\n`);
       return 1;
+    }
+
+    if (completionStatus !== 0) {
+      return completionStatus;
     }
   }
 

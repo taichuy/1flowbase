@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { requireExecutedCargoTests } = require('../cargo-test-results.js');
+const { parseCargoTestCounts, requireExecutedCargoTests } = require('../cargo-test-results.js');
 
 test('Cargo evidence accepts executed tests and a neighboring empty doc-test suite', () => {
   assert.deepEqual(requireExecutedCargoTests(
@@ -21,6 +21,41 @@ test('Cargo evidence rejects zero selection, ignored-only, compilation and faili
     'test result: FAILED. 3 passed; 1 failed; 0 ignored;',
     '',
   ]) assert.throws(() => requireExecutedCargoTests(output), /refusing invalid Cargo test evidence/u);
+});
+
+test('Cargo counts accumulate ANSI summaries across multiple test binaries', () => {
+  const output = [
+    '\u001b[1mRunning\u001b[0m unit tests',
+    'test result: \u001b[32mok\u001b[0m. 12 passed; 0 failed; 3 ignored;',
+    'test result: \u001b[31mFAILED\u001b[0m. 7 passed; 2 failed; 0 ignored;',
+    '\u001b[32mtest result: ok. 0 passed; 0 failed; 0 ignored;\u001b[0m',
+    'test result: ok. 4 passed; 0 failed; 1 ignored;',
+  ].join('\n');
+  assert.deepEqual(parseCargoTestCounts(output), { passedCount: 23, failedCount: 2 });
+  assert.throws(() => requireExecutedCargoTests(output), /refusing invalid Cargo test evidence/u);
+  assert.deepEqual(parseCargoTestCounts('Finished compilation'), {
+    passedCount: null, failedCount: null,
+  });
+});
+
+test('Cargo parser strips terminal controls once per command log', () => {
+  const result = spawnSync(process.execPath, ['-e', `
+    const util = require('node:util');
+    const strip = util.stripVTControlCharacters;
+    let normalizationCalls = 0;
+    util.stripVTControlCharacters = (output) => {
+      normalizationCalls += 1;
+      return strip(output);
+    };
+    const { parseCargoTestCounts } = require(process.argv[1]);
+    const output = '\\u001b[32mtest result: ok. 2 passed; 0 failed;\\u001b[0m\\n'.repeat(200);
+    const counts = parseCargoTestCounts(output);
+    process.stdout.write(JSON.stringify({ counts, normalizationCalls }));
+  `, path.resolve(__dirname, '../cargo-test-results.js')], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    counts: { passedCount: 400, failedCount: 0 }, normalizationCalls: 1,
+  });
 });
 
 test('log CLI requires every command to execute passing tests independently', () => {

@@ -85,6 +85,7 @@ function runBackendConsistencyCommandSequence(sequenceOptions) {
       target.durationMs = Math.max(0, finishedAtMs - startedAtMs);
       target.passedCount = counts.passedCount;
       target.failedCount = counts.failedCount;
+      return target.exitCode;
     },
   });
 
@@ -94,7 +95,7 @@ function runBackendConsistencyCommandSequence(sequenceOptions) {
     targets,
   });
 
-  return status || (targets.some((target) => target.status === 'failed') ? 1 : 0);
+  return status;
 }
 
 async function runBackendConsistency(argv = [], deps = {}) {

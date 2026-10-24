@@ -236,18 +236,29 @@ test('consistency gates reject zero, ignored-only, absent, and contradictory exe
     'test result: FAILED. 1 passed; 1 failed; 0 ignored;',
   ]) {
     const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'consistency-empty-'));
-    const commands = buildCommands({ cargoJobs: 2, cargoTestThreads: 1 }).slice(0, 1);
+    const commands = buildCommands({ cargoJobs: 2, cargoTestThreads: 1 }).slice(0, 3);
+    let calls = 0;
     let stderr = '';
     const status = runBackendConsistencyCommandSequence({
       repoRoot, env: {}, scope: 'empty-selection', commands,
-      spawnSyncImpl: () => ({ status: 0, stdout, stderr: '' }),
+      spawnSyncImpl() {
+        calls += 1;
+        return { status: 0, stdout, stderr: '' };
+      },
       writeStdout() {}, writeStderr: (text) => { stderr += text; },
     });
     const report = JSON.parse(fs.readFileSync(path.join(repoRoot,
       'tmp/test-governance/backend-consistency-targets.json'), 'utf8'));
     assert.equal(status, 1);
+    assert.equal(calls, 1, 'evidence failure must stop later consistency targets');
     assert.equal(report.targets[0].status, 'failed');
     assert.equal(report.targets[0].exitCode, 1);
+    assert.deepEqual(report.targets.slice(1).map(target => ({
+      status: target.status, exitCode: target.exitCode,
+      durationMs: target.durationMs, passedCount: target.passedCount, failedCount: target.failedCount,
+    })), Array.from({ length: 2 }, () => ({
+      status: 'skipped', exitCode: null, durationMs: null, passedCount: null, failedCount: null,
+    })));
     assert.match(stderr, /refusing empty consistency gate/u);
   }
 });

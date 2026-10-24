@@ -5,6 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { buildCommands, main, parseBackendCliArgs } = require('../../verify-backend.js');
+const { BACKEND_TEST_SHARDS } = require('../../verify/backend-targets.js');
+const { runBackendCommandSequence } = require('../../verify/backend.js');
 
 function getExpectedParallelism() {
   return typeof os.availableParallelism === 'function'
@@ -422,6 +424,7 @@ test('official Seed gate rejects zero or absent executed-test summaries', async 
     'test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 500 filtered out;\n',
   ]) {
     const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-execution-'));
+    let calls = 0;
     try {
       const status = await main(['official-i18n-seed'], {
         repoRoot, env: {},
@@ -430,11 +433,15 @@ test('official Seed gate rejects zero or absent executed-test summaries', async 
         managedRunnerImpl(options) {
           return options.runCommandSequenceImpl({
             ...options,
-            spawnSyncImpl() { return { status: 0, stdout, stderr: '' }; },
+            spawnSyncImpl() {
+              calls += 1;
+              return { status: 0, stdout, stderr: '' };
+            },
           });
         },
       });
       assert.equal(status, stdout.includes('4 passed') ? 0 : 1);
+      assert.equal(calls, status === 0 ? 2 : 1);
     } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
   }
 });
@@ -515,7 +522,88 @@ test('standalone image selections and the full workspace require their own execu
         assert.equal(mediaRuns.length, target === 'all' ? 0 : 1);
         const workspaceRuns = invocations.filter(args => args[0] === 'test' && args.includes('--workspace'));
         assert.equal(workspaceRuns.length, target === 'all' ? 1 : 0);
+        if (target === 'image-llm-vision') assert.equal(invocations.length, expected === 0 ? 4 : 3);
       } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
     }
+  }
+});
+
+test('ordinary libtest CLI shards require nonzero passing evidence for each command', async () => {
+  const shards = [null, ...BACKEND_TEST_SHARDS.filter(shard => !shard.nextestPartition).map(shard => shard.key)];
+  for (const shard of shards) {
+    for (const [stdout, exitCode, expected] of [
+      ['', 0, 1],
+      ['test result: ok. 0 passed; 0 failed; 10 filtered out;', 0, 1],
+      ['test result: ok. 0 passed; 0 failed; 4 ignored;', 0, 1],
+      ['Finished test profile [unoptimized] target(s)', 0, 1],
+      ['test result: ok. 5 passed; 0 failed;\ntest result: FAILED. 1 passed; 1 failed;', 0, 1],
+      ['test result: \u001b[32mok\u001b[0m. 2 passed; 0 failed;\ntest result: ok. 0 passed; 0 failed;', 0, 0],
+      ['test result: ok. 2 passed; 0 failed;', 101, 101],
+    ]) {
+      const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'libtest-shard-evidence-'));
+      try {
+        let calls = 0;
+        const status = await main(['test', ...(shard ? [shard] : [])], {
+          repoRoot, env: {},
+          runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 2 } },
+          writeStdout() {}, writeStderr() {},
+          managedRunnerImpl(options) { return options.runCommandSequenceImpl(options); },
+          spawnSyncImpl(command, args) {
+            calls += 1;
+            assert.equal(command, 'cargo');
+            assert.equal(args[0], 'test');
+            return { status: exitCode, stdout, stderr: '' };
+          },
+        });
+        assert.equal(status, expected, `${shard ?? 'workspace'}: ${stdout}`);
+        assert.equal(calls, 1);
+      } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
+    }
+  }
+});
+
+test('backend evidence rejection prevents later Cargo or SQL commands from starting', () => {
+  for (const target of ['test', 'history-maintenance', 'official-i18n-seed', 'image-llm-vision', 'sql']) {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'backend-evidence-stop-'));
+    try {
+      const first = target === 'sql'
+        ? { label: 'model-usage-report-postgres', command: process.execPath, args: ['--test'] }
+        : buildCommands({ repoRoot, env: {}, cargoJobs: 2, cargoTestThreads: 2, target })[0];
+      const commands = [first, { label: 'must-not-start', command: 'cargo', args: ['test'] }];
+      let calls = 0;
+      const status = runBackendCommandSequence({
+        repoRoot, env: {}, scope: 'evidence-stop', commands,
+        spawnSyncImpl() {
+          calls += 1;
+          return { status: 0, stdout: '', stderr: '' };
+        },
+        writeStdout() {}, writeStderr() {},
+      });
+      assert.equal(status, 1, target);
+      assert.equal(calls, 1, target);
+    } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
+  }
+});
+
+test('nextest CLI shards retain native no-tests enforcement without libtest parsing', async () => {
+  for (const [stdout, exitCode] of [
+    ['Summary 158 tests run: 158 passed, 3 skipped', 0],
+    ['error: no tests to run', 4],
+  ]) {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nextest-evidence-'));
+    try {
+      const status = await main(['test', 'api-server-1-of-4'], {
+        repoRoot, env: {},
+        runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 2 } },
+        writeStdout() {}, writeStderr() {},
+        managedRunnerImpl(options) { return options.runCommandSequenceImpl(options); },
+        spawnSyncImpl(_command, args) {
+          assert.equal(args[0], 'nextest');
+          assert.ok(args.includes('--no-tests=fail'));
+          return { status: exitCode, stdout, stderr: '' };
+        },
+      });
+      assert.equal(status, exitCode);
+    } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
   }
 });
