@@ -425,13 +425,13 @@ function validateVariableAggregatorGroups(
 function collectVisibleInternalToolBranchNodeIds(
   startNodeId: string,
   nodeById: Map<string, FlowNodeDocument>,
-  edges: FlowEdgeDocument[]
+  edgesBySource: Map<string, FlowEdgeDocument[]>
 ): Set<string> {
   const visited = new Set<string>();
   const queue = [startNodeId];
 
-  while (queue.length > 0) {
-    const nodeId = queue.shift();
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const nodeId = queue[cursor];
 
     if (!nodeId || visited.has(nodeId)) {
       continue;
@@ -444,11 +444,7 @@ function collectVisibleInternalToolBranchNodeIds(
       continue;
     }
 
-    for (const edge of edges) {
-      if (edge.source !== nodeId) {
-        continue;
-      }
-
+    for (const edge of edgesBySource.get(nodeId) ?? []) {
       if (
         edge.sourceHandle === ERROR_BRANCH_SOURCE_HANDLE ||
         isLlmToolSourceHandle(edge.sourceHandle)
@@ -467,7 +463,7 @@ function validateVisibleInternalLlmToolBranches(
   issues: AgentFlowIssue[],
   node: FlowNodeDocument,
   nodeById: Map<string, FlowNodeDocument>,
-  edges: FlowEdgeDocument[]
+  edgesBySource: Map<string, FlowEdgeDocument[]>
 ) {
   if (node.type !== 'llm' || !getLlmVisibleInternalToolsEnabled(node.config)) {
     return;
@@ -480,15 +476,15 @@ function validateVisibleInternalLlmToolBranches(
       getLlmToolInternalLlmNodePolicy(tool) === 'allowed';
     const connectorId = tool.connector_id || tool.tool_name;
     const sourceHandle = createLlmToolSourceHandleId(connectorId);
-    const connectorEdges = edges.filter(
-      (edge) => edge.source === node.id && edge.sourceHandle === sourceHandle
+    const connectorEdges = (edgesBySource.get(node.id) ?? []).filter(
+      (edge) => edge.sourceHandle === sourceHandle
     );
 
     for (const edge of connectorEdges) {
       const reachableNodeIds = collectVisibleInternalToolBranchNodeIds(
         edge.target,
         nodeById,
-        edges
+        edgesBySource
       );
       const toolResultNodeIds = [...reachableNodeIds].filter(
         (nodeId) => nodeById.get(nodeId)?.type === 'tool_result'
@@ -609,6 +605,15 @@ export function validateDocument(
   const issues: AgentFlowIssue[] = validateAuthoringDocument(document);
   const nodeIds = new Set(document.graph.nodes.map((node) => node.id));
   const nodeById = new Map(document.graph.nodes.map((node) => [node.id, node]));
+  const edgesBySource = new Map<string, FlowEdgeDocument[]>();
+  for (const edge of document.graph.edges) {
+    const outgoingEdges = edgesBySource.get(edge.source);
+    if (outgoingEdges) {
+      outgoingEdges.push(edge);
+    } else {
+      edgesBySource.set(edge.source, [edge]);
+    }
+  }
   const dependencies = buildNodeDependencyMap(document, nodeIds);
   const startNodes = document.graph.nodes.filter(
     (node) => node.type === 'start'
@@ -779,7 +784,7 @@ export function validateDocument(
         issues,
         node,
         nodeById,
-        document.graph.edges
+        edgesBySource
       );
 
       const modelProvider = getLlmModelProvider(node.config);
