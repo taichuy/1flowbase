@@ -54,11 +54,10 @@ fn compile_variable_aggregator_preserves_group_order_outputs_and_dependencies() 
         .expect("variable aggregator should compile");
     let aggregator = &plan.nodes["node-aggregator"];
 
-    assert!(
-        plan.compile_issues
-            .iter()
-            .all(|issue| { issue.code != CompileIssueCode::UnsupportedNodeType })
-    );
+    assert!(plan
+        .compile_issues
+        .iter()
+        .all(|issue| { issue.code != CompileIssueCode::UnsupportedNodeType }));
     assert_eq!(
         aggregator.bindings["groups"].selector_paths,
         vec![
@@ -82,11 +81,9 @@ fn compile_variable_aggregator_preserves_group_order_outputs_and_dependencies() 
             ("history", "history", "array")
         ]
     );
-    assert!(
-        aggregator
-            .dependency_node_ids
-            .contains(&"node-start".to_string())
-    );
+    assert!(aggregator
+        .dependency_node_ids
+        .contains(&"node-start".to_string()));
     assert!(
         plan.topological_order
             .iter()
@@ -115,11 +112,9 @@ fn compile_rejects_variable_aggregator_outputs_that_diverge_from_groups() {
     let error = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
         .expect_err("variable aggregator must reject extra public outputs");
 
-    assert!(
-        error
-            .to_string()
-            .contains("invalid variable_aggregator output contract")
-    );
+    assert!(error
+        .to_string()
+        .contains("invalid variable_aggregator output contract"));
 }
 
 // Root AC-012/013/014/016/020: malformed and unsupported group contracts fail closed.
@@ -230,11 +225,9 @@ fn compile_rejects_legacy_variable_aggregator_candidates_binding() {
 
     let error = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
         .expect_err("legacy candidates binding must be rejected");
-    assert!(
-        error
-            .to_string()
-            .contains("legacy candidates/value bindings")
-    );
+    assert!(error
+        .to_string()
+        .contains("legacy candidates/value bindings"));
 }
 
 #[test]
@@ -484,11 +477,9 @@ fn answer_aggregator_stream_sources_preserve_branch_reachability_and_exclusivity
                 vec!["node-llm", "node-llm-2"]
             );
         }
-        assert!(
-            !plan
-                .compile_issues
-                .iter()
-                .any(|issue| issue.code == CompileIssueCode::InvalidAnswerPresentationOrder)
-        );
+        assert!(!plan
+            .compile_issues
+            .iter()
+            .any(|issue| issue.code == CompileIssueCode::InvalidAnswerPresentationOrder));
     }
 }
