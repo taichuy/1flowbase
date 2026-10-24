@@ -186,8 +186,9 @@ async fn fixture_state() -> (
     let registry = runtime_core::runtime_model_registry::RuntimeModelRegistry::default();
     registry.rebuild(store.list_runtime_model_metadata().await.unwrap());
     let runtime_engine = Arc::new(
-        runtime_core::runtime_engine::RuntimeEngine::new_with_data_source_backend(
+        runtime_core::runtime_engine::RuntimeEngine::new_with_data_source_backend_templates_and_ordered_tree(
             registry,
+            Arc::new(store.clone()),
             Arc::new(store.clone()),
             Arc::new(ApiDataSourceRuntimeRecordBackend::new(
                 store.clone(),
@@ -195,6 +196,7 @@ async fn fixture_state() -> (
                 config.provider_secret_master_key.clone(),
                 config.api_node_id.clone(),
             )),
+            runtime_core::data_model_template_registry::DataModelTemplateCatalog::core(),
         ),
     );
     let infrastructure = Arc::new(build_local_host_infrastructure());
@@ -927,3 +929,6 @@ async fn callable_dispatch_preserves_target_permission_denial_for_the_page_visit
 
 #[path = "_tests/ui_management_routes.rs"]
 mod ui_management_routes;
+
+#[path = "_tests/runtime_ordered_tree_cache.rs"]
+mod runtime_ordered_tree_cache;
