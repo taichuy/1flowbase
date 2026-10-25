@@ -394,3 +394,34 @@ async fn communication_dispatch_leaves_expired_resume_claims_to_resume_recovery(
     assert!(detail.node_runs.is_empty());
     assert_eq!(started_events(&store, run.id).await, 0);
 }
+
+#[tokio::test]
+async fn communication_dispatch_completes_with_one_business_pool_connection() {
+    // Hold the schema owner separately because this custom pool does not install
+    // PostgresTestSchema::connect's automatic ownership hook.
+    let database = isolated_database().await;
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(std::time::Duration::from_secs(2))
+        .connect(database.database_url())
+        .await
+        .unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let (_, run) = queued(&store).await;
+    let detail = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        service(store.clone()).dispatch_communication_run(command(&run)),
+    )
+    .await
+    .expect("dispatch must not retain the only business-pool permit")
+    .unwrap();
+    assert_eq!(detail.flow_run.status, FlowRunStatus::Succeeded);
+    assert_eq!(
+        detail.flow_run.output_payload["answer"],
+        "dispatched in bound workspace"
+    );
+    assert_eq!(started_events(&store, run.id).await, 1);
+    assert_eq!(store.pool().size(), 1);
+    store.pool().close().await;
+}

@@ -2,22 +2,15 @@
 use crate::repositories::PgControlPlaneStore;
 use anyhow::Result;
 use control_plane_contracts::ports::FlowRunDispatchLease;
-use sqlx::{pool::PoolConnection, Postgres};
+use sqlx::PgConnection;
 use uuid::Uuid;
 
+// This owns a raw session, not a pool checkout. PgConnection owns its socket, so
+// dropping this guard (including cancellation) closes the session and its locks.
 struct PgFlowRunDispatchLease {
-    connection: Option<PoolConnection<Postgres>>,
+    connection: PgConnection,
 }
 impl FlowRunDispatchLease for PgFlowRunDispatchLease {}
-impl Drop for PgFlowRunDispatchLease {
-    fn drop(&mut self) {
-        // Includes cancellation while acquiring: the server may have granted a lock even
-        // when its result did not reach this future. Never leak session locks into the pool.
-        if let Some(connection) = self.connection.as_mut() {
-            connection.close_on_drop();
-        }
-    }
-}
 
 pub(super) async fn acquire(
     store: &PgControlPlaneStore,
@@ -25,17 +18,18 @@ pub(super) async fn acquire(
     run_id: Uuid,
 ) -> Result<Option<Box<dyn FlowRunDispatchLease>>> {
     let mut guard = PgFlowRunDispatchLease {
-        connection: Some(store.pool().acquire().await?),
+        // Detach before any lock query: release the business-pool permit so even a
+        // max_connections=1 pool can execute the run's subsequent SQL. Each active
+        // initial dispatch uses one extra database session until this guard drops.
+        connection: store.pool().acquire().await?.detach(),
     };
-    let connection = guard.connection.as_mut().expect("new dispatch connection");
     let acquired: bool =
         sqlx::query_scalar("select pg_try_advisory_lock(hashtextextended($1,2012))")
             .bind(format!("flow-dispatch:{application_id}:{run_id}"))
-            .fetch_one(&mut **connection)
+            .fetch_one(&mut guard.connection)
             .await?;
     if !acquired {
-        // A confirmed non-owner holds no session lock, and can safely return its connection.
-        guard.connection.take();
+        // Non-owners also close their detached session rather than returning it to the pool.
         return Ok(None);
     }
     Ok(Some(Box::new(guard)))
