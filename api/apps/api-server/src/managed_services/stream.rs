@@ -199,9 +199,11 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
                         let deadline = i64::MAX;
                         let (sender, mut events) = mpsc::channel(16);
                         let duplex = RuntimeManagedDuplex { input: duplex.input, events: sender };
-                        let caller = if binding.descriptor.required_permissions.iter().any(|permission| matches!(permission.as_str(), "file.import.resource" | "file.read.content" | "application.logs.read" | "application.logs.import" | "network.http.request")) {
+                        let needs_call_context = registration.declaration.worker_lifetime == plugin_framework::ManagedServiceWorkerLifetime::ActorWorkspaceScope;
+                        let caller = if needs_call_context || binding.descriptor.required_permissions.iter().any(|permission| matches!(permission.as_str(), "file.import.resource" | "file.read.content" | "application.logs.read" | "application.logs.import" | "network.http.request")) {
                             crate::resource_import::capture_caller(&state, &principal, &op.interface_id).await?
                         } else { None };
+                        if needs_call_context && caller.is_none() { return Err(Error::NotAuthenticated.into()); }
                         tokio::spawn(async move {
                             let execution = runtime.execute_snapshot_duplex(snapshot, domain::SYSTEM_SCOPE_ID, &contribution,
                                 crate::extension_bus::ManagedExecutionInput {

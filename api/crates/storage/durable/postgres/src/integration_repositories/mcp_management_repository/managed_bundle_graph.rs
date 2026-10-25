@@ -1,6 +1,7 @@
 use anyhow::Result;
 use control_plane_contracts::{
-    ports::SeedMcpBundleGraphInput, ControlPlaneContractError as ControlPlaneError,
+    ports::{McpBundleSeedKind, SeedMcpBundleGraphInput},
+    ControlPlaneContractError as ControlPlaneError,
 };
 use uuid::Uuid;
 
@@ -17,18 +18,41 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
     input: &SeedMcpBundleGraphInput,
 ) -> Result<()> {
     let mut transaction = store.pool().begin().await?;
-    let version_imported_before = sqlx::query_scalar::<_, bool>(
+    // Serialize graph seeders in a workspace, including overlapping namespaces from different
+    // families. The unique inserts below also fence concurrent ordinary user creates.
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("mcp-graph-seed:{}", input.workspace_id))
+        .execute(&mut *transaction)
+        .await?;
+    let plugin_template = matches!(input.kind, McpBundleSeedKind::PluginTemplate { .. });
+    let requested_installation = match input.kind {
+        McpBundleSeedKind::PluginTemplate { installation_id } => Some(installation_id),
+        McpBundleSeedKind::BundleVersion => None,
+    };
+    let extension_installation_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        select id from extension_installations
+        where organization = $1 and artifact_id = $2 and artifact_version = $3
+          and (($4::uuid is null and category = 'mcp')
+            or (id = $4 and category in ('runtime-extensions', 'capability-plugins')))
+        "#,
+    )
+    .bind(&input.source.organization)
+    .bind(&input.source.bundle_id)
+    .bind(&input.source.bundle_version)
+    .bind(requested_installation)
+    .fetch_optional(&mut *transaction)
+    .await?
+    .ok_or(ControlPlaneError::NotFound("mcp_bundle_installation"))?;
+    let imported_before = sqlx::query_scalar::<_, bool>(
         r#"
         select exists(
-            select 1
-            from mcp_extension_bundle_imports imported
-            join extension_installations installation
-              on installation.id = imported.extension_installation_id
+            select 1 from mcp_extension_bundle_imports imported
+            join extension_installations installation on installation.id = imported.extension_installation_id
             where imported.workspace_id = $1
-              and installation.category = 'mcp'
-              and installation.organization = $2
-              and installation.artifact_id = $3
-              and installation.artifact_version = $4
+              and installation.organization = $2 and installation.artifact_id = $3
+              and (($5 and installation.category in ('runtime-extensions', 'capability-plugins'))
+                or (not $5 and installation.category = 'mcp' and installation.artifact_version = $4))
         )
         "#,
     )
@@ -36,29 +60,13 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
     .bind(&input.source.organization)
     .bind(&input.source.bundle_id)
     .bind(&input.source.bundle_version)
+    .bind(plugin_template)
     .fetch_one(&mut *transaction)
     .await?;
-    if version_imported_before {
+    if imported_before {
         transaction.commit().await?;
         return Ok(());
     }
-
-    let extension_installation_id = sqlx::query_scalar::<_, Uuid>(
-        r#"
-        select id
-        from extension_installations
-        where category = 'mcp'
-          and organization = $1
-          and artifact_id = $2
-          and artifact_version = $3
-        "#,
-    )
-    .bind(&input.source.organization)
-    .bind(&input.source.bundle_id)
-    .bind(&input.source.bundle_version)
-    .fetch_optional(&mut *transaction)
-    .await?
-    .ok_or(ControlPlaneError::NotFound("mcp_bundle_installation"))?;
 
     let tool_ids = input
         .tools
@@ -76,12 +84,13 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
             select 1 from mcp_tools
             where workspace_id = $1
               and tool_id = any($2)
-              and managed_bundle_id is null
+              and (managed_bundle_id is null or $3)
         )
         "#,
     )
     .bind(input.workspace_id)
     .bind(&tool_ids)
+    .bind(plugin_template)
     .fetch_one(&mut *transaction)
     .await?;
     let unmanaged_instance_collision = sqlx::query_scalar::<_, bool>(
@@ -90,20 +99,26 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
             select 1 from mcp_instances
             where workspace_id = $1
               and instance_id = any($2)
-              and managed_bundle_id is null
+              and (managed_bundle_id is null or $3)
         )
         "#,
     )
     .bind(input.workspace_id)
     .bind(&instance_ids)
+    .bind(plugin_template)
     .fetch_one(&mut *transaction)
     .await?;
     if unmanaged_tool_collision || unmanaged_instance_collision {
-        return Err(ControlPlaneError::Conflict("mcp_builtin_seed_collision").into());
+        return Err(ControlPlaneError::Conflict(if plugin_template {
+            "mcp_plugin_template_seed_collision"
+        } else {
+            "mcp_builtin_seed_collision"
+        })
+        .into());
     }
 
     for tool in &input.tools {
-        sqlx::query(
+        let inserted = sqlx::query(
             r#"
             insert into mcp_tools (
                 id, workspace_id, tool_id, name, short_description, full_description,
@@ -143,9 +158,9 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
                 revision=mcp_tools.revision + 1,
                 updated_by=excluded.updated_by,
                 updated_at=now()
-            where mcp_tools.managed_bundle_id is null
+            where not $28 and (mcp_tools.managed_bundle_id is null
                or mcp_tools.managed_bundle_organization = excluded.managed_bundle_organization
-                  and mcp_tools.managed_bundle_id = excluded.managed_bundle_id
+                  and mcp_tools.managed_bundle_id = excluded.managed_bundle_id)
             "#,
         )
         .bind(tool.id)
@@ -184,8 +199,12 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
                 .map(serde_json::to_value)
                 .transpose()?,
         )
+        .bind(plugin_template)
         .execute(&mut *transaction)
         .await?;
+        if plugin_template && inserted.rows_affected() != 1 {
+            return Err(ControlPlaneError::Conflict("mcp_plugin_template_seed_collision").into());
+        }
     }
 
     for instance in &input.instances {
@@ -206,9 +225,9 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
                 managed_bundle_version=excluded.managed_bundle_version,
                 updated_by=excluded.updated_by,
                 updated_at=now()
-            where mcp_instances.managed_bundle_id is null
+            where not $12 and (mcp_instances.managed_bundle_id is null
                or mcp_instances.managed_bundle_organization = excluded.managed_bundle_organization
-                  and mcp_instances.managed_bundle_id = excluded.managed_bundle_id
+                  and mcp_instances.managed_bundle_id = excluded.managed_bundle_id)
             returning id
             "#,
         )
@@ -223,8 +242,12 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
         .bind(&input.source.bundle_id)
         .bind(&input.source.bundle_version)
         .bind(input.actor_user_id)
-        .fetch_one(&mut *transaction)
-        .await?;
+        .bind(plugin_template)
+        .fetch_optional(&mut *transaction)
+        .await?
+        .ok_or(ControlPlaneError::Conflict(
+            "mcp_plugin_template_seed_collision",
+        ))?;
 
         sqlx::query("delete from mcp_tool_bindings where instance_record_id=$1")
             .bind(instance_record_id)
@@ -316,36 +339,38 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
         .await?;
     }
 
-    sqlx::query(
-        r#"
+    if !plugin_template {
+        sqlx::query(
+            r#"
         delete from mcp_instances
         where workspace_id=$1
           and managed_bundle_organization=$2
           and managed_bundle_id=$3
           and not (instance_id=any($4))
         "#,
-    )
-    .bind(input.workspace_id)
-    .bind(&input.source.organization)
-    .bind(&input.source.bundle_id)
-    .bind(&instance_ids)
-    .execute(&mut *transaction)
-    .await?;
-    sqlx::query(
-        r#"
+        )
+        .bind(input.workspace_id)
+        .bind(&input.source.organization)
+        .bind(&input.source.bundle_id)
+        .bind(&instance_ids)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            r#"
         delete from mcp_tools
         where workspace_id=$1
           and managed_bundle_organization=$2
           and managed_bundle_id=$3
           and not (tool_id=any($4))
         "#,
-    )
-    .bind(input.workspace_id)
-    .bind(&input.source.organization)
-    .bind(&input.source.bundle_id)
-    .bind(&tool_ids)
-    .execute(&mut *transaction)
-    .await?;
+        )
+        .bind(input.workspace_id)
+        .bind(&input.source.organization)
+        .bind(&input.source.bundle_id)
+        .bind(&tool_ids)
+        .execute(&mut *transaction)
+        .await?;
+    }
 
     sqlx::query(
         r#"

@@ -123,7 +123,8 @@ impl ManagedWorkers {
                         && existing.workspace_id() == identity.workspace_id()
                         && existing.artifact_fingerprint() == identity.artifact_fingerprint()
                         && mounted.binding.executable_fingerprint == binding.executable_fingerprint
-                        && mounted.binding.runtime_executable == binding.runtime_executable)
+                        && mounted.binding.runtime_executable == binding.runtime_executable
+                        && mounted.binding.actor_workspace_scope == binding.actor_workspace_scope)
                         .then(|| mounted.service_workers.clone())
                         .flatten()
                 })
@@ -412,6 +413,7 @@ impl ManagedWorkers {
             )
             .into());
         }
+        let call_context = mounted.binding.call_context(&request.principal)?;
         let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
         let remaining_ms = i128::from(request.principal.deadline_unix_ms) - now_ms;
         let remaining_ms = u64::try_from(remaining_ms)
@@ -434,7 +436,14 @@ impl ManagedWorkers {
                 .filter(|actor| !actor.is_empty())
                 .ok_or_else(|| invalid("actor_scope service requires a trusted actor"))?
                 .clone();
-            Some((pool.clone(), pool.epoch()?, actor))
+            // JSON tuple encoding is unambiguous even if identity formats change.
+            let key = if let Some(context) = &call_context {
+                serde_json::to_string(&(&context.actor_id, &context.workspace_id))
+                    .map_err(|_| invalid("managed service worker identity unavailable"))?
+            } else {
+                actor
+            };
+            Some((pool.clone(), pool.epoch()?, key))
         } else {
             None
         };
@@ -491,15 +500,20 @@ impl ManagedWorkers {
                     .ok()
                     .filter(|value| *value > 0)
                     .ok_or_else(|| invalid("managed execution deadline has expired"))?;
+            let mut input = json!({
+                "plugin_id": binding.plugin_id,
+                "contribution_code": binding.handler,
+                "handler": binding.handler,
+                "config_payload": request.config_payload,
+                "input_payload": request.input_payload,
+            });
+            if let Some(context) = call_context {
+                input["call_context"] = serde_json::to_value(context)
+                    .map_err(|_| invalid("managed service caller context unavailable"))?;
+            }
             let request = CapabilityStdioRequest {
                 method: CapabilityStdioMethod::Execute,
-                input: json!({
-                    "plugin_id": binding.plugin_id,
-                    "contribution_code": binding.handler,
-                    "handler": binding.handler,
-                    "config_payload": request.config_payload,
-                    "input_payload": request.input_payload,
-                }),
+                input,
             };
             let duration_ms = if duplex_call {
                 remaining_ms

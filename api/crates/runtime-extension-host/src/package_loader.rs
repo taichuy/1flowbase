@@ -122,12 +122,19 @@ impl PackageLoader {
                 .iter()
                 .any(|value| value == extension_contracts::RUNTIME_WORKER_RETENTION_V1),
             worker_idle_timeout_ms: manifest.managed_service.as_ref().and_then(|service| {
-                (service.worker_lifetime
-                    == extension_package_runtime::ManagedServiceWorkerLifetime::ActorScope
+                (service.worker_lifetime.is_shared()
                     && service.operations.iter().any(|op| {
                         op.contribution_id == request.identity.contribution_id().as_str()
                     }))
                 .then_some(service.worker_idle_timeout_ms.unwrap_or(1_800_000))
+            }),
+            actor_workspace_scope: manifest.managed_service.as_ref().is_some_and(|service| {
+                service.worker_lifetime
+                    == extension_package_runtime::ManagedServiceWorkerLifetime::ActorWorkspaceScope
+                    && service
+                        .operations
+                        .iter()
+                        .any(|op| op.contribution_id == request.identity.contribution_id().as_str())
             }),
             interface_protocol: binding.interface_protocol,
             contribution: managed

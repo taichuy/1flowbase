@@ -1,0 +1,97 @@
+name: Browser managed plugin host acceptance
+
+on:
+  push:
+    branches: [codex/browser-obscura-host-2679]
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact frozen host source SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-managed-${{ inputs.candidate_sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: browser-fixture-only
+          POSTGRES_DB: 1flowbase
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+      DATABASE_URL: postgres://postgres:browser-fixture-only@127.0.0.1:5432/1flowbase
+      API_DATABASE_URL: postgres://postgres:browser-fixture-only@127.0.0.1:5432/1flowbase
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
+      - name: Verify frozen source
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: web/.nvmrc
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            api/target
+          key: browser-managed-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
+          restore-keys: |
+            browser-managed-nodebug-${{ runner.os }}-
+            notification-subscription-nodebug-${{ runner.os }}-
+      - name: Contract, worker and real PostgreSQL acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=tmp/test-governance/browser-obscura/host-ci
+          mkdir -p "$evidence"
+          run_test() {
+            local label="$1"
+            shift
+            cargo test --locked --manifest-path api/Cargo.toml "$@" 2>&1 | tee "$evidence/$label.log"
+            node -e 'const s=require("fs").readFileSync(process.argv[1],"utf8"); const n=[...s.matchAll(/test result: ok\. (\d+) passed/g)].reduce((a,m)=>a+Number(m[1]),0);if(n===0)throw new Error("No tests executed");console.log(`${n} tests passed`)' "$evidence/$label.log"
+          }
+          run_test contract -p extension-contracts managed_service_contract_tests
+          run_test manifest -p extension-package-runtime managed_service_tests
+          run_test sdk -p runtime-extension-sdk managed_service_context
+          run_test worker -p runtime-extension-host managed_capability_multiplex
+          run_test postgres -p control-plane-postgres-tests --test mcp_management_integration
+          run_test mcp-http -p api-server --lib managed_service_mcp
+          run_test lifecycle -p api-server --lib managed_services::
+      - name: Build exact runtime for local integration evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=tmp/test-governance/browser-obscura/host-ci
+          cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server 2>&1 | tee "$evidence/runtime-build.log"
+          cp api/target/debug/api-server "$evidence/api-server-candidate"
+          git rev-parse HEAD > "$evidence/candidate-sha.txt"
+          sha256sum "$evidence/api-server-candidate" > "$evidence/binary-sha256.txt"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: browser-managed-host-${{ inputs.candidate_sha || github.sha }}
+          path: tmp/test-governance/browser-obscura/host-ci
+          if-no-files-found: error
+          retention-days: 14

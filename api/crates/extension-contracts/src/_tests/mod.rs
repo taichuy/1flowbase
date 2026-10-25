@@ -27,3 +27,6 @@ mod notification_contract_tests;
 
 #[path = "file_import/contract.rs"]
 mod file_import_contract_tests;
+
+#[path = "managed_contributions/managed_service_contract_tests.rs"]
+mod managed_service_contract_tests;

@@ -4,12 +4,17 @@ use crate::{
     routes::mcp_protocol::virtual_ui::McpInterfaceCatalogPort,
 };
 use anyhow::{bail, Result};
+use control_plane::plugin_management::mcp_projection::{
+    input_mapping, media_result_schema, parameter_schema,
+};
 use control_plane_contracts::ports::{PluginRepository, RoleConsolePolicyReader};
 use domain::{
     McpCatalogSnapshot, McpGroupRecord, McpInstanceRecord, McpInstanceStatus, McpRiskLevel,
     McpToolBindingRecord, McpToolRecord, McpToolStatus,
 };
-use serde_json::{json, Value};
+#[cfg(test)]
+use serde_json::json;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
@@ -22,32 +27,47 @@ pub(crate) async fn append(
     selected_instances: &[String],
     interfaces: &dyn McpInterfaceCatalogPort,
 ) -> Result<()> {
-    if services.is_empty() {
-        return Ok(());
-    }
-    // A call operates on one selected MCP instance. Never grant browser capability exposure.
-    let Some(instance) = selected_instance(catalog, selected_instances).cloned() else {
-        return Ok(());
-    };
+    // Inventory also retains disabled/replaced packages, so their persisted templates remain
+    // identifiable and cannot receive another plugin's synthetic tools after deactivation.
+    let installations = store.list_installations().await?;
     let policies = if actor.is_root {
         Vec::new()
     } else {
         store.load_role_console_policies_for_user(actor).await?
     };
+    let active_services: Vec<_> = services
+        .iter()
+        .filter(|service| {
+            installations
+                .iter()
+                .any(|current| current_matches(service, current))
+        })
+        .collect();
     let mut additions = catalog.clone();
-    for service in services {
-        if !service
-            .declaration
-            .operations
-            .iter()
-            .any(|operation| operation.mcp.is_some())
+    filter_persisted_operations(
+        &mut additions,
+        &installations,
+        &active_services,
+        actor,
+        &policies,
+        interfaces,
+    )?;
+    let Some(instance) = selected_instance(&additions, selected_instances).cloned() else {
+        *catalog = additions;
+        return Ok(());
+    };
+    if is_template_instance(&instance, &installations) {
+        *catalog = additions;
+        return Ok(());
+    }
+    for service in active_services {
+        if service.declaration.mcp_instance.is_some()
+            || !service
+                .declaration
+                .operations
+                .iter()
+                .any(|operation| operation.mcp.is_some())
         {
-            continue;
-        }
-        let Some(current) = store.get_installation(service.installation_id).await? else {
-            continue;
-        };
-        if !current_matches(service, &current) {
             continue;
         }
         let mut operations = Vec::new();
@@ -82,10 +102,80 @@ fn selected_instance<'a>(
         catalog.instances.iter().find(|i| {
             &i.instance_id == id
                 && i.instance_id != "frontstage_browser"
+                && i.webmcp_exposure == domain::WebMcpExposure::Disabled
                 && i.status == McpInstanceStatus::Enabled
         })
     })
 }
+fn is_template_instance(
+    instance: &McpInstanceRecord,
+    installations: &[domain::PluginInstallationRecord],
+) -> bool {
+    installations.iter().any(|installation| {
+        let Some(declaration) = installation.metadata_json.get("managed_service") else {
+            return false;
+        };
+        let Some(template) = declaration
+            .get("mcp_instance")
+            .filter(|value| !value.is_null())
+        else {
+            return false;
+        };
+        template.get("instance_id").and_then(Value::as_str) == Some(instance.instance_id.as_str())
+            || instance.managed_by.as_ref().is_some_and(|source| {
+                source.organization == installation.organization
+                    && source.bundle_id == installation.provider_code
+            })
+    })
+}
+
+/// Persisted tools remain editable, but discovery always reflects the current canonical
+/// operation's activation and console role authorization, including user-created forks.
+fn filter_persisted_operations(
+    catalog: &mut McpCatalogSnapshot,
+    installations: &[domain::PluginInstallationRecord],
+    active: &[&ManagedServiceRegistration],
+    actor: &domain::ActorContext,
+    policies: &[domain::RoleConsolePolicy],
+    interfaces: &dyn McpInterfaceCatalogPort,
+) -> Result<()> {
+    let known: std::collections::BTreeSet<_> = installations
+        .iter()
+        .flat_map(|installation| {
+            installation
+                .metadata_json
+                .pointer("/managed_service/operations")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|operation| operation.get("interface_id").and_then(Value::as_str))
+        })
+        .collect();
+    let mut allowed = std::collections::BTreeSet::new();
+    for service in active {
+        for operation in &service.declaration.operations {
+            if interfaces
+                .bindable_interface(&operation.interface_id)
+                .is_ok()
+                && operation_accessible(actor, policies, service, operation)?
+            {
+                allowed.insert(operation.interface_id.as_str());
+            }
+        }
+    }
+    catalog.tools.retain(|tool| {
+        tool.execution_target
+            .interface_id()
+            .is_none_or(|id| !known.contains(id) || allowed.contains(id))
+    });
+    let retained: std::collections::BTreeSet<_> =
+        catalog.tools.iter().map(|tool| tool.id).collect();
+    catalog
+        .bindings
+        .retain(|binding| retained.contains(&binding.tool_record_id));
+    Ok(())
+}
+
 fn operation_accessible(
     actor: &domain::ActorContext,
     policies: &[domain::RoleConsolePolicy],
@@ -130,7 +220,7 @@ pub(crate) fn append_service(
     operations: &[&plugin_framework::ManagedServiceOperation],
     actor: Uuid,
 ) -> Result<()> {
-    if operations.is_empty() {
+    if service.declaration.mcp_instance.is_some() || operations.is_empty() {
         return Ok(());
     }
     let now = time::OffsetDateTime::now_utc();
@@ -252,87 +342,6 @@ pub(crate) fn append_service(
     }
     Ok(())
 }
-// Managed MCP arguments share DTO field names, without HTTP transport containers.
-fn parameter_schema(schema: &Value) -> Value {
-    let mut properties = serde_json::Map::new();
-    let mut required = Vec::new();
-    for location in ["path", "query", "body"] {
-        let Some(location_schema) = schema.pointer(&format!("/properties/{location}")) else {
-            continue;
-        };
-        let Some(fields) = location_schema.get("properties").and_then(Value::as_object) else {
-            continue;
-        };
-        for (name, field_schema) in fields {
-            // Intake rejects duplicate field names across locations.
-            properties.insert(name.clone(), field_schema.clone());
-            if location == "path"
-                || location_schema
-                    .get("required")
-                    .and_then(Value::as_array)
-                    .is_some_and(|items| items.iter().any(|value| value.as_str() == Some(name)))
-            {
-                required.push(Value::String(name.clone()));
-            }
-        }
-    }
-    json!({"type":"object", "properties":properties, "required":required, "additionalProperties":false})
-}
-
-fn input_mapping(schema: &Value) -> Value {
-    let mut mappings = Vec::new();
-    for location in ["path", "query", "body"] {
-        let Some(location_schema) = schema.pointer(&format!("/properties/{location}")) else {
-            continue;
-        };
-        let Some(properties) = location_schema.get("properties").and_then(Value::as_object) else {
-            continue;
-        };
-        for (name, property) in properties {
-            let required = location == "path"
-                || location_schema
-                    .get("required")
-                    .and_then(Value::as_array)
-                    .is_some_and(|items| items.iter().any(|v| v.as_str() == Some(name)));
-            let path = name;
-            let mut mapping = json!({"interface_param":name,"mcp_param":path,"source":{"kind":"mcp_argument","path":path},"required":required,"description":property.get("description").and_then(Value::as_str).unwrap_or("")});
-            if let Some(default) = property.get("default") {
-                mapping["default_value"] = default.clone();
-            }
-            mappings.push(mapping);
-        }
-    }
-    json!({"mappings":mappings})
-}
-
 #[cfg(test)]
 #[path = "_tests/mcp_routes/managed_service_mcp.rs"]
 mod tests;
-
-// Project only a real declared metadata subschema; unresolved schemas remain unconstrained.
-fn media_result_schema(schema: &Value, mapping: Option<&Value>) -> Value {
-    let Some(mapping) = mapping else {
-        return schema.clone();
-    };
-    let Ok(mapping) = plugin_framework::ManagedMcpMediaMapping::parse(mapping) else {
-        return json!({});
-    };
-    let mut current = schema;
-    for segment in mapping.structured_content_path.split('/').skip(1) {
-        let name = segment.replace("~1", "/").replace("~0", "~");
-        let next = if current.get("type").and_then(Value::as_str) == Some("array") {
-            name.parse::<usize>()
-                .ok()
-                .and_then(|_| current.get("items"))
-        } else {
-            current
-                .get("properties")
-                .and_then(|properties| properties.get(&name))
-        };
-        let Some(next) = next else {
-            return json!({});
-        };
-        current = next;
-    }
-    current.clone()
-}

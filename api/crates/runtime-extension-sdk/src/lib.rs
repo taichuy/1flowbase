@@ -98,3 +98,5 @@ pub use file_import::{FileImportClient, FileImportClientError};
 mod file_read;
 pub use extension_contracts::{FileReadError, FileReadMetadata};
 pub use file_read::{FileReadClient, FileReadClientError, FileReader, TransferReport};
+
+pub use extension_contracts::ManagedServiceCallContext;

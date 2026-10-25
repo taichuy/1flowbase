@@ -408,7 +408,7 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
                 && (capability != extension_contracts::RUNTIME_WORKER_RETENTION_V1
                     || binding.runtime.protocol != extension_contracts::STDIO_JSON_MULTIPLEX_V1
                     || manifest.managed_service.as_ref().is_none_or(|service| {
-                        service.worker_lifetime != crate::ManagedServiceWorkerLifetime::ActorScope
+                        !service.worker_lifetime.is_shared()
                             || !service.operations.iter().any(|operation| {
                                 operation.contribution_id == binding.contribution_id.as_str()
                             })

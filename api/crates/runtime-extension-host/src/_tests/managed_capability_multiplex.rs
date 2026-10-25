@@ -79,6 +79,7 @@ sys.stdin.read()
                 handler: "list".into(),
                 worker_idle_timeout_ms: None,
                 worker_retention: false,
+                actor_workspace_scope: false,
                 interface_protocol: None,
                 contribution: ContributionDescriptor {
                     contribution_id: identity.contribution_id().clone(),
@@ -160,7 +161,7 @@ for line in sys.stdin:
         open(body['wait_file'],'w').close()
         continue
     if 'set' in body: value = body['set']
-    print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'response','call_id':frame['call_id'],'response':{'ok':True,'result':{'pid':os.getpid(),'value':value}}}),flush=True)
+    print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'response','call_id':frame['call_id'],'response':{'ok':True,'result':{'pid':os.getpid(),'value':value,'call_context':frame['request']['input'].get('call_context'),'has_call_context':'call_context' in frame['request']['input']}}}),flush=True)
 "#.as_bytes(), 0o700);
     (Fixture(root), executable)
 }
@@ -201,6 +202,26 @@ fn mount_service_with_options(
     limits: PluginRuntimeLimits,
     worker_retention: bool,
 ) -> ManagedExecutionHandle {
+    mount_service_with_context_mode(
+        workers,
+        executable,
+        contribution,
+        idle,
+        limits,
+        worker_retention,
+        false,
+    )
+}
+#[cfg(unix)]
+fn mount_service_with_context_mode(
+    workers: &mut ManagedWorkers,
+    executable: &std::path::Path,
+    contribution: &str,
+    idle: Option<u64>,
+    limits: PluginRuntimeLimits,
+    worker_retention: bool,
+    actor_workspace_scope: bool,
+) -> ManagedExecutionHandle {
     let identity = ManagedExecutionIdentity::new(
         ManagedInstallationId::new("installation").unwrap(),
         ManagedWorkspaceId::new("system-scope").unwrap(),
@@ -226,6 +247,7 @@ fn mount_service_with_options(
                 handler: contribution.into(),
                 worker_idle_timeout_ms: idle,
                 worker_retention,
+                actor_workspace_scope,
                 interface_protocol: None,
                 contribution: ContributionDescriptor {
                     contribution_id: identity.contribution_id().clone(),
@@ -1028,5 +1050,115 @@ async fn failed_retained_worker_is_reaped_and_does_not_pin_actor_capacity() {
         .await
         .unwrap();
     assert_eq!(fresh["retained"], false);
+    reap_service(&mut workers, &handle).await;
+}
+
+#[cfg(unix)]
+fn attach_caller(
+    request: &mut RuntimeManagedCapabilityRequest,
+    actor: uuid::Uuid,
+    workspace: uuid::Uuid,
+) {
+    request.principal.caller = Some(runtime_core::runtime_backend::RuntimeCallerContext {
+        actor: serde_json::from_value(serde_json::json!({
+            "user_id": actor, "tenant_id": uuid::Uuid::nil(), "current_workspace_id": workspace,
+            "effective_display_role": "root", "is_root": true, "permissions": []
+        }))
+        .unwrap(),
+        session_version: 7,
+        session_identity: Some(runtime_core::runtime_backend::RuntimeSessionIdentity::new(
+            "never-on-wire".into(),
+        )),
+        interface_id: "service.open".into(),
+        selected_mcp_instance_ids: None,
+    });
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn actor_workspace_scope_uses_captured_identity_and_rejects_missing_or_mismatched_caller() {
+    let (_fixture, executable) = service_fixture();
+    let mut workers = ManagedWorkers::default();
+    let handle = mount_service_with_context_mode(
+        &mut workers,
+        &executable,
+        "service.open",
+        Some(1800000),
+        PluginRuntimeLimits::default(),
+        false,
+        true,
+    );
+    let alice = uuid::Uuid::now_v7();
+    let bob = uuid::Uuid::now_v7();
+    let workspace_a = uuid::Uuid::now_v7();
+    let workspace_b = uuid::Uuid::now_v7();
+    let request = |actor: uuid::Uuid, workspace: uuid::Uuid| {
+        let mut request = service_request(
+            &handle,
+            Some(&actor.to_string()),
+            serde_json::json!({
+                "call_context": {"actor_id":"forged", "workspace_id":"forged", "deadline_unix_ms":0},
+                "actor_id":"forged", "workspace_id":"forged"
+            }),
+        );
+        attach_caller(&mut request, actor, workspace);
+        request
+    };
+    assert!(workers
+        .execute(service_request(
+            &handle,
+            Some(&alice.to_string()),
+            serde_json::json!({})
+        ))
+        .is_err());
+    let mut mismatched = request(alice, workspace_a);
+    mismatched.principal.actor_id = Some(bob.to_string());
+    assert!(workers.execute(mismatched).is_err());
+    let first_request = request(alice, workspace_a);
+    let deadline = first_request.principal.deadline_unix_ms;
+    let first = workers.execute(first_request).unwrap().await.unwrap();
+    assert_eq!(
+        first["call_context"],
+        serde_json::json!({"actor_id":alice.to_string(),"workspace_id":workspace_a.to_string(),"deadline_unix_ms":deadline})
+    );
+    assert!(!first.to_string().contains("never-on-wire"));
+    assert_eq!(first["call_context"].as_object().unwrap().len(), 3);
+    let same = workers
+        .execute(request(alice, workspace_a))
+        .unwrap()
+        .await
+        .unwrap();
+    let other_workspace = workers
+        .execute(request(alice, workspace_b))
+        .unwrap()
+        .await
+        .unwrap();
+    let other_actor = workers
+        .execute(request(bob, workspace_a))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(first["pid"], same["pid"]);
+    assert_ne!(first["pid"], other_workspace["pid"]);
+    assert_ne!(first["pid"], other_actor["pid"]);
+    reap_service(&mut workers, &handle).await;
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn legacy_actor_scope_shares_across_source_workspaces_without_new_wire_context() {
+    let (_fixture, executable) = service_fixture();
+    let mut workers = ManagedWorkers::default();
+    let handle = mount_service(&mut workers, &executable, "service.open", Some(1800000));
+    let actor = uuid::Uuid::now_v7();
+    let mut first = service_request(&handle, Some(&actor.to_string()), serde_json::json!({}));
+    attach_caller(&mut first, actor, uuid::Uuid::now_v7());
+    let mut second = service_request(&handle, Some(&actor.to_string()), serde_json::json!({}));
+    attach_caller(&mut second, actor, uuid::Uuid::now_v7());
+    let first = workers.execute(first).unwrap().await.unwrap();
+    let second = workers.execute(second).unwrap().await.unwrap();
+    assert_eq!(first["pid"], second["pid"]);
+    assert_eq!(first["has_call_context"], false);
+    assert_eq!(second["has_call_context"], false);
     reap_service(&mut workers, &handle).await;
 }

@@ -103,3 +103,17 @@ mod exchange_host_services;
 
 #[path = "_tests/multiplex/large_payloads.rs"]
 mod large_payloads;
+
+#[test]
+fn managed_service_context_reexport_preserves_canonical_contract() {
+    let context: extension_contracts::ManagedServiceCallContext =
+        crate::ManagedServiceCallContext {
+            actor_id: "actor".into(),
+            workspace_id: "workspace".into(),
+            deadline_unix_ms: 123,
+        };
+    assert_eq!(
+        serde_json::to_value(context).unwrap(),
+        serde_json::json!({"actor_id":"actor", "workspace_id":"workspace", "deadline_unix_ms":123})
+    );
+}

@@ -80,3 +80,7 @@ pub use file_import_contract::*;
 
 pub mod file_read_contract;
 pub use file_read_contract::*;
+
+#[path = "managed_contributions/managed_service_contract.rs"]
+pub mod managed_service_contract;
+pub use managed_service_contract::*;

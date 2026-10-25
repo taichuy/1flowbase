@@ -273,6 +273,7 @@ where
             .collect();
         self.repository
             .seed_mcp_bundle_graph_once_atomically(&SeedMcpBundleGraphInput {
+                kind: crate::ports::McpBundleSeedKind::BundleVersion,
                 actor_user_id: command.actor_user_id,
                 workspace_id: command.workspace_id,
                 source,

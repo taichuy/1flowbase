@@ -177,7 +177,11 @@ fn managed_mcp_preserves_user_tools_and_rejects_reserved_collisions() {
 fn managed_mcp_requires_selected_enabled_host_instance_and_role_operation() {
     let mut catalog = base_catalog();
     assert!(selected_instance(&catalog, &["missing".into()]).is_none());
+    catalog.instances[0].instance_id = "web_capability".into();
+    catalog.instances[0].webmcp_exposure = domain::WebMcpExposure::AuthenticatedSession;
+    assert!(selected_instance(&catalog, &["web_capability".into()]).is_none());
     catalog.instances[0].instance_id = "frontstage_browser".into();
+    catalog.instances[0].webmcp_exposure = domain::WebMcpExposure::Disabled;
     assert!(selected_instance(&catalog, &["frontstage_browser".into()]).is_none());
     catalog.instances[0].instance_id = "backend".into();
     catalog.instances[0].status = McpInstanceStatus::Disabled;
@@ -202,34 +206,7 @@ fn managed_mcp_requires_selected_enabled_host_instance_and_role_operation() {
 #[test]
 fn managed_mcp_hides_disabled_or_replaced_installation() {
     let service = registration();
-    let now = time::OffsetDateTime::UNIX_EPOCH;
-    let mut current = domain::PluginInstallationRecord {
-        id: service.installation_id,
-        scope_id: domain::SYSTEM_SCOPE_ID,
-        category: domain::ExtensionCategory::RuntimeExtensions,
-        organization: "acme".into(),
-        provider_code: service.plugin_code.clone(),
-        plugin_id: "ssh@1.0.0".into(),
-        plugin_version: service.plugin_version.clone(),
-        contract_version: "1flowbase.extension-bus/v1".into(),
-        protocol: "stdio_json_multiplex_v1".into(),
-        display_name: "SSH".into(),
-        source_kind: "uploaded".into(),
-        trust_level: "unverified".into(),
-        verification_status: domain::PluginVerificationStatus::Valid,
-        desired_state: domain::PluginDesiredState::ActiveRequested,
-        expected_checksum: None,
-        signature_status: domain::ExtensionSignatureStatus::Missing,
-        signature_algorithm: None,
-        signing_key_id: None,
-        legacy_manifest_compatibility: None,
-        metadata_json: json!({"managed_service":service.declaration}),
-        is_system_reserved: false,
-        created_by: Uuid::nil(),
-        updated_by: None,
-        created_at: now,
-        updated_at: now,
-    };
+    let mut current = installation(&service);
     assert!(current_matches(&service, &current));
     current.desired_state = domain::PluginDesiredState::Disabled;
     assert!(!current_matches(&service, &current));
@@ -277,6 +254,15 @@ async fn managed_mcp_flat_arguments_reach_existing_http_dispatch_and_unwrap_api_
         bindable: true,
         disabled_reason: None,
     };
+    let mut edited_mapping = input_mapping(&operation.input_schema);
+    let host_mapping = edited_mapping["mappings"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|mapping| mapping["interface_param"] == "host_id")
+        .unwrap();
+    host_mapping["mcp_param"] = json!("selected_host");
+    host_mapping["source"]["path"] = json!("selected_host");
     let result = debug_execute::execute_with_console_router(
         router,
         axum::http::HeaderMap::new(),
@@ -284,8 +270,8 @@ async fn managed_mcp_flat_arguments_reach_existing_http_dispatch_and_unwrap_api_
         McpDebugExecuteBody {
             interface_id: operation.interface_id.clone(),
             debug_response_mode: McpDebugResponseMode::ToolResult,
-            mcp_arguments: json!({"host_id":"host-fixture","command":"echo fixture"}),
-            input_mapping: input_mapping(&operation.input_schema),
+            mcp_arguments: json!({"selected_host":"host-fixture","command":"echo fixture"}),
+            input_mapping: edited_mapping,
             output_mapping: operation.output_schema.clone(),
         },
         debug_execute::McpServerBoundInputs {
@@ -394,4 +380,190 @@ fn managed_mcp_parameter_schema_flattens_dto_fields_named_like_transport_contain
             .unwrap()["default_value"],
         "status"
     );
+}
+
+fn installation(service: &ManagedServiceRegistration) -> domain::PluginInstallationRecord {
+    let now = time::OffsetDateTime::UNIX_EPOCH;
+    domain::PluginInstallationRecord {
+        id: service.installation_id,
+        scope_id: domain::SYSTEM_SCOPE_ID,
+        category: domain::ExtensionCategory::RuntimeExtensions,
+        organization: "acme".into(),
+        provider_code: service.plugin_code.clone(),
+        plugin_id: "ssh@1.0.0".into(),
+        plugin_version: service.plugin_version.clone(),
+        contract_version: "1flowbase.extension-bus/v1".into(),
+        protocol: "stdio_json_multiplex_v1".into(),
+        display_name: "SSH".into(),
+        source_kind: "uploaded".into(),
+        trust_level: "unverified".into(),
+        verification_status: domain::PluginVerificationStatus::Valid,
+        desired_state: domain::PluginDesiredState::ActiveRequested,
+        expected_checksum: None,
+        signature_status: domain::ExtensionSignatureStatus::Missing,
+        signature_algorithm: None,
+        signing_key_id: None,
+        legacy_manifest_compatibility: None,
+        metadata_json: json!({"managed_service":service.declaration}),
+        is_system_reserved: false,
+        created_by: Uuid::nil(),
+        updated_by: None,
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+fn interface_entry(service: &ManagedServiceRegistration) -> domain::McpInterfaceCatalogEntry {
+    let operation = &service.declaration.operations[0];
+    domain::McpInterfaceCatalogEntry {
+        interface_id: operation.interface_id.clone(),
+        source: domain::McpInterfaceCatalogSource::StaticApi,
+        method: operation.method.clone(),
+        path: operation.path.clone(),
+        name: operation.summary.clone(),
+        short_description: operation.description.clone(),
+        parameter_descriptors: vec![],
+        parameter_schema: operation.input_schema.clone(),
+        result_schema: operation.output_schema.clone(),
+        permission_code: None,
+        security: json!({}),
+        risk_level: McpRiskLevel::High,
+        bindable: true,
+        disabled_reason: None,
+    }
+}
+
+#[test]
+fn dedicated_templates_use_persisted_graph_and_never_synthetic_append() {
+    let mut service = registration();
+    service.declaration.mcp_instance = Some(plugin_framework::ManagedServiceMcpInstance {
+        instance_id: "ssh_tools".into(),
+        name: "SSH tools".into(),
+        description: "SSH tools".into(),
+    });
+    let mut catalog = base_catalog();
+    let instance = catalog.instances[0].clone();
+    append_service(
+        &mut catalog,
+        &instance,
+        &service,
+        &[&service.declaration.operations[0]],
+        Uuid::nil(),
+    )
+    .unwrap();
+    assert!(
+        catalog.tools.is_empty(),
+        "declared templates are never appended to any selected instance"
+    );
+    let mut installed = installation(&service);
+    installed.desired_state = domain::PluginDesiredState::Disabled;
+    let mut dedicated = instance.clone();
+    dedicated.instance_id = "ssh_tools".into();
+    assert!(is_template_instance(&dedicated, &[installed.clone()]));
+    dedicated.instance_id = "user_renamed_instance".into();
+    dedicated.managed_by = Some(domain::McpManagedBundleSource {
+        organization: installed.organization.clone(),
+        bundle_id: service.plugin_code.clone(),
+        bundle_version: "0.9.0".into(),
+    });
+    assert!(
+        is_template_instance(&dedicated, &[installed.clone()]),
+        "user edits and a disabled source do not admit other plugins' synthetic tools"
+    );
+    assert!(!is_template_instance(&instance, &[installed]));
+}
+
+#[test]
+fn persisted_managed_wrappers_keep_edits_but_follow_current_activation_and_role() {
+    let mut catalog = base_catalog();
+    let instance = catalog.instances[0].clone();
+    let mut service = registration();
+    append_service(
+        &mut catalog,
+        &instance,
+        &service,
+        &[&service.declaration.operations[0]],
+        Uuid::nil(),
+    )
+    .unwrap();
+    catalog.tools[0].name = "User-edited tool".into();
+    catalog.tools[0].input_mapping["mappings"][0]["mcp_param"] = json!("user_host");
+    let edited = catalog.clone();
+    service.declaration.mcp_instance = Some(plugin_framework::ManagedServiceMcpInstance {
+        instance_id: "ssh_tools".into(),
+        name: "SSH".into(),
+        description: "SSH".into(),
+    });
+    let installed = installation(&service);
+    let interfaces =
+        crate::routes::mcp_protocol::virtual_ui::McpInterfaceCatalogSnapshot::new(vec![
+            interface_entry(&service),
+        ]);
+    let mut actor = domain::ActorContext::root(Uuid::nil(), instance.workspace_id, "root");
+    filter_persisted_operations(
+        &mut catalog,
+        &[installed.clone()],
+        &[&service],
+        &actor,
+        &[],
+        &interfaces,
+    )
+    .unwrap();
+    assert_eq!(
+        catalog, edited,
+        "discovery does not regenerate or overwrite persisted mappings"
+    );
+    actor.is_root = false;
+    let mut denied = edited.clone();
+    filter_persisted_operations(
+        &mut denied,
+        &[installed.clone()],
+        &[&service],
+        &actor,
+        &[],
+        &interfaces,
+    )
+    .unwrap();
+    assert!(denied.tools.is_empty());
+    assert!(denied.bindings.is_empty());
+    let group = domain::ConsolePolicyGroup::settings_feature("ssh.settings").unwrap();
+    let policies = vec![RoleConsolePolicy::new(
+        Uuid::nil(),
+        vec![RoleConsoleGroupPolicy::full(group)],
+    )];
+    let mut granted = edited.clone();
+    filter_persisted_operations(
+        &mut granted,
+        &[installed.clone()],
+        &[&service],
+        &actor,
+        &policies,
+        &interfaces,
+    )
+    .unwrap();
+    assert_eq!(granted, edited);
+    let mut disabled = edited.clone();
+    filter_persisted_operations(
+        &mut disabled,
+        &[installed.clone()],
+        &[],
+        &actor,
+        &policies,
+        &interfaces,
+    )
+    .unwrap();
+    assert!(disabled.tools.is_empty());
+    let mut unbound = edited;
+    let no_interfaces =
+        crate::routes::mcp_protocol::virtual_ui::McpInterfaceCatalogSnapshot::new(vec![]);
+    filter_persisted_operations(
+        &mut unbound,
+        &[installed],
+        &[&service],
+        &actor,
+        &policies,
+        &no_interfaces,
+    )
+    .unwrap();
+    assert!(unbound.tools.is_empty());
 }

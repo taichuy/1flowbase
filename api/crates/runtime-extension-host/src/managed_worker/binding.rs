@@ -17,11 +17,37 @@ pub(crate) struct LoadedManagedBinding {
     pub handler: String,
     pub worker_idle_timeout_ms: Option<u64>,
     pub worker_retention: bool,
+    pub actor_workspace_scope: bool,
     pub interface_protocol: Option<extension_contracts::ManagedInterfaceProtocol>,
     pub contribution: extension_contracts::extension_bus::ContributionDescriptor,
 }
 
 impl LoadedManagedBinding {
+    pub(super) fn call_context(
+        &self,
+        principal: &runtime_core::runtime_backend::RuntimeExecutionPrincipal,
+    ) -> extension_package_runtime::FrameworkResult<
+        Option<extension_contracts::ManagedServiceCallContext>,
+    > {
+        if !self.actor_workspace_scope {
+            return Ok(None);
+        }
+        let caller = principal.caller.as_ref().ok_or_else(|| {
+            super::invalid("actor_workspace_scope service requires a captured caller")
+        })?;
+        let actor_id = caller.actor.user_id.to_string();
+        if principal.actor_id.as_deref() != Some(actor_id.as_str()) {
+            return Err(super::invalid(
+                "managed service caller actor does not match execution actor",
+            ));
+        }
+        Ok(Some(extension_contracts::ManagedServiceCallContext {
+            actor_id,
+            workspace_id: caller.actor.current_workspace_id.to_string(),
+            deadline_unix_ms: principal.deadline_unix_ms,
+        }))
+    }
+
     /// Runs on the host's blocking pool before admission; the installed path is never resolved
     /// again through a current/latest installation. Removed or replaced bytes fail closed.
     /// The artifact owner must keep published files immutable: this check is not synchronization

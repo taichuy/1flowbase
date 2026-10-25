@@ -402,6 +402,7 @@ fn managed_frontstage_seed_input(
         })
         .collect();
     SeedMcpBundleGraphInput {
+        kind: control_plane::ports::McpBundleSeedKind::BundleVersion,
         actor_user_id,
         workspace_id,
         source,
@@ -763,3 +764,6 @@ async fn mcp_bundle_graph_replace_is_atomic_and_preserves_credentials_and_other_
 }
 #[path = "mcp_management_integration/workspace_management.rs"]
 mod workspace_management;
+
+#[path = "mcp_management_integration/plugin_template.rs"]
+mod plugin_template;

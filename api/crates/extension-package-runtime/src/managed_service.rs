@@ -240,11 +240,24 @@ pub enum ManagedServiceWorkerLifetime {
     #[default]
     PerCall,
     ActorScope,
+    ActorWorkspaceScope,
 }
 impl ManagedServiceWorkerLifetime {
+    pub fn is_shared(&self) -> bool {
+        !self.is_per_call()
+    }
+
     fn is_per_call(&self) -> bool {
         *self == Self::PerCall
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedServiceMcpInstance {
+    pub instance_id: String,
+    pub name: String,
+    pub description: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -258,6 +271,8 @@ pub struct ManagedServiceManifest {
     pub worker_lifetime: ManagedServiceWorkerLifetime,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worker_idle_timeout_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_instance: Option<ManagedServiceMcpInstance>,
     pub feature: ManagedServiceFeature,
     pub operations: Vec<ManagedServiceOperation>,
 }
@@ -275,7 +290,7 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
             && service.worker_idle_timeout_ms.is_some())
     {
         return Err(invalid(
-            "managed service idle timeout requires actor_scope and must be positive",
+            "managed service idle timeout requires a shared worker lifetime and must be positive",
         ));
     }
     let owner = manifest.plugin_code()?;
@@ -291,6 +306,24 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
         return Err(invalid(
             "managed_service requires v2 process_per_call system package and at least one operation",
         ));
+    }
+    if let Some(instance) = &service.mcp_instance {
+        if instance.name.trim().is_empty()
+            || instance.description.trim().is_empty()
+            || !instance.instance_id.starts_with(&owner.replace('-', "_"))
+            || !instance
+                .instance_id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+            || !service
+                .operations
+                .iter()
+                .any(|operation| operation.mcp.is_some())
+        {
+            return Err(invalid(
+                "managed MCP instance requires an owned instance_id, name, description and MCP operation",
+            ));
+        }
     }
     let namespace = format!("{owner}.");
     let owned_id = |value: &str| {
@@ -364,7 +397,9 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
                                 .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
                             || !parameter_names.insert(name)
                     }) {
-                        return Err(invalid("managed MCP parameter names must be unique across path, query and body"));
+                        return Err(invalid(
+                            "managed MCP parameter names must be unique across path, query and body",
+                        ));
                     }
                 }
             }
@@ -399,7 +434,9 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
             || operation.summary.trim().is_empty()
             || operation.description.trim().is_empty()
         {
-            return Err(invalid("managed service operations require unique owned identities and concrete method/routes"));
+            return Err(invalid(
+                "managed service operations require unique owned identities and concrete method/routes",
+            ));
         }
         let contribution = managed
             .module
@@ -442,11 +479,11 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
         if operation.stream.is_some() && operation.mcp.is_some() {
             return Err(invalid("managed stream is a socket transport operation"));
         }
-        if service.worker_lifetime == ManagedServiceWorkerLifetime::ActorScope {
+        if service.worker_lifetime.is_shared() {
             if let Some(runtime) = shared_runtime {
                 if runtime != &binding.runtime {
                     return Err(invalid(
-                        "actor_scope operations must share one runtime entry and limits",
+                        "shared worker operations must share one runtime entry and limits",
                     ));
                 }
             } else {

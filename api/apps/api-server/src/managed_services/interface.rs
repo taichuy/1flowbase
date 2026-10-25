@@ -129,20 +129,23 @@ impl Adapter {
             {
                 return Err(Error::Conflict("managed_service_generation_mismatch").into());
             }
-            let caller = if binding
-                .descriptor
-                .required_permissions
-                .iter()
-                .any(|permission| {
-                    matches!(
-                        permission.as_str(),
-                        "file.import.resource"
-                            | "file.read.content"
-                            | "application.logs.read"
-                            | "application.logs.import"
-                            | "network.http.request"
-                    )
-                }) {
+            let needs_call_context = self.registration.declaration.worker_lifetime
+                == plugin_framework::ManagedServiceWorkerLifetime::ActorWorkspaceScope;
+            let caller = if needs_call_context
+                || binding
+                    .descriptor
+                    .required_permissions
+                    .iter()
+                    .any(|permission| {
+                        matches!(
+                            permission.as_str(),
+                            "file.import.resource"
+                                | "file.read.content"
+                                | "application.logs.read"
+                                | "application.logs.import"
+                                | "network.http.request"
+                        )
+                    }) {
                 crate::resource_import::capture_caller(
                     &state,
                     principal,
@@ -153,6 +156,9 @@ impl Adapter {
             } else {
                 None
             };
+            if needs_call_context && caller.is_none() {
+                return Err(Error::NotAuthenticated.into());
+            }
             let output = composition
                 .execute_snapshot(
                     snapshot.clone(),

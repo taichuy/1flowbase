@@ -204,6 +204,7 @@ impl<R, H> PluginManagementService<R, H> {
             + RoleConsolePolicyReader
             + PluginRepository
             + crate::ports::ManagedSchemaRepository
+            + crate::ports::McpManagementRepository
             + crate::ports::ModelDefinitionRepository
             + Clone
             + 'static,

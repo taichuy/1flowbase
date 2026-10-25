@@ -1,3 +1,6 @@
+pub mod mcp_projection;
+mod mcp_template;
+pub use mcp_template::prepare_managed_mcp_template;
 mod schema;
 pub use schema::prepare_managed_schema_plan;
 
@@ -6,8 +9,8 @@ use super::{
     PluginContributionAuthorityService,
 };
 use crate::ports::{
-    ManagedSchemaRepository, ModelDefinitionRepository, PluginContributionAuthorityRepository,
-    PluginRepository, RoleConsolePolicyReader,
+    ManagedSchemaRepository, McpManagementRepository, ModelDefinitionRepository,
+    PluginContributionAuthorityRepository, PluginRepository, RoleConsolePolicyReader,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -44,6 +47,7 @@ where
         + PluginContributionAuthorityRepository
         + RoleConsolePolicyReader
         + ManagedSchemaRepository
+        + McpManagementRepository
         + ModelDefinitionRepository
         + Clone
         + Send
@@ -87,6 +91,11 @@ where
             )
             .await?;
             self.repository.apply_managed_schema(&plan).await?;
+        }
+        if let Some(template) = prepare_managed_mcp_template(actor, installation_id, &manifest)? {
+            self.repository
+                .seed_mcp_bundle_graph_once_atomically(&template)
+                .await?;
         }
         Ok(())
     }

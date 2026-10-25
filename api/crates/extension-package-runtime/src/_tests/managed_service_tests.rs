@@ -358,3 +358,75 @@ fn standard_content_declarations_validate_paths_and_resource_read() {
         .is_err());
     }
 }
+
+#[test]
+fn actor_workspace_scope_is_opt_in_and_accepts_shared_retention() {
+    let mut value = fixture();
+    value["managed_service"]["worker_lifetime"] = json!("actor_workspace_scope");
+    value["managed"]["execution_bindings"][0]["runtime"]["capabilities"] =
+        json!([extension_contracts::RUNTIME_WORKER_RETENTION_V1]);
+    let service = parse(&value).unwrap().managed_service.unwrap();
+    assert_eq!(
+        service.worker_lifetime,
+        crate::ManagedServiceWorkerLifetime::ActorWorkspaceScope
+    );
+    assert!(service.worker_lifetime.is_shared());
+    assert_eq!(
+        serde_json::to_value(service).unwrap()["worker_lifetime"],
+        "actor_workspace_scope"
+    );
+    value["managed_service"]["worker_idle_timeout_ms"] = json!(0);
+    assert!(parse(&value).is_err());
+}
+
+#[test]
+fn managed_mcp_instance_is_optional_owned_and_requires_mcp_operation() {
+    let mut value = fixture();
+    assert!(parse(&value)
+        .unwrap()
+        .managed_service
+        .unwrap()
+        .mcp_instance
+        .is_none());
+    value["managed_service"]["mcp_instance"] = json!({"instance_id":"managed_fixture_tools", "name":"Fixture", "description":"Fixture tools"});
+    assert!(
+        parse(&value).is_err(),
+        "an instance without tools is invalid"
+    );
+    value["managed_service"]["operations"][0]["mcp"] =
+        json!({"name":"hosts.list", "description":"List hosts"});
+    let service = parse(&value).unwrap().managed_service.unwrap();
+    assert_eq!(
+        service.mcp_instance.unwrap().instance_id,
+        "managed_fixture_tools"
+    );
+    assert_eq!(
+        service.operations[0].mcp.as_ref().unwrap().name,
+        "hosts.list"
+    );
+    for (field, invalid) in [
+        ("instance_id", "other_tools"),
+        ("instance_id", "managed_fixture.tools"),
+        ("instance_id", "managed_fixture/tools"),
+        ("name", "  "),
+        ("description", ""),
+    ] {
+        let mut invalid_value = value.clone();
+        invalid_value["managed_service"]["mcp_instance"][field] = json!(invalid);
+        assert!(parse(&invalid_value).is_err(), "{field}={invalid}");
+    }
+}
+
+#[test]
+fn managed_mcp_instance_normalizes_hyphenated_plugin_owner() {
+    let wire = serde_json::to_string(&fixture())
+        .unwrap()
+        .replace("managed_fixture", "managed-fixture");
+    let mut value: Value = serde_json::from_str(&wire).unwrap();
+    value["managed_service"]["mcp_instance"] = json!({"instance_id":"managed_fixture_tools", "name":"Fixture", "description":"Fixture tools"});
+    value["managed_service"]["operations"][0]["mcp"] =
+        json!({"name":"hosts.list", "description":"List hosts"});
+    assert!(parse(&value).is_ok());
+    value["managed_service"]["mcp_instance"]["instance_id"] = json!("managed-fixture_tools");
+    assert!(parse(&value).is_err());
+}
