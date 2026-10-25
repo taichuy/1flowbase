@@ -134,7 +134,7 @@ pub(crate) async fn ensure_channel_mcp(
 }
 
 fn channel_input_mapping(
-    parameters: &[domain::McpParameterDescriptor],
+    parameters: &[domain::mcp_management::McpParameterDescriptor],
     schema: &Value,
     channel: Uuid,
 ) -> Value {

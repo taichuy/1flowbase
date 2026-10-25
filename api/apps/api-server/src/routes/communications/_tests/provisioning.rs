@@ -4,10 +4,10 @@ use super::*;
 fn communication_generated_mapping_obeys_call_controls_and_preserves_channel_binding() {
     let channel = Uuid::now_v7();
     let parameters =
-        ["instance_id", "conversation_id"].map(|name| domain::McpParameterDescriptor {
+        ["instance_id", "conversation_id"].map(|name| domain::mcp_management::McpParameterDescriptor {
             name: name.into(),
             field_type: "string".into(),
-            parameter_type: domain::McpParameterType::Url,
+            parameter_type: domain::mcp_management::McpParameterType::Url,
             description: None,
             required: true,
             schema: json!({"type":"string"}),
