@@ -514,6 +514,7 @@ pub(super) async fn app_and_runtime_host_from_config(
     )?;
     file_import_port.bind(&generation_publisher)?;
     managed_composition.attach_generation_publisher(Arc::downgrade(&generation_publisher))?;
+    let communication_worker = crate::communication_runtime::CommunicationWorker::spawn(state.clone());
     Ok((
         generation_publisher.ingress(),
         ApiRuntimeShutdown {
@@ -521,6 +522,7 @@ pub(super) async fn app_and_runtime_host_from_config(
             services: provider_runtime,
             operations: store.managed_operation_lifetime(),
             lifecycle_worker,
+            communication_worker,
         },
     ))
     }.await;

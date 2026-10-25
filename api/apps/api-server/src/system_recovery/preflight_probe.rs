@@ -121,5 +121,7 @@ fn owner_id(owner: SystemWriteOwner) -> &'static str {
         SystemWriteOwner::ProviderRequestLogPersistence => "provider_request_log_persistence",
         SystemWriteOwner::WorkflowScheduleDispatch => "workflow_schedule_dispatch",
         SystemWriteOwner::WorkflowScheduleExecution => "workflow_schedule_execution",
+        SystemWriteOwner::CommunicationReceive => "communication_receive",
+        SystemWriteOwner::CommunicationExecution => "communication_execution",
     }
 }

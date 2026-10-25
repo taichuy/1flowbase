@@ -1,4 +1,5 @@
 mod branding;
+mod communications;
 mod fixes;
 mod native_storage;
 mod notification_compaction;
@@ -649,11 +650,17 @@ async fn notification_backup_keeps_channel_configuration_separate_from_inbox_his
     assert_eq!(notification.label_key, "auto.notifications");
     assert_eq!(
         notification.structure_tables,
-        vec!["notification_instances".to_owned()]
+        vec![
+            "communication_bindings".to_owned(),
+            "notification_instances".to_owned()
+        ]
     );
     assert_eq!(
         notification.data_tables,
         vec![
+            "communication_attachments".to_owned(),
+            "communication_conversations".to_owned(),
+            "communication_messages".to_owned(),
             "notification_send_logs".to_owned(),
             "system_notifications".to_owned()
         ]
@@ -666,6 +673,9 @@ async fn notification_backup_keeps_channel_configuration_separate_from_inbox_his
     assert!(preview.failures.is_empty(), "{:?}", preview.failures);
     assert_eq!(
         preview.selected_tables,
-        vec!["notification_instances".to_owned()]
+        vec![
+            "communication_bindings".to_owned(),
+            "notification_instances".to_owned()
+        ]
     );
 }

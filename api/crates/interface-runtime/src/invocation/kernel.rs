@@ -560,6 +560,39 @@ where
         O: InterfaceContract,
         E: InterfaceContract,
     {
+        // Preparation owns the larger validation state machine. It must return
+        // before a handler can poll a nested invocation on this same task.
+        let prepared = self
+            .prepare_unary::<I, O, E>(snapshot, envelope, dispatch_target)
+            .await?;
+        prepared.execute().await
+    }
+
+    fn prepare_unary<I, O, E>(
+        &self,
+        snapshot: Arc<CompiledInterfaceRegistry>,
+        envelope: InvocationEnvelope<I, P>,
+        dispatch_target: Option<ExecutionTargetPin>,
+    ) -> Pin<Box<impl Future<Output = UnaryPreparation<I, O, E, P>> + Send + '_>>
+    where
+        I: InterfaceContract,
+        O: InterfaceContract,
+        E: InterfaceContract,
+    {
+        Box::pin(self.prepare_unary_inner::<I, O, E>(snapshot, envelope, dispatch_target))
+    }
+
+    async fn prepare_unary_inner<I, O, E>(
+        &self,
+        snapshot: Arc<CompiledInterfaceRegistry>,
+        envelope: InvocationEnvelope<I, P>,
+        dispatch_target: Option<ExecutionTargetPin>,
+    ) -> UnaryPreparation<I, O, E, P>
+    where
+        I: InterfaceContract,
+        O: InterfaceContract,
+        E: InterfaceContract,
+    {
         let InvocationEnvelope {
             lineage,
             binding_id,
@@ -950,45 +983,108 @@ where
             snapshot.graph_fingerprint().clone(),
             snapshot.fingerprint().clone(),
         );
-        let target = await_in_flight(&controls, handler.invoke(context, input)).await;
-        let target = match target {
-            Ok(target) => target,
-            Err(interruption) => {
-                return Err(receipt
-                    .fail(
-                        interruption_error(interruption),
-                        InterfaceInvocationTerminal::Cancelled,
-                    )
-                    .await);
-            }
-        };
-        match target {
-            Ok(value) => {
-                if let Some(hook_plan) = hook_plan {
-                    hook_plan
-                        .run_after(&mut receipt.finalization, &hook_context, &value)
+        Ok(Box::new(PreparedUnaryInvocation {
+            snapshot,
+            plan,
+            receipt,
+            hook_context,
+            controls,
+            handler,
+            context,
+            input,
+        }))
+    }
+}
+
+type UnaryPreparation<I, O, E, P> =
+    Result<Box<PreparedUnaryInvocation<I, O, E, P>>, InterfaceInvocationFailure>;
+
+// One invocation retains its frozen plan and completion budget across the phase
+// boundary. Boxing the handoff also keeps the driver's returned state small.
+struct PreparedUnaryInvocation<I, O, E, P>
+where
+    I: InterfaceContract,
+    O: InterfaceContract,
+    E: InterfaceContract,
+    P: InvocationPrincipal,
+{
+    snapshot: Arc<CompiledInterfaceRegistry>,
+    plan: crate::CompiledInvocationPlan,
+    receipt: ReceiptBuilder,
+    hook_context: InterfaceHookContext,
+    controls: InvocationControls,
+    handler: Arc<dyn crate::InterfaceHandler<I, O, E, P>>,
+    context: InterfaceHandlerContext<P>,
+    input: I,
+}
+
+impl<I, O, E, P> PreparedUnaryInvocation<I, O, E, P>
+where
+    I: InterfaceContract,
+    O: InterfaceContract,
+    E: InterfaceContract,
+    P: InvocationPrincipal,
+{
+    fn execute(
+        self: Box<Self>,
+    ) -> Pin<Box<impl Future<Output = InterfaceInvocationResult<O>> + Send>> {
+        let PreparedUnaryInvocation {
+            snapshot,
+            plan,
+            mut receipt,
+            hook_context,
+            controls,
+            handler,
+            context,
+            input,
+        } = *self;
+        // Construct the handler future after preparation has exited, and outside
+        // the driver's poll frame. The original controls still own its polling.
+        let target = handler.invoke(context, input);
+        Box::pin(async move {
+            let _snapshot = snapshot;
+            let _handler = handler;
+            let hook_plan = plan.hook_plan::<I, O>();
+            let target = await_in_flight(&controls, target).await;
+            let target = match target {
+                Ok(target) => target,
+                Err(interruption) => {
+                    return Err(receipt
+                        .fail(
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        )
+                        .await);
+                }
+            };
+            match target {
+                Ok(value) => {
+                    if let Some(hook_plan) = hook_plan {
+                        hook_plan
+                            .run_after(&mut receipt.finalization, &hook_context, &value)
+                            .await;
+                    }
+                    receipt.stage(InterfaceInvocationStage::PostProcessed);
+                    Ok(InterfaceInvocationOutcome {
+                        value,
+                        receipt: receipt.complete().await,
+                    })
+                }
+                Err(error) => {
+                    if let Some(hook_plan) = hook_plan {
+                        run_failure_hooks(
+                            &mut receipt.finalization,
+                            Some(hook_plan),
+                            &hook_context,
+                            error.classification(),
+                        )
                         .await;
+                    }
+                    Err(receipt
+                        .fail(target_error(error), InterfaceInvocationTerminal::Failed)
+                        .await)
                 }
-                receipt.stage(InterfaceInvocationStage::PostProcessed);
-                Ok(InterfaceInvocationOutcome {
-                    value,
-                    receipt: receipt.complete().await,
-                })
             }
-            Err(error) => {
-                if let Some(hook_plan) = hook_plan {
-                    run_failure_hooks(
-                        &mut receipt.finalization,
-                        Some(hook_plan),
-                        &hook_context,
-                        error.classification(),
-                    )
-                    .await;
-                }
-                Err(receipt
-                    .fail(target_error(error), InterfaceInvocationTerminal::Failed)
-                    .await)
-            }
-        }
+        })
     }
 }

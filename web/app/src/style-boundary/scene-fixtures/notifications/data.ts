@@ -46,11 +46,11 @@ export function seedStyleBoundaryNotificationSettingsFetch() {
       window.location.origin
     );
     const payload =
-      url.pathname === '/api/console/notifications/types'
+      url.pathname === '/api/console/communications/types'
         ? [notificationType]
-        : url.pathname === '/api/console/notifications/instances'
+        : url.pathname === '/api/console/communications/instances'
           ? [notificationInstance]
-          : url.pathname === '/api/console/notifications/logs'
+          : url.pathname === '/api/console/communications/logs'
             ? {
                 items: [
                   {

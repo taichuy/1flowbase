@@ -132,7 +132,7 @@
     [
       "notifications.instances.delete",
       "DELETE",
-      "/api/console/notifications/instances/:instance_id",
+      "/api/console/communications/instances/:instance_id",
       "Delete notification instance"
     ],
     [
@@ -774,25 +774,25 @@
     [
       "notifications.instances.list",
       "GET",
-      "/api/console/notifications/instances",
+      "/api/console/communications/instances",
       "List notification instances"
     ],
     [
       "notifications.instances.get",
       "GET",
-      "/api/console/notifications/instances/:instance_id",
+      "/api/console/communications/instances/:instance_id",
       "Get notification instance"
     ],
     [
       "notifications.logs.list",
       "GET",
-      "/api/console/notifications/logs",
+      "/api/console/communications/logs",
       "List notification send logs"
     ],
     [
       "notifications.logs.get",
       "GET",
-      "/api/console/notifications/logs/:log_id",
+      "/api/console/communications/logs/:log_id",
       "Get notification send log"
     ],
     [
@@ -1362,7 +1362,7 @@
     [
       "notifications.instances.update",
       "PATCH",
-      "/api/console/notifications/instances/:instance_id",
+      "/api/console/communications/instances/:instance_id",
       "Update notification instance"
     ],
     [
@@ -1824,19 +1824,19 @@
     [
       "notifications.instances.create",
       "POST",
-      "/api/console/notifications/instances",
+      "/api/console/communications/instances",
       "Create notification instance"
     ],
     [
       "notifications.instances.authorization",
       "POST",
-      "/api/console/notifications/instances/:instance_id/authorization",
+      "/api/console/communications/instances/:instance_id/authorization",
       "Authorize notification instance"
     ],
     [
       "notifications.instances.send",
       "POST",
-      "/api/console/notifications/instances/:instance_id/send",
+      "/api/console/communications/instances/:instance_id/send",
       "Send notification"
     ],
     [

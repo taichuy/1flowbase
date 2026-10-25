@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(window) = input.delivery_window { view["delivery_window"] = serde_json::to_value(window).unwrap(); }
                     json!({"type":"authorization","authorization":view})
                 },
-                NotificationOperation::Send { input_payload } => {
+                NotificationOperation::Send { input_payload, .. } => {
                     if input_payload["text"] == "fixture-subscription-unavailable" {
                         if input.delivery_window.as_ref().map(|window| window.status) != Some(runtime_extension_sdk::NotificationDeliveryWindowStatus::Expired) {
                             return Err("fixture requires Host-projected expired evidence");
@@ -83,6 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         result
                     }
                 }
+                NotificationOperation::Receive { .. } | NotificationOperation::DownloadAttachment { .. } => return Err("send-only fixture"),
             };
             Ok::<NotificationRuntimeResult, &str>(serde_json::from_value(result).expect("fixture outcome"))
         }).await;

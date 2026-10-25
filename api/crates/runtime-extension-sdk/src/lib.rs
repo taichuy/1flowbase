@@ -48,12 +48,19 @@ pub use extension_contracts::{
     MULTIPLEX_CALL_EVENT_BUDGET_BYTES, MULTIPLEX_OUTPUT_BUDGET_BYTES, STDIO_JSON_MULTIPLEX_V1,
 };
 pub use extension_contracts::{
+    NotificationAttachmentDownloadOutcome, NotificationAttachmentReference,
     NotificationAuthorizationAction, NotificationAuthorizationActionKind,
     NotificationAuthorizationDescriptor, NotificationAuthorizationOperation,
     NotificationAuthorizationStatus, NotificationAuthorizationUserAction,
     NotificationAuthorizationView, NotificationDeliveryWindowStatus,
-    NotificationDeliveryWindowView, NotificationFailureCode, NotificationOperation,
-    NotificationRuntimeInput, NotificationRuntimeResult, NotificationSendOutcome,
+    NotificationDeliveryWindowView, NotificationFailureCode, NotificationMcpOperation,
+    NotificationMcpToolDescriptor, NotificationOperation, NotificationReceiveBatch,
+    NotificationReceiveDescriptor, NotificationReceiveOutcome, NotificationReceivedAttachment,
+    NotificationReceivedMessage, NotificationRuntimeInput, NotificationRuntimeResult,
+    NotificationSendOutcome, NotificationSendTarget, NotificationSender,
+    NOTIFICATION_MAX_ATTACHMENT_CHUNK_BYTES, NOTIFICATION_MAX_RECEIVE_BATCH_BYTES,
+    NOTIFICATION_MAX_RECEIVE_MESSAGES, NOTIFICATION_MAX_RECEIVE_WAIT_SECONDS,
+    NOTIFICATION_RECEIVE_PERMISSION, NOTIFICATION_RECEIVE_POINT,
 };
 pub use managed_hook::{
     serve_managed_hook, serve_managed_interface_hook, serve_managed_interface_reference_hook,
@@ -63,8 +70,8 @@ pub use multiplex::{
     MultiplexInput, MultiplexResourceLease,
 };
 pub use notification::{
-    complete_authorizable_notification, execute_authorizable_notification, execute_notification,
-    prepare_authorizable_notification,
+    complete_authorizable_notification, execute_authorizable_notification, execute_communication,
+    execute_notification, prepare_authorizable_notification,
 };
 pub use plugin_data::{PluginDataClient, RuntimeExtensionSdkError};
 pub use simulator::PluginDataHostSimulator;

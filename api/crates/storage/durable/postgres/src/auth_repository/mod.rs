@@ -665,6 +665,9 @@ impl AuthRepository for PgControlPlaneStore {
     }
 
     async fn load_actor_context_for_user(&self, actor_user_id: Uuid) -> Result<ActorContext> {
+        if let Some(actor) = self.request_actor_for_user(actor_user_id)? {
+            return Ok(actor);
+        }
         let scope = self.default_scope_for_user(actor_user_id).await?;
         self.load_actor_context(actor_user_id, scope.tenant_id, scope.workspace_id, None)
             .await

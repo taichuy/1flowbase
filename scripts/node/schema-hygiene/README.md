@@ -28,3 +28,5 @@ Metadata systems may manage display configuration, actions, views, and relation 
 通知配置与 inbox 是专用 owner-keyed operational 数据：实例按 workspace/created_at/id 查询，历史按 workspace/recipient/created_at/id 查询并通过 read_at 确认。只豁免不消费的通用 scope chronology 和不适用的 updated_at；`ownedTableContracts` 仍要求实例 workspace 外键、历史非空 workspace/recipient/instance 身份、read_at 与真实查询索引。历史特意不以用户/实例外键级联删除；没有 scope_id 不作为普通业务表 readiness 的替代，未将通知表伪装成 system/global 或 append-only。
 
 `notification_send_logs` 同样使用窄 owner contract：每次发送一个 workspace-owned attempt，repository 仅将 pending 更新为 terminal 并写 completed_at；并非 append-only，也不是 system/global。豁免只覆盖通用 scope chronology 与可编辑 updated_at；保留 id/created_at 检查，并验证非空 workspace/actor/instance、status/source/completed_at 与两种实际 workspace 查询索引。无 actor/instance 外键是保留历史身份的既有契约。正例来自正式 migration，负例删除 owner、生命周期列或任一查询索引仍须失败。
+
+通讯配置保留 `instance_id` 单行渠道身份，通过 `(scope_id, instance_id)` 外键核对既有通知实例 workspace；只豁免额外 `id` 与不适用的 id 结尾通用索引，并验证真实 `(scope_id, created_at, instance_id)` 索引。会话、消息、附件使用普通物理 `scope_id` 与可变 `created_at/updated_at`，复合外键阻止消息或附件跨 scope 关联；会话历史仍不级联依赖渠道/用户。四表更新触发器维护状态、租约与文件恢复写入的更新时间。

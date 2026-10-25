@@ -971,22 +971,53 @@
         "managed-table-scope-column",
         "managed-table-scope-time-index"
       ]
+    },
+    "communication_bindings": {
+      "kind": "channel_owned_communication_binding",
+      "reason": "Communication configuration is one mutable row per notification channel keyed by instance_id. It carries physical scope and audit times, uses scope created_at instance_id lookup, and has no independent resource identity.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-time-index"
+      ]
     }
   },
   "ownedTableContracts": {
-    "system_branding": { "primaryKey": ["singleton"] },
+    "system_branding": {
+      "primaryKey": [
+        "singleton"
+      ]
+    },
     "runtime_credit_ledger": {
-      "primaryKey": ["id"],
+      "primaryKey": [
+        "id"
+      ],
       "foreignKeys": [
         {
-          "columns": ["workspace_id"],
+          "columns": [
+            "workspace_id"
+          ],
           "table": "workspaces",
-          "references": ["id"],
+          "references": [
+            "id"
+          ],
           "onDelete": "cascade"
         }
       ],
-      "indexes": [["workspace_id", "user_id", "created_at", "id"]],
-      "unconditionalIndexes": [["workspace_id", "created_at", "id"]]
+      "indexes": [
+        [
+          "workspace_id",
+          "user_id",
+          "created_at",
+          "id"
+        ]
+      ],
+      "unconditionalIndexes": [
+        [
+          "workspace_id",
+          "created_at",
+          "id"
+        ]
+      ]
     },
     "model_provider_session_bindings": {
       "primaryKey": [
@@ -1493,6 +1524,195 @@
           "hard_expires_at",
           "flow_run_id"
         ]
+      ]
+    },
+    "communication_bindings": {
+      "primaryKey": [
+        "instance_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "scope_id",
+            "instance_id"
+          ],
+          "table": "notification_instances",
+          "references": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "ownerColumns": [
+        "scope_id",
+        "actor_user_id"
+      ],
+      "requiredColumns": [
+        "created_at",
+        "updated_at",
+        "config_json",
+        "encrypted_cursor"
+      ],
+      "unconditionalIndexes": [
+        [
+          "scope_id",
+          "created_at",
+          "instance_id"
+        ]
+      ],
+      "triggers": [
+        {
+          "table": "communication_bindings",
+          "name": "communication_bindings_updated_at",
+          "timing": "before",
+          "events": [
+            {
+              "event": "update",
+              "columns": []
+            }
+          ],
+          "function": "communication_touch_updated_at"
+        }
+      ]
+    },
+    "communication_conversations": {
+      "primaryKey": [
+        "id"
+      ],
+      "ownerColumns": [
+        "scope_id",
+        "instance_id",
+        "external_identity",
+        "external_conversation_key"
+      ],
+      "requiredColumns": [
+        "created_at",
+        "updated_at"
+      ],
+      "unconditionalIndexes": [
+        [
+          "scope_id",
+          "created_at",
+          "id"
+        ]
+      ],
+      "triggers": [
+        {
+          "table": "communication_conversations",
+          "name": "communication_conversations_updated_at",
+          "timing": "before",
+          "events": [
+            {
+              "event": "update",
+              "columns": []
+            }
+          ],
+          "function": "communication_touch_updated_at"
+        }
+      ]
+    },
+    "communication_messages": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "scope_id",
+            "instance_id",
+            "external_identity",
+            "conversation_id"
+          ],
+          "table": "communication_conversations",
+          "references": [
+            "scope_id",
+            "instance_id",
+            "external_identity",
+            "id"
+          ]
+        }
+      ],
+      "ownerColumns": [
+        "scope_id",
+        "instance_id",
+        "external_identity"
+      ],
+      "requiredColumns": [
+        "created_at",
+        "updated_at",
+        "processing_status",
+        "send_status",
+        "claim_expires_at"
+      ],
+      "unconditionalIndexes": [
+        [
+          "scope_id",
+          "created_at",
+          "id"
+        ]
+      ],
+      "triggers": [
+        {
+          "table": "communication_messages",
+          "name": "communication_messages_updated_at",
+          "timing": "before",
+          "events": [
+            {
+              "event": "update",
+              "columns": []
+            }
+          ],
+          "function": "communication_touch_updated_at"
+        }
+      ]
+    },
+    "communication_attachments": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "scope_id",
+            "message_id"
+          ],
+          "table": "communication_messages",
+          "references": [
+            "scope_id",
+            "id"
+          ]
+        }
+      ],
+      "ownerColumns": [
+        "scope_id"
+      ],
+      "requiredColumns": [
+        "created_at",
+        "updated_at",
+        "encrypted_reference",
+        "status"
+      ],
+      "unconditionalIndexes": [
+        [
+          "scope_id",
+          "created_at",
+          "id"
+        ]
+      ],
+      "triggers": [
+        {
+          "table": "communication_attachments",
+          "name": "communication_attachments_updated_at",
+          "timing": "before",
+          "events": [
+            {
+              "event": "update",
+              "columns": []
+            }
+          ],
+          "function": "communication_touch_updated_at"
+        }
       ]
     }
   }

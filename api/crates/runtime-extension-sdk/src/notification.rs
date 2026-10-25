@@ -17,7 +17,7 @@ fn failed(message: &str) -> CapabilityStdioResponse {
     }
 }
 
-/// Validate opt-in input before provider I/O. This helper owns no stdio transport.
+/// Validate managed receive/send input before provider I/O. This helper owns no stdio transport.
 pub fn prepare_authorizable_notification(
     request: CapabilityStdioRequest,
     descriptor: &NotificationTypeDescriptor,
@@ -59,7 +59,7 @@ pub fn complete_authorizable_notification<E>(
                 managed_secret_patch: Default::default(),
             }
         }
-        _ => return failed("notification authorization operation failed"),
+        _ => return failed("notification provider operation failed"),
     };
     match serde_json::to_value(result) {
         Ok(result) => CapabilityStdioResponse {
@@ -113,4 +113,18 @@ pub fn execute_notification<E>(
         Ok(_) => failed("notification output violates its schema"),
         Err(_) => failed("notification provider send failed"),
     }
+}
+
+/// Canonical communications entrypoint for receive, attachment download, send and authorization.
+/// Uses the shared bounded dispatcher; a handler must not commit/ack a receive cursor itself.
+/// `config` and the trusted runtime envelope are validated before any provider I/O.
+pub async fn execute_communication<E, F>(
+    request: CapabilityStdioRequest,
+    descriptor: &NotificationTypeDescriptor,
+    handler: impl FnOnce(Value, NotificationRuntimeInput) -> F,
+) -> CapabilityStdioResponse
+where
+    F: std::future::Future<Output = Result<NotificationRuntimeResult, E>>,
+{
+    execute_authorizable_notification(request, descriptor, handler).await
 }

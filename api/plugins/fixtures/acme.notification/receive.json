@@ -1,0 +1,57 @@
+{
+  "contribution_id": "acme.notification-fixture.receive",
+  "default_system_prompt": "Use conversation_id from the session for channel history.",
+  "mcp_tools": [
+    {
+      "name": "messages",
+      "description": "Read scoped messages",
+      "operation": "history_messages",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "description": "Internal Host UUID"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ]
+      }
+    },
+    {
+      "name": "files",
+      "description": "Read scoped files",
+      "operation": "history_files",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "description": "Internal Host UUID"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ]
+      }
+    },
+    {
+      "name": "read_file",
+      "description": "Read scoped read_file",
+      "operation": "read_file",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "attachment_id": {
+            "type": "string",
+            "description": "Internal Host UUID"
+          }
+        },
+        "required": [
+          "attachment_id"
+        ]
+      }
+    }
+  ]
+}

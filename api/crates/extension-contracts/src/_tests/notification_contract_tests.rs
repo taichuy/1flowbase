@@ -13,6 +13,7 @@ fn descriptor() -> NotificationTypeDescriptor {
         input_form: serde_json::from_value(json!({"schema_version":"1.0.0","fields":[{"key":"text","label":"Text","type":"string"}]})).unwrap(),
         output_schema: json!({"type":"object","properties":{"accepted":{"type":"boolean"}},"required":["accepted"],"additionalProperties":false}),
         authorization: None,
+        receive: None,
         contribution_id: ContributionId::new("fixture.send").unwrap(),
     }
 }

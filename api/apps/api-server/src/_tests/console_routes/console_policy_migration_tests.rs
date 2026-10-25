@@ -793,7 +793,7 @@ fn ac_010_new_i18n_catalog_operations_are_default_disabled() {
 }
 
 #[test]
-fn notification_operations_preserve_authenticated_access_without_legacy_management_grants() {
+fn communication_operations_preserve_authenticated_access_without_legacy_management_grants() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let registry = compile_core_console_operation_registry(&settings).unwrap();
     let migration = compile_core_console_policy_migration_plan(registry.inventory())
@@ -806,6 +806,14 @@ fn notification_operations_preserve_authenticated_access_without_legacy_manageme
         "notifications.instances.send",
         "notifications.instances.authorization",
         "notifications.instances.update",
+        "communications.options.get",
+        "communications.binding.get",
+        "communications.binding.update",
+        "communications.conversations.list",
+        "communications.messages.list",
+        "communications.files.list",
+        "communications.files.get",
+        "communications.messages.retry",
     ];
     for operation_id in management_operations {
         let disposition = migration.disposition(operation_id).unwrap();

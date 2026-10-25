@@ -360,7 +360,7 @@ impl NotificationRepository for PgControlPlaneStore {
             sqlx::query("INSERT INTO notification_instances (id,workspace_id,type_code,installation_id,display_name,status,config_json,configured_secret_fields,encrypted_secret_json,authorization_json) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *")
                 .bind(r.id).bind(r.workspace_id).bind(&r.type_code).bind(r.installation_id).bind(&r.display_name).bind(r.status.as_str()).bind(&r.config_json).bind(json!(r.configured_secret_fields)).bind(encrypted).bind(input.initial_authorization.map(serde_json::to_value).transpose()?).fetch_one(self.pool()).await?
         } else {
-            sqlx::query("UPDATE notification_instances SET display_name=$3,status=$4,config_json=$5,configured_secret_fields=$6,encrypted_secret_json=$7,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND updated_at=$8 RETURNING *")
+            sqlx::query("UPDATE notification_instances SET display_name=$3,status=$4,config_json=$5,configured_secret_fields=$6,encrypted_secret_json=$7,authorization_revision=authorization_revision+1,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND updated_at=$8 RETURNING *")
                 .bind(r.workspace_id).bind(r.id).bind(&r.display_name).bind(r.status.as_str()).bind(&r.config_json).bind(json!(r.configured_secret_fields)).bind(encrypted).bind(r.updated_at).fetch_optional(self.pool()).await?.ok_or(Error::Conflict("notification_instance_changed"))?
         };
         instance(row)

@@ -560,6 +560,34 @@ where
         instance_id: Uuid,
         input: Value,
     ) -> Result<NotificationSendResult> {
+        self.send_with_target(actor, source, instance_id, input, None)
+            .await
+    }
+}
+impl<R> NotificationService<R>
+where
+    R: NotificationRepository + PluginRepository + RoleConsolePolicyReader,
+{
+    /// Host communication reply; the immutable inbound identity is separate from plugin input.
+    pub async fn send_to(
+        &self,
+        actor: &ActorContext,
+        source: NotificationSource,
+        instance_id: Uuid,
+        input: Value,
+        target: extension_contracts::NotificationSendTarget,
+    ) -> Result<NotificationSendResult> {
+        self.send_with_target(actor, source, instance_id, input, Some(target))
+            .await
+    }
+    async fn send_with_target(
+        &self,
+        actor: &ActorContext,
+        source: NotificationSource,
+        instance_id: Uuid,
+        input: Value,
+        target: Option<extension_contracts::NotificationSendTarget>,
+    ) -> Result<NotificationSendResult> {
         self.ensure_actor(actor).await?;
         let log_id = Uuid::now_v7();
         // Snapshot only public instance identity. Never persist raw invocation/provider data.
@@ -586,7 +614,7 @@ where
             })
             .await?;
         let outcome = self
-            .send_logged(actor, instance_id, instance, input, log_id)
+            .send_logged(actor, instance_id, instance, input, log_id, target)
             .await;
         if let Err(error) = &outcome {
             let terminal = error.downcast_ref::<Error>().and_then(|error| match error {
@@ -656,6 +684,7 @@ where
         instance: Option<NotificationInstanceRecord>,
         input: Value,
         log_id: Uuid,
+        target: Option<extension_contracts::NotificationSendTarget>,
     ) -> Result<NotificationSendResult> {
         let instance = instance.ok_or(Error::NotFound("notification_instance"))?;
         if instance.status != NotificationInstanceStatus::Enabled {
@@ -671,10 +700,16 @@ where
             .descriptor
             .validate_input(&input)
             .map_err(|_| Error::InvalidInput("notification_input_schema"))?;
-        if entry.descriptor.authorization.is_some() {
+        if target.is_some() && entry.descriptor.receive.is_none() {
+            return Err(Error::InvalidInput("communication_send_target").into());
+        }
+        if entry.descriptor.authorization.is_some() || entry.descriptor.receive.is_some() {
             return self
-                .send_authorizable(actor, &instance, &entry.descriptor, input, log_id)
+                .send_managed(actor, &instance, &entry.descriptor, input, log_id, target)
                 .await;
+        }
+        if target.is_some() {
+            return Err(Error::InvalidInput("communication_send_target").into());
         }
         let result = if instance.type_code == "system" {
             #[derive(Deserialize)]
@@ -804,6 +839,7 @@ pub fn system_notification_descriptor() -> NotificationTypeDescriptor {
     NotificationTypeDescriptor{
         i18n:Default::default(),
         authorization:None,
+        receive:None,
         type_code:"system".into(),display_name:"System notification".into(),description:"Deliver a message to workspace members' inboxes".into(),
         contribution_id:ContributionId::new("1flowbase.notification.system").expect("builtin contribution"),
         config_schema:json!({"type":"object","properties":{},"additionalProperties":false}),
@@ -824,3 +860,5 @@ fn contains_secret(value: &Value, secret: &str) -> bool {
         _ => false,
     }
 }
+
+mod communications;

@@ -46,6 +46,7 @@ mod answer_presentation;
 pub(crate) use answer_presentation::is_canonical_answer_presentation_output;
 pub mod callback_completion;
 mod canonical_stream;
+mod communication_dispatch;
 pub(crate) mod compile_context;
 mod data_model_runtime;
 #[path = "orchestration_runtime/debug/debug_artifacts.rs"]

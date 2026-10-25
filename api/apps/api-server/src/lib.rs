@@ -40,6 +40,7 @@ pub(crate) mod model_pricing_catalog;
 pub mod network_egress_client;
 pub mod network_egress_probe;
 mod notification_runtime;
+mod communication_runtime;
 #[path = "catalog_sources/official_extension_catalog.rs"]
 pub mod official_extension_catalog;
 #[path = "catalog_sources/official_i18n_catalog_seed.rs"]
@@ -613,9 +614,11 @@ pub struct ApiRuntimeShutdown {
     services: Arc<ApiRuntimeServices>,
     operations: Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
     lifecycle_worker: control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxWorker,
+    communication_worker: communication_runtime::CommunicationWorker,
 }
 impl ApiRuntimeShutdown {
     pub async fn stop(&self) -> Result<()> {
+        self.communication_worker.stop().await;
         crate::managed_services::stream::revoke_all();
         self.services
             .shutdown_transport_sessions(std::time::Duration::from_secs(10))

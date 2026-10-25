@@ -143,6 +143,15 @@ if (!streamed) process.stdout.write(JSON.stringify({ ok: true, result }));
 "#,
     )
     .unwrap();
+    let worker_path = root.join("bin/fixture_provider-provider");
+    let worker = fs::read_to_string(&worker_path).unwrap().replace(
+        "    const readyPath = request.input?.provider_config?.test_invoke_ready_path;",
+        &format!(
+            "{}\n    const readyPath = request.input?.provider_config?.test_invoke_ready_path;",
+            include_str!("../../communication_runtime/_tests/progressive_provider.js")
+        ),
+    );
+    fs::write(worker_path, worker).unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -423,7 +432,7 @@ fn build_ready_provider_document(flow_id: &str, provider_instance_id: &str) -> V
     })
 }
 
-pub(super) async fn seed_agent_flow_application(
+pub(crate) async fn seed_agent_flow_application(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
@@ -666,7 +675,7 @@ fn build_human_input_document(flow_id: &str, provider_instance_id: &str) -> Valu
     })
 }
 
-async fn seed_human_input_application(
+pub(crate) async fn seed_human_input_application(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
@@ -1009,3 +1018,20 @@ mod mcp_settings;
 mod read_side_effect_routes;
 mod resume_cancel_routes;
 mod stream_routes;
+
+/// Reuses the installed provider fixture; only its deterministic model response differs.
+pub(crate) async fn create_communication_provider_instance(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    callback: bool,
+    foreign_conversation: Uuid,
+) -> String {
+    let mode = if callback {
+        "__communication_callback__"
+    } else {
+        "__communication_progressive__"
+    };
+    let response = format!("{mode}:{foreign_conversation}");
+    create_provider_instance(app, cookie, csrf, None, Some(&response)).await
+}

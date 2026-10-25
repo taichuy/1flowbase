@@ -71,13 +71,24 @@ impl HostContributionGrantPolicy {
             resource_scope: ContributionResourceScope::Workspace,
         })
         .collect::<Vec<_>>();
-        rules.push(HostContributionPermissionRule {
-            point_id: extension_contracts::NOTIFICATION_POINT.into(),
-            permission: extension_contracts::NOTIFICATION_SEND_PERMISSION.into(),
-            permission_contract_id: "notification",
-            point_contract_version: extension_contracts::NOTIFICATION_CONTRACT_V1,
-            resource_scope: ContributionResourceScope::Workspace,
-        });
+        for (point_id, permission) in [
+            (
+                extension_contracts::NOTIFICATION_POINT,
+                extension_contracts::NOTIFICATION_SEND_PERMISSION,
+            ),
+            (
+                extension_contracts::NOTIFICATION_RECEIVE_POINT,
+                extension_contracts::NOTIFICATION_RECEIVE_PERMISSION,
+            ),
+        ] {
+            rules.push(HostContributionPermissionRule {
+                point_id: point_id.into(),
+                permission: permission.into(),
+                permission_contract_id: "notification",
+                point_contract_version: extension_contracts::NOTIFICATION_CONTRACT_V1,
+                resource_scope: ContributionResourceScope::Workspace,
+            });
+        }
         rules.push(HostContributionPermissionRule {
             point_id: extension_contracts::AUTHENTICATION_POINT.into(),
             permission: extension_contracts::AUTHENTICATION_PERMISSION.into(),

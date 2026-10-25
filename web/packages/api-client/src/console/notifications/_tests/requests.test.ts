@@ -27,7 +27,7 @@ test('uses canonical fields, envelope, credential and csrf transport', async () 
   );
   expect(result).toEqual({ id: 'created' });
   expect(fetch).toHaveBeenCalledWith(
-    expect.stringContaining('/api/console/notifications/instances'),
+    expect.stringContaining('/api/console/communications/instances'),
     expect.objectContaining({
       method: 'POST',
       credentials: 'include',
@@ -130,7 +130,7 @@ test('authorization posts canonical commands and reads only the public view', as
     ).toEqual(authorization);
     expect(fetch).toHaveBeenLastCalledWith(
       expect.stringContaining(
-        '/api/console/notifications/instances/id%2F1/authorization'
+        '/api/console/communications/instances/id%2F1/authorization'
       ),
       expect.objectContaining({
         method: 'POST',
@@ -167,5 +167,71 @@ test('Maintain preserves backend delivery window field names and timestamps', as
   expect(fetch).toHaveBeenCalledWith(
     expect.stringContaining('/instances/instance-1/authorization'),
     expect.objectContaining({ method: 'POST', body: '{"type":"maintain"}' })
+  );
+});
+
+test('communication binding and cursor history preserve canonical DTO fields and escaped ids', async () => {
+  const {
+    getCommunicationOptions,
+    getCommunicationBinding,
+    putCommunicationBinding,
+    listCommunicationMessages,
+    listCommunicationFiles,
+    getCommunicationFile,
+    retryCommunicationMessage
+  } = await import('../communications');
+  const fetch = vi.fn(
+    async () => new Response(JSON.stringify({ data: {}, meta: null }))
+  );
+  vi.stubGlobal('fetch', fetch);
+  await getCommunicationOptions('app/1');
+  expect(fetch).toHaveBeenLastCalledWith(
+    expect.stringContaining('/communications/options?application_id=app%2F1'),
+    expect.anything()
+  );
+  await getCommunicationBinding('channel/1');
+  expect(fetch).toHaveBeenLastCalledWith(
+    expect.stringContaining('/communications/instances/channel%2F1/binding'),
+    expect.anything()
+  );
+  const body = {
+    application_id: 'app',
+    model: null,
+    reasoning_effort: null,
+    file_table_id: null,
+    mcp_instance_ids: ['plugin', 'extra'],
+    system_prompt: 'Edited prompt'
+  };
+  await putCommunicationBinding('channel/1', body, 'csrf');
+  expect(fetch).toHaveBeenLastCalledWith(
+    expect.stringContaining('/communications/instances/channel%2F1/binding'),
+    expect.objectContaining({ method: 'PUT', body: JSON.stringify(body) })
+  );
+  await listCommunicationMessages('channel/1', 'conversation/1', {
+    cursor: 'cursor',
+    limit: 20
+  });
+  expect(fetch).toHaveBeenLastCalledWith(
+    expect.stringContaining(
+      '/conversations/conversation%2F1/messages?cursor=cursor&limit=20'
+    ),
+    expect.anything()
+  );
+  await listCommunicationFiles('channel/1', 'conversation/1');
+  expect(fetch).toHaveBeenLastCalledWith(
+    expect.stringContaining('/conversations/conversation%2F1/files?'),
+    expect.anything()
+  );
+  await getCommunicationFile('channel/1', 'file/1');
+  expect(fetch).toHaveBeenLastCalledWith(
+    expect.stringContaining(
+      '/communications/instances/channel%2F1/files/file%2F1'
+    ),
+    expect.anything()
+  );
+  await retryCommunicationMessage('channel/1', 'message/1', 'csrf');
+  expect(fetch).toHaveBeenLastCalledWith(
+    expect.stringContaining('/messages/message%2F1/retry'),
+    expect.objectContaining({ method: 'POST' })
   );
 });

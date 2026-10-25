@@ -74,6 +74,60 @@ pub(super) fn binding_prompt_messages_with_context_sources(
         ));
     }
 
+    // Only the host communication mapper writes this marker; public Native history rejects
+    // unknown fields. Keep the session separate and never replay selected/prior history.
+    if runtime_context
+        .native_model_prompt_context
+        .messages
+        .iter()
+        .any(|message| message.get("__communication_session") == Some(&Value::Bool(true)))
+    {
+        let mut application = annotate_prompt_messages(
+            prompt_messages_from_bindings(Some(rendered_templates), resolved_inputs),
+            "node_prompt",
+            "bindings.prompt_messages".to_string(),
+        );
+        let mut systems = Vec::new();
+        let mut users = Vec::new();
+        for mut message in application.drain(..) {
+            match message.get("role").and_then(Value::as_str) {
+                Some("system") => {
+                    let mut blocks = system_prompt_blocks_from_value(message.get("content"), 0)?;
+                    // A node selecting start.system already sees the channel instruction.
+                    // Keep only the application's own blocks before appending it once.
+                    blocks.retain(|block| {
+                        !runtime_context
+                            .native_model_prompt_context
+                            .system
+                            .contains(block)
+                    });
+                    if !blocks.is_empty() {
+                        message["content"] = serde_json::to_value(blocks).map_err(
+                            |_| json!({"error_code":"communication_prompt_shape_invalid"}),
+                        )?;
+                        systems.push(message);
+                    }
+                }
+                Some("user") => users.push(message),
+                _ => return Err(json!({"error_code":"communication_prompt_shape_invalid"})),
+            }
+        }
+        if users.len() != 1 || runtime_context.native_model_prompt_context.messages.len() != 1 {
+            return Err(json!({"error_code":"communication_prompt_shape_invalid"}));
+        }
+        // The original application prompt precedes channel/plugin instructions. Native
+        // system blocks are appended explicitly even when the node selects start.system.
+        systems.push(system_prompt_message_with_source(
+            serde_json::to_value(&runtime_context.native_model_prompt_context.system)
+                .map_err(|_| json!({"error_code":"communication_prompt_shape_invalid"}))?,
+            "run_level_system",
+            "native_model_prompt_context.system",
+        ));
+        systems.extend(runtime_context.native_model_prompt_context.messages.clone());
+        systems.extend(users);
+        return Ok(systems);
+    }
+
     let mut messages = Vec::new();
     if integration_context_enabled(context_policy) {
         messages.extend(run_level_system_prompt_messages(
@@ -468,7 +522,9 @@ pub(super) fn provider_context_from_prompt_messages(
             .map(provider_message_role)
             .unwrap_or(ProviderMessageRole::User);
 
-        if role == ProviderMessageRole::System {
+        if role == ProviderMessageRole::System
+            && message.get("__communication_session") != Some(&Value::Bool(true))
+        {
             let blocks = system_prompt_blocks_from_value(message.get("content"), index)?;
             if blocks.is_empty() {
                 continue;
