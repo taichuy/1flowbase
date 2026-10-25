@@ -23,7 +23,7 @@ on:
         type: string
         default: 0cfa6727d34b0c0805620e51a35d562d059ada0c
       source_only:
-        description: Reuse completed resource evidence and run only source acceptance
+        description: Run source acceptance instead of resource comparison
         type: boolean
         default: false
 
@@ -84,7 +84,7 @@ jobs:
           import json, os, subprocess
           from pathlib import Path
           root=Path.cwd(); temporary=Path(os.environ['RUNNER_TEMP'])
-          rows={name:{'root':str(source),'sha':subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()} for name,source in [('release',temporary/'gateway-release'),('current',temporary/'gateway-current'),('candidate',root)]}
+          rows={name:{'root':str(source),'sha':subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip(),'profile':'release','rustc':subprocess.check_output(['rustc','-vV'],text=True).strip()} for name,source in [('release',temporary/'gateway-release'),('current',temporary/'gateway-current'),('candidate',root)]}
           Path('tmp/test-governance/gateway-resource-evidence/sources.json').write_text(json.dumps(rows,indent=2))
           PY
       - uses: actions/checkout@v6
@@ -123,8 +123,8 @@ jobs:
           export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/api/target"
           for name in release current candidate; do
             source=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]]["root"])' "$evidence/sources.json" "$name")
-            /usr/bin/time -v -o "$evidence/$name-build.resources" cargo build --manifest-path "$source/api/Cargo.toml" --profile test -p api-server --bin api-server --locked > "$evidence/$name-build.log" 2>&1
-            cp "$CARGO_TARGET_DIR/debug/api-server" "$evidence/bin/$name"
+            /usr/bin/time -v -o "$evidence/$name-build.resources" cargo build --manifest-path "$source/api/Cargo.toml" --release -p api-server --bin api-server --locked > "$evidence/$name-build.log" 2>&1
+            cp "$CARGO_TARGET_DIR/release/api-server" "$evidence/bin/$name"
             sha256sum "$evidence/bin/$name" >> "$evidence/binaries.sha256"
           done
       - name: Compare equal mixed workloads in alternating order
@@ -169,6 +169,7 @@ jobs:
           if-no-files-found: error
 
   source-acceptance:
+    if: ${{ inputs.source_only == true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     services:
