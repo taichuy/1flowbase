@@ -80,6 +80,7 @@ pub struct CreateAssistantRunCommand {
     pub request: NativeRunRequest,
 }
 
+#[derive(Clone, Copy)]
 enum ConsoleRunPrompt {
     Assistant,
     Communication,
@@ -271,7 +272,13 @@ where
                 external_user: None,
                 external_conversation_id: None,
                 external_trace_id: None,
-                compatibility_mode: Some("embedded_assistant".to_string()),
+                compatibility_mode: Some(
+                    match prompt {
+                        ConsoleRunPrompt::Assistant => "embedded_assistant",
+                        ConsoleRunPrompt::Communication => "communication",
+                    }
+                    .to_string(),
+                ),
                 idempotency_key: None,
             })
             .await

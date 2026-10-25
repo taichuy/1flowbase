@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 /// Scope is reapplied at each invocation, including tools executed in spawned runtime tasks.
 /// Tokio task-local state itself is not inherited by tokio::spawn.
-pub(super) struct ScopedTools {
+pub(crate) struct ScopedTools {
     pub inner: Arc<dyn RuntimeInternalToolInvoker>,
     pub scope: CommunicationHistoryScope,
 }

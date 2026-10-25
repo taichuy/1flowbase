@@ -14,7 +14,10 @@ use control_plane::{
         OrchestrationRuntimeService, PrepareFlowDebugRunCommand, ResumeFlowRunCommand,
         StartFlowDebugRunCommand, StartNodeDebugPreviewCommand,
     },
-    ports::{ApplicationRepository, OrchestrationRuntimeRepository, RuntimeEventStreamPolicy},
+    ports::{
+        ApplicationRepository, CommunicationRepository, OrchestrationRuntimeRepository,
+        RuntimeEventStreamPolicy,
+    },
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
@@ -258,7 +261,13 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         headers: HeaderMap,
         application_id: Uuid,
         run_id: Uuid,
-    ) -> Result<Arc<virtual_ui::ApiMcpRuntimeToolInvoker>, ApiError> {
+    ) -> Result<
+        (
+            Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
+            Uuid,
+        ),
+        ApiError,
+    > {
         self.application(actor, application_id).await?;
         let run = self
             .dependencies
@@ -266,6 +275,58 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .get_flow_run(application_id, run_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("flow_run"))?;
+        if let Some((scope, binding)) = self
+            .dependencies
+            .store
+            .communication_context_for_run(actor.current_workspace_id, run_id)
+            .await?
+        {
+            // The durable run association alone grants communication scope. Neither model
+            // prompt markers nor the callback operator can replace the original actor/sender.
+            if binding.config.application_id != application_id
+                || binding.actor_user_id != run.created_by
+            {
+                return Err(ControlPlaneError::PermissionDenied("communication_run_scope").into());
+            }
+            // Preserve the callback operator's existing application Run gate before executing
+            // under the configuring actor; both identities must retain their own access.
+            ApplicationService::new(self.dependencies.store.for_actor(actor.clone()))
+                .load_application_for_non_crud_console_operation(
+                    actor.user_id,
+                    application_id,
+                    control_plane::application::ApplicationNonCrudConsoleOperation::Run,
+                )
+                .await?;
+            let execution_actor =
+                crate::communication_runtime::validate_binding(&self.dependencies.store, &binding)
+                    .await
+                    .map_err(|_| {
+                        ControlPlaneError::PermissionDenied("communication_execution_denied")
+                    })?;
+            let inner = self
+                .dependencies
+                .mcp_factory
+                .for_actor(&execution_actor)
+                .await?
+                .create_server_delegated(
+                    HeaderMap::new(),
+                    execution_actor.clone(),
+                    binding.config.mcp_instance_ids,
+                )
+                .await?;
+            return Ok((
+                Arc::new(crate::communication_runtime::scoped_tools::ScopedTools {
+                    inner: Arc::new(inner),
+                    scope,
+                }),
+                execution_actor.user_id,
+            ));
+        }
+        if run.compatibility_mode.as_deref() == Some("communication") {
+            return Err(
+                ControlPlaneError::PermissionDenied("communication_run_scope_missing").into(),
+            );
+        }
         let ids = run
             .input_payload
             .pointer("/sys/mcp_instance_ids")
@@ -273,7 +334,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .transpose()
             .map_err(|_| ControlPlaneError::InvalidInput("mcp_instance_ids"))?
             .unwrap_or_default();
-        self.mcp_invoker(actor, headers, ids).await
+        Ok((self.mcp_invoker(actor, headers, ids).await?, actor.user_id))
     }
 
     async fn application(
@@ -407,15 +468,15 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .start(application_id, ApplicationActivityKind::HttpRequest);
         let checkpoint_id = Uuid::parse_str(&body.checkpoint_id)
             .map_err(|_| ControlPlaneError::InvalidInput("checkpoint_id"))?;
+        let (mcp, execution_actor_id) = self
+            .mcp_invoker_for_run(actor, headers, application_id, run_id)
+            .await?;
         let detail = scope_application_activity(
             application_id,
             self.runtime()
-                .with_runtime_internal_tool_invoker(
-                    self.mcp_invoker_for_run(actor, headers, application_id, run_id)
-                        .await?,
-                )
+                .with_runtime_internal_tool_invoker(mcp)
                 .resume_flow_run(ResumeFlowRunCommand {
-                    actor_user_id: actor.user_id,
+                    actor_user_id: execution_actor_id,
                     application_id,
                     flow_run_id: run_id,
                     checkpoint_id,
@@ -499,19 +560,19 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .get_callback_task(callback_task_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("callback_task"))?;
+        let (mcp, execution_actor_id) = self
+            .mcp_invoker_for_run(actor, headers, application_id, callback.flow_run_id)
+            .await?;
         let detail = scope_application_activity(
             application_id,
             self.runtime()
-                .with_runtime_internal_tool_invoker(
-                    self.mcp_invoker_for_run(actor, headers, application_id, callback.flow_run_id)
-                        .await?,
-                )
+                .with_runtime_internal_tool_invoker(mcp)
                 .complete_callback_task(CompleteCallbackTaskCommand {
                     responses_continuation: None,
                     transport_connection_scope: None,
                     observation_context: None,
                     native_transport: None,
-                    actor_user_id: actor.user_id,
+                    actor_user_id: execution_actor_id,
                     application_id,
                     callback_task_id,
                     response_payload: body.response_payload,

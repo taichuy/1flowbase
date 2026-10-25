@@ -18,9 +18,10 @@ use crate::{app_state::ApiState, notification_runtime::ManagedNotificationProvid
 
 mod attachments;
 mod execution;
+pub(crate) use execution::validate_binding;
 mod receive;
 mod request;
-mod scoped_tools;
+pub(crate) mod scoped_tools;
 
 const LEASE_SECONDS: u32 = 120;
 const RETRY_DELAY: Duration = Duration::from_secs(2);
@@ -105,21 +106,25 @@ async fn active_binding(state: &ApiState, key: (Uuid, Uuid)) -> Result<Communica
 }
 
 async fn actor(state: &ApiState, binding: &CommunicationBindingRecord) -> Result<ActorContext> {
-    let user = state
-        .store
+    actor_for_binding(&state.store, binding).await
+}
+
+pub(crate) async fn actor_for_binding(
+    store: &storage_durable_postgres::MainDurableStore,
+    binding: &CommunicationBindingRecord,
+) -> Result<ActorContext> {
+    let user = store
         .find_user_by_id(binding.actor_user_id)
         .await?
         .context("actor_missing")?;
     ensure!(user.status == UserStatus::Active, "actor_disabled");
-    let workspace = state
-        .store
+    let workspace = store
         .get_accessible_workspace(user.id, binding.workspace_id)
         .await?
         .context("workspace_access_denied")?;
     // Load live roles in the bound workspace. Never manufacture a root actor or use a user's
     // default workspace, which can differ from the channel's workspace.
-    state
-        .store
+    store
         .load_actor_context(user.id, workspace.tenant_id, workspace.id, None)
         .await
 }

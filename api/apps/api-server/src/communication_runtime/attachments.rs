@@ -13,12 +13,11 @@ use extension_contracts::{
 };
 
 pub(super) async fn validate_target(
-    state: &ApiState,
+    store: &storage_durable_postgres::MainDurableStore,
     actor: &ActorContext,
     binding: &CommunicationBindingRecord,
 ) -> Result<()> {
-    let table = state
-        .store
+    let table = store
         .list_visible_file_tables(actor.current_workspace_id)
         .await?
         .into_iter()
@@ -30,7 +29,7 @@ pub(super) async fn validate_target(
         })
         .context("file_table_unavailable")?;
     ensure!(table.status == "active", "file_table_unavailable");
-    let grant = control_plane::model_definition::ModelDefinitionService::new(state.store.clone())
+    let grant = control_plane::model_definition::ModelDefinitionService::new(store.clone())
         .load_runtime_scope_grant(
             actor,
             table.model_definition_id,
@@ -53,7 +52,7 @@ pub(super) async fn attach(
     claim: &CommunicationClaim,
 ) -> Result<Vec<Value>> {
     let context = ProviderContext::load(state, &input.binding).await?;
-    validate_target(state, &context.actor, &input.binding).await?;
+    validate_target(&state.store, &context.actor, &input.binding).await?;
     let mut files = Vec::new();
     for attachment in &input.attachments {
         let record = &attachment.record;
