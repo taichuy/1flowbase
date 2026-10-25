@@ -130,5 +130,7 @@
   "routes_more": "更多操作",
   "routes_tabs_disabled": "当前为单页模式。请在基本信息中将内容展示切换为页面 Tabs 并保存，再新增标签页。",
   "routes_status_visible": "此节点设置为显示",
-  "routes_status_hidden": "此节点设置为隐藏"
+  "routes_status_hidden": "此节点设置为隐藏",
+  "routes_show_node": "显示此节点",
+  "routes_hide_node": "隐藏此节点"
 }

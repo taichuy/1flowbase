@@ -572,3 +572,88 @@ test('a partially rejected tab reorder stays locked until all writes settle, the
   expect(api.listTabs).toHaveBeenCalledTimes(2);
   expect(screen.getByRole('button', { name: '上移 Reports' })).toBeEnabled();
 });
+
+test.each(['page', 'group'])(
+  'visibility button toggles a %s using server state',
+  async (kind) => {
+    let current = { ...nodes[0], kind };
+    api.list.mockImplementation(async () => [current]);
+    let finish: (() => void) | undefined;
+    api.update.mockImplementation(async (_id, input) => {
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      current = { ...current, ...input };
+      return current;
+    });
+    render(
+      <AppProviders>
+        <RouteManagementTab canManage />
+      </AppProviders>
+    );
+    const hide = await screen.findByRole('button', {
+      name: '隐藏此节点 Page A'
+    });
+    fireEvent.click(hide);
+    fireEvent.click(hide);
+    await waitFor(() => expect(api.update).toHaveBeenCalledTimes(1));
+    expect(api.update).toHaveBeenLastCalledWith(
+      'a',
+      { is_hidden: true },
+      'csrf',
+      expect.any(String)
+    );
+    expect(hide).toBeDisabled();
+    await act(async () => {
+      finish?.();
+    });
+    fireEvent.click(
+      await screen.findByRole('button', { name: '显示此节点 Page A' })
+    );
+    await waitFor(() => expect(api.update).toHaveBeenCalledTimes(2));
+    expect(api.update).toHaveBeenLastCalledWith(
+      'a',
+      { is_hidden: false },
+      'csrf',
+      expect.any(String)
+    );
+    await act(async () => {
+      finish?.();
+    });
+    expect(
+      await screen.findByRole('button', { name: '隐藏此节点 Page A' })
+    ).toBeEnabled();
+  }
+);
+
+test('failed visibility update retains server state and reports failure', async () => {
+  api.update.mockRejectedValue(new Error('failed'));
+  render(
+    <AppProviders>
+      <RouteManagementTab canManage />
+    </AppProviders>
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: '隐藏此节点 Page A' })
+  );
+  expect(await screen.findByText('操作失败，请重试。')).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: '隐藏此节点 Page A' })
+  ).toBeEnabled();
+});
+
+test('readonly route visibility is an indicator without a mutation action', async () => {
+  render(
+    <AppProviders>
+      <RouteManagementTab canManage={false} />
+    </AppProviders>
+  );
+  await screen.findByText('Page A');
+  expect(
+    within(row('a')).getByRole('img', { name: '此节点设置为显示' })
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: '隐藏此节点 Page A' })
+  ).not.toBeInTheDocument();
+  expect(api.update).not.toHaveBeenCalled();
+});

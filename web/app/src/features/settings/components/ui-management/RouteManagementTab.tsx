@@ -67,6 +67,7 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
   const mutations = useFrontstagePageTreeMutations(workspaceId ?? '');
   const action = useRouteManagementMutation(workspaceId ?? '');
   const moving = useRef(false);
+  const togglingVisibility = useRef(false);
   const [moveError, setMoveError] = useState(false);
   const [editor, setEditor] = useState<RouteNodeEditor | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
@@ -104,6 +105,22 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
       return false;
     } finally {
       moving.current = false;
+    }
+  };
+  const toggleVisibility = async (node: FrontstagePageTreeNode) => {
+    if (!editable || busy || togglingVisibility.current) return;
+    togglingVisibility.current = true;
+    try {
+      await action.mutateAsync({
+        kind: 'update',
+        id: node.id,
+        input: { is_hidden: !node.is_hidden }
+      });
+    } catch {
+      // The shared action error alert reports the failure.
+      return;
+    } finally {
+      togglingVisibility.current = false;
     }
   };
   const createMenu = (parent_id: string | null) => ({
@@ -263,20 +280,49 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
                 return (
                   <Space size={2}>
                     {node ? (
-                      <Tooltip title={visibilityLabel}>
-                        <span
-                          className="route-management__visibility"
-                          role="img"
-                          aria-label={visibilityLabel}
-                          tabIndex={0}
+                      editable ? (
+                        <Tooltip
+                          title={
+                            node.is_hidden
+                              ? t('routes_show_node')
+                              : t('routes_hide_node')
+                          }
                         >
-                          {node.is_hidden ? (
-                            <EyeInvisibleOutlined aria-hidden="true" />
-                          ) : (
-                            <EyeOutlined aria-hidden="true" />
-                          )}
-                        </span>
-                      </Tooltip>
+                          <Button
+                            type="text"
+                            disabled={busy}
+                            loading={
+                              action.isPending &&
+                              action.variables?.kind === 'update' &&
+                              action.variables.id === node.id
+                            }
+                            icon={
+                              node.is_hidden ? (
+                                <EyeInvisibleOutlined />
+                              ) : (
+                                <EyeOutlined />
+                              )
+                            }
+                            aria-label={`${node.is_hidden ? t('routes_show_node') : t('routes_hide_node')} ${node.title ?? ''}`}
+                            onClick={() => void toggleVisibility(node)}
+                          />
+                        </Tooltip>
+                      ) : (
+                        <Tooltip title={visibilityLabel}>
+                          <span
+                            className="route-management__visibility"
+                            role="img"
+                            aria-label={visibilityLabel}
+                            tabIndex={0}
+                          >
+                            {node.is_hidden ? (
+                              <EyeInvisibleOutlined aria-hidden="true" />
+                            ) : (
+                              <EyeOutlined aria-hidden="true" />
+                            )}
+                          </span>
+                        </Tooltip>
+                      )
                     ) : null}
                     {editable && (!node || node.kind === 'group') ? (
                       <Dropdown
