@@ -273,6 +273,14 @@ pub(super) fn expand_core_interface_registrations(
 
 pub(super) fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "communications.options.get" => Some("List communication execution options"),
+        "communications.binding.get" => Some("Read communication binding"),
+        "communications.binding.update" => Some("Save communication binding"),
+        "communications.conversations.list" => Some("List communication conversations"),
+        "communications.messages.list" => Some("Read communication history"),
+        "communications.files.list" => Some("List received communication files"),
+        "communications.files.get" => Some("Read a received communication file"),
+        "communications.messages.retry" => Some("Retry failed communication processing"),
         "notifications.logs.list" => Some("List notification send logs"),
         "notifications.logs.get" => Some("Get notification send log"),
         "notifications.channels.list" => Some("List my notification channels"),
@@ -468,6 +476,14 @@ pub(super) fn compile_console_interface_metadata(
             _ => static_english_interface_summary(&interface_id),
         };
         let description = match interface_id.as_str() {
+            "communications.options.get" => "Return published Agent-flow applications, visible enabled MCP instances and the selected application model and reasoning capabilities.".to_owned(),
+            "communications.binding.get" => "Read the channel execution binding and plugin-owned default prompt without credentials.".to_owned(),
+            "communications.binding.update" => "Validate and store the channel application, model, reasoning, file table, editable system prompt and selected MCP instances.".to_owned(),
+            "communications.conversations.list" => "Page channel conversations in the current workspace; delegated communication runs are restricted to their external identity.".to_owned(),
+            "communications.messages.list" => "Page received messages and final replies for a channel conversation within the authenticated or delegated data scope.".to_owned(),
+            "communications.files.list" => "Page safe file metadata associated with messages in an authorized channel conversation; omit provider download credentials.".to_owned(),
+            "communications.files.get" => "Authorize attachment ownership and file access, then read one bounded content range with stable authenticated file links.".to_owned(),
+            "communications.messages.retry" => "Retry a failed message or explicitly rejected send only when backend eligibility permits; unknown sends cannot be retried automatically.".to_owned(),
             "notifications.logs.list" => "Page safe send invocation facts in the current workspace using explicit log-read authorization.".to_owned(),
             "notifications.logs.get" => "Read one safe send invocation fact in the current workspace using explicit log-detail authorization.".to_owned(),
             "notifications.channels.list" => "Page channels from the authenticated recipient inbox with filtered latest messages and independently aggregated unread counts.".to_owned(),

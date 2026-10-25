@@ -1,11 +1,16 @@
-//! Opt-in notification operations inside Capability Execute's input_payload/result.
+//! Managed communications operations inside Capability Execute's input_payload/result.
 //! Host encrypts managed secrets independently of config and never projects patches to clients.
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{identity, invalid, ContractResult, NotificationTypeDescriptor};
+use super::{
+    identity, invalid, ContractResult, NotificationAttachmentDownloadOutcome,
+    NotificationAttachmentReference, NotificationReceiveOutcome, NotificationTypeDescriptor,
+    NOTIFICATION_MAX_ATTACHMENT_CHUNK_BYTES, NOTIFICATION_MAX_RECEIVE_BATCH_BYTES,
+    NOTIFICATION_MAX_RECEIVE_MESSAGES, NOTIFICATION_MAX_RECEIVE_WAIT_SECONDS,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -142,7 +147,7 @@ pub struct NotificationAuthorizationUserAction {
 }
 
 /// Host-injected secrets are separate from user config and never client supplied.
-/// Includes encrypted QR credentials, bot token, bound scanned user id and inbound cursor/context.
+/// Includes encrypted QR credentials, bot token, bound scanned user id and provider context. Cursor is a separate Host-owned field.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NotificationRuntimeInput {
@@ -162,7 +167,29 @@ pub enum NotificationOperation {
     },
     Send {
         input_payload: Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target: Option<NotificationSendTarget>,
     },
+    Receive {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cursor: Option<Value>,
+        max_messages: u32,
+        wait_seconds: u32,
+    },
+    DownloadAttachment {
+        attachment: NotificationAttachmentReference,
+        offset: u64,
+        max_bytes: u32,
+    },
+}
+
+/// Immutable reply destination captured from the committed inbound message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NotificationSendTarget {
+    pub sender_id: String,
+    pub conversation_id: String,
+    pub provider_message_id: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -222,6 +249,16 @@ impl NotificationSendOutcome {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NotificationRuntimeResult {
+    Receive {
+        outcome: NotificationReceiveOutcome,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        authorization: Option<NotificationAuthorizationView>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        managed_secret_patch: BTreeMap<String, Value>,
+    },
+    DownloadAttachment {
+        outcome: NotificationAttachmentDownloadOutcome,
+    },
     Authorization {
         authorization: NotificationAuthorizationView,
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -301,28 +338,86 @@ impl NotificationAuthorizationView {
 
 impl NotificationRuntimeInput {
     pub fn validate(&self, descriptor: &NotificationTypeDescriptor) -> ContractResult {
-        let authorization = descriptor
-            .authorization
-            .as_ref()
-            .ok_or_else(|| invalid("notification has not opted into authorization"))?;
-        authorization.validate_secret_keys(&self.managed_secrets)?;
+        descriptor.validate()?;
+        if let Some(authorization) = &descriptor.authorization {
+            authorization.validate_secret_keys(&self.managed_secrets)?;
+        } else if !self.managed_secrets.is_empty() {
+            return Err(invalid("managed secrets require declared authorization"));
+        }
         if let Some(window) = &self.delivery_window {
             window.validate()?;
         }
         match &self.operation {
-            NotificationOperation::Authorize {
-                operation: NotificationAuthorizationOperation::Begin { action },
-            } if !authorization
-                .actions
-                .iter()
-                .any(|declared| &declared.code == action) =>
-            {
-                Err(invalid("undeclared notification authorization action"))
+            NotificationOperation::Authorize { operation } => {
+                let authorization = descriptor
+                    .authorization
+                    .as_ref()
+                    .ok_or_else(|| invalid("authorization capability is not declared"))?;
+                if let NotificationAuthorizationOperation::Begin { action } = operation {
+                    if !authorization
+                        .actions
+                        .iter()
+                        .any(|declared| &declared.code == action)
+                    {
+                        return Err(invalid("undeclared notification authorization action"));
+                    }
+                }
+                Ok(())
             }
-            NotificationOperation::Send { input_payload } => {
+            NotificationOperation::Receive {
+                cursor,
+                max_messages,
+                wait_seconds,
+            } => {
+                if descriptor.receive.is_none()
+                    || *max_messages == 0
+                    || *max_messages > NOTIFICATION_MAX_RECEIVE_MESSAGES
+                    || *wait_seconds > NOTIFICATION_MAX_RECEIVE_WAIT_SECONDS
+                    || cursor.as_ref().is_some_and(|value| {
+                        serde_json::to_vec(value).map_or(true, |bytes| {
+                            bytes.len() > NOTIFICATION_MAX_RECEIVE_BATCH_BYTES
+                        })
+                    })
+                {
+                    return Err(invalid("receive capability or polling budget is invalid"));
+                }
+                Ok(())
+            }
+            NotificationOperation::DownloadAttachment {
+                attachment,
+                offset,
+                max_bytes,
+            } => {
+                if descriptor.receive.is_none()
+                    || *max_bytes == 0
+                    || *max_bytes > NOTIFICATION_MAX_ATTACHMENT_CHUNK_BYTES
+                    || offset.checked_add(*max_bytes as u64).is_none()
+                {
+                    return Err(invalid(
+                        "attachment download capability or budget is invalid",
+                    ));
+                }
+                attachment.validate()
+            }
+            NotificationOperation::Send {
+                input_payload,
+                target,
+            } => {
+                if target.as_ref().is_some_and(|target| {
+                    [
+                        &target.sender_id,
+                        &target.conversation_id,
+                        &target.provider_message_id,
+                    ]
+                    .iter()
+                    .any(|id| id.trim().is_empty() || id.len() > 1024)
+                }) {
+                    return Err(invalid(
+                        "reply target requires bounded message and recipient identities",
+                    ));
+                }
                 descriptor.validate_input(input_payload)
             }
-            _ => Ok(()),
         }
     }
 }
@@ -334,11 +429,43 @@ impl NotificationRuntimeResult {
         descriptor: &NotificationTypeDescriptor,
     ) -> ContractResult {
         input.validate(descriptor)?;
-        let declared = descriptor
-            .authorization
-            .as_ref()
-            .expect("validated opt-in descriptor");
+        let validate_patch = |patch: &BTreeMap<String, Value>| -> ContractResult {
+            if descriptor.receive.is_some() && patch.contains_key("cursor") {
+                return Err(invalid(
+                    "cursor may only be returned as a durable inbox candidate",
+                ));
+            }
+            match &descriptor.authorization {
+                Some(declared) => declared.validate_secret_keys(patch),
+                None if patch.is_empty() => Ok(()),
+                None => Err(invalid(
+                    "managed secret patch requires declared authorization",
+                )),
+            }
+        };
         match (self, &input.operation) {
+            (
+                Self::Receive {
+                    outcome,
+                    authorization,
+                    managed_secret_patch,
+                },
+                NotificationOperation::Receive { max_messages, .. },
+            ) => {
+                if let NotificationReceiveOutcome::Succeeded { batch } = outcome {
+                    batch.validate(*max_messages)?;
+                }
+                if let Some(view) = authorization {
+                    view.validate()?;
+                }
+                validate_patch(managed_secret_patch)
+            }
+            (
+                Self::DownloadAttachment { outcome },
+                NotificationOperation::DownloadAttachment {
+                    offset, max_bytes, ..
+                },
+            ) => outcome.validate(*offset, *max_bytes),
             (
                 Self::Authorization {
                     authorization,
@@ -347,7 +474,7 @@ impl NotificationRuntimeResult {
                 NotificationOperation::Authorize { .. },
             ) => {
                 authorization.validate()?;
-                declared.validate_secret_keys(managed_secret_patch)
+                validate_patch(managed_secret_patch)
             }
             (
                 Self::Send {
@@ -393,7 +520,7 @@ impl NotificationRuntimeResult {
                         "authorization failure requires an updated public status",
                     ));
                 }
-                declared.validate_secret_keys(managed_secret_patch)
+                validate_patch(managed_secret_patch)
             }
             _ => Err(invalid(
                 "notification response does not match requested operation",

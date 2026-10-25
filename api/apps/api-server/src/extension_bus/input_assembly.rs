@@ -767,6 +767,9 @@ fn managed_host_extension_points() -> Result<Vec<ExtensionPointDescriptor>> {
         plugin_framework::extension_bus::notification_extension_point(ModuleId::new(
             BOOT_CORE_MODULE_ID,
         )?)?,
+        plugin_framework::extension_bus::notification_receive_extension_point(ModuleId::new(
+            BOOT_CORE_MODULE_ID,
+        )?)?,
     ];
     for phase in [
         "authorization",

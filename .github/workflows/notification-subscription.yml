@@ -1,8 +1,8 @@
-name: Notification subscription acceptance
+name: Communications acceptance
 
 on:
   push:
-    branches: [codex/wechat-subscription]
+    branches: [codex/communications-2670]
     paths:
       - api/**
       - .github/workflows/notification-subscription.yml
@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: notification-subscription-${{ inputs.candidate_sha || github.sha }}
+  group: communications-${{ inputs.candidate_sha || github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -54,25 +54,74 @@ jobs:
         with:
           node-version-file: web/.nvmrc
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
+        id: cargo-cache
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             api/target
-          key: notification-subscription-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
-          restore-keys: notification-subscription-nodebug-${{ runner.os }}-
+          key: notification-subscription-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-${{ inputs.candidate_sha || github.sha }}
+          restore-keys: |
+            notification-subscription-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-
+            notification-subscription-nodebug-${{ runner.os }}-
       - name: Contract and SDK acceptance
         run: |
-          mkdir -p tmp/test-governance/wechat-subscription/ci
+          mkdir -p tmp/test-governance/communications/ci
           set -o pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p extension-contracts notification_contract_tests 2>&1 | tee tmp/test-governance/wechat-subscription/ci/contracts.log
-          cargo test --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk notification 2>&1 | tee tmp/test-governance/wechat-subscription/ci/sdk.log
-      - name: Host state and projection acceptance
+          test_batch_status=0
+          cargo test --locked --manifest-path api/Cargo.toml -p extension-contracts notification 2>&1 | tee tmp/test-governance/communications/ci/contracts.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk notification 2>&1 | tee tmp/test-governance/communications/ci/sdk.log || test_batch_status=$?
+          exit "$test_batch_status"
+      - name: Receive manifest and binding contract acceptance
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib notifications::authorization::_tests 2>&1 | tee tmp/test-governance/wechat-subscription/ci/control-plane.log
+          test_batch_status=0
+          cargo test --locked --manifest-path api/Cargo.toml -p extension-package-runtime notification 2>&1 | tee tmp/test-governance/communications/ci/manifest.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p plugin-framework notification_plan_tests 2>&1 | tee tmp/test-governance/communications/ci/bindings.log || test_batch_status=$?
+          exit "$test_batch_status"
+      - name: Communication mapping and durable state acceptance
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib communication 2>&1 | tee tmp/test-governance/communications/ci/run-mapping.log
+      - name: Communication durable inbox acceptance
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test notifications_integration 2>&1 | tee tmp/test-governance/communications/ci/inbox-postgres.log
+      - name: Communication dispatch recovery and workspace acceptance
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration communication_ 2>&1 | tee tmp/test-governance/communications/ci/dispatch-recovery.log
+      - name: Communication backup scope and rekey acceptance
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          test_batch_status=0
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::communications:: 2>&1 | tee tmp/test-governance/communications/ci/backup-communications.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::notifications:: 2>&1 | tee tmp/test-governance/communications/ci/backup-notifications.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::notification_backup_keeps_channel_configuration_separate_from_inbox_history 2>&1 | tee tmp/test-governance/communications/ci/backup-selection.log || test_batch_status=$?
+          exit "$test_batch_status"
+      - name: Invocation Kernel lifecycle regression
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p interface-runtime --lib 2>&1 | tee tmp/test-governance/communications/ci/kernel-lifecycle.log
+      - name: Callback execution lease regression
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib resume_claim_heartbeat_tests 2>&1 | tee tmp/test-governance/communications/ci/callback-lease.log
+      - name: Host state and projection acceptance
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib notifications::authorization::_tests 2>&1 | tee tmp/test-governance/communications/ci/control-plane.log
       - name: Build canonical managed workers
+        if: ${{ !cancelled() }}
         run: |
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example notification_worker --example notification_authorization_worker --example managed_hook_worker --example managed_event_worker
           echo "NOTIFICATION_AUTHORIZATION_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/notification_authorization_worker" >> "$GITHUB_ENV"
@@ -80,20 +129,81 @@ jobs:
           echo "MANAGED_HOOK_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - name: Canonical HTTP, PostgreSQL and real worker acceptance
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib notification_authorization_http_encrypts_fences_late_polls_and_preserves_delivery_outcomes -- --nocapture 2>&1 | tee tmp/test-governance/wechat-subscription/ci/http-postgres.log
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib subscription -- --nocapture 2>&1 | tee tmp/test-governance/wechat-subscription/ci/error-response.log
+          test_batch_status=0
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib notification_authorization_http_encrypts_fences_late_polls_and_preserves_delivery_outcomes -- --nocapture 2>&1 | tee tmp/test-governance/communications/ci/http-postgres.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib subscription -- --nocapture 2>&1 | tee tmp/test-governance/communications/ci/error-response.log || test_batch_status=$?
+          exit "$test_batch_status"
+      - name: Communication and notification HTTP ownership regression
+        if: ${{ !cancelled() }}
+        env:
+          RUST_MIN_STACK: "2097152"
+        run: |
+          set -o pipefail
+          test_batch_status=0
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib communication 2>&1 | tee tmp/test-governance/communications/ci/communication-host.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib notification_http_crud_send_inbox_and_operations_are_authorized 2>&1 | tee tmp/test-governance/communications/ci/inbox-http.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib console_route_assembly 2>&1 | tee tmp/test-governance/communications/ci/route-ownership.log || test_batch_status=$?
+          exit "$test_batch_status"
+      - name: Capture stack frames if the composed callback aborts
+        if: ${{ failure() && !cancelled() }}
+        run: |
+          if ! grep -q 'overflowed its stack' tmp/test-governance/communications/ci/communication-host.log; then
+            exit 0
+          fi
+          mkdir -p tmp/test-governance/communications/ci/stack
+          sudo apt-get update > tmp/test-governance/communications/ci/stack/debugger-install.log 2>&1
+          sudo apt-get install --yes --no-install-recommends gdb >> tmp/test-governance/communications/ci/stack/debugger-install.log 2>&1
+          gdb --version > tmp/test-governance/communications/ci/stack/debugger-version.txt
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example notification_worker --example notification_authorization_worker --example managed_hook_worker --example managed_event_worker > tmp/test-governance/communications/ci/stack/workers-build.log 2>&1
+          export NOTIFICATION_AUTHORIZATION_WORKER_FIXTURE="$GITHUB_WORKSPACE/api/target/debug/examples/notification_authorization_worker"
+          export NOTIFICATION_WORKER_FIXTURE="$GITHUB_WORKSPACE/api/target/debug/examples/notification_worker"
+          export MANAGED_HOOK_WORKER_FIXTURE="$GITHUB_WORKSPACE/api/target/debug/examples/managed_hook_worker"
+          export MANAGED_EVENT_WORKER_FIXTURE="$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker"
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --no-run --message-format=json > tmp/test-governance/communications/ci/stack/test-artifacts.jsonl 2> tmp/test-governance/communications/ci/stack/build.log
+          test_binary="$(python3 -c 'import json; from pathlib import Path; records=[json.loads(line) for line in Path("tmp/test-governance/communications/ci/stack/test-artifacts.jsonl").read_text().splitlines()]; print(next(r["executable"] for r in records if r.get("reason")=="compiler-artifact" and r.get("executable") and r.get("profile",{}).get("test")))')"
+          cat > /tmp/communications-stack.gdb <<'GDB'
+          set pagination off
+          set print frame-arguments none
+          run
+          bt 120
+          python
+          frame = gdb.newest_frame()
+          previous = None
+          while frame:
+              try:
+                  sp = int(frame.read_register('rsp'))
+                  delta = sp - previous if previous is not None else 0
+                  print('STACK_FRAME', frame.level(), hex(sp), 'delta', delta, frame.name())
+                  previous = sp
+              except Exception as error:
+                  print('STACK_UNAVAILABLE', frame.level(), str(error))
+              frame = frame.older()
+          end
+          GDB
+          RUST_MIN_STACK=2097152 timeout 180s gdb --quiet --batch -x /tmp/communications-stack.gdb --args "$test_binary" --exact communication_runtime::acceptance_tests::pipeline::communication_callback_preserves_configuring_actor_and_sends_final_scoped_reply --nocapture > tmp/test-governance/communications/ci/stack/callback-backtrace.log 2>&1
+          git rev-parse HEAD > tmp/test-governance/communications/ci/stack/candidate-sha.txt
       - name: Build local runtime candidate
         run: |
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server
-          cp api/target/debug/api-server tmp/test-governance/wechat-subscription/ci/api-server-candidate
-          cp api/target/debug/examples/notification_authorization_worker tmp/test-governance/wechat-subscription/ci/notification_authorization_worker
-          git rev-parse HEAD > tmp/test-governance/wechat-subscription/ci/candidate-sha.txt
-          sha256sum tmp/test-governance/wechat-subscription/ci/api-server-candidate > tmp/test-governance/wechat-subscription/ci/binary-sha256.txt
+          cp api/target/debug/api-server tmp/test-governance/communications/ci/api-server-candidate
+          cp api/target/debug/examples/notification_authorization_worker tmp/test-governance/communications/ci/notification_authorization_worker
+          git rev-parse HEAD > tmp/test-governance/communications/ci/candidate-sha.txt
+          sha256sum tmp/test-governance/communications/ci/api-server-candidate > tmp/test-governance/communications/ci/binary-sha256.txt
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: notification-subscription-${{ inputs.candidate_sha || github.sha }}
+          name: communications-${{ inputs.candidate_sha || github.sha }}
           if-no-files-found: error
-          path: tmp/test-governance/wechat-subscription/ci
+          path: tmp/test-governance/communications/ci
+      - name: Preserve compiled acceptance dependencies
+        if: ${{ !cancelled() && steps.cargo-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            api/target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}

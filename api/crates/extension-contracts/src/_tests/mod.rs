@@ -27,3 +27,6 @@ mod notification_contract_tests;
 
 #[path = "file_import/contract.rs"]
 mod file_import_contract_tests;
+
+#[path = "notification/receive_tests.rs"]
+mod notification_receive_tests;

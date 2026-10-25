@@ -54,4 +54,5 @@ pub use settings_group::organization;
 
 pub(crate) mod client_collectors;
 
+pub(crate) mod communications;
 pub mod notifications;

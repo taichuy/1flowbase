@@ -13,7 +13,7 @@ describe('SettingsPage', () => {
   test('uses backend settings registry order instead of permissions for /settings redirects', async () => {
     authenticateWithPermissions([]);
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
-      settingsConsoleNavigation(['docs', 'notifications', 'members'])
+      settingsConsoleNavigation(['docs', 'communications', 'members'])
     );
     const view = renderApp('/settings');
 

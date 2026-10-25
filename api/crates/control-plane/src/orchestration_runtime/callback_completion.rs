@@ -75,7 +75,9 @@ where
             PreparedCallbackTask::Execution(prepared) => {
                 let renew = prepared.renew_input();
                 run_with_resume_claim_heartbeat(
-                    self.execute_prepared_callback_task(*prepared),
+                    // Keep the execution state out of the heartbeat and its callers'
+                    // inline futures; Console resumes run on ordinary Tokio worker stacks.
+                    Box::pin(self.execute_prepared_callback_task(*prepared)),
                     || self.repository.renew_resume_claim(&renew),
                     std::time::Duration::from_secs(60),
                 )
@@ -391,8 +393,8 @@ where
                 )
                 .await?;
                 let waiting_node_id = checkpoint_node_id(&checkpoint)?;
-                let execution = self
-                    .resume_execution_segment(ResumeExecutionSegmentInput {
+                let execution = Box::pin(
+                    self.resume_execution_segment(ResumeExecutionSegmentInput {
                         transport_connection_scope: command.transport_connection_scope.clone(),
                         observation_context: command.observation_context.clone(),
                         resumed_node_run: command
@@ -411,8 +413,9 @@ where
                         waiting_node_id: &waiting_node_id,
                         waiting_node_run_id: Some(callback_task.node_run_id),
                         resume_payload: &command.response_payload,
-                    })
-                    .await?;
+                    }),
+                )
+                .await?;
                 let waiting_node_output_payload = if callback_task.callback_kind == "llm_tool_calls"
                 {
                     waiting_node.output_payload.clone()

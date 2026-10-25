@@ -1,10 +1,22 @@
 use super::*;
 
+#[path = "orchestration/dispatch_lease.rs"]
+mod dispatch_lease;
 #[path = "orchestration/log_operations.rs"]
 mod log_operations;
 
 log_operations::with_log_operations! {
-
+    async fn try_acquire_flow_run_dispatch_lease(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<Box<dyn control_plane_contracts::ports::FlowRunDispatchLease>>> {
+        dispatch_lease::acquire(self, application_id, flow_run_id).await
+    }
+    async fn flow_run_has_resume_claims(&self, flow_run_id: Uuid) -> Result<bool> {
+        Ok(sqlx::query_scalar("select exists(select 1 from flow_run_resume_claims where flow_run_id=$1)")
+            .bind(flow_run_id).fetch_one(self.pool()).await?)
+    }
 
     async fn get_flow_run_node_usages(
         &self,

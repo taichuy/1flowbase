@@ -12,7 +12,7 @@ mod managed_event_authority_tests;
 mod managed_event_effect_tests;
 
 #[path = "managed/managed_snapshot_tests.rs"]
-mod managed_snapshot_tests;
+pub(crate) mod managed_snapshot_tests;
 
 #[path = "managed/managed_candidate_tests.rs"]
 mod managed_candidate_tests;

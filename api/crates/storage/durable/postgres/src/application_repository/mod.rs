@@ -237,6 +237,9 @@ impl ApplicationRepository for PgControlPlaneStore {
         &self,
         actor_user_id: Uuid,
     ) -> Result<domain::ActorContext> {
+        if let Some(actor) = self.request_actor_for_user(actor_user_id)? {
+            return Ok(actor);
+        }
         let workspace_id = workspace_id_for_user(self.pool(), actor_user_id).await?;
         let tenant_id = tenant_id_for_workspace(self.pool(), workspace_id).await?;
 

@@ -157,3 +157,78 @@ fn notification_manifest_reuses_multiplex_dispatcher_without_service_actor_pool(
         "notification binding must not self-award service worker retention"
     );
 }
+
+fn receive_fixture() -> Value {
+    let mut value = fixture();
+    value["notification_types"][0]["receive"] = json!({
+        "contribution_id":"managed_fixture.receive", "default_system_prompt":"Use tools for channel history and files.",
+        "mcp_tools":[
+            {"name":"messages","description":"Channel messages","operation":"history_messages","input_schema":{"type":"object"}},
+            {"name":"files","description":"Channel files","operation":"history_files","input_schema":{"type":"object"}},
+            {"name":"read_file","description":"File contents","operation":"read_file","input_schema":{"type":"object"}}
+        ]
+    });
+    value["managed"]["module"]["contributions"].as_array_mut().unwrap().push(json!({
+        "contribution_id":"managed_fixture.receive", "contributor_module_id":"managed_fixture", "point_id":"1flowbase.notification.receive",
+        "contract_version":"1flowbase.notification/v1", "required_permissions":["notification.receive"], "mode":"append"
+    }));
+    value["managed"]["execution_bindings"].as_array_mut().unwrap().push(json!({
+        "contribution_id":"managed_fixture.receive", "execution_mode":"process_per_call", "runtime":{"protocol":"stdio_json","entry":"bin/fixture"},
+        "handler":"receive", "payload":{"kind":"notification_receive","type_code":"acme/managed_fixture/webhook"}
+    }));
+    value
+}
+
+#[test]
+fn communications_manifest_binds_receive_independently_of_send() {
+    let value = receive_fixture();
+    let manifest = parse(&value).unwrap();
+    let receive = manifest.notification_types[0].receive.as_ref().unwrap();
+    assert_eq!(receive.contribution_id.as_str(), "managed_fixture.receive");
+    assert_eq!(receive.mcp_tools.len(), 3);
+    assert!(matches!(
+        manifest.managed.unwrap().execution_bindings[3].payload,
+        Some(ManagedContributionPayload::NotificationReceive { .. })
+    ));
+    for (pointer, replacement) in [
+        (
+            "/notification_types/0/receive/contribution_id",
+            json!("managed_fixture.send"),
+        ),
+        (
+            "/notification_types/0/receive/default_system_prompt",
+            json!(""),
+        ),
+        ("/notification_types/0/receive/mcp_tools", json!([])),
+        (
+            "/managed/module/contributions/3/point_id",
+            json!("1flowbase.notification.send"),
+        ),
+        (
+            "/managed/module/contributions/3/required_permissions",
+            json!(["notification.send"]),
+        ),
+        (
+            "/managed/execution_bindings/3/payload/kind",
+            json!("notification_type"),
+        ),
+        (
+            "/managed/execution_bindings/3/runtime/capabilities",
+            json!([extension_contracts::RUNTIME_WORKER_RETENTION_V1]),
+        ),
+    ] {
+        let mut invalid = value.clone();
+        if let Some(slot) = invalid.pointer_mut(pointer) {
+            *slot = replacement;
+        } else {
+            invalid["managed"]["execution_bindings"][3]["runtime"]["capabilities"] = replacement;
+        }
+        assert!(parse(&invalid).is_err(), "{pointer}");
+    }
+    let mut unbound = value;
+    unbound["managed"]["execution_bindings"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    assert!(parse(&unbound).is_err());
+}

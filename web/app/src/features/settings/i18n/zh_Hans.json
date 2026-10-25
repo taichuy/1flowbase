@@ -1056,7 +1056,7 @@
     "file_data_model_template_description": "上传文件并保存可检索的文件信息。",
     "follow_default_storage": "跟随默认存储",
     "follow_default_storage_description": "留空时，每次上传使用当前默认存储。更换存储只影响新上传，已有文件保留原存储。",
-    "notifications": "通知管理",
+    "communications": "通讯中心",
     "extension_upload_select": "选择文件",
     "extension_upload_confirm_install": "确认风险并安装",
     "extension_upload_uploading": "正在上传文件",

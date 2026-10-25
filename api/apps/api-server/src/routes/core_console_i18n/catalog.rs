@@ -26,7 +26,7 @@ macro_rules! resource {
 pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
     settings_feature!("system_settings.title", "System settings"),
     settings_feature!("console.policy_groups.settings.system.branding.description", "Manage installation-wide public branding"),
-    settings_feature!("auto.notifications", "Notifications"),
+    settings_feature!("auto.communications", "Communications"),
     settings_feature!(
         "console.policy_groups.settings.system.notifications.description",
         "Manage workspace notification instances"

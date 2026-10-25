@@ -373,6 +373,8 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
                         "immutable lifecycle target conflict: lifecycle_outbox_deliveries"
                     );
                 }
+                // Retry spools must retain source-key ciphertext; each pass rekeys once.
+                let source_row = record.row.clone();
                 validation::rekey(
                     &record.table,
                     &mut record.row,
@@ -408,6 +410,7 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
                         sqlx::query("release savepoint selective_row")
                             .execute(&mut *tx)
                             .await?;
+                        record.row = source_row;
                         let mut canonical = serde_json::to_vec(&record)?;
                         canonical.push(b'\n');
                         next_file.write_all(&canonical).await?;

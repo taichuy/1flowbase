@@ -51,3 +51,22 @@ fn managed_notification_point_compiles_workspace_provider_contribution_with_auth
         .points()
         .is_empty());
 }
+
+#[test]
+fn receive_point_has_an_independent_sealed_workspace_permission() {
+    let send = notification_extension_point(ModuleId::new("core").unwrap()).unwrap();
+    let receive = notification_receive_extension_point(ModuleId::new("core").unwrap()).unwrap();
+    assert_eq!(
+        receive.point_id.as_str(),
+        extension_contracts::NOTIFICATION_RECEIVE_POINT
+    );
+    assert_eq!(receive.contract, send.contract);
+    assert_eq!(receive.scope, ScopeSemantics::Workspace);
+    assert_eq!(receive.override_policy, OverridePolicy::Sealed);
+    assert!(receive.allowed_permissions.contains(
+        &PermissionCode::new(extension_contracts::NOTIFICATION_RECEIVE_PERMISSION).unwrap()
+    ));
+    assert!(!receive
+        .allowed_permissions
+        .contains(&PermissionCode::new(NOTIFICATION_SEND_PERMISSION).unwrap()));
+}

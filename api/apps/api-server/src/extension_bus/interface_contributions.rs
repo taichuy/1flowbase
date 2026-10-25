@@ -526,6 +526,26 @@ pub(crate) fn production_interface_contributions(
             crate::routes::organization::interface::compile_registry(console_organization)?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-communications",
+            &[
+                "communications.options.get",
+                "communications.binding.get",
+                "communications.binding.update",
+                "communications.conversations.list",
+                "communications.messages.list",
+                "communications.files.list",
+                "communications.files.get",
+                "communications.messages.retry",
+            ],
+            &["api-server.console-communications"],
+            crate::routes::communications::interface::compile_registry(
+                crate::routes::communications::interface::Dependencies::new(
+                    state,
+                    mcp_interface_catalog_dependencies.clone(),
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-notifications",
             &[
                 "notifications.channels.list",
@@ -549,6 +569,10 @@ pub(crate) fn production_interface_contributions(
             &["api-server.console-notifications"],
             crate::routes::notifications::interface::compile_registry(
                 state.notification_service.clone(),
+                crate::routes::communications::interface::Dependencies::new(
+                    state,
+                    mcp_interface_catalog_dependencies.clone(),
+                ),
             )?,
         ),
         InterfaceRegistryContribution::new(

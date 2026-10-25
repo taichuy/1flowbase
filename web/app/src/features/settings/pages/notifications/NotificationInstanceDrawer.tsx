@@ -20,6 +20,10 @@ import { NotificationAuthorization } from './NotificationAuthorization';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useNotificationTypeLocalization } from '../../../notifications/hooks/use-notification-type-localization';
 import './notification-instance-drawer.css';
+import {
+  CommunicationBindingForm,
+  type CommunicationBindingHandle
+} from './communications/CommunicationBindingForm';
 
 export function NotificationInstanceDrawer({
   instance,
@@ -46,6 +50,8 @@ export function NotificationInstanceDrawer({
     );
     return selected && localizeType(selected);
   }, [types, typeIdentity, localizeType]);
+  const createdInSubmit = useRef(false);
+  const bindingForm = useRef<CommunicationBindingHandle>(null);
   const draftConfig = useRef<SchemaFormValues | undefined>(undefined);
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const [beginOnMount, setBeginOnMount] = useState(false);
@@ -74,7 +80,11 @@ export function NotificationInstanceDrawer({
     instance: NotificationInstance | undefined;
     values: SchemaFormValues;
   } | null>(null);
-  if (!initialValuesScope.current || initialValuesScope.current.schema !== schema || initialValuesScope.current.instance !== savedInstance) {
+  if (
+    !initialValuesScope.current ||
+    initialValuesScope.current.schema !== schema ||
+    initialValuesScope.current.instance !== savedInstance
+  ) {
     initialValuesScope.current = {
       schema,
       instance: savedInstance,
@@ -185,6 +195,13 @@ export function NotificationInstanceDrawer({
               )}
             </Form.Item>
           </Form>
+          {type?.receive && (
+            <CommunicationBindingForm
+              ref={bindingForm}
+              instance_id={savedInstance?.id}
+              receive={type.receive}
+            />
+          )}
           {type?.authorization && savedInstance?.authorization && (
             <NotificationAuthorization
               display_name={type.display_name}
@@ -215,8 +232,10 @@ export function NotificationInstanceDrawer({
           setNameError(true);
           return false;
         }
+        if (type?.receive && !bindingForm.current?.validate()) return false;
       }}
       onSubmit={async (values) => {
+        let bindingFailed = false;
         try {
           const config_json = Object.fromEntries(
             Object.entries(values).filter(
@@ -228,8 +247,9 @@ export function NotificationInstanceDrawer({
                 )
             )
           );
+          let result: NotificationInstance | undefined;
           if (savedInstance) {
-            return await updateNotificationInstance(
+            result = await updateNotificationInstance(
               savedInstance.id,
               {
                 display_name: display_name.trim(),
@@ -238,7 +258,8 @@ export function NotificationInstanceDrawer({
               csrfToken
             );
           } else if (type?.available) {
-            return await createNotificationInstance(
+            createdInSubmit.current = true;
+            result = await createNotificationInstance(
               {
                 display_name: display_name.trim(),
                 type_code: type.type_code,
@@ -248,14 +269,26 @@ export function NotificationInstanceDrawer({
               csrfToken
             );
           }
+          if (result && type?.receive) {
+            // Persist the channel identity before the second write, so retry cannot duplicate it.
+            setBeginOnMount(createdInSubmit.current);
+            setSavedInstance(result);
+            onSaved({ keepOpen: true });
+            bindingFailed = true;
+            await bindingForm.current?.save(result.id);
+            bindingFailed = false;
+          }
+          return result;
         } catch {
-          throw new Error(t('instances_failed'));
+          throw new Error(
+            t(bindingFailed ? 'binding_save_failed' : 'instances_failed')
+          );
         }
       }}
       onSubmitSuccess={(result) => {
         draftConfig.current = undefined;
         if (type?.authorization) {
-          setBeginOnMount(!savedInstance);
+          setBeginOnMount(createdInSubmit.current);
           setSavedInstance(result as NotificationInstance);
           onSaved({ keepOpen: true });
         } else {

@@ -94,6 +94,14 @@ const fn resource_action(
 /// here with an explicit policy group and authorization contract.
 pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     authenticated_routes("core.authenticated", "core.authenticated"),
+    settings("communications.options.get", "system.notifications"),
+    settings("communications.binding.get", "system.notifications"),
+    settings("communications.binding.update", "system.notifications"),
+    settings("communications.conversations.list", "system.notifications"),
+    settings("communications.messages.list", "system.notifications"),
+    settings("communications.files.list", "system.notifications"),
+    settings("communications.files.get", "system.notifications"),
+    settings("communications.messages.retry", "system.notifications"),
     settings("notifications.instances.list", "system.notifications"),
     settings("notifications.instances.get", "system.notifications"),
     settings("notifications.instances.create", "system.notifications"),

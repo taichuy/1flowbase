@@ -875,7 +875,7 @@ fn assistant_execution(preference: &AssistantPreferenceBody) -> Result<NativeExe
     .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("reasoning_effort").into())
 }
 
-async fn available_targets(
+pub(crate) async fn available_targets(
     store: &MainDurableStore,
     actor: &domain::ActorContext,
 ) -> Result<
@@ -921,7 +921,7 @@ async fn available_targets(
     Ok((published_agent_flows, enabled_mcp_instances))
 }
 
-async fn assistant_run_capabilities(
+pub(crate) async fn assistant_run_capabilities(
     store: &MainDurableStore,
     actor: &domain::ActorContext,
     application_id: Option<Uuid>,
@@ -976,7 +976,7 @@ async fn assistant_run_capabilities(
     })
 }
 
-async fn validate_preference(
+pub(crate) async fn validate_preference(
     store: &MainDurableStore,
     actor: &domain::ActorContext,
     preference: &AssistantPreferenceBody,

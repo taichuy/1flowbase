@@ -636,3 +636,36 @@ migrations: []
 fn api_workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
+
+#[test]
+fn communication_send_and_receive_points_exist_in_the_production_boot_graph() {
+    let assembly =
+        assemble_extension_graph_input(api_workspace_root(), DEFAULT_PLUGIN_SET_PATH, vec![])
+            .unwrap();
+    let graph = assembly.compile_graph().unwrap();
+    for (id, permission) in [
+        (
+            extension_contracts::NOTIFICATION_POINT,
+            extension_contracts::NOTIFICATION_SEND_PERMISSION,
+        ),
+        (
+            extension_contracts::NOTIFICATION_RECEIVE_POINT,
+            extension_contracts::NOTIFICATION_RECEIVE_PERMISSION,
+        ),
+    ] {
+        let point = graph
+            .points()
+            .iter()
+            .find(|point| point.descriptor().point_id.as_str() == id)
+            .unwrap_or_else(|| panic!("production boot graph must own {id}"));
+        let descriptor = point.descriptor();
+        assert_eq!(descriptor.scope, ScopeSemantics::Workspace);
+        assert_eq!(descriptor.failure, FailureSemantics::FailClosed);
+        assert_eq!(descriptor.override_policy, OverridePolicy::Sealed);
+        assert_eq!(descriptor.allowed_permissions.len(), 1);
+        assert!(descriptor
+            .allowed_permissions
+            .iter()
+            .any(|code| code.as_str() == permission));
+    }
+}

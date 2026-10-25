@@ -231,7 +231,7 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         &cookie,
         &csrf,
         "GET",
-        "/api/console/notifications/types",
+        "/api/console/communications/types",
         Value::Null,
     )
     .await;
@@ -316,7 +316,7 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         &cookie,
         &csrf,
         "POST",
-        "/api/console/notifications/instances",
+        "/api/console/communications/instances",
         input.clone(),
     )
     .await;
@@ -326,7 +326,7 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         json!({"status":"unauthorized"})
     );
     let id: Uuid = serde_json::from_value(created["data"]["id"].clone()).unwrap();
-    let path = format!("/api/console/notifications/instances/{id}");
+    let path = format!("/api/console/communications/instances/{id}");
     let auth_path = format!("{path}/authorization");
     let send_path = format!("{path}/send");
     let (status, can_read) = api(
@@ -784,7 +784,7 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         &cookie,
         &csrf,
         "POST",
-        "/api/console/notifications/instances",
+        "/api/console/communications/instances",
         unsafe_input,
     )
     .await;
@@ -795,7 +795,7 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         &cookie,
         &csrf,
         "POST",
-        &format!("/api/console/notifications/instances/{unsafe_id}/authorization"),
+        &format!("/api/console/communications/instances/{unsafe_id}/authorization"),
         json!({"type":"begin","action":"qr"}),
     )
     .await;
