@@ -66,11 +66,19 @@ jobs:
           set -euo pipefail
           evidence=tmp/test-governance/browser-obscura/host-ci
           mkdir -p "$evidence"
+          failures=0
           run_test() {
             local label="$1"
             shift
+            set +e
             cargo test --locked --manifest-path api/Cargo.toml "$@" 2>&1 | tee "$evidence/$label.log"
+            local statuses=("${PIPESTATUS[@]}")
             node -e 'const s=require("fs").readFileSync(process.argv[1],"utf8"); const n=[...s.matchAll(/test result: ok\. (\d+) passed/g)].reduce((a,m)=>a+Number(m[1]),0);if(n===0)throw new Error("No tests executed");console.log(`${n} tests passed`)' "$evidence/$label.log"
+            local count_status=$?
+            set -e
+            if (( statuses[0] != 0 || statuses[1] != 0 || count_status != 0 )); then
+              failures=$((failures + 1))
+            fi
           }
           run_test contract -p extension-contracts managed_service_contract_tests
           run_test manifest -p extension-package-runtime managed_service_tests
@@ -81,7 +89,9 @@ jobs:
           run_test mcp-media -p api-server --lib result_delivery::media::tests
           run_test mcp-errors -p api-server --lib target_error_diagnostics
           run_test lifecycle -p api-server --lib managed_services::
+          test "$failures" -eq 0
       - name: Build exact runtime for local integration evidence
+        if: always()
         shell: bash
         run: |
           set -euo pipefail

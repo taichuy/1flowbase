@@ -362,7 +362,12 @@ async fn plugin_template_collision_and_mid_graph_failure_roll_back_without_impor
     let original = catalog(&store, user.id, workspace.id).await;
     let mut another_publisher = manifest.clone();
     another_publisher.publisher_namespace = "another_publisher".into();
+    another_publisher.plugin_id = "foreign_template".into();
     let foreign_installation = install(&store, user.id, &another_publisher).await;
+    assert_ne!(
+        foreign_installation, installation,
+        "collision requires distinct installations"
+    );
     let foreign = prepare_managed_mcp_template(&actor, foreign_installation, &another_publisher)
         .unwrap()
         .unwrap();
