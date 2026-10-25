@@ -1,0 +1,204 @@
+name: Gateway resource comparison
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: Latest published baseline
+        type: string
+        default: v0.5.8
+      current_ref:
+        description: Source before the candidate changes
+        type: string
+        default: 0cfa6727d34b0c0805620e51a35d562d059ada0c
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gateway-resource-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_INCREMENTAL: '0'
+  PGHOST: 127.0.0.1
+  PGPORT: '5432'
+  PGUSER: postgres
+  PGPASSWORD: fixture-only
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: web/.nvmrc
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve exact sources and existing resource configuration
+        id: sources
+        shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+          CURRENT_REF: ${{ inputs.current_ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/test-governance/gateway-resource-evidence/bin
+          echo "CARGO_BUILD_JOBS=$(node scripts/node/testing/verify-runtime.js cargo-jobs)" >> "$GITHUB_ENV"
+          echo "official=$(node -p "require('./scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json').official_plugins.revision")" >> "$GITHUB_OUTPUT"
+          git worktree add --detach "$RUNNER_TEMP/gateway-release" "$RELEASE_REF"
+          git worktree add --detach "$RUNNER_TEMP/gateway-current" "$CURRENT_REF"
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          root=Path.cwd(); temporary=Path(os.environ['RUNNER_TEMP'])
+          rows={name:{'root':str(source),'sha':subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()} for name,source in [('release',temporary/'gateway-release'),('current',temporary/'gateway-current'),('candidate',root)]}
+          Path('tmp/test-governance/gateway-resource-evidence/sources.json').write_text(json.dumps(rows,indent=2))
+          PY
+      - uses: actions/checkout@v6
+        with:
+          repository: taichuy/1flowbase-official-plugins
+          ref: ${{ steps.sources.outputs.official }}
+          path: tmp/gateway-official-source
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: ai-gateway-protocol-conformance
+          key: ${{ github.ref_name }}
+          save-if: true
+          cache-on-failure: true
+          cache-workspace-crates: true
+          workspaces: |
+            api -> target
+            tmp/gateway-official-source/runtime-extensions/@taichuy/openai -> target
+            tmp/gateway-official-source/runtime-extensions/@taichuy/anthropic -> target
+            tmp/gateway-official-source/runtime-extensions/@taichuy/openai_compatible -> target
+      - name: Build identical provider packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$GITHUB_WORKSPACE/tmp/test-governance/gateway-resource-evidence"
+          target=$(rustc -vV | sed -n 's/^host: //p')
+          for provider in openai anthropic openai_compatible; do
+            source="$GITHUB_WORKSPACE/tmp/gateway-official-source/runtime-extensions/@taichuy/$provider"
+            cargo build --manifest-path "$source/Cargo.toml" --release --locked --target "$target" > "$evidence/$provider-build.log" 2>&1
+            node scripts/node/plugin/cli.js package "$source" --out "$evidence/packages/$provider" --runtime-binary "$source/target/$target/release/$provider-provider" --target "$target" > "$evidence/$provider-package.log" 2>&1
+          done
+      - name: Build three exact API sources with the same profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$GITHUB_WORKSPACE/tmp/test-governance/gateway-resource-evidence"
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/api/target"
+          for name in release current candidate; do
+            source=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]]["root"])' "$evidence/sources.json" "$name")
+            /usr/bin/time -v -o "$evidence/$name-build.resources" cargo build --manifest-path "$source/api/Cargo.toml" --profile test -p api-server --bin api-server --locked > "$evidence/$name-build.log" 2>&1
+            cp "$CARGO_TARGET_DIR/debug/api-server" "$evidence/bin/$name"
+            sha256sum "$evidence/bin/$name" >> "$evidence/binaries.sha256"
+          done
+      - name: Compare equal mixed workloads in alternating order
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$GITHUB_WORKSPACE/tmp/test-governance/gateway-resource-evidence"
+          export RB_REPO_ROOT="$GITHUB_WORKSPACE"
+          export RB_DEDICATED_DATABASE=1 RB_DEDICATED_CLUSTER=1 RB_WORKLOAD=mixed
+          export RB_HISTORY_BYTES=524288 RB_CONCURRENCY=8 RB_UPLOAD_BYTES=1048576
+          export RB_WARMUPS=1 RB_ROUNDS=5 RB_IDLE_MS=1000 RB_DRAIN_MS=1000 RB_SAMPLE_MS=50
+          export API_PLUGIN_UPLOAD_MAX_BYTES=268435456
+          export RB_OPENAI_PACKAGE=$(find "$evidence/packages/openai" -type f -name '*.1flowbasepkg' -print -quit)
+          export RB_ANTHROPIC_PACKAGE=$(find "$evidence/packages/anthropic" -type f -name '*.1flowbasepkg' -print -quit)
+          export RB_OPENAI_COMPATIBLE_PACKAGE=$(find "$evidence/packages/openai_compatible" -type f -name '*.1flowbasepkg' -print -quit)
+          test -n "$RB_OPENAI_PACKAGE" && test -n "$RB_ANTHROPIC_PACKAGE" && test -n "$RB_OPENAI_COMPATIBLE_PACKAGE"
+          ordinal=0
+          for name in release current candidate candidate current release; do
+            ordinal=$((ordinal+1))
+            database="qadb_gateway_resource_$ordinal"
+            createdb "$database"
+            export RB_DATABASE_URL="postgres://postgres:fixture-only@127.0.0.1:5432/$database"
+            export RB_API_BINARY="$evidence/bin/$name"
+            export RB_ARTIFACT_ROOT="$evidence/$ordinal-$name"
+            if ! node scripts/node/ai-gateway-concurrency/resource-benchmark/run.cjs > "$evidence/$ordinal-$name.log" 2>&1; then
+              dropdb --force "$database"
+              exit 1
+            fi
+            dropdb --force "$database"
+          done
+      - name: Upload comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gateway-resource-evidence-${{ github.sha }}
+          path: |
+            tmp/test-governance/gateway-resource-evidence/**
+            !tmp/test-governance/gateway-resource-evidence/bin/**
+            !tmp/test-governance/gateway-resource-evidence/packages/**
+          retention-days: 14
+          if-no-files-found: error
+
+  source-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: gateway_tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      API_DATABASE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/gateway_tests
+      DATABASE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/gateway_tests
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: web/.nvmrc
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: gateway-source-acceptance
+          cache-workspace-crates: true
+          cache-on-failure: true
+          workspaces: api -> target
+      - name: Run one focused production batch
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=tmp/test-governance/gateway-source-acceptance
+          mkdir -p "$evidence"
+          node --test scripts/node/ai-gateway-concurrency/resource-benchmark/_tests/*.test.cjs > "$evidence/node.log" 2>&1
+          node scripts/node/test-backend.js --package runtime-extension-host --package storage-object --package orchestration-runtime --lib > "$evidence/runtime-storage.log" 2>&1
+          for filter in conversation_history file_management_upload_tests file_access_tests; do
+            node scripts/node/test-backend.js --package control-plane --lib --filter "$filter" > "$evidence/$filter.log" 2>&1
+          done
+          for filter in compat_sse responses_websocket; do
+            node scripts/node/test-backend.js --package api-server --lib --filter "$filter" > "$evidence/$filter.log" 2>&1
+          done
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: gateway-source-acceptance-${{ github.sha }}
+          path: tmp/test-governance/gateway-source-acceptance/**
+          retention-days: 14
+          if-no-files-found: error
