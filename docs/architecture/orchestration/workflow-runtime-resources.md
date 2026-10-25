@@ -160,4 +160,14 @@ JSON CPU 样本关闭分配观察器，GNU time 记录实际子进程 RSS；两�
 
 本地 API monolithic harness 的一次构建触及主机 90% 物理内存保护，任务进程组被主动停止，未进入测试执行。
 该次耗时 360.657 s，进程树峰值 8,636,232 KiB，cgroup OOM 增量 0；不在相同条件下重复编译。
-完整业务行为在 GitHub Actions 的 PostgreSQL 独立环境验收，本地保留轻量模型和源码基准。
+本次范围内的业务行为回归已在 GitHub Actions 独立 PostgreSQL 环境验收，本地保留轻量模型和源码基准。
+
+### 候选执行证据
+
+[候选业务验收 40155306928](https://github.com/taichuy/1flowbase/actions/runs/40155306928) 绑定 `aacc1c25529f2ef4dce8d7da4bd87efb3fa8a31e`，所有步骤成功。
+运行时事件/定时任务 60 项、persister/service runtime events 41 项及 Agent Logs 原筛选并集 196 项，共 297 项实际通过，失败和忽略均为 0。
+原 13 个筛选器与临时业务验收的 4 个筛选器逐项匹配实际通过名称；默认目标中的空 doctest 不替代这些非零业务证据。
+受控日志反例对发布版保留 14/14 个已知拒绝行为，对本次增量前版本保留 23/23 个（含后来增加的 binary-owner 规则）；候选另拒绝全部 37 个合并漏测反例。
+发布版 parser 尚没有 binary-owner 接口，不能给它虚构该规则的基线分母。Node parser 正式测试 10/10 通过。
+临时接受/成本测量入口随验收清理，最终 workflow 只保留原五个分组及已有 artifact 上传。
+这些是本次涉及行为与门禁的证据，不作为全 workspace / 全产品 L3 回归的替代。
