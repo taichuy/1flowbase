@@ -78,6 +78,10 @@ jobs:
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib communication 2>&1 | tee tmp/test-governance/communications/ci/run-mapping.log
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test notifications_integration 2>&1 | tee tmp/test-governance/communications/ci/inbox-postgres.log
+      - name: Communication dispatch recovery and workspace acceptance
+        run: |
+          set -o pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration communication_ 2>&1 | tee tmp/test-governance/communications/ci/dispatch-recovery.log
       - name: Communication backup scope and rekey acceptance
         run: |
           set -o pipefail
