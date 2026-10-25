@@ -264,3 +264,60 @@ fn authentication_effective_authority_rejects_missing_revoked_and_wrong_contribu
         )
         .is_err());
 }
+
+#[test]
+fn communication_receive_activation_grants_only_its_declared_workspace_contract() {
+    let (mut installation, mut manifest) = fixture();
+    installation.scope_id = domain::DEFAULT_SCOPE_ID;
+    installation.metadata_json = json!({"binding_targets":["workspace"]});
+    manifest.data_models.clear();
+    manifest.managed.as_mut().unwrap().module.contributions = vec![serde_json::from_value(json!({
+        "contribution_id":"managed_fixture.receive", "contributor_module_id":"managed_fixture",
+        "point_id":extension_contracts::NOTIFICATION_RECEIVE_POINT,
+        "contract_version":extension_contracts::NOTIFICATION_CONTRACT_V1, "mode":"append",
+        "required_permissions":[extension_contracts::NOTIFICATION_RECEIVE_PERMISSION]
+    }))
+    .unwrap()];
+    let policy = HostContributionGrantPolicy::root_composition();
+    let grants = policy
+        .declared_activation_grants(&installation, &manifest)
+        .unwrap();
+    assert_eq!(grants.len(), 1);
+    assert_eq!(
+        grants[0].permission,
+        extension_contracts::NOTIFICATION_RECEIVE_PERMISSION
+    );
+    assert_eq!(
+        grants[0].resource_scope,
+        ContributionResourceScope::Workspace
+    );
+    let contribution = &manifest.managed.as_ref().unwrap().module.contributions[0];
+    for invalid in [
+        GrantContributionPermission {
+            resource_scope: ContributionResourceScope::System,
+            ..grants[0].clone()
+        },
+        GrantContributionPermission {
+            permission: extension_contracts::NOTIFICATION_SEND_PERMISSION.into(),
+            ..grants[0].clone()
+        },
+        GrantContributionPermission {
+            permission_contract_id: "managed-service".into(),
+            ..grants[0].clone()
+        },
+        GrantContributionPermission {
+            permission_contract_version: "2".into(),
+            ..grants[0].clone()
+        },
+    ] {
+        assert!(!policy.admits(&installation, contribution, &invalid));
+    }
+    // Controlled pre-fix host ceiling must reject the same declared receive contribution.
+    let mut without_receive = HostContributionGrantPolicy::root_composition();
+    without_receive
+        .rules
+        .retain(|rule| rule.point_id != extension_contracts::NOTIFICATION_RECEIVE_POINT);
+    assert!(without_receive
+        .declared_activation_grants(&installation, &manifest)
+        .is_err());
+}
