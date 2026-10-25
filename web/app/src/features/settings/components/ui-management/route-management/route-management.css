@@ -168,6 +168,16 @@
   font-size: 16px;
   color: var(--text-secondary);
 }
+.route-management__visibility {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 32px;
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
 @media (max-width: 767px) {
   .route-management {
     --route-tree-gutter: 12px;

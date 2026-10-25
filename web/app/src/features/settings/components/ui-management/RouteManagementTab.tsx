@@ -19,6 +19,8 @@ import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import EllipsisOutlined from '@ant-design/icons/es/icons/EllipsisOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
 import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
+import EyeOutlined from '@ant-design/icons/es/icons/EyeOutlined';
+import EyeInvisibleOutlined from '@ant-design/icons/es/icons/EyeInvisibleOutlined';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../../state/auth-store';
 import { selectNavigationQueryScope } from '../../../../state/navigation-query-scope';
@@ -255,8 +257,27 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
               onSelectMove={(id, input) => void move(id, input)}
               renderActions={(item) => {
                 const node = item ? nodesById.get(item.id) : null;
+                const visibilityLabel = node?.is_hidden
+                  ? t('routes_status_hidden')
+                  : t('routes_status_visible');
                 return (
                   <Space size={2}>
+                    {node ? (
+                      <Tooltip title={visibilityLabel}>
+                        <span
+                          className="route-management__visibility"
+                          role="img"
+                          aria-label={visibilityLabel}
+                          tabIndex={0}
+                        >
+                          {node.is_hidden ? (
+                            <EyeInvisibleOutlined aria-hidden="true" />
+                          ) : (
+                            <EyeOutlined aria-hidden="true" />
+                          )}
+                        </span>
+                      </Tooltip>
+                    ) : null}
                     {editable && (!node || node.kind === 'group') ? (
                       <Dropdown
                         menu={createMenu(node?.id ?? null)}

@@ -128,5 +128,7 @@
   "routes_root": "Top navigation",
   "routes_move": "Move to…",
   "routes_more": "More actions",
-  "routes_tabs_disabled": "This page uses single-page mode. Switch Content presentation to Page tabs in Basic information and save before adding a tab."
+  "routes_tabs_disabled": "This page uses single-page mode. Switch Content presentation to Page tabs in Basic information and save before adding a tab.",
+  "routes_status_visible": "This node is set to visible",
+  "routes_status_hidden": "This node is set to hidden"
 }
