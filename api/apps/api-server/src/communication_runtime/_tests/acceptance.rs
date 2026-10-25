@@ -5,7 +5,7 @@ use crate::_tests::extension_bus::managed_snapshot_tests::RuntimeFixture;
 use control_plane::{
     notifications::{CreateNotificationInstance, NotificationService},
     plugin_management::*,
-    ports::{AuthRepository, CommunicationRepository},
+    ports::AuthRepository,
 };
 use orchestration_runtime::{
     compiled_plan::CompiledNode,
@@ -343,3 +343,6 @@ async fn communication_receive_session_progressive_mcp_reaches_scoped_history() 
         .contains("Alice private input"));
     fixture.runtime.host.stop().await.unwrap();
 }
+
+#[path = "pipeline.rs"]
+mod pipeline;

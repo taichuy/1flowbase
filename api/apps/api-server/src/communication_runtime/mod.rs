@@ -248,6 +248,6 @@ impl ProviderContext {
 #[path = "_tests/request.rs"]
 mod request_tests;
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
 #[path = "_tests/acceptance.rs"]
 mod acceptance_tests;

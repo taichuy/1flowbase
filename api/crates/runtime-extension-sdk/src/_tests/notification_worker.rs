@@ -29,6 +29,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }),
                 NotificationOperation::Send { input_payload, target } => {
                     let target = target.ok_or("target required")?;
+                    let expected_message = match target.sender_id.as_str() {
+                        "alice" => "alice-input", "bob" => "bob-input", _ => return Err("unknown sender")
+                    };
+                    if target.conversation_id != "external-room" || target.provider_message_id != expected_message
+                        || input_payload["text"] != format!("Final for {}", target.sender_id) {
+                        return Err("send must use exact durable target and final answer");
+                    }
                     json!({"type":"send","outcome":{"status":"succeeded","result":{
                         "accepted":true,"delivery_id":format!("{}:{}:{}:{}", target.sender_id, target.conversation_id, target.provider_message_id, input_payload["text"].as_str().unwrap_or_default())
                     }}})

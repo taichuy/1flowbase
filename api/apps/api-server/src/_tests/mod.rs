@@ -1,4 +1,4 @@
-mod application;
+pub(crate) mod application;
 mod application_public_api;
 mod assistant;
 #[path = "identity_routes/auth_center_routes.rs"]
