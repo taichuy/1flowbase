@@ -30,6 +30,10 @@ pub(crate) use paging::{inline_limit, ContinuationCursor, DEFAULT_INLINE_CHARS};
 mod cache_tests;
 
 #[cfg(test)]
+#[path = "result_delivery/_tests/chunked_cache.rs"]
+mod chunked_cache_tests;
+
+#[cfg(test)]
 #[path = "result_delivery/_tests/protocol.rs"]
 mod protocol_tests;
 
