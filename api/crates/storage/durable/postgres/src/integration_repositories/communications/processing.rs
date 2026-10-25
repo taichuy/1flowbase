@@ -18,8 +18,12 @@ pub(super) async fn claim(
     // A persisted run ID must be inspected by the host, not blindly executed again.
     sqlx::query("UPDATE communication_messages SET processing_status='failed',failure_code='run_interrupted',claim_id=NULL,claim_expires_at=NULL WHERE workspace_id=$1 AND instance_id=$2 AND processing_status='processing' AND run_id IS NOT NULL AND claim_expires_at<=now()")
         .bind(w).bind(i).execute(&mut *tx).await?;
-    let row=sqlx::query("SELECT m.* FROM communication_messages m JOIN communication_conversations c ON c.id=m.conversation_id WHERE m.workspace_id=$1 AND m.instance_id=$2 AND ((m.processing_status='pending') OR (m.processing_status='processing' AND m.run_id IS NULL AND m.claim_expires_at<=now()) OR (m.processing_status='succeeded' AND m.send_status='pending' AND (m.claim_id IS NULL OR m.claim_expires_at<=now()))) AND NOT EXISTS(SELECT 1 FROM communication_messages p WHERE p.conversation_id=m.conversation_id AND p.id<m.id AND (p.processing_status IN ('pending','processing') OR p.send_status IN ('pending','sending'))) ORDER BY m.id LIMIT 1 FOR UPDATE OF c,m SKIP LOCKED")
-        .bind(w).bind(i).fetch_optional(&mut *tx).await?;
+    let sql=format!("SELECT m.*,({RETRY_ELIGIBILITY}) AS can_retry FROM communication_messages m JOIN communication_conversations c ON c.id=m.conversation_id WHERE m.workspace_id=$1 AND m.instance_id=$2 AND ((m.processing_status='pending') OR (m.processing_status='processing' AND m.run_id IS NULL AND m.claim_expires_at<=now()) OR (m.processing_status='succeeded' AND m.send_status='pending' AND (m.claim_id IS NULL OR m.claim_expires_at<=now()))) AND NOT EXISTS(SELECT 1 FROM communication_messages p WHERE p.conversation_id=m.conversation_id AND p.id<m.id AND (p.processing_status IN ('pending','processing') OR p.send_status IN ('pending','sending'))) ORDER BY m.id LIMIT 1 FOR UPDATE OF c,m SKIP LOCKED");
+    let row = sqlx::query(&sql)
+        .bind(w)
+        .bind(i)
+        .fetch_optional(&mut *tx)
+        .await?;
     let Some(row) = row else {
         tx.commit().await?;
         return Ok(None);
@@ -129,8 +133,13 @@ pub(super) async fn progress(
 }
 pub(super) async fn retry(store: &PgControlPlaneStore, w: Uuid, i: Uuid, m: Uuid) -> Result<bool> {
     let mut tx = store.pool().begin().await?;
-    let row=sqlx::query("UPDATE communication_messages m SET processing_status=CASE WHEN processing_status='failed' THEN 'pending' ELSE processing_status END,send_status=CASE WHEN send_status='failed' THEN 'pending' ELSE send_status END,run_id=CASE WHEN processing_status='failed' THEN NULL ELSE run_id END,failure_code=NULL,claim_id=NULL,claim_expires_at=NULL WHERE workspace_id=$1 AND instance_id=$2 AND id=$3 AND send_status<>'unknown' AND (processing_status='failed' OR send_status='failed') AND (claim_id IS NULL OR claim_expires_at<=now()) AND EXISTS(SELECT 1 FROM notification_instances n WHERE n.id=m.instance_id AND n.workspace_id=m.workspace_id AND n.status='enabled') RETURNING id")
-        .bind(w).bind(i).bind(m).fetch_optional(&mut *tx).await?;
+    let sql=format!("UPDATE communication_messages m SET processing_status=CASE WHEN processing_status='failed' THEN 'pending' ELSE processing_status END,send_status=CASE WHEN send_status='failed' THEN 'pending' ELSE send_status END,run_id=CASE WHEN processing_status='failed' THEN NULL ELSE run_id END,failure_code=NULL,claim_id=NULL,claim_expires_at=NULL WHERE workspace_id=$1 AND instance_id=$2 AND id=$3 AND ({RETRY_ELIGIBILITY}) RETURNING id");
+    let row = sqlx::query(&sql)
+        .bind(w)
+        .bind(i)
+        .bind(m)
+        .fetch_optional(&mut *tx)
+        .await?;
     if row.is_some() {
         sqlx::query("UPDATE communication_attachments SET status='pending',failure_code=NULL WHERE message_id=$1 AND status='failed'").bind(m).execute(&mut *tx).await?;
     }

@@ -9,6 +9,8 @@ use domain::*;
 use serde_json::Value;
 use sqlx::{postgres::PgRow, Row};
 use uuid::Uuid;
+// Shared by history projection and the atomic retry write to prevent UI eligibility drift.
+const RETRY_ELIGIBILITY: &str = "m.send_status<>'unknown' AND (m.processing_status='failed' OR m.send_status='failed') AND (m.claim_id IS NULL OR m.claim_expires_at<=now()) AND EXISTS(SELECT 1 FROM notification_instances n WHERE n.id=m.instance_id AND n.workspace_id=m.workspace_id AND n.status='enabled')";
 mod history;
 mod processing;
 mod receive;
@@ -40,6 +42,7 @@ fn message(row: PgRow) -> Result<CommunicationMessage> {
         external_message_key: row.get("external_message_key"),
         received_at_ms: row.get("received_at_ms"),
         content: row.get("content"),
+        can_retry: row.get("can_retry"),
         processing_status: serde_json::from_value(Value::String(row.get("processing_status")))?,
         run_id: row.get("run_id"),
         final_reply: row.get("final_reply"),

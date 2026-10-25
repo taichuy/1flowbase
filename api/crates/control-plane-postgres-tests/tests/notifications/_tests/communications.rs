@@ -573,3 +573,156 @@ async fn communication_expired_claims_recover_without_repeating_unknown_sends() 
         .await
         .unwrap());
 }
+
+#[tokio::test]
+async fn communication_can_retry_projects_status_lease_and_channel_eligibility() {
+    let (store, w, root) = super::super::support::seed_store().await;
+    let actor = store
+        .load_actor_context(root.id, w.tenant_id, w.id, None)
+        .await
+        .unwrap();
+    let service = NotificationService::new(store.clone(), KEY.into());
+    let channel = create_channel(&store, w.id).await;
+    service
+        .save_binding(&actor, channel, config(), "retry-tools".into())
+        .await
+        .unwrap();
+    let revision = store
+        .resolve_notification_authorization(w.id, channel, KEY)
+        .await
+        .unwrap()
+        .revision;
+    service
+        .commit_receive(CommitCommunicationReceiveInput {
+            authorization: authorization(w.id, channel, revision),
+            candidate_cursor: None,
+            messages: vec![received("retry-eligibility", "alice", false)],
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let claim = service
+        .claim_pending_input(w.id, channel, 60)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!claim.message.can_retry);
+    let scope = CommunicationHistoryScope {
+        workspace_id: w.id,
+        instance_id: channel,
+        external_identity: "alice".into(),
+    };
+    let key = CommunicationClaim {
+        workspace_id: w.id,
+        instance_id: channel,
+        message_id: claim.message.id,
+        claim_id: claim.claim_id,
+    };
+    assert!(service
+        .record_progress(
+            &key,
+            CommunicationProgress::RunFailed {
+                failure_code: "fixture_failure".into()
+            }
+        )
+        .await
+        .unwrap());
+    assert!(
+        service
+            .scoped_message_history(&scope, claim.conversation.id, None, 100)
+            .await
+            .unwrap()
+            .items[0]
+            .can_retry
+    );
+    // Model both live/expired crash claims, not just the normally released terminal lease.
+    sqlx::query("UPDATE communication_messages SET claim_id=$2,claim_expires_at=now()+interval '1 hour' WHERE id=$1")
+        .bind(claim.message.id).bind(claim.claim_id).execute(store.pool()).await.unwrap();
+    assert!(
+        !service
+            .scoped_message_history(&scope, claim.conversation.id, None, 100)
+            .await
+            .unwrap()
+            .items[0]
+            .can_retry
+    );
+    assert!(!service
+        .retry_message(&actor, channel, claim.message.id)
+        .await
+        .unwrap());
+    sqlx::query(
+        "UPDATE communication_messages SET claim_expires_at=now()-interval '1 second' WHERE id=$1",
+    )
+    .bind(claim.message.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    assert!(
+        service
+            .scoped_message_history(&scope, claim.conversation.id, None, 100)
+            .await
+            .unwrap()
+            .items[0]
+            .can_retry
+    );
+    sqlx::query("UPDATE notification_instances SET status='disabled' WHERE id=$1")
+        .bind(channel)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert!(
+        !service
+            .scoped_message_history(&scope, claim.conversation.id, None, 100)
+            .await
+            .unwrap()
+            .items[0]
+            .can_retry
+    );
+    assert!(!service
+        .retry_message(&actor, channel, claim.message.id)
+        .await
+        .unwrap());
+    sqlx::query("UPDATE notification_instances SET status='enabled' WHERE id=$1")
+        .bind(channel)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    sqlx::query("UPDATE communication_messages SET send_status='unknown' WHERE id=$1")
+        .bind(claim.message.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert!(
+        !service
+            .scoped_message_history(&scope, claim.conversation.id, None, 100)
+            .await
+            .unwrap()
+            .items[0]
+            .can_retry
+    );
+    assert!(!service
+        .retry_message(&actor, channel, claim.message.id)
+        .await
+        .unwrap());
+    sqlx::query("UPDATE communication_messages SET processing_status='succeeded',send_status='failed' WHERE id=$1").bind(claim.message.id).execute(store.pool()).await.unwrap();
+    assert!(
+        service
+            .scoped_message_history(&scope, claim.conversation.id, None, 100)
+            .await
+            .unwrap()
+            .items[0]
+            .can_retry
+    );
+    assert!(service
+        .retry_message(&actor, channel, claim.message.id)
+        .await
+        .unwrap());
+    assert!(
+        !service
+            .scoped_message_history(&scope, claim.conversation.id, None, 100)
+            .await
+            .unwrap()
+            .items[0]
+            .can_retry
+    );
+}

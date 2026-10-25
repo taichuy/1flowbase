@@ -65,6 +65,8 @@ pub struct CommunicationMessage {
     pub received_at_ms: i64,
     pub content: Option<String>,
     pub processing_status: CommunicationProcessingStatus,
+    /// Current backend eligibility; clients must not derive this from visible status alone.
+    pub can_retry: bool,
     pub run_id: Option<Uuid>,
     pub final_reply: Option<String>,
     pub send_status: CommunicationSendStatus,
