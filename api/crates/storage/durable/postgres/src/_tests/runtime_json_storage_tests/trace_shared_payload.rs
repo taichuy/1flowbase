@@ -1,7 +1,7 @@
 use super::*;
 use sqlx::Row;
 
-fn trace_node(trace: Uuid) -> ApplicationRunTraceNodeProjectionInput {
+pub(super) fn trace_node(trace: Uuid) -> ApplicationRunTraceNodeProjectionInput {
     ApplicationRunTraceNodeProjectionInput {
         trace_node_id: trace,
         parent_trace_node_id: None,

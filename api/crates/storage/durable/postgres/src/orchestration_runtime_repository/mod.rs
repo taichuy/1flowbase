@@ -75,6 +75,8 @@ mod json_storage;
 mod log_query;
 mod observation_bodies;
 mod task_trace_sources;
+#[path = "trace_projection/write.rs"]
+mod trace_projection_write;
 mod trajectory;
 use json_storage::{
     lossless_json_columns, lossless_json_parameter, lossless_json_value, lossless_text_parameter,

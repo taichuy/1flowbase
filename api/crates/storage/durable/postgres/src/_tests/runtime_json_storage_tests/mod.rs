@@ -5,6 +5,7 @@ mod native_snapshots;
 mod node_details;
 mod node_events;
 mod observation_bodies;
+mod trace_differential;
 mod trace_shared_payload;
 
 use control_plane_contracts::{application_public_runtime::*, ports::*};
