@@ -13,6 +13,7 @@ pub(crate) use capability_catalog::{
     get_openapi_capability_with, query_openapi_capability_catalog_with,
     OpenApiCapabilityCatalogDependencies,
 };
+pub(crate) use catalog::catalog_entry_from_view;
 pub use catalog::{
     catalog_entry_from_operation, OpenApiInterfaceCatalogEntry, OpenApiParameterDescriptor,
     OpenApiParameterLocation,

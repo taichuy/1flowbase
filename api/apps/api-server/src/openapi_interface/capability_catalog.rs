@@ -355,17 +355,17 @@ pub(crate) async fn build_openapi_capability_catalog_with(
             continue;
         };
         for operation in &operations.operations {
-            let Some(spec) = dependencies.api_docs.operation_spec(&operation.id) else {
+            let Some(spec) = dependencies.api_docs.operation_spec_view(&operation.id) else {
                 continue;
             };
-            let Some(interface) = catalog_entry_from_operation(operation, spec) else {
+            let Some(interface) = super::catalog_entry_from_view(operation, &spec) else {
                 continue;
             };
             let route = route_identity(&operation.method, &operation.path);
             if compiled_interfaces.contains_key(&route) {
                 documented_console_routes.insert(route);
             }
-            let disabled_reason = static_disabled_reason(operation, spec, &interface);
+            let disabled_reason = static_disabled_reason(operation, spec.source(), &interface);
             entries.push(OpenApiCapabilityCatalogEntry {
                 risk_level: operation_risk_level(&interface.method),
                 interface,

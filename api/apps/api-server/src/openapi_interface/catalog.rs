@@ -1,9 +1,9 @@
-use std::collections::BTreeSet;
+use std::{borrow::Cow, collections::BTreeSet};
 
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use crate::openapi_docs::DocsCatalogOperation;
+use crate::openapi_docs::{DocsCatalogOperation, OperationSpecView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -44,6 +44,48 @@ pub fn catalog_entry_from_operation(
     operation: &DocsCatalogOperation,
     spec: &Value,
 ) -> Option<OpenApiInterfaceCatalogEntry> {
+    catalog_entry(operation, &CatalogSpec::Full(spec))
+}
+
+pub(crate) fn catalog_entry_from_view(
+    operation: &DocsCatalogOperation,
+    spec: &OperationSpecView<'_>,
+) -> Option<OpenApiInterfaceCatalogEntry> {
+    catalog_entry(operation, &CatalogSpec::Scoped(spec))
+}
+
+// Only path-level parameters and the selected operation are read from source;
+// component resolution must use the final scope, rather than the canonical tree.
+enum CatalogSpec<'a> {
+    Full(&'a Value),
+    Scoped(&'a OperationSpecView<'a>),
+}
+
+impl CatalogSpec<'_> {
+    fn source(&self) -> &Value {
+        match self {
+            Self::Full(spec) => spec,
+            Self::Scoped(spec) => spec.source(),
+        }
+    }
+    fn security(&self) -> Option<&Value> {
+        match self {
+            Self::Full(spec) => spec.get("security"),
+            Self::Scoped(spec) => spec.security(),
+        }
+    }
+    fn pointer(&self, pointer: &str) -> Option<Cow<'_, Value>> {
+        match self {
+            Self::Full(spec) => spec.pointer(pointer).map(Cow::Borrowed),
+            Self::Scoped(spec) => spec.resolve_pointer(pointer),
+        }
+    }
+}
+
+fn catalog_entry(
+    operation: &DocsCatalogOperation,
+    spec: &CatalogSpec<'_>,
+) -> Option<OpenApiInterfaceCatalogEntry> {
     let operation_node = operation_node(spec, operation)?;
     let path_item_node = path_item_node(spec, operation)?;
     let request_contract = request_body_contract(spec, operation_node);
@@ -70,29 +112,36 @@ pub fn catalog_entry_from_operation(
         response_media_type: response_contract.map(|(media_type, _)| media_type),
         security: operation_node
             .get("security")
-            .or_else(|| spec.get("security"))
+            .or_else(|| spec.security())
             .cloned()
             .unwrap_or_else(|| Value::Array(Vec::new())),
     })
 }
 
-fn operation_node<'a>(spec: &'a Value, operation: &DocsCatalogOperation) -> Option<&'a Value> {
-    spec.pointer(&format!(
+fn operation_node<'a>(
+    spec: &'a CatalogSpec<'_>,
+    operation: &DocsCatalogOperation,
+) -> Option<&'a Value> {
+    spec.source().pointer(&format!(
         "/paths/{}/{}",
         escape_pointer(&operation.path),
         operation.method.to_ascii_lowercase()
     ))
 }
 
-fn path_item_node<'a>(spec: &'a Value, operation: &DocsCatalogOperation) -> Option<&'a Value> {
-    spec.pointer(&format!("/paths/{}", escape_pointer(&operation.path)))
+fn path_item_node<'a>(
+    spec: &'a CatalogSpec<'_>,
+    operation: &DocsCatalogOperation,
+) -> Option<&'a Value> {
+    spec.source()
+        .pointer(&format!("/paths/{}", escape_pointer(&operation.path)))
 }
 
 fn escape_pointer(token: &str) -> String {
     token.replace('~', "~0").replace('/', "~1")
 }
 
-fn input_schema(spec: &Value, path_item: &Value, operation: &Value) -> Value {
+fn input_schema(spec: &CatalogSpec<'_>, path_item: &Value, operation: &Value) -> Value {
     let mut properties = Map::new();
     let mut required = Vec::new();
     for location in ["path", "query", "header"] {
@@ -123,7 +172,7 @@ fn input_schema(spec: &Value, path_item: &Value, operation: &Value) -> Value {
 }
 
 fn parameter_descriptors(
-    spec: &Value,
+    spec: &CatalogSpec<'_>,
     path_item: &Value,
     operation: &Value,
 ) -> Vec<OpenApiParameterDescriptor> {
@@ -185,7 +234,7 @@ fn all_parameters<'a>(
 }
 
 fn parameter_location_schema(
-    spec: &Value,
+    spec: &CatalogSpec<'_>,
     path_item: &Value,
     operation: &Value,
     location: &str,
@@ -225,11 +274,14 @@ fn parameter_location_schema(
     (!properties.is_empty()).then(|| object_schema(properties, required))
 }
 
-fn request_body_schema(spec: &Value, operation: &Value) -> Option<(Value, bool)> {
+fn request_body_schema(spec: &CatalogSpec<'_>, operation: &Value) -> Option<(Value, bool)> {
     request_body_contract(spec, operation).map(|(_, schema, required)| (schema, required))
 }
 
-fn request_body_contract(spec: &Value, operation: &Value) -> Option<(String, Value, bool)> {
+fn request_body_contract(
+    spec: &CatalogSpec<'_>,
+    operation: &Value,
+) -> Option<(String, Value, bool)> {
     let body = resolve(spec, operation.get("requestBody")?, 0);
     let (media_type, schema) = media_schema(spec, body.get("content")?)?;
     Some((
@@ -241,7 +293,7 @@ fn request_body_contract(spec: &Value, operation: &Value) -> Option<(String, Val
     ))
 }
 
-fn body_descriptors(spec: &Value, operation: &Value) -> Vec<OpenApiParameterDescriptor> {
+fn body_descriptors(spec: &CatalogSpec<'_>, operation: &Value) -> Vec<OpenApiParameterDescriptor> {
     let Some(raw_body) = operation.get("requestBody") else {
         return Vec::new();
     };
@@ -316,7 +368,7 @@ fn append_body_descriptors(
     });
 }
 
-fn response_contract(spec: &Value, operation: &Value) -> Option<(String, Value)> {
+fn response_contract(spec: &CatalogSpec<'_>, operation: &Value) -> Option<(String, Value)> {
     let responses = operation.get("responses").and_then(Value::as_object)?;
     let mut statuses = responses
         .keys()
@@ -335,7 +387,7 @@ fn response_contract(spec: &Value, operation: &Value) -> Option<(String, Value)>
     None
 }
 
-fn media_schema(spec: &Value, content: &Value) -> Option<(String, Value)> {
+fn media_schema(spec: &CatalogSpec<'_>, content: &Value) -> Option<(String, Value)> {
     let content = content.as_object()?;
     let selected = content
         .get_key_value("application/json")
@@ -375,7 +427,7 @@ fn field_type(schema: &Value) -> String {
         .to_string()
 }
 
-fn resolve(spec: &Value, value: &Value, depth: usize) -> Value {
+fn resolve(spec: &CatalogSpec<'_>, value: &Value, depth: usize) -> Value {
     if depth > 16 {
         return value.clone();
     }
@@ -386,7 +438,7 @@ fn resolve(spec: &Value, value: &Value, depth: usize) -> Value {
                     .strip_prefix('#')
                     .and_then(|pointer| spec.pointer(pointer))
                 {
-                    let mut resolved = resolve(spec, target, depth + 1);
+                    let mut resolved = resolve(spec, &target, depth + 1);
                     if let Value::Object(resolved) = &mut resolved {
                         for (key, sibling) in map {
                             if key != "$ref" {

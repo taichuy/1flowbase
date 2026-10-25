@@ -270,12 +270,11 @@ impl DocsAdapter {
                     ));
                 }
                 if let Some(spec) = self.0.api_docs.category_spec(&category_id) {
-                    return Ok(DocsOutput::OpenApi(spec.clone()));
+                    return Ok(DocsOutput::OpenApi(spec));
                 }
                 let extension_docs = self.extension_docs().await?;
                 let spec = extension_docs
                     .category_spec(&category_id)
-                    .cloned()
                     .ok_or(ControlPlaneError::NotFound("category_id"))?;
                 Ok(DocsOutput::OpenApi(spec))
             }
@@ -301,12 +300,11 @@ impl DocsAdapter {
                     return Ok(DocsOutput::OpenApi(spec));
                 }
                 if let Some(spec) = self.0.api_docs.operation_spec(&operation_id) {
-                    return Ok(DocsOutput::OpenApi(spec.clone()));
+                    return Ok(DocsOutput::OpenApi(spec));
                 }
                 let extension_docs = self.extension_docs().await?;
                 let spec = extension_docs
                     .operation_spec(&operation_id)
-                    .cloned()
                     .ok_or(ControlPlaneError::NotFound("operation_id"))?;
                 Ok(DocsOutput::OpenApi(spec))
             }

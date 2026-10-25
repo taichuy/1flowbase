@@ -1,4 +1,7 @@
 pub(crate) mod managed_projection;
+mod scope_plan;
+pub(crate) use scope_plan::OperationSpecView;
+use scope_plan::ScopePlan;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -67,8 +70,9 @@ pub struct DocsCatalog {
 pub struct ApiDocsRegistry {
     catalog: DocsCatalog,
     category_operations: HashMap<String, DocsCatalogCategoryOperations>,
-    category_specs: HashMap<String, Value>,
-    operation_specs: HashMap<String, Value>,
+    canonical: Value,
+    category_plans: HashMap<String, ScopePlan>,
+    operation_plans: HashMap<String, ScopePlan>,
 }
 
 impl ApiDocsRegistry {
@@ -76,8 +80,19 @@ impl ApiDocsRegistry {
         &self.catalog
     }
 
-    pub fn operation_spec(&self, operation_id: &str) -> Option<&Value> {
-        self.operation_specs.get(operation_id)
+    pub fn operation_spec(&self, operation_id: &str) -> Option<Value> {
+        self.operation_plans
+            .get(operation_id)
+            .map(|plan| plan.materialize(&self.canonical))
+    }
+
+    pub(crate) fn operation_spec_view(&self, operation_id: &str) -> Option<OperationSpecView<'_>> {
+        self.operation_plans
+            .get(operation_id)
+            .map(|plan| OperationSpecView {
+                canonical: &self.canonical,
+                plan,
+            })
     }
 
     pub fn operation(&self, operation_id: &str) -> Option<DocsCatalogOperation> {
@@ -92,8 +107,10 @@ impl ApiDocsRegistry {
         self.category_operations.get(category_id)
     }
 
-    pub fn category_spec(&self, category_id: &str) -> Option<&Value> {
-        self.category_specs.get(category_id)
+    pub fn category_spec(&self, category_id: &str) -> Option<Value> {
+        self.category_plans
+            .get(category_id)
+            .map(|plan| plan.materialize(&self.canonical))
     }
 }
 
@@ -216,8 +233,8 @@ pub(crate) fn build_api_docs_registry_with_cookie_name(
     let mut category_operations = HashMap::<String, DocsCatalogCategoryOperations>::new();
     let mut category_members = HashMap::<String, Vec<(String, String)>>::new();
     let mut category_singleton_flags = HashMap::<String, bool>::new();
-    let mut category_specs = HashMap::new();
-    let mut operation_specs = HashMap::new();
+    let mut category_plans = HashMap::new();
+    let mut operation_plans = HashMap::new();
     let mut seen_ids = HashSet::new();
 
     for (path, path_item) in paths {
@@ -283,9 +300,9 @@ pub(crate) fn build_api_docs_registry_with_cookie_name(
                 .operations
                 .push(catalog_operation);
 
-            operation_specs.insert(
+            operation_plans.insert(
                 operation_id.to_string(),
-                close_operation_spec(&canonical, path, method)?,
+                ScopePlan::compile(&canonical, &[(path.to_string(), (*method).to_string())])?,
             );
         }
     }
@@ -295,7 +312,10 @@ pub(crate) fn build_api_docs_registry_with_cookie_name(
     }
 
     for (category_id, members) in &category_members {
-        category_specs.insert(category_id.clone(), close_scoped_spec(&canonical, members)?);
+        category_plans.insert(
+            category_id.clone(),
+            ScopePlan::compile(&canonical, members)?,
+        );
     }
 
     let mut categories = category_operations
@@ -315,8 +335,9 @@ pub(crate) fn build_api_docs_registry_with_cookie_name(
             categories,
         },
         category_operations,
-        category_specs,
-        operation_specs,
+        canonical,
+        category_plans,
+        operation_plans,
     })
 }
 
@@ -650,142 +671,6 @@ pub fn collect_refs(value: &Value, refs: &mut BTreeSet<String>) {
     }
 }
 
-fn close_operation_spec(canonical: &Value, path: &str, method: &str) -> Result<Value> {
-    close_scoped_spec(canonical, &[(path.to_string(), method.to_string())])
-}
-
-fn close_scoped_spec(canonical: &Value, scoped_operations: &[(String, String)]) -> Result<Value> {
-    let canonical_map = canonical
-        .as_object()
-        .context("canonical OpenAPI document must be a JSON object")?;
-    let canonical_paths = canonical_map
-        .get("paths")
-        .and_then(Value::as_object)
-        .context("canonical OpenAPI document must contain paths")?;
-
-    let mut scoped_paths = Map::new();
-    let mut operation_tags = BTreeSet::new();
-    let scoped_security = collect_scoped_security_requirements(canonical_map, scoped_operations)?;
-    let scoped_security_scheme_names = collect_security_scheme_names(&scoped_security);
-
-    for (path, method) in scoped_operations {
-        let path_item_map = canonical_paths
-            .get(path)
-            .and_then(Value::as_object)
-            .with_context(|| format!("path `{path}` not found in canonical document"))?;
-        let scoped_path_item = scoped_paths
-            .entry(path.clone())
-            .or_insert_with(|| Value::Object(Map::new()));
-        let scoped_path_item_map = scoped_path_item
-            .as_object_mut()
-            .context("scoped path item must be an object")?;
-
-        for (key, value) in path_item_map {
-            if key == method || !HTTP_METHODS.contains(&key.as_str()) {
-                scoped_path_item_map
-                    .entry(key.clone())
-                    .or_insert_with(|| value.clone());
-            }
-        }
-
-        let operation = path_item_map.get(method).with_context(|| {
-            format!("operation `{method} {path}` not found in canonical document")
-        })?;
-        operation_tags.extend(extract_tags(operation));
-    }
-
-    let mut refs = BTreeSet::new();
-    collect_refs(&Value::Object(scoped_paths.clone()), &mut refs);
-
-    let mut components = Value::Object(Map::new());
-    let mut pending_refs = refs.iter().cloned().collect::<Vec<_>>();
-    let mut visited_refs = HashSet::new();
-
-    while let Some(reference) = pending_refs.pop() {
-        if !visited_refs.insert(reference.clone()) {
-            continue;
-        }
-
-        let pointer = reference
-            .strip_prefix('#')
-            .ok_or_else(|| anyhow!("unsupported external $ref `{reference}`"))?;
-        let referenced_value = canonical
-            .pointer(pointer)
-            .with_context(|| format!("missing referenced node `{reference}`"))?
-            .clone();
-
-        if let Some(component_pointer) = pointer.strip_prefix("/components") {
-            insert_pointer(&mut components, component_pointer, referenced_value.clone())?;
-        } else {
-            bail!("unsupported non-components $ref `{reference}`");
-        }
-
-        let mut nested_refs = BTreeSet::new();
-        collect_refs(&referenced_value, &mut nested_refs);
-        pending_refs.extend(nested_refs);
-    }
-
-    for scheme_name in scoped_security_scheme_names {
-        let security_scheme = canonical
-            .pointer(&format!(
-                "/components/securitySchemes/{}",
-                scheme_name.replace('~', "~0").replace('/', "~1")
-            ))
-            .with_context(|| format!("missing security scheme `{scheme_name}`"))?
-            .clone();
-        insert_pointer(
-            &mut components,
-            &format!("/securitySchemes/{scheme_name}"),
-            security_scheme,
-        )?;
-    }
-
-    let filtered_tags = canonical_map
-        .get("tags")
-        .and_then(Value::as_array)
-        .map(|tags| {
-            tags.iter()
-                .filter(|tag| {
-                    tag.get("name")
-                        .and_then(Value::as_str)
-                        .map(|name| operation_tags.contains(name))
-                        .unwrap_or(false)
-                })
-                .cloned()
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    let mut spec = Map::new();
-    spec.insert(
-        "openapi".to_string(),
-        canonical_map
-            .get("openapi")
-            .cloned()
-            .context("canonical OpenAPI document must contain openapi")?,
-    );
-    spec.insert(
-        "info".to_string(),
-        canonical_map
-            .get("info")
-            .cloned()
-            .context("canonical OpenAPI document must contain info")?,
-    );
-    if let Some(servers) = canonical_map.get("servers") {
-        spec.insert("servers".to_string(), servers.clone());
-    }
-    if !scoped_security.is_empty() {
-        spec.insert("security".to_string(), Value::Array(scoped_security));
-    }
-    spec.insert("paths".to_string(), Value::Object(scoped_paths));
-    spec.insert("components".to_string(), components);
-    if !filtered_tags.is_empty() {
-        spec.insert("tags".to_string(), Value::Array(filtered_tags));
-    }
-
-    Ok(Value::Object(spec))
-}
-
 fn collect_scoped_security_requirements(
     canonical_map: &Map<String, Value>,
     scoped_operations: &[(String, String)],
@@ -838,38 +723,6 @@ fn collect_security_scheme_names(requirements: &[Value]) -> BTreeSet<String> {
     }
 
     scheme_names
-}
-
-fn insert_pointer(target: &mut Value, pointer: &str, value: Value) -> Result<()> {
-    if pointer.is_empty() {
-        *target = value;
-        return Ok(());
-    }
-
-    let mut current = target;
-    let mut tokens = pointer
-        .trim_start_matches('/')
-        .split('/')
-        .map(unescape_json_pointer_token)
-        .peekable();
-
-    while let Some(token) = tokens.next() {
-        let is_last = tokens.peek().is_none();
-        let map = current
-            .as_object_mut()
-            .context("JSON pointer target must be an object")?;
-
-        if is_last {
-            map.insert(token, value);
-            return Ok(());
-        }
-
-        current = map
-            .entry(token)
-            .or_insert_with(|| Value::Object(Map::new()));
-    }
-
-    Ok(())
 }
 
 fn unescape_json_pointer_token(token: &str) -> String {
