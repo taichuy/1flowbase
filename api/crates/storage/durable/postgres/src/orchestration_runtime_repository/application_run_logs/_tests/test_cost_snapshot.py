@@ -46,7 +46,7 @@ def main():
             fixture = (here / 'cost_snapshot.sql').read_text().split('-- A failed provider attempt')[0]
             before, after = (here / 'fixtures/terminal_task_projection.sql').read_text().split('-- APPLY MIGRATION')
             sql += fixture + before + migration.read_text() + after + '\nrollback;\n'
-        if migration.name == '20261025120000_native_log_current_input_and_turn_settlement.sql':
+        if migration.name == '20261025121000_native_log_current_input_and_turn_settlement.sql':
             fixture = (here / 'cost_snapshot.sql').read_text().split('-- A failed provider attempt')[0]
             before, after = (here / 'fixtures/interrupted_turn_projection.sql').read_text().split('-- APPLY MIGRATION')
             sql += fixture + before + migration.read_text() + after + '\nrollback;\n'

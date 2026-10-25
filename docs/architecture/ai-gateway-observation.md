@@ -85,7 +85,7 @@ AI Gateway 的映射协议层将请求接入 AI Native 统一契约；供应商�
 
 当前用户输入由请求本身确定。Responses 来源适配保留完整文字及原有文本块换行，媒体字节仍由原始协议采集保存；语义 prompt 标记为文本投影，不能冒充完整原文。身份解析失败不删除独立文字，也不据此建立跨任务归属。旧空消息或 content_omitted 占位不阻挡同一 anchor 运行的当前输入；不得从模型历史、system、工具结果或另一轮猜测用户问题。历史恢复只通过 forward migration 更新可重建投影，GET 不修复数据。任务、列表和会话读取复用同一当前输入选源；PostgreSQL 安全文本与已有 raw_json_payloads 中的原文编码保持配对，由后端既有无损文本读取器还原 NUL 等字符，区分真实字符与字面转义。原文按现有主键读取，不新增长期副本。
 
-实现入口：[当前输入与轮次收敛](../../api/crates/storage/durable/postgres/migrations/20261025120000_native_log_current_input_and_turn_settlement.sql)。
+实现入口：[当前输入与轮次收敛](../../api/crates/storage/durable/postgres/migrations/20261025121000_native_log_current_input_and_turn_settlement.sql)。
 
 ## 二级对话的任务边界
 

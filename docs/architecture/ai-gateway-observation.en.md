@@ -80,7 +80,7 @@ Only the derived logical task settles. Old flow runs, callbacks, delivery/ACK an
 
 The current request owns user input. Responses capture preserves all text and existing block separators independently of media size or identity parsing. Semantic prompts explicitly identify text projection; exact media/wire evidence stays in protocol capture. Empty/omitted legacy prompts may use the same anchor run's retained current input, never imported history, system/tool content or another turn. Forward migration repairs derived historical rows; GET does not write. Task, list and conversation readers select the same current-input source, pairing PostgreSQL-safe text with its existing raw_json_payloads encoding. The existing backend lossless text reader restores characters such as NUL and distinguishes them from literal escape text; originals are read by existing keys without another persistent copy.
 
-Implementation: [current input and turn settlement](../../api/crates/storage/durable/postgres/migrations/20261025120000_native_log_current_input_and_turn_settlement.sql).
+Implementation: [current input and turn settlement](../../api/crates/storage/durable/postgres/migrations/20261025121000_native_log_current_input_and_turn_settlement.sql).
 
 ## Task boundaries in conversation detail
 
