@@ -558,7 +558,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     });
     filteredInstances = [];
     await click(screen.getByRole('button', { name: /^应\s*用$/u }));
-    await screen.findByText('暂无通知渠道');
+    await screen.findByText('暂无通讯渠道');
     const filtered = calls.find((call) => call.url.includes('display_name='));
     expect(
       new URL(filtered!.url, 'http://localhost').searchParams.get(

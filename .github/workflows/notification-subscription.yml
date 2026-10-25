@@ -69,30 +69,40 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p extension-contracts notification 2>&1 | tee tmp/test-governance/communications/ci/contracts.log
           cargo test --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk notification 2>&1 | tee tmp/test-governance/communications/ci/sdk.log
       - name: Receive manifest and binding contract acceptance
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p extension-package-runtime notification 2>&1 | tee tmp/test-governance/communications/ci/manifest.log
           cargo test --locked --manifest-path api/Cargo.toml -p plugin-framework notification_plan_tests 2>&1 | tee tmp/test-governance/communications/ci/bindings.log
       - name: Communication mapping and durable state acceptance
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib communication 2>&1 | tee tmp/test-governance/communications/ci/run-mapping.log
+      - name: Communication durable inbox acceptance
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test notifications_integration 2>&1 | tee tmp/test-governance/communications/ci/inbox-postgres.log
       - name: Communication dispatch recovery and workspace acceptance
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration communication_ 2>&1 | tee tmp/test-governance/communications/ci/dispatch-recovery.log
       - name: Communication backup scope and rekey acceptance
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::communications:: 2>&1 | tee tmp/test-governance/communications/ci/backup-communications.log
           cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::notifications:: 2>&1 | tee tmp/test-governance/communications/ci/backup-notifications.log
           cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::notification_backup_keeps_channel_configuration_separate_from_inbox_history 2>&1 | tee tmp/test-governance/communications/ci/backup-selection.log
       - name: Host state and projection acceptance
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib notifications::authorization::_tests 2>&1 | tee tmp/test-governance/communications/ci/control-plane.log
       - name: Build canonical managed workers
+        if: ${{ !cancelled() }}
         run: |
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example notification_worker --example notification_authorization_worker --example managed_hook_worker --example managed_event_worker
           echo "NOTIFICATION_AUTHORIZATION_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/notification_authorization_worker" >> "$GITHUB_ENV"
@@ -100,11 +110,13 @@ jobs:
           echo "MANAGED_HOOK_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - name: Canonical HTTP, PostgreSQL and real worker acceptance
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib notification_authorization_http_encrypts_fences_late_polls_and_preserves_delivery_outcomes -- --nocapture 2>&1 | tee tmp/test-governance/communications/ci/http-postgres.log
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib subscription -- --nocapture 2>&1 | tee tmp/test-governance/communications/ci/error-response.log
       - name: Communication and notification HTTP ownership regression
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib communication 2>&1 | tee tmp/test-governance/communications/ci/communication-host.log

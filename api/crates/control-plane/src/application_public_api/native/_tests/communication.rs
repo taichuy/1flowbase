@@ -2,7 +2,8 @@ use super::*;
 use anyhow::Result;
 use async_trait::async_trait;
 use extension_contracts::provider_contract::{
-    ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderMessageRole,
+    NativeModelPromptContext, ProviderFinishReason, ProviderInvocationInput,
+    ProviderInvocationResult, ProviderMessageRole,
 };
 use orchestration_runtime::{
     compiled_plan::{CompiledCodeRuntime, CompiledLlmRuntime, CompiledPlan, CompiledPluginRuntime},
@@ -140,10 +141,13 @@ fn public_native_cannot_forge_communication_marker_or_change_history_normalizati
     .unwrap();
     let normal =
         NativeInputMapper::map(&request, &ApplicationApiMappingConfig::default_native()).unwrap();
-    assert_eq!(
-        normal.node_input_payload["__native_model_prompt_context"]["messages"],
-        json!([])
-    );
+    let context: NativeModelPromptContext =
+        serde_json::from_value(normal.node_input_payload["__native_model_prompt_context"].clone())
+            .unwrap();
+    assert!(context.messages.is_empty());
+    assert!(normal.node_input_payload["__native_model_prompt_context"]
+        .get("messages")
+        .is_none());
     assert_eq!(
         normal.node_input_payload["__native_model_prompt_context"]["system"]
             .as_array()
