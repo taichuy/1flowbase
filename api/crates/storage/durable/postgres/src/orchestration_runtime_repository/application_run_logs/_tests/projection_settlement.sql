@@ -97,6 +97,7 @@ do $$ begin
  assert (select projection_settled_at is null and projection_deadline_at is null and projection_output is null from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'late callback clears timeout projection';
  assert not settle_next_application_log_projection(), 'old timer cannot settle resumed task';
 end $$;
+update flow_runs set status='waiting_callback' where id='00000000-0000-4000-8000-000000000011';
 update application_run_log_summaries set status='waiting_callback',input_tokens=null where flow_run_id='00000000-0000-4000-8000-000000000011';
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
 update runtime_cost_ledger set normalized_cost=null;
