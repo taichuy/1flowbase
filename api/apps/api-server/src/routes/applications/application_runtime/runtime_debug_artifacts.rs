@@ -138,7 +138,7 @@ impl RuntimeDebugArtifactWriter {
                 config_json: &self.storage.config_json,
                 object_path: &storage_ref,
                 content_type: Some(RUNTIME_DEBUG_ARTIFACT_CONTENT_TYPE_JSON),
-                bytes: &preview.full_bytes,
+                bytes: preview.full_bytes,
             })
             .await?;
         <_ as OrchestrationRuntimeRepository>::create_runtime_debug_artifact(
@@ -172,6 +172,7 @@ impl RuntimeDebugArtifactWriter {
     ) -> Result<Uuid, ApiError> {
         let artifact_id = Uuid::now_v7();
         let bytes = serde_json::to_vec(value)?;
+        let original_size_bytes = bytes.len() as i64;
         let storage_ref = build_runtime_debug_artifact_object_path(
             scope.workspace_id,
             scope.application_id,
@@ -184,7 +185,7 @@ impl RuntimeDebugArtifactWriter {
                 config_json: &self.storage.config_json,
                 object_path: &storage_ref,
                 content_type: Some(RUNTIME_DEBUG_ARTIFACT_CONTENT_TYPE_JSON),
-                bytes: &bytes,
+                bytes,
             })
             .await?;
         <_ as OrchestrationRuntimeRepository>::create_runtime_debug_artifact(
@@ -198,7 +199,7 @@ impl RuntimeDebugArtifactWriter {
                 run_event_id: scope.run_event_id,
                 artifact_kind: artifact_kind.to_string(),
                 content_type: RUNTIME_DEBUG_ARTIFACT_CONTENT_TYPE_JSON.to_string(),
-                original_size_bytes: bytes.len() as i64,
+                original_size_bytes,
                 preview_size_bytes: 0,
                 storage_id: self.storage.id,
                 storage_ref,

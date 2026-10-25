@@ -147,12 +147,13 @@ where
             OffsetDateTime::now_utc(),
         );
 
+        let size = command.bytes.len() as u64;
         let stored = driver
             .put_object(storage_object::FileStoragePutInput {
                 config_json: &storage.config_json,
                 object_path: &object_path,
                 content_type: Some(mimetype.as_str()),
-                bytes: &command.bytes,
+                bytes: command.bytes,
             })
             .await?;
         let metadata = domain::file_management::UploadedFileMetadata {
@@ -160,7 +161,7 @@ where
             title: command.original_filename.clone(),
             filename: command.original_filename,
             extname: (!extname.is_empty()).then_some(extname),
-            size: command.bytes.len() as u64,
+            size,
             mimetype,
             path: stored.path,
             meta: stored.metadata_json,

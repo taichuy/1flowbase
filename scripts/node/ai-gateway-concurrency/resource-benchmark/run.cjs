@@ -7,6 +7,7 @@ const { clockTicks, parseStat } = require('./proc.cjs');
 const { requestBody } = require('./payload.cjs');
 const { startMock, delay } = require('./mock.cjs');
 const { measure, request } = require('./measure.cjs');
+const { isolatedObjectRoot, verifyStorage, objectSnapshot, uploadFixture, uploadAndRead } = require('./mixed-workload.cjs');
 const { databaseSnapshot } = require('./database.cjs');
 const { assertNoArtifactSecrets } = require('../cli-smoke/artifact-scan');
 
@@ -16,6 +17,9 @@ async function run(config) {
   const { reserveLoopbackPort, spawnOwned } = require(path.join(config.repoRoot, 'scripts/node/ai-gateway-concurrency/gateway-fixture/process-owner'));
   const { openTemporaryOwnerSession } = require(path.join(config.repoRoot, 'scripts/node/page-debug/auth'));
   const sessions = [];
+  const mixed = config.workload === 'mixed';
+  let ownerClient, objectRoot, binding;
+  const upload = mixed ? uploadFixture(config.uploadBytes) : null;
   const canaries = secrets(config);
   class TemporaryOwner extends OwnerHttpClient {
     async signIn(account, password) {
@@ -23,6 +27,7 @@ async function run(config) {
       sessions.push(session);
       canaries.push(password, session.cookie, session.csrfToken);
       this.attachSession(session.cookie, session.csrfToken);
+      ownerClient = this;
     }
   }
   const report = {
@@ -41,6 +46,7 @@ async function run(config) {
       'Drain is a bounded observation window, not proof that all background tasks completed.',
       'Database lifecycle belongs to caller; WAL is cluster-wide and enabled only by dedicated-cluster acknowledgment.',
       'Database observations happen outside measured windows; null is missing evidence, never zero.',
+      ...(mixed ? ['Mixed workload covers Responses SSE text plus Console multipart upload/readback, not callback or all-protocol conformance.', 'Mixed object snapshots include metadata sidecars and happen outside measured windows. Temporary objects are removed with fixture scratch; DB lifecycle remains caller-owned.'] : []),
     ],
   };
   let fixture, mock;
@@ -64,15 +70,21 @@ async function run(config) {
       spawnOwned(binary, env, options) {
         // Runtime builtins need real source assets even when the binary's build tree is gone.
         // Mutable extension/backup state stays inside the fixture-owned scratch directory.
+        if (mixed) objectRoot = isolatedObjectRoot(options.cwd, config.repoRoot);
         return spawnOwned(binary, {
           ...env,
           API_MCP_TEMPLATE_LIBRARY_ROOT: path.join(options.cwd, 'mcp-library'),
           API_SYSTEM_BACKUP_REPOSITORY_ROOT: path.join(options.cwd, 'system-backups'),
           API_APPLICATION_TEMPLATE_ROOT: path.join(config.repoRoot, 'api/resources/application-templates'),
           API_MODEL_PRICING_BOOTSTRAP_ROOT: path.join(config.repoRoot, 'api/resources/model-pricing'),
-        }, { ...options, cwd: path.join(config.repoRoot, 'api') });
+        }, { ...options, cwd: mixed ? options.cwd : path.join(config.repoRoot, 'api') });
       },
     });
+    if (mixed) {
+      phase = 'mixed_storage_isolation';
+      binding = await verifyStorage(ownerClient, objectRoot);
+      report.objects_before = objectSnapshot(objectRoot);
+    }
     const target = fixture.result.targets.openai.gateway;
     const fixtureTarget = fixture.result.targets.openai;
     canaries.push(...Object.values(fixture.result.targets).map(t => t.api_key), ...fixture.result.pools.anthropic.map(t => t.api_key));
@@ -88,13 +100,17 @@ async function run(config) {
       check();
       const before = mock.snapshot();
       // Wait for every request to settle before cleanup, including rejected requests.
-      const results = await Promise.allSettled(Array.from({ length: config.concurrency }, () => request(target, body)));
+      const results = await Promise.allSettled([
+        ...Array.from({ length: config.concurrency }, () => request(target, body)),
+        ...(mixed ? Array.from({ length: config.concurrency }, () => uploadAndRead(ownerClient, upload, binding)) : []),
+      ]);
       const after = mock.snapshot();
       const failure = results.find(r => r.status === 'rejected');
       if (failure) throw failure.reason;
       const requestCount = after.requests - before.requests;
       if (requestCount !== config.concurrency || after.failures !== before.failures) throw Error('upstream request count mismatch');
-      return { requests: results.map(r => r.value), upstream: { request_count: requestCount, request_bytes: after.request_bytes - before.request_bytes, response_bytes: after.response_bytes - before.response_bytes, active_at_client_completion: after.active } };
+      return { requests: results.slice(0, config.concurrency).map(r => r.value),
+        ...(mixed ? { uploads: results.slice(config.concurrency).map(r => r.value), upload_file_count: config.concurrency, upload_bytes: config.concurrency * config.uploadBytes } : {}), upstream: { request_count: requestCount, request_bytes: after.request_bytes - before.request_bytes, response_bytes: after.response_bytes - before.response_bytes, active_at_client_completion: after.active } };
     };
     phase = 'baseline_idle';
     report.idle = await measure(config, fixture.gatewayPid, report.clock_ticks_per_second, () => delay(config.idleMs));
@@ -106,9 +122,10 @@ async function run(config) {
       const workload = await measure(config, fixture.gatewayPid, report.clock_ticks_per_second, batch);
       phase = `round_${i + 1}_drain`;
       const drain = await measure(config, fixture.gatewayPid, report.clock_ticks_per_second, () => delay(config.drainMs));
-      report.rounds.push({ ordinal: i + 1, workload, drain, drain_observation: { window_ms: config.drainMs, upstream: mock.snapshot(), completion_claim: false } });
+      report.rounds.push({ ordinal: i + 1, workload, drain, ...(mixed ? { objects_after: objectSnapshot(objectRoot) } : {}), drain_observation: { window_ms: config.drainMs, upstream: mock.snapshot(), completion_claim: false } });
     }
     report.database_after = await databaseSnapshot(config);
+    if (mixed) report.objects_after = objectSnapshot(objectRoot);
     report.outcome = 'observations_collected';
   } catch (error) {
     report.outcome = interrupted ? 'interrupted' : 'failed';
