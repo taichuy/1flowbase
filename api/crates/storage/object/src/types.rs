@@ -20,7 +20,7 @@ pub struct FileStoragePutInput<'a> {
     pub config_json: &'a serde_json::Value,
     pub object_path: &'a str,
     pub content_type: Option<&'a str>,
-    pub bytes: &'a [u8],
+    pub bytes: Vec<u8>,
 }
 
 pub struct FileStoragePutStreamInput<'a> {
