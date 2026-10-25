@@ -14,6 +14,32 @@ use orchestration_runtime::{
 use serde_json::json;
 use std::path::PathBuf;
 
+// The shared model-provider fixture intentionally uses local-path references
+// under cfg(test). Managed workers still use production installation UUIDs.
+struct FixtureArtifactResolver {
+    installed: crate::provider_runtime::ApiRuntimeArtifactResolver,
+    provider_install_root: PathBuf,
+}
+
+#[async_trait::async_trait]
+impl runtime_extension_host::RuntimeArtifactResolver for FixtureArtifactResolver {
+    async fn resolve(
+        &self,
+        artifact: &runtime_core::runtime_backend::RuntimeArtifactReference,
+    ) -> Result<PathBuf, runtime_core::runtime_backend::RuntimeBackendError> {
+        if Uuid::parse_str(artifact.as_str()).is_ok() {
+            return self.installed.resolve(artifact).await;
+        }
+        let path = PathBuf::from(artifact.as_str());
+        if path.is_absolute() && path.starts_with(&self.provider_install_root) && path.is_dir() {
+            return Ok(path);
+        }
+        Err(runtime_core::runtime_backend::RuntimeBackendError::InvalidRequest(
+            "provider fixture artifact must be inside its installation root".into(),
+        ))
+    }
+}
+
 fn receive_package() -> Vec<u8> {
     let fixture = crate::api_workspace_root()
         .unwrap()
@@ -77,7 +103,17 @@ impl Fixture {
             .load_actor_context_for_user(actor_id)
             .await
             .unwrap();
-        let runtime = RuntimeFixture::new(&state);
+        let runtime = RuntimeFixture::with_artifact_resolver(
+            &state,
+            Arc::new(FixtureArtifactResolver {
+                installed: crate::provider_runtime::ApiRuntimeArtifactResolver::new(
+                    state.store.clone(),
+                    &state.api_node_id,
+                    &state.provider_install_root,
+                ),
+                provider_install_root: PathBuf::from(&state.provider_install_root),
+            }),
+        );
         let service = Arc::new(
             NotificationService::new(
                 runtime.store.clone(),
@@ -327,12 +363,11 @@ async fn communication_receive_session_progressive_mcp_reaches_scoped_history() 
     )
     .await;
     assert!(!tampered.content.to_string().contains("Bob private input"));
-    let injected = invoke(&invoker,"call",json!({"tool_id":tool,"des_id":des_id,"arguments":{"conversation_id":bob,"external_identity":"bob","instance_id":Uuid::now_v7()}})).await;
-    assert!(
-        injected.is_error,
-        "server-bound channel and identity must not be replaceable: {:?}",
-        injected.content
-    );
+    let injected = invoke(&invoker,"call",json!({"tool_id":tool,"des_id":des_id,"arguments":{"conversation_id":session["conversation_id"],"external_identity":"bob","instance_id":Uuid::now_v7()}})).await;
+    assert!(!injected.is_error, "hidden channel retains its canonical default: {:?}", injected.content);
+    let injected = injected.content.to_string();
+    assert!(injected.contains("Alice private input"), "{injected}");
+    assert!(!injected.contains("Bob private input"), "{injected}");
     let missing_description = invoke(
         &invoker,
         "call",

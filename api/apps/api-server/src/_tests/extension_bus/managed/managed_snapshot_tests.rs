@@ -29,6 +29,20 @@ pub(crate) struct RuntimeFixture {
 }
 impl RuntimeFixture {
     pub(crate) fn new(state: &crate::app_state::ApiState) -> Self {
+        Self::with_artifact_resolver(
+            state,
+            Arc::new(ApiRuntimeArtifactResolver::new(
+                state.store.clone(),
+                &state.api_node_id,
+                &state.provider_install_root,
+            )),
+        )
+    }
+
+    pub(crate) fn with_artifact_resolver(
+        state: &crate::app_state::ApiState,
+        resolver: Arc<dyn runtime_extension_host::RuntimeArtifactResolver>,
+    ) -> Self {
         let assembly = crate::extension_bus::assemble_extension_graph_input(
             crate::api_workspace_root().unwrap(),
             crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
@@ -57,11 +71,7 @@ impl RuntimeFixture {
         let host = Arc::new(
             runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver(
                 time::OffsetDateTime::now_utc(),
-                Arc::new(ApiRuntimeArtifactResolver::new(
-                    store.clone(),
-                    &state.api_node_id,
-                    &state.provider_install_root,
-                )),
+                resolver,
             )
             .unwrap(),
         );
