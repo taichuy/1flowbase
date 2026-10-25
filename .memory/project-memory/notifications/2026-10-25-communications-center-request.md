@@ -3,9 +3,9 @@ memory_type: project
 topic: 通讯中心与微信双向 Agent-flow 接入
 summary: 用户要求通知管理升级通讯中心，双向消息与文件、渠道绑定应用/模型/推理强度、插件注册专属 MCP 和可编辑内置系统提示词，历史按需查询；允许破坏性替换旧通讯功能。方案已确认并授权实现，Root Issue #2670 承载执行与验收。
 created_at: "2026-10-25 11"
-updated_at: "2026-10-25 20"
+updated_at: "2026-10-26 02"
 decision_policy: verify_before_decision
-status: awaiting_real_wechat_acceptance
+status: awaiting_real_attachment_acceptance
 ---
 
 - 谁在做什么：Root 在隔离工作树推进主仓及官方微信插件实现；用户已明确授权创建 Issue 后开始。执行真值：https://github.com/taichuy/1flowbase/issues/2670，Delivery #2671/#2672/#2673。
@@ -18,5 +18,9 @@ status: awaiting_real_wechat_acceptance
 
 - 用户进一步明确（2026-10-25 11）：输入采用三条独立消息：系统提示词、内置会话信息、用户消息；创建时默认添加插件 MCP 实例，支持像 AI 助手一样选择多个实例。目标是保持提示词与同会话信息前缀稳定，利于缓存复用。
 
-- 当前阶段：实现已合入dev并部署，微信2.0.0已按本地编译替换→正式六平台发布顺序完成，集中源码与页面/配置/MCP/空轮询验证通过。Root #2670和Delivery #2673仍开放，唯一未完成的验收是真实微信文字、附件及最终回复；用户尚未提供这轮测试消息。具体Git/CI/环境状态以Root Control Ledger和当前运行态复核，不复述旧候选为最新。
+- 当前阶段：实现已合入dev并部署，微信2.0.0已按本地编译替换→正式六平台发布顺序完成，集中源码与页面/配置/MCP/空轮询验证通过。Root #2670和Delivery #2673仍开放，原实网验收仍有附件链路待结算；当前开发环境已收到真实文字消息及成功回复，不能再以“尚无用户消息”描述当前状态。具体Git/CI/环境状态以Root Control Ledger和当前运行态复核，不复述旧候选为最新。
 - 开发环境处理边界：既有渠道保留ID/扫码凭据，一次性移除旧版授权cursor并转入新host游标；只改该开发数据，无产品兼容分支。微信域名经代理失败而直连成功，private API .env保留NO_PROXY的.weixin.qq.com例外。不要恢复旧数据或清空数据库来消除已应用migration。
+
+- 2026-10-26 UI/UX纠正：用户明确要求直接修复会话/接收表格、状态与超链接、默认跨渠道展示、URL恢复和复用Agent-flow日志。D1 #2671重开承接，Root集中验收有记录的页面；无需真实微信外发完成此次UI纠正。此前“用户尚未提供测试消息”已过期，是否已有接收记录应查询当前开发环境。
+
+- 2026-10-26 UI修正已通过集中验收：共享表格默认跨渠道、最新处理/发送状态、真实详情/运行日志链接、URL恢复；本轮有实际记录的桌面/移动交互已验证。关联原run对应应用，无新日志体系。来源与部署状态继续以Root Ledger和当前Git/进程核验。合入最新dev时发现同编号migration冲突，通讯迁移仅重编号、SQL内容不变；本机仅对精确checksum匹配的旧ledger记录映射编号，没有清库。
