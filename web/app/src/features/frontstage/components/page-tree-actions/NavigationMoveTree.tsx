@@ -1,8 +1,16 @@
 import { ConfigProvider, Tree, type TreeProps } from 'antd';
 import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
+import HolderOutlined from '@ant-design/icons/es/icons/HolderOutlined';
+import FolderTwoTone from '@ant-design/icons/es/icons/FolderTwoTone';
 import FolderOutlined from '@ant-design/icons/es/icons/FolderOutlined';
 import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
-import { useState, type DragEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type DragEvent
+} from 'react';
 import { i18nText } from '../../../../shared/i18n/text';
 import type { MoveFrontstageNodeInput } from '../../api/page-tree';
 import { FRONTSTAGE_DESIGN_BLUE } from '../../lib/design-mode-theme';
@@ -12,6 +20,7 @@ import {
   resolveNavigationMove,
   type NavigationMoveDraft
 } from '../../lib/navigation-drag/move-plan';
+import { PageTreeIcon } from '../../lib/page-tree-icons/registry';
 import './move-page-modal.css';
 
 const ROOT_KEY = '__frontstage_root__';
@@ -33,7 +42,10 @@ export function NavigationMoveTree({
   disabled = false,
   onSelectMove,
   onDraggingChange,
-  height = 320
+  height = 320,
+  management = false,
+  locateNodeId,
+  renderActions
 }: {
   sourceNode?: FrontStageTreeNode;
   pageTree: FrontStageTreeNode[];
@@ -45,10 +57,38 @@ export function NavigationMoveTree({
   ) => void;
   onDraggingChange?: (dragging: boolean) => void;
   height?: number;
+  management?: boolean;
+  locateNodeId?: string;
+  renderActions?: (node: FrontStageTreeNode | null) => ReactNode;
 }) {
+  const treeRef = useRef<React.ComponentRef<typeof Tree>>(null);
   const [dragSource, setDragSource] = useState<FrontStageTreeNode | null>(null);
   const node = sourceNode ?? dragSource;
-  const [expandedKeys, setExpandedKeys] = useState<string[]>([ROOT_KEY]);
+  const [expandedKeys, setExpandedKeys] = useState<string[]>(() => [
+    ROOT_KEY,
+    ...(management
+      ? pageTree.filter((item) => item.kind === 'group').map((item) => item.id)
+      : [])
+  ]);
+  useEffect(() => {
+    if (!locateNodeId) return;
+    const ancestors: string[] = [ROOT_KEY];
+    const visit = (nodes: FrontStageTreeNode[]): boolean =>
+      nodes.some((item) => {
+        if (item.id === locateNodeId) return true;
+        if (visit(item.children ?? [])) {
+          ancestors.push(item.id);
+          return true;
+        }
+        return false;
+      });
+    if (visit(pageTree))
+      setExpandedKeys((keys) => [...new Set([...keys, ...ancestors])]);
+  }, [locateNodeId, pageTree]);
+  useEffect(() => {
+    if (locateNodeId)
+      treeRef.current?.scrollTo({ key: locateNodeId, align: 'auto' });
+  }, [locateNodeId, expandedKeys]);
   const [draft, setDraft] = useState<NavigationMoveDraft | null>(null);
   const [hoverDraft, setHoverDraft] = useState<NavigationMoveDraft | null>(
     null
@@ -170,10 +210,13 @@ export function NavigationMoveTree({
   const rowTitle = (
     targetId: string | null,
     title: string,
-    isGroup: boolean
+    isGroup: boolean,
+    item?: FrontStageTreeNode
   ) => (
     <div
-      className="move-page-modal__row"
+      className={`move-page-modal__row${management ? ' navigation-management-tree__row' : ''}`}
+      data-kind={isGroup ? 'group' : 'page'}
+      data-located={targetId === locateNodeId || undefined}
       data-node-id={targetId ?? ROOT_KEY}
       draggable={Boolean(
         targetId && (!sourceNode || targetId === sourceNode.id) && !pending
@@ -187,7 +230,48 @@ export function NavigationMoveTree({
       onDragOver={(event) => dragOver(event, targetId, isGroup)}
       onDrop={(event) => drop(event, targetId)}
     >
-      {title}
+      {management ? (
+        <span className="navigation-management-tree__handle" aria-hidden>
+          {targetId ? <HolderOutlined /> : null}
+        </span>
+      ) : null}
+      {management ? (
+        <span className="navigation-management-tree__node-icon">
+          <PageTreeIcon
+            name={item?.icon}
+            fallback={
+              isGroup ? (
+                <FolderTwoTone
+                  twoToneColor={[
+                    'var(--color-primary)',
+                    'color-mix(in srgb, var(--color-primary) 25%, white)'
+                  ]}
+                />
+              ) : (
+                <FileTextOutlined />
+              )
+            }
+          />
+        </span>
+      ) : null}
+      <span
+        className={management ? 'navigation-management-tree__title' : undefined}
+      >
+        {title}
+      </span>
+      {renderActions ? (
+        <span
+          className="navigation-management-tree__actions"
+          draggable={false}
+          onDragStart={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {renderActions(item ?? null)}
+        </span>
+      ) : null}
     </div>
   );
 
@@ -215,8 +299,30 @@ export function NavigationMoveTree({
       }
       items.push({
         key: item.id,
-        title: rowTitle(item.id, getNodeTitle(item), item.kind === 'group'),
-        icon: item.kind === 'group' ? <FolderOutlined /> : <FileTextOutlined />,
+        title: rowTitle(
+          item.id,
+          getNodeTitle(item),
+          item.kind === 'group',
+          item
+        ),
+        icon: (
+          <PageTreeIcon
+            name={item.icon}
+            fallback={
+              item.kind === 'group' ? (
+                <FolderOutlined
+                  className={
+                    management
+                      ? 'navigation-management-tree__folder'
+                      : undefined
+                  }
+                />
+              ) : (
+                <FileTextOutlined />
+              )
+            }
+          />
+        ),
         isLeaf:
           item.kind !== 'group' ||
           (!item.children?.length &&
@@ -264,29 +370,71 @@ export function NavigationMoveTree({
         </div>
       ) : null}
       <div
+        className={management ? 'navigation-management-tree' : undefined}
         onDragLeave={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null))
             setHoverDraft(null);
         }}
       >
-        <ConfigProvider theme={{ components: { Tree: { indentSize: 20 } } }}>
+        <ConfigProvider
+          theme={{
+            components: {
+              Tree: {
+                indentSize: management ? 28 : 20,
+                ...(management
+                  ? {
+                      titleHeight: 36,
+                      nodeHoverBg: 'var(--bg-hover)',
+                      nodeSelectedBg: 'var(--bg-selected)'
+                    }
+                  : {})
+              }
+            }
+          }}
+        >
           <Tree
-            showIcon
+            ref={treeRef}
+            classNames={
+              management
+                ? {
+                    item: 'navigation-management-tree__item',
+                    itemIcon: 'navigation-management-tree__icon',
+                    itemSwitcher: 'navigation-management-tree__switcher'
+                  }
+                : undefined
+            }
+            showIcon={!management}
             blockNode
             styles={{
+              ...(management
+                ? {
+                    root: { fontSize: 16 },
+                    item: {
+                      paddingBottom: 0,
+                      marginBottom: 0,
+                      paddingInlineStart: 'var(--route-tree-gutter)'
+                    }
+                  }
+                : {}),
               itemTitle: {
                 display: 'inline-block',
                 verticalAlign: 'top',
-                width: 'calc(100% - 24px)'
+                width: management ? '100%' : 'calc(100% - 24px)'
               }
             }}
             height={height}
-            itemHeight={32}
+            itemHeight={management ? 36 : 32}
             disabled={pending}
             expandedKeys={expandedKeys}
             autoExpandParent={false}
             onExpand={(keys) => setExpandedKeys(keys.map(String))}
-            selectedKeys={draft ? [draft.targetNodeId ?? ROOT_KEY] : []}
+            selectedKeys={
+              draft
+                ? [draft.targetNodeId ?? ROOT_KEY]
+                : locateNodeId
+                  ? [locateNodeId]
+                  : []
+            }
             onSelect={(_, info) => {
               const targetId =
                 info.node.key === ROOT_KEY ? null : String(info.node.key);
@@ -318,7 +466,15 @@ export function NavigationMoveTree({
                   i18nText('frontstage', 'move_topbar_root'),
                   true
                 ),
-                icon: <FolderOutlined />,
+                icon: (
+                  <FolderOutlined
+                    className={
+                      management
+                        ? 'navigation-management-tree__folder'
+                        : undefined
+                    }
+                  />
+                ),
                 selectable: true,
                 isLeaf: false,
                 children: expandedKeys.includes(ROOT_KEY)

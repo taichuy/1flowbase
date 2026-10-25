@@ -1,0 +1,209 @@
+.route-management {
+  --route-tree-gutter: 24px;
+  margin-inline: 16px 12px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.route-management__notice {
+  padding: 12px 16px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--color-primary) 3%, transparent);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  line-height: 24px;
+}
+.route-management__surface {
+  min-width: 0;
+  padding: 16px 18px 28px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px
+    color-mix(in srgb, var(--color-primary) 3%, transparent);
+}
+.route-management__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.route-management__search {
+  width: min(420px, 100%);
+}
+.route-management__status {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.route-management__loading {
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+}
+.navigation-management-tree {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.navigation-management-tree__item {
+  border-bottom: 1px solid var(--border-subtle);
+}
+.navigation-management-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  padding-inline: 4px 12px;
+}
+.navigation-management-tree__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.navigation-management-tree__row[data-kind='group']
+  .navigation-management-tree__title {
+  font-weight: 600;
+}
+.navigation-management-tree__row[data-located] {
+  background: var(--bg-hover);
+  border-radius: 4px;
+}
+.navigation-management-tree__handle {
+  position: absolute;
+  left: -44px;
+  width: 16px;
+  color: var(--text-tertiary);
+  font-size: 16px;
+}
+.navigation-management-tree__folder {
+  color: var(--color-primary);
+  font-size: 20px;
+}
+.navigation-management-tree__icon {
+  font-size: 17px;
+}
+.navigation-management-tree__actions {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  cursor: default;
+}
+.route-management__delete:hover {
+  color: var(--status-failed);
+}
+.route-node-drawer__heading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+.route-node-drawer__icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  border-radius: 16px;
+  background: var(--bg-hover);
+  color: var(--color-primary);
+  font-size: 30px;
+}
+.route-node-drawer__heading h3 {
+  font-size: 20px;
+  line-height: 28px;
+  margin: 0 0 8px;
+}
+.route-page-tabs {
+  display: grid;
+  gap: 16px;
+}
+.route-page-tabs__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--text-secondary);
+}
+.route-page-tabs__list {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.route-page-tabs__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.route-page-tabs__row:last-child {
+  border-bottom: 0;
+}
+.route-page-tabs__label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.route-page-tabs__label > span:last-child {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+/* Compact screens retain all actions in the overflow menu. */
+.navigation-management-tree__node-icon {
+  display: inline-flex;
+  flex: 0 0 20px;
+  font-size: 19px;
+  color: var(--text-secondary);
+}
+.navigation-management-tree__actions button {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+@media (max-width: 767px) {
+  .route-management {
+    --route-tree-gutter: 12px;
+    margin-inline: 8px;
+  }
+  .route-management__surface {
+    padding: 12px 8px 16px;
+    border-radius: 12px;
+  }
+  .route-management__toolbar {
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .route-management__search {
+    width: 100%;
+  }
+  .route-management__toolbar > :last-child {
+    margin-left: auto;
+  }
+  .navigation-management-tree__row {
+    gap: 5px;
+    padding-right: 0;
+  }
+  .navigation-management-tree__handle {
+    left: -40px;
+  }
+  .navigation-management-tree__actions button {
+    width: 28px;
+  }
+  .route-management__inline-action {
+    display: none;
+  }
+  .route-page-tabs__row,
+  .route-page-tabs__toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}

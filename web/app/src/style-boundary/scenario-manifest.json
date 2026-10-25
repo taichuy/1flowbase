@@ -2869,7 +2869,10 @@
     "impactFiles": [
       "web/app/src/features/settings/components/ui-management/RouteManagementTab.tsx",
       "web/app/src/features/frontstage/components/page-tree-actions/NavigationMoveTree.tsx",
-      "web/app/src/features/frontstage/components/page-tree-actions/move-page-modal.css"
+      "web/app/src/features/frontstage/components/page-tree-actions/move-page-modal.css",
+      "web/app/src/features/settings/components/ui-management/route-management/RouteNodeDrawer.tsx",
+      "web/app/src/features/settings/components/ui-management/route-management/RoutePageTabs.tsx",
+      "web/app/src/features/settings/components/ui-management/route-management/route-management.css"
     ],
     "boundaryNodes": [
       {
@@ -2883,12 +2886,12 @@
         ]
       },
       {
-        "id": "ui-management-surface",
-        "selector": ".ui-management-panel .settings-section-surface",
+        "id": "route-management-surface",
+        "selector": ".route-management__surface",
         "propertyAssertions": [
           {
             "property": "display",
-            "expected": "grid"
+            "expected": "block"
           }
         ]
       },
@@ -2899,6 +2902,30 @@
           {
             "property": "position",
             "expected": "relative"
+          }
+        ]
+      },
+      {
+        "id": "route-management-toolbar",
+        "selector": ".route-management__toolbar",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      },
+      {
+        "id": "management-tree-row",
+        "selector": ".navigation-management-tree__row",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          },
+          {
+            "property": "min-height",
+            "expected": "36px"
           }
         ]
       }
@@ -2915,7 +2942,10 @@
     "impactFiles": [
       "web/app/src/features/settings/components/ui-management/RouteManagementTab.tsx",
       "web/app/src/features/frontstage/components/page-tree-actions/NavigationMoveTree.tsx",
-      "web/app/src/features/frontstage/components/page-tree-actions/move-page-modal.css"
+      "web/app/src/features/frontstage/components/page-tree-actions/move-page-modal.css",
+      "web/app/src/features/settings/components/ui-management/route-management/RouteNodeDrawer.tsx",
+      "web/app/src/features/settings/components/ui-management/route-management/RoutePageTabs.tsx",
+      "web/app/src/features/settings/components/ui-management/route-management/route-management.css"
     ],
     "boundaryNodes": [
       {
@@ -2929,12 +2959,12 @@
         ]
       },
       {
-        "id": "ui-management-surface",
-        "selector": ".ui-management-panel .settings-section-surface",
+        "id": "route-management-surface",
+        "selector": ".route-management__surface",
         "propertyAssertions": [
           {
             "property": "display",
-            "expected": "grid"
+            "expected": "block"
           }
         ]
       },
@@ -2945,6 +2975,30 @@
           {
             "property": "position",
             "expected": "relative"
+          }
+        ]
+      },
+      {
+        "id": "route-management-toolbar",
+        "selector": ".route-management__toolbar",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      },
+      {
+        "id": "management-tree-row",
+        "selector": ".navigation-management-tree__row",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          },
+          {
+            "property": "min-height",
+            "expected": "36px"
           }
         ]
       }
