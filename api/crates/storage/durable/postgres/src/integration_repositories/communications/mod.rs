@@ -77,6 +77,14 @@ fn page<T>(mut items: Vec<T>, limit: u32, id: impl Fn(&T) -> Uuid) -> Communicat
 
 #[async_trait]
 impl CommunicationRepository for PgControlPlaneStore {
+    async fn communication_run_application_id(
+        &self,
+        workspace_id: Uuid,
+        run_id: Uuid,
+    ) -> Result<Option<Uuid>> {
+        Ok(sqlx::query_scalar("SELECT r.application_id FROM communication_messages m JOIN flow_runs r ON r.id=m.run_id WHERE m.workspace_id=$1 AND m.run_id=$2").bind(workspace_id).bind(run_id).fetch_optional(self.pool()).await?)
+    }
+
     async fn communication_context_for_run(
         &self,
         workspace_id: Uuid,
