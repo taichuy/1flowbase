@@ -484,11 +484,12 @@ async fn communication_expired_claims_recover_without_repeating_unknown_sends() 
         message_id: second.message.id,
         claim_id: second.claim_id,
     };
+    let reserved_run_id = Uuid::now_v7();
     assert!(service
         .record_progress(
             &key,
             CommunicationProgress::RunStarted {
-                run_id: Uuid::now_v7()
+                run_id: reserved_run_id
             }
         )
         .await
@@ -500,28 +501,18 @@ async fn communication_expired_claims_recover_without_repeating_unknown_sends() 
     .execute(store.pool())
     .await
     .unwrap();
-    assert!(
-        service
-            .claim_pending_input(w.id, channel, 60)
-            .await
-            .unwrap()
-            .is_none(),
-        "reserved interrupted run requires explicit retry"
-    );
-    assert!(service
-        .retry_message(&actor, channel, first.message.id)
-        .await
-        .unwrap());
     let third = service
         .claim_pending_input(w.id, channel, 60)
         .await
         .unwrap()
         .unwrap();
+    assert_eq!(third.message.run_id, Some(reserved_run_id));
+    assert!(!third.message.can_retry);
     let key = CommunicationClaim {
         claim_id: third.claim_id,
         ..key
     };
-    assert!(service
+    assert!(!service
         .record_progress(
             &key,
             CommunicationProgress::RunStarted {

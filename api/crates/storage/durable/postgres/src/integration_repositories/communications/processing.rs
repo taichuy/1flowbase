@@ -15,10 +15,9 @@ pub(super) async fn claim(
     // External sends may have happened before a crash: never repeat an uncertain send.
     sqlx::query("UPDATE communication_messages SET send_status='unknown',failure_code='send_interrupted',claim_id=NULL,claim_expires_at=NULL WHERE workspace_id=$1 AND instance_id=$2 AND send_status='sending' AND claim_expires_at<=now()")
         .bind(w).bind(i).execute(&mut *tx).await?;
-    // A persisted run ID must be inspected by the host, not blindly executed again.
-    sqlx::query("UPDATE communication_messages SET processing_status='failed',failure_code='run_interrupted',claim_id=NULL,claim_expires_at=NULL WHERE workspace_id=$1 AND instance_id=$2 AND processing_status='processing' AND run_id IS NOT NULL AND claim_expires_at<=now()")
-        .bind(w).bind(i).execute(&mut *tx).await?;
-    let sql=format!("SELECT m.*,({RETRY_ELIGIBILITY}) AS can_retry FROM communication_messages m JOIN communication_conversations c ON c.id=m.conversation_id WHERE m.workspace_id=$1 AND m.instance_id=$2 AND ((m.processing_status='pending') OR (m.processing_status='processing' AND m.run_id IS NULL AND m.claim_expires_at<=now()) OR (m.processing_status='succeeded' AND m.send_status='pending' AND (m.claim_id IS NULL OR m.claim_expires_at<=now()))) AND NOT EXISTS(SELECT 1 FROM communication_messages p WHERE p.conversation_id=m.conversation_id AND p.id<m.id AND (p.processing_status IN ('pending','processing') OR p.send_status IN ('pending','sending'))) ORDER BY m.id LIMIT 1 FOR UPDATE OF c,m SKIP LOCKED");
+    // Reclaim the observation lease, retaining any reserved run ID. The execution owner
+    // inspects that run and must never invoke it a second time after a restart.
+    let sql=format!("SELECT m.*,({RETRY_ELIGIBILITY}) AS can_retry FROM communication_messages m JOIN communication_conversations c ON c.id=m.conversation_id WHERE m.workspace_id=$1 AND m.instance_id=$2 AND ((m.processing_status='pending') OR (m.processing_status='processing' AND m.claim_expires_at<=now()) OR (m.processing_status='succeeded' AND m.send_status='pending' AND (m.claim_id IS NULL OR m.claim_expires_at<=now()))) AND NOT EXISTS(SELECT 1 FROM communication_messages p WHERE p.conversation_id=m.conversation_id AND p.id<m.id AND (p.processing_status IN ('pending','processing') OR p.send_status IN ('pending','sending'))) ORDER BY m.id LIMIT 1 FOR UPDATE OF c,m SKIP LOCKED");
     let row = sqlx::query(&sql)
         .bind(w)
         .bind(i)
