@@ -259,11 +259,22 @@ async fn communication_prestart_failure_settles_instead_of_observing_forever() {
         .await
         .unwrap();
     assert_eq!(detail.flow_run.status, FlowRunStatus::Failed);
-    assert_eq!(
-        detail.flow_run.error_payload.unwrap()["code"],
-        "communication_dispatch_failed"
-    );
+    // The execution engine already owns this terminal failure. Dispatch must retain
+    // its diagnostic rather than replacing it with an initial-dispatch fallback code.
+    let error = detail.flow_run.error_payload.clone().unwrap();
+    assert!(error["message"]
+        .as_str()
+        .is_some_and(|message| !message.is_empty()));
     assert!(detail.node_runs.is_empty());
+    let initial_starts = started_events(&store, run.id).await;
+    let observed = service(store.clone())
+        .dispatch_communication_run(command(&run))
+        .await
+        .unwrap();
+    assert_eq!(observed.flow_run.status, FlowRunStatus::Failed);
+    assert_eq!(observed.flow_run.error_payload, Some(error));
+    assert!(observed.node_runs.is_empty());
+    assert_eq!(started_events(&store, run.id).await, initial_starts);
 }
 
 #[tokio::test]

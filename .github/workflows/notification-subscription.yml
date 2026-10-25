@@ -66,14 +66,18 @@ jobs:
         run: |
           mkdir -p tmp/test-governance/communications/ci
           set -o pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p extension-contracts notification 2>&1 | tee tmp/test-governance/communications/ci/contracts.log
-          cargo test --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk notification 2>&1 | tee tmp/test-governance/communications/ci/sdk.log
+          test_batch_status=0
+          cargo test --locked --manifest-path api/Cargo.toml -p extension-contracts notification 2>&1 | tee tmp/test-governance/communications/ci/contracts.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk notification 2>&1 | tee tmp/test-governance/communications/ci/sdk.log || test_batch_status=$?
+          exit "$test_batch_status"
       - name: Receive manifest and binding contract acceptance
         if: ${{ !cancelled() }}
         run: |
           set -o pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p extension-package-runtime notification 2>&1 | tee tmp/test-governance/communications/ci/manifest.log
-          cargo test --locked --manifest-path api/Cargo.toml -p plugin-framework notification_plan_tests 2>&1 | tee tmp/test-governance/communications/ci/bindings.log
+          test_batch_status=0
+          cargo test --locked --manifest-path api/Cargo.toml -p extension-package-runtime notification 2>&1 | tee tmp/test-governance/communications/ci/manifest.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p plugin-framework notification_plan_tests 2>&1 | tee tmp/test-governance/communications/ci/bindings.log || test_batch_status=$?
+          exit "$test_batch_status"
       - name: Communication mapping and durable state acceptance
         if: ${{ !cancelled() }}
         run: |
@@ -93,9 +97,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           set -o pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::communications:: 2>&1 | tee tmp/test-governance/communications/ci/backup-communications.log
-          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::notifications:: 2>&1 | tee tmp/test-governance/communications/ci/backup-notifications.log
-          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::notification_backup_keeps_channel_configuration_separate_from_inbox_history 2>&1 | tee tmp/test-governance/communications/ci/backup-selection.log
+          test_batch_status=0
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::communications:: 2>&1 | tee tmp/test-governance/communications/ci/backup-communications.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::notifications:: 2>&1 | tee tmp/test-governance/communications/ci/backup-notifications.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::notification_backup_keeps_channel_configuration_separate_from_inbox_history 2>&1 | tee tmp/test-governance/communications/ci/backup-selection.log || test_batch_status=$?
+          exit "$test_batch_status"
       - name: Host state and projection acceptance
         if: ${{ !cancelled() }}
         run: |
@@ -113,15 +119,19 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           set -o pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib notification_authorization_http_encrypts_fences_late_polls_and_preserves_delivery_outcomes -- --nocapture 2>&1 | tee tmp/test-governance/communications/ci/http-postgres.log
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib subscription -- --nocapture 2>&1 | tee tmp/test-governance/communications/ci/error-response.log
+          test_batch_status=0
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib notification_authorization_http_encrypts_fences_late_polls_and_preserves_delivery_outcomes -- --nocapture 2>&1 | tee tmp/test-governance/communications/ci/http-postgres.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib subscription -- --nocapture 2>&1 | tee tmp/test-governance/communications/ci/error-response.log || test_batch_status=$?
+          exit "$test_batch_status"
       - name: Communication and notification HTTP ownership regression
         if: ${{ !cancelled() }}
         run: |
           set -o pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib communication 2>&1 | tee tmp/test-governance/communications/ci/communication-host.log
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib notification_http_crud_send_inbox_and_operations_are_authorized 2>&1 | tee tmp/test-governance/communications/ci/inbox-http.log
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib console_route_assembly 2>&1 | tee tmp/test-governance/communications/ci/route-ownership.log
+          test_batch_status=0
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib communication 2>&1 | tee tmp/test-governance/communications/ci/communication-host.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib notification_http_crud_send_inbox_and_operations_are_authorized 2>&1 | tee tmp/test-governance/communications/ci/inbox-http.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib console_route_assembly 2>&1 | tee tmp/test-governance/communications/ci/route-ownership.log || test_batch_status=$?
+          exit "$test_batch_status"
       - name: Build local runtime candidate
         run: |
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server
