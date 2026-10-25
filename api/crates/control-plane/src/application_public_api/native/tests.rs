@@ -325,3 +325,6 @@ fn provider_session_identity_cannot_be_overwritten_by_public_inputs_or_mapping()
         .pointer("/sys/provider_session_identity")
         .is_none());
 }
+
+#[path = "_tests/communication.rs"]
+mod communication;

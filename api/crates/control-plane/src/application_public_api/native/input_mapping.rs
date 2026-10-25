@@ -13,6 +13,49 @@ pub enum NativeInputMappingError {
 pub struct NativeInputMapper;
 
 impl NativeInputMapper {
+    /// Explicit host path: preserve the one session context as a separate system message.
+    /// Public Native parsing cannot supply this internal marker.
+    pub(crate) fn map_communication(
+        request: &NativeRunRequest,
+        mapping: &ApplicationApiMappingConfig,
+    ) -> std::result::Result<NativeMappedInput, NativeInputMappingError> {
+        let [session] = request.history.as_slice() else {
+            return Err(NativeInputMappingError::InvalidPromptContext);
+        };
+        if session.get("role").and_then(Value::as_str) != Some("system")
+            || session.get("content").and_then(Value::as_str).is_none()
+        {
+            return Err(NativeInputMappingError::InvalidPromptContext);
+        }
+        let mut base = request.clone();
+        base.history.clear();
+        let mut mapped = Self::map(&base, mapping)?;
+        let mut session = session.clone();
+        session["__communication_session"] = Value::Bool(true);
+        let history = vec![session];
+        // Replace only fields owned by this mapper after the ordinary selector collision checks.
+        let payload = mapped
+            .node_input_payload
+            .as_object_mut()
+            .ok_or(NativeInputMappingError::InvalidPromptContext)?;
+        payload.insert(
+            NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY.to_owned(),
+            serde_json::to_value(NativeModelPromptContext {
+                system: request.system.clone(),
+                messages: history.clone(),
+            })
+            .map_err(|_| NativeInputMappingError::InvalidPromptContext)?,
+        );
+        if let Some(target) = mapping.input.history_target.as_deref() {
+            replace_mapped_selector(
+                &mut mapped.node_input_payload,
+                target,
+                Value::Array(history),
+            )?;
+        }
+        Ok(mapped)
+    }
+
     pub fn map(
         request: &NativeRunRequest,
         mapping: &ApplicationApiMappingConfig,
@@ -236,4 +279,19 @@ pub(super) fn system_target(
         .inputs_target
         .as_deref()
         .map(|target| format!("{target}.system"))
+}
+
+fn replace_mapped_selector(
+    payload: &mut Value,
+    selector: &str,
+    value: Value,
+) -> std::result::Result<(), NativeInputMappingError> {
+    let mut target = payload;
+    for segment in selector.split('.') {
+        target = target
+            .get_mut(segment)
+            .ok_or(NativeInputMappingError::InvalidPromptContext)?;
+    }
+    *target = value;
+    Ok(())
 }

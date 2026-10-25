@@ -80,6 +80,11 @@ pub struct CreateAssistantRunCommand {
     pub request: NativeRunRequest,
 }
 
+enum ConsoleRunPrompt {
+    Assistant,
+    Communication,
+}
+
 pub struct ApplicationPublishedRunService<R> {
     repository: R,
     last_used_cache: Option<Arc<dyn CacheStore>>,
@@ -155,7 +160,26 @@ where
 
     pub async fn create_assistant_run(
         &self,
+        command: CreateAssistantRunCommand,
+    ) -> std::result::Result<domain::FlowRunRecord, NativeRunValidationError> {
+        self.create_console_run(command, ConsoleRunPrompt::Assistant)
+            .await
+    }
+
+    /// Host-owned receive input has exactly one stable session system message and no replay.
+    /// Public Native/embedded assistant requests retain their existing normalization rules.
+    pub async fn create_communication_run(
+        &self,
+        command: CreateAssistantRunCommand,
+    ) -> std::result::Result<domain::FlowRunRecord, NativeRunValidationError> {
+        self.create_console_run(command, ConsoleRunPrompt::Communication)
+            .await
+    }
+
+    async fn create_console_run(
+        &self,
         mut command: CreateAssistantRunCommand,
+        prompt: ConsoleRunPrompt,
     ) -> std::result::Result<domain::FlowRunRecord, NativeRunValidationError> {
         let application = self
             .repository
@@ -189,8 +213,16 @@ where
             .model_content()
             .map_err(|_| NativeRunValidationError::InvalidMapping)?;
         let requested_model_id = command.request.model.clone();
-        let mapped = NativeInputMapper::map(&command.request, &publication.mapping_snapshot)
-            .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+        let mapped = match prompt {
+            ConsoleRunPrompt::Assistant => {
+                NativeInputMapper::map(&command.request, &publication.mapping_snapshot)
+            }
+            ConsoleRunPrompt::Communication => NativeInputMapper::map_communication(
+                &command.request,
+                &publication.mapping_snapshot,
+            ),
+        }
+        .map_err(|_| NativeRunValidationError::InvalidMapping)?;
         let environment_variables = self
             .repository
             .list_application_environment_variables(command.workspace_id, command.application_id)

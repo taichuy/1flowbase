@@ -11,13 +11,14 @@ impl<R> NotificationService<R>
 where
     R: NotificationRepository + PluginRepository + RoleConsolePolicyReader,
 {
-    pub(super) async fn send_authorizable(
+    pub(super) async fn send_managed(
         &self,
         actor: &ActorContext,
         instance: &NotificationInstanceRecord,
         descriptor: &NotificationTypeDescriptor,
         input_payload: Value,
         log_id: Uuid,
+        target: Option<extension_contracts::NotificationSendTarget>,
     ) -> Result<NotificationSendResult> {
         let state = self
             .repository
@@ -27,16 +28,18 @@ where
                 &self.master_key,
             )
             .await?;
-        match state
-            .authorization
-            .as_ref()
-            .map_or(Status::Unauthorized, |view| view.status)
-        {
-            Status::Unauthorized | Status::Pending => {
-                return Err(Error::Conflict("authorization_required").into())
+        if descriptor.authorization.is_some() {
+            match state
+                .authorization
+                .as_ref()
+                .map_or(Status::Unauthorized, |view| view.status)
+            {
+                Status::Unauthorized | Status::Pending => {
+                    return Err(Error::Conflict("authorization_required").into())
+                }
+                Status::Invalid => return Err(Error::Conflict("authorization_invalid").into()),
+                Status::Authorized => {}
             }
-            Status::Invalid => return Err(Error::Conflict("authorization_invalid").into()),
-            Status::Authorized => {}
         }
         // Account authorization alone permits a provider attempt; context_token is optional.
         let config = self
@@ -48,7 +51,10 @@ where
                 .clone()
                 .map(|view| super::authorization::project_for_descriptor(view, descriptor))
                 .and_then(|view| view.delivery_window),
-            operation: NotificationOperation::Send { input_payload },
+            operation: NotificationOperation::Send {
+                input_payload,
+                target,
+            },
             managed_secrets: state.managed_secrets.clone(),
         };
         input

@@ -20,16 +20,20 @@ pub enum SystemWriteOwner {
     TraceProjectionPersistence,
     WorkflowScheduleDispatch,
     WorkflowScheduleExecution,
+    CommunicationReceive,
+    CommunicationExecution,
 }
 
 impl SystemWriteOwner {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 8] = [
         Self::ApiMutation,
         Self::ApplicationLogDeletion,
         Self::ProviderRequestLogPersistence,
         Self::TraceProjectionPersistence,
         Self::WorkflowScheduleDispatch,
         Self::WorkflowScheduleExecution,
+        Self::CommunicationReceive,
+        Self::CommunicationExecution,
     ];
 
     const fn index(self) -> usize {
@@ -40,6 +44,8 @@ impl SystemWriteOwner {
             Self::WorkflowScheduleDispatch => 2,
             Self::WorkflowScheduleExecution => 3,
             Self::TraceProjectionPersistence => 4,
+            Self::CommunicationReceive => 6,
+            Self::CommunicationExecution => 7,
         }
     }
 }
