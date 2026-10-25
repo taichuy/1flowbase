@@ -1,6 +1,14 @@
 name: Gateway resource comparison
 
 on:
+  workflow_call:
+    inputs:
+      release_ref:
+        type: string
+        required: true
+      current_ref:
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       release_ref:

@@ -9,6 +9,19 @@ on:
         required: false
         default: ''
   workflow_dispatch:
+    inputs:
+      resource_comparison:
+        description: Run the optional isolated three-source resource comparison
+        type: boolean
+        default: false
+      release_ref:
+        description: Published source for resource comparison
+        type: string
+        default: v0.5.8
+      current_ref:
+        description: Pre-change source for resource comparison
+        type: string
+        default: 0cfa6727d34b0c0805620e51a35d562d059ada0c
 
 permissions:
   contents: read
@@ -28,7 +41,15 @@ env:
   CLAUDE_CODE_OAUTH_TOKEN: ''
 
 jobs:
+  resource-comparison:
+    if: ${{ inputs.resource_comparison == true }}
+    uses: ./.github/workflows/gateway-resource-evidence.yml
+    with:
+      release_ref: ${{ inputs.release_ref }}
+      current_ref: ${{ inputs.current_ref }}
+
   protocol-conformance:
+    if: ${{ inputs.resource_comparison != true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     services:
