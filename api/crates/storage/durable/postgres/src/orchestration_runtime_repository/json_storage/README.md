@@ -23,6 +23,12 @@ If an object contains NUL in a key, its projected keys also escape existing
 backslashes, so two distinct original keys cannot overwrite each other. The
 query representation is not a source for recovery or exact-content equality.
 
+The borrowed input is cloned once for its owned projection. Objects without NUL
+keys recurse through values in place; objects with NUL keys retain the existing
+collision-safe key encoding and insertion order. Packet construction and column
+extraction move owned projection/raw values rather than serializing or cloning
+them again. This changes ownership costs only.
+
 ## Read Invariant
 
 `runtime_original_json` returns PostgreSQL **json**, not jsonb. That wire format
@@ -84,4 +90,8 @@ provider metrics ledgers, or unrelated metadata.
 `runtime_json_storage_tests` contains five real repository lifecycle tests using
 isolated schemas and the formal migrations. `_tests/codec.rs` covers marker
 collision, object-key collision, literal escapes and SQL/JSON-null distinction.
+It also carries the 29 bounded cases from the local JSON projection model, with
+exact packet/column bytes, raw recovery, insertion order, borrowed-input
+immutability and byte-idempotent projection assertions; no benchmark baseline
+is copied into production tests.
 The source does not claim that these tests have been executed.

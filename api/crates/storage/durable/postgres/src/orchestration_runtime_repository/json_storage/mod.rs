@@ -2,7 +2,7 @@
 //!
 //! The parameter envelope is adapter-owned and is unpacked by each SQL statement;
 //! it is never inspected inside a user value or stored as a business payload.
-use serde_json::{json, Value};
+use serde_json::Value;
 
 pub(super) trait JsonParameter {
     fn json_value(&self) -> Option<&Value>;
@@ -32,17 +32,26 @@ pub(super) fn lossless_json_value(original: &Value) -> Value {
     let mut projection = original.clone();
     let changed = project(&mut projection);
     let raw = changed.then(|| serde_json::to_string(original).expect("JSON Value serializes"));
-    json!([projection, raw])
+    Value::Array(vec![
+        projection,
+        raw.map(Value::String).unwrap_or(Value::Null),
+    ])
 }
 
 pub(super) fn lossless_json_columns(field: &str, value: &Value) -> (Value, Value) {
-    let packet = lossless_json_value(value);
+    let Value::Array(mut packet) = lossless_json_value(value) else {
+        unreachable!("lossless JSON packet is an array");
+    };
+    let raw = packet.pop().expect("lossless JSON packet contains raw");
+    let projection = packet
+        .pop()
+        .expect("lossless JSON packet contains projection");
     let mut originals = serde_json::Map::new();
-    if !packet[1].is_null() {
-        originals.insert(field.to_owned(), packet[1].clone());
+    if !raw.is_null() {
+        originals.insert(field.to_owned(), raw);
     }
     let originals = Value::Object(originals);
-    (packet[0].clone(), originals)
+    (projection, originals)
 }
 
 fn project(value: &mut Value) -> bool {
@@ -58,17 +67,17 @@ fn project(value: &mut Value) -> bool {
             .iter_mut()
             .fold(false, |changed, item| project(item) | changed),
         Value::Object(object) => {
+            if !object.keys().any(|key| key.contains('\0')) {
+                return object
+                    .values_mut()
+                    .fold(false, |changed, value| project(value) | changed);
+            }
             let mut changed = false;
             let entries = std::mem::take(object);
-            let encode_keys = entries.keys().any(|key| key.contains('\0'));
             for (key, mut value) in entries {
                 changed |= project(&mut value);
                 changed |= key.contains('\0');
-                let key = if encode_keys {
-                    key.replace('\\', "\\\\").replace('\0', "\\u0000")
-                } else {
-                    key
-                };
+                let key = key.replace('\\', "\\\\").replace('\0', "\\u0000");
                 object.insert(key, value);
             }
             changed
