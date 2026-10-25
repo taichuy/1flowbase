@@ -72,8 +72,24 @@ language sql as $$
           and f.application_id=a.application_id and f.scope_id=a.scope_id
           and f.source_api_key_id is not distinct from a.source_api_key_id
           and f.source_external_user is not distinct from a.source_external_user
+          and not exists (select 1 from members m
+              where m.log_context->>'identity_status' is distinct from 'identified'
+                 or row(m.application_id,m.scope_id,m.source_api_key_id,m.source_external_user,
+                        m.log_context->>'protocol',m.log_conversation_id,
+                        m.log_context->>'thread_id',m.log_context->>'turn_id')
+                    is distinct from
+                    row(f.application_id,f.scope_id,f.source_api_key_id,f.source_external_user,
+                        f.log_context->>'protocol',f.log_conversation_id,
+                        f.log_context->>'thread_id',f.log_context->>'turn_id'))
     ), effective_members as (
-        select w.*, exists (
+        select w.*,
+            -- Either source can expose active work. Prefer the established
+            -- active-state priority; terminal state/time belong to flow_runs.
+            coalesce((select state from (values (w.source_status),(w.status)) states(state)
+                where state in ('running','waiting_callback','waiting_human','paused','queued')
+                order by array_position(array['running','waiting_callback','waiting_human','paused','queued'],state)
+                limit 1),w.source_status) as effective_status,
+            exists (
             select 1 from final_member f
             where w.status='waiting_callback' and w.source_status='waiting_callback'
               and w.call_kind='generate' and w.source_finished_at is null
@@ -102,7 +118,7 @@ language sql as $$
                   where i.flow_run_id=w.flow_run_id and (
                       i.created_at >= f.source_started_at or i.updated_at >= f.source_started_at
                       or i.received_at >= f.source_started_at
-                      or (c.status='pending' and i.status<>'pending')
+                      or (c.status='pending' and (i.status<>'pending' or i.received_at is not null))
                       or (c.status='completed' and
                           (i.status<>'received' or i.received_at is null))))
               and not exists (select 1 from flow_run_callback_resume_attempts r
@@ -126,7 +142,7 @@ language sql as $$
             sum(total_tokens)::bigint as total_tokens,
             -- Terminal snapshots report known amounts across all attempts, including
             -- failed retries. All unknown stays NULL; active tasks stay unsettled.
-            case when bool_and(finished_at is not null or superseded_wait)
+            case when bool_and((source_finished_at is not null and effective_status not in ('queued','running','waiting_callback','waiting_human','paused')) or superseded_wait)
                  then sum(observed_cost) end as total_cost,
             sum(input_tokens)::bigint as input_tokens,
             sum(output_tokens)::bigint as output_tokens,
@@ -136,8 +152,8 @@ language sql as $$
             min(started_at) as started_at,
             min(created_at) as created_at,
             max(updated_at) as updated_at,
-            case when bool_and(finished_at is not null or superseded_wait) then max(finished_at) end as finished_at,
-            (array_agg(status order by case status
+            case when bool_and((source_finished_at is not null and effective_status not in ('queued','running','waiting_callback','waiting_human','paused')) or superseded_wait) then max(source_finished_at) end as finished_at,
+            (array_agg(effective_status order by case effective_status
                 when 'running' then 0 when 'waiting_callback' then 1
                 when 'waiting_human' then 2 when 'paused' then 3
                 when 'queued' then 4 else 5 end,
@@ -145,7 +161,7 @@ language sql as $$
                 -- a generation attempt. Fall back naturally for standalone calls.
                 case when call_kind='generate' then 0 else 1 end,
                 started_at desc, flow_run_id desc) filter (where not superseded_wait))[1] as status,
-            bool_or(not superseded_wait and status in ('queued','running','waiting_callback','waiting_human','paused')) as active
+            bool_or(not superseded_wait and effective_status in ('queued','running','waiting_callback','waiting_human','paused')) as active
         from effective_members
     )
     insert into application_run_log_tasks (
@@ -204,6 +220,8 @@ $$;
 -- Receipt/claim changes are real progress even before flow_runs moves to running.
 -- Refresh only this derived owner, in the source transaction; never mutate the
 -- source run, callback, delivery or accounting facts from this trigger.
+-- Repository writers first take the native conversation / source-run owner
+-- locks, before any callback row, matching native deletion lock order.
 create function application_run_log_callback_progress_refresh() returns trigger
 language plpgsql as $$
 declare anchor uuid;

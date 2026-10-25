@@ -1,4 +1,6 @@
 use super::*;
+
+mod callback_progress;
 use control_plane::agent_logs::AgentLogsService;
 use control_plane_contracts::ports::{
     AgentLogsDeleteJobCreate, AgentLogsDeleteJobStatus, AgentLogsDeleteScope,

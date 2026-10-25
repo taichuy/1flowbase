@@ -47,18 +47,39 @@ select pg_temp.check_message('Timeout','projection_timeout');
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
 select pg_temp.check_message('Timeout','projection_timeout');
 -- Real protocol facts: only emitted assistant text, in original block order.
-create function pg_temp.append_fact(seq bigint, fact jsonb) returns void language sql as $$
- insert into runtime_events(id,flow_run_id,sequence,event_type,layer,source,trust_level,payload,visibility,durability)
- values(gen_random_uuid(),'00000000-0000-4000-8000-000000000011',seq,'client_protocol_trajectory','runtime_item','host','host_fact',
- jsonb_build_object('request_id','00000000-0000-4000-8000-000000000090','fact',fact),'internal','durable')
-$$;
-select pg_temp.append_fact(1,'{"kind":"integrity","status":"pending","dropped_count":0,"persist_failed_count":0}');
-select pg_temp.append_fact(2,'{"kind":"step","step":{"id":"00000000-0000-4000-8000-000000000091","category":"assistant","origin":"emitted"}}');
-select pg_temp.append_fact(3,'{"kind":"section","step_id":"00000000-0000-4000-8000-000000000091","section":"result","value":[{"type":"output_text","text":"最后"},{"type":"reasoning_text","text":"SECRET"},{"type":"output_text","text":"回复"}]}');
-select pg_temp.append_fact(4,'{"kind":"step","step":{"id":"00000000-0000-4000-8000-000000000092","category":"tool_call","origin":"emitted"}}');
-select pg_temp.append_fact(5,'{"kind":"section","step_id":"00000000-0000-4000-8000-000000000092","section":"result","value":"exec NO"}');
-select pg_temp.append_fact(6,'{"kind":"step","step":{"id":"00000000-0000-4000-8000-000000000093","category":"assistant","origin":"submitted"}}');
-select pg_temp.append_fact(7,'{"kind":"section","step_id":"00000000-0000-4000-8000-000000000093","section":"result","value":"history NO"}');
+-- Integrity remains an event; current semantic occurrences are stored directly.
+insert into runtime_events(id,flow_run_id,sequence,event_type,layer,source,trust_level,payload,visibility,durability)
+values(gen_random_uuid(),'00000000-0000-4000-8000-000000000011',1,'client_protocol_trajectory','runtime_item','host','host_fact',
+ jsonb_build_object('request_id','00000000-0000-4000-8000-000000000090',
+ 'fact',jsonb_build_object('kind','integrity','status','pending','dropped_count',0,'persist_failed_count',0)),
+ 'internal','durable');
+create function pg_temp.append_client_result(seq bigint, step uuid, category text, origin text, canonical_body text)
+returns void language plpgsql as $$
+declare
+ content uuid := gen_random_uuid();
+ body_bytes bytea := convert_to(canonical_body,'UTF8');
+ body_digest bytea := sha256(body_bytes);
+ observed text := clock_timestamp()::text;
+begin
+ insert into client_trajectory_steps(id,request_id,flow_run_id,event_sequence,metadata,observed_at,
+     semantic_metadata_restored,metadata_compact,metadata_layout)
+ values(step,'00000000-0000-4000-8000-000000000090','00000000-0000-4000-8000-000000000011',seq,
+     jsonb_build_object('category',category,'origin',origin,'available_sections',jsonb_build_array('result')),
+     observed,true,true,1);
+ insert into runtime_canonical_contents(id,scope_id,application_id,content_hash,content,byte_size)
+ values(content,'00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000003',
+     'sha256:'||encode(body_digest,'hex'),canonical_body::jsonb,octet_length(body_bytes));
+ insert into runtime_observation_body_ownership(content_id) values(content);
+ insert into client_trajectory_sections(id,request_id,step_id,flow_run_id,section,event_sequence,
+     content_id,content_path,body_kind,observed_at,value_digest,value_byte_size)
+ values(gen_random_uuid(),'00000000-0000-4000-8000-000000000090',step,'00000000-0000-4000-8000-000000000011',
+     'result',seq+1,content,'{}','content',observed,body_digest,octet_length(body_bytes));
+end $$;
+-- Canonical JSON uses sorted object keys and no insignificant whitespace.
+select pg_temp.append_client_result(2,'00000000-0000-4000-8000-000000000091','assistant','emitted',
+ '[{"text":"最后","type":"output_text"},{"text":"SECRET","type":"reasoning_text"},{"text":"回复","type":"output_text"}]');
+select pg_temp.append_client_result(4,'00000000-0000-4000-8000-000000000092','tool_call','emitted','"exec NO"');
+select pg_temp.append_client_result(6,'00000000-0000-4000-8000-000000000093','assistant','submitted','"history NO"');
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
 select pg_temp.check_message('最后回复','provider_output_item');
 -- Usage corrections update the existing snapshot instead of adding old totals.

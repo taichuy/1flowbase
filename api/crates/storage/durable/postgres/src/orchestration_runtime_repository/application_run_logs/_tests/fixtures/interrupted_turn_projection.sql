@@ -115,13 +115,37 @@ end $$;
 -- Other active work always wins, even after the final was observed.
 do $$ declare active text; begin
  foreach active in array array['queued','running','waiting_human','paused'] loop
+  update flow_runs set status=active where id='00000000-0000-4000-8000-000000000010';
   update application_run_log_summaries set status=active where flow_run_id='00000000-0000-4000-8000-000000000010';
   perform application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
   assert (select status=active and outcome='in_progress' and finished_at is null from application_run_log_tasks
       where id='00000000-0000-4000-8000-000000000010'), 'active work is not hidden';
  end loop;
 end $$;
+update flow_runs set status='waiting_callback' where id='00000000-0000-4000-8000-000000000010';
 update application_run_log_summaries set status='waiting_callback' where flow_run_id='00000000-0000-4000-8000-000000000010';
+-- A stale terminal summary must not hide any active source state or finish it.
+do $$ declare active text; begin
+ foreach active in array array['queued','running','waiting_callback','waiting_human','paused'] loop
+  update flow_runs set status=active where id='00000000-0000-4000-8000-000000000010';
+  update application_run_log_summaries set status='succeeded',finished_at='2026-10-25T03:11:00Z'
+      where flow_run_id='00000000-0000-4000-8000-000000000010';
+  perform application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
+  assert (select status=active and outcome='in_progress' and finished_at is null and total_cost is null
+      from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'active source cannot be masked by terminal summary';
+ end loop;
+end $$;
+update flow_runs set status='waiting_callback' where id='00000000-0000-4000-8000-000000000010';
+update application_run_log_summaries set status='waiting_callback',finished_at=null
+where flow_run_id='00000000-0000-4000-8000-000000000010';
+-- An absent principal and an explicit empty principal are different facts.
+update flow_runs set external_user='' where id='00000000-0000-4000-8000-000000000011';
+select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
+do $$ begin
+ assert (select status='waiting_callback' and outcome='in_progress' from application_run_log_tasks
+     where id='00000000-0000-4000-8000-000000000010'), 'empty and absent external user never share a completion proof';
+end $$;
+update flow_runs set external_user=null where id='00000000-0000-4000-8000-000000000011';
 -- A successful count/compact call does not close a generation wait.
 update application_run_log_summaries set call_kind='compact' where flow_run_id='00000000-0000-4000-8000-000000000012';
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');

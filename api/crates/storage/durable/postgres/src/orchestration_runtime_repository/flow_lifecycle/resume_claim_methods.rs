@@ -1,3 +1,66 @@
+// Callback-derived log triggers may update the task projection. Acquire the
+// same owner as native deletion before advisory/child rows, then serialize the
+// source run too (including nonnative runs and native runs without a conversation).
+async fn lock_callback_run_mutation(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    flow_run_id: Uuid,
+) -> Result<()> {
+    lock_application_run_native_projection(tx, flow_run_id).await?;
+    sqlx::query("select id from flow_runs where id=$1 for update")
+        .bind(flow_run_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+    Ok(())
+}
+
+// Resolve immutable ownership without locking the child ahead of its parent.
+async fn lock_resume_claim_mutation(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    claim_id: Uuid,
+) -> Result<()> {
+    let flow_run_id: Option<Uuid> =
+        sqlx::query_scalar("select flow_run_id from flow_run_resume_claims where id=$1")
+            .bind(claim_id)
+            .fetch_optional(&mut **tx)
+            .await?;
+    if let Some(flow_run_id) = flow_run_id {
+        lock_callback_run_mutation(tx, flow_run_id).await?;
+    }
+    Ok(())
+}
+
+// Resolve immutable ownership without locking the child ahead of its parent.
+async fn lock_callback_attempt_mutation(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    attempt_id: Uuid,
+) -> Result<()> {
+    let flow_run_id: Option<Uuid> =
+        sqlx::query_scalar("select flow_run_id from flow_run_callback_resume_attempts where id=$1")
+            .bind(attempt_id)
+            .fetch_optional(&mut **tx)
+            .await?;
+    if let Some(flow_run_id) = flow_run_id {
+        lock_callback_run_mutation(tx, flow_run_id).await?;
+    }
+    Ok(())
+}
+
+// Resolve immutable ownership without locking the child ahead of its parent.
+async fn lock_callback_task_mutation(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    callback_task_id: Uuid,
+) -> Result<()> {
+    let flow_run_id: Option<Uuid> =
+        sqlx::query_scalar("select flow_run_id from flow_run_callback_tasks where id=$1")
+            .bind(callback_task_id)
+            .fetch_optional(&mut **tx)
+            .await?;
+    if let Some(flow_run_id) = flow_run_id {
+        lock_callback_run_mutation(tx, flow_run_id).await?;
+    }
+    Ok(())
+}
+
 async fn validate_callback_resume_admission(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     admission: &CallbackResumeAdmissionFence,
@@ -192,6 +255,7 @@ impl PgControlPlaneStore {
             return Err(anyhow!("resume claim kind does not match callback task"));
         }
         let mut tx = self.pool().begin().await?;
+        lock_callback_run_mutation(&mut tx, input.flow_run_id).await?;
         let target_id = input.callback_task_id.unwrap_or(input.checkpoint_id);
         sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
             .bind(target_id.to_string())
@@ -317,6 +381,8 @@ impl PgControlPlaneStore {
 
 impl PgControlPlaneStore {
     async fn renew_resume_claim(&self, input: &RenewResumeClaimInput) -> Result<bool> {
+        let mut tx = self.pool().begin().await?;
+        lock_resume_claim_mutation(&mut tx, input.claim_id).await?;
         let updated = sqlx::query(
             "update flow_run_resume_claims \
              set lease_expires_at = now() + interval '5 minutes', updated_at = now() \
@@ -326,8 +392,9 @@ impl PgControlPlaneStore {
         .bind(input.claim_id)
         .bind(input.claim_token)
         .bind(input.expected_generation)
-        .execute(self.pool())
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(updated.rows_affected() == 1)
     }
 
@@ -339,6 +406,7 @@ impl PgControlPlaneStore {
             return Err(anyhow!("resume claim cannot finish as processing"));
         }
         let mut tx = self.pool().begin().await?;
+        lock_resume_claim_mutation(&mut tx, input.claim_id).await?;
         let row = sqlx::query(sqlx::AssertSqlSafe(format!(
             "update flow_run_resume_claims set status = $4,\n                error_payload = case when status = 'processing' then ($5::jsonb -> 0) else error_payload end,\n                completed_at = coalesce(completed_at, $6),\n                updated_at = now(),\n                raw_json_payloads = (flow_run_resume_claims.raw_json_payloads - 'error_payload') || jsonb_strip_nulls(jsonb_build_object('error_payload', case when status = 'processing' then ($5::jsonb -> 1) else flow_run_resume_claims.raw_json_payloads -> 'error_payload' end))\n            where id = $1 and claim_token = $2 and generation = $3 and status in ('processing', $4) returning {RESUME_CLAIM_COLUMNS}"
         )))

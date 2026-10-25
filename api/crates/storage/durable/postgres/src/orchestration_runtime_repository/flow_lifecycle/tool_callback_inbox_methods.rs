@@ -35,6 +35,7 @@ impl PgControlPlaneStore {
         }
 
         let mut tx = self.pool().begin().await?;
+        lock_callback_run_mutation(&mut tx, input.flow_run_id).await?;
         sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
             .bind(input.callback_task_id.to_string())
             .execute(&mut *tx)

@@ -972,16 +972,23 @@ async fn issue_2674_anchor_prompt_falls_back_only_to_current_run_input() {
         None,
         Some(json!({"type":"message","content_omitted":true})),
         Some(json!({"role":"user","content":""})),
+        Some(json!({"role":"user","content":" \n\t "})),
     ]
     .into_iter()
     .enumerate()
     {
-        let current = format!("current-{index}\u{0000} text");
+        let current = format!("\n  current-{index}\u{0000} text\n  ");
+        assert_ne!(
+            current,
+            current.trim(),
+            "fixture must expose boundary trimming"
+        );
         let run = seed_native_run_conversation_flow_run(
             &store, &seeded, &compiled, &format!("recover-current-{index}"),
             datetime!(2026-10-25 01:00:00 UTC),
             json!({
                 "__native_model_prompt_context":{"system":[{"text":"client context"}]},
+                "query":" \n\t ",
                 "node-start":{"query":current,"history":[{"role":"user","content":"never recover history"}]}
             }), prompt,
         ).await;

@@ -282,6 +282,8 @@ impl PgControlPlaneStore {
         &self,
         input: &UpdateCallbackTaskPayloadsInput,
     ) -> Result<domain::CallbackTaskRecord> {
+        let mut tx = self.pool().begin().await?;
+        lock_callback_task_mutation(&mut tx, input.callback_task_id).await?;
         let row = sqlx::query(
             r#"
             update flow_run_callback_tasks
@@ -307,9 +309,10 @@ impl PgControlPlaneStore {
         .bind(lossless_json_parameter(&(&input.request_payload)))
         .bind(lossless_json_parameter(&(&input.response_payload)))
         .bind(lossless_json_parameter(&(&input.external_ref_payload)))
-        .fetch_one(self.pool())
+        .fetch_one(&mut *tx)
         .await?;
 
+        tx.commit().await?;
         map_callback_task_record(row)
     }
 }

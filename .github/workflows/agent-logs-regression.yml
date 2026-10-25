@@ -83,6 +83,14 @@ jobs:
           set -euo pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration application_logs::run_conversation_native_projection > tmp/test-governance/agent-logs-regression/native-input.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/native-input.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/native-input.log
+      - name: Callback progress and concurrent native deletion
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration application_logs::native_log_deletion > tmp/test-governance/agent-logs-regression/native-deletion.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/native-deletion.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/native-deletion.log
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration callback_resume > tmp/test-governance/agent-logs-regression/callback-resume.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/callback-resume.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/callback-resume.log
       - name: Canonical protocol and deletion scope
         shell: bash
         run: |
