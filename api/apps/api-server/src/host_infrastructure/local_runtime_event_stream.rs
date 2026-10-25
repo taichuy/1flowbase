@@ -177,6 +177,8 @@ struct LocalRunEventStream {
 struct RetainedRuntimeEvents {
     events: VecDeque<Arc<RetainedRuntimeEvent>>,
     bytes: usize,
+    ephemeral_count: usize,
+    sequence_order_may_be_unsorted: bool,
     terminal_reason: Option<RuntimeEventCloseReason>,
     terminal_sequence: Option<i64>,
     durable_replay_boundary: Option<i64>,
@@ -651,12 +653,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             *run.last_event_at
                 .lock()
                 .expect("runtime event last event lock poisoned") = envelope.occurred_at;
-            ring.bytes = ring.bytes.saturating_add(retained_bytes);
-            if let Some(reason) = retained.terminal_reason {
-                ring.terminal_reason.get_or_insert(reason);
-                ring.terminal_sequence.get_or_insert(sequence);
-            }
-            ring.events.push_back(Arc::new(retained));
+            ring.push(retained);
             envelope
         };
 
@@ -837,9 +834,14 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             if ring.retired {
                 return Err(anyhow!("runtime event stream is not open"));
             }
+            let mut ephemeral_count = 0;
             ring.events.retain(|event| {
-                event.sequence >= before_sequence || (policy.keep_required && event.is_required())
+                let required = event.is_required();
+                let keep = event.sequence >= before_sequence || (policy.keep_required && required);
+                ephemeral_count += usize::from(keep && !required);
+                keep
             });
+            ring.ephemeral_count = ephemeral_count;
             ring.bytes = ring.events.iter().map(|event| event.wire.len()).sum();
             ring.terminal_reason = ring.events.iter().find_map(|event| event.terminal_reason);
             ring.terminal_sequence = ring

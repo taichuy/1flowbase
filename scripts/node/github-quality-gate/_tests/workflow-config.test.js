@@ -1143,33 +1143,147 @@ test('AI protocol concurrency separates caller workflows and candidate sources',
 });
 
 
-test('agent log focused gate independently rejects every empty Cargo selector', () => {
+test('agent log focused gate preserves every selector in six independently validated Cargo groups', () => {
   const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/agent-logs-regression.yml'), 'utf8');
-  const commands = [...workflow.matchAll(/cargo test[^\n]+> (tmp\/test-governance\/[^ ]+\.log)/gu)];
-  const requiredSelectors = [
-    '-p control-plane-contracts agent_logs',
-    '-p control-plane-contracts log_query',
-    '-p control-plane-postgres-tests --test orchestration_runtime_integration application_logs::agent_logs',
-    '-p api-server agent_logs_delete',
-    '-p api-server agent_logs_unified_query',
-    '-p api-server routes::settings_group::mcp_management::debug_execute',
-    '-p api-server console_route_assembly',
-    '-p api-server console_policy_migration',
-    '-p control-plane-postgres-tests --test orchestration_runtime_integration storage_foundation',
-    '-p storage-durable-postgres client_trajectory',
-    '-p storage-durable-postgres workflow_',
-    '-p api-server application_runtime_run_trajectory_and_payload_sections_are_scoped_lazy_and_authorized',
-    '-p api-server workflow_trajectory_routes_preserve_authorization_filters_and_selected_body_scope'
+  const requiredGroups = [
+    {
+      name: 'Canonical protocol and deletion scope',
+      selectors: [
+        '-p control-plane-contracts agent_logs',
+        '-p control-plane-contracts log_query',
+      ],
+    },
+    {
+      name: 'Real service, migrations, deletion and imported read models',
+      selectors: ['-p control-plane-postgres-tests --test orchestration_runtime_integration application_logs::agent_logs'],
+    },
+    {
+      name: 'Console authorization, unified queries, registration and trajectory routes',
+      isolated: true,
+      receiptPrefix: 'api-server',
+      selectors: [
+        '-p api-server agent_logs_delete',
+        '-p api-server agent_logs_unified_query',
+        '-p api-server routes::settings_group::mcp_management::debug_execute',
+        '-p api-server console_route_assembly',
+        '-p api-server console_policy_migration',
+      ],
+    },
+    {
+      name: 'Existing canonical storage and native consumers',
+      selectors: ['-p control-plane-postgres-tests --test orchestration_runtime_integration storage_foundation'],
+    },
+    {
+      name: 'Exact viewport acquisition for native client and workflow trajectories',
+      selectors: [
+        '-p storage-durable-postgres client_trajectory',
+        '-p storage-durable-postgres workflow_',
+      ],
+    },
+    {
+      name: 'Application and workflow trajectory route authorization',
+      isolated: true,
+      receiptPrefix: 'trajectory-routes',
+      selectors: [
+        '-p api-server application_runtime_run_trajectory_and_payload_sections_are_scoped_lazy_and_authorized',
+        '-p api-server workflow_trajectory_routes_preserve_authorization_filters_and_selected_body_scope',
+      ],
+    },
   ];
-  for (const selector of requiredSelectors) {
-    assert.equal(commands.filter((command) => command[0].includes(`${selector} > `)).length, 1, selector);
+  const validator = 'node scripts/node/verify/cargo-test-results.js "$log" -- "${filters[@]}"';
+
+  function assertFocusedGate(source) {
+    const steps = source.split(/^      - /mu).slice(1);
+    const receipts = [];
+    let selectorCount = 0;
+    let commandCount = 0;
+    let previousStepIndex = -1;
+    for (const { name, selectors, isolated = false, receiptPrefix } of requiredGroups) {
+      // Temporary acceptance steps have their own names and are not formal groups.
+      const selected = steps.filter((step) => step.startsWith(`name: ${name}\n`));
+      assert.equal(selected.length, 1, name);
+      const step = selected[0];
+      const stepIndex = steps.indexOf(step);
+      assert.ok(stepIndex > previousStepIndex, `${name}: preserve selector group order`);
+      previousStepIndex = stepIndex;
+      assert.match(step, /^        shell: bash$/mu, name);
+      assert.doesNotMatch(step, /^        (?:continue-on-error|if):/mu, name);
+      const run = step.match(/\n        run: \|\n([\s\S]*)$/u)?.[1];
+      assert.ok(run, `${name}: literal shell script`);
+      const assignments = [...run.matchAll(/^[ \t]*filters=\(([^)]*)\)[ \t]*$/gmu)];
+      assert.equal(assignments.length, 1, `${name}: one filters array`);
+      const assignment = assignments[0];
+      const filters = assignment[1].trim().split(/\s+/u);
+      const script = run.replace(assignment[0], 'filters=()')
+        .replace(/\\\n[ \t]*/gu, ' ')
+        .split('\n')
+        .map((line) => line.trim().replace(/[ \t]+/gu, ' '))
+        .filter((line) => line && !line.startsWith('#'))
+        .join('\n');
+      assert.equal([...script.matchAll(/^filters(?:\[[^\]]+\])?\+?=/gmu)].length, 1, `${name}: one dense filters assignment`);
+      const logs = [...script.matchAll(/^log=([^\n]*)$/gmu)];
+      const commands = [...script.matchAll(/^cargo\b[^\n]*/gmu)];
+      const validators = [...script.matchAll(/^node scripts\/node\/verify\/cargo-test-results\.js\b[^\n]*/gmu)];
+      assert.equal(logs.length, 1, `${name}: one log assignment`);
+      assert.equal(commands.length, 1, `${name}: one Cargo command`);
+      assert.equal(validators.length, 1, `${name}: one validator`);
+      const failFast = script.match(/^set -[a-z]*e[a-z]*(?: [^\n]*)?$/mu);
+      assert.ok(failFast && failFast.index < commands[0].index, `${name}: errexit before Cargo`);
+      assert.ok(script.indexOf('filters=()') < commands[0].index, `${name}: filters before Cargo`);
+      assert.ok(logs[0].index < commands[0].index, `${name}: receipt before Cargo`);
+      // Keep one Cargo positional filter; only the smaller owners share a process.
+      const command = script.slice(commands[0].index).match(/^cargo test --locked --manifest-path api\/Cargo\.toml (.+) ("\$filter" --|"\$\{filters\[0\]\}" -- "\$\{filters\[@\]:1\}") --format=pretty --color=never > "\$log" 2>&1 \|\| \{([\s\S]*?)\}(?=\n|$)/u);
+      assert.ok(command, `${name}: Cargo selection and fail-fast command`);
+      assert.equal(command[2], isolated ? '"$filter" --' : '"${filters[0]}" -- "${filters[@]:1}"', name);
+      const failureExit = command[3].match(/(?:^|[;\n])\s*exit ([0-9]+);?\s*$/u)?.[1];
+      assert.ok(Number(failureExit) > 0 && Number(failureExit) < 256, `${name}: Cargo failure exits nonzero`);
+      const actual = filters.map((filter) => `${command[1]} ${filter}`);
+      assert.deepEqual(actual, selectors, `${name}: package/target/filter coverage and relative order`);
+      selectorCount += actual.length;
+      assert.equal(validators[0][0], isolated ? validator.replace('${filters[@]}', '$filter') : validator,
+        `${name}: validate every filter against the same receipt`);
+      assert.ok(validators[0].index >= commands[0].index + command[0].length, `${name}: validator after Cargo`);
+      assert.equal([...script.matchAll(/^for\b/gmu)].length, isolated ? 1 : 0, name);
+      if (isolated) {
+        const loop = script.match(/^for index in "\$\{!filters\[@\]\}"; do$/mu);
+        const selection = script.match(/^filter=\$\{filters\[\$index\]\}$/mu);
+        const end = script.match(/^done$/mu);
+        assert.equal([...script.matchAll(/^filter=/gmu)].length, 1, name);
+        assert.equal([...script.matchAll(/^done$/gmu)].length, 1, name);
+        assert.ok(loop && selection && end && loop.index < selection.index
+          && selection.index < logs[0].index && end.index > validators[0].index, `${name}: serial per-filter processes`);
+        assert.equal(logs[0][1], `tmp/test-governance/agent-logs-regression/${receiptPrefix}-$index.log`, name);
+        receipts.push(...filters.map((_, index) => logs[0][1].replace('$index', String(index))));
+      } else {
+        assert.match(logs[0][1], /^tmp\/test-governance\/agent-logs-regression\/[a-z-]+\.log$/u, name);
+        receipts.push(logs[0][1]);
+      }
+      commandCount += isolated ? filters.length : 1;
+    }
+    assert.equal(selectorCount, 13);
+    assert.equal(commandCount, 11);
+    assert.equal(new Set(receipts).size, 11, 'each Cargo process needs an independent execution receipt');
   }
-  assert.equal(new Set(commands.map((command) => command[1])).size, commands.length, 'each selector needs its own execution receipt');
-  for (const command of commands) {
-    const log = command[1];
-    // Validation follows the command in the same fail-fast shell step.
-    const remainder = workflow.slice(command.index + command[0].length).split('\n').slice(0, 2).join('\n');
-    assert.ok(remainder.includes(`node scripts/node/verify/cargo-test-results.js ${log}`), log);
+
+  assertFocusedGate(workflow);
+  assertFocusedGate(workflow
+    .replace('filters=(agent_logs log_query)', 'echo "Starting focused Cargo tests"\n          filters=(agent_logs log_query)')
+    .replace('tail -c 4000 "$log"', 'echo "Cargo failed"; tail -c 2048 "$log"'));
+  const mutations = [
+    ['missing selector', 'filters=(agent_logs log_query)', 'filters=(agent_logs)'],
+    ['wrong package', '-p control-plane-contracts', '-p api-server'],
+    ['wrong integration target', '--test orchestration_runtime_integration', '--test another_integration'],
+    ['narrowed default targets', '-p control-plane-contracts', '-p control-plane-contracts --lib'],
+    ['missing validator', validator, ''],
+    ['incomplete validator', validator, validator.replace('${filters[@]}', '${filters[0]}')],
+    ['extra Doc-tests', '"${filters[0]}" -- "${filters[@]:1}"', '-- "${filters[@]}"'],
+    ['repeated first API filter', 'filter=${filters[$index]}', 'filter=${filters[0]}'],
+    ['shared API receipt', 'api-server-$index.log', 'api-server.log'],
+  ];
+  for (const [name, before, after] of mutations) {
+    const broken = workflow.replace(before, after);
+    assert.notEqual(broken, workflow, `${name}: fixture must change the workflow`);
+    assert.throws(() => assertFocusedGate(broken), { code: 'ERR_ASSERTION' }, name);
   }
 });
 

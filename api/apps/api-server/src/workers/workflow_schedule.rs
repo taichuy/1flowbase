@@ -74,7 +74,7 @@ pub async fn consume_one_workflow_schedule_run(
         return Ok(WorkflowScheduleWorkerOutcome::NoTask);
     };
 
-    let decoded = serde_json::from_value::<WorkflowScheduleRunTask>(task.payload.clone());
+    let decoded = serde_json::from_value::<WorkflowScheduleRunTask>(task.payload);
     let task_payload = match decoded {
         Ok(payload) => payload,
         Err(error) => {
