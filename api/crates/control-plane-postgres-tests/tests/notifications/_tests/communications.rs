@@ -726,3 +726,81 @@ async fn communication_can_retry_projects_status_lease_and_channel_eligibility()
             .can_retry
     );
 }
+
+#[tokio::test]
+async fn communication_preflight_failure_is_durable_before_any_external_send() {
+    let (store, w, root) = super::super::support::seed_store().await;
+    let actor = store
+        .load_actor_context(root.id, w.tenant_id, w.id, None)
+        .await
+        .unwrap();
+    let service = NotificationService::new(store.clone(), KEY.into());
+    let channel = create_channel(&store, w.id).await;
+    service
+        .save_binding(&actor, channel, config(), "plugin-tools".into())
+        .await
+        .unwrap();
+    let revision = store
+        .resolve_notification_authorization(w.id, channel, KEY)
+        .await
+        .unwrap()
+        .revision;
+    service
+        .commit_receive(CommitCommunicationReceiveInput {
+            authorization: authorization(w.id, channel, revision),
+            candidate_cursor: None,
+            messages: vec![received("preflight-message", "alice", false)],
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let input = service
+        .claim_pending_input(w.id, channel, 120)
+        .await
+        .unwrap()
+        .unwrap();
+    let claim = CommunicationClaim {
+        workspace_id: w.id,
+        instance_id: channel,
+        message_id: input.message.id,
+        claim_id: input.claim_id,
+    };
+    assert!(service
+        .record_progress(
+            &claim,
+            CommunicationProgress::RunStarted {
+                run_id: Uuid::now_v7()
+            }
+        )
+        .await
+        .unwrap());
+    assert!(service
+        .record_progress(
+            &claim,
+            CommunicationProgress::RunSucceeded {
+                final_reply: "complete answer".into()
+            }
+        )
+        .await
+        .unwrap());
+    // Failed authority/capability checks must not mark a provider attempt as started.
+    assert!(service
+        .record_progress(
+            &claim,
+            CommunicationProgress::SendFailed {
+                failure_code: "send_preflight_failed".into()
+            }
+        )
+        .await
+        .unwrap());
+    let page = service
+        .message_history(&actor, channel, input.conversation.id, None, 30)
+        .await
+        .unwrap();
+    assert_eq!(page.items[0].send_status, CommunicationSendStatus::Failed);
+    assert_eq!(
+        page.items[0].failure_code.as_deref(),
+        Some("send_preflight_failed")
+    );
+    assert!(page.items[0].can_retry);
+}

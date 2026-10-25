@@ -107,7 +107,7 @@ pub(super) async fn progress(
         CommunicationProgress::RunFailed{failure_code}=>("processing_status='failed',claim_id=NULL,claim_expires_at=NULL","processing_status='processing'",None,None,Some(failure_code)),
         CommunicationProgress::SendStarted=>("send_status='sending'","processing_status='succeeded' AND send_status='pending' AND final_reply IS NOT NULL",None,None,None),
         CommunicationProgress::SendSucceeded=>("send_status='succeeded',claim_id=NULL,claim_expires_at=NULL","send_status='sending'",None,None,None),
-        CommunicationProgress::SendFailed{failure_code}=>("send_status='failed',claim_id=NULL,claim_expires_at=NULL","send_status='sending'",None,None,Some(failure_code)),
+        CommunicationProgress::SendFailed{failure_code}=>("send_status='failed',claim_id=NULL,claim_expires_at=NULL","send_status IN ('pending','sending')",None,None,Some(failure_code)),
         CommunicationProgress::SendUnknown{failure_code}=>("send_status='unknown',claim_id=NULL,claim_expires_at=NULL","send_status='sending'",None,None,Some(failure_code)),
     };
     // Terminal facts remain recordable if the channel is disabled while provider I/O is in

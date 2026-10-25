@@ -36,37 +36,37 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_post(mark_unread, Op("notifications.messages.unread".into())),
         )
         .route(
-            "/notifications/logs",
+            "/communications/logs",
             console_get(logs, Op("notifications.logs.list".into())),
         )
         .route(
-            "/notifications/logs/:log_id",
+            "/communications/logs/:log_id",
             console_get(log, Op("notifications.logs.get".into())),
         )
         .route(
-            "/notifications/types",
+            "/communications/types",
             console_get(types, Op("notifications.types.list".into())),
         )
         .route(
-            "/notifications/instances",
+            "/communications/instances",
             console_get(list, Op("notifications.instances.list".into()))
                 .post(create, Op("notifications.instances.create".into())),
         )
         .route(
-            "/notifications/instances/:instance_id",
+            "/communications/instances/:instance_id",
             console_get(get, Op("notifications.instances.get".into()))
                 .patch(patch, Op("notifications.instances.update".into()))
                 .delete(delete, Op("notifications.instances.delete".into())),
         )
         .route(
-            "/notifications/instances/:instance_id/authorization",
+            "/communications/instances/:instance_id/authorization",
             console_post(
                 authorize,
                 Op("notifications.instances.authorization".into()),
             ),
         )
         .route(
-            "/notifications/instances/:instance_id/send",
+            "/communications/instances/:instance_id/send",
             console_post(send, Op("notifications.instances.send".into())),
         )
         .route(

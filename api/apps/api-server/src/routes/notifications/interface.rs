@@ -67,6 +67,7 @@ impl InterfaceContract for NotificationOutput {
 }
 struct Adapter {
     service: Arc<ApiNotificationService>,
+    communication: crate::routes::communications::interface::Dependencies,
 }
 impl Adapter {
     async fn inner(
@@ -84,7 +85,14 @@ impl Adapter {
                 serde_json::to_value(self.service.get_instance(actor, id).await?)?
             }
             NotificationInput::Create(input) => {
-                serde_json::to_value(self.service.create_instance(actor, input).await?)?
+                let instance = self.service.create_instance(actor, input).await?;
+                crate::routes::communications::provisioning::ensure_channel_mcp(
+                    &self.communication,
+                    actor,
+                    instance.record.id,
+                )
+                .await?;
+                serde_json::to_value(instance)?
             }
             NotificationInput::Patch(id, input) => {
                 serde_json::to_value(self.service.patch_instance(actor, id, input).await?)?
@@ -147,6 +155,7 @@ impl ConsoleInterfacePort<NotificationInput, NotificationOutput> for Adapter {
 }
 pub(crate) fn compile_registry(
     service: Arc<ApiNotificationService>,
+    communication: crate::routes::communications::interface::Dependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
@@ -155,7 +164,10 @@ pub(crate) fn compile_registry(
         "api-server.console-notifications",
         "graph:console-notifications-v1",
         DECLARATIONS,
-        Arc::new(Adapter { service }),
+        Arc::new(Adapter {
+            service,
+            communication,
+        }),
     )
 }
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
@@ -184,70 +196,70 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         interface_id: "notifications.logs.list",
         binding_id: "http.console.notifications.logs.list.v1",
         method: "GET",
-        path: "/api/console/notifications/logs",
+        path: "/api/console/communications/logs",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
         interface_id: "notifications.logs.get",
         binding_id: "http.console.notifications.logs.get.v1",
         method: "GET",
-        path: "/api/console/notifications/logs/:log_id",
+        path: "/api/console/communications/logs/:log_id",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
         interface_id: "notifications.types.list",
         binding_id: "http.console.notifications.types.list.v1",
         method: "GET",
-        path: "/api/console/notifications/types",
+        path: "/api/console/communications/types",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
         interface_id: "notifications.instances.list",
         binding_id: "http.console.notifications.instances.list.v1",
         method: "GET",
-        path: "/api/console/notifications/instances",
+        path: "/api/console/communications/instances",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
         interface_id: "notifications.instances.get",
         binding_id: "http.console.notifications.instances.get.v1",
         method: "GET",
-        path: "/api/console/notifications/instances/:instance_id",
+        path: "/api/console/communications/instances/:instance_id",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
         interface_id: "notifications.instances.create",
         binding_id: "http.console.notifications.instances.create.v1",
         method: "POST",
-        path: "/api/console/notifications/instances",
+        path: "/api/console/communications/instances",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
         interface_id: "notifications.instances.update",
         binding_id: "http.console.notifications.instances.update.v1",
         method: "PATCH",
-        path: "/api/console/notifications/instances/:instance_id",
+        path: "/api/console/communications/instances/:instance_id",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
         interface_id: "notifications.instances.delete",
         binding_id: "http.console.notifications.instances.delete.v1",
         method: "DELETE",
-        path: "/api/console/notifications/instances/:instance_id",
+        path: "/api/console/communications/instances/:instance_id",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
         interface_id: "notifications.instances.authorization",
         binding_id: "http.console.notifications.instances.authorization.v1",
         method: "POST",
-        path: "/api/console/notifications/instances/:instance_id/authorization",
+        path: "/api/console/communications/instances/:instance_id/authorization",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
         interface_id: "notifications.instances.send",
         binding_id: "http.console.notifications.instances.send.v1",
         method: "POST",
-        path: "/api/console/notifications/instances/:instance_id/send",
+        path: "/api/console/communications/instances/:instance_id/send",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {

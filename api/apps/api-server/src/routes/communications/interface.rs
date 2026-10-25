@@ -1,0 +1,304 @@
+use super::{provisioning, scope, FileQuery, PageQuery};
+use crate::{
+    app_state::{ApiNotificationService, ApiState},
+    error_response::ApiError,
+    routes::{
+        console_interface::{
+            self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+            ConsoleInterfaceTargetError,
+        },
+        mcp_management::interface_catalog::McpInterfaceCatalogDependencies,
+    },
+};
+use base64::{engine::general_purpose::STANDARD, Engine};
+use interface_runtime::{InterfaceContract, UserPrincipal};
+use serde_json::{json, Value};
+use std::sync::Arc;
+use tokio::io::AsyncReadExt;
+use uuid::Uuid;
+
+#[derive(Clone)]
+pub(crate) struct Dependencies {
+    pub(crate) store: storage_durable_postgres::MainDurableStore,
+    pub(crate) service: Arc<ApiNotificationService>,
+    pub(crate) catalog: McpInterfaceCatalogDependencies,
+    pub(crate) file_service: Arc<
+        control_plane::file_management::FileAccessService<
+            storage_durable_postgres::MainDurableStore,
+        >,
+    >,
+}
+impl Dependencies {
+    pub(crate) fn new(state: &ApiState, catalog: McpInterfaceCatalogDependencies) -> Self {
+        Self {
+            store: state.store.clone(),
+            service: state.notification_service.clone(),
+            catalog,
+            file_service: Arc::new(control_plane::file_management::FileAccessService::new(
+                state.store.clone(),
+                state.file_storage_registry.clone(),
+                state.runtime_engine.clone(),
+                state.infrastructure.ephemeral_kv_store(),
+            )),
+        }
+    }
+}
+pub(crate) enum Input {
+    Options(Option<Uuid>),
+    Binding(Uuid),
+    SaveBinding(Uuid, domain::CommunicationBindingInput),
+    Conversations(Uuid, PageQuery),
+    Messages(Uuid, Uuid, PageQuery),
+    Files(Uuid, Uuid, PageQuery),
+    File(Uuid, Uuid, FileQuery),
+    Retry(Uuid, Uuid),
+}
+pub(crate) struct Output(pub Value);
+impl InterfaceContract for Input {
+    const CONTRACT_ID: &'static str = "console-communications-input";
+    const CONTRACT_VERSION: &'static str = "1";
+    fn managed_projection_schema() -> Option<Value> {
+        Some(crate::extension_bus::managed_projection::object_schema([(
+            "operation",
+            crate::extension_bus::managed_projection::text_schema(),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<Value> {
+        Some(
+            json!({"operation":match self{Self::Options(_)=>"options",Self::Binding(_)=>"binding",Self::SaveBinding(..)=>"save_binding",Self::Conversations(..)=>"conversations",Self::Messages(..)=>"messages",Self::Files(..)=>"files",Self::File(..)=>"file",Self::Retry(..)=>"retry"}}),
+        )
+    }
+}
+impl InterfaceContract for Output {
+    const CONTRACT_ID: &'static str = "console-communications-output";
+    const CONTRACT_VERSION: &'static str = "1";
+    fn managed_projection_schema() -> Option<Value> {
+        Some(crate::extension_bus::managed_projection::json_summary_schema())
+    }
+    fn project_for_managed_hook(&self) -> Option<Value> {
+        Some(crate::extension_bus::managed_projection::json_summary(
+            &self.0,
+        ))
+    }
+}
+impl Dependencies {
+    async fn execute_inner(
+        &self,
+        principal: &UserPrincipal,
+        input: Input,
+    ) -> Result<Output, ApiError> {
+        let actor = principal.actor();
+        let result = match input {
+            Input::Options(application_id) => {
+                let (published_agent_flows, enabled_mcp_instances) =
+                    crate::routes::assistant::available_targets(&self.store, actor).await?;
+                let run_capabilities = crate::routes::assistant::assistant_run_capabilities(
+                    &self.store,
+                    actor,
+                    application_id,
+                )
+                .await?;
+                json!({"published_agent_flows":published_agent_flows,"enabled_mcp_instances":enabled_mcp_instances,"run_capabilities":run_capabilities})
+            }
+            Input::Binding(id) => {
+                let instance = self.service.get_instance(actor, id).await?;
+                let descriptor = self
+                    .service
+                    .types(actor)
+                    .await?
+                    .into_iter()
+                    .find(|t| {
+                        t.descriptor.type_code == instance.record.type_code
+                            && t.installation_id == instance.record.installation_id
+                    })
+                    .and_then(|t| t.descriptor.receive);
+                let binding = self.service.get_binding(actor, id).await?;
+                let plugin_mcp_instance_id =
+                    descriptor.as_ref().map(|_| provisioning::instance_id(id));
+                json!({"binding":binding,"plugin_mcp_instance_id":plugin_mcp_instance_id,"default_system_prompt":descriptor.map(|d|d.default_system_prompt)})
+            }
+            Input::SaveBinding(id, mut input) => {
+                let instance = self.service.get_instance(actor, id).await?;
+                let descriptor = self
+                    .service
+                    .types(actor)
+                    .await?
+                    .into_iter()
+                    .find(|entry| {
+                        entry.descriptor.type_code == instance.record.type_code
+                            && entry.installation_id == instance.record.installation_id
+                    })
+                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                        "communication_type",
+                    ))?;
+                if descriptor
+                    .descriptor
+                    .input_schema
+                    .pointer("/properties/text/type")
+                    .and_then(Value::as_str)
+                    != Some("string")
+                {
+                    return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "communication_text_input_schema",
+                    )
+                    .into());
+                }
+
+                let mcp = provisioning::ensure_channel_mcp(self, actor, id)
+                    .await?
+                    .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "communication_receive_unsupported",
+                    ))?;
+                if self.service.get_binding(actor, id).await?.is_none()
+                    && !input.mcp_instance_ids.contains(&mcp)
+                {
+                    input.mcp_instance_ids.insert(0, mcp.clone());
+                }
+                crate::routes::assistant::validate_preference(
+                    &self.store,
+                    actor,
+                    &crate::routes::assistant::AssistantPreferenceBody {
+                        application_id: Some(input.application_id),
+                        mcp_instance_ids: input.mcp_instance_ids.clone(),
+                        model: input.model.clone(),
+                        reasoning_effort: input.reasoning_effort.clone(),
+                        enabled_client_tools: Vec::new(),
+                    },
+                )
+                .await?;
+                // Validate the selected table against the same workspace visibility used by file management.
+                if let Some(table_id) = input.file_table_id {
+                    use control_plane::ports::FileManagementRepository;
+                    if !self
+                        .store
+                        .list_visible_file_tables(actor.current_workspace_id)
+                        .await?
+                        .iter()
+                        .any(|t| t.id == table_id && t.status == "active")
+                    {
+                        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                            "file_table_id",
+                        )
+                        .into());
+                    }
+                }
+                serde_json::to_value(self.service.save_binding(actor, id, input, mcp).await?)?
+            }
+            Input::Conversations(id, q) => match scope::for_channel(actor, id)? {
+                Some(s) => serde_json::to_value(
+                    self.service
+                        .scoped_conversations(&s, q.cursor, q.limit.unwrap_or(30))
+                        .await?,
+                )?,
+                None => serde_json::to_value(
+                    self.service
+                        .conversations(actor, id, q.cursor, q.limit.unwrap_or(30))
+                        .await?,
+                )?,
+            },
+            Input::Messages(id, conversation, q) => match scope::for_channel(actor, id)? {
+                Some(s) => serde_json::to_value(
+                    self.service
+                        .scoped_message_history(&s, conversation, q.cursor, q.limit.unwrap_or(30))
+                        .await?,
+                )?,
+                None => serde_json::to_value(
+                    self.service
+                        .message_history(actor, id, conversation, q.cursor, q.limit.unwrap_or(30))
+                        .await?,
+                )?,
+            },
+            Input::Files(id, conversation, q) => match scope::for_channel(actor, id)? {
+                Some(s) => serde_json::to_value(
+                    self.service
+                        .scoped_files(&s, conversation, q.cursor, q.limit.unwrap_or(30))
+                        .await?,
+                )?,
+                None => serde_json::to_value(
+                    self.service
+                        .files(actor, id, conversation, q.cursor, q.limit.unwrap_or(30))
+                        .await?,
+                )?,
+            },
+            Input::File(id, attachment_id, q) => {
+                let attachment = match scope::for_channel(actor, id)? {
+                    Some(s) => self.service.scoped_file(&s, attachment_id).await?,
+                    None => self.service.file(actor, id, attachment_id).await?,
+                };
+                self.read_file(actor, attachment, q).await?
+            }
+            Input::Retry(id, message) => {
+                // Retry is a management action; read-only history MCP declarations never expose it.
+                self.service.retry_message(actor, id, message).await?;
+                json!({"accepted":true})
+            }
+        };
+        Ok(Output(result))
+    }
+    async fn read_file(
+        &self,
+        actor: &domain::ActorContext,
+        attachment: domain::CommunicationAttachment,
+        q: FileQuery,
+    ) -> Result<Value, ApiError> {
+        let (Some(table), Some(record)) = (attachment.file_table_id, attachment.file_record_id)
+        else {
+            return Ok(json!({"attachment":attachment,"url":null,"preview_url":null}));
+        };
+        let content = self.file_service.read(actor.clone(), table, record).await?;
+        let offset = q.offset.unwrap_or(0);
+        if offset > content.content_length {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput("offset").into());
+        }
+        let length = u64::from(q.max_bytes.unwrap_or(48 * 1024).clamp(1, 48 * 1024))
+            .min(content.content_length - offset);
+        let mut reader = content
+            .reader
+            .into_inner()
+            .map_err(|_| control_plane::errors::ControlPlaneError::Conflict("file_reader"))?;
+        tokio::io::copy(&mut (&mut reader).take(offset), &mut tokio::io::sink()).await?;
+        let mut bytes = Vec::with_capacity(length as usize);
+        reader.take(length).read_to_end(&mut bytes).await?;
+        let next_offset = offset + bytes.len() as u64;
+        let text = std::str::from_utf8(&bytes).ok().map(str::to_owned);
+        Ok(
+            json!({"attachment":attachment,"file_name":content.filename,"content_type":content.content_type,"content_length":content.content_length,"offset":offset,"next_offset":next_offset,"eof":next_offset>=content.content_length,"content":text,"data_base64":STANDARD.encode(&bytes),"url":format!("/api/console/files/{table}/records/{record}/content"),"preview_url":null}),
+        )
+    }
+}
+impl ConsoleInterfacePort<Input, Output> for Dependencies {
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: Input,
+    ) -> ConsoleInterfaceFuture<'a, Output> {
+        Box::pin(async move {
+            self.execute_inner(principal, input)
+                .await
+                .map_err(ConsoleInterfaceTargetError)
+        })
+    }
+}
+pub(crate) fn compile_registry(
+    dependencies: Dependencies,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    console_interface::compile_registry(
+        "api-server.console-communications",
+        "graph:console-communications-v1",
+        DECLARATIONS,
+        Arc::new(dependencies),
+    )
+}
+pub(crate) const DECLARATIONS:&[ConsoleInterfaceDeclaration]=&[
+    ConsoleInterfaceDeclaration{interface_id:"communications.options.get",binding_id:"http.console.communications.options.get.v1",method:"GET",path:"/api/console/communications/options",mutating:false},
+    ConsoleInterfaceDeclaration{interface_id:"communications.binding.get",binding_id:"http.console.communications.binding.get.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/binding",mutating:false},
+    ConsoleInterfaceDeclaration{interface_id:"communications.binding.update",binding_id:"http.console.communications.binding.update.v1",method:"PUT",path:"/api/console/communications/instances/:instance_id/binding",mutating:true},
+    ConsoleInterfaceDeclaration{interface_id:"communications.conversations.list",binding_id:"http.console.communications.conversations.list.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/conversations",mutating:false},
+    ConsoleInterfaceDeclaration{interface_id:"communications.messages.list",binding_id:"http.console.communications.messages.list.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/conversations/:conversation_id/messages",mutating:false},
+    ConsoleInterfaceDeclaration{interface_id:"communications.files.list",binding_id:"http.console.communications.files.list.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/conversations/:conversation_id/files",mutating:false},
+    ConsoleInterfaceDeclaration{interface_id:"communications.files.get",binding_id:"http.console.communications.files.get.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/files/:attachment_id",mutating:false},
+    ConsoleInterfaceDeclaration{interface_id:"communications.messages.retry",binding_id:"http.console.communications.messages.retry.v1",method:"POST",path:"/api/console/communications/instances/:instance_id/messages/:message_id/retry",mutating:true},
+];

@@ -43,7 +43,7 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
         "",
         "",
         "GET",
-        "/api/console/notifications/types",
+        "/api/console/communications/types",
         Value::Null,
     )
     .await;
@@ -69,7 +69,7 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
         login_and_capture_cookie(&app, "notification-first", "temp-pass").await;
     let (second_cookie, second_csrf) =
         login_and_capture_cookie(&app, "notification-second", "temp-pass").await;
-    let types = get_json(&app, "/api/console/notifications/types", &first_cookie).await;
+    let types = get_json(&app, "/api/console/communications/types", &first_cookie).await;
     assert_eq!(types["data"][0]["type_code"], "system");
     assert!(types["data"][0]["input_form"]["fields"][0]["options"]
         .as_array()
@@ -77,17 +77,17 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
         .iter()
         .any(|option| option["value"] == first_id));
     for (method, path, body) in [
-        ("GET", "/api/console/notifications/instances", Value::Null),
+        ("GET", "/api/console/communications/instances", Value::Null),
         (
             "POST",
-            "/api/console/notifications/instances",
+            "/api/console/communications/instances",
             json!({"type_code":"system","installation_id":null,"display_name":"denied","config_json":{}}),
         ),
     ] {
         let (status, error) = request(&app, &first_cookie, &first_csrf, method, path, body).await;
         assert_eq!(status, StatusCode::FORBIDDEN, "{error}");
     }
-    let instances = get_json(&app, "/api/console/notifications/instances", &root_cookie).await;
+    let instances = get_json(&app, "/api/console/communications/instances", &root_cookie).await;
     assert_eq!(instances["data"].as_array().unwrap().len(), 1);
     let csrf_rejections = [
         ("", StatusCode::UNAUTHORIZED),
@@ -99,23 +99,23 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
             &root_cookie,
             csrf,
             "POST",
-            "/api/console/notifications/instances",
+            "/api/console/communications/instances",
             json!({"type_code":"system","installation_id":null,"display_name":"CSRF rejected","config_json":{}}),
         )
         .await;
         assert_eq!(status, expected_status, "{denied}");
     }
     assert_eq!(
-        get_json(&app, "/api/console/notifications/instances", &root_cookie).await["data"]
+        get_json(&app, "/api/console/communications/instances", &root_cookie).await["data"]
             .as_array()
             .unwrap()
             .len(),
         1
     );
-    let (status, created) = request(&app, &root_cookie, &root_csrf, "POST", "/api/console/notifications/instances", json!({"type_code":"system","installation_id":null,"display_name":"Workflow notices","config_json":{}})).await;
+    let (status, created) = request(&app, &root_cookie, &root_csrf, "POST", "/api/console/communications/instances", json!({"type_code":"system","installation_id":null,"display_name":"Workflow notices","config_json":{}})).await;
     assert_eq!(status, StatusCode::OK, "{created}");
     let id = created["data"]["id"].as_str().unwrap();
-    let instance_path = format!("/api/console/notifications/instances/{id}");
+    let instance_path = format!("/api/console/communications/instances/{id}");
     let send_path = format!("{instance_path}/send");
     for (csrf, expected_status) in csrf_rejections {
         for (method, body) in [
