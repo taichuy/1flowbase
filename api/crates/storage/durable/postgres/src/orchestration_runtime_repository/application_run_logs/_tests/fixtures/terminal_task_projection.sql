@@ -36,6 +36,7 @@ do $$ begin
  assert (select status='succeeded' and total_cost=0.5291656 from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'repeat refresh does not double count';
 end $$;
 -- The other real sample has a billed failure and a successful retry.
+update flow_runs set status='failed' where id='00000000-0000-4000-8000-000000000013';
 update application_run_log_summaries set log_task_run_id='00000000-0000-4000-8000-000000000013',
     total_cost=case right(flow_run_id::text,2) when '13' then 0.066804 when '14' then 0.0387024 end,
     status=case right(flow_run_id::text,2) when '13' then 'failed' else 'succeeded' end
@@ -47,12 +48,14 @@ end $$;
 -- Success is not sticky: a later failed/cancelled/incomplete business attempt wins.
 do $$ declare terminal text; begin
  foreach terminal in array array['failed','cancelled','incomplete'] loop
+  update flow_runs set status=terminal where id='00000000-0000-4000-8000-000000000012';
   update application_run_log_summaries set status=terminal where flow_run_id='00000000-0000-4000-8000-000000000012';
   perform application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
   assert (select status=terminal from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'latest terminal business attempt wins';
  end loop;
 end $$;
 -- Successful auxiliary calls cannot hide the failed generation; active calls still win.
+update flow_runs set status='succeeded' where id='00000000-0000-4000-8000-000000000012';
 update application_run_log_summaries set status='succeeded',call_kind='compact' where flow_run_id='00000000-0000-4000-8000-000000000012';
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
 do $$ begin
@@ -60,6 +63,7 @@ do $$ begin
 end $$;
 do $$ declare active text; begin
  foreach active in array array['queued','running','waiting_callback','waiting_human','paused'] loop
+  update flow_runs set status=active,finished_at=null where id='00000000-0000-4000-8000-000000000010';
   update application_run_log_summaries set status=active,finished_at=null where flow_run_id='00000000-0000-4000-8000-000000000010';
   perform application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
   assert (select status=active and outcome='in_progress' and finished_at is null and total_cost is null
@@ -67,6 +71,7 @@ do $$ declare active text; begin
  end loop;
 end $$;
 -- A standalone count-tokens/compact call still reports its own terminal status.
+update flow_runs set status='failed' where id='00000000-0000-4000-8000-000000000014';
 update application_run_log_summaries set call_kind='count_tokens',status='failed' where flow_run_id='00000000-0000-4000-8000-000000000014';
 update application_run_log_summaries set log_task_run_id=flow_run_id where flow_run_id='00000000-0000-4000-8000-000000000014';
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000014');
@@ -74,6 +79,7 @@ do $$ begin
  assert (select status='failed' from application_run_log_tasks where id='00000000-0000-4000-8000-000000000014'), 'standalone auxiliary task preserves its status';
 end $$;
 -- No zero is invented when every cost is unknown.
+update flow_runs set status='failed',finished_at=now();
 update application_run_log_summaries set status='failed',finished_at=now(),total_cost=null;
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
 do $$ begin

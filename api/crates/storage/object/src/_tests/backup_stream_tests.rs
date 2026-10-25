@@ -160,7 +160,7 @@ async fn local_mutation_after_open_invalidates_the_read_snapshot() {
             config_json: &config,
             object_path: "runtime/debug.json",
             content_type: Some("application/json"),
-            bytes: &[7_u8; 512],
+            bytes: vec![7_u8; 512],
         })
         .await
         .unwrap();

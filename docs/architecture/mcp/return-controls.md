@@ -83,6 +83,10 @@ Tool 的 `basic` 步骤支持两个独立默认值，后端持久化并通过管
 
 详情缓存沿用现有 10 分钟有效期与存储容量边界；缓存不可用、过期、路径不存在或游标不匹配均明确返回状态。结果读取与业务执行分离，`retry_original: false` 表示不能为了恢复详情重试原操作，尤其不能重复写入。
 
+缓存分块按实际 JSON 字符串编码字节计费：引号、反斜杠和短控制转义为 2 字节，其余 U+0000–001F 为 6 字节，其他字符为 UTF-8 长度；每块另含两字节引号。splitter 沿字符边界返回原序列化结果的借用切片，只在 CacheStore 接收时拥有该块的 String。所有 chunk 成功后才提交 manifest，缺失或损坏的块不能提供部分完整结果。
+
+inline 判定使用同一 defaults 的 null envelope 长度减 4，再加已序列化 detail 长度；只有确认能完整写入时才构造 owned inline wrapper。delivery 借用原 detail，避免为续读和字段选择提前复制整树。完整结果、既有容量、TTL、cursor、selection、receipt 与权限仍由原 owner 保持；缓存继续拥有正文，不能将局部复制收益外推为进程 RSS 收益。
+
 
 ## 声明式标准内容返回
 

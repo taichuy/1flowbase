@@ -181,3 +181,49 @@ fn assistant_history_keeps_first_complete_call_with_original_fields_and_media_ar
         })
     );
 }
+
+#[test]
+fn indexed_history_preserves_pending_insertion_order_and_exact_result_matching() {
+    let history = assistant_conversation_native_history_to_values(vec![
+        native_message(
+            "assistant",
+            "",
+            None,
+            Some(vec![
+                json!({"id":"z","name":"last","arguments":{}}),
+                json!({"id":" a ","name":" first ","arguments":null}),
+                json!({"id":"m","name":"middle","arguments":[]}),
+                json!({"id":"a","name":"duplicate","arguments":"keep first"}),
+            ]),
+        ),
+        native_message("tool", "not trimmed", Some(" a "), None),
+        native_message("tool", "real", Some("a"), None),
+        native_message("tool", "duplicate", Some("a"), None),
+        native_message("user", "continue", None, None),
+    ]);
+    assert_eq!(history.len(), 5);
+    assert_eq!(history[0]["tool_calls"].as_array().unwrap().len(), 3);
+    assert_eq!(history[1]["content"], "real");
+    assert_eq!(history[2]["tool_call_id"], "z");
+    assert_eq!(history[3]["tool_call_id"], "m");
+    assert_eq!(history[2]["is_error"], true);
+    assert_eq!(history[3]["content"], INTERRUPTED_TOOL_CALL_CONTENT);
+    assert_eq!(history[4]["role"], "user");
+}
+
+#[test]
+fn indexed_history_can_reuse_call_id_only_after_a_history_boundary() {
+    let call = json!({"id":"same","name":"tool","arguments":{}});
+    let history = assistant_conversation_native_history_to_values(vec![
+        native_message("assistant", "first", None, Some(vec![call.clone()])),
+        native_message("user", "boundary", None, None),
+        native_message("tool", "stale", Some("same"), None),
+        native_message("assistant", "second", None, Some(vec![call])),
+        native_message("tool", "fresh", Some("same"), None),
+    ]);
+    assert_eq!(history.len(), 5);
+    assert_eq!(history[1]["is_error"], true);
+    assert_eq!(history[2]["role"], "user");
+    assert_eq!(history[3]["content"], "second");
+    assert_eq!(history[4]["content"], "fresh");
+}

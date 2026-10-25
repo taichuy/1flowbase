@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{fmt::Write as _, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use serde_json::{json, Value};
@@ -22,11 +22,16 @@ struct RuntimeEventPersistenceBatch {
     payload_bytes: usize,
 }
 
+impl std::fmt::Write for RuntimeEventPersistenceBatch {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        self.payload_bytes = self.payload_bytes.saturating_add(s.len());
+        Ok(())
+    }
+}
+
 impl RuntimeEventPersistenceBatch {
     fn push(&mut self, event: RuntimeEventEnvelope) {
-        self.payload_bytes = self
-            .payload_bytes
-            .saturating_add(event.payload.to_string().len());
+        write!(self, "{}", event.payload).expect("counting JSON payload bytes cannot fail");
         self.events.push(event);
     }
 
@@ -132,6 +137,7 @@ where
             return Err(error);
         }
     };
+    drop(input);
     if event.durability == RuntimeEventDurability::Ephemeral {
         return Ok(Vec::new());
     }
@@ -181,6 +187,7 @@ where
     if !runtime_events.is_empty() {
         repository.append_runtime_events(&runtime_events).await?;
     }
+    drop(runtime_events);
     let after_commit_events = events
         .into_iter()
         .filter(|event| event.durability != RuntimeEventDurability::Ephemeral);
@@ -353,9 +360,8 @@ async fn persist_subscribed_debug_events<R>(
     let writer = subscription.terminal_writer.clone();
     let mut batch = RuntimeEventPersistenceBatch::default();
     for event in std::mem::take(&mut subscription.replay) {
-        let terminal = is_terminal_runtime_event(&event.event_type);
-        let terminal_sequence = event.sequence;
-        let terminal_type = event.event_type.clone();
+        let terminal = is_terminal_runtime_event(&event.event_type)
+            .then(|| (event.sequence, event.event_type.clone()));
         push_debug_event_for_persistence(
             &repository,
             &after_commit,
@@ -365,7 +371,7 @@ async fn persist_subscribed_debug_events<R>(
             writer.as_ref(),
         )
         .await;
-        if terminal {
+        if let Some((terminal_sequence, terminal_type)) = terminal {
             confirm_closed_generation(
                 &repository,
                 run_id,
@@ -387,11 +393,10 @@ async fn persist_subscribed_debug_events<R>(
                     // A bare EOF is not evidence of a durable terminal.
                     return;
                 };
-                let terminal = is_terminal_runtime_event(&event.event_type);
-                let terminal_sequence = event.sequence;
-                let terminal_type = event.event_type.clone();
+                let terminal = is_terminal_runtime_event(&event.event_type)
+                    .then(|| (event.sequence, event.event_type.clone()));
                 push_debug_event_for_persistence(&repository, &after_commit, &mut batch, run_id, event, writer.as_ref()).await;
-                if terminal {
+                if let Some((terminal_sequence, terminal_type)) = terminal {
                     confirm_closed_generation(&repository, run_id, terminal_sequence, &terminal_type, &mut subscription).await;
                     return;
                 }

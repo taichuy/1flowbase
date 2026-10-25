@@ -316,126 +316,7 @@ impl PgControlPlaneStore {
         let scope_id =
             trace_projection_flow_run_scope_id_for_update(&mut tx, input.flow_run_id).await?;
 
-        sqlx::query(
-            r#"
-            delete from application_run_trace_node_contents
-            where trace_node_id in (
-                select trace_node_id
-                from application_run_trace_nodes
-                where flow_run_id = $1
-            )
-            "#,
-        )
-        .bind(input.flow_run_id)
-        .execute(&mut *tx)
-        .await?;
-
-        sqlx::query("delete from application_run_trace_nodes where flow_run_id = $1")
-            .bind(input.flow_run_id)
-            .execute(&mut *tx)
-            .await?;
-
-        for node in &input.nodes {
-            sqlx::query(
-                r#"
-                insert into application_run_trace_nodes (
-                    id,
-                    scope_id,
-                    trace_node_id,
-                    flow_run_id,
-                    parent_trace_node_id,
-                    stable_locator,
-                    node_kind,
-                    owner_kind,
-                    owner_id,
-                    order_key,
-                    node_id,
-                    node_type,
-                    node_mode,
-                    node_alias,
-                    status,
-                    started_at,
-                    finished_at,
-                    duration_ms,
-                    metrics_payload,
-                    has_children,
-                    child_count,
-                    has_content,
-                    content_ref,
-                    source_flow_run_id,
-                    source_trace_node_id,
-                    parent_callback_task_id,
-                    parent_tool_call_id,
-                    trace_relation_kind,
-                    projection_version,
-                    source_watermark
-                , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, ($19::jsonb -> 0), $20, $21, $22, ($23::jsonb ->> 0), $24, $25, $26, $27, $28, $29, $30, jsonb_strip_nulls(jsonb_build_object('metrics_payload', ($19::jsonb -> 1), 'content_ref', ($23::jsonb -> 1))) )
-                "#,
-            )
-            .bind(Uuid::now_v7())
-            .bind(scope_id)
-            .bind(node.trace_node_id)
-            .bind(input.flow_run_id)
-            .bind(node.parent_trace_node_id)
-            .bind(&node.stable_locator)
-            .bind(&node.node_kind)
-            .bind(&node.owner_kind)
-            .bind(&node.owner_id)
-            .bind(&node.order_key)
-            .bind(&node.node_id)
-            .bind(&node.node_type)
-            .bind(&node.node_mode)
-            .bind(&node.node_alias)
-            .bind(&node.status)
-            .bind(node.started_at)
-            .bind(node.finished_at)
-            .bind(node.duration_ms)
-            .bind(lossless_json_parameter(&(&node.metrics_payload)))
-            .bind(node.has_children)
-            .bind(node.child_count)
-            .bind(node.has_content)
-            .bind(lossless_text_parameter(&node.content_ref))
-            .bind(node.source_flow_run_id)
-            .bind(node.source_trace_node_id)
-            .bind(node.parent_callback_task_id)
-            .bind(&node.parent_tool_call_id)
-            .bind(&node.trace_relation_kind)
-            .bind(input.projection_version)
-            .bind(&input.source_watermark)
-            .execute(&mut *tx)
-            .await?;
-        }
-
-        for content in &input.contents {
-            // Expand this content only, then drop its temporary Value before SQL awaits.
-            // Preserve the existing NUL/key escaping and raw-original sidecar codec.
-            let payload_parameter = {
-                let payload = content.payload.materialize_for_persistence();
-                lossless_json_parameter(&payload.as_ref())
-            };
-            sqlx::query(
-                r#"
-                insert into application_run_trace_node_contents (
-                    id,
-                    flow_run_id,
-                    scope_id,
-                    trace_node_id,
-                    content_kind,
-                    payload,
-                    source_refs
-                , raw_json_payloads) values ( $1, $2, $3, $4, $5, ($6::jsonb -> 0), ($7::jsonb -> 0), jsonb_strip_nulls(jsonb_build_object('payload', ($6::jsonb -> 1), 'source_refs', ($7::jsonb -> 1))) )
-                "#,
-            )
-            .bind(Uuid::now_v7())
-            .bind(input.flow_run_id)
-            .bind(scope_id)
-            .bind(content.trace_node_id)
-            .bind(&content.content_kind)
-            .bind(payload_parameter)
-            .bind(lossless_json_parameter(&(&content.source_refs)))
-            .execute(&mut *tx)
-            .await?;
-        }
+        trace_projection_write::write_projection(&mut tx, scope_id, input).await?;
 
         upsert_application_run_trace_projection_status_in_tx(
             &mut tx,
@@ -662,6 +543,8 @@ impl PgControlPlaneStore {
         flow_run_id: Uuid,
         trace_node_id: Uuid,
     ) -> Result<Option<domain::ApplicationRunTraceNodeContentRecord>> {
+        // Public timestamps describe this complete projection generation. The
+        // unchanged body may retain its physical row across several generations.
         let row = sqlx::query(
             r#"
             select
@@ -669,8 +552,8 @@ impl PgControlPlaneStore {
                 contents.content_kind,
                 runtime_original_json(contents.payload, contents.raw_json_payloads, 'payload') as payload,
                 runtime_original_json(contents.source_refs, contents.raw_json_payloads, 'source_refs') as source_refs,
-                contents.created_at,
-                contents.updated_at
+                nodes.created_at,
+                nodes.updated_at
             from application_run_trace_node_contents contents
             join application_run_trace_nodes nodes
               on nodes.trace_node_id = contents.trace_node_id

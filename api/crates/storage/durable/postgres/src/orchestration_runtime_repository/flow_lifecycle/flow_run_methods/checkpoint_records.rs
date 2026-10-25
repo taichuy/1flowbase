@@ -91,6 +91,8 @@ impl PgControlPlaneStore {
         &self,
         input: &CreateCallbackTaskInput,
     ) -> Result<domain::CallbackTaskRecord> {
+        let mut tx = self.pool().begin().await?;
+        lock_callback_run_mutation(&mut tx, input.flow_run_id).await?;
         let row = sqlx::query(
             r#"
             insert into flow_run_callback_tasks (
@@ -130,9 +132,10 @@ impl PgControlPlaneStore {
         .bind(&input.callback_kind)
         .bind(lossless_json_parameter(&(&input.request_payload)))
         .bind(lossless_json_parameter(&(&input.external_ref_payload)))
-        .fetch_one(self.pool())
+        .fetch_one(&mut *tx)
         .await?;
 
+        tx.commit().await?;
         map_callback_task_tool_summary_record(row)
     }
 
@@ -168,6 +171,8 @@ impl PgControlPlaneStore {
         &self,
         input: &CompleteCallbackTaskInput,
     ) -> Result<domain::CallbackTaskRecord> {
+        let mut tx = self.pool().begin().await?;
+        lock_callback_task_mutation(&mut tx, input.callback_task_id).await?;
         let row = sqlx::query(
             r#"
             update flow_run_callback_tasks
@@ -195,8 +200,9 @@ impl PgControlPlaneStore {
         .bind(input.callback_task_id)
         .bind(lossless_json_parameter(&(&input.response_payload)))
         .bind(input.completed_at)
-        .fetch_optional(self.pool())
+        .fetch_optional(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         let row = match row {
             Some(row) => row,

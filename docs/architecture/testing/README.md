@@ -4,6 +4,8 @@
 
 ## 证据分层
 
+工作流持久化与 Gateway 的局部优化继续使用原 crate/lib 测试和 API coverage owner，详见[资源所有权](../orchestration/workflow-runtime-resources.md)。MCP 分块和 inline 预算的四个旧场景合入两个有界表驱动测试，原输入/边界保留；完整 Unicode 穷举和性能对照留作一次性候选证据。没有新建专项 workflow、重复配置或每 PR 微基准门禁。
+
 - `verify.yml` 是 PR / push 合并基线；`quality-gate.yml scope=ci` 是完整项目体检，额外包含完整测试分片、Clippy、覆盖率、特殊 feature 场景和 React Doctor。
 - 一次完整体检固定同一个 full SHA。根 `quality-gate-report.json` 必须为 `passed/0`，必需 component 唯一、成功且绑定同 SHA；四个 API coverage 分片经 merge 后才形成覆盖率 component。
 - SDK / 内存 EventBus 的单元测试由 runtime-storage-fast 执行，贡献契约与插件事件注册测试由 core-libs 执行；Host、orchestration-runtime 和 PostgreSQL adapter 的完整包测试由各自 coverage owner 执行，跨层 control-plane-postgres-tests 仍由 storage-postgres 四分片完整执行，第一分片另执行 model-usage-report-postgres Node 集成；API lib 与 integration targets 由 API coverage nextest 分片执行。临时专项 workflow 的存在不代表必须重复执行同一组行为。
@@ -55,6 +57,16 @@ Cargo summary 解析先调用 Node 原生 `stripVTControlCharacters` 规范化�
 内层同步命令仍使用现有 16 MiB 捕获预算；发生 ENOBUFS 等错误时，先转发并保存已经捕获的诊断，再失败退出，不能把部分输出当成完整执行证据。外层移除 64 MiB 重复缓冲限制不代表内层预算已取消，也不代表整个 runner 的 RSS 不再受测试进程影响。
 
 性能结算分别记录缺陷检测保留率、PR 反馈 P50/P95（含样本数）、runner 总分钟、本地峰值 RSS/OOM 和治理净行数。历史不同源码/缓存样本不能作为因果对照；只有单次候选运行时报告该次耗时，分位数写未测。Level 1 继续提供定向快速反馈，Level 2 保留当前 PR 契约与集成门禁，Level 3 由完整 CI/coverage 承担回归；本优化不删减测试集合。
+
+### Agent Logs 候选批次
+
+手动 `agent-logs-regression.yml` 将原 13 个筛选器组织为六个正式步骤、11 次原生 Cargo 调用。仅把原本相邻的 contracts 两次、storage 两次各合成一次；API 七个筛选和 PostgreSQL 两个筛选继续使用独立进程，保持原来的跨组相对顺序。两个 API 步骤使用原生 Bash 数组索引循环，每轮绑定对应 filter 和独立日志；其余组只声明一次 filters 数组。合并组的首个真实筛选保留为 Cargo 位置参数，其余交给 libtest 作 OR 匹配，命令形状为 `cargo ... "${filters[0]}" -- "${filters[@]:1}" --format=pretty --color=never`。API 单筛选同样保留在 Cargo 位置，锁文件、失败退出和既有资源配置保持。不能把所有筛选移到 `--` 后，就推断与原位置筛选启动相同的默认目标或文档测试。
+
+`cargo-test-results.js` 仍接收完整 filters 数组；每个 filter 必须匹配本份日志的实际 `test ... ok` 行，邻接通过、ignored、list-only 和编译输出不能补证。原无 filters 调用与正确 binary/owner 的执行校验继续有效。本次配方变更的等价验收同时核对通过测试的身份并集、每个原筛选的实际通过集合，以及所有已启动 target 的身份并集；零通过的 target（包括空 Doc-tests）也必须计入后者并与基线对等，不能仅因没有增加通过用例就忽略其 CPU/RSS 成本。
+
+既有 `workflow-config.test.js` 按正式组核对原 13 个 package/target/filter、多组独立日志及完整验收，不再把每个 selector 必须独占一个 Cargo 进程写成合同。九个变异反例覆盖漏选择、错误 owner/target、缩小目标、缺少或不完整的验收、额外 Doc-tests，以及 API 循环误用首筛选或复用同一日志；普通诊断行和日志截取长度调整保持可用。
+
+本入口只接受指定候选；它不改变 `verify.yml` 的 PR 基线，不替代 L3 完整回归。量化时使用相同候选源码、工具链、缓存层与数据库隔离，分别记录整批反馈分位数及累计 runner 秒；13→11 只是命令数量，不能直接折算为 PR 提速或 runner 节省。[运行时职责、等价边界与源函数成本](../orchestration/workflow-runtime-resources.md) 记录业务侧优化及其独立验证范围。
 
 ## 静态规则与结构所有权
 

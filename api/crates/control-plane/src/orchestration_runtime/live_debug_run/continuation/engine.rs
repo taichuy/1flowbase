@@ -93,9 +93,12 @@ where
         &mut variable_pool,
     );
 
-    if let Some(snapshot) = &recovery_snapshot {
-        variable_pool = snapshot.variable_pool.clone();
-    }
+    // Keep fallback preparation and its errors in order; recovery only needs a
+    // read of the snapshot here, not a second owned copy of its variable pool.
+    let variable_pool = recovery_snapshot
+        .as_ref()
+        .map(|snapshot| std::borrow::Cow::Borrowed(&snapshot.variable_pool))
+        .unwrap_or(std::borrow::Cow::Owned(variable_pool));
     let flow_execution_context = service.runtime_flow_execution_context(
         actor.clone(),
         flow_run.authorized_account.clone(),
@@ -159,7 +162,7 @@ where
         ).await?
     } else {
         orchestration_runtime::execution_engine::start_flow_debug_run_with_runtime_context_and_lifecycle(
-            &compiled_plan, &Value::Object(variable_pool), runtime_context, &invoker, &lifecycle,
+            &compiled_plan, &Value::Object(variable_pool.into_owned()), runtime_context, &invoker, &lifecycle,
         ).await?
     };
     let tool_delivery_events = flow_execution_context.take_tool_delivery_events()?;

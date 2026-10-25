@@ -1,0 +1,42 @@
+) as incoming (
+    id, scope_id, trace_node_id, flow_run_id, parent_trace_node_id,
+    stable_locator, node_kind, owner_kind, owner_id, order_key, node_id,
+    node_type, node_mode, node_alias, status, started_at, finished_at,
+    duration_ms, metrics_packet, has_children, child_count, has_content,
+    content_ref_packet, source_flow_run_id, source_trace_node_id,
+    parent_callback_task_id, parent_tool_call_id, trace_relation_kind,
+    projection_version, source_watermark
+)
+where true
+on conflict (trace_node_id) do update set
+    scope_id = excluded.scope_id,
+    parent_trace_node_id = excluded.parent_trace_node_id,
+    stable_locator = excluded.stable_locator,
+    node_kind = excluded.node_kind,
+    owner_kind = excluded.owner_kind,
+    owner_id = excluded.owner_id,
+    order_key = excluded.order_key,
+    node_id = excluded.node_id,
+    node_type = excluded.node_type,
+    node_mode = excluded.node_mode,
+    node_alias = excluded.node_alias,
+    status = excluded.status,
+    started_at = excluded.started_at,
+    finished_at = excluded.finished_at,
+    duration_ms = excluded.duration_ms,
+    metrics_payload = excluded.metrics_payload,
+    has_children = excluded.has_children,
+    child_count = excluded.child_count,
+    has_content = excluded.has_content,
+    content_ref = excluded.content_ref,
+    source_flow_run_id = excluded.source_flow_run_id,
+    source_trace_node_id = excluded.source_trace_node_id,
+    parent_callback_task_id = excluded.parent_callback_task_id,
+    parent_tool_call_id = excluded.parent_tool_call_id,
+    trace_relation_kind = excluded.trace_relation_kind,
+    projection_version = excluded.projection_version,
+    source_watermark = excluded.source_watermark,
+    raw_json_payloads = excluded.raw_json_payloads,
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at
+where stored.flow_run_id = excluded.flow_run_id

@@ -235,6 +235,7 @@ impl MultiplexProviderWorker {
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
         let request = serde_json::from_slice(&request_bytes)
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
+        drop(request_bytes);
         self.call_json(request, limits, context, lease).await
     }
 
@@ -263,6 +264,7 @@ impl MultiplexProviderWorker {
         }
         let request_bytes = serde_json::to_vec(&request)
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
+        drop(request);
         let permit = self
             .writer_budget
             .clone()
@@ -271,6 +273,7 @@ impl MultiplexProviderWorker {
             .map_err(|_| transport_error("multiplex writer budget closed"))?;
         let request = serde_json::from_slice(&request_bytes)
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
+        drop(request_bytes);
         let (events, mut receiver) = mpsc::unbounded_channel();
         let (registered, registration) = oneshot::channel();
         self.commands

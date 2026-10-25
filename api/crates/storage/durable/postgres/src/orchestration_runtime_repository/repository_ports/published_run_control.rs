@@ -157,6 +157,8 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         flow_run_id: Uuid,
         completed_at: OffsetDateTime,
     ) -> Result<Vec<domain::CallbackTaskRecord>> {
+        let mut tx = self.pool().begin().await?;
+        lock_callback_run_mutation(&mut tx, flow_run_id).await?;
         let rows = sqlx::query(
             r#"
             update flow_run_callback_tasks
@@ -179,9 +181,10 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         )
         .bind(flow_run_id)
         .bind(completed_at)
-        .fetch_all(self.pool())
+        .fetch_all(&mut *tx)
         .await?;
 
+        tx.commit().await?;
         rows.into_iter().map(map_callback_task_record).collect()
     }
 

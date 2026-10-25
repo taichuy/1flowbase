@@ -210,7 +210,7 @@ impl FileStorageDriver for RustfsFileStorageDriver {
             .put_object()
             .bucket(&config.bucket)
             .key(input.object_path)
-            .body(input.bytes.to_vec().into())
+            .body(input.bytes.into())
             .set_content_type(input.content_type.map(str::to_string))
             .send()
             .await

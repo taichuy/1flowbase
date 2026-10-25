@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 const OPENAI_RESPONSES_LOG_PROTOCOL: &str = "openai_responses";
 
-/// Logging captures an independent, bounded identity projection. It never
+/// Logging captures independent identity and current-user text projections. It never
 /// fills the Native conversation or history that participates in inference.
 ///
 /// Codex transports one canonical turn metadata blob and projects it three
@@ -18,6 +18,7 @@ pub(crate) fn capture_application_run_log_context(
         protocol: Some(OPENAI_RESPONSES_LOG_PROTOCOL.into()),
         ..Default::default()
     };
+    context.prompt = capture_current_user_prompt(body);
     let metadata = body.get("client_metadata");
     let nested = metadata.and_then(|v| v.get("x-codex-turn-metadata"));
     let nested = match nested {
@@ -97,16 +98,36 @@ pub(crate) fn capture_application_run_log_context(
         return ApplicationRunLogContext {
             identity_status: reason.into(),
             protocol: Some(OPENAI_RESPONSES_LOG_PROTOCOL.into()),
+            prompt: context.prompt,
             ..Default::default()
         };
     }
     context.identity_status = identity_status(&context).into();
-    if let Some(input) = body.get("input").and_then(Value::as_array) {
-        context.prompt = input
+    capture_tool_results(body, &mut context);
+    context
+}
+
+/// This is a text projection, not another copy of the protocol message. The
+/// original request capture owns media bytes and the complete source item.
+fn capture_current_user_prompt(body: &Value) -> Option<Value> {
+    let input = body.get("input")?;
+    if let Some(items) = input.as_array() {
+        items
             .iter()
             .rev()
             .find(|item| item.get("role").and_then(Value::as_str) == Some("user"))
-            .cloned();
+            .map(current_user_text_projection)
+    } else {
+        input.as_str().map(|text| {
+            serde_json::json!({
+                "role":"user", "content":text, "_log_projection":"text"
+            })
+        })
+    }
+}
+
+fn capture_tool_results(body: &Value, context: &mut ApplicationRunLogContext) {
+    if let Some(input) = body.get("input").and_then(Value::as_array) {
         context.tool_results = input
             .iter()
             .filter(|item| {
@@ -120,20 +141,44 @@ pub(crate) fn capture_application_run_log_context(
             .cloned()
             .collect();
         context.tool_results.reverse();
-    } else if let Some(input) = body.get("input").and_then(Value::as_str) {
-        context.prompt = Some(serde_json::json!({"role":"user","content":input}));
     }
-    // Large input content is omitted explicitly, never injected into model input.
-    for item in context
-        .prompt
-        .iter_mut()
-        .chain(context.tool_results.iter_mut())
-    {
+    // Preserve the existing tool-result capture policy independently of prompt
+    // text, which has no size or block-count ceiling.
+    for item in &mut context.tool_results {
         if serde_json::to_vec(item).is_ok_and(|v| v.len() > 262_144) {
             *item = serde_json::json!({"type":item.get("type"),"call_id":item.get("call_id"),"content_omitted":true});
         }
     }
-    context
+}
+
+fn current_user_text_projection(item: &Value) -> Value {
+    let mut projection = serde_json::json!({"role":"user", "_log_projection":"text"});
+    for field in ["id", "type", "status"] {
+        if let Some(value) = item.get(field).filter(|value| value.is_string()) {
+            projection[field] = value.clone();
+        }
+    }
+    // The existing native log reader joins text blocks with newlines. Extract
+    // text only here: openai_content also constructs/clones media blocks.
+    let text = match item.get("content") {
+        Some(Value::String(content)) => content.clone(),
+        Some(Value::Array(parts)) => parts
+            .iter()
+            .filter_map(|part| {
+                part.as_str()
+                    .or_else(|| match part.get("type").and_then(Value::as_str) {
+                        None | Some("input_text" | "text" | "output_text") => {
+                            part.get("text").and_then(Value::as_str)
+                        }
+                        _ => None,
+                    })
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    };
+    projection["content"] = Value::String(text);
+    projection
 }
 
 /// Ingress headers are another projection of the same Codex snapshot:

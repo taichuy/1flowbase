@@ -151,7 +151,7 @@ impl TracePayloadArtifactWriter {
                 config_json: &self.storage.config_json,
                 object_path: &storage_ref,
                 content_type: Some(RUNTIME_DEBUG_ARTIFACT_CONTENT_TYPE_JSON),
-                bytes: &preview.full_bytes,
+                bytes: preview.full_bytes,
             })
             .await?;
         <_ as OrchestrationRuntimeRepository>::create_runtime_debug_artifact(

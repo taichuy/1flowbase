@@ -3,6 +3,8 @@ impl PgControlPlaneStore {
         &self,
         input: &RecordFlowRunCallbackResumeAttemptInput,
     ) -> Result<RecordFlowRunCallbackResumeAttemptOutput> {
+        let mut tx = self.pool().begin().await?;
+        lock_callback_run_mutation(&mut tx, input.flow_run_id).await?;
         let inserted = sqlx::query(
             r#"
             insert into flow_run_callback_resume_attempts (
@@ -41,8 +43,9 @@ impl PgControlPlaneStore {
         .bind(&input.source)
         .bind(lossless_json_parameter(&(&input.response_payload)))
         .bind(&input.idempotency_key)
-        .fetch_optional(self.pool())
+        .fetch_optional(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         if let Some(row) = inserted {
             return Ok(RecordFlowRunCallbackResumeAttemptOutput {
@@ -98,6 +101,8 @@ impl PgControlPlaneStore {
         &self,
         input: &FinishFlowRunCallbackResumeAttemptInput,
     ) -> Result<domain::FlowRunCallbackResumeAttemptRecord> {
+        let mut tx = self.pool().begin().await?;
+        lock_callback_attempt_mutation(&mut tx, input.attempt_id).await?;
         let row = sqlx::query(
             r#"
             update flow_run_callback_resume_attempts
@@ -126,8 +131,9 @@ impl PgControlPlaneStore {
         .bind(input.status.as_str())
         .bind(lossless_json_parameter(&(&input.error_payload)))
         .bind(input.completed_at)
-        .fetch_optional(self.pool())
+        .fetch_optional(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         let Some(row) = row else {
             return Err(
@@ -145,6 +151,8 @@ impl PgControlPlaneStore {
         to_status: &str,
         response_payload: Option<&Value>,
     ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        let mut tx = self.pool().begin().await?;
+        lock_callback_attempt_mutation(&mut tx, attempt_id).await?;
         let row = sqlx::query(
             r#"
             update flow_run_callback_resume_attempts
@@ -172,8 +180,9 @@ impl PgControlPlaneStore {
         .bind(from_status)
         .bind(to_status)
         .bind(lossless_json_parameter(&(response_payload)))
-        .fetch_optional(self.pool())
+        .fetch_optional(&mut *tx)
         .await?;
+        tx.commit().await?;
         row.as_ref()
             .map(map_flow_run_callback_resume_attempt_record)
             .transpose()
@@ -199,6 +208,7 @@ impl PgControlPlaneStore {
         expected_updated_at: OffsetDateTime,
     ) -> Result<bool> {
         let mut tx = self.pool().begin().await?;
+        lock_callback_attempt_mutation(&mut tx, attempt_id).await?;
         let callback_task_id: Option<Uuid> = sqlx::query_scalar(
             "select callback_task_id from flow_run_callback_resume_attempts where id = $1",
         )
@@ -239,6 +249,8 @@ impl PgControlPlaneStore {
         flow_run_id: Uuid,
         completed_at: OffsetDateTime,
     ) -> Result<Vec<domain::FlowRunCallbackResumeAttemptRecord>> {
+        let mut tx = self.pool().begin().await?;
+        lock_callback_run_mutation(&mut tx, flow_run_id).await?;
         let rows = sqlx::query(
             r#"
             update flow_run_callback_resume_attempts
@@ -263,8 +275,9 @@ impl PgControlPlaneStore {
         )
         .bind(flow_run_id)
         .bind(completed_at)
-        .fetch_all(self.pool())
+        .fetch_all(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         rows.iter()
             .map(map_flow_run_callback_resume_attempt_record)

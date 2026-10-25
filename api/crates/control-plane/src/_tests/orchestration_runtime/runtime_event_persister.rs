@@ -99,6 +99,82 @@ fn event(
     )
 }
 
+#[test]
+fn batch_counts_serialized_utf8_payload_bytes_and_resets_after_take() {
+    let run_id = Uuid::now_v7();
+    let payloads = [
+        json!(null),
+        json!(true),
+        json!(-42),
+        json!(i64::MIN),
+        json!(u64::MAX),
+        json!(1.25),
+        json!(""),
+        json!("é中🦀e\u{0301}"),
+        json!("\"\\\n\r\t\u{0000}\u{0008}\u{000c}\u{001f}"),
+        json!([false, 0, "é", []]),
+        json!({
+            "nested": [null, true, -3, 2.5, {"text": "中文🦀", "escaped": "\"\\\n"}],
+            "empty_array": [],
+            "empty_object": {}
+        }),
+    ];
+    let mut batch = RuntimeEventPersistenceBatch::default();
+    let mut expected_bytes = 0;
+    for (index, payload) in payloads.iter().enumerate() {
+        let serialized = serde_json::to_vec(payload).unwrap();
+        assert_eq!(serialized, payload.to_string().into_bytes());
+        expected_bytes += serialized.len();
+        let mut envelope = event(run_id, index as i64 + 1, "usage_snapshot", true);
+        envelope.payload = payload.clone();
+        batch.push(envelope);
+        assert_eq!(batch.payload_bytes, expected_bytes);
+        assert_eq!(batch.events.len(), index + 1);
+        assert!(!batch.reached_byte_limit());
+    }
+
+    let events = batch.take();
+    assert_eq!(events.len(), payloads.len());
+    for (envelope, payload) in events.iter().zip(&payloads) {
+        assert_eq!(&envelope.payload, payload);
+    }
+    assert!(batch.is_empty());
+    assert_eq!(batch.payload_bytes, 0);
+    assert!(!batch.reached_byte_limit());
+
+    let next = event(run_id, payloads.len() as i64 + 1, "usage_snapshot", true);
+    let next_bytes = next.payload.to_string().len();
+    batch.push(next);
+    assert_eq!(batch.payload_bytes, next_bytes);
+}
+
+#[test]
+fn batch_byte_limit_matches_serialized_payload_boundaries() {
+    let run_id = Uuid::now_v7();
+    let prefix = json!({"nested": ["é中🦀", "\"\\\n", {"value": null}]});
+    let prefix_bytes = serde_json::to_vec(&prefix).unwrap().len();
+    for (total_bytes, reached_limit) in [
+        (RUNTIME_EVENT_BATCH_MAX_BYTES - 1, false),
+        (RUNTIME_EVENT_BATCH_MAX_BYTES, true),
+        (RUNTIME_EVENT_BATCH_MAX_BYTES + 1, true),
+    ] {
+        let mut batch = RuntimeEventPersistenceBatch::default();
+        let mut first = event(run_id, 1, "usage_snapshot", true);
+        first.payload = prefix.clone();
+        batch.push(first);
+        assert_eq!(batch.payload_bytes, prefix_bytes);
+        assert!(!batch.reached_byte_limit());
+
+        let mut second = event(run_id, 2, "usage_snapshot", true);
+        // A JSON string adds two quote bytes to its ASCII content.
+        second.payload = json!("x".repeat(total_bytes - prefix_bytes - 2));
+        assert_eq!(prefix_bytes + second.payload.to_string().len(), total_bytes);
+        batch.push(second);
+        assert_eq!(batch.payload_bytes, total_bytes);
+        assert_eq!(batch.reached_byte_limit(), reached_limit);
+    }
+}
+
 fn closed_subscription(
     writer: Arc<ControlledGenerationWriter>,
     replay: Vec<RuntimeEventEnvelope>,

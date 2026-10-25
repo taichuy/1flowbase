@@ -362,18 +362,19 @@ impl PgControlPlaneStore {
         // explicit task anchor owns that task's observed prompt.
         let task = context.get("log_task_run_id").and_then(Value::as_str);
         if task.is_none() || task == Some(run.id.to_string().as_str()) {
-            if let Some(prompt) = context.get("prompt").filter(|v| v.is_object()) {
-                items.push((conversation_sequence,format!("prompt:{}",run.id),json!({"role":"user","content":native_log_item_text(prompt),"_source_item":prompt})));
-                conversation_sequence += 1;
-            }
-        }
-        if conversation_sequence == 0 && task.is_none() {
-            if let Some(prompt) = application_conversation_user_text(&run.input_payload) {
-                items.push((
-                    conversation_sequence,
-                    format!("prompt:{}", run.id),
-                    json!({"role":"user","content":prompt}),
-                ));
+            let source_prompt = context.get("prompt");
+            let prompt_text = source_prompt
+                .filter(|prompt| prompt.get("content_omitted") != Some(&Value::Bool(true)))
+                .filter(|prompt| prompt.is_string() || prompt.get("content").is_some())
+                .map(native_log_item_text)
+                .filter(|text| !text.trim().is_empty())
+                .or_else(|| native_log_current_user_text(&run.input_payload));
+            if let Some(text) = prompt_text {
+                let mut message = json!({"role":"user","content":text});
+                message["_source_item"] = source_prompt.cloned().unwrap_or_else(|| {
+                    json!({"role":"user", "content":text, "_log_projection":"current_run_input"})
+                });
+                items.push((conversation_sequence, format!("prompt:{}", run.id), message));
                 conversation_sequence += 1;
             }
         }
@@ -444,6 +445,36 @@ impl PgControlPlaneStore {
         }
         items
     }
+}
+
+/// Native recovery projects retained current input exactly. Generic conversation
+/// display normalization and artifact previews are not current-input evidence.
+fn native_log_current_user_text(payload: &Value) -> Option<String> {
+    if let Some(message) =
+        control_plane_contracts::application_public_runtime::embedded_assistant_user_message(
+            payload,
+        )
+    {
+        let text = message.content();
+        return (!text.trim().is_empty()).then(|| text.to_owned());
+    }
+    for source in [payload, application_conversation_start_payload(payload)] {
+        for key in APPLICATION_CONVERSATION_INPUT_KEYS {
+            let Some(value) = source.get(key) else {
+                continue;
+            };
+            let text = value.as_str().or_else(|| {
+                value
+                    .get("text")
+                    .or_else(|| value.get("content"))
+                    .and_then(Value::as_str)
+            });
+            if let Some(text) = text.filter(|text| !text.trim().is_empty()) {
+                return Some(text.to_owned());
+            }
+        }
+    }
+    None
 }
 
 /// Only a declared final assistant message can replace the persisted answer.

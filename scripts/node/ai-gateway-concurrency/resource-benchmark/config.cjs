@@ -1,6 +1,7 @@
 'use strict';
 const path = require('node:path');
 const { SIZES } = require('./payload.cjs');
+const { UPLOAD_SIZES } = require('./mixed-workload.cjs');
 function integer(env, name, fallback, low, high) {
   const value = Number(env[name] ?? fallback);
   if (!Number.isInteger(value) || value < low || value > high) throw Error(`invalid ${name}`);
@@ -10,6 +11,10 @@ function configuration(env = process.env) {
   const required = name => { if (!env[name]) throw Error(`missing ${name}`); return env[name]; };
   const repoRoot = path.resolve(required('RB_REPO_ROOT'));
   const historyBytes = integer(env, 'RB_HISTORY_BYTES', 8192, 8192, 524288);
+  const workload = env.RB_WORKLOAD ?? 'text';
+  if (!['text', 'mixed'].includes(workload)) throw Error('invalid RB_WORKLOAD');
+  const uploadBytes = integer(env, 'RB_UPLOAD_BYTES', UPLOAD_SIZES[0], UPLOAD_SIZES[0], UPLOAD_SIZES[1]);
+  if (!UPLOAD_SIZES.includes(uploadBytes)) throw Error('unsupported RB_UPLOAD_BYTES');
   const concurrency = integer(env, 'RB_CONCURRENCY', 1, 1, 8);
   if (!SIZES.includes(historyBytes) || ![1, 8].includes(concurrency)) throw Error('unsupported workload dimension');
   if (env.RB_DEDICATED_DATABASE !== '1') throw Error('RB_DEDICATED_DATABASE=1 acknowledgment required');
@@ -19,7 +24,7 @@ function configuration(env = process.env) {
   const governance = path.join(repoRoot, 'tmp', 'test-governance');
   if (!artifactRoot.startsWith(`${governance}${path.sep}`)) throw Error('artifact root must be a child of repoRoot/tmp/test-governance');
   return {
-    repoRoot, artifactRoot, apiPort, historyBytes, concurrency,
+    repoRoot, artifactRoot, apiPort, historyBytes, concurrency, workload, uploadBytes,
     apiServerBin: path.resolve(required('RB_API_BINARY')),
     openaiPackage: path.resolve(required('RB_OPENAI_PACKAGE')),
     anthropicPackage: path.resolve(required('RB_ANTHROPIC_PACKAGE')),
@@ -37,7 +42,7 @@ function configuration(env = process.env) {
 }
 // Deliberate whitelist: URLs, env, owner sessions and fixture.result must never be serialized.
 function publicConfiguration(config) {
-  return Object.fromEntries(['historyBytes', 'concurrency', 'warmups', 'rounds', 'idleMs', 'drainMs', 'sampleMs', 'dedicatedCluster'].map(key => [key, config[key]]));
+  return Object.fromEntries(['historyBytes', 'concurrency', 'workload', 'uploadBytes', 'warmups', 'rounds', 'idleMs', 'drainMs', 'sampleMs', 'dedicatedCluster'].map(key => [key, config[key]]));
 }
 function secrets(config) {
   let password = '';

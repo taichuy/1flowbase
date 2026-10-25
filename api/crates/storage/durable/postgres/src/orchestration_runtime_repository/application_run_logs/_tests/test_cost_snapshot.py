@@ -46,6 +46,10 @@ def main():
             fixture = (here / 'cost_snapshot.sql').read_text().split('-- A failed provider attempt')[0]
             before, after = (here / 'fixtures/terminal_task_projection.sql').read_text().split('-- APPLY MIGRATION')
             sql += fixture + before + migration.read_text() + after + '\nrollback;\n'
+        if migration.name == '20261025120000_native_log_current_input_and_turn_settlement.sql':
+            fixture = (here / 'cost_snapshot.sql').read_text().split('-- A failed provider attempt')[0]
+            before, after = (here / 'fixtures/interrupted_turn_projection.sql').read_text().split('-- APPLY MIGRATION')
+            sql += fixture + before + migration.read_text() + after + '\nrollback;\n'
         if not migration.name.endswith('.down.sql'):
             sql += 'begin;\n' + migration.read_text() + '\ncommit;\n'
     sql += 'prepare save_cost(uuid) as ' + (here.parent / 'cost_snapshot.sql').read_text() + ';\n'
@@ -76,6 +80,11 @@ def main():
                                'then case when count(observed_cost)=count(*) then sum(observed_cost) end end as total_cost')
     sql += (here / 'cost_snapshot.sql').read_text().split('-- A failed provider attempt')[0]
     sql += before.split('-- EXPECT OLD')[0] + after + '\nrollback;\n'
+    interrupted = (here / 'fixtures/interrupted_turn_projection.sql').read_text()
+    before, after = interrupted.split('-- APPLY MIGRATION')
+    sql += (here / 'cost_snapshot.sql').read_text().split('-- A failed provider attempt')[0]
+    sql += before.split('-- EXPECT OLD')[0] + after + '\n'
+    sql += "do $$ begin assert (select query=E'  Current image question\\nsecond line  ' and answer='Observed final answer' and output_source='persisted_answer' from (" + cte.replace('$1', "'00000000-0000-4000-8000-000000000003'::uuid").replace('$2', "'00000000-0000-4000-8000-000000000010'::uuid").replace('$3', '7') + " select * from task_message_items) t), 'real conversation reader returns current input and final without compensation'; end $$;\nrollback;\n"
     with log.open('w') as output:
         try:
             result = subprocess.run(command, input=sql, text=True, env=env,

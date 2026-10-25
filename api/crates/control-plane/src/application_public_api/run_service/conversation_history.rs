@@ -1,3 +1,5 @@
+use std::collections::{hash_map::Entry, HashMap};
+
 use serde_json::{json, Value};
 
 use super::{
@@ -33,7 +35,7 @@ pub fn assistant_conversation_native_history_to_values(
     messages: Vec<AssistantConversationNativeMessage>,
 ) -> Vec<Value> {
     let mut history = Vec::new();
-    let mut pending_tool_calls = Vec::new();
+    let mut pending_tool_calls = HashMap::new();
 
     for mut message in messages {
         if message.role != "tool" {
@@ -46,14 +48,14 @@ pub fn assistant_conversation_native_history_to_values(
                     let Some((id, name)) = complete_tool_call(tool_call) else {
                         return false;
                     };
-                    if pending_tool_calls
-                        .iter()
-                        .any(|(pending_id, _)| pending_id == &id)
-                    {
-                        return false;
+                    let order = pending_tool_calls.len();
+                    match pending_tool_calls.entry(id) {
+                        Entry::Vacant(entry) => {
+                            entry.insert((order, name));
+                            true
+                        }
+                        Entry::Occupied(_) => false,
                     }
-                    pending_tool_calls.push((id, name));
-                    true
                 });
                 if tool_calls.is_empty() {
                     message.tool_calls = None;
@@ -67,13 +69,9 @@ pub fn assistant_conversation_native_history_to_values(
             let Some(tool_call_id) = message.tool_call_id.as_deref() else {
                 continue;
             };
-            let Some(index) = pending_tool_calls
-                .iter()
-                .position(|(id, _)| id == tool_call_id)
-            else {
+            if pending_tool_calls.remove(tool_call_id).is_none() {
                 continue;
-            };
-            pending_tool_calls.remove(index);
+            }
         }
         history.push(message.into_value());
     }
@@ -92,9 +90,11 @@ fn complete_tool_call(tool_call: &Value) -> Option<(String, String)> {
 
 fn append_interrupted_tool_outputs(
     history: &mut Vec<Value>,
-    pending_tool_calls: &mut Vec<(String, String)>,
+    pending_tool_calls: &mut HashMap<String, (usize, String)>,
 ) {
-    for (tool_call_id, name) in pending_tool_calls.drain(..) {
+    let mut interrupted = pending_tool_calls.drain().collect::<Vec<_>>();
+    interrupted.sort_unstable_by_key(|(_, (order, _))| *order);
+    for (tool_call_id, (_, name)) in interrupted {
         history.push(json!({
             "role": "tool",
             "name": name,

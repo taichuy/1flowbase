@@ -196,3 +196,125 @@ async fn issue_2176_cached_views_inherit_defaults_and_do_not_reexecute() {
     );
     assert_eq!(expired["structuredContent"]["retry_original"], false);
 }
+
+#[test]
+fn json_string_split_preserves_greedy_boundaries_and_borrows_input() {
+    fn serialized_reference(value: &str, max_bytes: usize) -> Option<Vec<String>> {
+        let mut chunks = Vec::new();
+        let mut current = String::new();
+        for character in value.chars() {
+            let scalar = character.to_string();
+            if serialized(&json!(scalar)).len() > max_bytes {
+                return None;
+            }
+            let mut candidate = current.clone();
+            candidate.push(character);
+            if serialized(&json!(candidate)).len() > max_bytes && !current.is_empty() {
+                chunks.push(std::mem::take(&mut current));
+            }
+            current.push(character);
+        }
+        if !current.is_empty() {
+            chunks.push(current);
+        }
+        Some(chunks)
+    }
+
+    let controls: String = (0u8..=31).map(char::from).collect();
+    let fixtures = [
+        String::new(),
+        "abcdefghi".to_owned(),
+        "界😀é/\u{7f}\u{2028}\u{2029}\u{10ffff}".to_owned(),
+        "\\\"\u{08}\t\n\u{0c}\r".to_owned(),
+        controls,
+        "a界\n😀\u{0000}b\\\"/".repeat(3),
+        format!("{}界{}", "a".repeat(9), "b".repeat(9)),
+        "\\\"\n\r\t\u{0000}界".repeat(20),
+    ];
+    for value in &fixtures {
+        for budget in (0..=40).chain([usize::MAX]) {
+            let expected = serialized_reference(value, budget);
+            let actual = split_at_json_string_bytes(value, budget);
+            assert_eq!(
+                actual,
+                expected
+                    .as_ref()
+                    .map(|chunks| chunks.iter().map(String::as_str).collect::<Vec<_>>()),
+                "input={value:?}, budget={budget}"
+            );
+            if let Some(chunks) = actual {
+                assert_eq!(chunks.concat(), *value);
+                let mut offset = 0;
+                for chunk in chunks {
+                    assert_eq!(chunk.as_ptr(), value[offset..].as_ptr());
+                    assert!(serialized(&json!(chunk)).len() <= budget);
+                    offset += chunk.len();
+                }
+            }
+        }
+    }
+    assert_eq!(split_at_json_string_bytes("", 0), Some(vec![]));
+    assert_eq!(split_at_json_string_bytes("a", 2), None);
+    assert_eq!(
+        split_at_json_string_bytes("ab界c", 6),
+        Some(vec!["ab", "界c"])
+    );
+}
+
+#[test]
+fn inline_cache_size_matches_serialized_envelope_with_return_defaults() {
+    let details = [
+        Value::Null,
+        json!(true),
+        json!(-1.25),
+        json!("界😀\n\"\\\u{0000}"),
+        json!([null, false, "界", {"nested": "\t"}]),
+        json!({"detail": null, "format": "chunked", "return_defaults": [1, 2]}),
+    ];
+    let defaults = [
+        None,
+        Some(Value::Null),
+        Some(json!({})),
+        Some(json!({"max_inline_chars": 1600, "response_fields": ["/界\n\"", "/nested"]})),
+    ];
+    for detail in &details {
+        for defaults in &defaults {
+            let mut envelope = inline_cache_value(detail);
+            if let Some(defaults) = defaults {
+                envelope["return_defaults"] = defaults.clone();
+            }
+            assert_eq!(
+                inline_cache_value_bytes(&serialized(detail), defaults.as_ref()),
+                serialized(&envelope).len(),
+                "detail={detail:?}, defaults={defaults:?}"
+            );
+        }
+    }
+
+    for defaults in [
+        None,
+        Some(json!({"max_inline_chars": 1600, "response_fields": ["/界"]})),
+    ] {
+        let empty_size = inline_cache_value_bytes(&serialized(&json!("")), defaults.as_ref());
+        for delta in [0, 1] {
+            let detail = json!("a".repeat(DETAIL_CHUNK_MAX_BYTES - empty_size + delta));
+            let mut envelope = inline_cache_value(&detail);
+            if let Some(defaults) = &defaults {
+                envelope["return_defaults"] = defaults.clone();
+            }
+            assert_eq!(serialized(&envelope).len(), DETAIL_CHUNK_MAX_BYTES + delta);
+            assert_eq!(
+                inline_cache_value_bytes(&serialized(&detail), defaults.as_ref()),
+                DETAIL_CHUNK_MAX_BYTES + delta
+            );
+        }
+    }
+    let detail = json!("界\\\"\n".repeat((DETAIL_CHUNK_MAX_BYTES - 12) / 9));
+    let envelope_bytes = serialized(&inline_cache_value(&detail)).len();
+    assert!(envelope_bytes > DETAIL_CHUNK_MAX_BYTES);
+    assert!(serialized(&detail).len() <= DETAIL_CHUNK_MAX_BYTES);
+    assert_eq!(
+        inline_cache_value_bytes(&serialized(&detail), None),
+        envelope_bytes
+    );
+}

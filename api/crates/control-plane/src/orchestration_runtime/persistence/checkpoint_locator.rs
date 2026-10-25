@@ -119,47 +119,86 @@ pub(super) struct SparseCheckpointContent {
     pub(super) variable_snapshot: Value,
 }
 
+/// Scalar recovery metadata must be validated before loading parent lineage.
+pub(super) struct CheckpointContentMetadata {
+    pub(super) parent_context_version_id: Option<Uuid>,
+    sequence: i64,
+}
+
+impl CheckpointContentMetadata {
+    pub(super) fn from_snapshot(
+        snapshot: &orchestration_runtime::execution_state::CheckpointSnapshot,
+    ) -> Result<Self> {
+        let marker = snapshot
+            .variable_pool
+            .get(RECOVERY_CONTEXT_MARKER)
+            .and_then(Value::as_object);
+        let parent_context_version_id = marker
+            .and_then(|marker| marker.get("context_version_id"))
+            .and_then(Value::as_str)
+            .map(Uuid::parse_str)
+            .transpose()
+            .map_err(|_| anyhow!("runtime recovery context marker must contain a UUID"))?;
+        let sequence = marker
+            .and_then(|marker| marker.get("sequence"))
+            .and_then(Value::as_i64)
+            .map(|sequence| sequence + 1)
+            .unwrap_or(0);
+        Ok(Self {
+            parent_context_version_id,
+            sequence,
+        })
+    }
+
+    pub(super) fn compact(
+        self,
+        snapshot: &orchestration_runtime::execution_state::CheckpointSnapshot,
+        previous_variable_pool: Option<&Map<String, Value>>,
+    ) -> SparseCheckpointContent {
+        let Self {
+            parent_context_version_id,
+            sequence,
+        } = self;
+        let content = match previous_variable_pool {
+            None => {
+                let mut current = snapshot.variable_pool.clone();
+                current.remove(RECOVERY_CONTEXT_MARKER);
+                let mut content = Map::new();
+                content.insert("format".into(), Value::String("runtime_snapshot_v1".into()));
+                content.insert("variable_pool".into(), Value::Object(current));
+                Value::Object(content)
+            }
+            Some(previous) => checkpoint_delta_content(previous, &snapshot.variable_pool),
+        };
+        SparseCheckpointContent {
+            content,
+            parent_context_version_id,
+            variable_snapshot: json!({
+                RECOVERY_CONTEXT_MARKER: {
+                    "parent_context_version_id": parent_context_version_id,
+                    "sequence": sequence,
+                }
+            }),
+        }
+    }
+}
+
+#[cfg(test)]
 pub(super) fn compact_checkpoint_content(
     snapshot: &orchestration_runtime::execution_state::CheckpointSnapshot,
     previous_variable_pool: Option<&Map<String, Value>>,
 ) -> Result<SparseCheckpointContent> {
-    let marker = snapshot
-        .variable_pool
-        .get(RECOVERY_CONTEXT_MARKER)
-        .and_then(Value::as_object);
-    let parent_context_version_id = marker
-        .and_then(|marker| marker.get("context_version_id"))
-        .and_then(Value::as_str)
-        .map(Uuid::parse_str)
-        .transpose()
-        .map_err(|_| anyhow!("runtime recovery context marker must contain a UUID"))?;
-    let sequence = marker
-        .and_then(|marker| marker.get("sequence"))
-        .and_then(Value::as_i64)
-        .map(|sequence| sequence + 1)
-        .unwrap_or(0);
-    let mut current = snapshot.variable_pool.clone();
-    current.remove(RECOVERY_CONTEXT_MARKER);
-    let content = match previous_variable_pool {
-        None => json!({ "format": "runtime_snapshot_v1", "variable_pool": current }),
-        Some(previous) => checkpoint_delta_content(previous, &current),
-    };
-    Ok(SparseCheckpointContent {
-        content,
-        parent_context_version_id,
-        variable_snapshot: json!({
-            RECOVERY_CONTEXT_MARKER: {
-                "parent_context_version_id": parent_context_version_id,
-                "sequence": sequence,
-            }
-        }),
-    })
+    Ok(CheckpointContentMetadata::from_snapshot(snapshot)?
+        .compact(snapshot, previous_variable_pool))
 }
 
 fn checkpoint_delta_content(previous: &Map<String, Value>, current: &Map<String, Value>) -> Value {
     let mut set = Map::new();
     let mut llm_callback_appends = Vec::new();
     for (key, value) in current {
+        if key == RECOVERY_CONTEXT_MARKER {
+            continue;
+        }
         if previous.get(key) != Some(value) {
             if let Some(append) = previous
                 .get(key)
@@ -175,13 +214,17 @@ fn checkpoint_delta_content(previous: &Map<String, Value>, current: &Map<String,
         .keys()
         .filter(|key| !current.contains_key(*key) && key.as_str() != RECOVERY_CONTEXT_MARKER)
         .cloned()
+        .map(Value::String)
         .collect::<Vec<_>>();
-    json!({
-        "format": "runtime_delta_v1",
-        "set": set,
-        "remove": remove,
-        "llm_callback_appends": llm_callback_appends,
-    })
+    let mut content = Map::new();
+    content.insert("format".into(), Value::String("runtime_delta_v1".into()));
+    content.insert("set".into(), Value::Object(set));
+    content.insert("remove".into(), Value::Array(remove));
+    content.insert(
+        "llm_callback_appends".into(),
+        Value::Array(llm_callback_appends),
+    );
+    Value::Object(content)
 }
 
 fn llm_callback_append(node_id: &str, previous: &Value, current: &Value) -> Option<Value> {

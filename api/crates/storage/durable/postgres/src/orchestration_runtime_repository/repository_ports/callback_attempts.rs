@@ -59,6 +59,7 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
         response_payload: Value,
     ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
         let mut tx = self.pool().begin().await?;
+        lock_callback_attempt_mutation(&mut tx, attempt_id).await?;
         // Compare restored JSON while holding the attempt lock: PostgreSQL json has
         // no equality operator, and casting to jsonb rejects lossless U+0000 data.
         let stored: Option<Value> = sqlx::query_scalar(

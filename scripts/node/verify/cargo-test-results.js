@@ -1,13 +1,12 @@
 const { stripVTControlCharacters } = require('node:util');
 const path = require('node:path');
 
-function parseCargoTestCounts(output) {
+function parseNormalizedCargoTestCounts(normalizedOutput) {
   const counts = {
     passedCount: null,
     failedCount: null,
   };
   const pattern = /test result:\s+(?:ok|FAILED)\.\s+(\d+) passed;\s+(\d+) failed;/gu;
-  const normalizedOutput = stripVTControlCharacters(output);
   let match = pattern.exec(normalizedOutput);
 
   while (match) {
@@ -19,10 +18,28 @@ function parseCargoTestCounts(output) {
   return counts;
 }
 
-function requireExecutedCargoTests(output) {
-  const counts = parseCargoTestCounts(output);
+function parseCargoTestCounts(output) {
+  return parseNormalizedCargoTestCounts(stripVTControlCharacters(output));
+}
+
+function requireExecutedCargoTests(output, requiredFilters = []) {
+  if (!Array.isArray(requiredFilters)
+    || requiredFilters.some((filter) => typeof filter !== 'string' || !filter.trim())) {
+    throw new Error('Cargo test filters must be non-empty strings');
+  }
+  const normalizedOutput = stripVTControlCharacters(output);
+  const counts = parseNormalizedCargoTestCounts(normalizedOutput);
   if (!(counts.passedCount > 0 && counts.failedCount === 0)) {
     throw new Error('no executed passing tests or failed tests; refusing invalid Cargo test evidence');
+  }
+  if (requiredFilters.length > 0) {
+    const passedNames = [...normalizedOutput.matchAll(/^test (.+) \.\.\. ok\r?$/gmu)]
+      .map((match) => match[1]);
+    for (const filter of requiredFilters) {
+      if (!passedNames.some((name) => name.includes(filter))) {
+        throw new Error(`${filter}: no executed passing tests; refusing empty Cargo test selection`);
+      }
+    }
   }
   return counts;
 }
@@ -54,15 +71,22 @@ function requireCargoTestTargets({ stdout = '', stderr = '' }, targets) {
   }
 }
 
-// Validate each command log independently; a neighboring passing suite cannot
-// supply evidence for an empty selector, ignored suite, or compile-only command.
+// Usage: cargo-test-results.js <log> [<log> ...] [-- <filter> ...]
+// Validate each log and optional filter independently; another log or filter
+// cannot supply evidence for an empty selector, ignored suite, or compilation.
 if (require.main === module) {
   const fs = require('node:fs');
   try {
-    const logs = process.argv.slice(2);
+    const args = process.argv.slice(2);
+    const separator = args.indexOf('--');
+    const logs = separator === -1 ? args : args.slice(0, separator);
+    const requiredFilters = separator === -1 ? [] : args.slice(separator + 1);
     if (logs.length === 0) throw new Error('at least one Cargo test log is required');
+    if (separator !== -1 && requiredFilters.length === 0) {
+      throw new Error('at least one Cargo test filter is required after --');
+    }
     for (const log of logs) {
-      const counts = requireExecutedCargoTests(fs.readFileSync(log, 'utf8'));
+      const counts = requireExecutedCargoTests(fs.readFileSync(log, 'utf8'), requiredFilters);
       process.stdout.write(`${log}: ${counts.passedCount} passed, ${counts.failedCount} failed\n`);
     }
   } catch (error) {
