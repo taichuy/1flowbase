@@ -25,6 +25,8 @@ continuation 先完成原输入校验、环境变量注入和 normalize，再用
 
 私有 writer 位于 `orchestration_runtime_repository/trace_projection/`，复用 SQLx `QueryBuilder`。30 / 7 个参数的节点 / 正文行按 PostgreSQL 65,535 bind 上限及 64 KiB 编码批次目标分组。最后一行可能让批次超过字节目标；大行仍完整接收，没有 trace 数量或正文容量上限。临时 materialize、编码和参数只保留一个批次，内存随批次目标与最大单行增长，不先展开全体 shared payload。
 
+两处动态 bulk query 使用 `persistent(false)`，避免不同 tuple 数的 SQL 和参数元数据长期占据连接 statement cache；参数绑定、事务和 SQL 不变，固定形状的清理/status 查询继续缓存。代价是可能重复 prepare，不预设其 CPU 净收益；实际连接测试核对多种批次形状不会累积 cache 条目。
+
 全局 `projection_version/source_watermark` 仍保存在每个节点行，每次发布仍更新 N 个节点。内部物理节点 ID 保持，公开节点 `created_at/updated_at` 仍取本次事务 `now()`；公开 content 读取通过关联节点投影相同的 generation 时间。未变化 content 保留物理行，表内时间记录正文实际写入，不再作为公开 generation 时间来源。所有公开正文读取共用 `get_application_run_trace_node_content`；业务 started/finished 时间不变。
 
 令 N/C 为完整节点/正文数，ΔC 为持久表示变化的正文数：构造、编码与比较仍涉及 O(N+C) 输入，节点写入仍为 O(N)，正文改为 ΔC 插入/更新加实际删除。优化减少逐行数据库往返、存量 delete/insert、外键级联工作及未变化正文写入，**不是整个投影 O(Δ)**。没有新增索引、表或保留策略；比较同时检查 raw sidecar，不能把 NUL 原文与字面转义误判为同一正文。

@@ -180,7 +180,14 @@ async fn write_nodes(
                 .push_bind(&input.source_watermark);
         });
         query.push(include_str!("nodes_tail.sql"));
-        let written = query.build().execute(&mut **tx).await?.rows_affected();
+        // Tuple count varies with encoded bytes; do not retain a prepared
+        // statement and parameter metadata for every observed batch shape.
+        let written = query
+            .build()
+            .persistent(false)
+            .execute(&mut **tx)
+            .await?
+            .rows_affected();
         // Nodes deliberately have no DISTINCT predicate: row-local watermark
         // and public materialization timestamps advance for the entire snapshot.
         // The conflict WHERE must never silently accept another run's identity.
@@ -237,7 +244,7 @@ async fn write_contents(
                 .push_bind(&encoded.source_refs);
         });
         query.push(include_str!("contents_tail.sql"));
-        query.build().execute(&mut **tx).await?;
+        query.build().persistent(false).execute(&mut **tx).await?;
     }
     Ok(())
 }

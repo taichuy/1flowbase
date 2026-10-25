@@ -38,6 +38,36 @@ async fn physical_contents(store: &PgControlPlaneStore, run: Uuid) -> Vec<(Uuid,
 }
 
 #[tokio::test]
+async fn trace_projection_variable_batches_do_not_accumulate_prepared_statement_shapes() {
+    use sqlx::Connection;
+    let (guard, run, _, _) = seed().await;
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect_with(guard.pool().connect_options().as_ref().clone())
+        .await
+        .unwrap();
+    let store = PgControlPlaneStore::new(pool.clone());
+    let ids: Vec<_> = (0..8).map(|_| Uuid::now_v7()).collect();
+    store
+        .replace_application_run_trace_projection(&projection(run, &ids[..1]))
+        .await
+        .unwrap();
+    let baseline = pool.acquire().await.unwrap().cached_statements_size();
+    for count in 2..=ids.len() {
+        store
+            .replace_application_run_trace_projection(&projection(run, &ids[..count]))
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        pool.acquire().await.unwrap().cached_statements_size(),
+        baseline,
+        "dynamic tuple lengths must not populate the persistent statement cache"
+    );
+    pool.close().await;
+}
+
+#[tokio::test]
 async fn trace_projection_batches_keep_unchanged_contents_and_public_generation_times() {
     let (store, run, _, _) = seed().await;
     let ids: Vec<_> = (0..256).map(|_| Uuid::now_v7()).collect();
