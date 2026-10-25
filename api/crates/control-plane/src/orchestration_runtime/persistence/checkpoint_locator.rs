@@ -119,41 +119,72 @@ pub(super) struct SparseCheckpointContent {
     pub(super) variable_snapshot: Value,
 }
 
+/// Scalar recovery metadata must be validated before loading parent lineage.
+pub(super) struct CheckpointContentMetadata {
+    pub(super) parent_context_version_id: Option<Uuid>,
+    sequence: i64,
+}
+
+impl CheckpointContentMetadata {
+    pub(super) fn from_snapshot(
+        snapshot: &orchestration_runtime::execution_state::CheckpointSnapshot,
+    ) -> Result<Self> {
+        let marker = snapshot
+            .variable_pool
+            .get(RECOVERY_CONTEXT_MARKER)
+            .and_then(Value::as_object);
+        let parent_context_version_id = marker
+            .and_then(|marker| marker.get("context_version_id"))
+            .and_then(Value::as_str)
+            .map(Uuid::parse_str)
+            .transpose()
+            .map_err(|_| anyhow!("runtime recovery context marker must contain a UUID"))?;
+        let sequence = marker
+            .and_then(|marker| marker.get("sequence"))
+            .and_then(Value::as_i64)
+            .map(|sequence| sequence + 1)
+            .unwrap_or(0);
+        Ok(Self {
+            parent_context_version_id,
+            sequence,
+        })
+    }
+
+    pub(super) fn compact(
+        self,
+        snapshot: &orchestration_runtime::execution_state::CheckpointSnapshot,
+        previous_variable_pool: Option<&Map<String, Value>>,
+    ) -> SparseCheckpointContent {
+        let Self {
+            parent_context_version_id,
+            sequence,
+        } = self;
+        let mut current = snapshot.variable_pool.clone();
+        current.remove(RECOVERY_CONTEXT_MARKER);
+        let content = match previous_variable_pool {
+            None => json!({ "format": "runtime_snapshot_v1", "variable_pool": current }),
+            Some(previous) => checkpoint_delta_content(previous, &current),
+        };
+        SparseCheckpointContent {
+            content,
+            parent_context_version_id,
+            variable_snapshot: json!({
+                RECOVERY_CONTEXT_MARKER: {
+                    "parent_context_version_id": parent_context_version_id,
+                    "sequence": sequence,
+                }
+            }),
+        }
+    }
+}
+
+#[cfg(test)]
 pub(super) fn compact_checkpoint_content(
     snapshot: &orchestration_runtime::execution_state::CheckpointSnapshot,
     previous_variable_pool: Option<&Map<String, Value>>,
 ) -> Result<SparseCheckpointContent> {
-    let marker = snapshot
-        .variable_pool
-        .get(RECOVERY_CONTEXT_MARKER)
-        .and_then(Value::as_object);
-    let parent_context_version_id = marker
-        .and_then(|marker| marker.get("context_version_id"))
-        .and_then(Value::as_str)
-        .map(Uuid::parse_str)
-        .transpose()
-        .map_err(|_| anyhow!("runtime recovery context marker must contain a UUID"))?;
-    let sequence = marker
-        .and_then(|marker| marker.get("sequence"))
-        .and_then(Value::as_i64)
-        .map(|sequence| sequence + 1)
-        .unwrap_or(0);
-    let mut current = snapshot.variable_pool.clone();
-    current.remove(RECOVERY_CONTEXT_MARKER);
-    let content = match previous_variable_pool {
-        None => json!({ "format": "runtime_snapshot_v1", "variable_pool": current }),
-        Some(previous) => checkpoint_delta_content(previous, &current),
-    };
-    Ok(SparseCheckpointContent {
-        content,
-        parent_context_version_id,
-        variable_snapshot: json!({
-            RECOVERY_CONTEXT_MARKER: {
-                "parent_context_version_id": parent_context_version_id,
-                "sequence": sequence,
-            }
-        }),
-    })
+    Ok(CheckpointContentMetadata::from_snapshot(snapshot)?
+        .compact(snapshot, previous_variable_pool))
 }
 
 fn checkpoint_delta_content(previous: &Map<String, Value>, current: &Map<String, Value>) -> Value {

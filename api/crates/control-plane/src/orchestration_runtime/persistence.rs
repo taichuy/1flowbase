@@ -106,17 +106,19 @@ async fn prepare_recovery_checkpoint<R>(
 where
     R: OrchestrationRuntimeRepository,
 {
-    let initial = checkpoint_locator::compact_checkpoint_content(snapshot, None)?;
-    let compacted = match initial.parent_context_version_id {
+    let metadata = checkpoint_locator::CheckpointContentMetadata::from_snapshot(snapshot)?;
+    let previous = match metadata.parent_context_version_id {
         Some(parent_context_version_id) => {
             let lineage = repository
                 .load_runtime_context_content_lineage(parent_context_version_id)
                 .await?;
-            let previous = checkpoint_locator::materialize_checkpoint_content(&lineage)?;
-            checkpoint_locator::compact_checkpoint_content(snapshot, Some(&previous))?
+            Some(checkpoint_locator::materialize_checkpoint_content(
+                &lineage,
+            )?)
         }
-        None => initial,
+        None => None,
     };
+    let compacted = metadata.compact(snapshot, previous.as_ref());
     Ok(PreparedRecoveryCheckpoint {
         context_content: compacted.content,
         parent_context_version_id: compacted.parent_context_version_id,
