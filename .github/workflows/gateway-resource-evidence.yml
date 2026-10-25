@@ -133,6 +133,7 @@ jobs:
           set -euo pipefail
           evidence="$GITHUB_WORKSPACE/tmp/test-governance/gateway-resource-evidence"
           export RB_REPO_ROOT="$GITHUB_WORKSPACE"
+          export RB_DATABASE_PID=$(docker inspect --format '{{.State.Pid}}' '${{ job.services.postgres.id }}')
           export RB_DEDICATED_DATABASE=1 RB_DEDICATED_CLUSTER=1 RB_WORKLOAD=mixed
           export RB_HISTORY_BYTES=524288 RB_CONCURRENCY=8 RB_UPLOAD_BYTES=1048576
           export RB_WARMUPS=1 RB_ROUNDS=5 RB_IDLE_MS=1000 RB_DRAIN_MS=1000 RB_SAMPLE_MS=50

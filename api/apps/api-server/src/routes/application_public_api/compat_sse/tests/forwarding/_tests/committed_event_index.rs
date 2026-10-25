@@ -2,6 +2,38 @@ use super::*;
 use serde_json::json;
 
 #[test]
+fn committed_event_partitions_keep_distinct_bodies_with_the_same_id() {
+    let payloads = [
+        json!({"call_id":"same","body":"first"}),
+        json!({"call_id":"same","body":"second"}),
+        json!({"item":{"call_id":"same","id":"fallback","body":"first"}}),
+        json!({"item":{"call_id":"same","id":"fallback","body":"second"}}),
+        json!({"item":{"id":"same","body":"first"}}),
+        json!({"item":{"id":"same","body":"second"}}),
+        json!({"call_id":null,"item":{"call_id":7,"id":"same"}}),
+        json!({"call_id":"","item":{"call_id":"other"}}),
+        json!({"call_id":" ","item":{"call_id":"other"}}),
+        json!({"call_id":false,"item":["same"]}),
+        json!({"id":"same","body":"unidentified"}),
+        json!(["same", null]),
+    ];
+    let mut reference = Vec::new();
+    let mut index = ForwardedCommittedEvents::default();
+    for payload in payloads.iter().chain(payloads.iter().rev()) {
+        let found = reference.contains(payload);
+        assert_eq!(index.contains("done", payload), found);
+        if !found {
+            reference.push(payload.clone());
+            index.insert("done".into(), payload.clone());
+        }
+        for query in &payloads {
+            assert_eq!(index.contains("done", query), reference.contains(query));
+            assert!(!index.contains("error", query));
+        }
+    }
+}
+
+#[test]
 fn committed_event_index_preserves_exact_json_and_event_type_identity() {
     let mut index = ForwardedCommittedEvents::default();
     let original = json!({"call_id": "a", "value": {"x": 1, "y": 2}});

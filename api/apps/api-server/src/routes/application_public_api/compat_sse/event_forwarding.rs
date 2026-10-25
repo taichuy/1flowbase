@@ -25,20 +25,60 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
     settler.settled().await;
 }
 
-// Membership is exact (event type + JSON equality), local to one forwarding stream.
-// Hash collisions still compare Value; this is not content-digest deduplication.
+// IDs select candidate buckets only; complete JSON equality remains authoritative.
 #[derive(Default)]
-struct ForwardedCommittedEvents(HashMap<String, HashSet<Value>>);
-
+struct EventTypeBucket {
+    identified: HashMap<String, Vec<Value>>,
+    unidentified: HashSet<Value>,
+}
+#[derive(Default)]
+struct ForwardedCommittedEvents(HashMap<String, EventTypeBucket>);
+fn payload_partition(payload: &Value) -> Option<&str> {
+    payload
+        .get("call_id")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            payload
+                .get("item")
+                .and_then(|item| item.get("call_id"))
+                .and_then(Value::as_str)
+        })
+        .or_else(|| {
+            payload
+                .get("item")
+                .and_then(|item| item.get("id"))
+                .and_then(Value::as_str)
+        })
+}
 impl ForwardedCommittedEvents {
     fn contains(&self, event_type: &str, payload: &Value) -> bool {
-        self.0
-            .get(event_type)
-            .is_some_and(|values| values.contains(payload))
+        let Some(bucket) = self.0.get(event_type) else {
+            return false;
+        };
+        match payload_partition(payload) {
+            Some(id) => bucket
+                .identified
+                .get(id)
+                .is_some_and(|values| values.iter().any(|value| value == payload)),
+            None => bucket.unidentified.contains(payload),
+        }
     }
-
+    // Production insertion follows a negative contains result; preserves original Vec insertion semantics.
     fn insert(&mut self, event_type: String, payload: Value) {
-        self.0.entry(event_type).or_default().insert(payload);
+        let bucket = self.0.entry(event_type).or_default();
+        match payload_partition(&payload) {
+            Some(id) => match bucket.identified.entry(id.to_owned()) {
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    entry.insert(vec![payload]);
+                }
+                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                    entry.get_mut().push(payload);
+                }
+            },
+            None => {
+                bucket.unidentified.insert(payload);
+            }
+        }
     }
 }
 

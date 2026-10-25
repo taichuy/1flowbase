@@ -1124,16 +1124,22 @@ test('template focused gate rejects each empty selector while keeping compile ev
 test('AI protocol concurrency separates caller workflows and candidate sources', () => {
   const group = readAiGatewayConcurrencyWorkflow().match(/group: (ai-gateway-protocol-conformance-[^\n]+)/u)?.[1];
   assert.ok(group);
-  const render = (candidate, caller = 'quality gate', event = 'workflow_dispatch') => group
+  const render = (candidate, caller = 'quality gate', event = 'workflow_dispatch', resource = false, sourceOnly = false) => group
     .replace('${{ github.workflow }}', caller)
     .replace('${{ github.event_name }}', event)
     .replace('${{ github.ref }}', 'refs/heads/candidate')
-    .replace('${{ inputs.target_ref || github.sha }}', candidate);
-  assert.equal(render('source-a'), 'ai-gateway-protocol-conformance-quality gate-workflow_dispatch-refs/heads/candidate-source-a');
+    .replace('${{ inputs.target_ref || github.sha }}', candidate)
+    .replace('${{ inputs.resource_comparison }}', String(resource))
+    .replace('${{ inputs.source_only }}', String(sourceOnly));
+  assert.equal(render('source-a'), 'ai-gateway-protocol-conformance-quality gate-workflow_dispatch-refs/heads/candidate-source-a-false-false');
   assert.notEqual(render('source-a'), render('source-b'));
   assert.notEqual(render('source-a'), render('source-a', 'standalone protocol'));
   assert.notEqual(render('source-a'), render('source-a', 'quality gate', 'schedule'));
+  assert.notEqual(render('source-a'), render('source-a', 'quality gate', 'workflow_dispatch', true));
+  assert.notEqual(render('source-a', 'quality gate', 'workflow_dispatch', true), render('source-a', 'quality gate', 'workflow_dispatch', true, true));
   assert.doesNotMatch(render('source-a'), /\$\{\{/u);
+  const comparison = fs.readFileSync(path.join(repoRoot, '.github/workflows/gateway-resource-evidence.yml'), 'utf8');
+  assert.match(comparison, /group: gateway-resource-evidence-\$\{\{ github\.ref \}\}-\$\{\{ inputs\.source_only \}\}/u);
 });
 
 
