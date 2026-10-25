@@ -132,5 +132,6 @@
   "routes_status_visible": "This node is set to visible",
   "routes_status_hidden": "This node is set to hidden",
   "routes_show_node": "Show this node",
-  "routes_hide_node": "Hide this node"
+  "routes_hide_node": "Hide this node",
+  "routes_open_page": "Open in a new tab"
 }

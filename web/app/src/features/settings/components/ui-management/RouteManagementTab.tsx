@@ -19,6 +19,7 @@ import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import EllipsisOutlined from '@ant-design/icons/es/icons/EllipsisOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
 import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
+import ExportOutlined from '@ant-design/icons/es/icons/ExportOutlined';
 import EyeOutlined from '@ant-design/icons/es/icons/EyeOutlined';
 import EyeInvisibleOutlined from '@ant-design/icons/es/icons/EyeInvisibleOutlined';
 import { useTranslation } from 'react-i18next';
@@ -74,14 +75,31 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
   const [search, setSearch] = useState('');
   const [locatedId, setLocatedId] = useState<string>();
   const nodes = useMemo(() => {
-    const result: Array<{ node: FrontstagePageTreeNode; path: string }> = [];
-    const visit = (items: FrontstagePageTreeNode[], parent = '') => {
+    const result: Array<{
+      node: FrontstagePageTreeNode;
+      path: string;
+      href?: string;
+    }> = [];
+    const visit = (
+      items: FrontstagePageTreeNode[],
+      parent = '',
+      rootSlug?: string
+    ) => {
       for (const node of items) {
         const path = [parent, node.title || t('routes_unnamed_node')]
           .filter(Boolean)
           .join(' / ');
-        result.push({ node, path });
-        visit(node.children, path);
+        const slug =
+          node.placement === 'topbar' ? (node.slug ?? undefined) : rootSlug;
+        const href = slug
+          ? node.placement === 'topbar'
+            ? `/${slug}`
+            : node.kind === 'page'
+              ? `/${slug}/pages/${node.id}`
+              : undefined
+          : undefined;
+        result.push({ node, path, href });
+        visit(node.children, path, slug);
       }
     };
     visit(tree.data ?? []);
@@ -89,6 +107,10 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
   }, [tree.data, t]);
   const nodesById = useMemo(
     () => new Map(nodes.map(({ node }) => [node.id, node])),
+    [nodes]
+  );
+  const hrefsById = useMemo(
+    () => new Map(nodes.map(({ node, href }) => [node.id, href])),
     [nodes]
   );
   const busy = mutations.isPending || action.isPending;
@@ -279,6 +301,18 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
                   : t('routes_status_visible');
                 return (
                   <Space size={2}>
+                    {node && hrefsById.get(node.id) ? (
+                      <Tooltip title={t('routes_open_page')}>
+                        <Button
+                          type="text"
+                          icon={<ExportOutlined />}
+                          href={hrefsById.get(node.id)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`${t('routes_open_page')} ${node.title ?? ''}`}
+                        />
+                      </Tooltip>
+                    ) : null}
                     {node ? (
                       editable ? (
                         <Tooltip

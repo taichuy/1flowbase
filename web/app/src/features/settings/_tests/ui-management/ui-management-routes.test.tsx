@@ -657,3 +657,61 @@ test('readonly route visibility is an indicator without a mutation action', asyn
   ).not.toBeInTheDocument();
   expect(api.update).not.toHaveBeenCalled();
 });
+
+test('open links use the topbar route and nested page route in a new tab, including readonly', async () => {
+  api.list.mockResolvedValue([
+    {
+      ...nodes[0],
+      kind: 'group',
+      slug: 'portal',
+      children: [
+        {
+          ...nodes[1],
+          kind: 'group',
+          placement: 'sidebar',
+          slug: null,
+          children: [
+            {
+              ...nodes[1],
+              id: 'nested',
+              title: 'Nested',
+              placement: 'sidebar',
+              slug: null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      ...nodes[1],
+      id: 'legacy',
+      title: 'Legacy',
+      placement: 'sidebar',
+      slug: null
+    }
+  ]);
+  render(
+    <AppProviders>
+      <RouteManagementTab canManage={false} />
+    </AppProviders>
+  );
+  const rootLink = await screen.findByRole('link', {
+    name: '在新标签页打开 Page A'
+  });
+  expect(rootLink).toHaveAttribute('href', '/portal');
+  expect(rootLink).toHaveAttribute('target', '_blank');
+  expect(rootLink).toHaveAttribute('rel', 'noopener noreferrer');
+  fireEvent.click(
+    row('b').closest('.ant-tree-treenode')!.querySelector('.ant-tree-switcher')!
+  );
+  expect(
+    await screen.findByRole('link', { name: '在新标签页打开 Nested' })
+  ).toHaveAttribute('href', '/portal/pages/nested');
+  expect(
+    screen.queryByRole('link', { name: '在新标签页打开 Page B' })
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('link', { name: '在新标签页打开 Legacy' })
+  ).not.toBeInTheDocument();
+  expect(api.update).not.toHaveBeenCalled();
+});
