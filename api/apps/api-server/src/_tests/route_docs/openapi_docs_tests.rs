@@ -363,3 +363,182 @@ fn canonical_otlp_trace_ingest_advertises_application_bearer_and_standard_wire_f
         .get("applicationApiKey")
         .is_some());
 }
+
+#[test]
+fn scope_plans_keep_path_siblings_cycles_escaped_refs_and_overlapping_components() {
+    let registry = build_api_docs_registry(json!({
+        "openapi": "3.1.0", "info": {"title":"T", "version":"1"},
+        "tags": [{"name":"used"},{"name":"unused"}],
+        "paths": {"/api/demo/{id}": {
+            "parameters": [{"$ref":"#/components/parameters/Id"}],
+            "x-path-note": "keep",
+            "get": {"operationId":"read", "tags":["used"], "responses":{"200":{
+                "content":{"application/json":{"schema":{"$ref":"#/components/schemas/A~1B~0C"}}}
+            }}},
+            "post": {"operationId":"write", "requestBody":{"$ref":"#/components/requestBodies/Body"}}
+        }},
+        "components": {
+            "parameters":{"Id":{"name":"id","in":"path","schema":{"type":"string"}}},
+            "requestBodies":{"Body":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/A~1B~0C/properties/id"}}}}},
+            "schemas":{"A/B~C":{"type":"object","properties":{
+                "id":{"type":"string"}, "next":{"$ref":"#/components/schemas/Next"}
+            }}, "Next":{"$ref":"#/components/schemas/A~1B~0C"},
+            "Unused":{"$ref":"https://unused.invalid/schema"}}
+        }
+    })).unwrap();
+    let spec = registry.operation_spec("read").unwrap();
+    let path = &spec["paths"]["/api/demo/{id}"];
+    assert_eq!(path["x-path-note"], "keep");
+    assert!(path["parameters"].is_array());
+    assert!(path.get("post").is_none());
+    assert_eq!(spec["tags"], json!([{"name":"used"}]));
+    assert_eq!(
+        spec["components"]["schemas"]["Next"]["$ref"],
+        "#/components/schemas/A~1B~0C"
+    );
+    assert!(spec["components"]["schemas"].get("Unused").is_none());
+    let category = registry.category_spec("demo").unwrap();
+    assert_eq!(
+        category["components"]["schemas"]["A/B~C"]["properties"]["id"]["type"],
+        "string"
+    );
+    assert!(category["paths"]["/api/demo/{id}"]["post"].is_object());
+}
+
+#[test]
+fn scope_plans_close_path_item_refs_without_other_methods() {
+    let registry = build_api_docs_registry(json!({
+        "openapi":"3.1.0", "info":{"title":"T","version":"1"},
+        "paths":{"/api/demo":{
+            "$ref":"#/components/pathItems/Shared",
+            "get":{"operationId":"read"},
+            "post":{"operationId":"write","schema":{"$ref":"#/components/schemas/PostOnly"}}
+        }},
+        "components":{
+            "pathItems":{"Shared":{"parameters":[{"$ref":"#/components/parameters/Id"}]}},
+            "parameters":{"Id":{"name":"id","in":"query","schema":{"$ref":"#/components/schemas/Id"}}},
+            "schemas":{"Id":{"type":"string"},"PostOnly":{"type":"integer"},
+                "Unused":{"$ref":"https://unused.invalid/schema"}}
+        }
+    })).unwrap();
+    let operation = registry.operation_spec("read").unwrap();
+    let category = registry.category_spec("demo").unwrap();
+    for spec in [&operation, &category] {
+        assert_eq!(
+            spec["paths"]["/api/demo"]["$ref"],
+            "#/components/pathItems/Shared"
+        );
+        assert!(spec["components"]["pathItems"]["Shared"].is_object());
+        assert!(spec["components"]["parameters"]["Id"].is_object());
+        assert_eq!(spec["components"]["schemas"]["Id"]["type"], "string");
+        assert!(spec["components"]["schemas"].get("Unused").is_none());
+    }
+    assert!(operation["paths"]["/api/demo"].get("post").is_none());
+    assert!(operation["components"]["schemas"].get("PostOnly").is_none());
+    assert!(category["components"]["schemas"]["PostOnly"].is_object());
+}
+
+#[test]
+fn scope_plans_reject_invalid_path_item_refs_during_build() {
+    for (reference, message) in [
+        ("https://example.invalid/Path", "unsupported external $ref"),
+        ("#/components/pathItems/Absent", "missing referenced node"),
+        ("#/info", "unsupported non-components $ref"),
+    ] {
+        let error = build_api_docs_registry(json!({
+            "openapi":"3.1.0", "info":{"title":"T","version":"1"},
+            "paths":{"/demo":{"$ref":reference,"get":{"operationId":"read"}}}
+        }))
+        .unwrap_err();
+        assert_eq!(error.to_string(), format!("{message} `{reference}`"));
+    }
+}
+
+#[test]
+fn scope_plan_rejects_pointer_insertion_failure_before_any_getter() {
+    let error = build_api_docs_registry(json!({
+        "openapi":"3.1.0", "info":{"title":"T","version":"1"},
+        "paths":{"/demo":{"get":{"operationId":"read","schema":{"$ref":"#/components/schemas/Array"}}}},
+        "components":{"schemas":{"Array":[{"$ref":"#/components/schemas/Array/0"}]}}
+    })).unwrap_err();
+    assert_eq!(error.to_string(), "JSON pointer target must be an object");
+}
+
+#[test]
+fn scope_plans_preserve_legacy_scheme_name_insertion_and_empty_security() {
+    let registry = build_api_docs_registry(json!({
+        "openapi":"3.1.0", "info":{"title":"T","version":"1"},
+        "security":[{"default":[]}],
+        "paths":{
+            "/demo":{"get":{"operationId":"named","security":[{"a/b~1c":[]}]}},
+            "/empty":{"get":{"operationId":"empty","security":[]}}
+        },
+        "components":{"securitySchemes":{
+            "default":{"type":"http","scheme":"bearer"},
+            "a/b~1c":{"type":"apiKey","in":"header","name":"x-key"}
+        }}
+    }))
+    .unwrap();
+    let named = registry.operation_spec("named").unwrap();
+    assert_eq!(
+        named["components"]["securitySchemes"]["a"]["b/c"]["name"],
+        "x-key"
+    );
+    let empty = registry.operation_spec("empty").unwrap();
+    assert!(empty.get("security").is_none());
+    assert_eq!(empty["paths"]["/empty"]["get"]["security"], json!([]));
+}
+
+#[test]
+fn borrowed_catalog_projection_matches_every_materialized_operation() {
+    let registry = api_server::openapi_docs::build_default_api_docs_registry().unwrap();
+    for category in &registry.catalog().categories {
+        for operation in &registry
+            .category_operations(&category.id)
+            .unwrap()
+            .operations
+        {
+            let spec = registry.operation_spec(&operation.id).unwrap();
+            let view = registry.operation_spec_view(&operation.id).unwrap();
+            let expected = crate::openapi_interface::catalog_entry_from_operation(operation, &spec);
+            let actual = crate::openapi_interface::catalog_entry_from_view(operation, &view);
+            assert_eq!(
+                serde_json::to_value(actual).unwrap(),
+                serde_json::to_value(expected).unwrap(),
+                "{}",
+                operation.id
+            );
+        }
+    }
+}
+
+#[test]
+fn operation_documents_are_independent_across_requests_and_registry_snapshots() {
+    let canonical = json!({"openapi":"3.1.0","info":{"title":"T","version":"1"},"paths":{"/demo":{"get":{"operationId":"read"}}}});
+    let registry = std::sync::Arc::new(build_api_docs_registry(canonical.clone()).unwrap());
+    let weak = std::sync::Arc::downgrade(&registry);
+    let mut first = registry.operation_spec("read").unwrap();
+    first["info"]["title"] = json!("request-local");
+    std::thread::scope(|scope| {
+        for _ in 0..4 {
+            let registry = &registry;
+            scope.spawn(move || {
+                assert_eq!(
+                    registry.operation_spec("read").unwrap()["info"]["title"],
+                    "T"
+                )
+            });
+        }
+    });
+    let mut next = canonical;
+    next["info"]["version"] = json!("2");
+    let next = build_api_docs_registry(next).unwrap();
+    assert_eq!(
+        registry.operation_spec("read").unwrap()["info"]["version"],
+        "1"
+    );
+    assert_eq!(next.operation_spec("read").unwrap()["info"]["version"], "2");
+    drop(registry);
+    assert!(weak.upgrade().is_none());
+    assert_eq!(first["info"]["title"], "request-local");
+}

@@ -31,6 +31,8 @@ MCP 管理目录由前端 view model 投影：本次构建复用已登记路径�
 
 协议翻译在 adapter 内使用独占可变的 `TranslationReportBuilder`，以索引查找来源路径并保持决定的插入顺序；完成后交付原有 `TranslationReport` DTO。索引不附着到可公开修改或反序列化的 DTO，重复决定、首个冲突及协议错误顺序保持原契约。
 
+API 文档 registry 在当前快照内唯一持有 enriched canonical，启动为每个 operation/category 编译并验证 scope plan；引用解析、插入冲突及安全 scheme 缺失仍在 ready 前拒绝。plan 只持有路径字段、组件来源和必要的浅层覆盖结构，完整文档由请求局部生成，不跨请求缓存。capability/MCP 目录借用同一快照的 operation 与 path 参数，通过已验证的组件投影解析 schema，避免遍历目录时物化全部 scope。动态模型、工作流发布与应用文档仍由原请求上下文和权限 owner 决定；旧快照随最后持有者释放。
+
 应用 API 文档和控制台 API 文档复用 `openapi_docs` 的具名只读投影，但保留各自 Interface Contract ID。共享只覆盖相同的字段选择、摘要和观察边界，不直接序列化完整业务 DTO。
 
 网络供应商列表、单项与代理池输出复用同一个具名只读投影；调试 Snapshot 与 Run 复用 `ApplicationRunDetailResponse` 的内部投影与 schema，外层标签和 Interface Contract ID 仍由各自入口拥有。共享保持字段选择、摘要、空值与既有观察边界，不扩展为完整 DTO 序列化。

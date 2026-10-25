@@ -350,7 +350,7 @@ impl ApplicationDocsAdapter {
                 .filter_map(|operation_id| {
                     Some(ApplicationSessionOperation {
                         operation: self.api_docs.operation(operation_id)?,
-                        spec: self.api_docs.operation_spec(operation_id)?.clone(),
+                        spec: self.api_docs.operation_spec(operation_id)?,
                     })
                 })
                 .collect()
