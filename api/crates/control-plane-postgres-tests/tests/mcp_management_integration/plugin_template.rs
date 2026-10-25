@@ -9,11 +9,25 @@ use serde_json::json;
 use uuid::Uuid;
 
 fn manifest(version: &str) -> plugin_framework::PluginManifestV1 {
-    let base = plugin_framework::parse_plugin_manifest(include_str!(
-        "../../../extension-package-runtime/src/_tests/managed_manifest.yaml"
-    ))
-    .unwrap();
-    let mut value = serde_json::to_value(base).unwrap();
+    // Build the intake document directly: the parsed production manifest is not a wire DTO.
+    let mut value = json!({
+        "manifest_version": 2,
+        "vendor": "acme",
+        "display_name": "Managed fixture",
+        "description": "Explicit managed service package",
+        "source_kind": "uploaded",
+        "trust_level": "unverified",
+        "consumption_kind": "runtime_extension",
+        "execution_mode": "process_per_call",
+        "slot_codes": [],
+        "selection_mode": "assignment_then_select",
+        "minimum_host_version": "0.1.0",
+        "contract_version": "1flowbase.extension-bus/v1",
+        "schema_version": "1flowbase.plugin.manifest/v2",
+        "permissions": {"network":"none", "secrets":"none", "storage":"none", "mcp":"none", "subprocess":"deny"},
+        "runtime": {"entry":"bin/fixture"},
+        "managed": {"module": {"bus_version":"v1", "module_kind":"runtime"}}
+    });
     value["plugin_id"] = json!("plugin_template");
     value["version"] = json!(version);
     value["publisher_namespace"] = json!("acme");
@@ -74,7 +88,7 @@ async fn install(
             signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            metadata_json: serde_json::to_value(manifest).unwrap(),
+            metadata_json: json!({"managed_service": &manifest.managed_service}),
             is_system_reserved: false,
             actor_user_id: actor,
         })

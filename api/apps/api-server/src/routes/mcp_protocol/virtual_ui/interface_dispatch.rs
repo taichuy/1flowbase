@@ -324,6 +324,7 @@ pub(super) async fn target_interface_failure(response: Response) -> VirtualToolO
         status,
         StatusCode::BAD_REQUEST
             | StatusCode::CONFLICT
+            | StatusCode::UNPROCESSABLE_ENTITY
             | StatusCode::UNAUTHORIZED
             | StatusCode::FORBIDDEN
     ) {

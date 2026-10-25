@@ -1,5 +1,31 @@
 use super::*;
 
+#[tokio::test]
+async fn managed_service_mcp_preserves_business_failure_codes_before_media_projection() {
+    for code in [
+        "browser_not_found",
+        "tab_not_found",
+        "page_failed",
+        "screenshot_failed",
+    ] {
+        let response = crate::error_response::ApiError::from(
+            crate::managed_services::ManagedServiceFailure(code.to_owned()),
+        )
+        .into_response();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let VirtualToolOutcome::Error {
+            data: Some(data), ..
+        } = target_interface_failure(response).await
+        else {
+            panic!("expected MCP tool failure");
+        };
+        assert_eq!(data["target_code"], code);
+        assert_eq!(data["http_status"], 422);
+        assert_eq!(data["retry_original"], false);
+        assert!(data.get("target_details").is_none());
+    }
+}
+
 // #2027 AC-009: only stable codes and explicitly public structured details survive MCP projection.
 #[tokio::test]
 async fn issue_2027_mcp_target_failure_preserves_bounded_public_diagnostics() {

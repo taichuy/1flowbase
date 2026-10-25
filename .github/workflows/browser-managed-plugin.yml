@@ -78,6 +78,8 @@ jobs:
           run_test worker -p runtime-extension-host managed_capability_multiplex
           run_test postgres -p control-plane-postgres-tests --test mcp_management_integration
           run_test mcp-http -p api-server --lib managed_service_mcp
+          run_test mcp-media -p api-server --lib result_delivery::media::tests
+          run_test mcp-errors -p api-server --lib target_error_diagnostics
           run_test lifecycle -p api-server --lib managed_services::
       - name: Build exact runtime for local integration evidence
         shell: bash
