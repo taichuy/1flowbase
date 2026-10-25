@@ -183,7 +183,7 @@ fn receive_poll_and_batch_budgets_are_enforced_before_provider_io() {
         json!({"type":"receive","max_messages":0,"wait_seconds":1}),
         json!({"type":"receive","max_messages":101,"wait_seconds":1}),
         json!({"type":"receive","max_messages":1,"wait_seconds":31}),
-        json!({"type":"receive","max_messages":1,"wait_seconds":1,"cursor":"x".repeat(16385)}),
+        json!({"type":"receive","max_messages":1,"wait_seconds":1,"cursor":"x".repeat(NOTIFICATION_MAX_RECEIVE_BATCH_BYTES)}),
     ] {
         let input: NotificationRuntimeInput =
             serde_json::from_value(json!({"operation":operation})).unwrap();

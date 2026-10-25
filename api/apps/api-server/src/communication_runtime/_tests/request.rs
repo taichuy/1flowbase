@@ -96,3 +96,19 @@ fn only_canonical_successful_final_business_answer_can_be_sent() {
     item.answer = Some("<think>reasoning only</think>".into());
     assert!(request::final_reply(&item).is_none());
 }
+
+#[test]
+fn session_conversation_id_is_the_history_tools_internal_selector() {
+    let input = input();
+    let request = request::request(&input, Vec::new()).unwrap();
+    let session: serde_json::Value =
+        serde_json::from_str(request.history[0]["content"].as_str().unwrap()).unwrap();
+    let selector: Uuid = serde_json::from_value(session["conversation_id"].clone()).unwrap();
+    assert_eq!(selector, input.conversation.id);
+    assert_eq!(
+        session["external_conversation_key"],
+        input.conversation.external_conversation_key
+    );
+    assert_eq!(session["user_id"], input.conversation.external_identity);
+    assert!(session.get("session_id").is_none());
+}

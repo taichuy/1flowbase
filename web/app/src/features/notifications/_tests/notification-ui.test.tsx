@@ -284,7 +284,7 @@ beforeEach(() => {
           configured_secret_fields: []
         } as NotificationInstance;
         data = instance;
-      } else if (url.includes('/notifications/instances') && method === 'GET')
+      } else if (url.includes('/communications/instances') && method === 'GET')
         data = url.includes('?')
           ? (filteredInstances ?? [instance])
           : [instance];

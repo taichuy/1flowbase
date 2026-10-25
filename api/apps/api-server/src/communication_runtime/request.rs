@@ -21,9 +21,9 @@ pub(super) fn request(
     };
     // Stable session identity excludes message id, timestamps and query. A new input changes
     // only the final user message, preserving prompt cache affinity within the conversation.
-    let session = json!({"session_id":input.conversation.id,"channel_id":binding.instance_id,
+    let session = json!({"conversation_id":input.conversation.id,"channel_id":binding.instance_id,
         "workspace_id":binding.workspace_id,"user_id":input.conversation.external_identity,
-        "conversation_id":input.conversation.external_conversation_key})
+        "external_conversation_key":input.conversation.external_conversation_key})
     .to_string();
     let mut query = input.message.content.clone().unwrap_or_default();
     if !files.is_empty() {

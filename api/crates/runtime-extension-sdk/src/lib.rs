@@ -57,10 +57,10 @@ pub use extension_contracts::{
     NotificationMcpToolDescriptor, NotificationOperation, NotificationReceiveBatch,
     NotificationReceiveDescriptor, NotificationReceiveOutcome, NotificationReceivedAttachment,
     NotificationReceivedMessage, NotificationRuntimeInput, NotificationRuntimeResult,
-    NotificationSendOutcome, NotificationSender, NOTIFICATION_MAX_ATTACHMENT_CHUNK_BYTES,
-    NOTIFICATION_MAX_RECEIVE_BATCH_BYTES, NOTIFICATION_MAX_RECEIVE_MESSAGES,
-    NOTIFICATION_MAX_RECEIVE_WAIT_SECONDS, NOTIFICATION_RECEIVE_PERMISSION,
-    NOTIFICATION_RECEIVE_POINT,
+    NotificationSendOutcome, NotificationSendTarget, NotificationSender,
+    NOTIFICATION_MAX_ATTACHMENT_CHUNK_BYTES, NOTIFICATION_MAX_RECEIVE_BATCH_BYTES,
+    NOTIFICATION_MAX_RECEIVE_MESSAGES, NOTIFICATION_MAX_RECEIVE_WAIT_SECONDS,
+    NOTIFICATION_RECEIVE_PERMISSION, NOTIFICATION_RECEIVE_POINT,
 };
 pub use managed_hook::{
     serve_managed_hook, serve_managed_interface_hook, serve_managed_interface_reference_hook,
