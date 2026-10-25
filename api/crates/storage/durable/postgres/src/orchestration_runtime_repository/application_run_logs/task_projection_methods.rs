@@ -20,7 +20,7 @@ impl PgControlPlaneStore {
         task_run_id: Uuid,
     ) -> Result<Option<domain::ApplicationRunLogTask>> {
         sqlx::query(
-            "select id,application_id,scope_id,member_run_ids,parent_task_run_id,is_root,log_conversation_id,client_thread_id,client_turn_id,subagent_kind,status,outcome,user_input,final_output,final_output_run_id,invocation_count,compaction_count,started_at,finished_at from application_run_log_tasks where application_id = $1 and id = $2",
+            "select id,application_id,scope_id,member_run_ids,parent_task_run_id,is_root,log_conversation_id,client_thread_id,client_turn_id,subagent_kind,status,outcome,coalesce(recovered.input_text,user_input) as user_input,recovered.input_original as user_input_original,final_output,final_output_run_id,invocation_count,compaction_count,started_at,finished_at from application_run_log_tasks left join lateral application_run_log_task_user_input_source(application_run_log_tasks.id) recovered on true where application_id = $1 and id = $2",
         )
         .bind(application_id)
         .bind(task_run_id)
@@ -77,7 +77,7 @@ impl PgControlPlaneStore {
         .await?;
         // SQL safety: Summary columns are static and order_by comes from the existing closed sort mapping; paging values remain bound.
         let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
-            "select {} from application_run_log_tasks where application_id=$1 and source_kind='native' and is_root and ($2::timestamptz is null or created_at>=$2) order by {order_by} limit $3 offset $4",
+            "select {} from application_run_log_tasks left join lateral application_run_log_task_user_input_source(application_run_log_tasks.id) recovered on true where application_id=$1 and source_kind='native' and is_root and ($2::timestamptz is null or created_at>=$2) order by {order_by} limit $3 offset $4",
             APPLICATION_RUN_LOG_TASK_SUMMARY_COLUMNS
         )))
         .bind(application_id)
@@ -214,7 +214,7 @@ impl PgControlPlaneStore {
     }
 }
 
-const APPLICATION_RUN_LOG_TASK_SUMMARY_COLUMNS: &str = "id,member_run_ids,parent_task_run_id,log_conversation_id,outcome,user_input,final_output,final_output_run_id,call_kind,invocation_count,compaction_count,run_mode,status,target_node_id,title,'{}'::jsonb as input_payload,external_user,created_by,authorized_account,api_key_id,api_key_name_snapshot,requested_model_id,reasoning_effort,publication_version_id,external_conversation_id,external_trace_id,compatibility_mode,idempotency_key,total_cost::double precision as total_cost,total_tokens,input_tokens,output_tokens,input_cache_hit_tokens,input_cache_hit_rate,unique_node_count,tool_callback_count,started_at,finished_at,created_at,updated_at";
+const APPLICATION_RUN_LOG_TASK_SUMMARY_COLUMNS: &str = "id,member_run_ids,parent_task_run_id,log_conversation_id,outcome,coalesce(recovered.input_text,user_input) as user_input,recovered.input_original as user_input_original,final_output,final_output_run_id,call_kind,invocation_count,compaction_count,run_mode,status,target_node_id,title,'{}'::jsonb as input_payload,external_user,created_by,authorized_account,api_key_id,api_key_name_snapshot,requested_model_id,reasoning_effort,publication_version_id,external_conversation_id,external_trace_id,compatibility_mode,idempotency_key,total_cost::double precision as total_cost,total_tokens,input_tokens,output_tokens,input_cache_hit_tokens,input_cache_hit_rate,unique_node_count,tool_callback_count,started_at,finished_at,created_at,updated_at";
 
 fn map_application_run_log_task(
     row: sqlx::postgres::PgRow,
@@ -233,7 +233,7 @@ fn map_application_run_log_task(
         subagent_kind: row.get("subagent_kind"),
         status: crate::mappers::orchestration_runtime_mapper::parse_flow_run_status(&status)?,
         outcome: row.get("outcome"),
-        user_input: row.get("user_input"),
+        user_input: original_optional_text(&row, "user_input")?,
         final_output: row.get("final_output"),
         final_output_run_id: row.get("final_output_run_id"),
         invocation_count: row.get("invocation_count"),
@@ -249,7 +249,7 @@ fn map_application_run_log_task_summary(
     let member_run_ids: Vec<Uuid> = row.get("member_run_ids");
     let parent_task_run_id: Option<Uuid> = row.get("parent_task_run_id");
     let outcome: String = row.get("outcome");
-    let user_input: Option<String> = row.get("user_input");
+    let user_input = original_optional_text(&row, "user_input")?;
     let final_output: Option<String> = row.get("final_output");
     let final_output_run_id: Option<Uuid> = row.get("final_output_run_id");
     let task_id: Uuid = row.get("id");

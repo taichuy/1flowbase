@@ -54,6 +54,7 @@ jobs:
             api/target
           key: agent-logs-regression-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
       - name: Resolve candidate and repository Cargo resources
+        id: candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -74,18 +75,21 @@ jobs:
           fi
           cp tmp/test-governance/application-log-cost-sql.log tmp/test-governance/agent-logs-regression/projection-sql.log
       - name: Responses current user text and identity independence
+        if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane application_public_api::compat::openai::tests > tmp/test-governance/agent-logs-regression/openai-input.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/openai-input.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/openai-input.log
       - name: Native canonical current input projection
+        if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration application_logs::run_conversation_native_projection > tmp/test-governance/agent-logs-regression/native-input.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/native-input.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/native-input.log
       - name: Callback progress and concurrent native deletion
+        if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -94,6 +98,7 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration callback_resume > tmp/test-governance/agent-logs-regression/callback-resume.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/callback-resume.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/callback-resume.log
       - name: Canonical protocol and deletion scope
+        if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -102,18 +107,21 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts log_query > tmp/test-governance/agent-logs-regression/query-contracts.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/query-contracts.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/query-contracts.log
       - name: Real service, migrations, deletion and imported read models
+        if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration application_logs::agent_logs > tmp/test-governance/agent-logs-regression/postgres.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/postgres.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/postgres.log
       - name: Console authentication, CSRF and Canonical binding
+        if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p api-server agent_logs_delete > tmp/test-governance/agent-logs-regression/console.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/console.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/console.log
       - name: Unified log queries and authenticated semantic locators
+        if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -122,6 +130,7 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p api-server routes::settings_group::mcp_management::debug_execute > tmp/test-governance/agent-logs-regression/query-wrapper.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/query-wrapper.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/query-wrapper.log
       - name: Compiled Console operation registration and migration boundary
+        if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -130,12 +139,14 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p api-server console_policy_migration > tmp/test-governance/agent-logs-regression/policy.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/policy.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/policy.log
       - name: Existing canonical storage and native consumers
+        if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration storage_foundation > tmp/test-governance/agent-logs-regression/canonical.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/canonical.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/canonical.log
       - name: Exact viewport acquisition for native client and workflow trajectories
+        if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -144,6 +155,7 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres workflow_ > tmp/test-governance/agent-logs-regression/workflow-trajectory.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/workflow-trajectory.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/workflow-trajectory.log
       - name: Authorized native and workflow viewport read routes
+        if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail

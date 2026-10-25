@@ -552,7 +552,8 @@ impl PgControlPlaneStore {
                 'current_run'::text as source_kind,
                 null::text as role,
                 null::text as content,
-                coalesce(
+                case when flow_runs.log_context is not null then recovered.input_text
+                else coalesce(
                     nullif(btrim(flow_runs.input_payload #>> '{query}'), ''),
                     nullif(btrim(flow_runs.input_payload #>> '{input_text}'), ''),
                     nullif(btrim(flow_runs.input_payload #>> '{node-start,query}'), ''),
@@ -565,7 +566,8 @@ impl PgControlPlaneStore {
                     nullif(btrim(flow_runs.input_payload #>> '{start,prompt}'), ''),
                     nullif(btrim(flow_runs.input_payload #>> '{start,message}'), ''),
                     nullif(btrim(flow_runs.input_payload #>> '{start,input}'), '')
-                ) as query,
+                ) end as query,
+                recovered.input_original as query_original,
                 coalesce(
                     nullif(btrim(flow_runs.input_payload #>> '{model}'), ''),
                     nullif(btrim(flow_runs.input_payload #>> '{node-start,model}'), ''),
@@ -608,6 +610,12 @@ impl PgControlPlaneStore {
                 end as output_source
             from flow_runs
             join applications on applications.id = flow_runs.application_id
+            left join lateral application_run_log_task_user_input_source(
+                case when flow_runs.log_context is not null
+                    and (flow_runs.log_context->>'log_task_run_id' is null
+                        or flow_runs.log_context->>'log_task_run_id'=flow_runs.id::text)
+                    then flow_runs.id end
+            ) recovered on true
             where flow_runs.application_id = $1
               and flow_runs.id = $2
             "#,
@@ -669,7 +677,8 @@ fn application_run_task_message_items_cte() -> &'static str {
         select t.id, t.scope_id, t.application_id,
             coalesce(t.final_output_run_id,t.id) as flow_run_id,
             0::bigint as task_sequence, 'business_turn'::text as source_kind,
-            null::text as role, null::text as content, t.user_input as query,
+            null::text as role, null::text as content,
+            coalesce(recovered.input_text,t.user_input) as query,
             coalesce((select m.model from application_run_conversation_message_items m
                 where m.flow_run_id=coalesce(t.final_output_run_id,t.id) and m.model is not null
                 order by m.is_current desc,m.display_sequence desc limit 1),t.requested_model_id) as model,
@@ -678,7 +687,8 @@ fn application_run_task_message_items_cte() -> &'static str {
                 when t.status='waiting_callback' then 'waiting_callback' end as answer,
             t.id as detail_run_id, true as can_open_detail, true as is_current,
             t.status, t.started_at, t.finished_at, $3::integer as projection_version,
-            t.created_at,t.updated_at,'{}'::jsonb as raw_json_payloads,
+            t.created_at,t.updated_at,
+            jsonb_strip_nulls(jsonb_build_object('query',recovered.input_original)) as raw_json_payloads,
             case when t.outcome='final_answer_observed' and t.final_output is not null
                 then 'persisted_answer'
                 when t.projection_settled_at is not null and t.projection_output_source='observed_output'
@@ -687,6 +697,7 @@ fn application_run_task_message_items_cte() -> &'static str {
                 when t.status='waiting_callback' then 'waiting_callback'
                 else 'none' end as output_source
         from application_run_log_tasks t
+        left join lateral application_run_log_task_user_input_source(t.id) recovered on true
         where t.application_id=$1 and $2=any(t.member_run_ids)
     )"#
 }

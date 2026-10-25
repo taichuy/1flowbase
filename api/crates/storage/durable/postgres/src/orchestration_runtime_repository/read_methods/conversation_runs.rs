@@ -65,6 +65,7 @@ impl PgControlPlaneStore {
                         array_agg(messages.content order by messages.sequence asc)
                         filter (where messages.role = 'user')
                     )[1] as query,
+                    null::text as query_original,
                     null::text as model,
                     (
                         array_agg(messages.content order by messages.sequence asc)
@@ -92,7 +93,8 @@ impl PgControlPlaneStore {
                   )
                 group by runs.id, runs.status, runs.started_at, runs.finished_at
                 union all
-                select t.id,t.status,t.user_input as query,
+                select t.id,t.status,coalesce(recovered.input_text,t.user_input) as query,
+                    recovered.input_original as query_original,
                     coalesce((select m.model from application_run_conversation_message_items m
                         where m.flow_run_id=coalesce(t.final_output_run_id,t.id) and m.model is not null
                         order by m.is_current desc,m.display_sequence desc limit 1),t.requested_model_id) as model,
@@ -102,6 +104,7 @@ impl PgControlPlaneStore {
                     coalesce(r.log_context->>'request_kind','') <> 'prewarm' as is_business_turn
                 from application_run_log_tasks t
                 join flow_runs r on r.id=t.id
+                left join lateral application_run_log_task_user_input_source(t.id) recovered on true
                 where t.application_id=$1 and t.is_root
                   and t.log_conversation_id=case when $2 ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then $2::uuid end
             ),
@@ -110,6 +113,7 @@ impl PgControlPlaneStore {
                     id,
                     status,
                     query,
+                    query_original,
                     model,
                     answer,
                     started_at,
@@ -128,6 +132,7 @@ impl PgControlPlaneStore {
                 id,
                 status,
                 query,
+                query_original,
                 model,
                 answer,
                 started_at,
@@ -147,7 +152,12 @@ impl PgControlPlaneStore {
 
         let items = rows
             .into_iter()
-            .map(map_application_conversation_run_summary)
+            .map(|row| {
+                let query = original_optional_text(&row, "query")?;
+                let mut summary = map_application_conversation_run_summary(row)?;
+                summary.query = query;
+                Ok(summary)
+            })
             .collect::<Result<Vec<_>>>()?;
         let before_cursor = items.first().map(|run| run.id);
         let after_cursor = items.last().map(|run| run.id);

@@ -1,38 +1,84 @@
--- A task input is the current request, never imported model history.
--- Ignore empty legacy projection placeholders before consulting retained input.
+-- Select searchable input and encoded original from the same source. Fast
+-- message paths never load retained raw input/media. Original JSON stays encoded
+-- until the Rust boundary: PostgreSQL text/JSONB cannot represent U+0000.
+create or replace function application_run_log_task_user_input_source(run_id uuid)
+returns table(input_text text,input_original text)
+language plpgsql stable as $$
+declare source_run record; retained record; selected_text text; original_source json;
+begin
+    return query
+        select m.query,m.raw_json_payloads->>'query'
+        from application_run_conversation_message_items m
+        where m.flow_run_id=$1 and m.is_current and m.query ~ '[^[:space:]]'
+        order by m.display_sequence desc,m.id limit 1;
+    if found then return; end if;
+    return query
+        select m.content,m.raw_json_payloads->>'content'
+        from application_run_conversation_message_items m
+        where m.flow_run_id=$1 and m.is_current and m.role='user'
+          and m.content ~ '[^[:space:]]'
+        order by m.display_sequence,m.id limit 1;
+    if found then return; end if;
+
+    select f.log_context,f.input_payload,f.raw_json_payloads into source_run
+        from flow_runs f where f.id=$1;
+    if not found then return; end if;
+    if source_run.log_context #> '{prompt,content_omitted}' is distinct from 'true'::jsonb then
+        selected_text := source_run.log_context #>> '{prompt,content}';
+        if jsonb_typeof(source_run.log_context #> '{prompt,content}')='string'
+            and selected_text ~ '[^[:space:]]' then
+            return query select selected_text,
+                ((source_run.raw_json_payloads->>'log_context')::json #> '{prompt,content}')::text;
+            return;
+        end if;
+        if jsonb_typeof(source_run.log_context #> '{prompt,content}')='array' then
+            select string_agg(part->>'text', E'\n' order by position) into selected_text
+            from jsonb_array_elements(source_run.log_context #> '{prompt,content}')
+                with ordinality blocks(part,position)
+            where jsonb_typeof(part->'text')='string';
+            if selected_text ~ '[^[:space:]]' then
+                original_source := (source_run.raw_json_payloads->>'log_context')::json #> '{prompt,content}';
+                -- Join encoded string interiors, never decode NUL into PostgreSQL
+                -- text. Escaped backslashes remain distinct from encoded NUL characters.
+                return query select selected_text,case when original_source is not null then
+                    (select '"' || string_agg(substring(
+                        (original_source -> (position::integer-1) -> 'text')::text
+                        from 2 for char_length((original_source -> (position::integer-1) -> 'text')::text)-2),
+                        E'\\n' order by position) || '"'
+                     from jsonb_array_elements(source_run.log_context #> '{prompt,content}')
+                         with ordinality blocks(part,position)
+                     where jsonb_typeof(part->'text')='string') end;
+                return;
+            end if;
+        end if;
+    end if;
+
+    -- Only same-run current-input keys; history/system and other runs are excluded.
+    select source,input_key,value #>> '{}' as value into retained from (
+        select source,key_position,key as input_key,source_value->key as value
+        from (values (0,source_run.input_payload),
+            (1,coalesce(source_run.input_payload->'node-start',source_run.input_payload->'start')))
+            inputs(source,source_value)
+        cross join unnest(array['query','question','prompt','message','input','input_text'])
+            with ordinality keys(key,key_position)
+    ) candidates where jsonb_typeof(value)='string' and (value #>> '{}') ~ '[^[:space:]]'
+    order by source,key_position limit 1;
+    if found then
+        original_source := (source_run.raw_json_payloads->>'input_payload')::json;
+        if retained.source=1 then
+            original_source := case when source_run.input_payload ? 'node-start'
+                then original_source->'node-start' else original_source->'start' end;
+        end if;
+        return query select retained.value,(original_source->retained.input_key)::text;
+    end if;
+end;
+$$;
+
+-- The task table retains searchable text only. Readers obtain an original
+-- sidecar from the same primary-key-selected source without another stored copy.
 create or replace function application_run_log_task_user_input(run_id uuid) returns text
 language sql stable as $$
-    select coalesce(
-        (select m.query from application_run_conversation_message_items m
-         where m.flow_run_id=$1 and m.is_current and nullif(btrim(m.query),'') is not null
-         order by m.display_sequence desc limit 1),
-        (select m.content from application_run_conversation_message_items m
-         where m.flow_run_id=$1 and m.is_current and m.role='user'
-           and nullif(btrim(m.content),'') is not null
-         order by m.display_sequence limit 1),
-        case when jsonb_typeof(f.log_context #> '{prompt,content}')='string'
-             and nullif(btrim(f.log_context #>> '{prompt,content}'),'') is not null
-             then f.log_context #>> '{prompt,content}' end,
-        (select string_agg(part->>'text', E'\n' order by position)
-         from jsonb_array_elements(case
-             when jsonb_typeof(f.log_context #> '{prompt,content}')='array'
-             then f.log_context #> '{prompt,content}' else '[]'::jsonb end)
-             with ordinality blocks(part,position)
-         where jsonb_typeof(part->'text')='string'
-         having nullif(btrim(string_agg(part->>'text', E'\n' order by position)),'') is not null),
-        -- Same current-input keys used by the native run projection. A missing
-        -- log prompt must not make us read system text or conversation history.
-        (select value #>> '{}' from (
-            select source, key_position, source_value->key as value
-            from (values (0,f.input_payload),
-                (1,coalesce(f.input_payload->'node-start',f.input_payload->'start')))
-                inputs(source,source_value)
-            cross join unnest(array['query','question','prompt','message','input','input_text'])
-                with ordinality keys(key,key_position)
-         ) candidates where jsonb_typeof(value)='string'
-             and nullif(btrim(value #>> '{}'),'') is not null
-         order by source,key_position limit 1)
-    ) from flow_runs f where f.id=$1
+    select input_text from application_run_log_task_user_input_source($1)
 $$;
 
 -- Business-turn completion and individual execution/callback state are separate.

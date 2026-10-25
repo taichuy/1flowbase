@@ -977,7 +977,7 @@ async fn issue_2674_anchor_prompt_falls_back_only_to_current_run_input() {
     .into_iter()
     .enumerate()
     {
-        let current = format!("\n  current-{index}\u{0000} text\n  ");
+        let current = format!("\n  当前-{index}\u{0000} text; literal \\u0000\n  ");
         assert_ne!(
             current,
             current.trim(),
@@ -1011,6 +1011,8 @@ async fn issue_2674_anchor_prompt_falls_back_only_to_current_run_input() {
             .unwrap()
             .unwrap();
         assert_eq!(task.user_input.as_deref(), Some(current.as_str()));
+        assert_lossless_task_input_readers(&store, seeded.application_id, run.id, &current).await;
+        assert_lossless_retained_input_without_message_projection(&store, run.id, &current).await;
     }
 }
 
@@ -1021,7 +1023,7 @@ async fn issue_2674_text_projection_preserves_whitespace_and_nul_and_non_anchor_
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
     let compiled = seed_compiled_plan(&store, &seeded).await;
-    let current = "  exact\u{0000}\n text  ";
+    let current = "  原样\u{0000}\n literal \\u0000 text  ";
     let run = seed_native_run_conversation_flow_run(
         &store, &seeded, &compiled, "exact-current-input",
         datetime!(2026-10-25 02:00:00 UTC),
@@ -1032,6 +1034,9 @@ async fn issue_2674_text_projection_preserves_whitespace_and_nul_and_non_anchor_
         "select coalesce(raw_json_payloads->>'content',to_json(content)::text) from application_run_conversation_message_items where flow_run_id=$1 and role='user'"
     ).bind(run.id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(serde_json::from_str::<String>(&content).unwrap(), current);
+
+    assert_lossless_task_input_readers(&store, seeded.application_id, run.id, current).await;
+    assert_lossless_retained_input_without_message_projection(&store, run.id, current).await;
 
     // A continuation may replay an omitted prompt and full history, but neither
     // becomes a second user fact for a task anchored by a different real run.
@@ -1057,8 +1062,152 @@ async fn issue_2674_text_projection_preserves_whitespace_and_nul_and_non_anchor_
         "select count(*) from application_run_conversation_message_items where flow_run_id=$1 and role='user'"
     ).bind(member.id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(count, 0);
+    let current_member = store
+        .get_application_run_conversation_current_item(seeded.application_id, member.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(current_member.query.is_none());
     let content: String = sqlx::query_scalar(
         "select coalesce(raw_json_payloads->>'content',to_json(content)::text) from application_run_conversation_message_items where flow_run_id=$1 and role='user'"
     ).bind(run.id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(serde_json::from_str::<String>(&content).unwrap(), current);
+}
+
+async fn assert_lossless_task_input_readers(
+    store: &PgControlPlaneStore,
+    application_id: Uuid,
+    run_id: Uuid,
+    expected: &str,
+) {
+    let task = store
+        .get_application_run_log_task(application_id, run_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(task.user_input.as_deref(), Some(expected));
+    let page = run_conversation_page(store, application_id, run_id, None, None, 5).await;
+    assert_eq!(page.items[0].query.as_deref(), Some(expected));
+    let current = store
+        .get_application_run_conversation_current_item(application_id, run_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(current.query.as_deref(), Some(expected));
+    let logs = store
+        .list_application_run_logs_page(
+            application_id,
+            ListApplicationRunsPageInput {
+                page: 1,
+                page_size: 100,
+                created_after: None,
+                sort_by: None,
+                sort_order: None,
+            },
+        )
+        .await
+        .unwrap();
+    let summary = logs
+        .items
+        .iter()
+        .find(|item| item.run.id == run_id)
+        .unwrap();
+    assert_eq!(summary.user_input.as_deref(), Some(expected));
+    let turns = store
+        .list_application_conversation_runs_page(
+            application_id,
+            ListApplicationConversationRunsPageInput {
+                external_conversation_id: task.log_conversation_id.unwrap().to_string(),
+                around_run_id: None,
+                before_run_id: None,
+                after_run_id: None,
+                limit: 50,
+            },
+        )
+        .await
+        .unwrap();
+    let turn = turns.items.iter().find(|item| item.id == run_id).unwrap();
+    assert_eq!(turn.query.as_deref(), Some(expected));
+    let overview = store
+        .application_log_record(application_id, run_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let user = overview
+        .messages
+        .iter()
+        .find(|message| message.role == "user")
+        .unwrap();
+    assert_eq!(user.content, expected);
+}
+
+// Exercise SQL's historical-source paths as well as the normal projected-row
+// fast path. Only derived fixture rows are removed, under their owner lock,
+// and the transaction rolls back so the real reader fixtures remain intact.
+async fn assert_lossless_retained_input_without_message_projection(
+    store: &PgControlPlaneStore,
+    run_id: Uuid,
+    expected: &str,
+) {
+    let mut tx = store.pool().begin().await.unwrap();
+    sqlx::query("select application_run_lock_native_projection($1)")
+        .bind(run_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("delete from application_run_conversation_message_items where flow_run_id=$1")
+        .bind(run_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let (safe, original): (String, Option<String>) = sqlx::query_as(
+        "select input_text,input_original from application_run_log_task_user_input_source($1)",
+    )
+    .bind(run_id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    assert_eq!(safe, expected.replace('\0', "\\u0000"));
+    let restored = original
+        .map(|raw| serde_json::from_str::<String>(&raw).unwrap())
+        .unwrap_or(safe);
+    assert_eq!(restored, expected);
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
+async fn issue_2674_array_prompt_restores_nul_separately_from_literal_escape() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let expected = "\n 用户\u{0000} \n literal \\u0000  ";
+    let run = seed_native_run_conversation_flow_run(
+        &store,&seeded,&compiled,"array-original-current-input",
+        datetime!(2026-10-25 03:00:00 UTC),
+        json!({"node-start":{"query":"a different current fallback","history":[{"role":"user","content":"not current"}]}}),
+        Some(json!({"role":"user","content":[
+            {"type":"input_text","text":"\n 用户\u{0000} "},
+            {"type":"input_text","text":" literal \\u0000  "}
+        ]})),
+    ).await;
+    assert_lossless_task_input_readers(&store, seeded.application_id, run.id, expected).await;
+    assert_lossless_retained_input_without_message_projection(&store, run.id, expected).await;
+
+    let literal = "\n 字面 \\u0000  ";
+    let literal_run = seed_native_run_conversation_flow_run(
+        &store,
+        &seeded,
+        &compiled,
+        "literal-only-current-input",
+        datetime!(2026-10-25 03:00:01 UTC),
+        json!({"node-start":{"query":"different fallback"}}),
+        Some(json!({"role":"user","content":literal})),
+    )
+    .await;
+    assert_lossless_task_input_readers(&store, seeded.application_id, literal_run.id, literal)
+        .await;
+    assert_lossless_retained_input_without_message_projection(&store, literal_run.id, literal)
+        .await;
 }

@@ -83,7 +83,7 @@ AI Gateway 的映射协议层将请求接入 AI Native 统一契约；供应商�
 
 这只结算逻辑业务轮次，不把旧 flow_run 或 callback 改成成功/取消，不 ACK 任何投递。成员目录、失败尝试、用量与已知费用仍覆盖所有源运行；全部未知仍为 NULL。callback、inbox、resume、claim 的写入口先取得既有原生会话投影锁，再锁源运行、回调行与任务投影，与日志删除保持同一锁顺序；真实变更在同一事务刷新任务投影，因此迟到回调可以重新打开任务；投影时间和费用修正不会冒充执行进展。真实最终答复直接来自 final_output，五分钟补偿只处理仍无完成证据的等待。
 
-当前用户输入由请求本身确定。Responses 来源适配保留完整文字及原有文本块换行，媒体字节仍由原始协议采集保存；语义 prompt 标记为文本投影，不能冒充完整原文。身份解析失败不删除独立文字，也不据此建立跨任务归属。旧空消息或 content_omitted 占位不阻挡同一 anchor 运行的当前输入；不得从模型历史、system、工具结果或另一轮猜测用户问题。历史恢复只通过 forward migration 更新可重建投影，GET 不修复数据。
+当前用户输入由请求本身确定。Responses 来源适配保留完整文字及原有文本块换行，媒体字节仍由原始协议采集保存；语义 prompt 标记为文本投影，不能冒充完整原文。身份解析失败不删除独立文字，也不据此建立跨任务归属。旧空消息或 content_omitted 占位不阻挡同一 anchor 运行的当前输入；不得从模型历史、system、工具结果或另一轮猜测用户问题。历史恢复只通过 forward migration 更新可重建投影，GET 不修复数据。任务、列表和会话读取复用同一当前输入选源；PostgreSQL 安全文本与已有 raw_json_payloads 中的原文编码保持配对，由后端既有无损文本读取器还原 NUL 等字符，区分真实字符与字面转义。原文按现有主键读取，不新增长期副本。
 
 实现入口：[当前输入与轮次收敛](../../api/crates/storage/durable/postgres/migrations/20261025120000_native_log_current_input_and_turn_settlement.sql)。
 
