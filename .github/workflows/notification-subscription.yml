@@ -148,7 +148,11 @@ jobs:
           if ! grep -q 'overflowed its stack' tmp/test-governance/communications/ci/communication-host.log; then
             exit 0
           fi
-          command -v gdb
+          if ! command -v gdb > /dev/null; then
+            sudo apt-get update > tmp/test-governance/communications/ci/debugger-install.log 2>&1
+            sudo apt-get install --yes --no-install-recommends gdb >> tmp/test-governance/communications/ci/debugger-install.log 2>&1
+          fi
+          gdb --version > tmp/test-governance/communications/ci/debugger-version.txt
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --no-run --message-format=json > tmp/test-governance/communications/ci/test-artifacts.jsonl 2> tmp/test-governance/communications/ci/diagnostic-build.log
           test_binary="$(python3 -c 'import json; from pathlib import Path; records=[json.loads(line) for line in Path("tmp/test-governance/communications/ci/test-artifacts.jsonl").read_text().splitlines()]; print(next(r["executable"] for r in records if r.get("reason")=="compiler-artifact" and r.get("executable") and r.get("profile",{}).get("test")))')"
           timeout 180s gdb --quiet --batch -ex 'set pagination off' -ex 'set print frame-arguments none' -ex run -ex 'bt 50' -ex 'info registers rsp rbp' --args "$test_binary" --exact communication_runtime::acceptance_tests::pipeline::communication_callback_preserves_configuring_actor_and_sends_final_scoped_reply --nocapture > tmp/test-governance/communications/ci/callback-stack-backtrace.log 2>&1
