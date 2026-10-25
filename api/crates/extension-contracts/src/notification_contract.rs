@@ -1,5 +1,5 @@
-//! Canonical notification type metadata. Config belongs to an instance; input and output
-//! belong to one send. Schemas describe provider data, never an in-app message protocol.
+//! Canonical communications metadata and managed receive/send protocol.
+//! Config belongs to a channel; durable inbox, cursor commits and files belong to Host.
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
@@ -10,11 +10,15 @@ use crate::{ContributionId, PluginFormSchema};
 
 pub const NOTIFICATION_POINT: &str = "1flowbase.notification.send";
 pub const NOTIFICATION_CONTRACT_V1: &str = "1flowbase.notification/v1";
+pub const NOTIFICATION_RECEIVE_POINT: &str = "1flowbase.notification.receive";
+pub const NOTIFICATION_RECEIVE_PERMISSION: &str = "notification.receive";
 pub const NOTIFICATION_SEND_PERMISSION: &str = "notification.send";
 pub const SYSTEM_NOTIFICATION_TYPE: &str = "system";
 
 mod i18n;
 pub use i18n::*;
+mod receive;
+pub use receive::*;
 mod managed;
 pub use managed::*;
 
@@ -33,9 +37,12 @@ pub struct NotificationTypeDescriptor {
     pub input_form: PluginFormSchema,
     pub output_schema: Value,
     pub contribution_id: ContributionId,
-    /// Opt-in managed authorization and typed send outcomes; absent preserves legacy sends.
+    /// Optional authorization capability, independent of receive/send support.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authorization: Option<NotificationAuthorizationDescriptor>,
+    /// Absence declares a send-only channel, never a protocol-version fallback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receive: Option<NotificationReceiveDescriptor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -77,6 +84,21 @@ impl NotificationTypeDescriptor {
             }) {
                 return Err(invalid(
                     "managed secret keys cannot be user configuration fields",
+                ));
+            }
+        }
+        if let Some(receive) = &self.receive {
+            receive.validate()?;
+            if receive.contribution_id == self.contribution_id {
+                return Err(invalid("receive and send require distinct contributions"));
+            }
+            if self
+                .authorization
+                .as_ref()
+                .is_some_and(|auth| auth.managed_secret_keys.iter().any(|key| key == "cursor"))
+            {
+                return Err(invalid(
+                    "receive cursor must be separate from managed secrets",
                 ));
             }
         }

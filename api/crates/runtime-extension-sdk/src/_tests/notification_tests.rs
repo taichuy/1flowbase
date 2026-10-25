@@ -206,3 +206,86 @@ async fn delivery_window_is_public_typed_input_and_survives_sdk_round_trip() {
         assert_eq!(response.result["outcome"]["failure_code"], code);
     }
 }
+
+fn communication_descriptor() -> NotificationTypeDescriptor {
+    let mut descriptor = managed_descriptor();
+    descriptor
+        .authorization
+        .as_mut()
+        .unwrap()
+        .managed_secret_keys
+        .retain(|key| key != "cursor");
+    descriptor.receive = Some(serde_json::from_value(json!({
+        "contribution_id":"notification-fixture.receive","default_system_prompt":"Read history and files through tools.",
+        "mcp_tools":[
+            {"name":"messages","description":"Read messages","operation":"history_messages","input_schema":{"type":"object"}},
+            {"name":"files","description":"Read files","operation":"history_files","input_schema":{"type":"object"}},
+            {"name":"read_file","description":"Read file","operation":"read_file","input_schema":{"type":"object"}}
+        ]
+    })).unwrap());
+    descriptor
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn communication_sdk_receives_candidates_and_downloads_bounded_chunks() {
+    let descriptor = communication_descriptor();
+    let response = crate::execute_communication(
+        managed_request(json!({"type":"receive","cursor":"committed","max_messages":5,"wait_seconds":0})),
+        &descriptor,
+        |_, input| async move {
+            assert!(matches!(input.operation, crate::NotificationOperation::Receive { cursor:Some(ref value), .. } if value == "committed"));
+            Ok::<_, String>(serde_json::from_value::<crate::NotificationRuntimeResult>(json!({
+                "type":"receive","outcome":{"status":"succeeded","batch":{"messages":[{
+                    "provider_message_id":"stable-id","conversation_id":"peer","sender":{"id":"peer"},"received_at_ms":1,"text":"hello"
+                }],"candidate_cursor":"candidate","has_more":false}}
+            })).unwrap())
+        },
+    ).await;
+    assert!(response.ok);
+    assert_eq!(
+        response.result["outcome"]["batch"]["candidate_cursor"],
+        "candidate"
+    );
+    let response = crate::execute_communication(
+        managed_request(json!({"type":"download_attachment","attachment":{"provider_message_id":"m1","provider_attachment_id":"a1","download_token":"opaque"},"offset":0,"max_bytes":3})),
+        &descriptor,
+        |_, _| async move { Ok::<_, String>(serde_json::from_value::<crate::NotificationRuntimeResult>(json!({
+            "type":"download_attachment","outcome":{"status":"succeeded","offset":0,"data_base64":"YWJj","eof":true}
+        })).unwrap()) },
+    ).await;
+    assert!(response.ok);
+    assert_eq!(response.result["outcome"]["data_base64"], "YWJj");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn communication_sdk_rejects_receive_overflow_before_io_and_never_invents_a_cursor() {
+    let descriptor = communication_descriptor();
+    let response = crate::execute_communication::<String, _>(
+        managed_request(json!({"type":"receive","max_messages":101,"wait_seconds":0})),
+        &descriptor,
+        |_, _| async move {
+            panic!("invalid poll must not reach provider");
+            #[allow(unreachable_code)]
+            Ok(crate::NotificationRuntimeResult::DownloadAttachment {
+                outcome: crate::NotificationAttachmentDownloadOutcome::Succeeded {
+                    offset: 0,
+                    data_base64: String::new(),
+                    eof: true,
+                },
+            })
+        },
+    )
+    .await;
+    assert!(!response.ok);
+    let response = crate::execute_communication(
+        managed_request(json!({"type":"receive","max_messages":1,"wait_seconds":0})),
+        &descriptor,
+        |_, _| async move { Err::<crate::NotificationRuntimeResult, _>("private-provider-token") },
+    )
+    .await;
+    assert!(!response.ok);
+    assert!(response.result.is_null());
+    assert!(!serde_json::to_string(&response)
+        .unwrap()
+        .contains("private-provider-token"));
+}
