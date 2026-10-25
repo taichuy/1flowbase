@@ -56,8 +56,6 @@ jobs:
             notification-subscription-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-
             notification-subscription-nodebug-${{ runner.os }}-
       - name: Capture callback stack at the frozen candidate
-        env:
-          RUST_MIN_STACK: "2097152"
         run: |
           mkdir -p tmp/test-governance/communications/stack
           sudo apt-get update > tmp/test-governance/communications/stack/debugger-install.log 2>&1
@@ -89,7 +87,7 @@ jobs:
               frame = frame.older()
           end
           GDB
-          timeout 180s gdb --quiet --batch -x /tmp/communications-stack.gdb --args "$test_binary" --exact communication_runtime::acceptance_tests::pipeline::communication_callback_preserves_configuring_actor_and_sends_final_scoped_reply --nocapture > tmp/test-governance/communications/stack/callback-backtrace.log 2>&1
+          RUST_MIN_STACK=2097152 timeout 180s gdb --quiet --batch -x /tmp/communications-stack.gdb --args "$test_binary" --exact communication_runtime::acceptance_tests::pipeline::communication_callback_preserves_configuring_actor_and_sends_final_scoped_reply --nocapture > tmp/test-governance/communications/stack/callback-backtrace.log 2>&1
           git rev-parse HEAD > tmp/test-governance/communications/stack/candidate-sha.txt
       - uses: actions/upload-artifact@v6
         if: always()
