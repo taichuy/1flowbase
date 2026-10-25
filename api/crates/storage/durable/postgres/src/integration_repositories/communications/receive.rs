@@ -22,7 +22,7 @@ pub(super) async fn commit(
     let mut tx = store.pool().begin().await?;
     // This lock is shared with disable/delete/config/authorization writes. A stale receive
     // cannot persist messages, secrets or cursor after authorization has changed.
-    let revision:Option<i64>=sqlx::query_scalar("UPDATE notification_instances SET authorization_json=$4,encrypted_managed_secret_json=$5,authorization_revision=authorization_revision+1,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND authorization_revision=$3 AND status='enabled' AND EXISTS(SELECT 1 FROM communication_bindings b WHERE b.instance_id=notification_instances.id AND b.workspace_id=$1) RETURNING authorization_revision")
+    let revision:Option<i64>=sqlx::query_scalar("UPDATE notification_instances SET authorization_json=$4,encrypted_managed_secret_json=$5,authorization_revision=authorization_revision+1,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND authorization_revision=$3 AND status='enabled' AND EXISTS(SELECT 1 FROM communication_bindings b WHERE b.instance_id=notification_instances.id AND b.scope_id=$1) RETURNING authorization_revision")
         .bind(w).bind(i).bind(auth.expected_revision).bind(serde_json::to_value(auth.authorization)?).bind(encrypted).fetch_optional(&mut *tx).await?;
     if revision.is_none() {
         return Ok(None);
@@ -35,9 +35,9 @@ pub(super) async fn commit(
         {
             return Err(Error::InvalidInput("communication_received_message").into());
         }
-        let conversation_id:Uuid=sqlx::query_scalar("INSERT INTO communication_conversations(id,workspace_id,instance_id,external_identity,external_conversation_key,sender_display_name) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(workspace_id,instance_id,external_identity,external_conversation_key) DO UPDATE SET sender_display_name=excluded.sender_display_name RETURNING id")
+        let conversation_id:Uuid=sqlx::query_scalar("INSERT INTO communication_conversations(id,scope_id,instance_id,external_identity,external_conversation_key,sender_display_name) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(scope_id,instance_id,external_identity,external_conversation_key) DO UPDATE SET sender_display_name=excluded.sender_display_name RETURNING id")
             .bind(Uuid::now_v7()).bind(w).bind(i).bind(&m.sender_id).bind(m.conversation_id).bind(m.sender_display_name).fetch_one(&mut *tx).await?;
-        let message_id:Option<Uuid>=sqlx::query_scalar("INSERT INTO communication_messages(id,workspace_id,instance_id,conversation_id,external_identity,external_message_key,received_at_ms,content) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(workspace_id,instance_id,external_identity,external_message_key) DO NOTHING RETURNING id")
+        let message_id:Option<Uuid>=sqlx::query_scalar("INSERT INTO communication_messages(id,scope_id,instance_id,conversation_id,external_identity,external_message_key,received_at_ms,content) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(scope_id,instance_id,external_identity,external_message_key) DO NOTHING RETURNING id")
             .bind(Uuid::now_v7()).bind(w).bind(i).bind(conversation_id).bind(m.sender_id).bind(m.provider_message_id).bind(m.received_at_ms).bind(m.text).fetch_optional(&mut *tx).await?;
         if let Some(message_id) = message_id {
             for a in m.attachments {
@@ -54,12 +54,12 @@ pub(super) async fn commit(
                 // in backups. Runtime decryption still derives AAD from trusted message rows.
                 reference["communication_scope"] =
                     serde_json::json!({"workspace_id":w,"instance_id":i});
-                sqlx::query("INSERT INTO communication_attachments(id,message_id,provider_attachment_id,file_name,media_type,size_bytes,encrypted_reference) VALUES($1,$2,$3,$4,$5,$6,$7)")
-                    .bind(id).bind(message_id).bind(a.provider_attachment_id).bind(a.file_name).bind(a.media_type).bind(a.size_bytes).bind(reference).execute(&mut *tx).await?;
+                sqlx::query("INSERT INTO communication_attachments(id,scope_id,message_id,provider_attachment_id,file_name,media_type,size_bytes,encrypted_reference) VALUES($1,$8,$2,$3,$4,$5,$6,$7)")
+                    .bind(id).bind(message_id).bind(a.provider_attachment_id).bind(a.file_name).bind(a.media_type).bind(a.size_bytes).bind(reference).bind(w).execute(&mut *tx).await?;
             }
         }
     }
-    sqlx::query("UPDATE communication_bindings SET encrypted_cursor=COALESCE($3,encrypted_cursor) WHERE workspace_id=$1 AND instance_id=$2").bind(w).bind(i).bind(cursor).execute(&mut *tx).await?;
+    sqlx::query("UPDATE communication_bindings SET encrypted_cursor=COALESCE($3,encrypted_cursor) WHERE scope_id=$1 AND instance_id=$2").bind(w).bind(i).bind(cursor).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(revision)
 }

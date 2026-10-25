@@ -115,3 +115,27 @@ test('mixed authority ownership fails closed if validation or cleanup trigger is
     }
   }
 });
+
+test('communication tables keep physical scope and mutable audit times without a second binding identity', () => {
+  const config = loadConfig(repoRoot);
+  const inventory = collectSchemaInventory({ repoRoot });
+  const report = evaluateSchemaHygiene({ inventory, config });
+  const names = ['communication_bindings', 'communication_conversations', 'communication_messages', 'communication_attachments'];
+  for (const name of names) {
+    const table = report.tables.find((candidate) => candidate.name === name);
+    assert.ok(table, name);
+    assert.deepEqual(table.findings, [], name);
+    for (const column of ['scope_id', 'created_at', 'updated_at']) {
+      assert.ok(table.columns.some((candidate) => candidate.name === column), `${name}.${column}`);
+      const broken = structuredClone(inventory);
+      broken.tables.find((candidate) => candidate.name === name).columns = table.columns.filter((candidate) => candidate.name !== column);
+      const failed = evaluateSchemaHygiene({ inventory: broken, config });
+      assert.ok(failed.findings.some((finding) => finding.table === name && finding.column === column && finding.severity === 'error'), `${name} missing ${column}`);
+    }
+  }
+  const binding = inventory.tables.find((table) => table.name === 'communication_bindings');
+  assert.deepEqual(binding.primaryKey.columns, ['instance_id']);
+  assert.equal(binding.columns.some((column) => column.name === 'id'), false);
+  assert.deepEqual(config.exemptions.communication_bindings.skip.toSorted(), ['managed-table-id', 'managed-table-scope-time-index']);
+  for (const name of names.slice(1)) assert.equal(config.exemptions[name], undefined);
+});

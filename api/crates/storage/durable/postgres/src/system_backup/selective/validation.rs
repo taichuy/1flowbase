@@ -92,8 +92,23 @@ pub(super) fn rekey(table: &str, row: &mut Value, source: &str, target: &str) ->
                         .context("communication ciphertext missing scope identity")?,
                 )?)
             };
-            let workspace = identity("workspace_id")?;
+            let workspace = identity(if table == "communication_bindings" {
+                "scope_id"
+            } else {
+                "workspace_id"
+            })?;
             let instance = identity("instance_id")?;
+            if table == "communication_attachments" {
+                let physical_scope = uuid::Uuid::parse_str(
+                    row.get("scope_id")
+                        .and_then(Value::as_str)
+                        .context("communication attachment missing physical scope")?,
+                )?;
+                ensure!(
+                    physical_scope == workspace,
+                    "communication attachment ciphertext scope differs from physical scope"
+                );
+            }
             let kind = if table == "communication_bindings" {
                 "cursor".to_owned()
             } else {

@@ -49,16 +49,16 @@ async fn communication_backup_rekeys_cursor_and_attachment_after_fk_deferred_res
     let cursor = json!({"cursor":"private-provider-cursor"});
     let reference = json!({"download_token":"private-download-credential"});
     sqlx::query("INSERT INTO notification_instances(id,workspace_id,type_code,display_name) VALUES($1,$2,'communication.fixture','Backup channel')").bind(instance).bind(workspace.id).execute(&db).await.unwrap();
-    sqlx::query("INSERT INTO communication_bindings(instance_id,workspace_id,actor_user_id,config_json,plugin_mcp_instance_id,encrypted_cursor) VALUES($1,$2,$3,'{}'::jsonb,'plugin-tools',$4)")
+    sqlx::query("INSERT INTO communication_bindings(instance_id,scope_id,actor_user_id,config_json,plugin_mcp_instance_id,encrypted_cursor) VALUES($1,$2,$3,'{}'::jsonb,'plugin-tools',$4)")
         .bind(instance).bind(workspace.id).bind(actor).bind(encrypt_secret_json_with_aad(&cursor,"source",cursor_aad.as_bytes()).unwrap()).execute(&db).await.unwrap();
-    sqlx::query("INSERT INTO communication_conversations(id,workspace_id,instance_id,external_identity,external_conversation_key) VALUES($1,$2,$3,'alice','chat')").bind(conversation).bind(workspace.id).bind(instance).execute(&db).await.unwrap();
-    sqlx::query("INSERT INTO communication_messages(id,workspace_id,instance_id,conversation_id,external_identity,external_message_key,received_at_ms,content,processing_status,send_status) VALUES($1,$2,$3,$4,'alice','provider-message',42,'retained input','failed','none')").bind(message).bind(workspace.id).bind(instance).bind(conversation).execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO communication_conversations(id,scope_id,instance_id,external_identity,external_conversation_key) VALUES($1,$2,$3,'alice','chat')").bind(conversation).bind(workspace.id).bind(instance).execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO communication_messages(id,scope_id,instance_id,conversation_id,external_identity,external_message_key,received_at_ms,content,processing_status,send_status) VALUES($1,$2,$3,$4,'alice','provider-message',42,'retained input','failed','none')").bind(message).bind(workspace.id).bind(instance).bind(conversation).execute(&db).await.unwrap();
     let mut encrypted_reference =
         encrypt_secret_json_with_aad(&reference, "source", reference_aad.as_bytes()).unwrap();
     encrypted_reference["communication_scope"] =
         json!({"workspace_id":workspace.id,"instance_id":instance});
-    sqlx::query("INSERT INTO communication_attachments(id,message_id,provider_attachment_id,file_name,media_type,encrypted_reference,status,file_table_id,file_record_id) VALUES($1,$2,'provider-attachment','file.png','image/png',$3,'ready',$4,$5)")
-        .bind(attachment).bind(message).bind(encrypted_reference).bind(file_table).bind(file_record).execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO communication_attachments(id,scope_id,message_id,provider_attachment_id,file_name,media_type,encrypted_reference,status,file_table_id,file_record_id) VALUES($1,$6,$2,'provider-attachment','file.png','image/png',$3,'ready',$4,$5)")
+        .bind(attachment).bind(message).bind(encrypted_reference).bind(file_table).bind(file_record).bind(workspace.id).execute(&db).await.unwrap();
     let repository = PgSelectiveBackupRepository::new(db.clone());
     let config = capture(&repository, select("notifications", true, false)).await;
     let full = capture(&repository, select("notifications", true, true)).await;
@@ -166,7 +166,7 @@ fn communication_rekey_authenticates_scope_and_keeps_runtime_aad_authoritative()
     let mut ciphertext =
         encrypt_secret_json_with_aad(&reference, "source", aad.as_bytes()).unwrap();
     ciphertext["communication_scope"] = scope.clone();
-    let original = json!({"id":attachment,"encrypted_reference":ciphertext});
+    let original = json!({"id":attachment,"scope_id":workspace,"encrypted_reference":ciphertext});
     let mut unchanged = original.clone();
     validation::rekey(
         "communication_attachments",
@@ -206,6 +206,15 @@ fn communication_rekey_authenticates_scope_and_keeps_runtime_aad_authoritative()
                 .is_err()
         );
     }
+    let mut wrong_physical_scope = original.clone();
+    wrong_physical_scope["scope_id"] = json!(Uuid::now_v7());
+    assert!(validation::rekey(
+        "communication_attachments",
+        &mut wrong_physical_scope,
+        "source",
+        "target"
+    )
+    .is_err());
     let mut moved = original.clone();
     moved["id"] = json!(Uuid::now_v7());
     assert!(
@@ -220,7 +229,7 @@ fn communication_rekey_authenticates_scope_and_keeps_runtime_aad_authoritative()
     .is_err());
     let cursor_aad = format!("communication:{workspace}:{instance}:cursor");
     let cursor = json!({"opaque":"private-cursor"});
-    let mut binding = json!({"workspace_id":workspace,"instance_id":instance,"encrypted_cursor":encrypt_secret_json_with_aad(&cursor,"source",cursor_aad.as_bytes()).unwrap()});
+    let mut binding = json!({"scope_id":workspace,"instance_id":instance,"encrypted_cursor":encrypt_secret_json_with_aad(&cursor,"source",cursor_aad.as_bytes()).unwrap()});
     validation::rekey("communication_bindings", &mut binding, "source", "target").unwrap();
     assert_eq!(
         decrypt_secret_json_with_aad(

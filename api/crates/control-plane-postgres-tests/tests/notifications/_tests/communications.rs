@@ -77,7 +77,7 @@ async fn create_channel(store: &storage_durable_postgres::PgControlPlaneStore, w
 }
 #[tokio::test]
 async fn communication_inbox_cursor_dedup_scope_and_leases_are_durable() {
-    let (store, w, root) = super::super::support::seed_store().await;
+    let (store, w, root) = super::support::seed_store().await;
     let actor = store
         .load_actor_context(root.id, w.tenant_id, w.id, None)
         .await
@@ -344,7 +344,7 @@ async fn communication_inbox_cursor_dedup_scope_and_leases_are_durable() {
 
 #[tokio::test]
 async fn communication_attachment_failure_is_retained_and_explicitly_retryable() {
-    let (store, w, root) = super::super::support::seed_store().await;
+    let (store, w, root) = super::support::seed_store().await;
     let actor = store
         .load_actor_context(root.id, w.tenant_id, w.id, None)
         .await
@@ -434,7 +434,7 @@ async fn communication_attachment_failure_is_retained_and_explicitly_retryable()
 
 #[tokio::test]
 async fn communication_expired_claims_recover_without_repeating_unknown_sends() {
-    let (store, w, root) = super::super::support::seed_store().await;
+    let (store, w, root) = super::support::seed_store().await;
     let actor = store
         .load_actor_context(root.id, w.tenant_id, w.id, None)
         .await
@@ -581,7 +581,7 @@ async fn communication_expired_claims_recover_without_repeating_unknown_sends() 
 
 #[tokio::test]
 async fn communication_can_retry_projects_status_lease_and_channel_eligibility() {
-    let (store, w, root) = super::super::support::seed_store().await;
+    let (store, w, root) = super::support::seed_store().await;
     let actor = store
         .load_actor_context(root.id, w.tenant_id, w.id, None)
         .await
@@ -734,7 +734,7 @@ async fn communication_can_retry_projects_status_lease_and_channel_eligibility()
 
 #[tokio::test]
 async fn communication_preflight_failure_is_durable_before_any_external_send() {
-    let (store, w, root) = super::super::support::seed_store().await;
+    let (store, w, root) = super::support::seed_store().await;
     let actor = store
         .load_actor_context(root.id, w.tenant_id, w.id, None)
         .await
@@ -808,4 +808,163 @@ async fn communication_preflight_failure_is_durable_before_any_external_send() {
         Some("send_preflight_failed")
     );
     assert!(page.items[0].can_retry);
+}
+
+#[tokio::test]
+async fn communication_physical_scope_enforces_owner_chain_and_public_workspace_roundtrip() {
+    let (store, w, root) = super::support::seed_store().await;
+    let actor = store
+        .load_actor_context(root.id, w.tenant_id, w.id, None)
+        .await
+        .unwrap();
+    let service = NotificationService::new(store.clone(), KEY.into());
+    let channel = create_channel(&store, w.id).await;
+    let binding = service
+        .save_binding(&actor, channel, config(), "scope-tools".into())
+        .await
+        .unwrap();
+    assert_eq!(binding.workspace_id, w.id);
+    let revision = store
+        .resolve_notification_authorization(w.id, channel, KEY)
+        .await
+        .unwrap()
+        .revision;
+    service
+        .commit_receive(CommitCommunicationReceiveInput {
+            authorization: authorization(w.id, channel, revision),
+            candidate_cursor: Some(json!("scope-cursor")),
+            messages: vec![received("scope-message", "alice", true)],
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let conversations = service
+        .conversations(&actor, channel, None, 100)
+        .await
+        .unwrap();
+    assert_eq!(conversations.items[0].workspace_id, w.id);
+    let conversation = conversations.items[0].id;
+    let message = service
+        .message_history(&actor, channel, conversation, None, 100)
+        .await
+        .unwrap()
+        .items[0]
+        .id;
+    let attachment = service
+        .files(&actor, channel, conversation, None, 100)
+        .await
+        .unwrap()
+        .items[0]
+        .id;
+    for (table, id_column, id) in [
+        ("communication_bindings", "instance_id", channel),
+        ("communication_conversations", "id", conversation),
+        ("communication_messages", "id", message),
+        ("communication_attachments", "id", attachment),
+    ] {
+        // Closed fixture table/column set; all identifiers are static values above.
+        let sql = format!("SELECT scope_id FROM {table} WHERE {id_column}=$1");
+        assert_eq!(
+            sqlx::query_scalar::<_, Uuid>(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(id)
+                .fetch_one(store.pool())
+                .await
+                .unwrap(),
+            w.id
+        );
+        let sql = format!("UPDATE {table} SET updated_at='1970-01-01' WHERE {id_column}=$1 RETURNING updated_at>=created_at");
+        assert!(
+            sqlx::query_scalar::<_, bool>(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(id)
+                .fetch_one(store.pool())
+                .await
+                .unwrap(),
+            "{table} must maintain update time on every write"
+        );
+    }
+    let old_alias_count: i64 = sqlx::query_scalar("SELECT count(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=ANY($1) AND column_name='workspace_id'")
+        .bind(vec!["communication_bindings","communication_conversations","communication_messages","communication_attachments"]).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(
+        old_alias_count, 0,
+        "workspace_id is public DTO semantics, not a second physical scope alias"
+    );
+    let other_scope = Uuid::now_v7();
+    assert!(
+        sqlx::query("UPDATE communication_bindings SET scope_id=$2 WHERE instance_id=$1")
+            .bind(channel)
+            .bind(other_scope)
+            .execute(store.pool())
+            .await
+            .is_err()
+    );
+    assert!(
+        sqlx::query("UPDATE communication_messages SET scope_id=$2 WHERE id=$1")
+            .bind(message)
+            .bind(other_scope)
+            .execute(store.pool())
+            .await
+            .is_err()
+    );
+    assert!(
+        sqlx::query("UPDATE communication_messages SET instance_id=$2 WHERE id=$1")
+            .bind(message)
+            .bind(Uuid::now_v7())
+            .execute(store.pool())
+            .await
+            .is_err()
+    );
+    assert!(sqlx::query(
+        "UPDATE communication_messages SET external_identity='other-person' WHERE id=$1"
+    )
+    .bind(message)
+    .execute(store.pool())
+    .await
+    .is_err());
+    assert!(
+        sqlx::query("UPDATE communication_attachments SET scope_id=$2 WHERE id=$1")
+            .bind(attachment)
+            .bind(other_scope)
+            .execute(store.pool())
+            .await
+            .is_err()
+    );
+    assert!(store
+        .communication_binding(other_scope, channel)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(store
+        .communication_conversations(other_scope, channel, None, None, 100)
+        .await
+        .unwrap()
+        .items
+        .is_empty());
+    // Configuration is channel-owned; received history deliberately outlives channel deletion.
+    assert!(store
+        .delete_notification_instance(w.id, channel)
+        .await
+        .unwrap());
+    assert!(store
+        .communication_binding(w.id, channel)
+        .await
+        .unwrap()
+        .is_none());
+    let scope = CommunicationHistoryScope {
+        workspace_id: w.id,
+        instance_id: channel,
+        external_identity: "alice".into(),
+    };
+    assert_eq!(
+        service
+            .scoped_message_history(&scope, conversation, None, 100)
+            .await
+            .unwrap()
+            .items[0]
+            .id,
+        message
+    );
+    assert_eq!(
+        service.scoped_file(&scope, attachment).await.unwrap().id,
+        attachment
+    );
 }

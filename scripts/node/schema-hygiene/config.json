@@ -830,6 +830,31 @@
     },
     "provider_protocol_capsules": {
       "writePathSource": "PgProviderProtocolCapsuleStore keys encrypted protocol state and AAD by flow_run_id, capsule_kind and slot_key; hard expiry bounds get/take/cleanup, and flow-run deletion cascades"
+    },
+    "communication_bindings": {
+      "category": "join_or_child",
+      "scopeGenerationSource": "notification_instances.workspace_id validated by composite channel foreign key",
+      "backfillSource": "new table; no historical backfill",
+      "writePathSource": "communication repository writes physical scope_id from authenticated workspace; update triggers maintain mutable audit time",
+      "idGeneration": "existing notification instance_id is the sole owner-keyed primary identity; no independent row id"
+    },
+    "communication_conversations": {
+      "category": "managed_table",
+      "scopeGenerationSource": "host receive workspace; retained after channel deletion",
+      "backfillSource": "new table; no historical backfill",
+      "writePathSource": "communication repository writes physical scope_id from authenticated workspace; update triggers maintain mutable audit time"
+    },
+    "communication_messages": {
+      "category": "managed_table",
+      "scopeGenerationSource": "communication_conversations.scope_id with channel and external identity enforced by composite foreign key",
+      "backfillSource": "new table; no historical backfill",
+      "writePathSource": "communication repository writes physical scope_id from authenticated workspace; update triggers maintain mutable audit time"
+    },
+    "communication_attachments": {
+      "category": "join_or_child",
+      "scopeGenerationSource": "communication_messages.scope_id enforced by composite foreign key",
+      "backfillSource": "new table; no historical backfill",
+      "writePathSource": "communication repository writes physical scope_id from authenticated workspace; update triggers maintain mutable audit time"
     }
   },
   "needsOwnerReviewTables": {},
