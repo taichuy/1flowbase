@@ -83,7 +83,7 @@ trace 每3轮的实际行操作与 SQL 调用全部7对样本一致：
 
 L1复用变更格式、类型、后端静态与原模块快测；L2复用影响分析、契约/服务集成与同一target构建产物；L3仍是原完整CI、coverage、发布验收，不用本地局部绿灯代替。删除旧trace逐行delete/reinsert循环、JSON宏重物化和columns clone、parent分支废弃full构造、恢复上下文clone、MCP逐字符String/serde临时分配。四个旧MCP测试函数合入两个有界表驱动测试，输入及边界断言保留；无重复旧产品实现留在repo，临时基准包含基线是测量所需。
 
-- 新增依赖、永久脚本/workflow配置与新门禁框架：0；测试代码按真实风险补充。业务owner文件（含既有内嵌测试）+502/-261，净+241行；独立测试文件+1135/-1，净+1134行；最终文档另计。永久脚本/workflow配置+0/-0。分类与逐文件清单见 `evidence/change-statistics.json`。
+- 新增依赖、永久脚本/workflow配置与新门禁框架：0；测试代码按真实风险补充。业务owner文件（含既有内嵌测试）+502/-261，净+241行；独立测试文件+1147/-1，净+1146行（含终审强化12行）；最终文档另计。永久脚本/workflow配置+0/-0。分类与逐文件清单见 `evidence/change-statistics.json`。
 - 实际PR反馈P50/P95：样本0，N/A（本轮没有创建PR或取得配对PR反馈）；函数微基准不能替代。GitHub Runner分钟在本地取证阶段为0（未主动dispatch）；后续beta push自动verify若触发，应按实际run单独记账，不能把本地耗时算Runner节省。
 - 完整API libtest编译曾被kernel OOM终止，exit143；systemd journal为9.7GiB峰值、16m58s CPU，wall762.89s；同窗口Code scope也有OOM。没有重试同一路径。完整API route harness、全仓L3/发布矩阵未完成，不能声称通过。
 - 转为实际MCP owner测试、已预热storage/control-plane及既有PG service target；后者编译scope3.1GiB峰值，最新trace编译4.4GiB，集中原生测试231.8MiB。第一次P4b错误目标路径的冷编译由Root主动终止，保留日志后改为共享target，不是第二次OOM。后续均显式8CPU/8GiB、串行重型进程，PG memory.events OOM=0；仓库并发值未改。
