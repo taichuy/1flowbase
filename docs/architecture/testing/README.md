@@ -56,6 +56,12 @@ Cargo summary 解析先调用 Node 原生 `stripVTControlCharacters` 规范化�
 
 性能结算分别记录缺陷检测保留率、PR 反馈 P50/P95（含样本数）、runner 总分钟、本地峰值 RSS/OOM 和治理净行数。历史不同源码/缓存样本不能作为因果对照；只有单次候选运行时报告该次耗时，分位数写未测。Level 1 继续提供定向快速反馈，Level 2 保留当前 PR 契约与集成门禁，Level 3 由完整 CI/coverage 承担回归；本优化不删减测试集合。
 
+### Agent Logs 候选批次
+
+手动 `agent-logs-regression.yml` 把原 13 个筛选器按相同 package/target 合为 5 次原生 Cargo 调用。两个 PostgreSQL integration 组保持进程隔离；默认 targets、doctest、锁文件、失败退出和既有资源配置保留。每组只声明一次 filters 数组，同时传给 libtest 和 `cargo-test-results.js`；每个 filter 必须匹配本份日志的实际 `test ... ok` 行，邻接通过、ignored、list-only 和编译输出不能补证。原无 filters 调用与正确 binary/owner 的执行校验继续有效。
+
+本入口只接受指定候选；它不改变 `verify.yml` 的 PR 基线，不替代 L3 完整回归。量化时使用相同候选源码、工具链、缓存层与数据库隔离，分别记录整批反馈分位数及累计 runner 秒；13→5 只是命令数量，不能直接折算为 PR 提速或 runner 节省。[运行时职责、等价边界与源函数成本](../orchestration/workflow-runtime-resources.md) 记录业务侧优化及其独立验证范围。
+
 ## 静态规则与结构所有权
 
 `check-rust-backend` 管理第一方 Rust 代码，排除 `api/vendor/` 的上游源码和安装产物。第三方漏洞与容器环境警告单列归因；不能借此排除第一方调用路径，也不能用路径包含 vendor 字样代替明确目录边界。测试中的合法失败注入与生产 panic 分别判断。
