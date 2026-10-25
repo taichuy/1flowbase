@@ -132,7 +132,7 @@ test('switches plugin metadata while an edit drawer is open and preserves user n
   await click(
     await screen.findByRole('button', { name: 'User supplied 渠道' })
   );
-  expect(screen.getByRole('textbox', { name: '通知类型' })).toHaveValue(
+  expect(screen.getByRole('textbox', { name: '渠道类型' })).toHaveValue(
     '插件通知'
   );
   await change(screen.getByRole('textbox', { name: '插件服务地址' }), {
@@ -145,9 +145,9 @@ test('switches plugin metadata while an edit drawer is open and preserves user n
   await act(async () => {
     await appI18n.changeLanguage('en_US');
   });
-  expect(
-    screen.getByRole('textbox', { name: 'Notification type' })
-  ).toHaveValue('Plugin notification');
+  expect(screen.getByRole('textbox', { name: 'Channel type' })).toHaveValue(
+    'Plugin notification'
+  );
   expect(screen.getByRole('textbox', { name: 'Plugin endpoint' })).toHaveValue(
     'https://draft.example'
   );
@@ -422,7 +422,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     await click(await screen.findByRole('button', { name: /新增/ }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '提交' })).toBeDisabled();
-    await mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
+    await mouseDown(screen.getByRole('combobox', { name: '渠道类型' }));
     expect(screen.queryByText('Unavailable external')).not.toBeInTheDocument();
     await click(
       screen.getByText('系统通知', {
@@ -466,7 +466,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
       expect(screen.getByRole('button', { name: /新增/ })).toBeEnabled()
     );
     await click(await screen.findByRole('button', { name: /新增/ }));
-    await mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
+    await mouseDown(screen.getByRole('combobox', { name: '渠道类型' }));
     await click(
       screen.getByText('Mail B', {
         selector: '.ant-select-item-option-content'
@@ -513,7 +513,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
       target: { value: 'Shared channel name' }
     });
     const choose = async (label: string) => {
-      await mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
+      await mouseDown(screen.getByRole('combobox', { name: '渠道类型' }));
       await click(
         screen.getByText(label, { selector: '.ant-select-item-option-content' })
       );
@@ -784,8 +784,12 @@ test('filters both backend lists and resets both cursor pages', async () => {
   );
   await click(screen.getAllByRole('button', { name: '下一页' })[1]);
   await waitFor(() => {
-    const request = calls.filter((call) => call.url.includes('/messages?')).at(-1)!;
-    expect(new URL(request.url, 'http://localhost').searchParams.get('cursor')).toBe('message-next');
+    const request = calls
+      .filter((call) => call.url.includes('/messages?'))
+      .at(-1)!;
+    expect(
+      new URL(request.url, 'http://localhost').searchParams.get('cursor')
+    ).toBe('message-next');
   });
   await screen.findByRole('button', { name: '第二页消息' });
   await waitFor(() =>

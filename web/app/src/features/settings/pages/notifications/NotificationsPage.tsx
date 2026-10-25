@@ -39,6 +39,7 @@ import { NotificationInstanceFilters } from './NotificationInstanceFilters';
 import { NotificationLogs } from './NotificationLogs';
 import { useNotificationTypeLocalization } from '../../../notifications/hooks/use-notification-type-localization';
 import './notifications-page.css';
+import { CommunicationHistory } from './communications/CommunicationHistory';
 
 export function NotificationsPage() {
   const { t } = useTranslation('notifications');
@@ -53,7 +54,31 @@ export function NotificationsPage() {
             label: t('channels'),
             children: <NotificationChannelsPage />
           },
-          { key: 'logs', label: t('logs'), children: <NotificationLogs /> }
+          {
+            key: 'conversations',
+            label: t('conversations'),
+            children: <CommunicationHistory />
+          },
+          {
+            key: 'logs',
+            label: t('send_receive_records'),
+            children: (
+              <Tabs
+                items={[
+                  {
+                    key: 'received',
+                    label: t('received_records'),
+                    children: <CommunicationHistory records />
+                  },
+                  {
+                    key: 'sent',
+                    label: t('logs'),
+                    children: <NotificationLogs />
+                  }
+                ]}
+              />
+            )
+          }
         ]}
       />
     </section>

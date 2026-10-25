@@ -1056,7 +1056,7 @@
     "file_data_model_template_description": "Upload files and keep searchable file metadata.",
     "follow_default_storage": "Follow default storage",
     "follow_default_storage_description": "Leave empty to use the current default storage for each upload. Storage changes only affect new uploads; existing files retain their original storage.",
-    "notifications": "Notification management",
+    "communications": "Communications",
     "extension_upload_select": "Select files",
     "extension_upload_confirm_install": "Confirm risks and install",
     "extension_upload_uploading": "Uploading file",

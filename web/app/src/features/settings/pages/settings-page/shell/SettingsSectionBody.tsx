@@ -165,7 +165,7 @@ export function SettingsSectionBody({
           <SystemSettingsPanel />
         </SettingsSectionBoundary>
       );
-    case 'notifications':
+    case 'communications':
       return (
         <SettingsSectionBoundary>
           <NotificationsPage />

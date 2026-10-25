@@ -59,6 +59,7 @@ export interface NotificationType {
   input_schema: Record<string, unknown>;
   input_form: ConsolePluginFormSchema;
   output_schema: Record<string, unknown>;
+  receive?: { default_system_prompt: string; mcp_tools: unknown } | null;
   authorization?: NotificationAuthorizationDescriptor | null;
   i18n?: Partial<Record<'zh_Hans' | 'en_US', NotificationTypeLocale>>;
   contribution_id: string;
@@ -171,8 +172,9 @@ export interface NotificationInstanceListInput {
   status?: NotificationInstance['status'];
 }
 const path = '/api/console/notifications';
+const managementPath = '/api/console/communications';
 export const listNotificationTypes = (signal?: AbortSignal) =>
-  apiFetch<NotificationType[]>({ path: `${path}/types`, signal });
+  apiFetch<NotificationType[]>({ path: `${managementPath}/types`, signal });
 export function listNotificationInstances(
   input: NotificationInstanceListInput = {},
   signal?: AbortSignal
@@ -183,13 +185,13 @@ export function listNotificationInstances(
   if (input.status) search.set('status', input.status);
   const query = search.size ? `?${search}` : '';
   return apiFetch<NotificationInstance[]>({
-    path: `${path}/instances${query}`,
+    path: `${managementPath}/instances${query}`,
     signal
   });
 }
 export const getNotificationInstance = (id: string, signal?: AbortSignal) =>
   apiFetch<NotificationInstance>({
-    path: `${path}/instances/${encodeURIComponent(id)}`,
+    path: `${managementPath}/instances/${encodeURIComponent(id)}`,
     signal
   });
 export const createNotificationInstance = (
@@ -197,7 +199,7 @@ export const createNotificationInstance = (
   csrfToken: string
 ) =>
   apiFetch<NotificationInstance>({
-    path: `${path}/instances`,
+    path: `${managementPath}/instances`,
     method: 'POST',
     body,
     csrfToken
@@ -208,7 +210,7 @@ export const updateNotificationInstance = (
   csrfToken: string
 ) =>
   apiFetch<NotificationInstance>({
-    path: `${path}/instances/${encodeURIComponent(id)}`,
+    path: `${managementPath}/instances/${encodeURIComponent(id)}`,
     method: 'PATCH',
     body,
     csrfToken
@@ -220,7 +222,7 @@ export const authorizeNotificationInstance = (
   signal?: AbortSignal
 ) =>
   apiFetch<NotificationAuthorizationView>({
-    path: `${path}/instances/${encodeURIComponent(id)}/authorization`,
+    path: `${managementPath}/instances/${encodeURIComponent(id)}/authorization`,
     method: 'POST',
     body,
     csrfToken,
@@ -228,7 +230,7 @@ export const authorizeNotificationInstance = (
   });
 export const deleteNotificationInstance = (id: string, csrfToken: string) =>
   apiFetchVoid({
-    path: `${path}/instances/${encodeURIComponent(id)}`,
+    path: `${managementPath}/instances/${encodeURIComponent(id)}`,
     method: 'DELETE',
     csrfToken
   });
@@ -242,7 +244,7 @@ export const sendNotification = (
     type_code: string;
     result: Record<string, unknown>;
   }>({
-    path: `${path}/instances/${encodeURIComponent(id)}/send`,
+    path: `${managementPath}/instances/${encodeURIComponent(id)}/send`,
     method: 'POST',
     body: { input },
     csrfToken
@@ -323,13 +325,13 @@ export function listNotificationSendLogs(
     if (value !== undefined && value !== '') search.set(key, String(value));
   }
   return apiFetch<NotificationSendLogs>({
-    path: `${path}/logs?${search}`,
+    path: `${managementPath}/logs?${search}`,
     signal
   });
 }
 export const getNotificationSendLog = (id: string, signal?: AbortSignal) =>
   apiFetch<NotificationSendLog>({
-    path: `${path}/logs/${encodeURIComponent(id)}`,
+    path: `${managementPath}/logs/${encodeURIComponent(id)}`,
     signal
   });
 /** The session cookie is the same credential used by apiFetch. Every open,
@@ -350,3 +352,5 @@ export function subscribeNotificationChanges(
   source.addEventListener('notification.changed', onRefresh);
   return () => source.close();
 }
+
+export * from './communications';

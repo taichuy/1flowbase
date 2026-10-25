@@ -159,7 +159,7 @@ test('persists a new instance before metadata-driven QR, retains edits and polls
       onSaved={saved}
     />
   );
-  await mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
+  await mouseDown(screen.getByRole('combobox', { name: '渠道类型' }));
   await click(
     screen.getByText('扫码渠道', {
       selector: '.ant-select-item-option-content'
@@ -174,26 +174,28 @@ test('persists a new instance before metadata-driven QR, retains edits and polls
   await click(screen.getByRole('button', { name: '保存并扫码授权' }));
   // beginOnMount deliberately schedules authorization at 0 ms after persistence.
   // Advance only that startup task; the 5 s polling interval remains unelapsed.
-  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
   expect(screen.getByText('请扫码并在设备上确认授权。')).toBeInTheDocument();
   expect(
     document.querySelector('.notification-instance-drawer canvas')
   ).toBeInTheDocument();
-  expect(commands[0]?.path).toBe('/api/console/notifications/instances');
+  expect(commands[0]?.path).toBe('/api/console/communications/instances');
   expect(commands[0]?.body).toMatchObject({
     type_code: type.type_code,
     installation_id: type.installation_id,
     config_json: { endpoint: 'https://example.com/custom' }
   });
   expect(commands[1]).toMatchObject({
-    path: '/api/console/notifications/instances/persisted-id/authorization',
+    path: '/api/console/communications/instances/persisted-id/authorization',
     body: { type: 'begin', action: 'scan' }
   });
   expect(saved).toHaveBeenCalledWith({ keepOpen: true });
   expect(
-    screen.queryByRole('combobox', { name: '通知类型' })
+    screen.queryByRole('combobox', { name: '渠道类型' })
   ).not.toBeInTheDocument();
-  expect(screen.getByRole('textbox', { name: '通知类型' })).toHaveValue(
+  expect(screen.getByRole('textbox', { name: '渠道类型' })).toHaveValue(
     '扫码渠道'
   );
   expect(screen.getByRole('textbox', { name: '渠道名称' })).toHaveValue(
@@ -314,7 +316,7 @@ test('legacy null authorization preserves schema editing and normal save-and-clo
     />
   );
   expect(screen.queryByText(/授权状态/)).not.toBeInTheDocument();
-  expect(screen.getByRole('textbox', { name: '通知类型' })).toHaveValue(
+  expect(screen.getByRole('textbox', { name: '渠道类型' })).toHaveValue(
     type.display_name
   );
   await change(screen.getByRole('textbox', { name: '服务地址' }), {
@@ -346,9 +348,15 @@ test('locale refresh preserves the edited notification config and display name t
   await change(screen.getByRole('textbox', { name: '渠道名称' }), {
     target: { value: 'Draft across locales' }
   });
-  await act(async () => { await appI18n.changeLanguage('en_US'); });
-  expect(screen.getByRole('textbox', { name: 'Channel name' })).toHaveValue('Draft across locales');
-  expect(screen.getByDisplayValue('https://example.com/locale-draft')).toBeInTheDocument();
+  await act(async () => {
+    await appI18n.changeLanguage('en_US');
+  });
+  expect(screen.getByRole('textbox', { name: 'Channel name' })).toHaveValue(
+    'Draft across locales'
+  );
+  expect(
+    screen.getByDisplayValue('https://example.com/locale-draft')
+  ).toBeInTheDocument();
   await click(screen.getByRole('button', { name: 'Save changes' }));
   await waitFor(() => expect(saved).toHaveBeenCalledWith());
   expect(commands[0]?.body).toEqual({
@@ -484,7 +492,7 @@ test('manual Maintain refresh updates the window without reauthorizing, enabling
   ).toBeInTheDocument();
   expect(commands).toHaveLength(1);
   expect(commands[0]).toMatchObject({
-    path: '/api/console/notifications/instances/instance-1/authorization',
+    path: '/api/console/communications/instances/instance-1/authorization',
     body: { type: 'maintain' }
   });
   expect(saved).toHaveBeenCalledOnce();
