@@ -76,6 +76,7 @@ export function CommunicationMessagesTable({
           <CommunicationLink
             to={{
               tab: 'conversations',
+              page: 1,
               conversation_id: item.conversation_id,
               message_id: undefined,
               conversation_page: 1

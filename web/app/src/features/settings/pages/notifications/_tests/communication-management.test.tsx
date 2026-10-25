@@ -285,3 +285,28 @@ test('tabs and received selection restore from URL after remount and browser his
     ).toHaveAttribute('aria-selected', 'true')
   );
 });
+
+test('opening a conversation from a later received page resets the destination list page', async () => {
+  window.history.replaceState(
+    {},
+    '',
+    '/settings/communications?tab=logs&record_tab=received&page=2'
+  );
+  await show(<NotificationsPage />);
+  await screen.findByRole('link', { name: 'Earlier request' });
+  await click(screen.getByRole('link', { name: 'Alice' }));
+  await screen.findByRole('dialog');
+  expect(new URLSearchParams(window.location.search).get('tab')).toBe(
+    'conversations'
+  );
+  expect(new URLSearchParams(window.location.search).get('page')).toBe('1');
+  await waitFor(() =>
+    expect(
+      calls.some(
+        (url) =>
+          url.pathname.endsWith('/conversations') &&
+          url.searchParams.get('page') === '1'
+      )
+    ).toBe(true)
+  );
+});

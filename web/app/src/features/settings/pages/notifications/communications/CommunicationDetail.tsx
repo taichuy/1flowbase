@@ -151,6 +151,7 @@ export function CommunicationDetail() {
                           <CommunicationLink
                             to={{
                               tab: 'conversations',
+                              page: 1,
                               conversation_id: detail.conversation_id,
                               message_id: undefined,
                               conversation_page: 1
