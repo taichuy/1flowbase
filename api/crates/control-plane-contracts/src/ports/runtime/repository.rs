@@ -1,7 +1,23 @@
 use super::*;
 
+/// Exclusive initial-dispatch ownership. Dropping the guard releases ownership even when
+/// execution is interrupted; adapters must never return a session lock to a connection pool.
+pub trait FlowRunDispatchLease: Send {}
+
 #[async_trait]
 pub trait OrchestrationRuntimeRepository: Send + Sync {
+    async fn try_acquire_flow_run_dispatch_lease(
+        &self,
+        _application_id: Uuid,
+        _flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<Box<dyn FlowRunDispatchLease>>> {
+        anyhow::bail!("flow run dispatch lease not implemented")
+    }
+    /// Any resume claim transfers recovery responsibility to the existing resume owner.
+    async fn flow_run_has_resume_claims(&self, _flow_run_id: Uuid) -> anyhow::Result<bool> {
+        anyhow::bail!("flow run resume claim lookup not implemented")
+    }
+
     /// Internal application-scoped maintenance, with an immutable record-ID cursor.
     async fn next_agent_log_pricing_record(
         &self,

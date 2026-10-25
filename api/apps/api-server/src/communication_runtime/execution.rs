@@ -248,33 +248,15 @@ async fn start_new(
     claim: &CommunicationClaim,
     stage: &AtomicU8,
 ) -> Result<Uuid> {
-    // The application execution owns an independent permit and future. Observers can stop
-    // without cancelling model/tool execution, just like a disconnected stream subscriber.
+    // Creation/linkage is durable before dispatch. The observer can dispatch this queued
+    // reservation after any process interruption; creation itself is never replayed.
     validated_actor(state, input).await?;
-    let execution_permit = state.system_maintenance.try_enter_write(
+    let _creation_permit = state.system_maintenance.try_enter_write(
         control_plane::system_recovery::SystemWriteOwner::CommunicationExecution,
     )?;
     let files = attachments::attach(state, input, claim).await?;
     let actor = validated_actor(state, input).await?;
-    let inner = crate::runtime_internal_tool_invoker_factory(state, &actor)
-        .await
-        .map_err(|_| anyhow::anyhow!("mcp_access_denied"))?
-        .create_server_delegated(
-            HeaderMap::new(),
-            actor.clone(),
-            input.binding.config.mcp_instance_ids.clone(),
-        )
-        .await
-        .map_err(|_| anyhow::anyhow!("mcp_access_denied"))?;
-    let invoker = Arc::new(scoped_tools::ScopedTools {
-        inner: Arc::new(inner),
-        scope: CommunicationHistoryScope {
-            workspace_id: input.binding.workspace_id,
-            instance_id: input.binding.instance_id,
-            external_identity: input.conversation.external_identity.clone(),
-        },
-    });
-    let run = ApplicationPublishedRunService::new(state.store.clone())
+    let run = ApplicationPublishedRunService::new(state.store.for_actor(actor.clone()))
         .with_published_plan_cache(state.infrastructure.published_plan_cache())
         .with_published_publication_cache(state.infrastructure.published_publication_cache())
         .create_communication_run(CreateAssistantRunCommand {
@@ -294,8 +276,18 @@ async fn start_new(
         CommunicationProgress::RunStarted { run_id: run.id },
     )
     .await?;
-    let runtime = OrchestrationRuntimeService::new(
-        state.store.clone(),
+    Ok(run.id)
+}
+
+fn runtime(
+    state: &ApiState,
+    store: storage_durable_postgres::MainDurableStore,
+) -> OrchestrationRuntimeService<
+    storage_durable_postgres::MainDurableStore,
+    crate::provider_runtime::ApiProviderRuntime,
+> {
+    OrchestrationRuntimeService::new(
+        store,
         crate::provider_runtime::ApiProviderRuntime::new_with_activity(
             state.provider_runtime.clone(),
             state.runtime_activity.clone(),
@@ -312,18 +304,50 @@ async fn start_new(
     )
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_notification_sender(state.notification_service.clone())
-    .with_runtime_internal_tool_invoker(invoker)
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
-    .with_runtime_event_stream(state.runtime_event_stream.clone());
+    .with_runtime_event_stream(state.runtime_event_stream.clone())
+}
 
-    stage.store(1, Ordering::SeqCst);
-    let application_id = input.binding.config.application_id;
-    let run_id = run.id;
-    tokio::spawn(async move {
-        let _write_permit = execution_permit;
+async fn spawn_dispatch(
+    state: &Arc<ApiState>,
+    input: &ClaimedCommunicationInput,
+    application_id: Uuid,
+    run_id: Uuid,
+) -> Result<tokio::task::JoinHandle<()>> {
+    let execution_permit = state.system_maintenance.try_enter_write(
+        control_plane::system_recovery::SystemWriteOwner::CommunicationExecution,
+    )?;
+    ensure!(
+        input.binding.config.application_id == application_id,
+        "binding_application_changed"
+    );
+    let actor = validated_actor(state, input).await?;
+    let inner = crate::runtime_internal_tool_invoker_factory(state, &actor)
+        .await
+        .map_err(|_| anyhow::anyhow!("mcp_access_denied"))?
+        .create_server_delegated(
+            HeaderMap::new(),
+            actor.clone(),
+            input.binding.config.mcp_instance_ids.clone(),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("mcp_access_denied"))?;
+    let invoker = Arc::new(scoped_tools::ScopedTools {
+        inner: Arc::new(inner),
+        scope: CommunicationHistoryScope {
+            workspace_id: input.binding.workspace_id,
+            instance_id: input.binding.instance_id,
+            external_identity: input.conversation.external_identity.clone(),
+        },
+    });
+
+    let runtime =
+        runtime(state, state.store.for_actor(actor)).with_runtime_internal_tool_invoker(invoker);
+    Ok(tokio::spawn(async move {
+        let _permit = execution_permit;
         if runtime
-            .start_published_flow_run(StartPublishedFlowRunCommand {
+            .dispatch_communication_run(StartPublishedFlowRunCommand {
                 transport_connection_scope: None,
                 observation_context: None,
                 application_id,
@@ -333,12 +357,9 @@ async fn start_new(
             .await
             .is_err()
         {
-            // The persisted run owner is authoritative. An admission/transport error is not
-            // proof of task failure, and must never cause a second start of this run.
-            tracing::warn!(%run_id,"communication_run_execution_returned_error");
+            tracing::warn!(%run_id,"communication_dispatch_failed");
         }
-    });
-    Ok(run_id)
+    }))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -362,7 +383,7 @@ fn run_disposition(status: domain::FlowRunStatus) -> RunDisposition {
     }
 }
 async fn observe(
-    state: &ApiState,
+    state: &Arc<ApiState>,
     input: &ClaimedCommunicationInput,
     claim: &CommunicationClaim,
     run_id: Uuid,
@@ -372,6 +393,7 @@ async fn observe(
         .communication_run_application_id(input.binding.workspace_id, run_id)
         .await?
         .context("linked_run_missing")?;
+    let mut dispatch: Option<tokio::task::JoinHandle<()>> = None;
     loop {
         let metadata = state
             .store
@@ -382,6 +404,24 @@ async fn observe(
             metadata.created_by == input.binding.actor_user_id,
             "linked_run_actor_mismatch"
         );
+        if matches!(
+            metadata.status,
+            domain::FlowRunStatus::Queued | domain::FlowRunStatus::Running
+        ) && !state.store.flow_run_has_resume_claims(run_id).await?
+            && dispatch.as_ref().is_none_or(|task| task.is_finished())
+        {
+            match spawn_dispatch(state, input, application_id, run_id).await {
+                Ok(task) => dispatch = Some(task),
+                Err(_) => {
+                    let _permit = state.system_maintenance.try_enter_write(
+                        control_plane::system_recovery::SystemWriteOwner::CommunicationExecution,
+                    )?;
+                    runtime(state, state.store.clone())
+                        .reject_communication_dispatch(application_id, run_id)
+                        .await?;
+                }
+            }
+        }
         match run_disposition(metadata.status) {
             RunDisposition::Observe => {}
             RunDisposition::Failed(code) => {

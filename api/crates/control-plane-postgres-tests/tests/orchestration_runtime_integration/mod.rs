@@ -395,3 +395,6 @@ mod request_logs;
 mod runtime_events;
 mod runtime_facts;
 mod storage_foundation;
+
+#[path = "_tests/communication_dispatch.rs"]
+mod communication_dispatch;

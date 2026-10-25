@@ -34,13 +34,13 @@ fn ambiguous_provider_or_storage_error_does_not_become_retryable_failure() {
 }
 
 #[tokio::test]
-async fn linked_run_recovery_never_calls_create_or_start_again() {
+async fn linked_run_recovery_never_creates_a_second_run() {
     let run_id = Uuid::now_v7();
     let starts = AtomicU8::new(0);
     for _ in 0..3 {
         let observed = linked_or_start(Some(run_id), || async {
             starts.fetch_add(1, Ordering::SeqCst);
-            anyhow::bail!("a linked run cannot be started twice")
+            anyhow::bail!("a linked run cannot be created twice")
         })
         .await
         .unwrap();

@@ -216,8 +216,22 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         &self,
     ) -> OrchestrationRuntimeService<MainDurableStore, crate::provider_runtime::ApiProviderRuntime>
     {
+        self.runtime_in_store(self.dependencies.store.clone())
+    }
+    fn runtime_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+    ) -> OrchestrationRuntimeService<MainDurableStore, crate::provider_runtime::ApiProviderRuntime>
+    {
+        self.runtime_in_store(self.dependencies.store.for_actor(actor.clone()))
+    }
+    fn runtime_in_store(
+        &self,
+        store: MainDurableStore,
+    ) -> OrchestrationRuntimeService<MainDurableStore, crate::provider_runtime::ApiProviderRuntime>
+    {
         OrchestrationRuntimeService::new(
-            self.dependencies.store.clone(),
+            store,
             crate::provider_runtime::ApiProviderRuntime::new_with_activity(
                 self.dependencies.provider_runtime.clone(),
                 self.dependencies.runtime_activity.clone(),
@@ -264,7 +278,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
     ) -> Result<
         (
             Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
-            Uuid,
+            domain::ActorContext,
         ),
         ApiError,
     > {
@@ -319,7 +333,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                     inner: Arc::new(inner),
                     scope,
                 }),
-                execution_actor.user_id,
+                execution_actor,
             ));
         }
         if run.compatibility_mode.as_deref() == Some("communication") {
@@ -334,7 +348,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .transpose()
             .map_err(|_| ControlPlaneError::InvalidInput("mcp_instance_ids"))?
             .unwrap_or_default();
-        Ok((self.mcp_invoker(actor, headers, ids).await?, actor.user_id))
+        Ok((self.mcp_invoker(actor, headers, ids).await?, actor.clone()))
     }
 
     async fn application(
@@ -468,15 +482,15 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .start(application_id, ApplicationActivityKind::HttpRequest);
         let checkpoint_id = Uuid::parse_str(&body.checkpoint_id)
             .map_err(|_| ControlPlaneError::InvalidInput("checkpoint_id"))?;
-        let (mcp, execution_actor_id) = self
+        let (mcp, execution_actor) = self
             .mcp_invoker_for_run(actor, headers, application_id, run_id)
             .await?;
         let detail = scope_application_activity(
             application_id,
-            self.runtime()
+            self.runtime_for_actor(&execution_actor)
                 .with_runtime_internal_tool_invoker(mcp)
                 .resume_flow_run(ResumeFlowRunCommand {
-                    actor_user_id: execution_actor_id,
+                    actor_user_id: execution_actor.user_id,
                     application_id,
                     flow_run_id: run_id,
                     checkpoint_id,
@@ -560,19 +574,19 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .get_callback_task(callback_task_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("callback_task"))?;
-        let (mcp, execution_actor_id) = self
+        let (mcp, execution_actor) = self
             .mcp_invoker_for_run(actor, headers, application_id, callback.flow_run_id)
             .await?;
         let detail = scope_application_activity(
             application_id,
-            self.runtime()
+            self.runtime_for_actor(&execution_actor)
                 .with_runtime_internal_tool_invoker(mcp)
                 .complete_callback_task(CompleteCallbackTaskCommand {
                     responses_continuation: None,
                     transport_connection_scope: None,
                     observation_context: None,
                     native_transport: None,
-                    actor_user_id: execution_actor_id,
+                    actor_user_id: execution_actor.user_id,
                     application_id,
                     callback_task_id,
                     response_payload: body.response_payload,
