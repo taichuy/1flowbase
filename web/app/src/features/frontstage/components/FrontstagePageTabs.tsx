@@ -1,3 +1,4 @@
+import { createTabRankUpdates, nextRank } from '../lib/page-tab-order';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
 import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
@@ -58,10 +59,6 @@ const FRONTSTAGE_DESIGN_TABS_THEME = {
   }
 };
 
-function nextRank(tabs: FrontstagePageTab[]): string {
-  return String((tabs.length + 1) * 1000).padStart(6, '0');
-}
-
 function tabLabelText(
   tab: FrontstagePageTab,
   translateText: (text: string) => string
@@ -69,30 +66,6 @@ function tabLabelText(
   return tab.title?.trim()
     ? translateText(tab.title.trim())
     : i18nText('frontstage', 'auto.unnamed_page_tab');
-}
-
-function createTabRankUpdates(
-  tabs: FrontstagePageTab[],
-  draggedTabId: string,
-  targetTabId: string
-): Array<{ tabId: string; rank: string }> {
-  const draggedIndex = tabs.findIndex((tab) => tab.id === draggedTabId);
-  const targetIndex = tabs.findIndex((tab) => tab.id === targetTabId);
-  if (draggedIndex < 0 || targetIndex < 0 || draggedIndex === targetIndex) {
-    return [];
-  }
-
-  const reorderedTabs = [...tabs];
-  const [draggedTab] = reorderedTabs.splice(draggedIndex, 1);
-  if (!draggedTab) {
-    return [];
-  }
-  reorderedTabs.splice(targetIndex, 0, draggedTab);
-
-  return reorderedTabs.flatMap((tab, index) => {
-    const rank = tabs[index]?.rank;
-    return rank && tab.rank !== rank ? [{ tabId: tab.id, rank }] : [];
-  });
 }
 
 export function FrontstagePageTabs({
