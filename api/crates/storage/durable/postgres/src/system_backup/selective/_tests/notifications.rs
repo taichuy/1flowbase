@@ -98,7 +98,10 @@ async fn selective_notification_configuration_roundtrips_credentials_without_inb
     assert!(preview.failures.is_empty(), "{:?}", preview.failures);
     assert_eq!(
         preview.selected_tables,
-        vec!["notification_instances".to_owned()]
+        vec![
+            "communication_bindings".to_owned(),
+            "notification_instances".to_owned()
+        ]
     );
     let full_preview = repository
         .preflight(reader(full_bytes.clone()), "source", "target")

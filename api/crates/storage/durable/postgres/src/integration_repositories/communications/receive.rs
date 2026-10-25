@@ -45,11 +45,15 @@ pub(super) async fn commit(
                     return Err(Error::InvalidInput("communication_attachment").into());
                 }
                 let id = Uuid::now_v7();
-                let reference = encrypt_secret_json_with_aad(
+                let mut reference = encrypt_secret_json_with_aad(
                     &a.reference,
                     &auth.master_key,
                     &private_aad(w, i, &id.to_string()),
                 )?;
+                // Public scope metadata makes this private envelope independently rekeyable
+                // in backups. Runtime decryption still derives AAD from trusted message rows.
+                reference["communication_scope"] =
+                    serde_json::json!({"workspace_id":w,"instance_id":i});
                 sqlx::query("INSERT INTO communication_attachments(id,message_id,provider_attachment_id,file_name,media_type,size_bytes,encrypted_reference) VALUES($1,$2,$3,$4,$5,$6,$7)")
                     .bind(id).bind(message_id).bind(a.provider_attachment_id).bind(a.file_name).bind(a.media_type).bind(a.size_bytes).bind(reference).execute(&mut *tx).await?;
             }

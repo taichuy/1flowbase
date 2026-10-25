@@ -64,6 +64,59 @@ pub(super) fn rekey(table: &str, row: &mut Value, source: &str, target: &str) ->
             }
         }
     }
+    if matches!(
+        table,
+        "communication_bindings" | "communication_attachments"
+    ) {
+        let column = if table == "communication_bindings" {
+            "encrypted_cursor"
+        } else {
+            "encrypted_reference"
+        };
+        let value = row
+            .get(column)
+            .context("communication row missing ciphertext column")?;
+        if !value.is_null() {
+            let scope = if table == "communication_bindings" {
+                &*row
+            } else {
+                value
+                    .get("communication_scope")
+                    .context("communication attachment missing authenticated scope")?
+            };
+            let identity = |field| -> Result<uuid::Uuid> {
+                Ok(uuid::Uuid::parse_str(
+                    scope
+                        .get(field)
+                        .and_then(Value::as_str)
+                        .context("communication ciphertext missing scope identity")?,
+                )?)
+            };
+            let workspace = identity("workspace_id")?;
+            let instance = identity("instance_id")?;
+            let kind = if table == "communication_bindings" {
+                "cursor".to_owned()
+            } else {
+                uuid::Uuid::parse_str(
+                    row.get("id")
+                        .and_then(Value::as_str)
+                        .context("communication attachment missing identity")?,
+                )?
+                .to_string()
+            };
+            let aad = format!("communication:{workspace}:{instance}:{kind}");
+            let plain = decrypt_secret_json_with_aad(value, source, aad.as_bytes())
+                .context("source key cannot decrypt communication ciphertext scope")?;
+            if source != target {
+                let scope = value.get("communication_scope").cloned();
+                let mut encrypted = encrypt_secret_json_with_aad(&plain, target, aad.as_bytes())?;
+                if let Some(scope) = scope {
+                    encrypted["communication_scope"] = scope;
+                }
+                row[column] = encrypted;
+            }
+        }
+    }
     if table == "plugin_credentials" {
         let field = |name| {
             row.get(name)

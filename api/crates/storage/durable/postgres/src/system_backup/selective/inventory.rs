@@ -39,8 +39,8 @@ const GROUPS: &[(&str, &str, &str)] = &[
     // Channel configuration is separate from recipient inbox and durable send history.
     (
         "notifications",
-        "notification_instances",
-        "system_notifications notification_send_logs",
+        "notification_instances communication_bindings",
+        "system_notifications notification_send_logs communication_conversations communication_messages communication_attachments",
     ),
     (
         "network-center",
