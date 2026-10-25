@@ -2,6 +2,7 @@ use super::*;
 use crate::routes::application_public_api::delivery_receipt::{
     RuntimeEventDeliveryReceipt, RuntimeEventDeliverySettler,
 };
+use std::collections::{HashMap, HashSet};
 
 pub(super) struct SubscribedCompatibleTypedEventStream {
     pub(super) terminal_dependencies: NativeRunTerminalDependencies,
@@ -24,6 +25,23 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
     settler.settled().await;
 }
 
+// Membership is exact (event type + JSON equality), local to one forwarding stream.
+// Hash collisions still compare Value; this is not content-digest deduplication.
+#[derive(Default)]
+struct ForwardedCommittedEvents(HashMap<String, HashSet<Value>>);
+
+impl ForwardedCommittedEvents {
+    fn contains(&self, event_type: &str, payload: &Value) -> bool {
+        self.0
+            .get(event_type)
+            .is_some_and(|values| values.contains(payload))
+    }
+
+    fn insert(&mut self, event_type: String, payload: Value) {
+        self.0.entry(event_type).or_default().insert(payload);
+    }
+}
+
 struct TypedForwarding<'a> {
     terminal_dependencies: &'a NativeRunTerminalDependencies,
     initial_run: &'a Arc<NativeRunResult>,
@@ -32,7 +50,7 @@ struct TypedForwarding<'a> {
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
     last_forwarded_sequence: i64,
     emitted_answer_delta: bool,
-    forwarded_committed_events: Vec<(String, Value)>,
+    forwarded_committed_events: ForwardedCommittedEvents,
 }
 
 async fn forward_subscribed_typed_events(
@@ -59,7 +77,7 @@ async fn forward_subscribed_typed_events(
         ignored_waiting_callback_task_id,
         last_forwarded_sequence: from_sequence.unwrap_or(0),
         emitted_answer_delta: false,
-        forwarded_committed_events: Vec::new(),
+        forwarded_committed_events: ForwardedCommittedEvents::default(),
     };
     let mut delivery_claims = match terminal_dependencies
         .claim_runtime_event_deliveries(initial_run.id)
@@ -126,10 +144,7 @@ async fn forward_subscribed_typed_events(
     while let Some(event) = subscription.live_events.recv().await {
         if forwarding
             .forwarded_committed_events
-            .iter()
-            .any(|(event_type, payload)| {
-                event_type == &event.event_type && payload == &event.payload
-            })
+            .contains(&event.event_type, &event.payload)
         {
             forwarding.last_forwarded_sequence =
                 forwarding.last_forwarded_sequence.max(event.sequence);
@@ -195,7 +210,7 @@ fn runtime_delivery_matches_envelope(
 
 fn release_delivery_claims(
     settler: &RuntimeEventDeliverySettler,
-    deliveries: Vec<RuntimeEventDeliveryClaim>,
+    deliveries: impl IntoIterator<Item = RuntimeEventDeliveryClaim>,
 ) {
     for delivery in deliveries {
         settler.release(delivery);
@@ -208,23 +223,20 @@ async fn forward_pending_delivery_claims(
 ) -> bool {
     // UPDATE ... RETURNING does not inherit the candidate query's ORDER BY.
     deliveries.sort_by_key(|delivery| (delivery.event.sequence, delivery.event.id));
-    while !deliveries.is_empty() {
-        let delivery = deliveries.remove(0);
+    let mut pending = std::mem::take(deliveries).into_iter();
+    while let Some(delivery) = pending.next() {
         let envelope = durable_record_to_runtime_event_envelope(delivery.event.clone());
         let run = Arc::clone(forwarding.initial_run);
         if forwarding
             .forwarded_committed_events
-            .iter()
-            .any(|(event_type, payload)| {
-                event_type == &envelope.event_type && payload == &envelope.payload
-            })
+            .contains(&envelope.event_type, &envelope.payload)
         {
             forwarding.settler.release(delivery);
             continue;
         }
         forwarding
             .forwarded_committed_events
-            .push((envelope.event_type.clone(), envelope.payload.clone()));
+            .insert(envelope.event_type.clone(), envelope.payload.clone());
         let receipt = forwarding.settler.receipt(delivery);
         if forwarding
             .sender
@@ -238,7 +250,7 @@ async fn forward_pending_delivery_claims(
         {
             // The dropped input releases its own receipt; only the claims that
             // never became receipts still need an explicit release.
-            release_delivery_claims(forwarding.settler, std::mem::take(deliveries));
+            release_delivery_claims(forwarding.settler, pending);
             return true;
         }
     }
@@ -265,10 +277,7 @@ async fn forward_ordered_typed_events(
         if is_committed_tool_delivery(&event) {
             if forwarding
                 .forwarded_committed_events
-                .iter()
-                .any(|(event_type, payload)| {
-                    event_type == &event.event_type && payload == &event.payload
-                })
+                .contains(&event.event_type, &event.payload)
             {
                 // This response already owns the fact. Dropping an unused
                 // receipt releases its claim rather than inventing an ACK.
@@ -277,7 +286,7 @@ async fn forward_ordered_typed_events(
             }
             forwarding
                 .forwarded_committed_events
-                .push((event.event_type.clone(), event.payload.clone()));
+                .insert(event.event_type.clone(), event.payload.clone());
         }
         let terminal = is_public_terminal_runtime_event(&event.event_type);
         let run = if terminal {
@@ -1018,3 +1027,7 @@ pub(super) use terminal_fallback::append_compatible_resume_terminal_event;
 pub(super) use terminal_fallback::is_answer_presentation_delta;
 pub(super) use terminal_fallback::is_public_terminal_runtime_event;
 use terminal_fallback::*;
+
+#[cfg(test)]
+#[path = "tests/forwarding/_tests/committed_event_index.rs"]
+mod committed_event_index_tests;

@@ -2,6 +2,8 @@
 
 [English](ai-gateway-observation.en.md)
 
+调用内去重与历史恢复索引的等价性约束见 [调用内索引与顺序保持](ai-gateway-local-indexes.md)。
+
 ## 职责
 
 执行保持 `映射协议层 ⇄ AI Native ⇄ 供应商插件 ⇄ 上游`。
