@@ -972,7 +972,10 @@ async fn issue_2674_anchor_prompt_falls_back_only_to_current_run_input() {
         None,
         Some(json!({"type":"message","content_omitted":true})),
         Some(json!({"role":"user","content":""})),
-    ].into_iter().enumerate() {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let current = format!("current-{index}\u{0000} text");
         let run = seed_native_run_conversation_flow_run(
             &store, &seeded, &compiled, &format!("recover-current-{index}"),
@@ -982,7 +985,8 @@ async fn issue_2674_anchor_prompt_falls_back_only_to_current_run_input() {
                 "node-start":{"query":current,"history":[{"role":"user","content":"never recover history"}]}
             }), prompt,
         ).await;
-        let page = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+        let page =
+            run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
         assert_eq!(page.items.len(), 1);
         assert_eq!(page.items[0].query.as_deref(), Some(current.as_str()));
         assert_eq!(page.contexts[0].content, "client context");
@@ -990,8 +994,15 @@ async fn issue_2674_anchor_prompt_falls_back_only_to_current_run_input() {
             "select coalesce(raw_json_payloads->>'content',to_json(content)::text),source_item_key from application_run_conversation_message_items where flow_run_id=$1 and role='user'"
         ).bind(run.id).fetch_one(store.pool()).await.unwrap();
         assert_eq!(serde_json::from_str::<String>(&content).unwrap(), current);
-        assert_eq!(source_key.as_deref(), Some(format!("prompt:{}",run.id).as_str()));
-        let task = store.get_application_run_log_task(seeded.application_id, run.id).await.unwrap().unwrap();
+        assert_eq!(
+            source_key.as_deref(),
+            Some(format!("prompt:{}", run.id).as_str())
+        );
+        let task = store
+            .get_application_run_log_task(seeded.application_id, run.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(task.user_input.as_deref(), Some(current.as_str()));
     }
 }
@@ -1025,13 +1036,16 @@ async fn issue_2674_text_projection_preserves_whitespace_and_nul_and_non_anchor_
     ).await;
     sqlx::query("update flow_runs set log_context=jsonb_set(log_context,'{log_task_run_id}',$2::jsonb) where id=$1")
         .bind(member.id).bind(json!(run.id)).execute(store.pool()).await.unwrap();
-    store.update_flow_run(&UpdateFlowRunInput {
-        flow_run_id: member.id,
-        status: member.status,
-        output_payload: member.output_payload,
-        error_payload: member.error_payload,
-        finished_at: member.finished_at,
-    }).await.unwrap();
+    store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: member.id,
+            status: member.status,
+            output_payload: member.output_payload,
+            error_payload: member.error_payload,
+            finished_at: member.finished_at,
+        })
+        .await
+        .unwrap();
     let count: i64 = sqlx::query_scalar(
         "select count(*) from application_run_conversation_message_items where flow_run_id=$1 and role='user'"
     ).bind(member.id).fetch_one(store.pool()).await.unwrap();

@@ -645,8 +645,11 @@ fn issue_2674_prompt_text_survives_large_media_and_large_text_without_copying_me
     ]);
     let mapped = super::super::response_input::openai_content(&parts).unwrap();
     let projected = capture_application_run_log_context(
-        &json!({"input":[{"role":"user","content":parts}]}), None,
-    ).prompt.unwrap();
+        &json!({"input":[{"role":"user","content":parts}]}),
+        None,
+    )
+    .prompt
+    .unwrap();
     assert_eq!(projected["content"], "  A\u{0000} \n B\n ");
     assert_eq!(projected["content"], mapped.text);
 
@@ -657,9 +660,13 @@ fn issue_2674_prompt_text_survives_large_media_and_large_text_without_copying_me
     }
     let many = vec![json!({"type":"input_text","text":" x "}); 4_097];
     let context = capture_application_run_log_context(
-        &json!({"input":[{"role":"user","content":many}]}), None,
+        &json!({"input":[{"role":"user","content":many}]}),
+        None,
     );
-    assert_eq!(context.prompt.unwrap()["content"], vec![" x "; 4_097].join("\n"));
+    assert_eq!(
+        context.prompt.unwrap()["content"],
+        vec![" x "; 4_097].join("\n")
+    );
 }
 
 #[test]
@@ -669,10 +676,15 @@ fn issue_2674_invalid_identity_cannot_erase_prompt_or_authorize_grouping() {
     };
     for (metadata, expected) in [
         (json!({"x-codex-turn-metadata":"[]"}), "invalid_identity"),
-        (json!({"thread_id":"thread-A","turn_id":3}), "invalid_identity"),
-        (json!({"thread_id":"thread-A","turn_id":"turn-A",
+        (
+            json!({"thread_id":"thread-A","turn_id":3}),
+            "invalid_identity",
+        ),
+        (
+            json!({"thread_id":"thread-A","turn_id":"turn-A",
             "x-codex-turn-metadata":json!({"thread_id":"thread-B"}).to_string()}),
-            "conflicting_identity"),
+            "conflicting_identity",
+        ),
     ] {
         let context = capture_application_run_log_context(
             &json!({"client_metadata":metadata,"input":[
@@ -691,9 +703,10 @@ fn issue_2674_invalid_identity_cannot_erase_prompt_or_authorize_grouping() {
         &json!({"client_metadata":{"thread_id":"thread-A","turn_id":"turn-A"},"input":"  text\u{0000}\n"}),
         None,
     );
-    reconcile_client_log_headers(&mut context, &std::collections::BTreeMap::from([
-        ("thread-id".into(), vec!["thread-B".into()]),
-    ]));
+    reconcile_client_log_headers(
+        &mut context,
+        &std::collections::BTreeMap::from([("thread-id".into(), vec!["thread-B".into()])]),
+    );
     assert_eq!(context.identity_status, "conflicting_identity");
     assert!(context.thread_id.is_none());
     assert!(context.turn_id.is_none());

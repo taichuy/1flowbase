@@ -118,9 +118,11 @@ fn capture_current_user_prompt(body: &Value) -> Option<Value> {
             .find(|item| item.get("role").and_then(Value::as_str) == Some("user"))
             .map(current_user_text_projection)
     } else {
-        input.as_str().map(|text| serde_json::json!({
-            "role":"user", "content":text, "_log_projection":"text"
-        }))
+        input.as_str().map(|text| {
+            serde_json::json!({
+                "role":"user", "content":text, "_log_projection":"text"
+            })
+        })
     }
 }
 
@@ -163,14 +165,13 @@ fn current_user_text_projection(item: &Value) -> Value {
         Some(Value::Array(parts)) => parts
             .iter()
             .filter_map(|part| {
-                part.as_str().or_else(|| {
-                    match part.get("type").and_then(Value::as_str) {
+                part.as_str()
+                    .or_else(|| match part.get("type").and_then(Value::as_str) {
                         None | Some("input_text" | "text" | "output_text") => {
                             part.get("text").and_then(Value::as_str)
                         }
                         _ => None,
-                    }
-                })
+                    })
             })
             .collect::<Vec<_>>()
             .join("\n"),

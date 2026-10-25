@@ -74,9 +74,13 @@ Costs use durable snapshots for completed members when available, otherwise exis
 
 Implementation: [projection migration](../../api/crates/storage/durable/postgres/migrations/20261010120000_observed_log_projection_settlement.sql), [overview reader](../../api/crates/storage/durable/postgres/src/orchestration_runtime_repository/agent_logs/reads.rs).
 
-Task aggregation and individual attempts retain separate states. Any active member keeps the task outcome `in_progress`, even when an earlier answer exists. Once all members are terminal, task status prefers the latest generate attempt, falling back to the latest other call if no generation exists; counting or compaction cannot mask generation outcomes. Failed attempts remain in source runs and traces. Known costs include all attempts, with all-unknown totals remaining NULL; a successful retry does not erase earlier calls.
+Business-turn status and individual execution status are distinct. The task reduces effective members: a successful generation with an authoritative final answer can dominate an older callback wait only when application, credential binding, protocol, conversation, thread and turn identities agree explicitly. Both source and summary status must agree. Callback history, inbox receipts, resume attempts and claims must prove that the wait predates the final generation; new or processing recovery facts block settlement. Missing/conflicting identity, queued/running/human/paused work and newer waits remain active. Auxiliary calls cannot supply generation completion.
 
-Implementation: [terminal task projection](../../api/crates/storage/durable/postgres/migrations/20261010130000_project_terminal_task_attempt_outcome.sql).
+Only the derived logical task settles. Old flow runs, callbacks, delivery/ACK and billing facts remain unchanged; member IDs and observed usage/cost still include all attempts, with wholly unknown costs remaining NULL. Callback, inbox, resume and claim changes refresh the task in their source transaction, so late recovery can reopen it. Projection timestamps and cost corrections are not execution progress. A proven final answer is returned directly; the five-minute fallback remains for waits without completion evidence.
+
+The current request owns user input. Responses capture preserves all text and existing block separators independently of media size or identity parsing. Semantic prompts explicitly identify text projection; exact media/wire evidence stays in protocol capture. Empty/omitted legacy prompts may use the same anchor run's retained current input, never imported history, system/tool content or another turn. Forward migration repairs derived historical rows; GET does not write.
+
+Implementation: [current input and turn settlement](../../api/crates/storage/durable/postgres/migrations/20261025120000_native_log_current_input_and_turn_settlement.sql).
 
 ## Task boundaries in conversation detail
 
