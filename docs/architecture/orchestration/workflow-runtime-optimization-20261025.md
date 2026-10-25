@@ -14,7 +14,7 @@
 | `storage/.../application_run_trace_projection_methods.rs`、私有 `trace_projection/` | 原 run 锁与事务中批量 upsert，删除旧集合、保护父引用，未变正文不重写；公开 generation 时间从节点投影。动态 tuple SQL 不长期占连接 statement cache。 |
 | `api-server/.../mcp_protocol/result_delivery.rs` | 按精确 JSON 字节成本借用分块，借用 detail，inline admission 使用小 envelope 长度，最终缓存仍拥有完整字符串。 |
 
-相邻 event ring/retire、required 事件、共享遥测、非空 persister 批次、scheduler payload、trace 聚合/释放路径由 Scout 复核；已有优化不重复实现。不改变600秒续读、日志完整性、终态/消费租约、保留策略或业务容量，不改 allocator，不新增依赖、表、索引或 migration。
+相邻 event ring/retire、required 事件、共享遥测、非空 persister 批次、scheduler payload、trace 聚合/释放路径由 Scout 复核；已有优化不重复实现。不改变600秒续读、日志完整性、终态/消费租约、保留策略或业务容量，不改 allocator，不新增依赖、表、索引或 migration。continuation Cow未做独立路径基准，收益仅结算源码上的整池clone删除与恢复回归；checkpoint基准和callback RSS用例不替代该路径测量。
 
 ## 同条件实测
 
@@ -66,18 +66,18 @@ trace 每3轮的实际行操作与 SQL 调用全部7对样本一致：
 
 原/新初始物理占用均638976bytes；3轮后新范围1032192–1040384，原全部1499136。本例固定规模短窗口包含死元组与页分配，不能外推长期磁盘容量或保留量。CPU容器计数包括本容器同阶段后台活动；不是单SQL CPU归因。内容与所有节点水位逐项读回相等。
 
-真实隔离 `EXPLAIN (ANALYZE, BUFFERS)` 在另一个 fixture 事务内执行后回滚：原节点全删触发parent/content外键各256次；新相同目标的detach/obsolete清理无删行，父引用查询形状在256行fixture选Seq Scan。计划不证明大规模生产索引收益，本轮没有盲加索引。构造/编码仍O(N+C)，行内全局watermark要求节点仍O(N)写；只有正文写入变为变化量加实际删除，整体不是O(delta)。
+真实隔离 `EXPLAIN (ANALYZE, BUFFERS)` 在另一个 fixture 事务内执行后回滚：原节点全删触发parent/content外键各256次；新相同目标的detach/obsolete清理无删行，父引用查询形状在256行fixture选Seq Scan。计划不证明大规模生产索引收益，本轮没有盲加索引。构造/编码仍O(N+C)，行内全局watermark要求节点仍O(N)写；只有正文写入变为变化量加实际删除，整体不是O(delta)。64KiB只控制materialize/JSON编码与bulk payload参数窗口；writer另有O(N+C)身份数组和重复校验元数据，总scratch不是O(batch)，trace客户端RSS也实际略增。
 
 ## 行为验证与检测能力
 
-- 165个唯一相关用例已通过：storage32、control-plane76、MCP实际owner源码27、服务+PostgreSQL30。第一次集中结果164个；P4b增加缓存形状测试并重跑8+7个受影响用例，其余证据按依赖关系复用，不重复累计为更多唯一用例。
+- 169个唯一相关用例已通过：storage34、control-plane76、MCP实际owner源码27、服务+PostgreSQL32。第一次集中结果164个；P4b增加缓存形状测试并重跑8+7个受影响用例，其余证据按依赖关系复用，不重复累计为更多唯一用例。终审后追加client/provider trajectory与agent logs的4个真实DB消费者用例并全部通过，trace generation原测试固定过去时间后重跑通过，合计169个唯一用例。
 - 真实 PG 覆盖 JSON/raw 无损、checkpoint/full/delta/history 与 callback/resume、trace 父子/重挂/locator互换/删除/empty、跨run冲突/失败回滚、同run串行化/跨run非死锁、revision合并/lease/重试恢复；单独执行原 ignored 的200×3MiB callback RSS 回归并通过。
 - MCP直接包含实际 result_delivery.rs 及其模块测试，使用真实 Moka 和 CacheStore trait；完整重组、TTL600、manifest-last、chunk/manifest写失败、缺失/损坏块及真实PG durable receipt后完整结果读取均通过。它不是完整 API route harness。
 - 原JSON两个场景及原MCP四个分块/inline场景保留6/6（100%，仅此命名场景库存）；JSON29案例、1,112,064合法Unicode标量与8,710边界等价检查全部通过。三个临时错误变体（键反斜杠碰撞、UTF8成本、marker写入delta）均编译成功并被oracle拒绝，检测3/3；不是全仓缺陷检出率或形式证明。
 - Trace有限集合模型320,960有效转移、480回滚案例通过；这是有限Python模型，不替代真实PG或机器形式证明。
 - 后端静态检查和定向格式检查通过。完整API生产库 `cargo check --offline -p api-server --lib` 通过；完整route行为宿主受下述OOM限制。
 
-证据：`evidence/test-results.json`、`executed-inventory.json`、`p4b-test-results.json`、`large-callback-regression.*`、`perf/mutation-results.json`、`perf/summary.json`、`perf/source-manifest.json`。脚本、精确编译命令、依赖路径/flags与全部原始stdout/stderr留在证据目录；运行前须重新建立自己的隔离PG并核对17601未占用。一次性性能/Unicode驱动器不进入产品或每PR常驻门禁。
+证据：`evidence/test-results.json`、`executed-inventory.json`、`p4b-test-results.json`、`qa-followup-results.json`、`large-callback-regression.*`、`perf/mutation-results.json`、`perf/summary.json`、`perf/source-manifest.json`。脚本、精确编译命令、依赖路径/flags与全部原始stdout/stderr留在证据目录；运行前须重新建立自己的隔离PG并核对17601未占用。一次性性能/Unicode驱动器不进入产品或每PR常驻门禁。
 
 ## 门禁、删除与成本
 

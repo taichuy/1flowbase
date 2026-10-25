@@ -25,7 +25,7 @@ continuation 先完成原输入校验、环境变量注入和 normalize，再用
 5. 批量写入 content，仅在 kind、scope、JSONB 投影或 raw sidecar 不同时更新。
 6. 与数据一起提交 status、version 和 watermark；任何 SQL 或 deferred FK 失败均回滚临时父引用、删除和全部写入。
 
-私有 writer 位于 `orchestration_runtime_repository/trace_projection/`，复用 SQLx `QueryBuilder`。30 / 7 个参数的节点 / 正文行按 PostgreSQL 65,535 bind 上限及 64 KiB 编码批次目标分组。最后一行可能让批次超过字节目标；大行仍完整接收，没有 trace 数量或正文容量上限。临时 materialize、编码和参数只保留一个批次，内存随批次目标与最大单行增长，不先展开全体 shared payload。
+私有 writer 位于 `orchestration_runtime_repository/trace_projection/`，复用 SQLx `QueryBuilder`。30 / 7 个参数的节点 / 正文行按 PostgreSQL 65,535 bind 上限及 64 KiB 编码批次目标分组。最后一行可能让批次超过字节目标；大行仍完整接收，没有 trace 数量或正文容量上限。临时 materialize、JSON 编码与 bulk payload 参数只保留一个批次，窗口随批次目标与最大单行增长，不先展开全体 shared payload。集合清理所需的全量节点 ID、locator、content ID 数组及重复检查集合另外占用 O(N+C) 身份元数据；writer 总临时内存不能写成 O(batch)。
 
 两处动态 bulk query 使用 `persistent(false)`，避免不同 tuple 数的 SQL 和参数元数据长期占据连接 statement cache；参数绑定、事务和 SQL 不变，固定形状的清理/status 查询继续缓存。代价是可能重复 prepare，不预设其 CPU 净收益；实际连接测试核对多种批次形状不会累积 cache 条目。
 
