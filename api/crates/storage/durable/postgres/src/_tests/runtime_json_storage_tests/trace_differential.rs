@@ -81,6 +81,16 @@ async fn trace_projection_batches_keep_unchanged_contents_and_public_generation_
         .unwrap();
     let before = physical_contents(&store, run).await;
     assert_eq!(before.len(), ids.len());
+    // Use an explicit old generation so this does not depend on clock spacing
+    // between two publications or pass if both public readers stay stale.
+    sqlx::query(
+        "update application_run_trace_nodes set created_at=$2, updated_at=$2 where flow_run_id=$1",
+    )
+    .bind(run)
+    .bind(time::OffsetDateTime::UNIX_EPOCH)
+    .execute(store.pool())
+    .await
+    .unwrap();
     input.source_watermark = "after".into();
     input.projection_version += 1;
     store
@@ -102,6 +112,8 @@ async fn trace_projection_batches_keep_unchanged_contents_and_public_generation_
         assert_eq!(saved.source_watermark, input.source_watermark);
         assert_eq!(saved.metrics_payload, input.nodes[index].metrics_payload);
         assert_eq!(saved.content_ref, input.nodes[index].content_ref);
+        assert!(saved.created_at > time::OffsetDateTime::UNIX_EPOCH);
+        assert!(saved.updated_at > time::OffsetDateTime::UNIX_EPOCH);
         let body = store
             .get_application_run_trace_node_content(run, *id)
             .await
