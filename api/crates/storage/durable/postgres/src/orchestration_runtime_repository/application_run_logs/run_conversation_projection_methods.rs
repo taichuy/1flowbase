@@ -362,18 +362,19 @@ impl PgControlPlaneStore {
         // explicit task anchor owns that task's observed prompt.
         let task = context.get("log_task_run_id").and_then(Value::as_str);
         if task.is_none() || task == Some(run.id.to_string().as_str()) {
-            if let Some(prompt) = context.get("prompt").filter(|v| v.is_object()) {
-                items.push((conversation_sequence,format!("prompt:{}",run.id),json!({"role":"user","content":native_log_item_text(prompt),"_source_item":prompt})));
-                conversation_sequence += 1;
-            }
-        }
-        if conversation_sequence == 0 && task.is_none() {
-            if let Some(prompt) = application_conversation_user_text(&run.input_payload) {
-                items.push((
-                    conversation_sequence,
-                    format!("prompt:{}", run.id),
-                    json!({"role":"user","content":prompt}),
-                ));
+            let source_prompt = context.get("prompt");
+            let prompt_text = source_prompt
+                .filter(|prompt| prompt.get("content_omitted") != Some(&Value::Bool(true)))
+                .filter(|prompt| prompt.is_string() || prompt.get("content").is_some())
+                .map(native_log_item_text)
+                .filter(|text| !text.is_empty())
+                .or_else(|| application_conversation_user_text(&run.input_payload));
+            if let Some(text) = prompt_text {
+                let mut message = json!({"role":"user","content":text});
+                message["_source_item"] = source_prompt.cloned().unwrap_or_else(|| {
+                    json!({"role":"user", "content":text, "_log_projection":"current_run_input"})
+                });
+                items.push((conversation_sequence, format!("prompt:{}", run.id), message));
                 conversation_sequence += 1;
             }
         }

@@ -612,3 +612,73 @@ fn semantic_cursor_extends_compact_predecessor_without_transcript_materializatio
     )
     .is_err());
 }
+
+#[test]
+fn issue_2674_prompt_text_survives_large_media_and_large_text_without_copying_media() {
+    use super::super::log_context::capture_application_run_log_context;
+    let text = "  current\u{0000} question\n";
+    let image = format!("data:image/png;base64,{}", "A".repeat(300_000));
+    let body = json!({"input":[
+        {"role":"user","content":"old question"},
+        {"id":"current-user","type":"message","role":"user","content":[
+            {"type":"input_text","text":text},
+            {"type":"input_image","image_url":image},
+            {"type":"input_text","text":" tail  "}
+        ]}
+    ]});
+    let original = body.clone();
+    let context = capture_application_run_log_context(&body, None);
+    let prompt = context.prompt.unwrap();
+    assert_eq!(prompt["content"], format!("{text} tail  "));
+    assert_eq!(prompt["id"], "current-user");
+    assert_eq!(prompt["type"], "message");
+    assert_eq!(prompt["_log_projection"], "text");
+    assert_eq!(prompt["_log_source_content_indices"], json!([0, 2]));
+    assert!(!prompt.to_string().contains("data:image"));
+    assert_eq!(body, original);
+
+    let large = format!("  {}\u{0000}\n", "正文".repeat(100_000));
+    for input in [json!(large), json!([{"role":"user","content":large}])] {
+        let context = capture_application_run_log_context(&json!({"input":input}), None);
+        assert_eq!(context.prompt.unwrap()["content"], large);
+    }
+    let many = vec![json!({"type":"input_text","text":" x "}); 4_097];
+    let context = capture_application_run_log_context(
+        &json!({"input":[{"role":"user","content":many}]}), None,
+    );
+    assert_eq!(context.prompt.unwrap()["content"], " x ".repeat(4_097));
+}
+
+#[test]
+fn issue_2674_invalid_identity_cannot_erase_prompt_or_authorize_grouping() {
+    use super::super::log_context::{
+        capture_application_run_log_context, reconcile_client_log_headers,
+    };
+    for (metadata, expected) in [
+        (json!({"x-codex-turn-metadata":"[]"}), "invalid_identity"),
+        (json!({"thread_id":"thread-A","turn_id":3}), "invalid_identity"),
+        (json!({"thread_id":"thread-A","turn_id":"turn-A",
+            "x-codex-turn-metadata":json!({"thread_id":"thread-B"}).to_string()}),
+            "conflicting_identity"),
+    ] {
+        let context = capture_application_run_log_context(
+            &json!({"client_metadata":metadata,"input":[{"role":"user","content":"  text\u{0000}\n"}]}),
+            None,
+        );
+        assert_eq!(context.identity_status, expected);
+        assert!(context.thread_id.is_none());
+        assert!(context.turn_id.is_none());
+        assert_eq!(context.prompt.unwrap()["content"], "  text\u{0000}\n");
+    }
+    let mut context = capture_application_run_log_context(
+        &json!({"client_metadata":{"thread_id":"thread-A","turn_id":"turn-A"},"input":"  text\u{0000}\n"}),
+        None,
+    );
+    reconcile_client_log_headers(&mut context, &std::collections::BTreeMap::from([
+        ("thread-id".into(), vec!["thread-B".into()]),
+    ]));
+    assert_eq!(context.identity_status, "conflicting_identity");
+    assert!(context.thread_id.is_none());
+    assert!(context.turn_id.is_none());
+    assert_eq!(context.prompt.unwrap()["content"], "  text\u{0000}\n");
+}

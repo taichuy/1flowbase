@@ -960,3 +960,84 @@ async fn run_conversation_page(
 
 #[path = "run_conversation_native_projection/incremental.rs"]
 mod incremental;
+
+#[tokio::test]
+async fn issue_2674_anchor_prompt_falls_back_only_to_current_run_input() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    for (index, prompt) in [
+        None,
+        Some(json!({"type":"message","content_omitted":true})),
+        Some(json!({"role":"user","content":""})),
+    ].into_iter().enumerate() {
+        let current = format!("current-{index}\u{0000} text");
+        let run = seed_native_run_conversation_flow_run(
+            &store, &seeded, &compiled, &format!("recover-current-{index}"),
+            datetime!(2026-10-25 01:00:00 UTC),
+            json!({
+                "__native_model_prompt_context":{"system":[{"text":"client context"}]},
+                "node-start":{"query":current,"history":[{"role":"user","content":"never recover history"}]}
+            }), prompt,
+        ).await;
+        let page = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].query.as_deref(), Some(current.as_str()));
+        assert_eq!(page.contexts[0].content, "client context");
+        let (content, source_key): (String, Option<String>) = sqlx::query_as(
+            "select coalesce(raw_json_payloads->>'content',to_json(content)::text),source_item_key from application_run_conversation_message_items where flow_run_id=$1 and role='user'"
+        ).bind(run.id).fetch_one(store.pool()).await.unwrap();
+        assert_eq!(serde_json::from_str::<String>(&content).unwrap(), current);
+        assert_eq!(source_key.as_deref(), Some(format!("prompt:{}",run.id).as_str()));
+        let task = store.get_application_run_log_task(seeded.application_id, run.id).await.unwrap().unwrap();
+        assert_eq!(task.user_input.as_deref(), Some(current.as_str()));
+    }
+}
+
+#[tokio::test]
+async fn issue_2674_text_projection_preserves_whitespace_and_nul_and_non_anchor_has_no_prompt() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let current = "  exact\u{0000}\n text  ";
+    let run = seed_native_run_conversation_flow_run(
+        &store, &seeded, &compiled, "exact-current-input",
+        datetime!(2026-10-25 02:00:00 UTC),
+        json!({"node-start":{"query":"different current fallback","history":[{"role":"user","content":"history"}]}}),
+        Some(json!({"role":"user","content":current,"_log_projection":"text"})),
+    ).await;
+    let content: String = sqlx::query_scalar(
+        "select coalesce(raw_json_payloads->>'content',to_json(content)::text) from application_run_conversation_message_items where flow_run_id=$1 and role='user'"
+    ).bind(run.id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(serde_json::from_str::<String>(&content).unwrap(), current);
+
+    // A continuation may replay an omitted prompt and full history, but neither
+    // becomes a second user fact for a task anchored by a different real run.
+    let member = seed_native_run_conversation_flow_run(
+        &store, &seeded, &compiled, "non-anchor-current-input",
+        datetime!(2026-10-25 02:00:01 UTC),
+        json!({"node-start":{"query":"must not duplicate","history":[{"role":"user","content":"history"}]}}),
+        Some(json!({"type":"message","content_omitted":true})),
+    ).await;
+    sqlx::query("update flow_runs set log_context=jsonb_set(log_context,'{log_task_run_id}',$2::jsonb) where id=$1")
+        .bind(member.id).bind(json!(run.id)).execute(store.pool()).await.unwrap();
+    store.update_flow_run(&UpdateFlowRunInput {
+        flow_run_id: member.id,
+        status: member.status,
+        output_payload: member.output_payload,
+        error_payload: member.error_payload,
+        finished_at: member.finished_at,
+    }).await.unwrap();
+    let count: i64 = sqlx::query_scalar(
+        "select count(*) from application_run_conversation_message_items where flow_run_id=$1 and role='user'"
+    ).bind(member.id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(count, 0);
+    let content: String = sqlx::query_scalar(
+        "select coalesce(raw_json_payloads->>'content',to_json(content)::text) from application_run_conversation_message_items where flow_run_id=$1 and role='user'"
+    ).bind(run.id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(serde_json::from_str::<String>(&content).unwrap(), current);
+}
