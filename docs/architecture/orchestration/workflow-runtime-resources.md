@@ -1,5 +1,44 @@
 # 工作流运行时的资源所有权
 
+## 持久化、恢复与 trace 发布
+
+### JSON 投影与 checkpoint
+
+PostgreSQL adapter 的 `orchestration_runtime_repository/json_storage` 拥有查询投影和原文 sidecar。借用入口仍复制一次输入树；没有 NUL 键的对象直接递归 `values_mut`，只有自身含 NUL 键的对象重建键。该分支对所有键先转义反斜杠、再转义 NUL，保留碰撞规则和插入顺序。packet 直接移动 projection/raw，columns 消费 packet，不经 `json!` 再物化或再次复制 projection。SQL NULL、JSON null、raw 恢复及幂等性保持原契约，详见 [codec](../../../api/crates/storage/durable/postgres/src/orchestration_runtime_repository/json_storage/README.md)。
+
+Control Plane 的 `persistence/checkpoint_locator.rs` 先解析元数据，保持 UUID 校验 → sequence 加一 → lineage 读取的执行顺序。非法 UUID、非字符串 marker、缺失字段和当前编译模式下的整数溢出行为保持原样。有父版本时只构造一次最终 delta，无父版本时只构造一次完整 snapshot。恢复继续使用现有 canonical content、context lineage、`runtime_snapshot_v1` / `runtime_delta_v1` 与 `history_append`，没有新增正文或历史表。
+
+full content 只做一次必要的变量池复制，随后移动进 JSON 对象；delta 直接借用当前池，跳过 recovery marker，仅拥有 set/remove/history append 的输出。比较和历史前缀检查仍由原算法完成；额外内容树分配从完整池加 delta 降为 delta，不能据此把比较成本称为 O(Δ)。借用快照在 lineage await 期间保持不可变。
+
+continuation 先完成原输入校验、环境变量注入和 normalize，再用 `Cow` 为 runtime context 选择借用恢复池或拥有初始池。恢复分支不为只读 context 再复制整个池；初始执行分支继续移动原池，执行器需要的独立可变状态仍由原入口产生。必要的初始化副作用与错误顺序不因选择恢复快照而跳过。
+
+### trace 的完整快照与差异正文
+
+`workers/trace_projection.rs` 仍构造完整投影；source/enrichment 在持久化 await 前释放。稳定逻辑身份仍来自现有 `trace_node_id_for_locator`。PostgreSQL writer 在同一事务取得 flow run 的 `FOR NO KEY UPDATE`，按以下顺序发布：
+
+1. 拒绝重复节点、locator 和 content 身份；content 必须属于本次节点集合。
+2. 将指向待删除或 locator 已变化节点的父引用暂置 NULL，防止立即执行的 `ON DELETE CASCADE` 删除仍需保留的子节点正文。
+3. 删除本次已不存在的 content，以及不再对应同一 `(trace_node_id, stable_locator)` 的旧节点。
+4. 批量 upsert 完整节点集合并恢复父引用；跨 run 的逻辑身份冲突导致整个事务失败。
+5. 批量写入 content，仅在 kind、scope、JSONB 投影或 raw sidecar 不同时更新。
+6. 与数据一起提交 status、version 和 watermark；任何 SQL 或 deferred FK 失败均回滚临时父引用、删除和全部写入。
+
+私有 writer 位于 `orchestration_runtime_repository/trace_projection/`，复用 SQLx `QueryBuilder`。30 / 7 个参数的节点 / 正文行按 PostgreSQL 65,535 bind 上限及 64 KiB 编码批次目标分组。最后一行可能让批次超过字节目标；大行仍完整接收，没有 trace 数量或正文容量上限。临时 materialize、编码和参数只保留一个批次，内存随批次目标与最大单行增长，不先展开全体 shared payload。
+
+全局 `projection_version/source_watermark` 仍保存在每个节点行，每次发布仍更新 N 个节点。内部物理节点 ID 保持，公开节点 `created_at/updated_at` 仍取本次事务 `now()`；公开 content 读取通过关联节点投影相同的 generation 时间。未变化 content 保留物理行，表内时间记录正文实际写入，不再作为公开 generation 时间来源。所有公开正文读取共用 `get_application_run_trace_node_content`；业务 started/finished 时间不变。
+
+令 N/C 为完整节点/正文数，ΔC 为持久表示变化的正文数：构造、编码与比较仍涉及 O(N+C) 输入，节点写入仍为 O(N)，正文改为 ΔC 插入/更新加实际删除。优化减少逐行数据库往返、存量 delete/insert、外键级联工作及未变化正文写入，**不是整个投影 O(Δ)**。没有新增索引、表或保留策略；比较同时检查 raw sidecar，不能把 NUL 原文与字面转义误判为同一正文。
+
+revision 合并、5 分钟 lease、250 ms 就绪轮询、失败重试和 token 过滤仍归既有 queue/worker owner。旧 job finish 不删除刷新期间新增的 revision。轮询不代表每 250 ms 全量重建；events/checkpoints 的聚合计数也不代表读取完整历史 payload。
+
+### 验证与资源边界
+
+JSON 原两个场景及 29 个有界案例、checkpoint full/delta/history 恢复、trace 的真实迁移/事务/父引用/并发与队列恢复、MCP 完整续读分别进入原模块测试 owner。trace 测试比较未变正文物理行，同时断言公开 generation 时间、完整内容与水位；并发沿用 `trajectory/locking.rs` 的真实阻塞证据，不以 sleep 猜测顺序。
+
+L1 复用定向模块测试，L2 复用相关契约/集成与相同构建产物，L3 沿用完整 CI、coverage 和发布验收。Unicode 全标量穷举与性能驱动器只作一次性证据，不注册为每个 PR 的常驻重型门禁。MCP 原四个分块/inline 预算场景并入两个有界表驱动测试，保留原输入和边界断言；JSON 原两个测试继续保留。
+
+缓存条目数、MCP 600 秒续读、required 事件豁免、退休 backlog 和消费者租约各有自己的语义。不通过丢日志、截断历史、缩短 TTL、任意容量限制或 allocator 参数改变换取资源下降。对象释放、累计分配和进程 RSS 分别取证，函数基准不推算在线收益。
+
 ## 运行时热路径的资源所有权与等价边界
 
 资源优化以功能完整性为前提，只改变已有数据的查找和临时对象生命周期。

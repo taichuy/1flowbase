@@ -4,6 +4,8 @@
 
 ## 证据分层
 
+工作流持久化与 Gateway 的局部优化继续使用原 crate/lib 测试和 API coverage owner，详见[资源所有权](../orchestration/workflow-runtime-resources.md)。MCP 分块和 inline 预算的四个旧场景合入两个有界表驱动测试，原输入/边界保留；完整 Unicode 穷举和性能对照留作一次性候选证据。没有新建专项 workflow、重复配置或每 PR 微基准门禁。
+
 - `verify.yml` 是 PR / push 合并基线；`quality-gate.yml scope=ci` 是完整项目体检，额外包含完整测试分片、Clippy、覆盖率、特殊 feature 场景和 React Doctor。
 - 一次完整体检固定同一个 full SHA。根 `quality-gate-report.json` 必须为 `passed/0`，必需 component 唯一、成功且绑定同 SHA；四个 API coverage 分片经 merge 后才形成覆盖率 component。
 - SDK / 内存 EventBus 的单元测试由 runtime-storage-fast 执行，贡献契约与插件事件注册测试由 core-libs 执行；Host、orchestration-runtime 和 PostgreSQL adapter 的完整包测试由各自 coverage owner 执行，跨层 control-plane-postgres-tests 仍由 storage-postgres 四分片完整执行，第一分片另执行 model-usage-report-postgres Node 集成；API lib 与 integration targets 由 API coverage nextest 分片执行。临时专项 workflow 的存在不代表必须重复执行同一组行为。

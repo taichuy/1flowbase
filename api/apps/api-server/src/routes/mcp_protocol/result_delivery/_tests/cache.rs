@@ -228,6 +228,8 @@ fn json_string_split_preserves_greedy_boundaries_and_borrows_input() {
         "\\\"\u{08}\t\n\u{0c}\r".to_owned(),
         controls,
         "a界\n😀\u{0000}b\\\"/".repeat(3),
+        format!("{}界{}", "a".repeat(9), "b".repeat(9)),
+        "\\\"\n\r\t\u{0000}界".repeat(20),
     ];
     for value in &fixtures {
         for budget in (0..=40).chain([usize::MAX]) {
@@ -289,16 +291,30 @@ fn inline_cache_size_matches_serialized_envelope_with_return_defaults() {
         }
     }
 
-    let defaults = json!({"max_inline_chars": 1600, "response_fields": ["/界"]});
-    let empty_size = inline_cache_value_bytes(&serialized(&json!("")), Some(&defaults));
-    for delta in [0, 1] {
-        let detail = json!("a".repeat(DETAIL_CHUNK_MAX_BYTES - empty_size + delta));
-        let mut envelope = inline_cache_value(&detail);
-        envelope["return_defaults"] = defaults.clone();
-        assert_eq!(serialized(&envelope).len(), DETAIL_CHUNK_MAX_BYTES + delta);
-        assert_eq!(
-            inline_cache_value_bytes(&serialized(&detail), Some(&defaults)),
-            DETAIL_CHUNK_MAX_BYTES + delta
-        );
+    for defaults in [
+        None,
+        Some(json!({"max_inline_chars": 1600, "response_fields": ["/界"]})),
+    ] {
+        let empty_size = inline_cache_value_bytes(&serialized(&json!("")), defaults.as_ref());
+        for delta in [0, 1] {
+            let detail = json!("a".repeat(DETAIL_CHUNK_MAX_BYTES - empty_size + delta));
+            let mut envelope = inline_cache_value(&detail);
+            if let Some(defaults) = &defaults {
+                envelope["return_defaults"] = defaults.clone();
+            }
+            assert_eq!(serialized(&envelope).len(), DETAIL_CHUNK_MAX_BYTES + delta);
+            assert_eq!(
+                inline_cache_value_bytes(&serialized(&detail), defaults.as_ref()),
+                DETAIL_CHUNK_MAX_BYTES + delta
+            );
+        }
     }
+    let detail = json!("界\\\"\n".repeat((DETAIL_CHUNK_MAX_BYTES - 12) / 9));
+    let envelope_bytes = serialized(&inline_cache_value(&detail)).len();
+    assert!(envelope_bytes > DETAIL_CHUNK_MAX_BYTES);
+    assert!(serialized(&detail).len() <= DETAIL_CHUNK_MAX_BYTES);
+    assert_eq!(
+        inline_cache_value_bytes(&serialized(&detail), None),
+        envelope_bytes
+    );
 }

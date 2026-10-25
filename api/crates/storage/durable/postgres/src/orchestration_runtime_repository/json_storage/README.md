@@ -87,7 +87,7 @@ provider metrics ledgers, or unrelated metadata.
 
 ## Verification Entry
 
-`runtime_json_storage_tests` contains five real repository lifecycle tests using
+`runtime_json_storage_tests` contains real repository lifecycle tests using
 isolated schemas and the formal migrations. `_tests/codec.rs` covers marker
 collision, object-key collision, literal escapes and SQL/JSON-null distinction.
 It also carries the 29 bounded cases from the local JSON projection model, with

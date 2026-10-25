@@ -747,56 +747,11 @@ mod assistant_mcp_tests {
     use super::*;
 
     #[test]
-    fn split_at_char_boundaries_respects_utf8_and_reassembles() {
-        let value = format!("{}界{}", "a".repeat(9), "b".repeat(9));
-        let chunks = split_at_json_string_bytes(&value, 10).unwrap();
-        assert!(chunks
-            .iter()
-            .all(|chunk| { serde_json::to_vec(chunk).unwrap().len() <= 10 }));
-        assert!(chunks.len() >= 2);
-        assert_eq!(chunks.concat(), value);
-    }
-
-    #[test]
-    fn split_at_json_string_bytes_accounts_for_escape_expansion() {
-        let value = "\\\"\n\r\t\u{0000}界".repeat(20);
-        let chunks = split_at_json_string_bytes(&value, 32).unwrap();
-
-        assert!(chunks
-            .iter()
-            .all(|chunk| { serde_json::to_vec(chunk).unwrap().len() <= 32 }));
-        assert_eq!(chunks.concat(), value);
-    }
-
-    #[test]
     fn assistant_mcp_small_result_remains_inline() {
         assert!(!exceeds_inline_limit(
             &json!({"items": [1, 2, 3]}),
             DEFAULT_INLINE_CHARS,
         ));
-    }
-
-    #[test]
-    fn inline_cache_admission_counts_the_complete_envelope_at_the_exact_boundary() {
-        let empty = serialized(&inline_cache_value(&json!(""))).len();
-        let exact_detail = json!("a".repeat(DETAIL_CHUNK_MAX_BYTES - empty));
-        let over_detail = json!("a".repeat(DETAIL_CHUNK_MAX_BYTES - empty + 1));
-
-        assert_eq!(
-            serialized(&inline_cache_value(&exact_detail)).len(),
-            DETAIL_CHUNK_MAX_BYTES
-        );
-        assert!(serialized(&inline_cache_value(&over_detail)).len() > DETAIL_CHUNK_MAX_BYTES);
-    }
-
-    #[test]
-    fn inline_cache_admission_counts_utf8_and_escape_expansion() {
-        let detail = json!("界\\\"\n".repeat((DETAIL_CHUNK_MAX_BYTES - 12) / 9));
-        let serialized_size = serialized(&inline_cache_value(&detail)).len();
-
-        assert!(serialized_size > DETAIL_CHUNK_MAX_BYTES);
-        let raw_detail_size = serialized(&detail).len();
-        assert!(raw_detail_size <= DETAIL_CHUNK_MAX_BYTES);
     }
 
     #[test]
