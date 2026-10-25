@@ -436,3 +436,102 @@ async fn communication_dispatch_completes_with_one_business_pool_connection() {
     assert_eq!(store.pool().size(), 1);
     store.pool().close().await;
 }
+
+#[tokio::test]
+async fn communication_management_links_original_run_application_after_binding_changes() {
+    use control_plane::ports::{
+        CommunicationRepository, NotificationRepository, SaveNotificationInstanceInput,
+    };
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let (seeded, run) = queued(&store).await;
+    let actor = domain::ActorContext::root(seeded.actor_user_id, seeded.workspace_id, "root");
+    let notification_service =
+        control_plane::notifications::NotificationService::new(store.clone(), "fixture-key".into());
+    let channel = Uuid::now_v7();
+    let now = OffsetDateTime::now_utc();
+    store
+        .save_notification_instance(SaveNotificationInstanceInput {
+            record: domain::NotificationInstanceRecord {
+                id: channel,
+                workspace_id: seeded.workspace_id,
+                type_code: "fixture.communication".into(),
+                installation_id: None,
+                display_name: "Original channel".into(),
+                status: domain::NotificationInstanceStatus::Enabled,
+                config_json: json!({}),
+                configured_secret_fields: vec![],
+                created_at: now,
+                updated_at: now,
+            },
+            secret_config_json: json!({}),
+            master_key: "fixture-key".into(),
+            create: true,
+            initial_authorization: None,
+        })
+        .await
+        .unwrap();
+    let config = domain::CommunicationBindingInput {
+        application_id: run.application_id,
+        model: None,
+        reasoning_effort: None,
+        file_table_id: None,
+        mcp_instance_ids: vec![],
+        system_prompt: "Fixture".into(),
+    };
+    notification_service
+        .save_binding(&actor, channel, config.clone(), "fixture-tools".into())
+        .await
+        .unwrap();
+    let conversation = Uuid::now_v7();
+    let message = Uuid::now_v7();
+    sqlx::query("INSERT INTO communication_conversations(id,scope_id,instance_id,external_identity,external_conversation_key) VALUES($1,$2,$3,'alice','chat')")
+        .bind(conversation).bind(seeded.workspace_id).bind(channel).execute(store.pool()).await.unwrap();
+    sqlx::query("INSERT INTO communication_messages(id,scope_id,instance_id,conversation_id,external_identity,external_message_key,received_at_ms,run_id) VALUES($1,$2,$3,$4,'alice','message',42,$5)")
+        .bind(message).bind(seeded.workspace_id).bind(channel).bind(conversation).bind(run.id).execute(store.pool()).await.unwrap();
+    let replacement = Uuid::now_v7();
+    notification_service
+        .save_binding(
+            &actor,
+            channel,
+            domain::CommunicationBindingInput {
+                application_id: replacement,
+                ..config
+            },
+            "fixture-tools".into(),
+        )
+        .await
+        .unwrap();
+    let detail = notification_service
+        .management_message(&actor, message)
+        .await
+        .unwrap();
+    assert_eq!(detail.application_id, Some(run.application_id));
+    assert_eq!(detail.message.run_id, Some(run.id));
+    assert_ne!(detail.application_id, Some(replacement));
+    let list = notification_service
+        .management_messages(&actor, &Default::default())
+        .await
+        .unwrap();
+    assert_eq!(list.items[0].application_id, Some(run.application_id));
+    let conversations = notification_service
+        .management_conversations(&actor, &Default::default())
+        .await
+        .unwrap();
+    assert_eq!(
+        conversations.items[0]
+            .latest_message
+            .as_ref()
+            .unwrap()
+            .application_id,
+        Some(run.application_id)
+    );
+    assert_eq!(
+        store
+            .communication_run_application_id(seeded.workspace_id, run.id)
+            .await
+            .unwrap(),
+        Some(run.application_id)
+    );
+}

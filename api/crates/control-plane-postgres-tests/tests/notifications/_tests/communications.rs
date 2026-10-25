@@ -4,8 +4,8 @@ use domain::*;
 use serde_json::json;
 use uuid::Uuid;
 
-const KEY: &str = "communications-fixture-master-key";
-fn config() -> CommunicationBindingInput {
+pub(super) const KEY: &str = "communications-fixture-master-key";
+pub(super) fn config() -> CommunicationBindingInput {
     CommunicationBindingInput {
         application_id: Uuid::now_v7(),
         model: None,
@@ -15,7 +15,7 @@ fn config() -> CommunicationBindingInput {
         system_prompt: "Answer briefly".into(),
     }
 }
-fn authorization(w: Uuid, i: Uuid, r: i64) -> SaveNotificationAuthorizationInput {
+pub(super) fn authorization(w: Uuid, i: Uuid, r: i64) -> SaveNotificationAuthorizationInput {
     SaveNotificationAuthorizationInput {
         workspace_id: w,
         instance_id: i,
@@ -28,7 +28,7 @@ fn authorization(w: Uuid, i: Uuid, r: i64) -> SaveNotificationAuthorizationInput
         master_key: KEY.into(),
     }
 }
-fn received(key: &str, sender: &str, attachment: bool) -> CommunicationReceiveMessage {
+pub(super) fn received(key: &str, sender: &str, attachment: bool) -> CommunicationReceiveMessage {
     CommunicationReceiveMessage {
         provider_message_id: key.into(),
         conversation_id: "private-chat".into(),
@@ -49,7 +49,10 @@ fn received(key: &str, sender: &str, attachment: bool) -> CommunicationReceiveMe
         },
     }
 }
-async fn create_channel(store: &storage_durable_postgres::PgControlPlaneStore, w: Uuid) -> Uuid {
+pub(super) async fn create_channel(
+    store: &storage_durable_postgres::PgControlPlaneStore,
+    w: Uuid,
+) -> Uuid {
     let id = Uuid::now_v7();
     let now = time::OffsetDateTime::now_utc();
     store

@@ -16,6 +16,41 @@ where
         + RoleConsolePolicyReader
         + CommunicationRepository,
 {
+    pub async fn management_conversations(
+        &self,
+        actor: &ActorContext,
+        query: &domain::CommunicationManagementQuery,
+    ) -> Result<domain::CommunicationManagementPage<domain::CommunicationConversationListItem>>
+    {
+        self.manage(actor, "communications.management.conversations.list")
+            .await?;
+        self.repository
+            .communication_management_conversations(actor.current_workspace_id, query)
+            .await
+    }
+    pub async fn management_messages(
+        &self,
+        actor: &ActorContext,
+        query: &domain::CommunicationManagementQuery,
+    ) -> Result<domain::CommunicationManagementPage<domain::CommunicationMessageListItem>> {
+        self.manage(actor, "communications.management.messages.list")
+            .await?;
+        self.repository
+            .communication_management_messages(actor.current_workspace_id, query)
+            .await
+    }
+    pub async fn management_message(
+        &self,
+        actor: &ActorContext,
+        message_id: Uuid,
+    ) -> Result<domain::CommunicationMessageDetail> {
+        self.manage(actor, "communications.management.messages.get")
+            .await?;
+        self.repository
+            .communication_management_message(actor.current_workspace_id, message_id)
+            .await?
+            .ok_or_else(|| Error::NotFound("communication_message").into())
+    }
     pub async fn get_binding(
         &self,
         actor: &ActorContext,

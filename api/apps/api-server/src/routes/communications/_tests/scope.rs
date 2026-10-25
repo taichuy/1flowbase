@@ -57,3 +57,20 @@ async fn simultaneous_communication_invocations_do_not_share_identity() {
     );
     assert_eq!((left.as_str(), right.as_str()), ("alice", "bob"));
 }
+
+#[tokio::test]
+async fn delegated_history_cannot_use_workspace_management_even_for_same_channel_root() {
+    assert!(require_management_scope().is_ok());
+    with_scope(
+        CommunicationHistoryScope {
+            workspace_id: Uuid::now_v7(),
+            instance_id: Uuid::now_v7(),
+            external_identity: "alice".into(),
+        },
+        async {
+            assert!(require_management_scope().is_err());
+        },
+    )
+    .await;
+    assert!(require_management_scope().is_ok());
+}

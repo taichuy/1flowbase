@@ -11,7 +11,10 @@ export {
   listCommunicationMessages,
   listCommunicationFiles,
   retryCommunicationMessage,
-  getCommunicationFile
+  getCommunicationFile,
+  listCommunicationConversationOverview,
+  listCommunicationMessageOverview,
+  getCommunicationMessageDetail
 } from '@1flowbase/api-client';
 export const communicationBindingOptions = (scope: string, id?: string) =>
   queryOptions({

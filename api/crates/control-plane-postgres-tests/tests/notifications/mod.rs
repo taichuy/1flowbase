@@ -8,3 +8,6 @@ mod channels;
 
 #[path = "_tests/communications.rs"]
 mod communications;
+
+#[path = "_tests/communication_management.rs"]
+mod communication_management;

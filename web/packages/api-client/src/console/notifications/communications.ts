@@ -163,3 +163,81 @@ export const getCommunicationFile = (
     path: `${instancePath(id)}/files/${encodeURIComponent(attachment_id)}`,
     signal
   });
+
+/** Workspace management projections; scoped channel history remains a separate API. */
+export interface CommunicationManagementPage<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+export interface CommunicationMessageListItem extends Pick<
+  CommunicationMessage,
+  | 'id'
+  | 'conversation_id'
+  | 'received_at_ms'
+  | 'processing_status'
+  | 'send_status'
+  | 'failure_code'
+  | 'can_retry'
+  | 'run_id'
+> {
+  instance_id: string;
+  instance_display_name: string | null;
+  external_identity: string;
+  sender_display_name: string | null;
+  application_id: string | null;
+  content_preview: string | null;
+}
+export interface CommunicationConversationListItem extends CommunicationConversation {
+  instance_display_name: string | null;
+  latest_message: CommunicationMessageListItem | null;
+}
+export interface CommunicationMessageDetail extends CommunicationMessage {
+  instance_id: string;
+  instance_display_name: string | null;
+  external_identity: string;
+  sender_display_name: string | null;
+  application_id: string | null;
+  attachments: CommunicationAttachment[];
+}
+export interface CommunicationConversationListInput {
+  instance_id?: string;
+  conversation_id?: string;
+  page?: number;
+  page_size?: number;
+}
+export interface CommunicationMessageListInput extends CommunicationConversationListInput {
+  processing_status?: CommunicationMessage['processing_status'];
+  send_status?: CommunicationMessage['send_status'];
+}
+const managementQuery = (input: CommunicationMessageListInput) =>
+  new URLSearchParams(
+    Object.entries(input)
+      .filter(([, value]) => value !== undefined)
+      .map(([key, value]) => [key, String(value)])
+  );
+export const listCommunicationConversationOverview = (
+  input: CommunicationConversationListInput = {},
+  signal?: AbortSignal
+) =>
+  apiFetch<CommunicationManagementPage<CommunicationConversationListItem>>({
+    path: `${path}/conversations?${managementQuery(input)}`,
+    signal
+  });
+export const listCommunicationMessageOverview = (
+  input: CommunicationMessageListInput = {},
+  signal?: AbortSignal
+) =>
+  apiFetch<CommunicationManagementPage<CommunicationMessageListItem>>({
+    path: `${path}/messages?${managementQuery(input)}`,
+    signal
+  });
+export const getCommunicationMessageDetail = (
+  message_id: string,
+  signal?: AbortSignal
+) =>
+  apiFetch<CommunicationMessageDetail>({
+    path: `${path}/messages/${encodeURIComponent(message_id)}`,
+    signal
+  });

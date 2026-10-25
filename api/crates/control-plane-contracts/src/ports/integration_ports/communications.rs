@@ -65,6 +65,22 @@ pub enum CommunicationProgress {
 }
 #[async_trait]
 pub trait CommunicationRepository: Send + Sync {
+    async fn communication_management_conversations(
+        &self,
+        workspace_id: Uuid,
+        query: &CommunicationManagementQuery,
+    ) -> anyhow::Result<CommunicationManagementPage<CommunicationConversationListItem>>;
+    async fn communication_management_messages(
+        &self,
+        workspace_id: Uuid,
+        query: &CommunicationManagementQuery,
+    ) -> anyhow::Result<CommunicationManagementPage<CommunicationMessageListItem>>;
+    async fn communication_management_message(
+        &self,
+        workspace_id: Uuid,
+        message_id: Uuid,
+    ) -> anyhow::Result<Option<CommunicationMessageDetail>>;
+
     /// Original application is read from the linked durable run, independent of later channel edits.
     async fn communication_run_application_id(
         &self,

@@ -45,6 +45,9 @@ impl Dependencies {
     }
 }
 pub(crate) enum Input {
+    ManagementConversations(domain::CommunicationManagementQuery),
+    ManagementMessages(domain::CommunicationManagementQuery),
+    ManagementMessage(Uuid),
     Options(Option<Uuid>),
     Binding(Uuid),
     SaveBinding(Uuid, domain::CommunicationBindingInput),
@@ -53,6 +56,16 @@ pub(crate) enum Input {
     Files(Uuid, Uuid, PageQuery),
     File(Uuid, Uuid, FileQuery),
     Retry(Uuid, Uuid),
+}
+impl Input {
+    fn authorize_scope(&self) -> Result<(), ApiError> {
+        match self {
+            Self::ManagementConversations(_)
+            | Self::ManagementMessages(_)
+            | Self::ManagementMessage(_) => scope::require_management_scope(),
+            _ => Ok(()),
+        }
+    }
 }
 pub(crate) struct Output(pub Value);
 impl InterfaceContract for Input {
@@ -66,7 +79,7 @@ impl InterfaceContract for Input {
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
-            json!({"operation":match self{Self::Options(_)=>"options",Self::Binding(_)=>"binding",Self::SaveBinding(..)=>"save_binding",Self::Conversations(..)=>"conversations",Self::Messages(..)=>"messages",Self::Files(..)=>"files",Self::File(..)=>"file",Self::Retry(..)=>"retry"}}),
+            json!({"operation":match self{Self::ManagementConversations(_)=>"management_conversations",Self::ManagementMessages(_)=>"management_messages",Self::ManagementMessage(_)=>"management_message",Self::Options(_)=>"options",Self::Binding(_)=>"binding",Self::SaveBinding(..)=>"save_binding",Self::Conversations(..)=>"conversations",Self::Messages(..)=>"messages",Self::Files(..)=>"files",Self::File(..)=>"file",Self::Retry(..)=>"retry"}}),
         )
     }
 }
@@ -89,9 +102,21 @@ impl Dependencies {
         input: Input,
     ) -> ConsoleInterfaceFuture<'a, Output> {
         let actor = principal.actor();
+        if let Err(error) = input.authorize_scope() {
+            return Box::pin(async move { Err(ConsoleInterfaceTargetError(error)) });
+        }
         // Construct the selected operation synchronously so read-only MCP calls do not
         // retain the preparation frames of binding/provisioning and file operations.
         match input {
+            Input::ManagementConversations(q) => Box::pin(async move {
+                Ok(Output(serde_json::to_value(self.service.management_conversations(actor, &q).await?)?))
+            }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
+            Input::ManagementMessages(q) => Box::pin(async move {
+                Ok(Output(serde_json::to_value(self.service.management_messages(actor, &q).await?)?))
+            }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
+            Input::ManagementMessage(id) => Box::pin(async move {
+                Ok(Output(serde_json::to_value(self.service.management_message(actor, id).await?)?))
+            }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
             Input::Options(application_id) => Box::pin(async move {
                 let result = {
                 let (published_agent_flows, enabled_mcp_instances) =
@@ -315,6 +340,9 @@ pub(crate) fn compile_registry(
     )
 }
 pub(crate) const DECLARATIONS:&[ConsoleInterfaceDeclaration]=&[
+    ConsoleInterfaceDeclaration{interface_id:"communications.management.conversations.list",binding_id:"http.console.communications.management.conversations.list.v1",method:"GET",path:"/api/console/communications/conversations",mutating:false},
+    ConsoleInterfaceDeclaration{interface_id:"communications.management.messages.list",binding_id:"http.console.communications.management.messages.list.v1",method:"GET",path:"/api/console/communications/messages",mutating:false},
+    ConsoleInterfaceDeclaration{interface_id:"communications.management.messages.get",binding_id:"http.console.communications.management.messages.get.v1",method:"GET",path:"/api/console/communications/messages/:message_id",mutating:false},
     ConsoleInterfaceDeclaration{interface_id:"communications.options.get",binding_id:"http.console.communications.options.get.v1",method:"GET",path:"/api/console/communications/options",mutating:false},
     ConsoleInterfaceDeclaration{interface_id:"communications.binding.get",binding_id:"http.console.communications.binding.get.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/binding",mutating:false},
     ConsoleInterfaceDeclaration{interface_id:"communications.binding.update",binding_id:"http.console.communications.binding.update.v1",method:"PUT",path:"/api/console/communications/instances/:instance_id/binding",mutating:true},
@@ -324,3 +352,7 @@ pub(crate) const DECLARATIONS:&[ConsoleInterfaceDeclaration]=&[
     ConsoleInterfaceDeclaration{interface_id:"communications.files.get",binding_id:"http.console.communications.files.get.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/files/:attachment_id",mutating:false},
     ConsoleInterfaceDeclaration{interface_id:"communications.messages.retry",binding_id:"http.console.communications.messages.retry.v1",method:"POST",path:"/api/console/communications/instances/:instance_id/messages/:message_id/retry",mutating:true},
 ];
+
+#[cfg(test)]
+#[path = "_tests/management_scope.rs"]
+mod management_scope_tests;

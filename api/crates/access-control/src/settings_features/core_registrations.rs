@@ -15,6 +15,9 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             lifecycle:SettingsFeatureLifecycle::Active,
             console_surface:SettingsFeatureConsoleSurface{route_id:"settings.communications".to_owned(),surface_key:"communications".to_owned(),path:"/settings/communications".to_owned(),label_key:"auto.communications".to_owned(),description_key:"console.policy_groups.settings.system.notifications.description".to_owned(),order:510},
             api_routes:settings_api_routes(&[
+                ("GET","/api/console/communications/conversations"),
+                ("GET","/api/console/communications/messages"),
+                ("GET","/api/console/communications/messages/{message_id}"),
                 ("GET","/api/console/communications/options"),
                 ("GET","/api/console/communications/instances/{instance_id}/binding"),
                 ("PUT","/api/console/communications/instances/{instance_id}/binding"),

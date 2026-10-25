@@ -12,6 +12,7 @@ use uuid::Uuid;
 // Shared by history projection and the atomic retry write to prevent UI eligibility drift.
 const RETRY_ELIGIBILITY: &str = "m.send_status<>'unknown' AND (m.processing_status='failed' OR m.send_status='failed') AND (m.claim_id IS NULL OR m.claim_expires_at<=now()) AND EXISTS(SELECT 1 FROM notification_instances n WHERE n.id=m.instance_id AND n.workspace_id=m.scope_id AND n.status='enabled')";
 mod history;
+mod management;
 mod processing;
 mod receive;
 
@@ -77,6 +78,28 @@ fn page<T>(mut items: Vec<T>, limit: u32, id: impl Fn(&T) -> Uuid) -> Communicat
 
 #[async_trait]
 impl CommunicationRepository for PgControlPlaneStore {
+    async fn communication_management_conversations(
+        &self,
+        workspace_id: Uuid,
+        query: &CommunicationManagementQuery,
+    ) -> Result<CommunicationManagementPage<CommunicationConversationListItem>> {
+        management::conversations(self, workspace_id, query).await
+    }
+    async fn communication_management_messages(
+        &self,
+        workspace_id: Uuid,
+        query: &CommunicationManagementQuery,
+    ) -> Result<CommunicationManagementPage<CommunicationMessageListItem>> {
+        management::messages(self, workspace_id, query).await
+    }
+    async fn communication_management_message(
+        &self,
+        workspace_id: Uuid,
+        message_id: Uuid,
+    ) -> Result<Option<CommunicationMessageDetail>> {
+        management::detail(self, workspace_id, message_id).await
+    }
+
     async fn communication_run_application_id(
         &self,
         workspace_id: Uuid,

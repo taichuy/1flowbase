@@ -40,14 +40,29 @@ import { NotificationLogs } from './NotificationLogs';
 import { useNotificationTypeLocalization } from '../../../notifications/hooks/use-notification-type-localization';
 import './notifications-page.css';
 import { CommunicationHistory } from './communications/CommunicationHistory';
+import {
+  useCommunicationLocation,
+  navigateCommunication
+} from './communications/communication-navigation';
 
 export function NotificationsPage() {
   const { t } = useTranslation('notifications');
   const scope = useAuthStore(selectNavigationQueryScope);
+  const location = useCommunicationLocation();
   return (
     <section className="notifications-page">
       <Tabs
         key={scope}
+        activeKey={location.tab}
+        destroyOnHidden
+        onChange={(tab) =>
+          navigateCommunication({
+            tab: tab as typeof location.tab,
+            page: 1,
+            conversation_id: undefined,
+            message_id: undefined
+          })
+        }
         items={[
           {
             key: 'channels',
@@ -64,6 +79,16 @@ export function NotificationsPage() {
             label: t('send_receive_records'),
             children: (
               <Tabs
+                activeKey={location.record_tab}
+                destroyOnHidden
+                onChange={(record_tab) =>
+                  navigateCommunication({
+                    record_tab: record_tab as typeof location.record_tab,
+                    page: 1,
+                    conversation_id: undefined,
+                    message_id: undefined
+                  })
+                }
                 items={[
                   {
                     key: 'received',

@@ -41,6 +41,27 @@ pub(crate) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation as Op;
     ConsoleRouteAssembly::new()
         .route(
+            "/communications/conversations",
+            console_get(
+                management_conversations,
+                Op("communications.management.conversations.list".into()),
+            ),
+        )
+        .route(
+            "/communications/messages",
+            console_get(
+                management_messages,
+                Op("communications.management.messages.list".into()),
+            ),
+        )
+        .route(
+            "/communications/messages/:message_id",
+            console_get(
+                management_message,
+                Op("communications.management.messages.get".into()),
+            ),
+        )
+        .route(
             "/communications/options",
             console_get(options, Op("communications.options.get".into())),
         )
@@ -222,6 +243,52 @@ pub(crate) async fn retry(
         "communications.messages.retry",
         Input::Retry(id, message),
         true,
+    )
+    .await
+}
+
+#[utoipa::path(get,path="/api/console/communications/conversations",tag="Communications",operation_id="communications_management_conversations",params(("instance_id"=Option<Uuid>,Query,description="Channel filter"),("conversation_id"=Option<Uuid>,Query,description="Conversation filter"),("page"=Option<u32>,Query,description="Page number, defaults to 1"),("page_size"=Option<u32>,Query,description="Page size, defaults to 20, maximum 100")),responses((status=200,body=Value)))]
+pub(crate) async fn management_conversations(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Query(q): Query<domain::CommunicationManagementQuery>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(
+        state,
+        headers,
+        "communications.management.conversations.list",
+        Input::ManagementConversations(q),
+        false,
+    )
+    .await
+}
+#[utoipa::path(get,path="/api/console/communications/messages",tag="Communications",operation_id="communications_management_messages",params(("instance_id"=Option<Uuid>,Query,description="Channel filter"),("conversation_id"=Option<Uuid>,Query,description="Conversation filter"),("processing_status"=Option<String>,Query,description="Processing status filter"),("send_status"=Option<String>,Query,description="Send status filter"),("page"=Option<u32>,Query,description="Page number, defaults to 1"),("page_size"=Option<u32>,Query,description="Page size, defaults to 20, maximum 100")),responses((status=200,body=Value)))]
+pub(crate) async fn management_messages(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Query(q): Query<domain::CommunicationManagementQuery>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(
+        state,
+        headers,
+        "communications.management.messages.list",
+        Input::ManagementMessages(q),
+        false,
+    )
+    .await
+}
+#[utoipa::path(get,path="/api/console/communications/messages/{message_id}",tag="Communications",operation_id="communications_management_message",params(("message_id"=Uuid,Path,description="Received message ID")),responses((status=200,body=Value),(status=404,description="Message not found in this workspace")))]
+pub(crate) async fn management_message(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(
+        state,
+        headers,
+        "communications.management.messages.get",
+        Input::ManagementMessage(id),
+        false,
     )
     .await
 }

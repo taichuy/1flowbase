@@ -10,6 +10,15 @@ pub(crate) async fn with_scope<T>(
 ) -> T {
     COMMUNICATION_SCOPE.scope(scope, future).await
 }
+pub(crate) fn require_management_scope() -> Result<(), ApiError> {
+    if COMMUNICATION_SCOPE.try_with(|_| ()).is_ok() {
+        return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+            "communication_management_scope_denied",
+        )
+        .into());
+    }
+    Ok(())
+}
 pub(crate) fn for_channel(
     actor: &domain::ActorContext,
     instance_id: Uuid,

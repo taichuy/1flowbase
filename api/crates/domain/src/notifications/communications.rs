@@ -97,3 +97,56 @@ pub struct CommunicationPage<T> {
     pub items: Vec<T>,
     pub next_cursor: Option<Uuid>,
 }
+
+/// Console management pagination; independent of delegated history cursors.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommunicationManagementPage<T> {
+    pub items: Vec<T>,
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CommunicationManagementQuery {
+    pub instance_id: Option<Uuid>,
+    pub conversation_id: Option<Uuid>,
+    pub processing_status: Option<CommunicationProcessingStatus>,
+    pub send_status: Option<CommunicationSendStatus>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommunicationMessageListItem {
+    pub id: Uuid,
+    pub conversation_id: Uuid,
+    pub instance_id: Uuid,
+    pub instance_display_name: Option<String>,
+    pub external_identity: String,
+    pub sender_display_name: Option<String>,
+    pub received_at_ms: i64,
+    pub content_preview: Option<String>,
+    pub processing_status: CommunicationProcessingStatus,
+    pub send_status: CommunicationSendStatus,
+    pub failure_code: Option<String>,
+    pub can_retry: bool,
+    pub run_id: Option<Uuid>,
+    pub application_id: Option<Uuid>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommunicationConversationListItem {
+    #[serde(flatten)]
+    pub conversation: CommunicationConversation,
+    pub instance_display_name: Option<String>,
+    pub latest_message: Option<CommunicationMessageListItem>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommunicationMessageDetail {
+    #[serde(flatten)]
+    pub message: CommunicationMessage,
+    pub instance_id: Uuid,
+    pub instance_display_name: Option<String>,
+    pub external_identity: String,
+    pub sender_display_name: Option<String>,
+    pub application_id: Option<Uuid>,
+    pub attachments: Vec<CommunicationAttachment>,
+}

@@ -1,33 +1,31 @@
-import { useState } from 'react';
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
-import {
-  Alert,
-  Button,
-  Empty,
-  Flex,
-  List,
-  Select,
-  Space,
-  Tag,
-  Typography
-} from 'antd';
+import { useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Alert, Button, Empty, Flex, Select } from 'antd';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import { useTranslation } from 'react-i18next';
-import type {
-  CommunicationAttachment,
-  CommunicationMessage
-} from '@1flowbase/api-client';
-import {
-  listCommunicationConversations,
-  listCommunicationMessages,
-  listCommunicationFiles,
-  retryCommunicationMessage,
-  getCommunicationFile
-} from '../../../../notifications/api/communications';
+import type { CommunicationConversationListItem } from '@1flowbase/api-client';
+import { listCommunicationConversationOverview } from '../../../../notifications/api/communications';
 import { notificationInstancesOptions } from '../../../../notifications/api/queries';
 import { useAuthStore } from '../../../../../state/auth-store';
 import { selectNavigationQueryScope } from '../../../../../state/navigation-query-scope';
-import { ResizableDrawer } from '../../../../../shared/ui/resizable-drawer/ResizableDrawer';
+import {
+  DataTable,
+  type DataTableColumn
+} from '../../../../../shared/ui/data-table/DataTable';
+import { usePersistedDataTableConfiguration } from '../../../../../shared/ui/data-table/data-table-state';
 import { formatDateTime } from '../../../../../shared/i18n/format';
+import {
+  useCommunicationLocation,
+  navigateCommunication
+} from './communication-navigation';
+import {
+  CommunicationLink,
+  CommunicationRunLink,
+  ProcessingStatus,
+  DeliveryStatus
+} from './communication-presentation';
+import { CommunicationMessagesTable } from './CommunicationMessagesTable';
+import { CommunicationDetail } from './CommunicationDetail';
 
 export function CommunicationHistory({
   records = false
@@ -36,334 +34,236 @@ export function CommunicationHistory({
 }) {
   const { t } = useTranslation('notifications');
   const scope = useAuthStore(selectNavigationQueryScope);
+  const client = useQueryClient();
+  const location = useCommunicationLocation();
   const instances = useQuery(notificationInstancesOptions(scope));
-  const [instance_id, setInstanceId] = useState<string>();
-  const [conversation_id, setConversationId] = useState<string>();
-  const conversations = useInfiniteQuery({
-    queryKey: ['communications', scope, instance_id, 'conversations'],
-    enabled: !!instance_id,
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam, signal }) =>
-      listCommunicationConversations(
-        instance_id!,
-        { ...(pageParam ? { cursor: pageParam } : {}), limit: 20 },
-        signal
-      ),
-    getNextPageParam: (page) => page.next_cursor ?? undefined
+  const input = {
+    instance_id: location.instance_id,
+    page: location.page,
+    page_size: 20
+  };
+  const conversations = useQuery({
+    queryKey: ['communications', scope, 'management-conversations', input],
+    enabled: !records,
+    queryFn: ({ signal }) =>
+      listCommunicationConversationOverview(input, signal)
   });
-  return (
-    <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-      <Flex gap="small" wrap>
-        <Select
-          style={{ minWidth: 220 }}
-          aria-label={t('display_name')}
-          placeholder={t('select_communication_channel')}
-          value={instance_id}
-          options={instances.data?.map((i) => ({
-            value: i.id,
-            label: i.display_name
-          }))}
-          onChange={(id) => {
-            setInstanceId(id);
-            setConversationId(undefined);
-          }}
-        />
-        <Button
-          loading={conversations.isFetching}
-          disabled={!instance_id}
-          onClick={() => void conversations.refetch()}
-        >
-          {t('refresh')}
-        </Button>
-      </Flex>
-      {(instances.isError || conversations.isError) && (
-        <Alert type="error" title={t('history_failed')} />
-      )}
-      {!instance_id ? (
-        <Empty description={t('select_communication_channel')} />
-      ) : (
+  const filters = {
+    instance_id: location.instance_id,
+    processing_status: location.processing_status,
+    send_status: location.send_status
+  };
+  const resetSelection = {
+    page: 1,
+    conversation_id: undefined,
+    message_id: undefined,
+    conversation_page: 1
+  };
+  const toolbar = (
+    <Flex gap="small" wrap>
+      <Select
+        allowClear
+        className="notification-logs__filter"
+        aria-label={t('display_name')}
+        placeholder={t('all_channels')}
+        value={location.instance_id}
+        options={instances.data?.map((item) => ({
+          value: item.id,
+          label: item.display_name
+        }))}
+        onChange={(instance_id) =>
+          navigateCommunication({ ...resetSelection, instance_id })
+        }
+      />
+      {records && (
         <>
-          <List
-            loading={conversations.isPending}
-            dataSource={conversations.data?.pages.flatMap((p) => p.items) ?? []}
-            locale={{ emptyText: t('no_conversations') }}
-            renderItem={(item) => (
-              <List.Item
-                actions={[
-                  <Button
-                    key="detail"
-                    type="link"
-                    onClick={() => setConversationId(item.id)}
-                  >
-                    {t('detail')}
-                  </Button>
-                ]}
-              >
-                <List.Item.Meta
-                  title={item.sender_display_name ?? item.external_identity}
-                  description={item.external_conversation_key}
-                />
-              </List.Item>
-            )}
+          <Select
+            allowClear
+            className="notification-logs__filter"
+            aria-label={t('processing_status')}
+            placeholder={t('processing_status')}
+            value={location.processing_status}
+            options={[
+              { value: 'pending', label: t('processing_pending') },
+              { value: 'processing', label: t('processing_active') },
+              { value: 'succeeded', label: t('processing_succeeded') },
+              { value: 'failed', label: t('processing_failed') }
+            ]}
+            onChange={(processing_status) =>
+              navigateCommunication({ ...resetSelection, processing_status })
+            }
           />
-          {conversations.hasNextPage && (
-            <Button
-              loading={conversations.isFetchingNextPage}
-              onClick={() => void conversations.fetchNextPage()}
-            >
-              {t('load_more')}
-            </Button>
-          )}
+          <Select
+            allowClear
+            className="notification-logs__filter"
+            aria-label={t('send_status')}
+            placeholder={t('send_status')}
+            value={location.send_status}
+            options={[
+              { value: 'none', label: t('delivery_none') },
+              { value: 'pending', label: t('delivery_pending') },
+              { value: 'sending', label: t('delivery_sending') },
+              { value: 'succeeded', label: t('send_success') },
+              { value: 'failed', label: t('send_failure') },
+              { value: 'unknown', label: t('result_unconfirmed') }
+            ]}
+            onChange={(send_status) =>
+              navigateCommunication({ ...resetSelection, send_status })
+            }
+          />
         </>
       )}
-      {instance_id && conversation_id && (
-        <CommunicationConversationDetail
-          key={`${instance_id}:${conversation_id}`}
-          instance_id={instance_id}
-          conversation_id={conversation_id}
-          records={records}
-          onClose={() => setConversationId(undefined)}
-        />
-      )}
-    </Space>
+      <Button
+        onClick={() =>
+          navigateCommunication({
+            ...resetSelection,
+            instance_id: undefined,
+            processing_status: undefined,
+            send_status: undefined
+          })
+        }
+      >
+        {t('clear_filters')}
+      </Button>
+      <Button
+        icon={<ReloadOutlined />}
+        onClick={() =>
+          void client.invalidateQueries({ queryKey: ['communications', scope] })
+        }
+      >
+        {t('refresh')}
+      </Button>
+    </Flex>
   );
-}
-
-function CommunicationConversationDetail({
-  instance_id,
-  conversation_id,
-  records,
-  onClose
-}: {
-  instance_id: string;
-  conversation_id: string;
-  records: boolean;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation('notifications');
-  const scope = useAuthStore(selectNavigationQueryScope);
-  const csrfToken = useAuthStore((s) => s.csrfToken) ?? '';
-  const messages = useInfiniteQuery({
-    queryKey: [
-      'communications',
-      scope,
-      instance_id,
-      conversation_id,
-      'messages'
+  const columns = useMemo<
+    Array<DataTableColumn<CommunicationConversationListItem>>
+  >(
+    () => [
+      {
+        key: 'sender_display_name',
+        title: t('conversation_user'),
+        width: 180,
+        mobileRole: 'title',
+        render: (_, item) => (
+          <CommunicationLink
+            to={{
+              conversation_id: item.id,
+              message_id: undefined,
+              conversation_page: 1
+            }}
+          >
+            {item.sender_display_name ?? item.external_identity}
+          </CommunicationLink>
+        )
+      },
+      {
+        key: 'instance_display_name',
+        title: t('display_name'),
+        width: 180,
+        render: (_, item) => item.instance_display_name ?? t('deleted_channel')
+      },
+      {
+        key: 'latest_message.received_at_ms',
+        title: t('latest_message_at'),
+        width: 190,
+        render: (_, item) =>
+          item.latest_message
+            ? formatDateTime(
+                new Date(item.latest_message.received_at_ms).toISOString()
+              )
+            : '—'
+      },
+      {
+        key: 'latest_message.content_preview',
+        title: t('latest_message'),
+        width: 250,
+        render: (_, item) =>
+          item.latest_message ? (
+            <CommunicationLink
+              to={{
+                conversation_id: item.id,
+                message_id: item.latest_message.id,
+                conversation_page: 1
+              }}
+            >
+              {item.latest_message.content_preview || t('message_without_text')}
+            </CommunicationLink>
+          ) : (
+            '—'
+          )
+      },
+      {
+        key: 'latest_message.processing_status',
+        title: t('latest_processing_status'),
+        width: 180,
+        render: (_, item) =>
+          item.latest_message ? (
+            <ProcessingStatus status={item.latest_message.processing_status} />
+          ) : (
+            '—'
+          )
+      },
+      {
+        key: 'latest_message.send_status',
+        title: t('latest_send_status'),
+        width: 180,
+        render: (_, item) =>
+          item.latest_message ? (
+            <DeliveryStatus status={item.latest_message.send_status} />
+          ) : (
+            '—'
+          )
+      },
+      {
+        key: 'latest_message.run_id',
+        title: t('execution_logs'),
+        width: 180,
+        mobileRole: 'actions',
+        render: (_, item) =>
+          item.latest_message ? (
+            <CommunicationRunLink item={item.latest_message} />
+          ) : (
+            '—'
+          )
+      }
     ],
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam, signal }) =>
-      listCommunicationMessages(
-        instance_id,
-        conversation_id,
-        { ...(pageParam ? { cursor: pageParam } : {}), limit: 20 },
-        signal
-      ),
-    getNextPageParam: (p) => p.next_cursor ?? undefined
+    [t]
+  );
+  const configuration = usePersistedDataTableConfiguration({
+    columns,
+    storageKey: 'communications.conversations.columns'
   });
-  const files = useInfiniteQuery({
-    queryKey: ['communications', scope, instance_id, conversation_id, 'files'],
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam, signal }) =>
-      listCommunicationFiles(
-        instance_id,
-        conversation_id,
-        { ...(pageParam ? { cursor: pageParam } : {}), limit: 20 },
-        signal
-      ),
-    getNextPageParam: (p) => p.next_cursor ?? undefined
-  });
-  const retry = useMutation({
-    mutationFn: (message_id: string) =>
-      retryCommunicationMessage(instance_id, message_id, csrfToken),
-    onSuccess: () => messages.refetch()
-  });
-  const attachments = files.data?.pages.flatMap((p) => p.items) ?? [];
   return (
-    <ResizableDrawer
-      open
-      title={records ? t('send_receive_records') : t('conversation_detail')}
-      onClose={onClose}
-      resizeLabel={t('resize_drawer')}
-    >
-      <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-        <Button
-          loading={messages.isFetching || files.isFetching}
-          onClick={() => {
-            void messages.refetch();
-            void files.refetch();
-          }}
-        >
-          {t('refresh')}
-        </Button>
-        {(messages.isError || files.isError || retry.isError) && (
-          <Alert type="error" title={t('history_failed')} />
-        )}
-        <List
-          loading={messages.isPending}
-          dataSource={messages.data?.pages.flatMap((p) => p.items) ?? []}
-          locale={{ emptyText: t('empty') }}
-          renderItem={(item) => (
-            <List.Item>
-              <Space orientation="vertical" style={{ width: '100%' }}>
-                <Typography.Text type="secondary">
-                  {formatDateTime(new Date(item.received_at_ms).toISOString())}
-                </Typography.Text>
-                <Typography.Text strong>
-                  {t('received_message')}
-                </Typography.Text>
-                <Typography.Paragraph style={{ whiteSpace: 'pre-wrap' }}>
-                  {item.content ?? '—'}
-                </Typography.Paragraph>
-                <MessageStatus message={item} />
-                {attachments
-                  .filter((file) => file.message_id === item.id)
-                  .map((file) => (
-                    <CommunicationFile
-                      key={file.id}
-                      file={file}
-                      instance_id={instance_id}
-                    />
-                  ))}
-                {item.final_reply !== null && (
-                  <>
-                    <Typography.Text strong>
-                      {t('assistant_reply')}
-                    </Typography.Text>
-                    <Typography.Paragraph style={{ whiteSpace: 'pre-wrap' }}>
-                      {item.final_reply}
-                    </Typography.Paragraph>
-                  </>
-                )}
-                {item.can_retry && (
-                  <Button
-                    loading={retry.isPending && retry.variables === item.id}
-                    disabled={retry.isPending}
-                    onClick={() => retry.mutate(item.id)}
-                  >
-                    {t('retry_delivery')}
-                  </Button>
-                )}
-              </Space>
-            </List.Item>
-          )}
+    <section className="notifications-page">
+      {(instances.isError || (!records && conversations.isError)) && (
+        <Alert type="error" showIcon title={t('history_failed')} />
+      )}
+      {records ? (
+        <CommunicationMessagesTable
+          filters={filters}
+          page={location.page}
+          onPageChange={(page) => navigateCommunication({ page })}
+          toolbar={toolbar}
         />
-        {messages.hasNextPage && (
-          <Button
-            loading={messages.isFetchingNextPage}
-            onClick={() => void messages.fetchNextPage()}
-          >
-            {t('load_more')}
-          </Button>
-        )}
-        {files.hasNextPage && (
-          <Button
-            loading={files.isFetchingNextPage}
-            onClick={() => void files.fetchNextPage()}
-          >
-            {t('load_more_files')}
-          </Button>
-        )}
-      </Space>
-    </ResizableDrawer>
+      ) : (
+        <DataTable<CommunicationConversationListItem>
+          className="notifications-page__table"
+          columns={columns}
+          configuration={configuration}
+          rowKey="id"
+          dataSource={conversations.data?.items ?? []}
+          loading={conversations.isPending}
+          page={conversations.data?.page ?? location.page}
+          pageSize={20}
+          total={conversations.data?.total ?? 0}
+          onPageChange={(page) => navigateCommunication({ page })}
+          toolbar={toolbar}
+          emptyText={<Empty description={t('no_conversations')} />}
+        />
+      )}
+      {(location.conversation_id || location.message_id) && (
+        <CommunicationDetail />
+      )}
+    </section>
   );
-}
-
-export function MessageStatus({ message }: { message: CommunicationMessage }) {
-  const { t } = useTranslation('notifications');
-  const processing = {
-    pending: t('processing_pending'),
-    processing: t('processing_active'),
-    succeeded: t('processing_succeeded'),
-    failed: t('processing_failed')
-  };
-  const delivery = {
-    none: t('delivery_none'),
-    pending: t('delivery_pending'),
-    sending: t('delivery_sending'),
-    succeeded: t('send_success'),
-    failed: t('send_failure'),
-    unknown: t('result_unconfirmed')
-  };
-  return (
-    <Space wrap>
-      <Tag color={message.processing_status === 'failed' ? 'error' : undefined}>
-        {processing[message.processing_status]}
-      </Tag>
-      <Tag color={message.send_status === 'failed' ? 'error' : undefined}>
-        {delivery[message.send_status]}
-      </Tag>
-      {message.failure_code && (
-        <Typography.Text type="danger">
-          {t('failure_reason')}: {failureLabel(message.failure_code, t)}
-        </Typography.Text>
-      )}
-    </Space>
-  );
-}
-function CommunicationFile({
-  file,
-  instance_id
-}: {
-  file: CommunicationAttachment;
-  instance_id: string;
-}) {
-  const { t } = useTranslation('notifications');
-  const link = useMutation({
-    mutationFn: () => getCommunicationFile(instance_id, file.id)
-  });
-  return (
-    <Space wrap>
-      <Typography.Text>{file.file_name}</Typography.Text>
-      <Tag>
-        {file.status === 'ready'
-          ? t('file_ready')
-          : file.status === 'failed'
-            ? t('file_failed')
-            : t('file_pending')}
-      </Tag>
-      {file.status === 'ready' && file.file_table_id && file.file_record_id && (
-        <Button loading={link.isPending} onClick={() => link.mutate()}>
-          {t('file_access')}
-        </Button>
-      )}
-      {link.data?.url && (
-        <Typography.Link
-          href={link.data.url}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {t('download_file')}
-        </Typography.Link>
-      )}
-      {(file.failure_code || link.isError || (link.data && !link.data.url)) && (
-        <Typography.Text type="danger">
-          {file.failure_code
-            ? failureLabel(file.failure_code, t)
-            : t('file_access_failed')}
-        </Typography.Text>
-      )}
-    </Space>
-  );
-}
-
-function failureLabel(code: string, t: (key: string) => string) {
-  switch (code) {
-    case 'run_interrupted':
-      return t('failure_run_interrupted');
-    case 'send_interrupted':
-      return t('failure_send_interrupted');
-    case 'download_failed':
-      return t('failure_download_failed');
-    case 'upload_failed':
-      return t('failure_upload_failed');
-    case 'run_failed':
-      return t('failure_run_failed');
-    case 'no_final_answer':
-      return t('failure_no_final_answer');
-    case 'provider_rejected':
-      return t('failure_provider_rejected');
-    default:
-      return t('failure_reason_unavailable');
-  }
 }
