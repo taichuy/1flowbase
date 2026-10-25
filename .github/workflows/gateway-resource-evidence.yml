@@ -9,6 +9,9 @@ on:
       current_ref:
         type: string
         required: true
+      source_only:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       release_ref:
@@ -19,6 +22,10 @@ on:
         description: Source before the candidate changes
         type: string
         default: 0cfa6727d34b0c0805620e51a35d562d059ada0c
+      source_only:
+        description: Reuse completed resource evidence and run only source acceptance
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,6 +44,7 @@ env:
 
 jobs:
   compare:
+    if: ${{ inputs.source_only != true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     services:
@@ -196,6 +204,11 @@ jobs:
           evidence=tmp/test-governance/gateway-source-acceptance
           mkdir -p "$evidence"
           node --test scripts/node/ai-gateway-concurrency/resource-benchmark/_tests/*.test.cjs > "$evidence/node.log" 2>&1
+          export CARGO_BUILD_JOBS=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
+          cargo build --manifest-path api/Cargo.toml --locked --profile test -p runtime-extension-sdk --example managed_hook_worker --example managed_event_worker > "$evidence/worker-fixtures.log" 2>&1
+          strip --strip-debug api/target/debug/examples/managed_hook_worker api/target/debug/examples/managed_event_worker
+          export MANAGED_HOOK_WORKER_FIXTURE="$GITHUB_WORKSPACE/api/target/debug/examples/managed_hook_worker"
+          export MANAGED_EVENT_WORKER_FIXTURE="$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker"
           node scripts/node/test-backend.js --package runtime-extension-host --package storage-object --package orchestration-runtime --lib > "$evidence/runtime-storage.log" 2>&1
           for filter in conversation_history file_management_upload_tests file_access_tests; do
             node scripts/node/test-backend.js --package control-plane --lib --filter "$filter" > "$evidence/$filter.log" 2>&1

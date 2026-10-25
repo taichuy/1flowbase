@@ -14,6 +14,10 @@ on:
         description: Run the optional isolated three-source resource comparison
         type: boolean
         default: false
+      source_only:
+        description: Resource comparison entry runs only source acceptance
+        type: boolean
+        default: false
       release_ref:
         description: Published source for resource comparison
         type: string
@@ -27,7 +31,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ai-gateway-protocol-conformance-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ inputs.target_ref || github.sha }}
+  group: ai-gateway-protocol-conformance-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ inputs.target_ref || github.sha }}-${{ inputs.resource_comparison }}-${{ inputs.source_only }}
   cancel-in-progress: true
 
 env:
@@ -47,6 +51,7 @@ jobs:
     with:
       release_ref: ${{ inputs.release_ref }}
       current_ref: ${{ inputs.current_ref }}
+      source_only: ${{ inputs.source_only }}
 
   protocol-conformance:
     if: ${{ inputs.resource_comparison != true }}
