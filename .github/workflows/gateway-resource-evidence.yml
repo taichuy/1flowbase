@@ -31,7 +31,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: gateway-resource-evidence-${{ github.ref }}
+  group: gateway-resource-evidence-${{ github.ref }}-${{ inputs.source_only }}
   cancel-in-progress: false
 
 env:
