@@ -423,6 +423,15 @@ async fn execute_descriptor_model_operation(
             .await?;
     }
     let output = result.map_err(map_runtime_error)?;
+    // Descriptor-backed writes (including ordered-tree CRUD, moves and subtree deletes)
+    // share the generic get/list caches. Invalidate after commit, before optional audit work.
+    if operation.data_action != runtime_core::runtime_acl::RuntimeDataAction::View {
+        if let Some(metadata) =
+            runtime_records_cacheable_metadata(adapter, credential.actor(), &model_code)
+        {
+            bump_runtime_records_cache_version(adapter, &metadata).await;
+        }
+    }
     append_api_key_runtime_audit(
         adapter,
         &credential,
