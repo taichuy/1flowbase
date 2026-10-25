@@ -24,27 +24,65 @@ async fn operation_store(store: &PgControlPlaneStore) -> (PgControlPlaneStore, i
     (PgControlPlaneStore::new(pool), pid)
 }
 
-async fn wait_for_blocker(store: &PgControlPlaneStore, waiter: i32, owner: i32) -> String {
-    tokio::time::timeout(StdDuration::from_secs(10), async {
+async fn backend_states(store: &PgControlPlaneStore, waiter: i32, owners: &[i32]) -> Value {
+    let mut pids = owners.to_vec();
+    pids.push(waiter);
+    sqlx::query_scalar(
+        "select coalesce(jsonb_agg(jsonb_build_object(
+            'pid',pid,'state',state,'wait_event_type',wait_event_type,
+            'wait_event',wait_event,'blocking_pids',pg_blocking_pids(pid),
+            'query',query) order by pid),'[]'::jsonb)
+         from pg_stat_activity where pid=any($1)
+            or pid=any(pg_blocking_pids($2))",
+    )
+    .bind(&pids)
+    .bind(waiter)
+    .fetch_one(store.pool())
+    .await
+    .unwrap()
+}
+
+async fn wait_for_blocker<T: std::fmt::Debug>(
+    store: &PgControlPlaneStore,
+    stage: &str,
+    waiter: i32,
+    owners: &[i32],
+    worker: &mut tokio::task::JoinHandle<T>,
+) -> String {
+    let observe = async {
         loop {
-            let query: Option<String> = sqlx::query_scalar(
-                "select query from pg_stat_activity where pid=$1
-                 and state='active' and wait_event_type='Lock'
-                 and $2=any(pg_blocking_pids(pid))",
+            let state: Option<(String, Vec<i32>)> = sqlx::query_as(
+                "select query,pg_blocking_pids(pid) from pg_stat_activity where pid=$1
+                 and state='active' and wait_event_type='Lock'",
             )
             .bind(waiter)
-            .bind(owner)
             .fetch_optional(store.pool())
             .await
             .unwrap();
-            if let Some(query) = query {
-                return query;
+            if let Some((query, blockers)) = state {
+                if owners.iter().any(|owner| blockers.contains(owner)) {
+                    return query;
+                }
             }
             tokio::task::yield_now().await;
         }
-    })
-    .await
-    .expect("the named backend must reach the expected lock barrier")
+    };
+    tokio::select! {
+        result = &mut *worker => {
+            let state = backend_states(store, waiter, owners).await;
+            panic!("{stage}: worker exited before its barrier; waiter={waiter}, expected_owners={owners:?}, result={result:?}, pg_state={state}");
+        }
+        result = tokio::time::timeout(StdDuration::from_secs(10), observe) => {
+            let state = backend_states(store, waiter, owners).await;
+            match result {
+                Ok(query) => {
+                    eprintln!("{stage}: waiter={waiter}, expected_owners={owners:?}, pg_state={state}");
+                    query
+                }
+                Err(error) => panic!("{stage}: barrier timed out; waiter={waiter}, expected_owners={owners:?}, pg_state={state}, error={error}"),
+            }
+        }
+    }
 }
 
 async fn claim_lock_available(store: &PgControlPlaneStore, claim: Uuid) -> bool {
@@ -202,14 +240,24 @@ async fn native_log_deletion_serializes_terminal_callback_claim_replay_before_ch
         .await
         .unwrap();
     let (delete_store, delete_pid) = operation_store(&store).await;
-    let deletion =
+    let mut deletion =
         tokio::spawn(async move { delete_store.advance_agent_logs_delete_job(job.job_id).await });
-    let deletion_query = wait_for_blocker(&store, delete_pid, barrier_pid).await;
+    let deletion_query = wait_for_blocker(
+        &store,
+        "deletion waits for task after locking native parents",
+        delete_pid,
+        &[barrier_pid],
+        &mut deletion,
+    )
+    .await;
     assert!(deletion_query.contains("application_run_log_tasks"));
 
     // Controlled negative: the former terminal replay order owns the claim
-    // before its progress trigger tries to update the task. Our lock oracle
-    // must reject that order while the real deleter already owns the parents.
+    // before its progress trigger can finish updating the task. The upsert can
+    // wait on either deletion's parent FK locks or our task barrier; requiring
+    // only the latter assumes a PostgreSQL constraint-check order. Both expose
+    // the same inversion: a child is held while a parent/derived owner is awaited.
+    // The green path below still requires the exact early conversation guard.
     let mut negative_tx = store.pool().begin().await.unwrap();
     let negative_pid: i32 = sqlx::query_scalar("select pg_backend_pid()")
         .fetch_one(&mut *negative_tx)
@@ -225,7 +273,7 @@ async fn native_log_deletion_serializes_terminal_callback_claim_replay_before_ch
         .await
         .unwrap();
     let claim_id = acquired.claim.id;
-    let negative = tokio::spawn(async move {
+    let mut negative = tokio::spawn(async move {
         let result = sqlx::query(
             "update flow_run_resume_claims set status='succeeded',
              completed_at=coalesce(completed_at,now()),updated_at=now() where id=$1",
@@ -236,7 +284,14 @@ async fn native_log_deletion_serializes_terminal_callback_claim_replay_before_ch
         negative_tx.rollback().await.unwrap();
         result
     });
-    let negative_query = wait_for_blocker(&store, negative_pid, barrier_pid).await;
+    let negative_query = wait_for_blocker(
+        &store,
+        "negative child-first progress waits for deletion parent or task",
+        negative_pid,
+        &[delete_pid, barrier_pid],
+        &mut negative,
+    )
+    .await;
     assert!(negative_query.contains("update flow_run_resume_claims"));
     assert!(
         !claim_lock_available(&store, claim_id).await,
@@ -262,9 +317,16 @@ async fn native_log_deletion_serializes_terminal_callback_claim_replay_before_ch
     );
 
     let (replay_store, replay_pid) = operation_store(&store).await;
-    let replay =
+    let mut replay =
         tokio::spawn(async move { replay_store.acquire_resume_claim(&replay_input).await });
-    let replay_query = wait_for_blocker(&store, replay_pid, delete_pid).await;
+    let replay_query = wait_for_blocker(
+        &store,
+        "real replay waits for deletion before locking claim",
+        replay_pid,
+        &[delete_pid],
+        &mut replay,
+    )
+    .await;
     assert!(
         replay_query.contains("application_run_lock_native_projection"),
         "real replay must wait on the conversation owner before touching claims"

@@ -1141,9 +1141,10 @@ async fn assert_lossless_task_input_readers(
     assert_eq!(user.content, expected);
 }
 
-// Exercise SQL's historical-source paths as well as the normal projected-row
-// fast path. Only derived fixture rows are removed, under their owner lock,
-// and the transaction rolls back so the real reader fixtures remain intact.
+// Remove only this isolated fixture's derived rows, then exercise the real
+// repository readers through their normal pooled connections. Restore identical
+// saved rows afterward; neither source facts nor GET-driven projection writes
+// are needed to recover the retained current input.
 async fn assert_lossless_retained_input_without_message_projection(
     store: &PgControlPlaneStore,
     run_id: Uuid,
@@ -1155,24 +1156,38 @@ async fn assert_lossless_retained_input_without_message_projection(
         .execute(&mut *tx)
         .await
         .unwrap();
-    sqlx::query("delete from application_run_conversation_message_items where flow_run_id=$1")
+    let application_id: Uuid =
+        sqlx::query_scalar("select application_id from flow_runs where id=$1")
+            .bind(run_id)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+    let saved: Vec<Value> = sqlx::query_scalar(
+        "select to_jsonb(m) from application_run_conversation_message_items m where flow_run_id=$1 and is_current and (role='user' or query is not null)"
+    ).bind(run_id).fetch_all(&mut *tx).await.unwrap();
+    assert!(!saved.is_empty());
+    sqlx::query("delete from application_run_conversation_message_items where flow_run_id=$1 and is_current and (role='user' or query is not null)")
+        .bind(run_id).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+
+    assert_lossless_task_input_readers(store, application_id, run_id, expected).await;
+    let still_missing: i64 = sqlx::query_scalar(
+        "select count(*) from application_run_conversation_message_items where flow_run_id=$1 and is_current and (role='user' or query is not null)"
+    ).bind(run_id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(
+        still_missing, 0,
+        "readers must not rebuild missing derived rows"
+    );
+
+    let mut tx = store.pool().begin().await.unwrap();
+    sqlx::query("select application_run_lock_native_projection($1)")
         .bind(run_id)
         .execute(&mut *tx)
         .await
         .unwrap();
-    let (safe, original): (String, Option<String>) = sqlx::query_as(
-        "select input_text,input_original from application_run_log_task_user_input_source($1)",
-    )
-    .bind(run_id)
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
-    assert_eq!(safe, expected.replace('\0', "\\u0000"));
-    let restored = original
-        .map(|raw| serde_json::from_str::<String>(&raw).unwrap())
-        .unwrap_or(safe);
-    assert_eq!(restored, expected);
-    tx.rollback().await.unwrap();
+    sqlx::query("insert into application_run_conversation_message_items select * from jsonb_populate_recordset(null::application_run_conversation_message_items,$1)")
+        .bind(json!(saved)).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
 }
 
 #[tokio::test]

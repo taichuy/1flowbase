@@ -1,19 +1,19 @@
--- Select searchable input and encoded original from the same source. Fast
--- message paths never load retained raw input/media. Original JSON stays encoded
--- until the Rust boundary: PostgreSQL text/JSONB cannot represent U+0000.
+-- Select searchable input and its lossless source from the same branch. Fast
+-- message paths never load retained raw input/media. Retained JSON stays opaque
+-- until Rust: even PostgreSQL JSON path extraction rejects encoded U+0000.
 create or replace function application_run_log_task_user_input_source(run_id uuid)
-returns table(input_text text,input_original text)
+returns table(input_text text,input_original text,input_raw_source text,input_raw_path text[],input_raw_mode text)
 language plpgsql stable as $$
-declare source_run record; retained record; selected_text text; original_source json;
+declare source_run record; retained record; selected_text text;
 begin
     return query
-        select m.query,m.raw_json_payloads->>'query'
+        select m.query,m.raw_json_payloads->>'query',null::text,null::text[],null::text
         from application_run_conversation_message_items m
         where m.flow_run_id=$1 and m.is_current and m.query ~ '[^[:space:]]'
         order by m.display_sequence desc,m.id limit 1;
     if found then return; end if;
     return query
-        select m.content,m.raw_json_payloads->>'content'
+        select m.content,m.raw_json_payloads->>'content',null::text,null::text[],null::text
         from application_run_conversation_message_items m
         where m.flow_run_id=$1 and m.is_current and m.role='user'
           and m.content ~ '[^[:space:]]'
@@ -27,8 +27,8 @@ begin
         selected_text := source_run.log_context #>> '{prompt,content}';
         if jsonb_typeof(source_run.log_context #> '{prompt,content}')='string'
             and selected_text ~ '[^[:space:]]' then
-            return query select selected_text,
-                ((source_run.raw_json_payloads->>'log_context')::json #> '{prompt,content}')::text;
+            return query select selected_text,null::text,
+                source_run.raw_json_payloads->>'log_context',array['prompt','content'],'string'::text;
             return;
         end if;
         if jsonb_typeof(source_run.log_context #> '{prompt,content}')='array' then
@@ -37,17 +37,8 @@ begin
                 with ordinality blocks(part,position)
             where jsonb_typeof(part->'text')='string';
             if selected_text ~ '[^[:space:]]' then
-                original_source := (source_run.raw_json_payloads->>'log_context')::json #> '{prompt,content}';
-                -- Join encoded string interiors, never decode NUL into PostgreSQL
-                -- text. Escaped backslashes remain distinct from encoded NUL characters.
-                return query select selected_text,case when original_source is not null then
-                    (select '"' || string_agg(substring(
-                        (original_source -> (position::integer-1) -> 'text')::text
-                        from 2 for char_length((original_source -> (position::integer-1) -> 'text')::text)-2),
-                        E'\\n' order by position) || '"'
-                     from jsonb_array_elements(source_run.log_context #> '{prompt,content}')
-                         with ordinality blocks(part,position)
-                     where jsonb_typeof(part->'text')='string') end;
+                return query select selected_text,null::text,
+                    source_run.raw_json_payloads->>'log_context',array['prompt','content'],'text_array'::text;
                 return;
             end if;
         end if;
@@ -64,12 +55,10 @@ begin
     ) candidates where jsonb_typeof(value)='string' and (value #>> '{}') ~ '[^[:space:]]'
     order by source,key_position limit 1;
     if found then
-        original_source := (source_run.raw_json_payloads->>'input_payload')::json;
-        if retained.source=1 then
-            original_source := case when source_run.input_payload ? 'node-start'
-                then original_source->'node-start' else original_source->'start' end;
-        end if;
-        return query select retained.value,(original_source->retained.input_key)::text;
+        return query select retained.value,null::text,source_run.raw_json_payloads->>'input_payload',
+            case when retained.source=0 then array[retained.input_key]
+                 when source_run.input_payload ? 'node-start' then array['node-start',retained.input_key]
+                 else array['start',retained.input_key] end,'string'::text;
     end if;
 end;
 $$;
@@ -294,7 +283,8 @@ create trigger application_run_log_claim_progress
     for each row execute function application_run_log_callback_progress_refresh();
 
 -- Repair only derived native tasks from retained facts. A GET never writes.
-select application_run_log_task_refresh(id) from application_run_log_tasks
-where source_kind='native' and (
-    nullif(btrim(user_input),'') is null
-    or (status='waiting_callback' and final_output is not null));
+select application_run_log_task_refresh(t.id) from application_run_log_tasks t
+join flow_runs f on f.id=t.id
+where t.source_kind='native' and f.log_context is not null and (
+    nullif(btrim(t.user_input),'') is null
+    or (t.status='waiting_callback' and t.final_output is not null));

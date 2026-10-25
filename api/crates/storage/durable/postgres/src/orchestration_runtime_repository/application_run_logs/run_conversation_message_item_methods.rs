@@ -568,6 +568,9 @@ impl PgControlPlaneStore {
                     nullif(btrim(flow_runs.input_payload #>> '{start,input}'), '')
                 ) end as query,
                 recovered.input_original as query_original,
+                recovered.input_raw_source as query_raw_source,
+                recovered.input_raw_path as query_raw_path,
+                recovered.input_raw_mode as query_raw_mode,
                 coalesce(
                     nullif(btrim(flow_runs.input_payload #>> '{model}'), ''),
                     nullif(btrim(flow_runs.input_payload #>> '{node-start,model}'), ''),
@@ -689,6 +692,9 @@ fn application_run_task_message_items_cte() -> &'static str {
             t.status, t.started_at, t.finished_at, $3::integer as projection_version,
             t.created_at,t.updated_at,
             jsonb_strip_nulls(jsonb_build_object('query',recovered.input_original)) as raw_json_payloads,
+            recovered.input_raw_source as query_raw_source,
+            recovered.input_raw_path as query_raw_path,
+            recovered.input_raw_mode as query_raw_mode,
             case when t.outcome='final_answer_observed' and t.final_output is not null
                 then 'persisted_answer'
                 when t.projection_settled_at is not null and t.projection_output_source='observed_output'
@@ -713,6 +719,7 @@ fn run_conversation_message_items_select_sql(
             source_kind,role,content,query,model,answer,detail_run_id,can_open_detail,
             raw_json_payloads ->> 'content' as content_original,
             raw_json_payloads ->> 'query' as query_original,
+            query_raw_source,query_raw_path,query_raw_mode,
             raw_json_payloads ->> 'answer' as answer_original,
             is_current,status,started_at,finished_at,projection_version,created_at,updated_at,
             output_source
@@ -736,7 +743,7 @@ fn map_application_run_conversation_message_item(
         source_kind: row.try_get("source_kind")?,
         role: row.try_get("role")?,
         content: original_optional_text(&row, "content")?,
-        query: original_optional_text(&row, "query")?,
+        query: application_run_log_current_input_text(&row, "query")?,
         model: row.try_get("model")?,
         answer: original_optional_text(&row, "answer")?,
         detail_run_id: row.try_get("detail_run_id")?,

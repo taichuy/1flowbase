@@ -66,6 +66,7 @@ impl PgControlPlaneStore {
                         filter (where messages.role = 'user')
                     )[1] as query,
                     null::text as query_original,
+                    null::text as query_raw_source,null::text[] as query_raw_path,null::text as query_raw_mode,
                     null::text as model,
                     (
                         array_agg(messages.content order by messages.sequence asc)
@@ -95,6 +96,7 @@ impl PgControlPlaneStore {
                 union all
                 select t.id,t.status,coalesce(recovered.input_text,t.user_input) as query,
                     recovered.input_original as query_original,
+                    recovered.input_raw_source as query_raw_source,recovered.input_raw_path as query_raw_path,recovered.input_raw_mode as query_raw_mode,
                     coalesce((select m.model from application_run_conversation_message_items m
                         where m.flow_run_id=coalesce(t.final_output_run_id,t.id) and m.model is not null
                         order by m.is_current desc,m.display_sequence desc limit 1),t.requested_model_id) as model,
@@ -113,7 +115,7 @@ impl PgControlPlaneStore {
                     id,
                     status,
                     query,
-                    query_original,
+                    query_original,query_raw_source,query_raw_path,query_raw_mode,
                     model,
                     answer,
                     started_at,
@@ -132,7 +134,7 @@ impl PgControlPlaneStore {
                 id,
                 status,
                 query,
-                query_original,
+                query_original,query_raw_source,query_raw_path,query_raw_mode,
                 model,
                 answer,
                 started_at,
@@ -153,7 +155,7 @@ impl PgControlPlaneStore {
         let items = rows
             .into_iter()
             .map(|row| {
-                let query = original_optional_text(&row, "query")?;
+                let query = application_run_log_current_input_text(&row, "query")?;
                 let mut summary = map_application_conversation_run_summary(row)?;
                 summary.query = query;
                 Ok(summary)

@@ -95,8 +95,19 @@ jobs:
           set -euo pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration application_logs::native_log_deletion > tmp/test-governance/agent-logs-regression/native-deletion.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/native-deletion.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/native-deletion.log
+      - name: Callback resume lifecycle
+        if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration callback_resume > tmp/test-governance/agent-logs-regression/callback-resume.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/callback-resume.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/callback-resume.log
+      - name: Upload core regression evidence before broader consumers
+        if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: agent-logs-core
+          path: tmp/test-governance/agent-logs-regression
       - name: Canonical protocol and deletion scope
         if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
         shell: bash
