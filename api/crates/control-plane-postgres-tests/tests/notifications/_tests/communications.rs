@@ -507,6 +507,20 @@ async fn communication_expired_claims_recover_without_repeating_unknown_sends() 
         .unwrap()
         .unwrap();
     assert_eq!(third.message.run_id, Some(reserved_run_id));
+    let (restored_scope, restored_binding) = store
+        .communication_context_for_run(w.id, reserved_run_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(restored_scope.instance_id, channel);
+    assert_eq!(restored_scope.external_identity, "alice");
+    assert_eq!(restored_binding.actor_user_id, root.id);
+    assert!(store
+        .communication_context_for_run(Uuid::now_v7(), reserved_run_id)
+        .await
+        .unwrap()
+        .is_none());
+
     assert!(!third.message.can_retry);
     let key = CommunicationClaim {
         claim_id: third.claim_id,

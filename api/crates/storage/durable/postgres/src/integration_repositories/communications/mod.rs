@@ -77,6 +77,24 @@ fn page<T>(mut items: Vec<T>, limit: u32, id: impl Fn(&T) -> Uuid) -> Communicat
 
 #[async_trait]
 impl CommunicationRepository for PgControlPlaneStore {
+    async fn communication_context_for_run(
+        &self,
+        workspace_id: Uuid,
+        run_id: Uuid,
+    ) -> Result<Option<(CommunicationHistoryScope, CommunicationBindingRecord)>> {
+        let row=sqlx::query("SELECT b.*,c.external_identity FROM communication_messages m JOIN communication_conversations c ON c.id=m.conversation_id AND c.workspace_id=m.workspace_id AND c.instance_id=m.instance_id JOIN communication_bindings b ON b.instance_id=m.instance_id AND b.workspace_id=m.workspace_id WHERE m.workspace_id=$1 AND m.run_id=$2")
+            .bind(workspace_id).bind(run_id).fetch_optional(self.pool()).await?;
+        row.map(|row| {
+            let scope = CommunicationHistoryScope {
+                workspace_id,
+                instance_id: row.get("instance_id"),
+                external_identity: row.get("external_identity"),
+            };
+            Ok((scope, binding(row)?))
+        })
+        .transpose()
+    }
+
     async fn save_communication_binding(
         &self,
         record: CommunicationBindingRecord,

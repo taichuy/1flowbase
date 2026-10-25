@@ -36,6 +36,7 @@ CREATE TABLE communication_messages (
     claim_expires_at timestamptz,
     UNIQUE(workspace_id,instance_id,external_identity,external_message_key)
 );
+CREATE UNIQUE INDEX communication_messages_run_idx ON communication_messages(run_id) WHERE run_id IS NOT NULL;
 CREATE INDEX communication_messages_queue_idx ON communication_messages(workspace_id,instance_id,conversation_id,id);
 CREATE TABLE communication_attachments (
     id uuid PRIMARY KEY,

@@ -65,6 +65,13 @@ pub enum CommunicationProgress {
 }
 #[async_trait]
 pub trait CommunicationRepository: Send + Sync {
+    /// Restore trusted communication authority from a committed run association, not request JSON.
+    async fn communication_context_for_run(
+        &self,
+        workspace_id: Uuid,
+        run_id: Uuid,
+    ) -> anyhow::Result<Option<(CommunicationHistoryScope, CommunicationBindingRecord)>>;
+
     async fn save_communication_binding(
         &self,
         binding: CommunicationBindingRecord,
