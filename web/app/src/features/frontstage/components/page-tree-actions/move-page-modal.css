@@ -22,3 +22,7 @@
   border-radius: 4px;
   cursor: grab;
 }
+
+.move-page-modal__row[draggable='true'] {
+  cursor: grab;
+}

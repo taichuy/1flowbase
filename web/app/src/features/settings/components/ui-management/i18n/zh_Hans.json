@@ -75,5 +75,14 @@
   "extension_center_tab": "UI 组件",
   "go_to_ui_management": "前往 UI 管理",
   "plugin_template_overwrite_warning": "此模板由插件提供。首次启用及插件升级将在重启时应用内置模板，覆盖您的修改。需要保留时，请提前保存自定义代码。普通重启及同版本重新启用保留您的修改。",
-  "plugin_template_ownership": "插件：{{owner_plugin_code}} · 设置功能：{{owner_feature_id}} · 已应用版本：{{applied_plugin_version}}"
+  "plugin_template_ownership": "插件：{{owner_plugin_code}} · 设置功能：{{owner_feature_id}} · 已应用版本：{{applied_plugin_version}}",
+  "routes": "路由管理",
+  "routes_hint": "拖动页面或分组，调整顺序或移入其他分组；放下后自动保存。",
+  "routes_readonly": "当前仅可查看，移动需要页面设计权限。",
+  "routes_empty": "暂无页面或分组",
+  "routes_load_failed": "导航加载失败，请重试。",
+  "routes_move_failed": "移动失败，请重试。",
+  "routes_workspace_missing": "当前工作区不可用。",
+  "routes_retry": "重试",
+  "routes_saving": "正在保存…"
 }

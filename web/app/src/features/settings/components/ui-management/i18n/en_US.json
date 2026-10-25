@@ -75,5 +75,14 @@
   "extension_center_tab": "UI components",
   "go_to_ui_management": "Go to UI management",
   "plugin_template_overwrite_warning": "This template is provided by a plugin. First activation and plugin upgrades apply the bundled template at restart, overwriting your edits. Save custom code beforehand. Ordinary restarts and re-enabling the same version preserve your edits.",
-  "plugin_template_ownership": "Plugin: {{owner_plugin_code}} · Settings feature: {{owner_feature_id}} · Applied version: {{applied_plugin_version}}"
+  "plugin_template_ownership": "Plugin: {{owner_plugin_code}} · Settings feature: {{owner_feature_id}} · Applied version: {{applied_plugin_version}}",
+  "routes": "Route management",
+  "routes_hint": "Drag pages or groups to reorder them or move them into another group. Changes save on drop.",
+  "routes_readonly": "Read only. Moving nodes requires page design permission.",
+  "routes_empty": "No pages or groups yet",
+  "routes_load_failed": "Could not load navigation. Please retry.",
+  "routes_move_failed": "Move failed. Please retry.",
+  "routes_workspace_missing": "The current workspace is unavailable.",
+  "routes_retry": "Retry",
+  "routes_saving": "Saving…"
 }

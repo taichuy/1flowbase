@@ -2,6 +2,7 @@ import { Grid, Tabs } from 'antd';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 
+import { RouteManagementTab } from './RouteManagementTab';
 import { CodeTemplatesTab } from './CodeTemplatesTab';
 import { ComponentRecordsTab } from './ComponentRecordsTab';
 
@@ -14,7 +15,9 @@ export function UiManagementPanel({ canManage }: { canManage: boolean }) {
   });
   const active = pathname.endsWith('/components')
     ? 'components'
-    : 'code-templates';
+    : pathname.endsWith('/routes')
+      ? 'routes'
+      : 'code-templates';
   const fillStyle =
     screens.lg !== false ? { height: '100%', minHeight: 0 } : undefined;
 
@@ -26,9 +29,11 @@ export function UiManagementPanel({ canManage }: { canManage: boolean }) {
       onChange={(key) =>
         navigate({
           to:
-            key === 'components'
-              ? '/settings/ui-management/components'
-              : '/settings/ui-management/code-templates'
+            key === 'routes'
+              ? '/settings/ui-management/routes'
+              : key === 'components'
+                ? '/settings/ui-management/components'
+                : '/settings/ui-management/code-templates'
         })
       }
       items={[
@@ -43,6 +48,12 @@ export function UiManagementPanel({ canManage }: { canManage: boolean }) {
           label: t('components'),
           style: fillStyle,
           children: <ComponentRecordsTab canManage={canManage} />
+        },
+        {
+          key: 'routes',
+          label: t('routes'),
+          style: fillStyle,
+          children: <RouteManagementTab canManage={canManage} />
         }
       ]}
     />

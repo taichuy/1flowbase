@@ -43,6 +43,10 @@ import {
 import { SettingsMcpManagementStyleBoundaryScene } from './SettingsMcpManagementStyleBoundaryScene';
 import { SettingsSystemRuntimeStyleBoundaryScene } from './SettingsSystemRuntimeStyleBoundaryScene';
 import { useAuthStore } from '../state/auth-store';
+import {
+  createStyleBoundaryJsonResponse,
+  getStyleBoundaryRequestUrl
+} from './scene-fixtures/common-fetch';
 import type { StyleBoundaryRuntimeScene } from './types';
 import './style-boundary-fixtures.css';
 
@@ -82,6 +86,49 @@ function renderRouterScene(
   window.history.replaceState({}, '', pathname);
 
   return <AppRouterProvider />;
+}
+
+function renderRouteManagementScene() {
+  seedStyleBoundarySettingsFetch();
+  const scene = renderRouterScene('/settings/ui-management/routes');
+  const fallbackFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(
+      getStyleBoundaryRequestUrl(input),
+      window.location.origin
+    );
+    if (url.pathname === '/api/console/frontstage/pages') {
+      return createStyleBoundaryJsonResponse({
+        data: [
+          {
+            id: 'navigation-group',
+            title: 'Workspace',
+            kind: 'group',
+            placement: 'topbar',
+            children: [
+              {
+                id: 'navigation-page',
+                title: 'Overview',
+                kind: 'page',
+                placement: 'sidebar',
+                children: []
+              }
+            ]
+          },
+          {
+            id: 'navigation-tasks',
+            title: 'Tasks',
+            kind: 'page',
+            placement: 'topbar',
+            children: []
+          }
+        ],
+        meta: null
+      });
+    }
+    return fallbackFetch(input, init);
+  };
+  return scene;
 }
 
 function renderPublicRouterScene(pathname: string) {
@@ -418,6 +465,8 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     seedStyleBoundarySettingsFetch();
     return renderRouterScene('/settings/backups');
   },
+  'page.settings-ui-routes.desktop': renderRouteManagementScene,
+  'page.settings-ui-routes.mobile': renderRouteManagementScene,
   'page.settings-ui-components': () => {
     seedStyleBoundarySettingsFetch();
     return renderRouterScene('/settings/ui-management/components');

@@ -288,3 +288,25 @@ test('clicking a group after staging a sibling move selects its inside destinati
     'inside'
   );
 });
+
+test('a destination removed by a tree refresh cannot be confirmed', () => {
+  const onMove = vi.fn().mockResolvedValue(true);
+  const onCancel = vi.fn();
+  const content = (pageTree: FrontStageTreeNode[]) => (
+    <AppProviders>
+      <MovePageModal
+        node={source}
+        pageTree={pageTree}
+        isOperationPending={false}
+        onMove={onMove}
+        onCancel={onCancel}
+      />
+    </AppProviders>
+  );
+  const view = render(content(tree));
+  fireEvent.click(screen.getByText('目标分组'));
+  expect(screen.getByRole('button', { name: /确\s*定/ })).toBeEnabled();
+  view.rerender(content([tree[0]]));
+  expect(screen.getByRole('button', { name: /确\s*定/ })).toBeDisabled();
+  expect(onMove).not.toHaveBeenCalled();
+});

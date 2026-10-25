@@ -625,6 +625,13 @@ const settingsUiManagementComponentsRoute = createRoute({
   component: () => renderSettingsRoute('ui-management')
 });
 
+const settingsUiManagementRoutesRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/ui-management/routes',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('ui-management')
+});
+
 const settingsMembersRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/members',
@@ -851,6 +858,7 @@ const routeTree = rootRoute.addChildren([
     settingsUiManagementRoute,
     settingsUiManagementTemplatesRoute,
     settingsUiManagementComponentsRoute,
+    settingsUiManagementRoutesRoute,
     settingsMembersRoute,
     settingsRolesRoute,
     settingsRolesDynamicRoutesRoute,
