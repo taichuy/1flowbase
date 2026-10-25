@@ -18,7 +18,7 @@ pub(crate) fn capture_application_run_log_context(
         protocol: Some(OPENAI_RESPONSES_LOG_PROTOCOL.into()),
         ..Default::default()
     };
-    capture_prompt_and_tool_results(body, &mut context);
+    context.prompt = capture_current_user_prompt(body);
     let metadata = body.get("client_metadata");
     let nested = metadata.and_then(|v| v.get("x-codex-turn-metadata"));
     let nested = match nested {
@@ -32,7 +32,6 @@ pub(crate) fn capture_application_run_log_context(
     };
     let Some(nested) = nested else {
         context.identity_status = "invalid_identity".into();
-        context.tool_results.clear();
         return context;
     };
     let ingress = ingress_turn_metadata.unwrap_or(&Value::Null);
@@ -104,18 +103,29 @@ pub(crate) fn capture_application_run_log_context(
         };
     }
     context.identity_status = identity_status(&context).into();
+    capture_tool_results(body, &mut context);
     context
 }
 
 /// This is a text projection, not another copy of the protocol message. The
 /// original request capture owns media bytes and the complete source item.
-fn capture_prompt_and_tool_results(body: &Value, context: &mut ApplicationRunLogContext) {
-    if let Some(input) = body.get("input").and_then(Value::as_array) {
-        context.prompt = input
+fn capture_current_user_prompt(body: &Value) -> Option<Value> {
+    let input = body.get("input")?;
+    if let Some(items) = input.as_array() {
+        items
             .iter()
             .rev()
             .find(|item| item.get("role").and_then(Value::as_str) == Some("user"))
-            .map(current_user_text_projection);
+            .map(current_user_text_projection)
+    } else {
+        input.as_str().map(|text| serde_json::json!({
+            "role":"user", "content":text, "_log_projection":"text"
+        }))
+    }
+}
+
+fn capture_tool_results(body: &Value, context: &mut ApplicationRunLogContext) {
+    if let Some(input) = body.get("input").and_then(Value::as_array) {
         context.tool_results = input
             .iter()
             .filter(|item| {
@@ -129,10 +139,6 @@ fn capture_prompt_and_tool_results(body: &Value, context: &mut ApplicationRunLog
             .cloned()
             .collect();
         context.tool_results.reverse();
-    } else if let Some(input) = body.get("input").and_then(Value::as_str) {
-        context.prompt = Some(serde_json::json!({
-            "role":"user", "content":input, "_log_projection":"text"
-        }));
     }
     // Preserve the existing tool-result capture policy independently of prompt
     // text, which has no size or block-count ceiling.
@@ -150,30 +156,27 @@ fn current_user_text_projection(item: &Value) -> Value {
             projection[field] = value.clone();
         }
     }
-    let mut text = String::new();
-    let mut source_indices = Vec::new();
-    match item.get("content") {
-        Some(Value::String(content)) => text.push_str(content),
-        Some(Value::Array(parts)) => {
-            for (index, part) in parts.iter().enumerate() {
-                let content = part.as_str().or_else(|| {
+    // The existing native log reader joins text blocks with newlines. Extract
+    // text only here: openai_content also constructs/clones media blocks.
+    let text = match item.get("content") {
+        Some(Value::String(content)) => content.clone(),
+        Some(Value::Array(parts)) => parts
+            .iter()
+            .filter_map(|part| {
+                part.as_str().or_else(|| {
                     match part.get("type").and_then(Value::as_str) {
                         None | Some("input_text" | "text" | "output_text") => {
                             part.get("text").and_then(Value::as_str)
                         }
                         _ => None,
                     }
-                });
-                if let Some(content) = content {
-                    text.push_str(content);
-                    source_indices.push(index);
-                }
-            }
-        }
-        _ => {}
-    }
+                })
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    };
     projection["content"] = Value::String(text);
-    projection["_log_source_content_indices"] = serde_json::json!(source_indices);
     projection
 }
 

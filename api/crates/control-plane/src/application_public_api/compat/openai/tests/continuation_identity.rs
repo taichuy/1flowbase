@@ -629,13 +629,26 @@ fn issue_2674_prompt_text_survives_large_media_and_large_text_without_copying_me
     let original = body.clone();
     let context = capture_application_run_log_context(&body, None);
     let prompt = context.prompt.unwrap();
-    assert_eq!(prompt["content"], format!("{text} tail  "));
+    assert_eq!(prompt["content"], format!("{text}\n tail  "));
     assert_eq!(prompt["id"], "current-user");
     assert_eq!(prompt["type"], "message");
     assert_eq!(prompt["_log_projection"], "text");
-    assert_eq!(prompt["_log_source_content_indices"], json!([0, 2]));
+    assert!(prompt.get("_log_source_content_indices").is_none());
     assert!(!prompt.to_string().contains("data:image"));
     assert_eq!(body, original);
+
+    // The text-only projection keeps the preexisting log block separator and
+    // agrees with the protocol mapper without calling its media-cloning path.
+    let parts = json!([
+        {"type":"input_text","text":"  A\u{0000} "},
+        {"type":"input_text","text":" B\n "}
+    ]);
+    let mapped = super::super::response_input::openai_content(&parts).unwrap();
+    let projected = capture_application_run_log_context(
+        &json!({"input":[{"role":"user","content":parts}]}), None,
+    ).prompt.unwrap();
+    assert_eq!(projected["content"], "  A\u{0000} \n B\n ");
+    assert_eq!(projected["content"], mapped.text);
 
     let large = format!("  {}\u{0000}\n", "正文".repeat(100_000));
     for input in [json!(large), json!([{"role":"user","content":large}])] {
@@ -646,7 +659,7 @@ fn issue_2674_prompt_text_survives_large_media_and_large_text_without_copying_me
     let context = capture_application_run_log_context(
         &json!({"input":[{"role":"user","content":many}]}), None,
     );
-    assert_eq!(context.prompt.unwrap()["content"], " x ".repeat(4_097));
+    assert_eq!(context.prompt.unwrap()["content"], vec![" x "; 4_097].join("\n"));
 }
 
 #[test]
@@ -662,10 +675,14 @@ fn issue_2674_invalid_identity_cannot_erase_prompt_or_authorize_grouping() {
             "conflicting_identity"),
     ] {
         let context = capture_application_run_log_context(
-            &json!({"client_metadata":metadata,"input":[{"role":"user","content":"  text\u{0000}\n"}]}),
+            &json!({"client_metadata":metadata,"input":[
+                {"role":"user","content":"  text\u{0000}\n"},
+                {"type":"function_call_output","call_id":"call-ignored","output":"not captured for invalid identity"}
+            ]}),
             None,
         );
         assert_eq!(context.identity_status, expected);
+        assert!(context.tool_results.is_empty());
         assert!(context.thread_id.is_none());
         assert!(context.turn_id.is_none());
         assert_eq!(context.prompt.unwrap()["content"], "  text\u{0000}\n");
