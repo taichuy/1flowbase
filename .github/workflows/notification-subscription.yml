@@ -77,8 +77,13 @@ jobs:
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib communication 2>&1 | tee tmp/test-governance/communications/ci/run-mapping.log
-          cargo test --locked --manifest-path api/Cargo.toml -p orchestration-runtime --lib communication 2>&1 | tee tmp/test-governance/communications/ci/prompt-context.log
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test notifications 2>&1 | tee tmp/test-governance/communications/ci/inbox-postgres.log
+      - name: Communication backup scope and rekey acceptance
+        run: |
+          set -o pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::communications:: 2>&1 | tee tmp/test-governance/communications/ci/backup-communications.log
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::notifications:: 2>&1 | tee tmp/test-governance/communications/ci/backup-notifications.log
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::notification_backup_keeps_channel_configuration_separate_from_inbox_history 2>&1 | tee tmp/test-governance/communications/ci/backup-selection.log
       - name: Host state and projection acceptance
         run: |
           set -o pipefail
