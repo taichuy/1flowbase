@@ -54,14 +54,17 @@ jobs:
         with:
           node-version-file: web/.nvmrc
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
+        id: cargo-cache
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             api/target
-          key: notification-subscription-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
-          restore-keys: notification-subscription-nodebug-${{ runner.os }}-
+          key: notification-subscription-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-${{ inputs.candidate_sha || github.sha }}
+          restore-keys: |
+            notification-subscription-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-
+            notification-subscription-nodebug-${{ runner.os }}-
       - name: Contract and SDK acceptance
         run: |
           mkdir -p tmp/test-governance/communications/ci
@@ -145,3 +148,12 @@ jobs:
           name: communications-${{ inputs.candidate_sha || github.sha }}
           if-no-files-found: error
           path: tmp/test-governance/communications/ci
+      - name: Preserve compiled acceptance dependencies
+        if: ${{ !cancelled() && steps.cargo-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            api/target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}

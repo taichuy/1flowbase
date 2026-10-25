@@ -59,6 +59,7 @@ fn receive_package() -> Vec<u8> {
 
 struct Fixture {
     state: Arc<ApiState>,
+    app: axum::Router,
     runtime: RuntimeFixture,
     actor: ActorContext,
     channel: Uuid,
@@ -77,6 +78,25 @@ impl Fixture {
             .await
             .unwrap();
         let runtime = RuntimeFixture::new(&state);
+        let service = Arc::new(
+            NotificationService::new(
+                runtime.store.clone(),
+                state.provider_secret_master_key.clone(),
+            )
+            .with_provider(Arc::new(ManagedNotificationProvider::new(
+                runtime.composition.clone(),
+            ))),
+        );
+        let state_mut = Arc::get_mut(&mut state).unwrap();
+        state_mut.store = runtime.store.clone();
+        state_mut.provider_runtime = runtime.services.clone();
+        state_mut.notification_service = service;
+        // Match production boot: freeze the complete interface catalogue before
+        // plugin activation compiles a workspace's managed interface points.
+        let app = crate::app_with_state_and_config(
+            state.clone(),
+            &crate::_tests::support::test_config(),
+        );
         let management = PluginManagementService::new(
             runtime.store.clone(),
             crate::provider_runtime::ApiProviderRuntime::new(runtime.services.clone()),
@@ -108,19 +128,6 @@ impl Fixture {
             })
             .await
             .unwrap();
-        let service = Arc::new(
-            NotificationService::new(
-                runtime.store.clone(),
-                state.provider_secret_master_key.clone(),
-            )
-            .with_provider(Arc::new(ManagedNotificationProvider::new(
-                runtime.composition.clone(),
-            ))),
-        );
-        let state_mut = Arc::get_mut(&mut state).unwrap();
-        state_mut.store = runtime.store.clone();
-        state_mut.provider_runtime = runtime.services.clone();
-        state_mut.notification_service = service;
         let instance = state
             .notification_service
             .create_instance(
@@ -177,6 +184,7 @@ impl Fixture {
             .unwrap();
         Self {
             state,
+            app,
             runtime,
             actor,
             channel,

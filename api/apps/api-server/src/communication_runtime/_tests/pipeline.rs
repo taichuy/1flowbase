@@ -68,7 +68,7 @@ async fn pipeline(callback: bool) {
     fixture.receive().await;
     let foreign_conversation: Uuid = sqlx::query_scalar("SELECT id FROM communication_conversations WHERE instance_id=$1 AND external_identity='bob'")
         .bind(fixture.channel).fetch_one(fixture.state.store.pool()).await.unwrap();
-    let app = crate::app_with_state_and_config(fixture.state.clone(), &support::test_config());
+    let app = fixture.app.clone();
     let (cookie, csrf) = support::login_and_capture_cookie(&app, "root", "change-me").await;
     let (status,grant) = api(&app,&cookie,&csrf,"POST",&format!("/api/console/settings/billing/credits/{}/grant",fixture.actor.user_id),json!({"amount":"100","reason":"communication pipeline fixture","source_type":"test","source_id":"communication-pipeline","idempotency_key":"communication-pipeline"})).await;
     assert_eq!(status, StatusCode::OK, "{grant}");
