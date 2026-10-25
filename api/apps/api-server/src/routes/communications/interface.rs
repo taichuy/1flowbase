@@ -11,6 +11,7 @@ use crate::{
     },
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
+use futures_util::FutureExt;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -82,14 +83,17 @@ impl InterfaceContract for Output {
     }
 }
 impl Dependencies {
-    async fn execute_inner(
-        &self,
-        principal: &UserPrincipal,
+    fn execute_inner<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
         input: Input,
-    ) -> Result<Output, ApiError> {
+    ) -> ConsoleInterfaceFuture<'a, Output> {
         let actor = principal.actor();
-        let result = match input {
-            Input::Options(application_id) => {
+        // Construct the selected operation synchronously so read-only MCP calls do not
+        // retain the preparation frames of binding/provisioning and file operations.
+        match input {
+            Input::Options(application_id) => Box::pin(async move {
+                let result = {
                 let (published_agent_flows, enabled_mcp_instances) =
                     crate::routes::assistant::available_targets(&self.store, actor).await?;
                 let run_capabilities = crate::routes::assistant::assistant_run_capabilities(
@@ -99,8 +103,11 @@ impl Dependencies {
                 )
                 .await?;
                 json!({"published_agent_flows":published_agent_flows,"enabled_mcp_instances":enabled_mcp_instances,"run_capabilities":run_capabilities})
-            }
-            Input::Binding(id) => {
+            };
+                Ok(Output(result))
+            }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
+            Input::Binding(id) => Box::pin(async move {
+                let result = {
                 let instance = self.service.get_instance(actor, id).await?;
                 let descriptor = self
                     .service
@@ -116,8 +123,11 @@ impl Dependencies {
                 let plugin_mcp_instance_id =
                     descriptor.as_ref().map(|_| provisioning::instance_id(id));
                 json!({"binding":binding,"plugin_mcp_instance_id":plugin_mcp_instance_id,"default_system_prompt":descriptor.map(|d|d.default_system_prompt)})
-            }
-            Input::SaveBinding(id, mut input) => {
+            };
+                Ok(Output(result))
+            }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
+            Input::SaveBinding(id, mut input) => Box::pin(async move {
+                let result = {
                 let instance = self.service.get_instance(actor, id).await?;
                 let descriptor = self
                     .service
@@ -183,8 +193,11 @@ impl Dependencies {
                     }
                 }
                 serde_json::to_value(self.service.save_binding(actor, id, input, mcp).await?)?
-            }
-            Input::Conversations(id, q) => match scope::for_channel(actor, id)? {
+            };
+                Ok(Output(result))
+            }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
+            Input::Conversations(id, q) => Box::pin(async move {
+                let result = match scope::for_channel(actor, id)? {
                 Some(s) => serde_json::to_value(
                     self.service
                         .scoped_conversations(&s, q.cursor, q.limit.unwrap_or(30))
@@ -195,8 +208,11 @@ impl Dependencies {
                         .conversations(actor, id, q.cursor, q.limit.unwrap_or(30))
                         .await?,
                 )?,
-            },
-            Input::Messages(id, conversation, q) => match scope::for_channel(actor, id)? {
+            };
+                Ok(Output(result))
+            }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
+            Input::Messages(id, conversation, q) => Box::pin(async move {
+                let result = match scope::for_channel(actor, id)? {
                 Some(s) => serde_json::to_value(
                     self.service
                         .scoped_message_history(&s, conversation, q.cursor, q.limit.unwrap_or(30))
@@ -207,8 +223,11 @@ impl Dependencies {
                         .message_history(actor, id, conversation, q.cursor, q.limit.unwrap_or(30))
                         .await?,
                 )?,
-            },
-            Input::Files(id, conversation, q) => match scope::for_channel(actor, id)? {
+            };
+                Ok(Output(result))
+            }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
+            Input::Files(id, conversation, q) => Box::pin(async move {
+                let result = match scope::for_channel(actor, id)? {
                 Some(s) => serde_json::to_value(
                     self.service
                         .scoped_files(&s, conversation, q.cursor, q.limit.unwrap_or(30))
@@ -219,21 +238,28 @@ impl Dependencies {
                         .files(actor, id, conversation, q.cursor, q.limit.unwrap_or(30))
                         .await?,
                 )?,
-            },
-            Input::File(id, attachment_id, q) => {
+            };
+                Ok(Output(result))
+            }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
+            Input::File(id, attachment_id, q) => Box::pin(async move {
+                let result = {
                 let attachment = match scope::for_channel(actor, id)? {
                     Some(s) => self.service.scoped_file(&s, attachment_id).await?,
                     None => self.service.file(actor, id, attachment_id).await?,
                 };
                 self.read_file(actor, attachment, q).await?
-            }
-            Input::Retry(id, message) => {
+            };
+                Ok(Output(result))
+            }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
+            Input::Retry(id, message) => Box::pin(async move {
+                let result = {
                 // Retry is a management action; read-only history MCP declarations never expose it.
                 self.service.retry_message(actor, id, message).await?;
                 json!({"accepted":true})
-            }
-        };
-        Ok(Output(result))
+            };
+                Ok(Output(result))
+            }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
+        }
     }
     async fn read_file(
         &self,
@@ -272,11 +298,7 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
         principal: &'a UserPrincipal,
         input: Input,
     ) -> ConsoleInterfaceFuture<'a, Output> {
-        Box::pin(async move {
-            self.execute_inner(principal, input)
-                .await
-                .map_err(ConsoleInterfaceTargetError)
-        })
+        self.execute_inner(principal, input)
     }
 }
 pub(crate) fn compile_registry(

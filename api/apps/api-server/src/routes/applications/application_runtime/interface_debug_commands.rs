@@ -19,6 +19,7 @@ use control_plane::{
         RuntimeEventStreamPolicy,
     },
 };
+use futures_util::FutureExt;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
@@ -946,60 +947,6 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         tracing::info!(application_id = %application_id, flow_run_id = %run_id, http_to_sse_open_ms = request_received_at.elapsed().as_millis() as u64, "flow debug stream opened");
         Ok(self.forward_runtime_stream(application_id, run_id, from_sequence))
     }
-
-    async fn execute_inner(
-        &self,
-        principal: &UserPrincipal,
-        input: ApplicationRuntimeDebugCommandsInput,
-    ) -> Result<ApplicationRuntimeDebugCommandsOutput, ApiError> {
-        match input {
-            ApplicationRuntimeDebugCommandsInput::Start {
-                application_id,
-                body,
-                headers,
-            } => Ok(ApplicationRuntimeDebugCommandsOutput::Run(
-                Box::pin(self.start(principal, application_id, body, headers)).await?,
-            )),
-            ApplicationRuntimeDebugCommandsInput::Resume {
-                application_id,
-                run_id,
-                body,
-                headers,
-            } => Ok(ApplicationRuntimeDebugCommandsOutput::Run(
-                Box::pin(self.resume(principal, application_id, run_id, body, headers)).await?,
-            )),
-            ApplicationRuntimeDebugCommandsInput::Cancel {
-                application_id,
-                run_id,
-            } => Ok(ApplicationRuntimeDebugCommandsOutput::Run(
-                Box::pin(self.cancel(principal, application_id, run_id)).await?,
-            )),
-            ApplicationRuntimeDebugCommandsInput::CompleteCallback {
-                application_id,
-                callback_task_id,
-                body,
-                headers,
-            } => Ok(ApplicationRuntimeDebugCommandsOutput::Run(
-                Box::pin(self.complete_callback(
-                    principal,
-                    application_id,
-                    callback_task_id,
-                    body,
-                    headers,
-                ))
-                .await?,
-            )),
-            ApplicationRuntimeDebugCommandsInput::StartNode {
-                application_id,
-                node_id,
-                body,
-                headers,
-            } => Ok(ApplicationRuntimeDebugCommandsOutput::Node(
-                Box::pin(self.start_node(principal, application_id, node_id, body, headers))
-                    .await?,
-            )),
-        }
-    }
 }
 
 impl
@@ -1013,11 +960,72 @@ impl
         principal: &'a UserPrincipal,
         input: ApplicationRuntimeDebugCommandsInput,
     ) -> ConsoleInterfaceFuture<'a, ApplicationRuntimeDebugCommandsOutput> {
-        Box::pin(async move {
-            Box::pin(self.execute_inner(principal, input))
-                .await
-                .map_err(ConsoleInterfaceTargetError)
-        })
+        // Select and construct only this operation before polling it. An async enum
+        // dispatcher would keep its largest branch's construction frame on nested MCP calls.
+        match input {
+            ApplicationRuntimeDebugCommandsInput::Start {
+                application_id,
+                body,
+                headers,
+            } => Box::pin(
+                self.start(principal, application_id, body, headers)
+                    .map(|result| {
+                        result
+                            .map(ApplicationRuntimeDebugCommandsOutput::Run)
+                            .map_err(ConsoleInterfaceTargetError)
+                    }),
+            ),
+            ApplicationRuntimeDebugCommandsInput::Resume {
+                application_id,
+                run_id,
+                body,
+                headers,
+            } => Box::pin(
+                self.resume(principal, application_id, run_id, body, headers)
+                    .map(|result| {
+                        result
+                            .map(ApplicationRuntimeDebugCommandsOutput::Run)
+                            .map_err(ConsoleInterfaceTargetError)
+                    }),
+            ),
+            ApplicationRuntimeDebugCommandsInput::Cancel {
+                application_id,
+                run_id,
+            } => Box::pin(
+                self.cancel(principal, application_id, run_id)
+                    .map(|result| {
+                        result
+                            .map(ApplicationRuntimeDebugCommandsOutput::Run)
+                            .map_err(ConsoleInterfaceTargetError)
+                    }),
+            ),
+            ApplicationRuntimeDebugCommandsInput::CompleteCallback {
+                application_id,
+                callback_task_id,
+                body,
+                headers,
+            } => Box::pin(
+                self.complete_callback(principal, application_id, callback_task_id, body, headers)
+                    .map(|result| {
+                        result
+                            .map(ApplicationRuntimeDebugCommandsOutput::Run)
+                            .map_err(ConsoleInterfaceTargetError)
+                    }),
+            ),
+            ApplicationRuntimeDebugCommandsInput::StartNode {
+                application_id,
+                node_id,
+                body,
+                headers,
+            } => Box::pin(
+                self.start_node(principal, application_id, node_id, body, headers)
+                    .map(|result| {
+                        result
+                            .map(ApplicationRuntimeDebugCommandsOutput::Node)
+                            .map_err(ConsoleInterfaceTargetError)
+                    }),
+            ),
+        }
     }
 }
 
