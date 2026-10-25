@@ -13,7 +13,7 @@
       };
       const call = (id, name, arguments) => {
         process.stdout.write(JSON.stringify({type:'result',result:{
-          final_content:'provisional tool text must never be sent',finish_reason:'tool_calls',
+          final_content:'provisional tool text must never be sent',finish_reason:'tool_call',
           tool_calls:[{id,name,arguments}],usage:{input_tokens:5,output_tokens:7,total_tokens:12}
         }}) + '\n');
       };
