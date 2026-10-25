@@ -53,14 +53,15 @@ export function CommunicationMessagesTable({
       {
         key: 'received_at_ms',
         title: t('received_at'),
-        width: 190,
+        width: 170,
         render: (_, item) =>
           formatDateTime(new Date(item.received_at_ms).toISOString())
       },
       {
         key: 'content_preview',
         title: t('received_message'),
-        width: 250,
+        width: 180,
+        ellipsis: true,
         mobileRole: 'title',
         render: (_, item) => (
           <CommunicationLink to={{ message_id: item.id, conversation_id }}>
@@ -71,7 +72,7 @@ export function CommunicationMessagesTable({
       {
         key: 'sender_display_name',
         title: t('conversation_user'),
-        width: 170,
+        width: 150,
         render: (_, item) => (
           <CommunicationLink
             to={{
@@ -89,13 +90,13 @@ export function CommunicationMessagesTable({
       {
         key: 'instance_display_name',
         title: t('display_name'),
-        width: 170,
+        width: 140,
         render: (_, item) => item.instance_display_name ?? t('deleted_channel')
       },
       {
         key: 'processing_status',
         title: t('processing_status'),
-        width: 160,
+        width: 130,
         render: (_, item) => (
           <ProcessingStatus status={item.processing_status} />
         )
@@ -103,13 +104,13 @@ export function CommunicationMessagesTable({
       {
         key: 'send_status',
         title: t('send_status'),
-        width: 170,
+        width: 130,
         render: (_, item) => <DeliveryStatus status={item.send_status} />
       },
       {
         key: 'run_id',
         title: t('execution_logs'),
-        width: 180,
+        width: 130,
         mobileRole: 'actions',
         render: (_, item) => <CommunicationRunLink item={item} />
       }

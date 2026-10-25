@@ -142,7 +142,7 @@ export function CommunicationHistory({
       {
         key: 'sender_display_name',
         title: t('conversation_user'),
-        width: 180,
+        width: 150,
         mobileRole: 'title',
         render: (_, item) => (
           <CommunicationLink
@@ -159,13 +159,13 @@ export function CommunicationHistory({
       {
         key: 'instance_display_name',
         title: t('display_name'),
-        width: 180,
+        width: 140,
         render: (_, item) => item.instance_display_name ?? t('deleted_channel')
       },
       {
         key: 'latest_message.received_at_ms',
         title: t('latest_message_at'),
-        width: 190,
+        width: 170,
         render: (_, item) =>
           item.latest_message
             ? formatDateTime(
@@ -176,7 +176,8 @@ export function CommunicationHistory({
       {
         key: 'latest_message.content_preview',
         title: t('latest_message'),
-        width: 250,
+        width: 180,
+        ellipsis: true,
         render: (_, item) =>
           item.latest_message ? (
             <CommunicationLink
@@ -195,7 +196,7 @@ export function CommunicationHistory({
       {
         key: 'latest_message.processing_status',
         title: t('latest_processing_status'),
-        width: 180,
+        width: 130,
         render: (_, item) =>
           item.latest_message ? (
             <ProcessingStatus status={item.latest_message.processing_status} />
@@ -206,7 +207,7 @@ export function CommunicationHistory({
       {
         key: 'latest_message.send_status',
         title: t('latest_send_status'),
-        width: 180,
+        width: 130,
         render: (_, item) =>
           item.latest_message ? (
             <DeliveryStatus status={item.latest_message.send_status} />
@@ -217,7 +218,7 @@ export function CommunicationHistory({
       {
         key: 'latest_message.run_id',
         title: t('execution_logs'),
-        width: 180,
+        width: 130,
         mobileRole: 'actions',
         render: (_, item) =>
           item.latest_message ? (
