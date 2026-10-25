@@ -9,6 +9,11 @@ on:
         description: Exact frozen host source SHA
         required: true
         type: string
+      test_scope:
+        description: Full acceptance or the four groups previously blocked by test compilation
+        type: choice
+        options: [full, mcp-runtime]
+        default: full
 
 permissions:
   contents: read
@@ -62,10 +67,13 @@ jobs:
             notification-subscription-nodebug-${{ runner.os }}-
       - name: Contract, worker and real PostgreSQL acceptance
         shell: bash
+        env:
+          TEST_SCOPE: ${{ inputs.test_scope || 'full' }}
         run: |
           set -euo pipefail
           evidence=tmp/test-governance/browser-obscura/host-ci
           mkdir -p "$evidence"
+          git rev-parse HEAD > "$evidence/candidate-sha.txt"
           failures=0
           run_test() {
             local label="$1"
@@ -80,18 +88,20 @@ jobs:
               failures=$((failures + 1))
             fi
           }
-          run_test contract -p extension-contracts managed_service_contract_tests
-          run_test manifest -p extension-package-runtime managed_service_tests
-          run_test sdk -p runtime-extension-sdk managed_service_context
-          run_test worker -p runtime-extension-host managed_capability_multiplex
-          run_test postgres -p control-plane-postgres-tests --test mcp_management_integration
+          if [ "$TEST_SCOPE" = full ]; then
+            run_test contract -p extension-contracts managed_service_contract_tests
+            run_test manifest -p extension-package-runtime managed_service_tests
+            run_test sdk -p runtime-extension-sdk managed_service_context
+            run_test worker -p runtime-extension-host managed_capability_multiplex
+            run_test postgres -p control-plane-postgres-tests --test mcp_management_integration
+          fi
           run_test mcp-http -p api-server --lib managed_service_mcp
           run_test mcp-media -p api-server --lib result_delivery::media::tests
           run_test mcp-errors -p api-server --lib target_error_diagnostics
           run_test lifecycle -p api-server --lib managed_services::
           test "$failures" -eq 0
       - name: Build exact runtime for local integration evidence
-        if: always()
+        if: always() && (github.event_name != 'workflow_dispatch' || inputs.test_scope == 'full')
         shell: bash
         run: |
           set -euo pipefail
