@@ -14,7 +14,7 @@ use orchestration_runtime::{
 };
 use std::sync::Mutex;
 
-struct Capture(Mutex<Vec<ProviderInvocationInput>>);
+struct Capture(Mutex<Vec<ProviderInvocationInput>>, bool);
 #[async_trait]
 impl ProviderInvoker for Capture {
     async fn resolve_llm_route(
@@ -34,12 +34,26 @@ impl ProviderInvoker for Capture {
         _runtime: &CompiledLlmRuntime,
         input: ProviderInvocationInput,
     ) -> Result<ProviderInvocationOutput> {
-        self.0.lock().unwrap().push(input);
+        let mut requests = self.0.lock().unwrap();
+        let first_tool_round = self.1 && requests.is_empty();
+        requests.push(input);
         Ok(ProviderInvocationOutput {
             events: Vec::new(),
             result: ProviderInvocationResult {
                 final_content: Some("final answer".into()),
-                finish_reason: Some(ProviderFinishReason::Stop),
+                finish_reason: Some(if first_tool_round {
+                    ProviderFinishReason::ToolCall
+                } else {
+                    ProviderFinishReason::Stop
+                }),
+                tool_calls: if first_tool_round {
+                    serde_json::from_value(
+                        json!([{"id":"history-call","name":"history","arguments":{}}]),
+                    )
+                    .unwrap()
+                } else {
+                    Vec::new()
+                },
                 ..Default::default()
             },
             first_token_at: None,
@@ -89,7 +103,7 @@ fn plan() -> CompiledPlan {
 
 #[tokio::test]
 async fn communication_native_mapping_reaches_provider_as_stable_system_session_user() {
-    let capture = Capture(Mutex::new(Vec::new()));
+    let capture = Capture(Mutex::new(Vec::new()), false);
     let mapping = ApplicationApiMappingConfig::default_native();
     for query in ["first input", "second input"] {
         let request: NativeRunRequest = serde_json::from_value(json!({"query":query,"system":"Plugin instruction.","history":[{"role":"system","content":"{\"session_id\":\"stable\",\"user_id\":\"scanner\"}"}]})).unwrap();
@@ -130,6 +144,65 @@ async fn communication_native_mapping_reaches_provider_as_stable_system_session_
     }
     assert_eq!(requests[0].system, requests[1].system);
     assert_eq!(requests[0].messages[0], requests[1].messages[0]);
+}
+
+#[tokio::test]
+async fn communication_tool_resume_preserves_system_and_separate_session() {
+    let capture = Capture(Mutex::new(Vec::new()), true);
+    let plan = plan();
+    let request: NativeRunRequest = serde_json::from_value(json!({
+        "query":"current input", "system":"Plugin instruction.",
+        "history":[{"role":"system","content":"{\"conversation_id\":\"stable\",\"user_id\":\"alice\"}"}]
+    })).unwrap();
+    let mapped = NativeInputMapper::map_communication(
+        &request,
+        &ApplicationApiMappingConfig::default_native(),
+    )
+    .unwrap();
+    let waiting = start_flow_debug_run(&plan, &mapped.node_input_payload, &capture)
+        .await
+        .unwrap();
+    assert!(matches!(
+        waiting.stop_reason,
+        orchestration_runtime::execution_state::ExecutionStopReason::WaitingCallback(_)
+    ));
+    // Round-trip the checkpoint variables, as durable resume does.
+    let mut checkpoint = waiting.checkpoint_snapshot.unwrap();
+    checkpoint.variable_pool =
+        serde_json::from_value(serde_json::to_value(&checkpoint.variable_pool).unwrap()).unwrap();
+    let resumed = orchestration_runtime::execution_engine::resume_flow_debug_run(
+        &plan,
+        &checkpoint,
+        "llm",
+        &json!({"tool_results":[{"tool_call_id":"history-call","content":"own history"}]}),
+        &capture,
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        resumed.stop_reason,
+        orchestration_runtime::execution_state::ExecutionStopReason::Completed
+    ));
+    let requests = capture.0.lock().unwrap();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        requests[0].system_text().as_deref(),
+        Some("Original application instruction.\n\nPlugin instruction.")
+    );
+    assert_eq!(
+        requests[0].system, requests[1].system,
+        "session must not replace the stable system on resume"
+    );
+    assert_eq!(
+        &requests[0].messages[..2],
+        &requests[1].messages[..2],
+        "stable session and current user remain the prefix"
+    );
+    assert_eq!(requests[1].messages[0].role, ProviderMessageRole::System);
+    assert_eq!(requests[1].messages.last().unwrap().content, "own history");
+    assert!(!serde_json::to_string(&*requests)
+        .unwrap()
+        .contains("__communication_session"));
 }
 
 #[test]

@@ -10,11 +10,31 @@ pub(super) fn llm_tool_prompt_transcript(
     node: &CompiledNode,
     variable_pool: &Map<String, Value>,
     invocation: &ProviderInvocationInput,
+    runtime_context: &ExecutionRuntimeContext,
 ) -> LlmToolPromptTranscript {
     LlmToolPromptTranscript {
         system: invocation.system.clone(),
-        messages: pending_llm_tool_callback_history(node, variable_pool)
-            .unwrap_or_else(|| prompt_messages_from_provider_messages(&invocation.messages)),
+        messages: pending_llm_tool_callback_history(node, variable_pool).unwrap_or_else(|| {
+            let mut messages = prompt_messages_from_provider_messages(&invocation.messages);
+            // Provider wire messages exclude host-only metadata. Restore session provenance
+            // from the trusted input before persisting the tool transcript, so the next
+            // round keeps the session separate from the stable application/plugin system.
+            for message in &mut messages {
+                if runtime_context
+                    .native_model_prompt_context
+                    .messages
+                    .iter()
+                    .any(|source| {
+                        source.get("__communication_session") == Some(&Value::Bool(true))
+                            && source.get("role") == message.get("role")
+                            && source.get("content") == message.get("content")
+                    })
+                {
+                    message["__communication_session"] = Value::Bool(true);
+                }
+            }
+            messages
+        }),
     }
 }
 

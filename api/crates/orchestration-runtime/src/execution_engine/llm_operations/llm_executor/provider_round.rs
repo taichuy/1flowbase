@@ -306,7 +306,7 @@ where
             });
         }
         let tool_prompt_transcript =
-            llm_tool_prompt_transcript(node, variable_pool, &invocation.input);
+            llm_tool_prompt_transcript(node, variable_pool, &invocation.input, runtime_context);
         let invocation_tools = invocation.input.tools.clone();
         let selected_input_mode = invoker.prepare_selected_llm_input(
             attempt_runtime,
