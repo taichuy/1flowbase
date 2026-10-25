@@ -247,3 +247,7 @@ impl ProviderContext {
 #[cfg(test)]
 #[path = "_tests/request.rs"]
 mod request_tests;
+
+#[cfg(test)]
+#[path = "_tests/acceptance.rs"]
+mod acceptance_tests;
