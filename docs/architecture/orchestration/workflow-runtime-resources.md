@@ -1,5 +1,7 @@
 # 工作流运行时的资源所有权
 
+本轮实现的基线、同条件实测、尾部异常与验收范围见 [2026-10-25 优化验收记录](workflow-runtime-optimization-20261025.md)。
+
 ## 持久化、恢复与 trace 发布
 
 ### JSON 投影与 checkpoint
