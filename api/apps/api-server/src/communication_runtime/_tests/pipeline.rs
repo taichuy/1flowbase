@@ -40,7 +40,18 @@ async fn api(
             .unwrap_or_else(|_| json!({"body":String::from_utf8_lossy(&bytes)})),
     )
 }
-async fn operator_run_access(f: &Fixture, role_code: &str, allowed: bool) {
+async fn operator_run_access(f: &Fixture, role_code: &str, allowed_route: Option<&str>) {
+    let operations = allowed_route
+        .map(|path| {
+            let access = f.state.console_operation_registry
+                .access_for_console_route("POST", path).unwrap();
+            domain::ConsoleOperationPolicy::simple(
+                domain::ConsoleOperationId::try_from(access.operation_id).unwrap(),
+                true,
+            )
+        })
+        .into_iter()
+        .collect();
     f.state
         .store
         .replace_role_console_policy(&control_plane::ports::ReplaceRoleConsolePolicyInput {
@@ -49,18 +60,24 @@ async fn operator_run_access(f: &Fixture, role_code: &str, allowed: bool) {
             role_code: role_code.into(),
             groups: vec![domain::RoleConsoleGroupPolicy::custom(
                 domain::ConsolePolicyGroup::settings_feature("system.applications").unwrap(),
-                if allowed {
-                    vec![domain::ConsoleOperationPolicy::simple(
-                        domain::ConsoleOperationId::try_from("applications.run").unwrap(),
-                        true,
-                    )]
-                } else {
-                    vec![]
-                },
+                operations,
             )],
         })
         .await
         .unwrap();
+}
+
+async fn execution_diagnostics(f: &Fixture, application_id: &str, run_id: Uuid) -> Value {
+    let detail = f.state.store
+        .get_application_run_detail(Uuid::parse_str(application_id).unwrap(), run_id)
+        .await.unwrap().unwrap();
+    json!({
+        "run_status": detail.flow_run.status,
+        "run_error": detail.flow_run.error_payload,
+        "nodes": detail.node_runs.iter().map(|node| json!({
+            "node_id":node.node_id,"status":node.status,"error":node.error_payload
+        })).collect::<Vec<_>>()
+    })
 }
 
 async fn pipeline(callback: bool) {
@@ -134,7 +151,7 @@ async fn pipeline(callback: bool) {
     .fetch_one(fixture.state.store.pool())
     .await
     .unwrap();
-    operator_run_access(&fixture, &role, false).await;
+    operator_run_access(&fixture, &role, None).await;
     let (operator_cookie, operator_csrf) =
         support::login_and_capture_cookie(&app, "communication-operator", "temp-pass").await;
     assert_ne!(operator_id, fixture.actor.user_id.to_string());
@@ -151,7 +168,9 @@ async fn pipeline(callback: bool) {
             if let Some(run_id)=linked {
                 let status = fixture.state.store.get_flow_run_metadata(Uuid::parse_str(&application_id).unwrap(),run_id).await.unwrap().unwrap().status;
                 if status == if callback {domain::FlowRunStatus::WaitingCallback} else {domain::FlowRunStatus::WaitingHuman} {break run_id;}
-                assert!(!matches!(status,domain::FlowRunStatus::Failed|domain::FlowRunStatus::Cancelled),"published communication failed before pause: {status:?}");
+                if matches!(status,domain::FlowRunStatus::Failed|domain::FlowRunStatus::Cancelled) {
+                    panic!("published communication failed before pause: {}", execution_diagnostics(&fixture,&application_id,run_id).await);
+                }
             }
             tokio::time::sleep(Duration::from_millis(30)).await;
         };
@@ -172,11 +191,12 @@ async fn pipeline(callback: bool) {
         };
         let (status,denied) = api(&app,&operator_cookie,&operator_csrf,"POST",&path,body.clone()).await;
         assert_eq!(status,StatusCode::FORBIDDEN,"operator without application Run cannot resume: {denied}");
-        operator_run_access(&fixture,&role,true).await;
+        operator_run_access(&fixture,&role,Some(&path)).await;
         sqlx::query("UPDATE users SET status='disabled' WHERE id=$1").bind(fixture.actor.user_id).execute(fixture.state.store.pool()).await.unwrap();
         let (status,denied) = api(&app,&operator_cookie,&operator_csrf,"POST",&path,body.clone()).await;
         sqlx::query("UPDATE users SET status='active' WHERE id=$1").bind(fixture.actor.user_id).execute(fixture.state.store.pool()).await.unwrap();
         assert_eq!(status,StatusCode::FORBIDDEN,"operator must not substitute for a disabled configuring actor: {denied}");
+        assert_eq!(denied["code"], "communication_execution_denied", "the configuring-actor guard must be reached: {denied}");
         let (status,resumed) = api(&app,&operator_cookie,&operator_csrf,"POST",&path,body).await;
         assert_eq!(status,StatusCode::OK,"distinct operator may resume using live configuring authority: {resumed}");
         // Use the production projection owner, as the in-process fixture has no background host workers.
@@ -184,8 +204,9 @@ async fn pipeline(callback: bool) {
             crate::workers::trace_projection::rebuild_trace_projection(&fixture.state.store,Uuid::parse_str(&application_id).unwrap(),run_id).await.unwrap();
             let (processing,send,reply): (String,String,Option<String>) = sqlx::query_as("SELECT processing_status,send_status,final_reply FROM communication_messages WHERE instance_id=$1 AND external_message_key='alice-input'")
                 .bind(fixture.channel).fetch_one(fixture.state.store.pool()).await.unwrap();
-            assert_ne!(processing,"failed","receive must reach final reply and send");
-            assert!(!matches!(send.as_str(),"failed"|"unknown"),"final provider send did not succeed: {send}");
+            if processing=="failed" || matches!(send.as_str(),"failed"|"unknown") {
+                panic!("receive/final send failed: processing={processing}, send={send}, run={}",execution_diagnostics(&fixture,&application_id,run_id).await);
+            }
             if send=="succeeded" { assert_eq!(processing,"succeeded");assert_eq!(reply.as_deref(),Some("Final for alice"));break; }
             tokio::time::sleep(Duration::from_millis(30)).await;
         }
@@ -201,6 +222,13 @@ async fn pipeline(callback: bool) {
         // provisional model tool text and the operator identity never became the outbound reply.
 
     }).await;
+    if outcome.is_err() {
+        let run_id: Option<Uuid> = sqlx::query_scalar("SELECT run_id FROM communication_messages WHERE instance_id=$1 AND external_message_key='alice-input'")
+            .bind(fixture.channel).fetch_one(fixture.state.store.pool()).await.unwrap();
+        if let Some(run_id)=run_id {
+            eprintln!("communication timeout: {}",execution_diagnostics(&fixture,&application_id,run_id).await);
+        }
+    }
     stop.send(true).unwrap();
     execution.await.unwrap();
     fixture.runtime.host.stop().await.unwrap();

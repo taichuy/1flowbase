@@ -302,15 +302,9 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             {
                 return Err(ControlPlaneError::PermissionDenied("communication_run_scope").into());
             }
-            // Preserve the callback operator's existing application Run gate before executing
-            // under the configuring actor; both identities must retain their own access.
-            ApplicationService::new(self.dependencies.store.for_actor(actor.clone()))
-                .load_application_for_non_crud_console_operation(
-                    actor.user_id,
-                    application_id,
-                    control_plane::application::ApplicationNonCrudConsoleOperation::Run,
-                )
-                .await?;
+            // The Console kernel has authorized this operator for the exact resume/callback
+            // route. Do not require the retired aggregate applications.run grant as well.
+            // Execution retains the independently validated configuring actor below.
             let execution_actor =
                 crate::communication_runtime::validate_binding(&self.dependencies.store, &binding)
                     .await
