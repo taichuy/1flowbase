@@ -65,60 +65,82 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts agent_logs > tmp/test-governance/agent-logs-regression/contracts.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/contracts.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/contracts.log
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts log_query > tmp/test-governance/agent-logs-regression/query-contracts.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/query-contracts.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/query-contracts.log
+          filters=(agent_logs log_query)
+          log=tmp/test-governance/agent-logs-regression/contracts.log
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts \
+            -- "${filters[@]}" --format=pretty --color=never \
+            > "$log" 2>&1 || { tail -c 4000 "$log"; exit 1; }
+          node scripts/node/verify/cargo-test-results.js "$log" -- "${filters[@]}"
       - name: Real service, migrations, deletion and imported read models
         shell: bash
         run: |
           set -euo pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration application_logs::agent_logs > tmp/test-governance/agent-logs-regression/postgres.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/postgres.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/postgres.log
-      - name: Console authentication, CSRF and Canonical binding
+          filters=(application_logs::agent_logs)
+          log=tmp/test-governance/agent-logs-regression/postgres.log
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests \
+            --test orchestration_runtime_integration \
+            -- "${filters[@]}" --format=pretty --color=never \
+            > "$log" 2>&1 || { tail -c 4000 "$log"; exit 1; }
+          node scripts/node/verify/cargo-test-results.js "$log" -- "${filters[@]}"
+      - name: Console authorization, unified queries, registration and trajectory routes
         shell: bash
         run: |
           set -euo pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server agent_logs_delete > tmp/test-governance/agent-logs-regression/console.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/console.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/console.log
-      - name: Unified log queries and authenticated semantic locators
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server agent_logs_unified_query > tmp/test-governance/agent-logs-regression/query-console.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/query-console.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/query-console.log
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server routes::settings_group::mcp_management::debug_execute > tmp/test-governance/agent-logs-regression/query-wrapper.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/query-wrapper.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/query-wrapper.log
-      - name: Compiled Console operation registration and migration boundary
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server console_route_assembly > tmp/test-governance/agent-logs-regression/registry.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/registry.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/registry.log
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server console_policy_migration > tmp/test-governance/agent-logs-regression/policy.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/policy.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/policy.log
+          filters=(
+            agent_logs_delete
+            agent_logs_unified_query
+            routes::settings_group::mcp_management::debug_execute
+            console_route_assembly
+            console_policy_migration
+            application_runtime_run_trajectory_and_payload_sections_are_scoped_lazy_and_authorized
+            workflow_trajectory_routes_preserve_authorization_filters_and_selected_body_scope
+          )
+          log=tmp/test-governance/agent-logs-regression/api-server.log
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server \
+            -- "${filters[@]}" --format=pretty --color=never \
+            > "$log" 2>&1 || { tail -c 4000 "$log"; exit 1; }
+          node scripts/node/verify/cargo-test-results.js "$log" -- "${filters[@]}"
       - name: Existing canonical storage and native consumers
         shell: bash
         run: |
           set -euo pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration storage_foundation > tmp/test-governance/agent-logs-regression/canonical.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/canonical.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/canonical.log
+          # Keep this integration selection in a separate Cargo process.
+          filters=(storage_foundation)
+          log=tmp/test-governance/agent-logs-regression/canonical.log
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests \
+            --test orchestration_runtime_integration \
+            -- "${filters[@]}" --format=pretty --color=never \
+            > "$log" 2>&1 || { tail -c 4000 "$log"; exit 1; }
+          node scripts/node/verify/cargo-test-results.js "$log" -- "${filters[@]}"
       - name: Exact viewport acquisition for native client and workflow trajectories
         shell: bash
         run: |
           set -euo pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres client_trajectory > tmp/test-governance/agent-logs-regression/client-trajectory.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/client-trajectory.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/client-trajectory.log
-          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres workflow_ > tmp/test-governance/agent-logs-regression/workflow-trajectory.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/workflow-trajectory.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/workflow-trajectory.log
-      - name: Authorized native and workflow viewport read routes
+          filters=(client_trajectory workflow_)
+          log=tmp/test-governance/agent-logs-regression/trajectories.log
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres \
+            -- "${filters[@]}" --format=pretty --color=never \
+            > "$log" 2>&1 || { tail -c 4000 "$log"; exit 1; }
+          node scripts/node/verify/cargo-test-results.js "$log" -- "${filters[@]}"
+      # Temporary candidate acceptance; removed after source-bound evidence is collected.
+      - name: Workflow runtime candidate acceptance
         shell: bash
+        env:
+          RUST_MIN_STACK: 8388608
         run: |
           set -euo pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server application_runtime_run_trajectory_and_payload_sections_are_scoped_lazy_and_authorized > tmp/test-governance/agent-logs-regression/native-routes.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/native-routes.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/native-routes.log
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server workflow_trajectory_routes_preserve_authorization_filters_and_selected_body_scope > tmp/test-governance/agent-logs-regression/workflow-routes.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/workflow-routes.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/workflow-routes.log
+          filters=(runtime_event_stream workflow_schedule_worker)
+          log=tmp/test-governance/agent-logs-regression/runtime-api.log
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib \
+            -- "${filters[@]}" --format=pretty --color=never \
+            > "$log" 2>&1 || { tail -c 6000 "$log"; exit 1; }
+          node scripts/node/verify/cargo-test-results.js "$log" -- "${filters[@]}"
+          filters=(runtime_event_persister orchestration_runtime::service::runtime_events)
+          log=tmp/test-governance/agent-logs-regression/runtime-persister.log
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib \
+            -- "${filters[@]}" --format=pretty --color=never \
+            > "$log" 2>&1 || { tail -c 6000 "$log"; exit 1; }
+          node scripts/node/verify/cargo-test-results.js "$log" -- "${filters[@]}"
       - uses: actions/upload-artifact@v6
         if: always()
         with:

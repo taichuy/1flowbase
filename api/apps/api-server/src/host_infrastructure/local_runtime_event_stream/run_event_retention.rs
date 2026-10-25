@@ -1,5 +1,48 @@
 use super::*;
 
+impl RetainedRuntimeEvents {
+    pub(super) fn push(&mut self, event: RetainedRuntimeEvent) {
+        self.sequence_order_may_be_unsorted |= self
+            .events
+            .back()
+            .is_some_and(|previous| previous.sequence > event.sequence);
+        self.ephemeral_count += usize::from(!event.is_required());
+        self.bytes = self.bytes.saturating_add(event.wire.len());
+        if let Some(reason) = event.terminal_reason {
+            self.terminal_reason.get_or_insert(reason);
+            self.terminal_sequence.get_or_insert(event.sequence);
+        }
+        self.events.push_back(Arc::new(event));
+    }
+
+    fn after_sequence<'a>(
+        &self,
+        events: &'a VecDeque<Arc<RetainedRuntimeEvent>>,
+        sequence: i64,
+    ) -> impl Iterator<Item = &'a Arc<RetainedRuntimeEvent>> {
+        // The producer normally advances monotonically. Preserve the original
+        // filter even if its signed sequence counter ever wraps in release mode.
+        let start = if self.sequence_order_may_be_unsorted {
+            0
+        } else {
+            events.partition_point(|event| event.sequence <= sequence)
+        };
+        events
+            .range(start..)
+            .filter(move |event| event.sequence > sequence)
+    }
+
+    fn first_ephemeral_from(&self, start: usize) -> Option<usize> {
+        if self.ephemeral_count == 0 {
+            return None;
+        }
+        self.events
+            .range(start..)
+            .position(|event| !event.is_required())
+            .map(|offset| start + offset)
+    }
+}
+
 impl LocalRunEventStream {
     pub(super) fn close(&self, reason: RuntimeEventCloseReason) {
         let _ring = self.ring.lock().expect("runtime event ring lock poisoned");
@@ -66,10 +109,7 @@ impl LocalRunEventStream {
                 *run.last_event_at
                     .lock()
                     .expect("runtime event last event lock poisoned") = envelope.occurred_at;
-                ring.bytes = ring.bytes.saturating_add(retained_bytes);
-                ring.terminal_reason = Some(incoming_reason);
-                ring.terminal_sequence = Some(sequence);
-                ring.events.push_back(Arc::new(retained));
+                ring.push(retained);
                 (
                     AppendTerminalIfMissingAndCloseOutcome::Appended,
                     incoming_reason,
@@ -140,6 +180,7 @@ impl LocalRunEventStream {
             .collect::<Vec<_>>();
         let mut events = std::mem::take(&mut ring.events);
         ring.bytes = 0;
+        ring.ephemeral_count = 0;
         ring.retired = true;
         if let Some(minimum_sequence) = subscribers
             .iter()
@@ -186,9 +227,7 @@ impl LocalRunEventStream {
             subscribers.retain(|subscriber| subscriber.strong_count() > 0);
             subscribers.push(Arc::downgrade(&subscriber));
             let retained = ring
-                .events
-                .iter()
-                .filter(|event| event.sequence > requested_sequence)
+                .after_sequence(&ring.events, requested_sequence)
                 .cloned()
                 .collect::<Vec<_>>();
             (subscriber, retained)
@@ -310,9 +349,7 @@ impl LocalRunEventStream {
                 requested_sequence,
                 self.next_sequence.load(Ordering::SeqCst),
             )?;
-            ring.events
-                .iter()
-                .filter(|event| event.sequence > requested_sequence)
+            ring.after_sequence(&ring.events, requested_sequence)
                 .take(limit)
                 .cloned()
                 .collect::<Vec<_>>()
@@ -335,9 +372,7 @@ impl LocalRunEventStream {
                 .lock()
                 .expect("runtime event backfill lock poisoned");
             let events = retired_events.as_deref().unwrap_or(&ring.events);
-            events
-                .iter()
-                .filter(|event| event.sequence > sequence)
+            ring.after_sequence(events, sequence)
                 .take(limit)
                 .cloned()
                 .collect::<Vec<_>>()
@@ -351,6 +386,7 @@ impl LocalRunEventStream {
     ) -> Result<()> {
         if let Some(event) = ring.events.remove(index) {
             ring.bytes = ring.bytes.saturating_sub(event.wire.len());
+            ring.ephemeral_count -= usize::from(!event.is_required());
             if event.terminal_reason.is_some() {
                 ring.terminal_reason = ring.events.iter().find_map(|event| event.terminal_reason);
                 ring.terminal_sequence = ring
@@ -371,11 +407,11 @@ impl LocalRunEventStream {
     ) -> Result<()> {
         match self.policy.overflow_behavior {
             RuntimeEventOverflowBehavior::DropOldEphemeralKeepRequired => {
+                let mut search_from = 0;
                 while ring.events.len() >= self.policy.max_events
                     || ring.bytes.saturating_add(incoming_bytes) > self.policy.max_bytes
                 {
-                    let Some(index) = ring.events.iter().position(|event| !event.is_required())
-                    else {
+                    let Some(index) = ring.first_ephemeral_from(search_from) else {
                         // These budgets trim diagnostics. Required delivery is governed by
                         // live-lane backpressure and generation reclamation, not body size.
                         if required_delivery {
@@ -389,6 +425,7 @@ impl LocalRunEventStream {
                         return Err(anyhow!("runtime event stream {capacity} capacity exceeded"));
                     };
                     Self::remove_retained_event(ring, index)?;
+                    search_from = index;
                 }
             }
         }
@@ -396,11 +433,13 @@ impl LocalRunEventStream {
     }
 
     pub(super) fn trim_to_policy(&self, ring: &mut RetainedRuntimeEvents) -> Result<()> {
+        let mut search_from = 0;
         while ring.events.len() > self.policy.max_events || ring.bytes > self.policy.max_bytes {
-            let Some(index) = ring.events.iter().position(|event| !event.is_required()) else {
+            let Some(index) = ring.first_ephemeral_from(search_from) else {
                 break;
             };
             Self::remove_retained_event(ring, index)?;
+            search_from = index;
         }
         Ok(())
     }
