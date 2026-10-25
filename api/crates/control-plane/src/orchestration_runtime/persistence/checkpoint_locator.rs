@@ -159,11 +159,16 @@ impl CheckpointContentMetadata {
             parent_context_version_id,
             sequence,
         } = self;
-        let mut current = snapshot.variable_pool.clone();
-        current.remove(RECOVERY_CONTEXT_MARKER);
         let content = match previous_variable_pool {
-            None => json!({ "format": "runtime_snapshot_v1", "variable_pool": current }),
-            Some(previous) => checkpoint_delta_content(previous, &current),
+            None => {
+                let mut current = snapshot.variable_pool.clone();
+                current.remove(RECOVERY_CONTEXT_MARKER);
+                let mut content = Map::new();
+                content.insert("format".into(), Value::String("runtime_snapshot_v1".into()));
+                content.insert("variable_pool".into(), Value::Object(current));
+                Value::Object(content)
+            }
+            Some(previous) => checkpoint_delta_content(previous, &snapshot.variable_pool),
         };
         SparseCheckpointContent {
             content,
@@ -191,6 +196,9 @@ fn checkpoint_delta_content(previous: &Map<String, Value>, current: &Map<String,
     let mut set = Map::new();
     let mut llm_callback_appends = Vec::new();
     for (key, value) in current {
+        if key == RECOVERY_CONTEXT_MARKER {
+            continue;
+        }
         if previous.get(key) != Some(value) {
             if let Some(append) = previous
                 .get(key)
@@ -206,13 +214,17 @@ fn checkpoint_delta_content(previous: &Map<String, Value>, current: &Map<String,
         .keys()
         .filter(|key| !current.contains_key(*key) && key.as_str() != RECOVERY_CONTEXT_MARKER)
         .cloned()
+        .map(Value::String)
         .collect::<Vec<_>>();
-    json!({
-        "format": "runtime_delta_v1",
-        "set": set,
-        "remove": remove,
-        "llm_callback_appends": llm_callback_appends,
-    })
+    let mut content = Map::new();
+    content.insert("format".into(), Value::String("runtime_delta_v1".into()));
+    content.insert("set".into(), Value::Object(set));
+    content.insert("remove".into(), Value::Array(remove));
+    content.insert(
+        "llm_callback_appends".into(),
+        Value::Array(llm_callback_appends),
+    );
+    Value::Object(content)
 }
 
 fn llm_callback_append(node_id: &str, previous: &Value, current: &Value) -> Option<Value> {

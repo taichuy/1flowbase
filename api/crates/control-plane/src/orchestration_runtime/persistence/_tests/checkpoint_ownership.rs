@@ -252,6 +252,7 @@ async fn prepared_full_then_history_delta_resumes_exact_snapshot() {
         active_node_ids: vec!["node-tool".into(), "node-answer".into()],
         variable_pool: serde_json::Map::from_iter([
             ("obsolete".into(), json!(true)),
+            (RECOVERY_CONTEXT_MARKER.into(), Value::Null),
             (
                 "node-tool".into(),
                 json!({"__llm_tool_callback":{
@@ -280,7 +281,14 @@ async fn prepared_full_then_history_delta_resumes_exact_snapshot() {
         );
         if sequence == 0 {
             assert_eq!(prepared.context_content["format"], "runtime_snapshot_v1");
+            assert_eq!(serde_json::to_vec(&prepared.context_content).unwrap(),
+                br#"{"format":"runtime_snapshot_v1","variable_pool":{"obsolete":true,"node-tool":{"__llm_tool_callback":{"system":"frozen\u0000system","history":[{"role":"user","content":"query"}],"pending_tool_calls":["call-1"]}}}}"#);
+            assert!(prepared.context_content["variable_pool"]
+                .get(RECOVERY_CONTEXT_MARKER)
+                .is_none());
         } else {
+            assert_eq!(serde_json::to_vec(&prepared.context_content).unwrap(),
+                br#"{"format":"runtime_delta_v1","set":{},"remove":["obsolete"],"llm_callback_appends":[{"node_id":"node-tool","node_set":{},"node_remove":[],"state_set":{"pending_tool_calls":[]},"state_remove":[],"history_append":[{"role":"tool","content":"result\u0000exact"}]}]}"#);
             assert_eq!(prepared.context_content["format"], "runtime_delta_v1");
             assert_eq!(prepared.context_content["remove"], json!(["obsolete"]));
             assert_eq!(
@@ -343,4 +351,43 @@ async fn prepared_full_then_history_delta_resumes_exact_snapshot() {
         snapshot.variable_pool["node-tool"]["__llm_tool_callback"]["pending_tool_calls"] =
             json!([]);
     }
+}
+
+#[test]
+fn compact_delta_moves_changed_values_in_order_without_recovery_marker() {
+    let previous = json!({
+        RECOVERY_CONTEXT_MARKER: {"context_version_id":Uuid::nil(), "sequence":1},
+        "removed-z": 1,
+        "untouched": true,
+        "removed-a": 2,
+        "changed": {"old":true}
+    });
+    let snapshot = orchestration_runtime::execution_state::CheckpointSnapshot {
+        next_node_index: 1,
+        active_node_ids: vec!["node-tool".into()],
+        variable_pool: json!({
+            RECOVERY_CONTEXT_MARKER: {"context_version_id":Uuid::nil(), "sequence":2},
+            "changed": {"z":"exact\0text", "a":-0.0},
+            "untouched":true,
+            "new":[null, "\\u0000"]
+        })
+        .as_object()
+        .unwrap()
+        .clone(),
+    };
+    let original = serde_json::to_vec(&snapshot.variable_pool).unwrap();
+    let compacted = super::super::checkpoint_locator::compact_checkpoint_content(
+        &snapshot,
+        previous.as_object(),
+    )
+    .unwrap();
+    assert_eq!(serde_json::to_vec(&compacted.content).unwrap(),
+        br#"{"format":"runtime_delta_v1","set":{"changed":{"z":"exact\u0000text","a":-0.0},"new":[null,"\\u0000"]},"remove":["removed-z","removed-a"],"llm_callback_appends":[]}"#);
+    assert!(compacted.content["set"]
+        .get(RECOVERY_CONTEXT_MARKER)
+        .is_none());
+    assert_eq!(
+        serde_json::to_vec(&snapshot.variable_pool).unwrap(),
+        original
+    );
 }
