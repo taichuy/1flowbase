@@ -86,6 +86,7 @@ fn receive_rejects_bad_identities_duplicates_secret_cursor_and_mismatched_operat
     let result: NotificationRuntimeResult = serde_json::from_value(result()).unwrap();
     let mut send = input.clone();
     send.operation = NotificationOperation::Send {
+        target: None,
         input_payload: json!({}),
     };
     assert!(result.validate_for(&send, &descriptor).is_err());
@@ -197,4 +198,49 @@ fn receive_poll_and_batch_budgets_are_enforced_before_provider_io() {
         json!({"operation":{"type":"receive","max_messages":1,"wait_seconds":1,"ack":true}})
     )
     .is_err());
+}
+
+#[test]
+fn receive_cursor_roundtrip_uses_the_same_budget_as_committed_batch() {
+    let descriptor = descriptor();
+    let cursor = json!({"pending":"x".repeat(32*1024)});
+    let mut wire = result();
+    wire["outcome"]["batch"]["candidate_cursor"] = cursor.clone();
+    let result: NotificationRuntimeResult = serde_json::from_value(wire).unwrap();
+    result.validate_for(&input(), &descriptor).unwrap();
+    let mut next = input();
+    next.operation = NotificationOperation::Receive {
+        cursor: Some(cursor),
+        max_messages: 10,
+        wait_seconds: 20,
+    };
+    next.validate(&descriptor).unwrap();
+    next.operation = NotificationOperation::Receive {
+        cursor: Some(json!("x".repeat(NOTIFICATION_MAX_RECEIVE_BATCH_BYTES))),
+        max_messages: 10,
+        wait_seconds: 20,
+    };
+    assert!(next.validate(&descriptor).is_err());
+}
+#[test]
+fn reply_target_is_explicit_and_rejects_missing_identity() {
+    let descriptor = descriptor();
+    let mut request = input();
+    request.operation = NotificationOperation::Send {
+        input_payload: json!({}),
+        target: Some(NotificationSendTarget {
+            sender_id: "peer".into(),
+            conversation_id: "private-peer".into(),
+            provider_message_id: "m1".into(),
+        }),
+    };
+    request.validate(&descriptor).unwrap();
+    if let NotificationOperation::Send {
+        target: Some(target),
+        ..
+    } = &mut request.operation
+    {
+        target.sender_id.clear();
+    }
+    assert!(request.validate(&descriptor).is_err());
 }

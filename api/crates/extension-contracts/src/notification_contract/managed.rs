@@ -8,8 +8,8 @@ use serde_json::Value;
 use super::{
     identity, invalid, ContractResult, NotificationAttachmentDownloadOutcome,
     NotificationAttachmentReference, NotificationReceiveOutcome, NotificationTypeDescriptor,
-    NOTIFICATION_MAX_ATTACHMENT_CHUNK_BYTES, NOTIFICATION_MAX_RECEIVE_MESSAGES,
-    NOTIFICATION_MAX_RECEIVE_WAIT_SECONDS,
+    NOTIFICATION_MAX_ATTACHMENT_CHUNK_BYTES, NOTIFICATION_MAX_RECEIVE_BATCH_BYTES,
+    NOTIFICATION_MAX_RECEIVE_MESSAGES, NOTIFICATION_MAX_RECEIVE_WAIT_SECONDS,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,6 +167,8 @@ pub enum NotificationOperation {
     },
     Send {
         input_payload: Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target: Option<NotificationSendTarget>,
     },
     Receive {
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -179,6 +181,15 @@ pub enum NotificationOperation {
         offset: u64,
         max_bytes: u32,
     },
+}
+
+/// Immutable reply destination captured from the committed inbound message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NotificationSendTarget {
+    pub sender_id: String,
+    pub conversation_id: String,
+    pub provider_message_id: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -363,7 +374,9 @@ impl NotificationRuntimeInput {
                     || *max_messages > NOTIFICATION_MAX_RECEIVE_MESSAGES
                     || *wait_seconds > NOTIFICATION_MAX_RECEIVE_WAIT_SECONDS
                     || cursor.as_ref().is_some_and(|value| {
-                        serde_json::to_vec(value).map_or(true, |bytes| bytes.len() > 16_384)
+                        serde_json::to_vec(value).map_or(true, |bytes| {
+                            bytes.len() > NOTIFICATION_MAX_RECEIVE_BATCH_BYTES
+                        })
                     })
                 {
                     return Err(invalid("receive capability or polling budget is invalid"));
@@ -386,7 +399,23 @@ impl NotificationRuntimeInput {
                 }
                 attachment.validate()
             }
-            NotificationOperation::Send { input_payload } => {
+            NotificationOperation::Send {
+                input_payload,
+                target,
+            } => {
+                if target.as_ref().is_some_and(|target| {
+                    [
+                        &target.sender_id,
+                        &target.conversation_id,
+                        &target.provider_message_id,
+                    ]
+                    .iter()
+                    .any(|id| id.trim().is_empty() || id.len() > 1024)
+                }) {
+                    return Err(invalid(
+                        "reply target requires bounded message and recipient identities",
+                    ));
+                }
                 descriptor.validate_input(input_payload)
             }
         }
