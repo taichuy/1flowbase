@@ -72,3 +72,4 @@ pub use control_plane_contracts::ports::{
 };
 
 pub use control_plane_contracts::ports::notifications::*;
+pub use control_plane_contracts::ports::communications::*;

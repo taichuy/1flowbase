@@ -804,6 +804,7 @@ pub fn system_notification_descriptor() -> NotificationTypeDescriptor {
     NotificationTypeDescriptor{
         i18n:Default::default(),
         authorization:None,
+        receive:None,
         type_code:"system".into(),display_name:"System notification".into(),description:"Deliver a message to workspace members' inboxes".into(),
         contribution_id:ContributionId::new("1flowbase.notification.system").expect("builtin contribution"),
         config_schema:json!({"type":"object","properties":{},"additionalProperties":false}),
@@ -824,3 +825,5 @@ fn contains_secret(value: &Value, secret: &str) -> bool {
         _ => false,
     }
 }
+
+mod communications;
