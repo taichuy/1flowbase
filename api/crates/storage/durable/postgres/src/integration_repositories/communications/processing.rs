@@ -18,7 +18,7 @@ pub(super) async fn claim(
     // Reclaim the observation lease, retaining any reserved run ID. The execution owner
     // inspects that run and must never invoke it a second time after a restart.
     let sql=format!("SELECT m.*,({RETRY_ELIGIBILITY}) AS can_retry FROM communication_messages m JOIN communication_conversations c ON c.id=m.conversation_id WHERE m.workspace_id=$1 AND m.instance_id=$2 AND ((m.processing_status='pending') OR (m.processing_status='processing' AND m.claim_expires_at<=now()) OR (m.processing_status='succeeded' AND m.send_status='pending' AND (m.claim_id IS NULL OR m.claim_expires_at<=now()))) AND NOT EXISTS(SELECT 1 FROM communication_messages p WHERE p.conversation_id=m.conversation_id AND p.id<m.id AND (p.processing_status IN ('pending','processing') OR p.send_status IN ('pending','sending'))) ORDER BY m.id LIMIT 1 FOR UPDATE OF c,m SKIP LOCKED");
-    let row = sqlx::query(&sql)
+    let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(w)
         .bind(i)
         .fetch_optional(&mut *tx)
@@ -117,7 +117,7 @@ pub(super) async fn progress(
         ""
     };
     let sql=format!("UPDATE communication_messages m SET {set},run_id=COALESCE($5,run_id),final_reply=COALESCE($6,final_reply),failure_code=$7 WHERE workspace_id=$1 AND instance_id=$2 AND id=$3 AND claim_id=$4 AND claim_expires_at>now() AND ({condition}) {enabled}");
-    Ok(sqlx::query(&sql)
+    Ok(sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(c.workspace_id)
         .bind(c.instance_id)
         .bind(c.message_id)
@@ -133,7 +133,7 @@ pub(super) async fn progress(
 pub(super) async fn retry(store: &PgControlPlaneStore, w: Uuid, i: Uuid, m: Uuid) -> Result<bool> {
     let mut tx = store.pool().begin().await?;
     let sql=format!("UPDATE communication_messages m SET processing_status=CASE WHEN processing_status='failed' THEN 'pending' ELSE processing_status END,send_status=CASE WHEN send_status='failed' THEN 'pending' ELSE send_status END,run_id=CASE WHEN processing_status='failed' THEN NULL ELSE run_id END,failure_code=NULL,claim_id=NULL,claim_expires_at=NULL WHERE workspace_id=$1 AND instance_id=$2 AND id=$3 AND ({RETRY_ELIGIBILITY}) RETURNING id");
-    let row = sqlx::query(&sql)
+    let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(w)
         .bind(i)
         .bind(m)

@@ -130,7 +130,7 @@ pub(crate) async fn binding(
     )
     .await
 }
-#[utoipa::path(put,path="/api/console/communications/instances/{instance_id}/binding",tag="Communications",operation_id="communications_save_binding",params(("instance_id"=Uuid,Path,description="instance id")),responses((status=200,body=Value))) ]
+#[utoipa::path(put,path="/api/console/communications/instances/{instance_id}/binding",tag="Communications",operation_id="communications_save_binding",request_body=Value,params(("instance_id"=Uuid,Path,description="instance id")),responses((status=200,body=Value))) ]
 pub(crate) async fn save_binding(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

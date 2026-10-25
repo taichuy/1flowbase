@@ -2,7 +2,7 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::{ensure, Context, Result};
-use control_plane::ports::{AuthRepository, NotificationRepository, WorkspaceRepository};
+use control_plane::ports::{NotificationRepository, WorkspaceRepository};
 use domain::{
     ActorContext, CommunicationBindingRecord, NotificationInstanceRecord,
     NotificationInstanceStatus, UserStatus,

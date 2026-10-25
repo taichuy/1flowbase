@@ -39,7 +39,8 @@ impl ManagedNotificationProvider {
         let snapshot = self
             .composition
             .snapshot(actor.current_workspace_id)
-            .await?;
+            .await
+            .context("communication plugin is unavailable")?;
         let binding = snapshot
             .bindings
             .get(contribution)
