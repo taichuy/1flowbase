@@ -32,6 +32,7 @@ Linux/macOS 示例：`FLOWBASE_PORT=17800 FLOWBASE_POSTGRES_PORT=45432 ./start.s
 ```sh
 cargo build --manifest-path api/Cargo.toml --release -p api-server --bin api-server --bin system_recovery
 pnpm --dir web build
+node scripts/node/native-release/resources.js tmp/native-resources
 node scripts/node/native-release/fetch-postgres.js linux-x64 tmp/native-postgres
 # postgres-dir 使用上一步输出的 PostgreSQL 目录。
 node scripts/node/native-release/package.js \
@@ -39,7 +40,7 @@ node scripts/node/native-release/package.js \
   --api-binary api/target/release/api-server \
   --recovery-binary api/target/release/system_recovery \
   --web-dir web/app/dist --postgres-dir /path/to/postgresql \
-  --out tmp/native-release
+  --resources-dir tmp/native-resources --out tmp/native-release
 ```
 
 系统名为 `linux`、`macos`、`windows`，架构名为 `x64`、`arm64`。包名例如 `1flowbase-windows-x64.zip`；版本写入 Release 和 `native-distribution.json`，文件名不含 hash。打包器拒绝覆盖已存在的目录或归档。
