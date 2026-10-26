@@ -1,13 +1,6 @@
 name: Native portable distribution (experimental)
 
 on:
-  push:
-    branches: [dev]
-    paths:
-      - '.github/workflows/native-release.yml'
-      - 'api/apps/api-server/src/native_distribution/**'
-      - 'scripts/node/native-release/**'
-      - 'docker/native/**'
   workflow_dispatch:
     inputs:
       target:
@@ -37,7 +30,7 @@ jobs:
           path: tmp/native-resources
       - id: select
         env:
-          TARGET: ${{ inputs.target || 'all' }}
+          TARGET: ${{ inputs.target }}
         run: |
           node <<'NODE' >> "$GITHUB_OUTPUT"
           const entries = [
@@ -74,6 +67,7 @@ jobs:
         with:
           workspaces: api
           key: native-${{ matrix.target }}
+          cache-on-failure: true
       - name: Test native behavior and build backend
         run: |
           mkdir -p tmp/test-governance/native-release

@@ -231,6 +231,17 @@ impl NetworkEgressWorker {
                 cleanup_error.get_or_insert_with(|| error.to_string());
             }
         }
+        // Non-Unix platforms do not implement POSIX process-group signals. Terminate
+        // the owned child handle instead of waiting forever on the no-op group adapter.
+        #[cfg(not(unix))]
+        if !leader_already_exited {
+            match self.child.start_kill() {
+                Ok(()) => termination_signal_sent = true,
+                Err(error) => {
+                    cleanup_error.get_or_insert_with(|| error.to_string());
+                }
+            }
+        }
         let leader_exited = if leader_already_exited {
             true
         } else {
@@ -245,11 +256,16 @@ impl NetworkEgressWorker {
         };
         let mut process_group_exited = wait_for_process_group_exit(process_group_id).await;
         if !leader_exited || !process_group_exited {
+            #[cfg(unix)]
             match terminate_process_group(process_group_id, libc::SIGKILL) {
                 Ok(sent) => termination_signal_sent |= sent,
                 Err(error) => {
                     cleanup_error.get_or_insert_with(|| error.to_string());
                 }
+            }
+            #[cfg(not(unix))]
+            if let Err(error) = self.child.start_kill() {
+                cleanup_error.get_or_insert_with(|| error.to_string());
             }
             if !leader_exited {
                 if let Err(error) = self.child.wait().await {
@@ -257,6 +273,12 @@ impl NetworkEgressWorker {
                 }
             }
             process_group_exited = wait_for_process_group_exit(process_group_id).await;
+        }
+        // A reaped Windows child is not proof that all of its descendants exited.
+        // Preserve that distinction until the host owns a Windows Job Object.
+        #[cfg(not(unix))]
+        {
+            process_group_exited = false;
         }
         let process_tree_exited = leader_exited && process_group_exited;
         if !process_tree_exited {

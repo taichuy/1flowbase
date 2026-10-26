@@ -46,3 +46,5 @@ node scripts/node/native-release/package.js \
 系统名为 `linux`、`macos`、`windows`，架构名为 `x64`、`arm64`。包名例如 `1flowbase-windows-x64.zip`；版本写入 Release 和 `native-distribution.json`，文件名不含 hash。打包器拒绝覆盖已存在的目录或归档。
 
 生产发行应通过 `--resources-dir` 携带现有 model-pricing / application-templates 资源，保留 PostgreSQL 及附带库的许可证，并在干净目标系统验证完整功能、共享库依赖、备份恢复、签名/公证。本试验不证明全部插件支持三平台，也不包含自动更新和系统服务。
+
+Windows 网络出口插件目前只回收直接子进程，进程树退出收据会明确报告未验证；在 Windows Job Object 支持完成前，不将该能力用于需要保证无后代进程残留的部署。

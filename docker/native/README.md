@@ -46,3 +46,5 @@ node scripts/node/native-release/package.js \
 Platforms: `linux`, `macos`, `windows`. Architectures: `x64`, `arm64`. Example archive: `1flowbase-windows-x64.zip`. Version information belongs in the Release and `native-distribution.json`, never a hash suffix in the filename. Existing staging directories and archives are not overwritten.
 
 Production releases should bundle existing model-pricing and application-template resources using `--resources-dir`, preserve PostgreSQL and bundled library license notices, and validate dependencies, functionality, backup/restore and signing/notarization on clean target systems. This experiment does not certify every plugin on all platforms and does not include automatic updates or system services.
+
+On Windows, network-egress plugin cleanup currently terminates the direct child and reports descendant-tree cleanup as unverified. Do not rely on this capability for guaranteed descendant cleanup until Windows Job Object support is implemented.
