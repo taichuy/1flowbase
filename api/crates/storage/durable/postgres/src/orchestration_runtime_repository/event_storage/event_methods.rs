@@ -247,7 +247,7 @@ impl PgControlPlaneStore {
         .bind(input.trust_level.as_str())
         .bind(input.item_id)
         .bind(input.ledger_ref.as_deref())
-        .bind(lossless_json_parameter(&payload))
+        .bind(lossless_json_parameter(payload.as_ref()))
         .bind(input.visibility.as_str())
         .bind(input.durability.as_str())
         .bind(observation_body_content_id)
@@ -333,7 +333,8 @@ impl PgControlPlaneStore {
             builder.push_values(
                 chunk.iter().zip(archived.iter()).enumerate(),
                 |mut row, (index, (input, (payload, content_id, manifest_id)))| {
-                    let (projection, originals) = lossless_json_columns("payload", payload);
+                    let (projection, originals) =
+                        lossless_json_columns("payload", payload.as_ref());
                     row.push_bind(Uuid::now_v7())
                         .push_bind(input.flow_run_id)
                         .push_bind(input.node_run_id)

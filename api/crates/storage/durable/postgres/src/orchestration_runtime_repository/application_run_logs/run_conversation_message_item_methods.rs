@@ -29,7 +29,7 @@ impl PgControlPlaneStore {
     ) -> Result<()> {
         // Callers establish this order at entry before source-trigger queue writes.
         lock_application_run_native_projection(tx, flow_run_id).await?;
-        let row = sqlx::query("select f.*, runtime_original_json(f.input_payload,f.raw_json_payloads,'input_payload') as input_payload, runtime_original_json(f.output_payload,f.raw_json_payloads,'output_payload') as output_payload, runtime_original_json(f.error_payload,f.raw_json_payloads,'error_payload') as error_payload, (select account from users where id=f.created_by) as authorized_account from flow_runs f where f.id=$1")
+        let row = sqlx::query("select f.id, f.application_id, f.flow_id, f.flow_draft_id, f.compiled_plan_id, f.debug_session_id, f.flow_schema_version, f.document_hash, f.run_mode, f.target_node_id, f.title, f.status, runtime_original_json(f.input_payload,f.raw_json_payloads,'input_payload') as input_payload, runtime_original_json(f.output_payload,f.raw_json_payloads,'output_payload') as output_payload, runtime_original_json(f.error_payload,f.raw_json_payloads,'error_payload') as error_payload, f.created_by, (select account from users where id=f.created_by) as authorized_account, f.api_key_id, f.publication_version_id, f.external_user, f.external_conversation_id, f.external_trace_id, f.compatibility_mode, f.idempotency_key, f.started_at, f.finished_at, f.created_at, f.updated_at from flow_runs f where f.id=$1")
             .bind(flow_run_id).fetch_one(&mut **tx).await?;
         let run = map_flow_run_record(row)?;
         Self::upsert_application_run_log_summary_projection_for_flow_run(tx, &run).await?;

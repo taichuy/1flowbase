@@ -7,6 +7,7 @@ license.workspace = true
 publish = false
 
 [features]
+history-memory-probe = ["dep:tikv-jemallocator", "dep:tikv-jemalloc-sys"]
 responses-history-migration = [
     "control-plane/responses-history-migration",
     "control-plane-contracts/responses-history-migration",
@@ -103,6 +104,12 @@ storage-ephemeral = { path = "../storage/ephemeral" }
 time.workspace = true
 tokio.workspace = true
 uuid.workspace = true
+
+# Opt-in allocator instrumentation for this test-only host. Both packages are
+# already locked by api-server; no production allocator or default test changes.
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+tikv-jemallocator = { version = "=0.7.0", optional = true, features = ["background_threads", "stats", "profiling"] }
+tikv-jemalloc-sys = { version = "=0.7.1", optional = true, features = ["stats", "profiling"] }
 
 [[test]]
 name = "notifications_integration"

@@ -1033,6 +1033,8 @@ dependencies = [
  "storage-durable",
  "storage-durable-postgres",
  "storage-ephemeral",
+ "tikv-jemalloc-sys",
+ "tikv-jemallocator",
  "time",
  "tokio",
  "uuid",
