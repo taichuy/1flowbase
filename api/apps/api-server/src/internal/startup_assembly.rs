@@ -600,6 +600,13 @@ pub(super) fn resolve_system_backup_startup(
 }
 
 pub(super) fn api_workspace_root() -> Result<PathBuf> {
+    if let Some(root) = std::env::var_os("API_WORKSPACE_ROOT") {
+        let root = PathBuf::from(root);
+        if !root.join("plugins/host-extensions").is_dir() {
+            return Err(anyhow!("API_WORKSPACE_ROOT must contain plugins/host-extensions"));
+        }
+        return Ok(root);
+    }
     let current_dir = std::env::current_dir()?;
     let candidates = [
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),

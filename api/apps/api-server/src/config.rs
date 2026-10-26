@@ -334,7 +334,10 @@ impl ApiConfig {
                 DEFAULT_PLUGIN_UPLOAD_MAX_BYTES,
             )?,
             runtime_table_name_policy,
-            business_file_local_root: default_business_file_local_root(),
+            business_file_local_root: map
+                .get("API_BUSINESS_FILE_LOCAL_ROOT")
+                .cloned()
+                .unwrap_or_else(default_business_file_local_root),
             cookie_name: map
                 .get("API_COOKIE_NAME")
                 .cloned()
