@@ -350,10 +350,10 @@ pub(super) async fn app_and_runtime_host_from_config(
     let managed_services = crate::managed_services::load(&store, &config.api_node_id).await?;
     let mut docs_document = serde_json::to_value(openapi::ApiDoc::openapi())?;
     crate::managed_services::append_openapi(&mut docs_document, &managed_services);
-    let api_docs = Arc::new(openapi_docs::build_api_docs_registry_with_cookie_name(
-        docs_document,
-        &config.cookie_name,
-    )?);
+    let api_docs = Arc::new(
+        openapi_docs::build_api_docs_registry_with_cookie_name(docs_document, &config.cookie_name)?
+            .with_default_cache()?,
+    );
     let mut compiled_console_plan = app_state::compile_console_boot_plan_with_managed_services(
         console_host_extensions,
         Some(interface_snapshot.as_ref()),

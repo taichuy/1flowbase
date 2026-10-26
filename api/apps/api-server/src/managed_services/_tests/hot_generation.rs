@@ -85,7 +85,13 @@ async fn hot_generation_same_ingress_swaps_routes_navigation_docs_and_mcp_atomic
     let (state, _) = test_api_state_with_database_url().await;
     let config = test_config();
     let initial = crate::app_with_state_and_config(state.clone(), &config);
+    let docs_owners = Arc::strong_count(&state.api_docs);
     let publisher = ManagedGenerationPublisher::new(&state, config, vec![], initial).unwrap();
+    assert_eq!(
+        Arc::strong_count(&state.api_docs),
+        docs_owners,
+        "generation template must not retain the initial docs registry"
+    );
     // This is the one router retained by the host; never reconstruct it after publication.
     let ingress = publisher.ingress();
     assert!(Arc::ptr_eq(&publisher.current_state().unwrap(), &state));

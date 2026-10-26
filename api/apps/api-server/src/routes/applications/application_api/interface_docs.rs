@@ -16,7 +16,7 @@ use crate::{
     application_public_docs::{
         build_application_public_docs_catalog, build_application_public_docs_category_operations,
         build_application_public_docs_category_spec, build_application_public_docs_operation_spec,
-        ApplicationPublicDocsContext, ApplicationSessionOperation,
+        ApplicationPublicDocsContext,
     },
     error_response::ApiError,
     openapi_docs::{
@@ -334,27 +334,28 @@ impl ApplicationDocsAdapter {
                 .await
                 .ok()
         };
+        let mut assistant_operations = Vec::new();
+        if !log_collection {
+            for operation_id in [
+                "assistant_start_run_stream",
+                "assistant_create_websocket_ticket",
+                "assistant_runs_websocket",
+            ] {
+                let Some(operation) = self.api_docs.operation(operation_id) else {
+                    continue;
+                };
+                if self.api_docs.operation_spec_view(operation_id).is_none() {
+                    continue;
+                };
+                assistant_operations.push(operation);
+            }
+        }
         Ok(ApplicationPublicDocsContext {
             application,
             active_publication,
             locale: locale.as_str().to_string(),
-            assistant_operations: if log_collection {
-                Vec::new()
-            } else {
-                [
-                    "assistant_start_run_stream",
-                    "assistant_create_websocket_ticket",
-                    "assistant_runs_websocket",
-                ]
-                .into_iter()
-                .filter_map(|operation_id| {
-                    Some(ApplicationSessionOperation {
-                        operation: self.api_docs.operation(operation_id)?,
-                        spec: self.api_docs.operation_spec(operation_id)?,
-                    })
-                })
-                .collect()
-            },
+            assistant_operations,
+            api_docs: Arc::clone(&self.api_docs),
         })
     }
 }

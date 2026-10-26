@@ -59,6 +59,9 @@ impl ManagedGenerationPublisher {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("host generation requires a boot snapshot"))?;
         let mut template = state.as_ref().clone();
+        // Every candidate rebuilds docs before wiring its handlers. Do not pin the initial
+        // canonical document or its cache after the last old-generation request finishes.
+        template.api_docs = Arc::new(crate::openapi_docs::ApiDocsRegistry::empty());
         template.extension_boot_snapshot = Some(Arc::new(boot.fork_generation(BTreeMap::new())?));
         let managed_interfaces = state
             .console_surface_registry
@@ -207,7 +210,8 @@ impl ManagedGenerationPublisher {
             crate::openapi_docs::build_api_docs_registry_with_cookie_name(
                 docs_document,
                 &self.config.cookie_name,
-            )?,
+            )?
+            .with_default_cache()?,
         );
         let state = Arc::new(state);
         boot.publish_complete_catalog(&state)?;

@@ -6,6 +6,7 @@ mod moka_rate_limit_store;
 mod moka_session_store;
 mod published_plan_cache;
 mod published_publication_cache;
+mod read_through_cache;
 
 pub use memory_distributed_lock::MemoryDistributedLock;
 pub use memory_event_bus::MemoryEventBus;
@@ -15,3 +16,4 @@ pub use moka_rate_limit_store::MokaRateLimitStore;
 pub use moka_session_store::MokaSessionStore;
 pub use published_plan_cache::MokaPublishedPlanCache;
 pub use published_publication_cache::MokaPublishedPublicationCache;
+pub use read_through_cache::{MokaReadThroughCache, ReadThroughCachePolicy};

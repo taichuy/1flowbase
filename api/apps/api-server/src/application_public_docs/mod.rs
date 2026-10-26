@@ -1,9 +1,11 @@
 use control_plane::application_public_api::publications::ApplicationPublicationVersionRecord;
 use domain::ApplicationRecord;
 use serde_json::{json, Value};
+use std::sync::Arc;
 
 use crate::openapi_docs::{
-    DocsCatalog, DocsCatalogCategory, DocsCatalogCategoryOperations, DocsCatalogOperation,
+    ApiDocsRegistry, DocsCatalog, DocsCatalogCategory, DocsCatalogCategoryOperations,
+    DocsCatalogOperation,
 };
 
 mod agent_logs;
@@ -33,13 +35,8 @@ pub struct ApplicationPublicDocsContext {
     pub application: ApplicationRecord,
     pub active_publication: Option<ApplicationPublicationVersionRecord>,
     pub locale: String,
-    pub assistant_operations: Vec<ApplicationSessionOperation>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ApplicationSessionOperation {
-    pub operation: DocsCatalogOperation,
-    pub spec: Value,
+    pub assistant_operations: Vec<DocsCatalogOperation>,
+    pub api_docs: Arc<ApiDocsRegistry>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -138,7 +135,7 @@ pub fn build_application_public_docs_category_operations(
                 .assistant_operations
                 .iter()
                 .map(|entry| {
-                    let mut operation = entry.operation.clone();
+                    let mut operation = entry.clone();
                     operation.group = label.to_string();
                     operation.tags = vec![label.to_string()];
                     operation
@@ -186,9 +183,12 @@ pub fn build_application_public_docs_operation_spec(
     if let Some(operation) = context
         .assistant_operations
         .iter()
-        .find(|entry| entry.operation.id == operation_id)
+        .find(|entry| entry.id == operation_id)
     {
-        return Some(decorate_assistant_spec(context, operation.spec.clone()));
+        return Some(decorate_assistant_spec(
+            context,
+            context.api_docs.operation_spec(&operation.id)?,
+        ));
     }
     public_operations(context)
         .iter()
@@ -199,9 +199,10 @@ pub fn build_application_public_docs_operation_spec(
 fn build_assistant_category_spec(context: &ApplicationPublicDocsContext) -> Option<Value> {
     let mut entries = context.assistant_operations.iter();
     let first = entries.next()?;
-    let mut spec = first.spec.clone();
+    let mut spec = context.api_docs.operation_spec(&first.id)?;
     for entry in entries {
-        let Some(paths) = entry.spec.get("paths").and_then(Value::as_object) else {
+        let entry_spec = context.api_docs.operation_spec(&entry.id)?;
+        let Some(paths) = entry_spec.get("paths").and_then(Value::as_object) else {
             continue;
         };
         let target = spec

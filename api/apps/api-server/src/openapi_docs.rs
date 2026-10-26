@@ -1,9 +1,13 @@
+mod cache;
 pub(crate) mod managed_projection;
 mod scope_plan;
+pub use cache::SharedApiDocument;
+use cache::{DocumentCache, EncodedApiDocument, ScopeKey};
 pub(crate) use scope_plan::OperationSpecView;
 use scope_plan::ScopePlan;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context, Result};
 use serde::Serialize;
@@ -73,9 +77,73 @@ pub struct ApiDocsRegistry {
     canonical: Value,
     category_plans: HashMap<String, ScopePlan>,
     operation_plans: HashMap<String, ScopePlan>,
+    document_cache: Option<DocumentCache>,
 }
 
 impl ApiDocsRegistry {
+    /// Enable the disposable response cache only at the asynchronous host assembly boundary.
+    pub(crate) fn with_default_cache(self) -> Result<Self> {
+        self.with_cache_policy(Some(cache::default_policy()?))
+    }
+
+    /// Independent, runtime-free placeholder; generation preparation replaces it before use.
+    pub(crate) fn empty() -> Self {
+        Self {
+            catalog: DocsCatalog {
+                title: String::new(),
+                version: String::new(),
+                categories: Vec::new(),
+            },
+            category_operations: HashMap::new(),
+            canonical: Value::Null,
+            category_plans: HashMap::new(),
+            operation_plans: HashMap::new(),
+            document_cache: None,
+        }
+    }
+
+    pub(crate) fn with_cache_policy(
+        mut self,
+        policy: Option<storage_ephemeral::ReadThroughCachePolicy>,
+    ) -> Result<Self> {
+        self.document_cache = policy.map(DocumentCache::new).transpose()?;
+        Ok(self)
+    }
+
+    pub async fn cached_operation_spec(&self, operation_id: &str) -> Option<SharedApiDocument> {
+        let plan = self.operation_plans.get(operation_id)?;
+        Some(
+            match &self.document_cache {
+                Some(cache) => {
+                    cache
+                        .get_or_load(ScopeKey::Operation(operation_id.to_owned()), async {
+                            EncodedApiDocument::from(plan.materialize(&self.canonical))
+                        })
+                        .await
+                }
+                None => Arc::new(EncodedApiDocument::from(plan.materialize(&self.canonical))),
+            }
+            .into(),
+        )
+    }
+
+    pub async fn cached_category_spec(&self, category_id: &str) -> Option<SharedApiDocument> {
+        let plan = self.category_plans.get(category_id)?;
+        Some(
+            match &self.document_cache {
+                Some(cache) => {
+                    cache
+                        .get_or_load(ScopeKey::Category(category_id.to_owned()), async {
+                            EncodedApiDocument::from(plan.materialize(&self.canonical))
+                        })
+                        .await
+                }
+                None => Arc::new(EncodedApiDocument::from(plan.materialize(&self.canonical))),
+            }
+            .into(),
+        )
+    }
+
     pub fn catalog(&self) -> &DocsCatalog {
         &self.catalog
     }
@@ -329,6 +397,7 @@ pub(crate) fn build_api_docs_registry_with_cookie_name(
     categories.sort_by(|left, right| compare_categories(left, right, &category_singleton_flags));
 
     Ok(ApiDocsRegistry {
+        document_cache: None,
         catalog: DocsCatalog {
             title,
             version,

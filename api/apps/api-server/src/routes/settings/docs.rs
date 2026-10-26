@@ -15,7 +15,10 @@ use utoipa::{IntoParams, ToSchema};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    openapi_docs::{DocsCatalog, DocsCatalogCategoryOperationsPage, DOCS_OPERATIONS_PAGE_SIZE},
+    openapi_docs::{
+        DocsCatalog, DocsCatalogCategoryOperationsPage, SharedApiDocument,
+        DOCS_OPERATIONS_PAGE_SIZE,
+    },
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
@@ -159,7 +162,7 @@ pub async fn get_category_openapi(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(category_id): Path<String>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<SharedApiDocument, ApiError> {
     let interface::DocsOutput::OpenApi(spec) = invoke(
         state,
         headers,
@@ -170,14 +173,14 @@ pub async fn get_category_openapi(
     else {
         unreachable!()
     };
-    Ok(Json(spec))
+    Ok(spec)
 }
 
 pub async fn get_operation_openapi(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(operation_id): Path<String>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<SharedApiDocument, ApiError> {
     let interface::DocsOutput::OpenApi(spec) = invoke(
         state,
         headers,
@@ -188,7 +191,7 @@ pub async fn get_operation_openapi(
     else {
         unreachable!()
     };
-    Ok(Json(spec))
+    Ok(spec)
 }
 
 #[utoipa::path(
