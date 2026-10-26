@@ -6,6 +6,13 @@ mod projection_cost;
 #[path = "_tests/append_regressions.rs"]
 mod append_regressions;
 
+#[cfg(all(feature = "history-memory-probe", target_os = "linux", target_env = "gnu"))]
+#[path = "_tests/history_memory.rs"]
+mod history_memory;
+
+#[path = "_tests/history_memory_contract.rs"]
+mod history_memory_contract;
+
 async fn native_member(
     store: &PgControlPlaneStore,
     seeded: &RuntimeSeedState,
