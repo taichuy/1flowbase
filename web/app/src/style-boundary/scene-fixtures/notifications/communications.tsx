@@ -21,7 +21,8 @@ const messages: CommunicationMessage[] = Array.from(
         ? null
         : [
             '已收到你的请求。',
-            '请整理本周工作流运行情况。',
+            '请整理本周工作流运行情况。https://example.com/' +
+              'long-reference'.repeat(12),
             '已汇总完成，报告包含运行结果与待处理项。',
             '请发送报告文件。'
           ][index]!,
@@ -85,10 +86,6 @@ export function seedStyleBoundaryCommunicationChatFetch() {
       headers: { 'content-type': 'application/json' }
     });
   };
-  localStorage.setItem(
-    `resizable-drawer:width:${window.location.pathname}`,
-    '720'
-  );
 }
 
 export function CommunicationChatStyleBoundaryScene() {

@@ -186,9 +186,7 @@ test('default shared table lists basic conversation fields across channels with 
   expect(alice.closest('a')).toBeNull();
   expect(screen.getByText('Chat channel').closest('a')).toBeNull();
   expect(screen.getAllByRole('columnheader')).toHaveLength(3);
-  expect(
-    screen.getAllByRole('button', { name: /^Chat$/ })
-  ).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: /^Chat$/ })).toHaveLength(1);
   expect(screen.queryByText('Delivery failed')).not.toBeInTheDocument();
   expect(
     screen.queryByRole('link', { name: 'View run logs' })
@@ -204,9 +202,20 @@ test('default shared table lists basic conversation fields across channels with 
   expect(new URLSearchParams(window.location.search).get('page')).toBe('2');
 });
 
-test('Chat opens the reused conversation pane with only the newest five messages and prepends older messages explicitly', async () => {
+test('Chat opens the modeless run-detail floating shell and reused conversation pane with only the newest five messages and prepends older messages explicitly', async () => {
   await show();
   const drawer = await openChat();
+  const shell = screen.getByTestId('communication-chat-window');
+  expect(shell).toHaveAttribute('aria-modal', 'false');
+  expect(shell).toHaveClass('application-logs-floating-window');
+  expect(
+    shell.querySelector('.agent-flow-editor__dock-panel-header')
+  ).not.toBeNull();
+  expect(
+    shell.querySelector('.application-run-detail__conversation-pane')
+  ).not.toBeNull();
+  expect(document.querySelector('.ant-drawer')).toBeNull();
+  expect(within(shell).getAllByRole('separator')).toHaveLength(3);
   const pane = drawer.getByTestId('debug-conversation-messages');
   expect(drawer.getByText('Chat', { exact: true })).toBeInTheDocument();
   expect(drawer.queryByRole('textbox')).not.toBeInTheDocument();
@@ -261,7 +270,7 @@ test('Chat opens the reused conversation pane with only the newest five messages
   expect(
     drawer.queryByRole('button', { name: 'Load earlier messages' })
   ).not.toBeInTheDocument();
-  await click(drawer.getByRole('button', { name: 'Close' }));
+  await click(drawer.getByRole('button', { name: 'Close chat' }));
   await waitFor(() =>
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   );
@@ -331,7 +340,7 @@ test('conversation deep link restores tabs and Chat after remount and browser ba
   view.unmount();
   await show(<NotificationsPage />);
   await screen.findByText('Chat message 10');
-  await click(screen.getByRole('button', { name: 'Close' }));
+  await click(screen.getByRole('button', { name: 'Close chat' }));
   expect(
     new URLSearchParams(window.location.search).has('conversation_id')
   ).toBe(false);

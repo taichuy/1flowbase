@@ -152,6 +152,7 @@
   "conversation_user": "Chat participant",
   "processing_status": "Processing status",
   "all_channels": "All channels",
+  "chat_close": "Close chat",
   "chat": "Chat",
   "load_earlier_messages": "Load earlier messages",
   "chat_received": "Received",

@@ -1,42 +1,4 @@
-.communication-chat {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  gap: 12px;
-  padding: 16px;
-}
 .communication-chat__identity {
-  overflow-wrap: anywhere;
-}
-.communication-chat__earlier {
-  align-self: center;
-  flex-shrink: 0;
-}
-.communication-chat .agent-flow-editor__debug-conversation-pane {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-  background: var(--bg-surface);
-}
-.communication-chat .agent-flow-editor__debug-messages {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 12px;
-  scrollbar-gutter: stable;
-}
-.communication-chat .agent-flow-editor__debug-message-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.communication-chat .agent-flow-editor__debug-bottom-sentinel {
-  block-size: 1px;
-}
-.communication-chat .agent-flow-editor__debug-message-content {
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .communication-chat__timestamp {
@@ -46,11 +8,6 @@
   max-width: 100%;
   overflow-wrap: anywhere;
 }
-@media (max-width: 767px) {
-  .communication-chat {
-    padding: 8px;
-  }
-  .communication-chat .agent-flow-editor__debug-messages {
-    padding: 8px;
-  }
+.communication-chat .agent-flow-editor__debug-message-content {
+  overflow-wrap: anywhere;
 }

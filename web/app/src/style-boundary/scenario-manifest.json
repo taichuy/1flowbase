@@ -3018,21 +3018,18 @@
       "web/app/src/features/settings/pages/notifications/communications/communication-presentation.tsx",
       "web/app/src/features/agent-flow/components/debug-console/conversation/DebugConversationPane.tsx",
       "web/app/src/features/agent-flow/components/debug-console/conversation/DebugAssistantMessage.tsx",
-      "web/app/src/shared/ui/resizable-drawer/ResizableDrawer.tsx",
-      "web/app/src/style-boundary/scene-fixtures/notifications/communications.tsx"
+      "web/app/src/style-boundary/scene-fixtures/notifications/communications.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/AgentFlowDebugConsole.tsx",
+      "web/app/src/features/applications/components/logs/ApplicationLogsFloatingWindow.tsx"
     ],
     "boundaryNodes": [
       {
-        "id": "drawer",
-        "selector": ".communication-chat",
+        "id": "floating-window",
+        "selector": "[data-testid=\"communication-chat-window\"]",
         "propertyAssertions": [
           {
-            "property": "display",
-            "expected": "flex"
-          },
-          {
-            "property": "flex-direction",
-            "expected": "column"
+            "property": "position",
+            "expected": "fixed"
           }
         ]
       },
@@ -3084,9 +3081,9 @@
     ],
     "relationshipAssertions": [
       {
-        "id": "drawer-visible",
+        "id": "floating-window-visible",
         "type": "fully_visible",
-        "subjectSelector": ".communication-chat"
+        "subjectSelector": "[data-testid=\"communication-chat-window\"]"
       },
       {
         "id": "messages-contained",
@@ -3122,21 +3119,18 @@
       "web/app/src/features/settings/pages/notifications/communications/communication-presentation.tsx",
       "web/app/src/features/agent-flow/components/debug-console/conversation/DebugConversationPane.tsx",
       "web/app/src/features/agent-flow/components/debug-console/conversation/DebugAssistantMessage.tsx",
-      "web/app/src/shared/ui/resizable-drawer/ResizableDrawer.tsx",
-      "web/app/src/style-boundary/scene-fixtures/notifications/communications.tsx"
+      "web/app/src/style-boundary/scene-fixtures/notifications/communications.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/AgentFlowDebugConsole.tsx",
+      "web/app/src/features/applications/components/logs/ApplicationLogsFloatingWindow.tsx"
     ],
     "boundaryNodes": [
       {
-        "id": "drawer",
-        "selector": ".communication-chat",
+        "id": "floating-window",
+        "selector": "[data-testid=\"communication-chat-window\"]",
         "propertyAssertions": [
           {
-            "property": "display",
-            "expected": "flex"
-          },
-          {
-            "property": "flex-direction",
-            "expected": "column"
+            "property": "position",
+            "expected": "fixed"
           }
         ]
       },
@@ -3188,9 +3182,9 @@
     ],
     "relationshipAssertions": [
       {
-        "id": "drawer-visible",
+        "id": "floating-window-visible",
         "type": "fully_visible",
-        "subjectSelector": ".communication-chat"
+        "subjectSelector": "[data-testid=\"communication-chat-window\"]"
       },
       {
         "id": "messages-contained",

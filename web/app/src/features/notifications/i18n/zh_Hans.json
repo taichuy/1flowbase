@@ -152,6 +152,7 @@
   "conversation_user": "聊天对象",
   "processing_status": "处理状态",
   "all_channels": "全部渠道",
+  "chat_close": "关闭聊天",
   "chat": "聊天",
   "load_earlier_messages": "加载更早消息",
   "chat_received": "收到",

@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import {
   useInfiniteQuery,
   useMutation,
@@ -14,14 +15,16 @@ import {
   listCommunicationConversationOverview,
   retryCommunicationMessage
 } from '../../../../notifications/api/communications';
-import { DebugConversationPane } from '../../../../agent-flow/components/debug-console/conversation/DebugConversationPane';
+import { AgentFlowDebugConsole } from '../../../../agent-flow/components/debug-console/AgentFlowDebugConsole';
+import { ApplicationLogsFloatingWindow } from '../../../../applications/components/logs/ApplicationLogsFloatingWindow';
+import '../../../../applications/pages/application-logs-page.css';
+import '../../../../applications/components/logs/application-run-detail-panel.css';
 import type {
   AgentFlowDebugMessage,
   AgentFlowRunContext
 } from '../../../../agent-flow/api/runtime';
 import { useAuthStore } from '../../../../../state/auth-store';
 import { selectNavigationQueryScope } from '../../../../../state/navigation-query-scope';
-import { ResizableDrawer } from '../../../../../shared/ui/resizable-drawer/ResizableDrawer';
 import { formatDateTime } from '../../../../../shared/i18n/format';
 import { navigateCommunication } from './communication-navigation';
 import {
@@ -138,60 +141,83 @@ export function CommunicationChat({
     );
   };
   const info = conversation.data?.items[0];
-  return (
-    <ResizableDrawer
-      open
+  return createPortal(
+    <ApplicationLogsFloatingWindow
+      active
+      initialRect={() => {
+        const width = Math.min(720, window.innerWidth - 32);
+        const height = Math.min(840, window.innerHeight - 96);
+        return {
+          left: Math.max(16, window.innerWidth - width - 24),
+          top: 72,
+          width,
+          height
+        };
+      }}
+      testId="communication-chat-window"
       title={t('chat')}
-      resizeLabel={t('resize_drawer')}
-      onClose={() => navigateCommunication({ conversation_id: undefined })}
-      bodyClassName="communication-chat"
-      extra={
-        <Button
-          icon={<ReloadOutlined aria-hidden="true" />}
-          loading={history.isFetching}
-          onClick={() => void history.refetch()}
-        >
-          {t('refresh')}
-        </Button>
-      }
+      onActivate={noAction}
     >
-      {info && (
-        <Space wrap className="communication-chat__identity">
-          <Typography.Text>
-            {info.instance_display_name ?? t('deleted_channel')}
-          </Typography.Text>
-          <Typography.Text type="secondary">
-            {info.sender_display_name ?? info.external_identity}
-          </Typography.Text>
-        </Space>
-      )}
-      {(history.isError || conversation.isError || retry.isError) && (
-        <Alert type="error" showIcon title={t('history_failed')} />
-      )}
-      {history.isPending && <Spin />}
-      {history.hasNextPage && (
-        <Button
-          className="communication-chat__earlier"
-          loading={history.isFetchingNextPage}
-          onClick={() => void history.fetchNextPage()}
-        >
-          {t('load_earlier_messages')}
-        </Button>
-      )}
-      <DebugConversationPane
-        messages={messages}
-        runContext={readOnlyContext}
-        status="idle"
-        stopping={false}
-        showComposer={false}
-        userMessageMainRender={renderFile}
-        assistantMessageMainRender={renderFile}
-        userMessageActions={renderActions}
-        assistantMessageActions={renderActions}
-        onChangeQuery={noAction}
-        onStopRun={noAction}
-        onSubmitPrompt={noAction}
-      />
-    </ResizableDrawer>
+      <div className="application-run-detail__conversation-pane communication-chat">
+        {(history.isError || conversation.isError || retry.isError) && (
+          <Alert type="error" showIcon title={t('history_failed')} />
+        )}
+        {history.isPending && <Spin />}
+        <AgentFlowDebugConsole
+          title={t('chat')}
+          closeLabel={t('chat_close')}
+          onClose={() => navigateCommunication({ conversation_id: undefined })}
+          subtitle={
+            info ? (
+              <Space wrap className="communication-chat__identity">
+                <span>
+                  {info.instance_display_name ?? t('deleted_channel')}
+                </span>
+                <span>
+                  {info.sender_display_name ?? info.external_identity}
+                </span>
+              </Space>
+            ) : undefined
+          }
+          headerActions={
+            <>
+              {history.hasNextPage && (
+                <Button
+                  size="small"
+                  className="communication-chat__earlier"
+                  loading={history.isFetchingNextPage}
+                  onClick={() => void history.fetchNextPage()}
+                >
+                  {t('load_earlier_messages')}
+                </Button>
+              )}
+              <Button
+                size="small"
+                type="text"
+                aria-label={t('refresh')}
+                icon={<ReloadOutlined aria-hidden="true" />}
+                loading={history.isFetching}
+                onClick={() => void history.refetch()}
+              />
+            </>
+          }
+          messages={messages}
+          runContext={readOnlyContext}
+          status="idle"
+          stopping={false}
+          showComposer={false}
+          showClearAction={false}
+          userMessageMainRender={renderFile}
+          assistantMessageMainRender={renderFile}
+          userMessageActions={renderActions}
+          assistantMessageActions={renderActions}
+          onChangeRunContextValue={noAction}
+          onClearSession={noAction}
+          onStopRun={noAction}
+          onSubmitPrompt={noAction}
+        />
+      </div>
+    </ApplicationLogsFloatingWindow>,
+    document.body
   );
 }
