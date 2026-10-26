@@ -298,32 +298,22 @@ test('Chat opens the modeless run-detail floating shell and reused conversation 
   ).toBeInTheDocument();
 });
 
-test('bubble run link uses historical application and retry visibility follows backend can_retry', async () => {
+test('message footer keeps only copy and Aim run-log actions', async () => {
   await show();
   const drawer = await openChat();
-  expect(drawer.getByRole('link', { name: 'View run logs' })).toHaveAttribute(
+  const link = drawer.getByRole('link', { name: 'View run logs' });
+  expect(link).toHaveAttribute(
     'href',
     '/applications/original-app/logs?run_id=original-run&view=trace'
   );
+  expect(link.querySelector('[data-icon="aim"]')).not.toBeNull();
+  const actions = link.closest('.agent-flow-editor__debug-message-actions')!;
+  expect(actions.querySelectorAll('button,a')).toHaveLength(2);
+  expect(actions.textContent).toBe('');
   expect(
-    drawer.getAllByRole('button', { name: 'Retry delivery' })
-  ).toHaveLength(1);
-  await click(drawer.getByRole('button', { name: 'Retry delivery' }));
-  await waitFor(() =>
-    expect(
-      calls.some((url) =>
-        url.pathname.endsWith('/instances/channel-1/messages/message-10/retry')
-      )
-    ).toBe(true)
-  );
-  await waitFor(() => expect(client.isMutating()).toBe(0));
-  messages[9] = { ...messages[9]!, can_retry: false };
-  await click(drawer.getByRole('button', { name: 'Refresh' }));
-  await waitFor(() =>
-    expect(
-      drawer.queryByRole('button', { name: 'Retry delivery' })
-    ).not.toBeInTheDocument()
-  );
+    drawer.queryByRole('button', { name: 'Retry delivery' })
+  ).not.toBeInTheDocument();
+  expect(document.querySelector('.communication-chat__direction')).toBeNull();
 });
 
 test('conversation deep link restores tabs and Chat after remount and browser back/forward; close clears selection', async () => {

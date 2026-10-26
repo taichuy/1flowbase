@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { Button, Space, Tag, Tooltip, Typography } from 'antd';
-import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import AimOutlined from '@ant-design/icons/es/icons/AimOutlined';
 import FileOutlined from '@ant-design/icons/es/icons/FileOutlined';
 import { useTranslation } from 'react-i18next';
 import type { CommunicationMessage } from '@1flowbase/api-client';
@@ -21,7 +21,7 @@ export function CommunicationRunLink({
         size="small"
         href={href}
         aria-label={t('view_agent_flow_logs')}
-        icon={<FileTextOutlined />}
+        icon={<AimOutlined />}
       />
     </Tooltip>
   ) : null;

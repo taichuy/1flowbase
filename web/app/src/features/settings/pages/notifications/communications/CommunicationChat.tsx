@@ -1,23 +1,13 @@
-import AimOutlined from '@ant-design/icons/es/icons/AimOutlined';
-import InboxOutlined from '@ant-design/icons/es/icons/InboxOutlined';
 import { ReadOnlyConversationInput } from '../../../../agent-flow/components/debug-console/conversation/read-only/ReadOnlyConversationInput';
 import { createPortal } from 'react-dom';
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient
-} from '@tanstack/react-query';
-import { Alert, Button, Space, Spin, Tooltip, Typography } from 'antd';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { Alert, Button, Space, Spin, Typography } from 'antd';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
-import RedoOutlined from '@ant-design/icons/es/icons/RedoOutlined';
 import { useTranslation } from 'react-i18next';
-import type { CommunicationMessage } from '@1flowbase/api-client';
 import {
   communicationBindingOptions,
   listCommunicationChatMessages,
-  listCommunicationConversationOverview,
-  retryCommunicationMessage
+  listCommunicationConversationOverview
 } from '../../../../notifications/api/communications';
 import { AgentFlowDebugConsole } from '../../../../agent-flow/components/debug-console/AgentFlowDebugConsole';
 import { ApplicationLogsFloatingWindow } from '../../../../applications/components/logs/ApplicationLogsFloatingWindow';
@@ -33,8 +23,7 @@ import { formatDateTime } from '../../../../../shared/i18n/format';
 import { navigateCommunication } from './communication-navigation';
 import {
   CommunicationFile,
-  CommunicationRunLink,
-  MessageStatus
+  CommunicationRunLink
 } from './communication-presentation';
 import './communication-chat.css';
 
@@ -52,8 +41,6 @@ export function CommunicationChat({
 }) {
   const { t } = useTranslation('notifications');
   const scope = useAuthStore(selectNavigationQueryScope);
-  const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
-  const client = useQueryClient();
   const conversation = useQuery({
     queryKey: [
       'communications',
@@ -84,12 +71,6 @@ export function CommunicationChat({
     gcTime: 0,
     refetchOnWindowFocus: false
   });
-  const retry = useMutation({
-    mutationFn: (message: CommunicationMessage) =>
-      retryCommunicationMessage(message.instance_id, message.id, csrfToken),
-    onSuccess: () =>
-      client.invalidateQueries({ queryKey: ['communications', scope] })
-  });
   // Each server page is chronological; pages arrive newest first, older pages prepend.
   const items =
     history.data?.pages
@@ -115,53 +96,7 @@ export function CommunicationChat({
   };
   const renderActions = (message: AgentFlowDebugMessage) => {
     const item = byId.get(message.id)!;
-    return (
-      <>
-        <CommunicationRunLink item={item} />
-        <Tooltip
-          title={
-            <>
-              <span>
-                {item.direction === 'inbound'
-                  ? t('chat_received')
-                  : t('chat_reply')}
-              </span>
-              <MessageStatus message={item} />
-            </>
-          }
-        >
-          <span
-            className="communication-chat__direction"
-            role="img"
-            aria-label={
-              item.direction === 'inbound'
-                ? t('chat_received')
-                : t('chat_reply')
-            }
-            tabIndex={0}
-          >
-            {item.direction === 'inbound' ? (
-              <InboxOutlined aria-hidden="true" />
-            ) : (
-              <AimOutlined aria-hidden="true" />
-            )}
-          </span>
-        </Tooltip>
-        {item.can_retry && (
-          <Tooltip title={t('retry_delivery')}>
-            <Button
-              size="small"
-              type="text"
-              icon={<RedoOutlined />}
-              aria-label={t('retry_delivery')}
-              loading={retry.isPending && retry.variables?.id === item.id}
-              disabled={retry.isPending}
-              onClick={() => retry.mutate(item)}
-            />
-          </Tooltip>
-        )}
-      </>
-    );
+    return <CommunicationRunLink item={item} />;
   };
   const info = conversation.data?.items[0];
   return createPortal(
@@ -182,7 +117,7 @@ export function CommunicationChat({
       onActivate={noAction}
     >
       <div className="application-run-detail__conversation-pane communication-chat">
-        {(history.isError || conversation.isError || retry.isError) && (
+        {(history.isError || conversation.isError) && (
           <Alert type="error" showIcon title={t('history_failed')} />
         )}
         {history.isPending && <Spin />}
