@@ -349,9 +349,9 @@ async fn import_history(store: &PgControlPlaneStore, corpus: &Corpus) -> Value {
         if !metadata["node_run_id"].is_null() && node_ids.insert(uuid(&metadata["node_run_id"])) {
             // Referenced node rows were not part of the export. Only satisfy FK;
             // no node execution, billing, provider, or callback state is replayed.
-            safe(sqlx::query("insert into node_runs(id,flow_run_id,node_id,node_type,node_alias,status,started_at) values($1,$2,'fixture-native-source','llm','fixture source','succeeded',$3)")
+            safe(sqlx::query("insert into node_runs(id,flow_run_id,scope_id,node_id,node_type,node_alias,status,started_at) values($1,$2,$4,'fixture-native-source','llm','fixture source','succeeded',$3)")
                 .bind(uuid(&metadata["node_run_id"])).bind(uuid(&metadata["flow_run_id"]))
-                .bind(timestamp(&metadata["created_at"])).execute(store.pool()).await, "node FK scaffold");
+                .bind(timestamp(&metadata["created_at"])).bind(seeded.workspace_id).execute(store.pool()).await, "node FK scaffold");
         }
         assert!(
             metadata["span_id"].is_null()
