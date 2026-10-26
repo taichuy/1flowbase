@@ -1,6 +1,7 @@
 //! Store observation bodies as immutable, scoped content while retaining the
 //! producer's step identity and exact original body representation.
 use super::*;
+use std::borrow::Cow;
 mod context_occurrences;
 mod native_snapshots;
 mod node_payloads;
@@ -56,20 +57,21 @@ pub(super) async fn lock_native_batch(
     Ok(())
 }
 
-pub(super) async fn archive_payload(
+pub(super) async fn archive_payload<'a>(
     tx: &mut sqlx::Transaction<'_, Postgres>,
-    input: &AppendRuntimeEventInput,
-) -> Result<(Value, Option<Uuid>, Option<Uuid>)> {
+    input: &'a AppendRuntimeEventInput,
+) -> Result<(Cow<'a, Value>, Option<Uuid>, Option<Uuid>)> {
     occurrence_count(input)?;
     if matches!(input.event_type.as_str(), "node_started" | "node_finished") {
-        return node_payloads::archive(tx, input).await;
+        let (payload, content_id, manifest_id) = node_payloads::archive(tx, input).await?;
+        return Ok((Cow::Owned(payload), content_id, manifest_id));
     }
     if !matches!(
         input.event_type.as_str(),
         "provider_semantic_step" | "provider_protocol_observation"
     ) || input.payload.get("body_ref").is_some()
     {
-        return Ok((input.payload.clone(), None, None));
+        return Ok((Cow::Borrowed(&input.payload), None, None));
     }
     // PostgreSQL JSON can preserve NUL keys, but json_each cannot expose them as
     // text. Retain the exact inline representation for this exceptional shape.
@@ -78,10 +80,10 @@ pub(super) async fn archive_payload(
         .as_object()
         .is_some_and(|fields| fields.keys().any(|key| key.contains('\0')))
     {
-        return Ok((input.payload.clone(), None, None));
+        return Ok((Cow::Borrowed(&input.payload), None, None));
     }
     let Some(body) = input.payload.get("body") else {
-        return Ok((input.payload.clone(), None, None));
+        return Ok((Cow::Borrowed(&input.payload), None, None));
     };
     let (scope_id, application_id) = sqlx::query_as::<_, (Uuid, Uuid)>(
         "select scope_id,application_id from flow_runs where id=$1",
@@ -105,7 +107,7 @@ pub(super) async fn archive_payload(
                     json!({"manifest_id":manifest_id,"application_id":application_id}),
                 );
                 context_occurrences::project_metadata(&mut payload);
-                return Ok((payload, None, Some(manifest_id)));
+                return Ok((Cow::Owned(payload), None, Some(manifest_id)));
             }
         }
     }
@@ -127,5 +129,5 @@ pub(super) async fn archive_payload(
         json!({"content_id":content_id,"application_id":application_id}),
     );
     context_occurrences::project_metadata(&mut payload);
-    Ok((payload, Some(content_id), None))
+    Ok((Cow::Owned(payload), Some(content_id), None))
 }
