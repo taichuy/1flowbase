@@ -11,7 +11,7 @@ use crate::{
     openapi_docs::{
         build_api_docs_registry_with_cookie_name, filter_category_operations,
         paginate_category_operations, ApiDocsRegistry, DocsCatalog,
-        DocsCatalogCategoryOperationsPage,
+        DocsCatalogCategoryOperationsPage, SharedApiDocument,
     },
     routes::console_interface::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
@@ -146,7 +146,7 @@ impl InterfaceContract for DocsInput {
 pub(crate) enum DocsOutput {
     Catalog(DocsCatalog),
     CategoryOperations(DocsCatalogCategoryOperationsPage),
-    OpenApi(Value),
+    OpenApi(SharedApiDocument),
 }
 
 impl InterfaceContract for DocsOutput {
@@ -266,17 +266,18 @@ impl DocsAdapter {
                         runtime_data_model_docs::build_category_openapi(
                             &models,
                             &self.0.template_catalog,
-                        ),
+                        )
+                        .into(),
                     ));
                 }
-                if let Some(spec) = self.0.api_docs.category_spec(&category_id) {
-                    return Ok(DocsOutput::OpenApi(spec));
+                if let Some(spec) = self.0.api_docs.cached_category_spec(&category_id).await {
+                    return Ok(DocsOutput::OpenApi(spec.into()));
                 }
                 let extension_docs = self.extension_docs().await?;
                 let spec = extension_docs
                     .category_spec(&category_id)
                     .ok_or(ControlPlaneError::NotFound("category_id"))?;
-                Ok(DocsOutput::OpenApi(spec))
+                Ok(DocsOutput::OpenApi(spec.into()))
             }
             DocsInput::OperationOpenApi { operation_id } => {
                 let parsed = runtime_data_model_docs::parse_operation_id(&operation_id)
@@ -297,16 +298,16 @@ impl DocsAdapter {
                         &self.0.template_catalog,
                     )
                     .ok_or(ControlPlaneError::NotFound("operation_id"))?;
-                    return Ok(DocsOutput::OpenApi(spec));
+                    return Ok(DocsOutput::OpenApi(spec.into()));
                 }
-                if let Some(spec) = self.0.api_docs.operation_spec(&operation_id) {
-                    return Ok(DocsOutput::OpenApi(spec));
+                if let Some(spec) = self.0.api_docs.cached_operation_spec(&operation_id).await {
+                    return Ok(DocsOutput::OpenApi(spec.into()));
                 }
                 let extension_docs = self.extension_docs().await?;
                 let spec = extension_docs
                     .operation_spec(&operation_id)
                     .ok_or(ControlPlaneError::NotFound("operation_id"))?;
-                Ok(DocsOutput::OpenApi(spec))
+                Ok(DocsOutput::OpenApi(spec.into()))
             }
         }
     }

@@ -334,27 +334,27 @@ impl ApplicationDocsAdapter {
                 .await
                 .ok()
         };
+        let mut assistant_operations = Vec::new();
+        if !log_collection {
+            for operation_id in [
+                "assistant_start_run_stream",
+                "assistant_create_websocket_ticket",
+                "assistant_runs_websocket",
+            ] {
+                let Some(operation) = self.api_docs.operation(operation_id) else {
+                    continue;
+                };
+                let Some(spec) = self.api_docs.cached_operation_spec(operation_id).await else {
+                    continue;
+                };
+                assistant_operations.push(ApplicationSessionOperation { operation, spec });
+            }
+        }
         Ok(ApplicationPublicDocsContext {
             application,
             active_publication,
             locale: locale.as_str().to_string(),
-            assistant_operations: if log_collection {
-                Vec::new()
-            } else {
-                [
-                    "assistant_start_run_stream",
-                    "assistant_create_websocket_ticket",
-                    "assistant_runs_websocket",
-                ]
-                .into_iter()
-                .filter_map(|operation_id| {
-                    Some(ApplicationSessionOperation {
-                        operation: self.api_docs.operation(operation_id)?,
-                        spec: self.api_docs.operation_spec(operation_id)?,
-                    })
-                })
-                .collect()
-            },
+            assistant_operations,
         })
     }
 }

@@ -207,7 +207,8 @@ impl ManagedGenerationPublisher {
             crate::openapi_docs::build_api_docs_registry_with_cookie_name(
                 docs_document,
                 &self.config.cookie_name,
-            )?,
+            )?
+            .with_cache_policy(self.config.api_docs_cache_policy)?,
         );
         let state = Arc::new(state);
         boot.publish_complete_catalog(&state)?;

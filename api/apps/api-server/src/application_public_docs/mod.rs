@@ -1,6 +1,7 @@
 use control_plane::application_public_api::publications::ApplicationPublicationVersionRecord;
 use domain::ApplicationRecord;
 use serde_json::{json, Value};
+use std::sync::Arc;
 
 use crate::openapi_docs::{
     DocsCatalog, DocsCatalogCategory, DocsCatalogCategoryOperations, DocsCatalogOperation,
@@ -39,7 +40,7 @@ pub struct ApplicationPublicDocsContext {
 #[derive(Debug, Clone)]
 pub struct ApplicationSessionOperation {
     pub operation: DocsCatalogOperation,
-    pub spec: Value,
+    pub spec: Arc<Value>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -188,7 +189,10 @@ pub fn build_application_public_docs_operation_spec(
         .iter()
         .find(|entry| entry.operation.id == operation_id)
     {
-        return Some(decorate_assistant_spec(context, operation.spec.clone()));
+        return Some(decorate_assistant_spec(
+            context,
+            operation.spec.as_ref().clone(),
+        ));
     }
     public_operations(context)
         .iter()
@@ -199,7 +203,7 @@ pub fn build_application_public_docs_operation_spec(
 fn build_assistant_category_spec(context: &ApplicationPublicDocsContext) -> Option<Value> {
     let mut entries = context.assistant_operations.iter();
     let first = entries.next()?;
-    let mut spec = first.spec.clone();
+    let mut spec = first.spec.as_ref().clone();
     for entry in entries {
         let Some(paths) = entry.spec.get("paths").and_then(Value::as_object) else {
             continue;

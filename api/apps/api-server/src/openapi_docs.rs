@@ -1,9 +1,13 @@
+mod cache;
 pub(crate) mod managed_projection;
 mod scope_plan;
+pub use cache::SharedApiDocument;
+use cache::{DocumentCache, ScopeKey};
 pub(crate) use scope_plan::OperationSpecView;
 use scope_plan::ScopePlan;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context, Result};
 use serde::Serialize;
@@ -73,9 +77,48 @@ pub struct ApiDocsRegistry {
     canonical: Value,
     category_plans: HashMap<String, ScopePlan>,
     operation_plans: HashMap<String, ScopePlan>,
+    document_cache: Option<DocumentCache>,
 }
 
 impl ApiDocsRegistry {
+    pub(crate) fn with_cache_policy(
+        mut self,
+        policy: Option<storage_ephemeral::ReadThroughCachePolicy>,
+    ) -> Result<Self> {
+        self.document_cache = policy
+            .map(|policy| DocumentCache::new(policy, cache::document_weight))
+            .transpose()?;
+        Ok(self)
+    }
+
+    pub async fn cached_operation_spec(&self, operation_id: &str) -> Option<Arc<Value>> {
+        let plan = self.operation_plans.get(operation_id)?;
+        Some(match &self.document_cache {
+            Some(cache) => {
+                cache
+                    .get_or_load(ScopeKey::Operation(operation_id.to_owned()), async {
+                        plan.materialize(&self.canonical)
+                    })
+                    .await
+            }
+            None => Arc::new(plan.materialize(&self.canonical)),
+        })
+    }
+
+    pub async fn cached_category_spec(&self, category_id: &str) -> Option<Arc<Value>> {
+        let plan = self.category_plans.get(category_id)?;
+        Some(match &self.document_cache {
+            Some(cache) => {
+                cache
+                    .get_or_load(ScopeKey::Category(category_id.to_owned()), async {
+                        plan.materialize(&self.canonical)
+                    })
+                    .await
+            }
+            None => Arc::new(plan.materialize(&self.canonical)),
+        })
+    }
+
     pub fn catalog(&self) -> &DocsCatalog {
         &self.catalog
     }
@@ -329,6 +372,7 @@ pub(crate) fn build_api_docs_registry_with_cookie_name(
     categories.sort_by(|left, right| compare_categories(left, right, &category_singleton_flags));
 
     Ok(ApiDocsRegistry {
+        document_cache: None,
         catalog: DocsCatalog {
             title,
             version,
