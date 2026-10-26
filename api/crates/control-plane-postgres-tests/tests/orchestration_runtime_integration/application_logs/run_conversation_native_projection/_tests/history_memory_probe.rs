@@ -20,6 +20,7 @@ static FREED: AtomicU64 = AtomicU64::new(0);
 static STOP: AtomicBool = AtomicBool::new(false);
 static STAGE: AtomicU64 = AtomicU64::new(0);
 static STACK_ENABLED: AtomicBool = AtomicBool::new(false);
+static STACK_THRESHOLD: AtomicU64 = AtomicU64::new(96 * 1024 * 1024);
 static CAPTURE_BUSY: AtomicBool = AtomicBool::new(false);
 static CAPTURE_LIVE: AtomicU64 = AtomicU64::new(0);
 static CAPTURE_STAGE: AtomicU64 = AtomicU64::new(0);
@@ -51,7 +52,7 @@ fn add(size: usize) {
     // allocation locks and never invokes mallctl/profile dumping recursively.
     if STACK_ENABLED.load(SeqCst)
         && live > previous
-        && live >= 96 * 1024 * 1024
+        && live >= STACK_THRESHOLD.load(SeqCst)
         && CAPTURE_BUSY
             .compare_exchange(false, true, SeqCst, SeqCst)
             .is_ok()
@@ -194,6 +195,14 @@ impl Probe {
             "performance" | "proof" | "stack" | "canary"
         ));
         let native_profiles = matches!(mode.as_str(), "stack" | "canary");
+        let stack_threshold = if native_profiles {
+            std::env::var("HISTORY_MEMORY_STACK_THRESHOLD_BYTES")
+                .map(|value| value.parse::<u64>().expect("diagnostic stack threshold"))
+                .unwrap_or(96 * 1024 * 1024)
+        } else {
+            96 * 1024 * 1024
+        };
+        STACK_THRESHOLD.store(stack_threshold, SeqCst);
         STACK_ENABLED.store(native_profiles, SeqCst);
         if native_profiles {
             std::hint::black_box(native_frames());
@@ -221,12 +230,13 @@ impl Probe {
             "mode":mode,"native_profiles":native_profiles,
             "canary_in_this_process":mode == "canary",
             "sampler_thread":native_profiles,
+            "stack_threshold_bytes":stack_threshold,
             "counter_overhead":"identical process-wide atomic live/peak/allocated/freed counters in all modes and builds",
             "lg_prof_sample": read_ctl::<usize>(c"opt.lg_prof_sample"),
             "background_thread": read_ctl::<bool>(c"opt.background_thread"),
             "requested_scope": "process-wide Rust GlobalAlloc layouts; not usable size or allocator resident; realloc counts net layout change",
             "profile_scope": "jemalloc native sampled live stacks; sampled snapshots can lag exact hook peak",
-            "peak_stack_scope": "stack/canary only: GNU libc backtrace, prewarmed, fixed atomic slots; exact Rust new-peak hook above 96MiB diagnostic threshold",
+            "peak_stack_scope": "stack/canary only: GNU libc backtrace, prewarmed, fixed atomic slots; explicit diagnostic threshold (default 96MiB); no allocation/content limit",
             "rss_scope": "OS status and smaps_rollup; VmHWM is lifetime only, never a phase peak",
         });
         std::fs::write(

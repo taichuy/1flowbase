@@ -10,6 +10,9 @@ use probe::Probe;
 #[path = "history_memory_context.rs"]
 mod context_control;
 
+#[path = "history_initialization_memory.rs"]
+mod initialization;
+
 const TEST: &str = "application_logs::run_conversation_native_projection::incremental::history_memory::history_memory_phase_probe";
 
 fn output() -> PathBuf {
@@ -30,6 +33,10 @@ fn write_json(path: PathBuf, value: &Value) {
 // A exits before B starts. Neither measured process constructs migration data,
 // and B never holds the history inputs or A's returned records.
 async fn coordinate() {
+    if std::env::var("HISTORY_INIT_ENTRY").is_ok() {
+        initialization::coordinate().await;
+        return;
+    }
     if std::env::var("HISTORY_MEMORY_CONTEXT_CONTROL").as_deref() == Ok("1") {
         context_control::coordinate().await;
         return;
@@ -362,6 +369,7 @@ async fn history_memory_phase_probe() {
         Ok("consume") => consume().await,
         Ok("buffers") => buffers().await,
         Ok("context-consume") => context_control::consume().await,
+        Ok("initialization-measure") => initialization::measure().await,
         Err(_) => coordinate().await,
         other => panic!("unknown probe role {other:?}"),
     }
