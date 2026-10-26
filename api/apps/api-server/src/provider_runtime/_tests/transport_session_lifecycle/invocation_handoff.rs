@@ -12,7 +12,7 @@ async fn assert_pending<F: Future>(mut future: Pin<&mut F>) {
     .await;
 }
 
-async fn orphaned_execution(
+async fn bound_execution(
     responses: impl IntoIterator<Item = AckBehavior>,
 ) -> (
     Arc<Coordinator>,
@@ -39,6 +39,18 @@ async fn orphaned_execution(
         .await
         .unwrap()
         .unwrap();
+    (coordinator, runtime, old_scope, first)
+}
+
+async fn orphaned_execution(
+    responses: impl IntoIterator<Item = AckBehavior>,
+) -> (
+    Arc<Coordinator>,
+    Arc<FakeTransportRuntime>,
+    Arc<TransportConnectionScope>,
+    PreparedTransportInvocation,
+) {
+    let (coordinator, runtime, old_scope, first) = bound_execution(responses).await;
     coordinator.close_connection_scope(&old_scope).await;
     (coordinator, runtime, old_scope, first)
 }
@@ -74,6 +86,77 @@ async fn waiter_result(mut waiter: Waiter) -> anyhow::Result<Option<PreparedTran
             panic!("state changes must wake a parked admission waiter");
         }
     }
+}
+
+#[tokio::test]
+async fn separate_delivery_waits_before_predecessor_socket_closes() {
+    for close_predecessor in [false, true] {
+        let (coordinator, runtime, old_scope, first) = bound_execution([]).await;
+        let old = first.lease.clone();
+        let scope = coordinator.open_connection_scope();
+        let waiting = parked_waiter(&coordinator, &scope, 2_025_000).await;
+        assert!(runtime.commands().is_empty());
+        assert!(coordinator.safe_snapshot().await.sessions[0].inflight);
+        if close_predecessor {
+            coordinator.close_connection_scope(&old_scope).await;
+        }
+        coordinator
+            .finish(first, &successful_output(old.fence.generation.get()))
+            .await
+            .unwrap();
+        let next = waiter_result(waiting).await.unwrap().unwrap();
+        assert_eq!(next.lease.fence, old.fence);
+        assert_eq!(next.lease.sequence(), old.sequence() + 1);
+        coordinator.close_connection_scope(&old_scope).await;
+        assert!(coordinator.safe_snapshot().await.sessions[0].inflight);
+        coordinator
+            .finish(next, &successful_output(old.fence.generation.get()))
+            .await
+            .unwrap();
+        assert!(runtime.commands().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn bound_delivery_still_rejects_its_own_concurrent_invocation() {
+    let (coordinator, _, old_scope, first) = bound_execution([]).await;
+    let error = coordinator
+        .prepare_dispatched(
+            "runtime-a",
+            &mut scope_input(&old_scope, "model-a"),
+            &context(2_025_000),
+        )
+        .await
+        .err()
+        .unwrap();
+    assert!(reason(error).contains("transport_session_busy"));
+    assert!(
+        coordinator
+            .registry
+            .lock()
+            .await
+            .invocation_inflight(&first.lease.fence)
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn separate_delivery_wait_expires_without_cancelling_live_predecessor() {
+    let (coordinator, _, _old_scope, first) = bound_execution([]).await;
+    let scope = coordinator.open_connection_scope();
+    let waiting = parked_waiter(&coordinator, &scope, 2_000_020).await;
+    assert!(
+        reason(waiter_result(waiting).await.err().unwrap())
+            .contains("transport_invocation_deadline_exceeded")
+    );
+    assert!(
+        coordinator
+            .registry
+            .lock()
+            .await
+            .invocation_inflight(&first.lease.fence)
+            .unwrap()
+    );
 }
 
 #[tokio::test]
@@ -272,35 +355,32 @@ async fn grace_expiry_does_not_close_active_orphan_before_successful_handoff() {
 }
 
 #[tokio::test]
-async fn two_waiters_compete_for_only_one_successor_lease() {
+async fn two_waiters_acquire_successive_leases_without_overlapping_execution() {
     let (coordinator, _, _, first) = orphaned_execution([]).await;
     let old = first.lease.clone();
     let a_scope = coordinator.open_connection_scope();
     let b_scope = coordinator.open_connection_scope();
-    let a = parked_waiter(&coordinator, &a_scope, 2_025_000).await;
-    let b = parked_waiter(&coordinator, &b_scope, 2_025_000).await;
+    let mut a = parked_waiter(&coordinator, &a_scope, 2_025_000).await;
+    let mut b = parked_waiter(&coordinator, &b_scope, 2_025_000).await;
     coordinator
         .finish(first, &successful_output(old.fence.generation.get()))
         .await
         .unwrap();
-    let outcomes = [waiter_result(a).await, waiter_result(b).await];
-    let mut admitted = 0;
-    let mut refused = 0;
-    for outcome in outcomes {
-        match outcome {
-            Ok(Some(next)) => {
-                admitted += 1;
-                assert_eq!(next.lease.fence, old.fence);
-                assert_eq!(next.lease.sequence(), old.sequence() + 1);
-            }
-            Err(error) => {
-                refused += 1;
-                assert!(reason(error).contains("transport_session_busy"));
-            }
-            Ok(None) => panic!("the request must retain its session identity"),
-        }
-    }
-    assert_eq!((admitted, refused), (1, 1));
+    let (result, remaining) = tokio::select! {
+        result = &mut a => (result.unwrap(), b),
+        result = &mut b => (result.unwrap(), a),
+    };
+    let next = result.unwrap().unwrap();
+    assert_eq!(next.lease.fence, old.fence);
+    assert_eq!(next.lease.sequence(), old.sequence() + 1);
+    assert!(!remaining.is_finished());
+    coordinator
+        .finish(next, &successful_output(old.fence.generation.get()))
+        .await
+        .unwrap();
+    let last = waiter_result(remaining).await.unwrap().unwrap();
+    assert_eq!(last.lease.fence, old.fence);
+    assert_eq!(last.lease.sequence(), old.sequence() + 2);
     assert!(coordinator.safe_snapshot().await.sessions[0].inflight);
 }
 

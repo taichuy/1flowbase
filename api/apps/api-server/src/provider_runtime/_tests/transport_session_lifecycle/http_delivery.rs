@@ -370,33 +370,25 @@ async fn http_successor_waits_for_detached_http_or_websocket_predecessor_and_pre
 }
 
 #[tokio::test]
-async fn detached_http_waiter_is_woken_without_dispatch_and_live_predecessor_stays_busy() {
+async fn detached_http_waiter_is_woken_without_dispatch_while_predecessor_is_live() {
     let coordinator = coordinator();
     let (guard, first) = start(&coordinator).await;
     let successor = coordinator.open_http_connection_scope();
-    let error = coordinator
-        .prepare(
-            "runtime-a",
-            &mut delivery_input(&successor.scope),
-            &context(2_100_000),
-        )
-        .await
-        .err()
-        .unwrap();
-    assert!(reason(error).contains("transport_session_busy"));
-    let old_scope = guard.scope.clone();
-    drop(guard);
-    closed(&coordinator, &old_scope).await;
     let waiting = waiter(&coordinator, &successor.scope).await;
     drop(successor);
-    assert!(reason(waiter_result(waiting).await.err().unwrap())
-        .contains("transport_session_scope_unknown"));
-    assert_orphaned(&coordinator, &first).await;
+    assert!(
+        reason(waiter_result(waiting).await.err().unwrap())
+            .contains("transport_session_scope_unknown")
+    );
+    let snapshot = coordinator.safe_snapshot().await;
+    assert_eq!(snapshot.sessions[0].state, TransportSessionState::Active);
+    assert!(snapshot.sessions[0].inflight);
     coordinator.finish(first, &http_output()).await.unwrap();
+    drop(guard);
 }
 
 #[tokio::test]
-async fn two_http_waiters_cannot_dispatch_two_successors() {
+async fn two_http_waiters_dispatch_successors_serially() {
     let coordinator = coordinator();
     let (guard, first) = start(&coordinator).await;
     let old_scope = guard.scope.clone();
@@ -405,24 +397,22 @@ async fn two_http_waiters_cannot_dispatch_two_successors() {
     closed(&coordinator, &old_scope).await;
     let a = coordinator.open_http_connection_scope();
     let b = coordinator.open_http_connection_scope();
-    let a_waiter = waiter(&coordinator, &a.scope).await;
-    let b_waiter = waiter(&coordinator, &b.scope).await;
+    let mut a_waiter = waiter(&coordinator, &a.scope).await;
+    let mut b_waiter = waiter(&coordinator, &b.scope).await;
     coordinator.finish(first, &http_output()).await.unwrap();
-    let results = [waiter_result(a_waiter).await, waiter_result(b_waiter).await];
-    let mut winners = 0;
-    for result in results {
-        match result {
-            Ok(Some(next)) => {
-                winners += 1;
-                assert_eq!(next.lease.fence, old.fence);
-                assert_eq!(next.lease.sequence(), old.sequence() + 1);
-                coordinator.finish(next, &http_output()).await.unwrap();
-            }
-            Err(error) => assert!(reason(error).contains("transport_session_busy")),
-            Ok(None) => panic!("HTTP scope must enter session admission"),
-        }
-    }
-    assert_eq!(winners, 1);
+    let (result, remaining) = tokio::select! {
+        result = &mut a_waiter => (result.unwrap(), b_waiter),
+        result = &mut b_waiter => (result.unwrap(), a_waiter),
+    };
+    let next = result.unwrap().unwrap();
+    assert_eq!(next.lease.fence, old.fence);
+    assert_eq!(next.lease.sequence(), old.sequence() + 1);
+    assert!(!remaining.is_finished());
+    coordinator.finish(next, &http_output()).await.unwrap();
+    let last = waiter_result(remaining).await.unwrap().unwrap();
+    assert_eq!(last.lease.fence, old.fence);
+    assert_eq!(last.lease.sequence(), old.sequence() + 2);
+    coordinator.finish(last, &http_output()).await.unwrap();
 }
 
 #[tokio::test]

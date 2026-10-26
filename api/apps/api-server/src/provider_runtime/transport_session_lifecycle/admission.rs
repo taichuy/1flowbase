@@ -118,17 +118,30 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             }
             let fence = if let Some(fence) = registry.fence(&session_id) {
                 let mut state = registry.state(&fence)?;
-                if state == TransportSessionState::Orphaned {
+                if matches!(
+                    state,
+                    TransportSessionState::Active | TransportSessionState::Orphaned
+                ) {
                     // Unbinding the delivery is a fact, not a verdict. Only the
                     // execution state decides whether a successor may start here, and
                     // a second execution is never opened while its predecessor runs.
-                    // A replacement delivery with the same owner identity and target
-                    // may wait for actual completion. Waking restarts admission; the
-                    // registry's sequence and inflight checks still arbitrate racers.
+                    // A separate delivery with the same owner identity and target
+                    // waits for actual completion even while the old socket is open.
+                    // Compaction can open that delivery before the previous socket
+                    // finishes closing. Its timing must not turn serialization into
+                    // a retryable busy error. The bound delivery still rejects a
+                    // second concurrent invocation of its own.
                     let inflight = registry.invocation_inflight(&fence)?;
                     if inflight {
                         if registry.runtime_target_id(&fence)? == &target
-                            && connection_scope.is_some()
+                            && connection_scope.as_ref().is_some_and(|scope| {
+                                !scope
+                                    .state
+                                    .lock()
+                                    .expect("transport connection bindings")
+                                    .leases
+                                    .contains_key(session_id.as_str())
+                            })
                         {
                             let predecessor_deadline = registry
                                 .invocation_deadline(&fence)?
@@ -151,7 +164,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                                     handoff_wait_ms = handoff_started_at
                                         .map(|started_at: tokio::time::Instant| started_at.elapsed().as_millis())
                                         .unwrap_or(0),
-                                    "provider transport handoff timed out behind an orphaned invocation"
+                                    "provider transport handoff timed out behind an inflight invocation"
                                 );
                                 return Err(transport_error(
                                     "transport_invocation_deadline_exceeded",
@@ -159,16 +172,18 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                             }
                             continue;
                         }
-                        return Err(admission_error(
-                            "transport_session_inflight_unbound",
-                            admission_details(
-                                &session_id,
-                                Some(&fence),
-                                Some(state),
-                                Some(true),
-                                true,
-                            ),
-                        ));
+                        if state == TransportSessionState::Orphaned {
+                            return Err(admission_error(
+                                "transport_session_inflight_unbound",
+                                admission_details(
+                                    &session_id,
+                                    Some(&fence),
+                                    Some(state),
+                                    Some(true),
+                                    true,
+                                ),
+                            ));
+                        }
                     }
                 }
                 let bound_target = registry.runtime_target_id(&fence)?.clone();
