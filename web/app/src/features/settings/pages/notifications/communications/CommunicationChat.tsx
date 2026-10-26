@@ -1,3 +1,5 @@
+import AimOutlined from '@ant-design/icons/es/icons/AimOutlined';
+import InboxOutlined from '@ant-design/icons/es/icons/InboxOutlined';
 import { ReadOnlyConversationInput } from '../../../../agent-flow/components/debug-console/conversation/read-only/ReadOnlyConversationInput';
 import { createPortal } from 'react-dom';
 import {
@@ -115,19 +117,35 @@ export function CommunicationChat({
     const item = byId.get(message.id)!;
     return (
       <>
-        <Typography.Text
-          type="secondary"
-          className="communication-chat__timestamp"
-        >
-          {formatDateTime(new Date(item.occurred_at_ms).toISOString())}
-        </Typography.Text>
         <CommunicationRunLink item={item} />
-        <Tooltip title={<MessageStatus message={item} />}>
-          <Typography.Text type="secondary">
-            {item.direction === 'inbound'
-              ? t('chat_received')
-              : t('chat_reply')}
-          </Typography.Text>
+        <Tooltip
+          title={
+            <>
+              <span>
+                {item.direction === 'inbound'
+                  ? t('chat_received')
+                  : t('chat_reply')}
+              </span>
+              <MessageStatus message={item} />
+            </>
+          }
+        >
+          <span
+            className="communication-chat__direction"
+            role="img"
+            aria-label={
+              item.direction === 'inbound'
+                ? t('chat_received')
+                : t('chat_reply')
+            }
+            tabIndex={0}
+          >
+            {item.direction === 'inbound' ? (
+              <InboxOutlined aria-hidden="true" />
+            ) : (
+              <AimOutlined aria-hidden="true" />
+            )}
+          </span>
         </Tooltip>
         {item.can_retry && (
           <Tooltip title={t('retry_delivery')}>
@@ -212,6 +230,16 @@ export function CommunicationChat({
           stopping={false}
           showComposer={false}
           showClearAction={false}
+          messageFooterStart={(message) => (
+            <Typography.Text
+              type="secondary"
+              className="communication-chat__timestamp"
+            >
+              {formatDateTime(
+                new Date(byId.get(message.id)!.occurred_at_ms).toISOString()
+              )}
+            </Typography.Text>
+          )}
           userMessageMainRender={renderFile}
           assistantMessageMainRender={renderFile}
           userMessageActions={renderActions}

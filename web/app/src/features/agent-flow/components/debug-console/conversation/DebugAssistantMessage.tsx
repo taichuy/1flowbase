@@ -46,6 +46,7 @@ export function DebugAssistantMessage({
   message,
   messageMain,
   extraActions,
+  footerStart,
   onLoadArtifact,
   onLoadArtifacts,
   onOpenLog,
@@ -54,6 +55,7 @@ export function DebugAssistantMessage({
   message: AgentFlowDebugMessage;
   messageMain?: ReactNode;
   extraActions?: ReactNode;
+  footerStart?: ReactNode;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   onOpenLog?: (message: AgentFlowDebugMessage) => void;
@@ -107,7 +109,7 @@ export function DebugAssistantMessage({
           </>
         )}
       </div>
-      <MessageActions>
+      <MessageActions start={footerStart}>
         {message.presentation !== 'status' ? (
           <MessageCopyButton
             text={parsedContent.answerText}

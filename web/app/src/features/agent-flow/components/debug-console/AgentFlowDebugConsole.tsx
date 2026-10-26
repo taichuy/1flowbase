@@ -15,6 +15,7 @@ import { DebugConversationPane } from './conversation/DebugConversationPane';
 import { i18nText } from '../../../../shared/i18n/text';
 
 export function AgentFlowDebugConsole({
+  messageFooterStart,
   userMessageActions,
   userMessageMainRender,
   assistantMessageActions,
@@ -46,6 +47,7 @@ export function AgentFlowDebugConsole({
   onStopRun,
   onSubmitPrompt
 }: {
+  messageFooterStart?: (message: AgentFlowDebugMessage) => ReactNode;
   userMessageActions?: (message: AgentFlowDebugMessage) => ReactNode;
   userMessageMainRender?: (message: AgentFlowDebugMessage) => ReactNode;
   assistantMessageActions?: (message: AgentFlowDebugMessage) => ReactNode;
@@ -131,6 +133,7 @@ export function AgentFlowDebugConsole({
         onClose={onClose}
       >
         <DebugConversationPane
+          messageFooterStart={messageFooterStart}
           userMessageActions={userMessageActions}
           userMessageMainRender={userMessageMainRender}
           assistantMessageActions={assistantMessageActions}
