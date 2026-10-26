@@ -1,6 +1,6 @@
 // Canonical bodies live only in the existing message projection. Progress is
 // metadata; a correction discards it and streams the original retained facts.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 struct NativeCanonicalFact {
     owner: Uuid,
     sequence: i64,
@@ -51,7 +51,7 @@ impl PgControlPlaneStore {
         run: &domain::FlowRunRecord,
     ) -> Result<bool> {
         use futures_util::TryStreamExt;
-        let identity = sqlx::query("select log_context is not null as native, (log_context->>'log_conversation_id')::uuid as conversation from flow_runs where id=$1")
+        let identity = sqlx::query("select log_context is not null as native, message_projection_revision from flow_runs where id=$1")
             .bind(run.id).fetch_one(&mut **tx).await?;
         if !identity.try_get::<bool, _>("native")? {
             return Ok(false);
@@ -61,7 +61,7 @@ impl PgControlPlaneStore {
             .bind(run.id).bind(run.application_id).bind(conversation).fetch_all(&mut **tx).await?;
         let rebuild: bool = sqlx::query_scalar("select exists(select 1 from unnest($1::uuid[]) m(id) left join application_run_native_projection_progress p on p.flow_run_id=m.id where p.invalidated or p.projection_version is distinct from $2 and m.id<>$3) or exists(select 1 from application_run_conversation_message_items where flow_run_id=$3 and projection_version<>$2)")
             .bind(&members).bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION).bind(run.id).fetch_one(&mut **tx).await?;
-        let progress = sqlx::query("select output_sequence,result_count from application_run_native_projection_progress where flow_run_id=$1 and projection_version=$2 and not invalidated")
+        let progress = sqlx::query("select output_sequence,result_count,source_revision,conflicting_source_keys from application_run_native_projection_progress where flow_run_id=$1 and projection_version=$2 and not invalidated")
             .bind(run.id).bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION).fetch_optional(&mut **tx).await?;
         let output_sequence: i64 = progress
             .as_ref()
@@ -74,6 +74,21 @@ impl PgControlPlaneStore {
             .transpose()?
             .unwrap_or(0)
             .try_into()?;
+        if !rebuild {
+            if let Some(progress) = progress.as_ref() {
+                if progress.try_get::<i64, _>("source_revision")?
+                    == identity.try_get::<i64, _>("message_projection_revision")?
+                    && sqlx::query_scalar::<_, bool>("select exists(select 1 from application_run_conversation_message_items where flow_run_id=$1)")
+                        .bind(run.id).fetch_one(&mut **tx).await?
+                {
+                    return Ok(true);
+                }
+                if Self::try_append_native_canonical_projection(tx, run, &members, progress).await?
+                {
+                    return Ok(true);
+                }
+            }
+        }
         let source_runs = if rebuild {
             members.clone()
         } else {
@@ -117,31 +132,13 @@ impl PgControlPlaneStore {
                             .enumerate()
                             .skip(if rebuild { 0 } else { result_count })
                     {
-                        let key = format!(
-                            "result:{}",
-                            item.get("call_id")
-                                .and_then(Value::as_str)
-                                .map(str::to_owned)
-                                .unwrap_or_else(|| format!("{owner}:{}", index + 1))
+                        let fact = native_canonical_result_fact(
+                            owner,
+                            index,
+                            item,
+                            context.as_ref().unwrap_or(&Value::Null),
                         );
-                        let conflicting = context
-                            .as_ref()
-                            .and_then(|c| c.get("conflicting_result_call_ids"))
-                            .and_then(Value::as_array)
-                            .is_some_and(|keys| {
-                                keys.iter()
-                                    .any(|v| v.as_str() == key.strip_prefix("result:"))
-                            });
-                        merge_native_canonical_fact(
-                            &mut facts,
-                            NativeCanonicalFact {
-                                owner,
-                                sequence: -1_000_000 + index as i64 + 1,
-                                key,
-                                item,
-                                conflicting,
-                            },
-                        );
+                        merge_native_canonical_fact(&mut facts, fact);
                     }
                 }
                 if owner == run.id {
@@ -154,40 +151,7 @@ impl PgControlPlaneStore {
                 .bind(&source_runs).bind(rebuild).bind(output_sequence).fetch(&mut **tx);
             while let Some(row) = rows.try_next().await? {
                 read_events += 1;
-                let owner = row.try_get("flow_run_id")?;
-                let sequence = row.try_get("sequence")?;
-                let event: Uuid = row.try_get("id")?;
-                let mut original: Value = row.try_get("original")?;
-                let item = original
-                    .as_object_mut()
-                    .and_then(|o| o.remove("item"))
-                    .ok_or_else(|| {
-                        anyhow!("native log fact projection does not match its original")
-                    })?;
-                let kind = if item.get("call_id").and_then(Value::as_str).is_some() {
-                    "tool"
-                } else {
-                    item.get("type")
-                        .and_then(Value::as_str)
-                        .unwrap_or("unknown")
-                };
-                let id = item
-                    .get("call_id")
-                    .or_else(|| item.get("id"))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| event.to_string());
-                let key = format!("output:{kind}:{id}");
-                merge_native_canonical_fact(
-                    &mut facts,
-                    NativeCanonicalFact {
-                        owner,
-                        sequence,
-                        key,
-                        item,
-                        conflicting: false,
-                    },
-                );
+                merge_native_canonical_fact(&mut facts, native_canonical_output_fact(row)?);
             }
         }
         for fact in facts.values_mut() {
@@ -320,9 +284,17 @@ impl PgControlPlaneStore {
             Self::refresh_application_run_log_task_for_flow_run(tx, owner).await?;
             // Progress publication is part of the same transaction as every
             // affected owner, summary and task projection.
-            sqlx::query("insert into application_run_native_projection_progress(flow_run_id,projection_version,output_sequence,result_count,source_revision,invalidated,conflicting_source_keys,last_read_context_count,last_read_event_count) select f.id,$2,coalesce((select max(sequence) from runtime_events where flow_run_id=f.id and event_type='provider_output_item_done'),'-9223372036854775808'::bigint),jsonb_array_length(coalesce(f.log_context->'tool_results','[]'::jsonb)),f.message_projection_revision,false,$5,$3,$4 from flow_runs f where id=$1 on conflict(flow_run_id) do update set projection_version=excluded.projection_version,output_sequence=excluded.output_sequence,result_count=excluded.result_count,source_revision=excluded.source_revision,invalidated=false,conflicting_source_keys=excluded.conflicting_source_keys,last_read_context_count=excluded.last_read_context_count,last_read_event_count=excluded.last_read_event_count")
-                .bind(owner).bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION).bind(read_contexts).bind(read_events).bind(&conflicting_keys).execute(&mut **tx).await?;
+            Self::publish_native_projection_progress(
+                tx,
+                owner,
+                read_contexts,
+                read_events,
+                &conflicting_keys,
+            )
+            .await?;
         }
         Ok(true)
     }
 }
+
+include!("native_append_projection.rs");

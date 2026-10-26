@@ -53,9 +53,9 @@ impl PgControlPlaneStore {
         Ok(true)
     }
 
-    /// A projection is current only when every row was written from the run
-    /// watermark the retained facts currently produce. Rows written before the
-    /// watermark existed carry none and are reprojected exactly once.
+    /// Native freshness comes from atomically published progress. Unchanged rows
+    /// retain their materialization revision; legacy rows still require matching
+    /// watermarks. Missing progress and older versions take the full repair path.
     async fn application_run_conversation_message_items_projection_is_current(
         tx: &mut sqlx::Transaction<'_, Postgres>,
         flow_run_id: Uuid,
@@ -64,14 +64,19 @@ impl PgControlPlaneStore {
             Self::application_run_conversation_message_watermark(tx, flow_run_id).await?;
         let current: bool = sqlx::query_scalar(
             r#"
-            select coalesce(bool_and(source_revision is not distinct from $3), false)
-                and not exists(select 1 from flow_runs f where f.id=$1 and f.log_context is not null
-                    and not exists(select 1 from application_run_native_projection_progress p
-                        where p.flow_run_id=f.id and p.projection_version=$2 and not p.invalidated
-                            and p.source_revision=f.message_projection_revision))
-            from application_run_conversation_message_items
-            where flow_run_id = $1
-              and projection_version = $2
+            select case when exists(select 1 from flow_runs where id=$1 and log_context is not null)
+                then exists(select 1 from application_run_native_projection_progress p
+                    join flow_runs f on f.id=p.flow_run_id where p.flow_run_id=$1
+                        and p.projection_version=$2 and not p.invalidated
+                        and p.source_revision=f.message_projection_revision)
+                    and exists(select 1 from application_run_conversation_message_items
+                        where flow_run_id=$1 and projection_version=$2)
+                    and not exists(select 1 from application_run_conversation_message_items
+                        where flow_run_id=$1 and projection_version<>$2)
+                else (select coalesce(bool_and(source_revision is not distinct from $3),false)
+                    from application_run_conversation_message_items
+                    where flow_run_id=$1 and projection_version=$2)
+                end
             "#,
         )
         .bind(flow_run_id)
@@ -111,6 +116,38 @@ impl PgControlPlaneStore {
         Self::write_application_run_conversation_projection(tx, flow_run, None).await
     }
 
+    // Shared lossless row encoding for full repair and new canonical tail rows.
+    async fn insert_application_run_native_message_item(
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+        flow_run_id: Uuid,
+        scope_id: Uuid,
+        revision: &Option<String>,
+        sequence: i64,
+        source_key: String,
+        native: Value,
+    ) -> Result<()> {
+        let output_source = native
+            .get("_log_output_source")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty());
+        let context_source = native
+            .get("_log_context_source")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty());
+        sqlx::query(r#"insert into application_run_conversation_message_items(
+            id,scope_id,application_id,flow_run_id,display_sequence,source_kind,role,content,
+            native_message,detail_run_id,can_open_detail,is_current,status,started_at,finished_at,
+            projection_version,log_conversation_id,source_item_key,
+            output_source,context_source,source_revision, source_occurrence_sequence, raw_json_payloads)
+            select md5(coalesce(log_context->>'log_conversation_id',id::text)||':'||$5)::uuid, $2, application_id, id, $3, 'current_run', $6, ($7::jsonb ->> 0), ($8::jsonb -> 0), case when $10::text is null then id else null end, $10::text is null, $10::text is null, case when $10::text is null then status else 'succeeded' end, started_at, finished_at, $4, (log_context->>'log_conversation_id')::uuid, case when ($8::jsonb -> 0) ? '_source_item' then $5 else null end, $9, $10, $11, (($8::jsonb -> 0)->>'_log_source_sequence')::bigint, jsonb_strip_nulls(jsonb_build_object('content', ($7::jsonb -> 1), 'native_message', ($8::jsonb -> 1))) from flow_runs where id=$1"#)
+            .bind(flow_run_id).bind(scope_id).bind(sequence)
+            .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION).bind(source_key)
+            .bind(native.get("role").and_then(Value::as_str)).bind(lossless_text_parameter(&(native.get("content").and_then(Value::as_str))))
+            .bind(lossless_json_parameter(&(&native))).bind(output_source).bind(context_source).bind(revision)
+            .execute(&mut **tx).await?;
+        Ok(())
+    }
+
     async fn write_application_run_conversation_projection(
         tx: &mut sqlx::Transaction<'_, Postgres>,
         flow_run: &domain::FlowRunRecord,
@@ -126,26 +163,17 @@ impl PgControlPlaneStore {
         let revision =
             Self::application_run_conversation_message_watermark(tx, flow_run.id).await?;
         if let Some(items) = native_items {
-            for (sequence, source_key, native) in items.into_iter() {
-                let output_source = native
-                    .get("_log_output_source")
-                    .and_then(Value::as_str)
-                    .filter(|value| !value.is_empty());
-                let context_source = native
-                    .get("_log_context_source")
-                    .and_then(Value::as_str)
-                    .filter(|value| !value.is_empty());
-                sqlx::query(r#"insert into application_run_conversation_message_items(
-                    id,scope_id,application_id,flow_run_id,display_sequence,source_kind,role,content,
-                    native_message,detail_run_id,can_open_detail,is_current,status,started_at,finished_at,
-                    projection_version,log_conversation_id,source_item_key,
-                    output_source,context_source,source_revision, source_occurrence_sequence, raw_json_payloads)
-                    select md5(coalesce(log_context->>'log_conversation_id',id::text)||':'||$5)::uuid, $2, application_id, id, $3, 'current_run', $6, ($7::jsonb ->> 0), ($8::jsonb -> 0), case when $10::text is null then id else null end, $10::text is null, $10::text is null, case when $10::text is null then status else 'succeeded' end, started_at, finished_at, $4, (log_context->>'log_conversation_id')::uuid, case when ($8::jsonb -> 0) ? '_source_item' then $5 else null end, $9, $10, $11, (($8::jsonb -> 0)->>'_log_source_sequence')::bigint, jsonb_strip_nulls(jsonb_build_object('content', ($7::jsonb -> 1), 'native_message', ($8::jsonb -> 1))) from flow_runs where id=$1"#)
-                    .bind(flow_run.id).bind(scope_id).bind(sequence)
-                    .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION).bind(source_key)
-                    .bind(native.get("role").and_then(Value::as_str)).bind(lossless_text_parameter(&(native.get("content").and_then(Value::as_str))))
-                    .bind(lossless_json_parameter(&(&native))).bind(output_source).bind(context_source).bind(&revision)
-                    .execute(&mut **tx).await?;
+            for (sequence, source_key, native) in items {
+                Self::insert_application_run_native_message_item(
+                    tx,
+                    flow_run.id,
+                    scope_id,
+                    &revision,
+                    sequence,
+                    source_key,
+                    native,
+                )
+                .await?;
             }
             return Ok(());
         }

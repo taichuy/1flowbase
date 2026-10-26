@@ -240,8 +240,11 @@ impl PgControlPlaneStore {
         // arrive in a later call, but only within the same authenticated log
         // conversation and with the exact call ID and result type.
         let rows = sqlx::query(r#"
-            select runtime_original_json(m.native_message, m.raw_json_payloads, 'native_message') as native_message, result.native_message as result_message
+            select runtime_original_json(m.native_message, m.raw_json_payloads, 'native_message') as native_message, result.native_message as result_message,
+                ('v'||progress.projection_version::text||':'||progress.source_revision::text) as published_revision
             from application_run_conversation_message_items m
+            left join application_run_native_projection_progress progress on progress.flow_run_id=m.flow_run_id
+                and progress.projection_version=m.projection_version
             left join lateral (
                 select runtime_original_json(r.native_message, r.raw_json_payloads, 'native_message') as native_message from application_run_conversation_message_items r
                 where r.application_id=m.application_id and r.scope_id=m.scope_id
@@ -259,6 +262,7 @@ impl PgControlPlaneStore {
         rows.into_iter()
             .map(|row| {
                 let mut message: Value = row.try_get("native_message")?;
+                apply_published_native_revision(&mut message, row.try_get("published_revision")?);
                 let result: Option<Value> = row.try_get("result_message")?;
                 message["tool_result"] = result
                     .as_ref()

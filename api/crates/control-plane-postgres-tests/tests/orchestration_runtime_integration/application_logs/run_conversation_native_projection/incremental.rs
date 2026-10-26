@@ -1,5 +1,11 @@
 use super::*;
 
+#[path = "_tests/projection_cost.rs"]
+mod projection_cost;
+
+#[path = "_tests/append_regressions.rs"]
+mod append_regressions;
+
 async fn native_member(
     store: &PgControlPlaneStore,
     seeded: &RuntimeSeedState,

@@ -107,15 +107,23 @@ async fn next_agent_log_pricing_record(
         run_id: Uuid,
     ) -> Result<Vec<Value>> {
         // Keep the restored original as JSON: JSONB rejects valid NUL characters.
-        Ok(sqlx::query_scalar::<_, Value>(r#"
+        let rows = sqlx::query(r#"
             select json_build_object('id',m.id,'source_item_key',m.source_item_key,
                 'source_kind',m.source_kind,'role',m.role,'started_at',m.started_at,
                 'display_sequence',m.display_sequence,
-                'native_message',runtime_original_json(m.native_message,m.raw_json_payloads,'native_message'))
+                'native_message',runtime_original_json(m.native_message,m.raw_json_payloads,'native_message')) as native_unit,
+                ('v'||progress.projection_version::text||':'||progress.source_revision::text) as published_revision
             from application_run_conversation_message_items m
+            left join application_run_native_projection_progress progress on progress.flow_run_id=m.flow_run_id
+                and progress.projection_version=m.projection_version
             where m.scope_id=$1 and m.application_id=$2 and m.flow_run_id=$3
             order by m.display_sequence,m.id
-        "#).bind(scope_id).bind(application_id).bind(run_id).fetch_all(self.pool()).await?)
+        "#).bind(scope_id).bind(application_id).bind(run_id).fetch_all(self.pool()).await?;
+        rows.into_iter().map(|row| {
+            let mut unit: Value = row.try_get("native_unit")?;
+            apply_published_native_revision(&mut unit["native_message"], row.try_get("published_revision")?);
+            Ok(unit)
+        }).collect()
     }
     async fn query_application_log_records(
         &self,
