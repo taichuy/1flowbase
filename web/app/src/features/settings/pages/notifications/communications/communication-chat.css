@@ -11,3 +11,12 @@
 .communication-chat .agent-flow-editor__debug-message-content {
   overflow-wrap: anywhere;
 }
+
+.communication-chat__direction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--text-secondary);
+}

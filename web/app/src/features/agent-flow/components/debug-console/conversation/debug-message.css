@@ -604,3 +604,8 @@
   opacity: 1;
   pointer-events: auto;
 }
+
+.agent-flow-editor__debug-message-action-start {
+  margin-inline-end: auto;
+  align-self: center;
+}

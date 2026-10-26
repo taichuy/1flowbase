@@ -54,6 +54,7 @@ function bubbleMessageStatus(
 }
 
 export function DebugConversationPane({
+  messageFooterStart,
   userMessageActions,
   userMessageMainRender,
   assistantMessageActions,
@@ -76,6 +77,7 @@ export function DebugConversationPane({
   onSubmitPrompt,
   showComposer = true
 }: {
+  messageFooterStart?: (message: AgentFlowDebugMessage) => ReactNode;
   userMessageActions?: (message: AgentFlowDebugMessage) => ReactNode;
   userMessageMainRender?: (message: AgentFlowDebugMessage) => ReactNode;
   assistantMessageMainRender?: (message: AgentFlowDebugMessage) => ReactNode;
@@ -184,6 +186,7 @@ export function DebugConversationPane({
             message={message}
             messageMain={assistantMessageMainRender?.(message)}
             extraActions={assistantMessageActions?.(message)}
+            footerStart={messageFooterStart?.(message)}
             onLoadArtifact={onLoadArtifact}
             onLoadArtifacts={onLoadArtifacts}
             onOpenLog={
@@ -251,7 +254,7 @@ export function DebugConversationPane({
         ),
         footerPlacement: 'outer-end' as const,
         footer: (message: AgentFlowDebugMessage) => (
-          <MessageActions>
+          <MessageActions start={messageFooterStart?.(message)}>
             <MessageCopyButton text={message.content} />
             {userMessageActions?.(message)}
             {onOpenMessageLog && userLogMessageIds.has(message.id) ? (
@@ -277,6 +280,7 @@ export function DebugConversationPane({
       logActionRunId,
       assistantMessageActions,
       assistantMessageMainRender,
+      messageFooterStart,
       userMessageActions,
       userMessageMainRender,
       onLoadArtifact,
