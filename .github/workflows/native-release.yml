@@ -25,6 +25,16 @@ jobs:
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.22.1'
+      - name: Prepare pinned bootstrap resources
+        run: node scripts/node/native-release/resources.js tmp/native-resources
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-bootstrap-resources
+          path: tmp/native-resources
       - id: select
         env:
           TARGET: ${{ inputs.target || 'all' }}
@@ -75,6 +85,10 @@ jobs:
           npm install --global pnpm@12.11.2
           pnpm --dir web install --frozen-lockfile
           pnpm --dir web build
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-bootstrap-resources
+          path: tmp/native-resources
       - name: Fetch pinned PostgreSQL and package
         env:
           NATIVE_TARGET: ${{ matrix.target }}
@@ -88,7 +102,7 @@ jobs:
             --platform "$NATIVE_PLATFORM" --arch "$NATIVE_ARCH" \
             --api-binary "api/target/release/api-server$NATIVE_SUFFIX" \
             --recovery-binary "api/target/release/system_recovery$NATIVE_SUFFIX" \
-            --web-dir web/app/dist --postgres-dir "$pg_root" --out tmp/native-release
+            --web-dir web/app/dist --postgres-dir "$pg_root" --resources-dir tmp/native-resources --out tmp/native-release
       - name: Verify startup, restart and shutdown
         if: runner.os != 'Windows'
         env:

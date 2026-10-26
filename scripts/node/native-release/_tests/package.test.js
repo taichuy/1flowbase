@@ -17,13 +17,14 @@ test('stages runtime inputs without copying developer secrets or replacing exist
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'native-package-'));
   try {
     const write = (name, content = 'fixture') => { const file = path.join(root, name); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, content); };
-    for (const name of ['api-bin', 'recovery-bin', 'dist/index.html', 'LICENSE', 'docker/native/README.md', 'docker/native/README_CN.md', 'api/plugins/host-extensions/host.yaml', 'api/plugins/sets/default.yaml', 'api/plugins/capability-plugins/index.js', 'api/plugins/installed/secret', 'api/.env']) write(name);
+    for (const name of ['api-bin', 'recovery-bin', 'dist/index.html', 'LICENSE', 'docker/native/README.md', 'docker/native/README_CN.md', 'api/plugins/host-extensions/host.yaml', 'api/plugins/sets/default.yaml', 'api/plugins/capability-plugins/index.js', 'api/plugins/installed/secret', 'api/.env', 'resources/application-templates/receipt.json']) write(name);
     for (const tool of ['postgres', 'pg_ctl', 'initdb', 'psql', 'createdb', 'pg_dump', 'pg_restore']) write(`pg/bin/${tool}`);
     write('web/app/package.json', '{"version":"0.1.0"}');
-    const options = { repoRoot: root, apiBinary: path.join(root, 'api-bin'), recoveryBinary: path.join(root, 'recovery-bin'), webDir: path.join(root, 'dist'), postgresDir: path.join(root, 'pg'), outDir: path.join(root, 'out'), platform: 'linux', arch: 'x64' };
+    const options = { repoRoot: root, apiBinary: path.join(root, 'api-bin'), recoveryBinary: path.join(root, 'recovery-bin'), webDir: path.join(root, 'dist'), postgresDir: path.join(root, 'pg'), outDir: path.join(root, 'out'), platform: 'linux', arch: 'x64', resourcesDir: path.join(root, 'resources') };
     const stage = stagePackage(options);
     assert.ok(fs.existsSync(path.join(stage, 'postgres/bin/pg_restore')));
     assert.ok(fs.existsSync(path.join(stage, 'start.sh')));
+    assert.ok(fs.existsSync(path.join(stage, 'api/resources/application-templates/receipt.json')));
     assert.ok(!fs.existsSync(path.join(stage, 'api/.env')));
     assert.ok(!fs.existsSync(path.join(stage, 'api/plugins/installed')));
     const manifest = JSON.parse(fs.readFileSync(path.join(stage, 'native-distribution.json')));

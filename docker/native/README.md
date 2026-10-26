@@ -32,6 +32,7 @@ Build `api-server` and `system_recovery` for each platform, build the web assets
 ```sh
 cargo build --manifest-path api/Cargo.toml --release -p api-server --bin api-server --bin system_recovery
 pnpm --dir web build
+node scripts/node/native-release/resources.js tmp/native-resources
 node scripts/node/native-release/fetch-postgres.js linux-x64 tmp/native-postgres
 # Use the PostgreSQL directory printed by the command above.
 node scripts/node/native-release/package.js \
@@ -39,7 +40,7 @@ node scripts/node/native-release/package.js \
   --api-binary api/target/release/api-server \
   --recovery-binary api/target/release/system_recovery \
   --web-dir web/app/dist --postgres-dir /path/to/postgresql \
-  --out tmp/native-release
+  --resources-dir tmp/native-resources --out tmp/native-release
 ```
 
 Platforms: `linux`, `macos`, `windows`. Architectures: `x64`, `arm64`. Example archive: `1flowbase-windows-x64.zip`. Version information belongs in the Release and `native-distribution.json`, never a hash suffix in the filename. Existing staging directories and archives are not overwritten.
