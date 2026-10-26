@@ -272,7 +272,10 @@ impl NetworkEgressWorker {
                     cleanup_error.get_or_insert_with(|| error.to_string());
                 }
             }
-            process_group_exited = wait_for_process_group_exit(process_group_id).await;
+            #[cfg(unix)]
+            {
+                process_group_exited = wait_for_process_group_exit(process_group_id).await;
+            }
         }
         // A reaped Windows child is not proof that all of its descendants exited.
         // Preserve that distinction until the host owns a Windows Job Object.
