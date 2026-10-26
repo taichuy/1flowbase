@@ -1,5 +1,10 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    future::Future,
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
+use anyhow::Context;
 use axum::{
     body::Bytes,
     http::header,
@@ -14,7 +19,53 @@ pub(super) enum ScopeKey {
     Category(String),
 }
 
-pub(super) type DocumentCache = MokaReadThroughCache<ScopeKey, EncodedApiDocument>;
+#[derive(Debug, Clone)]
+pub(super) struct DocumentCache(Arc<DeferredCache>);
+
+#[derive(Debug)]
+struct DeferredCache {
+    policy: ReadThroughCachePolicy,
+    runtime: tokio::runtime::Handle,
+    active: OnceLock<MokaReadThroughCache<ScopeKey, EncodedApiDocument>>,
+}
+
+impl DocumentCache {
+    pub(super) fn new(policy: ReadThroughCachePolicy) -> anyhow::Result<Self> {
+        Ok(Self(Arc::new(DeferredCache {
+            policy,
+            runtime: tokio::runtime::Handle::try_current()
+                .context("read-through cache requires a Tokio runtime")?,
+            active: OnceLock::new(),
+        })))
+    }
+
+    pub(super) async fn get_or_load(
+        &self,
+        key: ScopeKey,
+        load: impl Future<Output = EncodedApiDocument> + Send,
+    ) -> Arc<EncodedApiDocument> {
+        let cache = self.0.active.get_or_init(|| {
+            // Keep maintenance on the constructing runtime, even if a different runtime
+            // polls the first request. The enter guard ends before any await.
+            let _runtime = self.0.runtime.enter();
+            MokaReadThroughCache::new(self.0.policy, document_weight)
+                .expect("captured Tokio runtime and validated document cache policy")
+        });
+        cache.get_or_load(key, load).await
+    }
+
+    #[cfg(test)]
+    async fn run_pending_tasks(&self) {
+        if let Some(cache) = self.0.active.get() {
+            cache.run_pending_tasks().await;
+        }
+    }
+
+    #[cfg(test)]
+    fn entry_count(&self) -> u64 {
+        self.0.active.get().map_or(0, |cache| cache.entry_count())
+    }
+}
 
 pub(super) fn default_policy() -> anyhow::Result<ReadThroughCachePolicy> {
     // Disposable wire payload budget, never a document or request capacity limit.

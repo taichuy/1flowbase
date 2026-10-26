@@ -106,9 +106,7 @@ impl ApiDocsRegistry {
         mut self,
         policy: Option<storage_ephemeral::ReadThroughCachePolicy>,
     ) -> Result<Self> {
-        self.document_cache = policy
-            .map(|policy| DocumentCache::new(policy, cache::document_weight))
-            .transpose()?;
+        self.document_cache = policy.map(DocumentCache::new).transpose()?;
         Ok(self)
     }
 

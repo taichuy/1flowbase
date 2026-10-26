@@ -31,6 +31,10 @@ async fn docs_cache_preserves_full_bytes_and_does_not_fill_from_metadata_or_miss
     let cache = registry.document_cache.as_ref().unwrap();
     cache.run_pending_tasks().await;
     assert_eq!(cache.entry_count(), 0);
+    assert!(
+        cache.0.active.get().is_none(),
+        "metadata and missing scopes must not create Moka or its task"
+    );
     for category in &registry.catalog().categories {
         assert_eq!(
             serde_json::to_vec(&registry.category_spec(&category.id).unwrap()).unwrap(),
@@ -112,7 +116,6 @@ async fn docs_cache_concurrent_requests_share_and_oversized_docs_still_respond()
 async fn docs_cache_category_and_operation_keys_cannot_collide() {
     let cache = super::DocumentCache::new(
         ReadThroughCachePolicy::new(1000, Duration::from_secs(1)).unwrap(),
-        super::document_weight,
     )
     .unwrap();
     let operation = cache
@@ -156,6 +159,14 @@ async fn docs_default_cache_and_empty_template_have_distinct_lifetimes() {
     assert_eq!(default.idle_timeout(), Duration::from_secs(60));
     let registry = Arc::new(registry("string", 1_000_000).with_default_cache().unwrap());
     let weak = Arc::downgrade(&registry);
+    assert!(registry
+        .document_cache
+        .as_ref()
+        .unwrap()
+        .0
+        .active
+        .get()
+        .is_none());
     let held = registry.cached_operation_spec("read").await.unwrap();
     let empty = ApiDocsRegistry::empty();
     assert!(empty.document_cache.is_none());
@@ -183,4 +194,109 @@ async fn docs_encoded_idle_eviction_keeps_inflight_response_readable() {
         .await;
     assert_eq!(registry.document_cache.as_ref().unwrap().entry_count(), 0);
     assert_eq!(body(held).await, expected);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn docs_lazy_cache_clones_initialize_one_owner_and_coalesce_the_first_load() {
+    use std::{
+        future::Future,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+    let cache = super::DocumentCache::new(super::default_policy().unwrap()).unwrap();
+    let weak = Arc::downgrade(&cache.0);
+    let loads = Arc::new(AtomicUsize::new(0));
+    let pending = Arc::new(AtomicUsize::new(0));
+    let start = Arc::new(tokio::sync::Barrier::new(21));
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let all_pending = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let mut jobs = Vec::new();
+    for _ in 0..20 {
+        let (cache, loads, pending, start, entered, all_pending, release) = (
+            cache.clone(),
+            loads.clone(),
+            pending.clone(),
+            start.clone(),
+            entered.clone(),
+            all_pending.clone(),
+            release.clone(),
+        );
+        jobs.push(tokio::spawn(async move {
+            start.wait().await;
+            let request =
+                cache.get_or_load(super::ScopeKey::Operation("first".into()), async move {
+                    loads.fetch_add(1, Ordering::SeqCst);
+                    entered.notify_one();
+                    release.notified().await;
+                    super::EncodedApiDocument::from(json!({"first":true}))
+                });
+            tokio::pin!(request);
+            let mut observed_pending = false;
+            std::future::poll_fn(|cx| {
+                let polled = request.as_mut().poll(cx);
+                if polled.is_pending() && !observed_pending {
+                    observed_pending = true;
+                    if pending.fetch_add(1, Ordering::SeqCst) + 1 == 20 {
+                        all_pending.notify_one();
+                    }
+                }
+                polled
+            })
+            .await
+        }));
+    }
+    tokio::time::timeout(Duration::from_secs(5), async {
+        start.wait().await;
+        entered.notified().await;
+        all_pending.notified().await;
+    })
+    .await
+    .expect("all first requests must overlap before releasing the loader");
+    assert_eq!(pending.load(Ordering::SeqCst), 20);
+    assert_eq!(loads.load(Ordering::SeqCst), 1);
+    release.notify_waiters();
+    let first = jobs.remove(0).await.unwrap();
+    for job in jobs {
+        assert!(Arc::ptr_eq(&first, &job.await.unwrap()));
+    }
+    assert!(cache.0.active.get().is_some());
+    drop(cache);
+    assert!(weak.upgrade().is_none());
+    assert_eq!(body(first.into()).await, br#"{"first":true}"#);
+}
+
+#[test]
+fn docs_lazy_cache_uses_its_captured_runtime_when_first_polled_elsewhere() {
+    assert!(super::DocumentCache::new(super::default_policy().unwrap()).is_err());
+    let original = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let registry = original.block_on(async { registry("string", 1_000_000) });
+    assert!(registry
+        .document_cache
+        .as_ref()
+        .unwrap()
+        .0
+        .active
+        .get()
+        .is_none());
+    let request_runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    request_runtime.block_on(async {
+        assert!(!body(registry.cached_operation_spec("read").await.unwrap())
+            .await
+            .is_empty());
+    });
+    assert!(registry
+        .document_cache
+        .as_ref()
+        .unwrap()
+        .0
+        .active
+        .get()
+        .is_some());
+    drop(registry);
 }
