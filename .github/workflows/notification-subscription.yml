@@ -2,7 +2,7 @@ name: Communications acceptance
 
 on:
   push:
-    branches: [codex/communications-2670, codex/communications-ux-2670]
+    branches: [codex/communications-2670, codex/communications-ux-2670, codex/communications-chat-2670]
     paths:
       - api/**
       - .github/workflows/notification-subscription.yml
@@ -96,6 +96,11 @@ jobs:
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration communication_ 2>&1 | tee tmp/test-governance/communications/ci/dispatch-recovery.log
+      - name: Communication typed timeline migration acceptance
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib communication_timeline_migration_preserves_inputs_files_ciphertext_and_history 2>&1 | tee tmp/test-governance/communications/ci/timeline-migration.log
       - name: Communication backup scope and rekey acceptance
         if: ${{ !cancelled() }}
         run: |

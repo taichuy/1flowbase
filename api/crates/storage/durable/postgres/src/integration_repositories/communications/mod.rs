@@ -36,8 +36,8 @@ fn conversation(row: PgRow) -> CommunicationConversation {
         sender_display_name: row.get("sender_display_name"),
     }
 }
-fn message(row: PgRow) -> Result<CommunicationMessage> {
-    Ok(CommunicationMessage {
+fn input(row: PgRow) -> Result<CommunicationInput> {
+    Ok(CommunicationInput {
         id: row.get("id"),
         conversation_id: row.get("conversation_id"),
         external_message_key: row.get("external_message_key"),
@@ -54,7 +54,7 @@ fn message(row: PgRow) -> Result<CommunicationMessage> {
 fn attachment(row: &PgRow) -> Result<CommunicationAttachment> {
     Ok(CommunicationAttachment {
         id: row.get("id"),
-        message_id: row.get("message_id"),
+        message_id: row.get("input_id"),
         provider_attachment_id: row.get("provider_attachment_id"),
         file_name: row.get("file_name"),
         media_type: row.get("media_type"),
@@ -78,6 +78,15 @@ fn page<T>(mut items: Vec<T>, limit: u32, id: impl Fn(&T) -> Uuid) -> Communicat
 
 #[async_trait]
 impl CommunicationRepository for PgControlPlaneStore {
+    async fn communication_management_history(
+        &self,
+        w: Uuid,
+        c: Uuid,
+        p: Option<Uuid>,
+        l: u32,
+    ) -> Result<CommunicationPage<CommunicationMessage>> {
+        history::timeline(self, w, None, None, c, p, l, false).await
+    }
     async fn communication_management_conversations(
         &self,
         workspace_id: Uuid,
@@ -105,7 +114,7 @@ impl CommunicationRepository for PgControlPlaneStore {
         workspace_id: Uuid,
         run_id: Uuid,
     ) -> Result<Option<Uuid>> {
-        Ok(sqlx::query_scalar("SELECT r.application_id FROM communication_messages m JOIN flow_runs r ON r.id=m.run_id WHERE m.scope_id=$1 AND m.run_id=$2").bind(workspace_id).bind(run_id).fetch_optional(self.pool()).await?)
+        Ok(sqlx::query_scalar("SELECT r.application_id FROM communication_inputs m JOIN flow_runs r ON r.id=m.run_id AND r.scope_id=m.scope_id WHERE m.scope_id=$1 AND m.run_id=$2").bind(workspace_id).bind(run_id).fetch_optional(self.pool()).await?)
     }
 
     async fn communication_context_for_run(
@@ -113,7 +122,7 @@ impl CommunicationRepository for PgControlPlaneStore {
         workspace_id: Uuid,
         run_id: Uuid,
     ) -> Result<Option<(CommunicationHistoryScope, CommunicationBindingRecord)>> {
-        let row=sqlx::query("SELECT b.*,c.external_identity FROM communication_messages m JOIN communication_conversations c ON c.id=m.conversation_id AND c.scope_id=m.scope_id AND c.instance_id=m.instance_id JOIN communication_bindings b ON b.instance_id=m.instance_id AND b.scope_id=m.scope_id WHERE m.scope_id=$1 AND m.run_id=$2")
+        let row=sqlx::query("SELECT b.*,m.external_identity FROM communication_inputs m JOIN communication_bindings b ON b.instance_id=m.instance_id AND b.scope_id=m.scope_id WHERE m.scope_id=$1 AND m.run_id=$2")
             .bind(workspace_id).bind(run_id).fetch_optional(self.pool()).await?;
         row.map(|row| {
             let scope = CommunicationHistoryScope {
@@ -196,7 +205,7 @@ impl CommunicationRepository for PgControlPlaneStore {
         i: Uuid,
         c: Uuid,
     ) -> Result<Option<CommunicationConversation>> {
-        Ok(sqlx::query("SELECT * FROM communication_conversations WHERE scope_id=$1 AND instance_id=$2 AND id=$3").bind(w).bind(i).bind(c).fetch_optional(self.pool()).await?.map(conversation))
+        Ok(sqlx::query("SELECT id,scope_id,instance_id,external_identity,external_conversation_key,sender_display_name FROM communication_conversations WHERE scope_id=$1 AND instance_id=$2 AND id=$3 UNION ALL SELECT conversation_id,scope_id,instance_id,external_identity,'' AS external_conversation_key,NULL AS sender_display_name FROM communication_messages WHERE scope_id=$1 AND instance_id=$2 AND conversation_id=$3 LIMIT 1").bind(w).bind(i).bind(c).fetch_optional(self.pool()).await?.map(conversation))
     }
     async fn communication_file(
         &self,
@@ -204,8 +213,8 @@ impl CommunicationRepository for PgControlPlaneStore {
         i: Uuid,
         e: Option<&str>,
         a: Uuid,
-    ) -> Result<Option<CommunicationAttachment>> {
-        sqlx::query("SELECT a.* FROM communication_attachments a JOIN communication_messages m ON m.id=a.message_id JOIN communication_conversations c ON c.id=m.conversation_id WHERE c.scope_id=$1 AND c.instance_id=$2 AND ($3::text IS NULL OR c.external_identity=$3) AND a.id=$4").bind(w).bind(i).bind(e).bind(a).fetch_optional(self.pool()).await?.as_ref().map(attachment).transpose()
+    ) -> Result<Option<CommunicationMessage>> {
+        history::file(self, w, i, e, a).await
     }
     async fn communication_messages(
         &self,
@@ -222,7 +231,7 @@ impl CommunicationRepository for PgControlPlaneStore {
         c: Uuid,
         p: Option<Uuid>,
         l: u32,
-    ) -> Result<CommunicationPage<CommunicationAttachment>> {
+    ) -> Result<CommunicationPage<CommunicationMessage>> {
         history::files(self, s, c, p, l).await
     }
     async fn claim_communication_input(
@@ -252,6 +261,10 @@ impl CommunicationRepository for PgControlPlaneStore {
         processing::progress(self, c, p).await
     }
     async fn retry_communication_message(&self, w: Uuid, i: Uuid, m: Uuid) -> Result<bool> {
-        processing::retry(self, w, i, m).await
+        let input_id: Option<Uuid> = sqlx::query_scalar("SELECT input_id FROM communication_messages WHERE scope_id=$1 AND instance_id=$2 AND id=$3").bind(w).bind(i).bind(m).fetch_optional(self.pool()).await?;
+        match input_id {
+            Some(id) => processing::retry(self, w, i, id).await,
+            None => Ok(false),
+        }
     }
 }

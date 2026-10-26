@@ -31,7 +31,7 @@ pub struct CommitCommunicationReceiveInput {
 pub struct ClaimedCommunicationInput {
     pub binding: CommunicationBindingRecord,
     pub conversation: CommunicationConversation,
-    pub message: CommunicationMessage,
+    pub message: CommunicationInput,
     pub claim_id: Uuid,
     pub attachments: Vec<CommunicationPendingAttachment>,
 }
@@ -65,6 +65,13 @@ pub enum CommunicationProgress {
 }
 #[async_trait]
 pub trait CommunicationRepository: Send + Sync {
+    async fn communication_management_history(
+        &self,
+        workspace_id: Uuid,
+        conversation_id: Uuid,
+        cursor: Option<Uuid>,
+        limit: u32,
+    ) -> anyhow::Result<CommunicationPage<CommunicationMessage>>;
     async fn communication_management_conversations(
         &self,
         workspace_id: Uuid,
@@ -138,7 +145,7 @@ pub trait CommunicationRepository: Send + Sync {
         instance_id: Uuid,
         external_identity: Option<&str>,
         attachment_id: Uuid,
-    ) -> anyhow::Result<Option<CommunicationAttachment>>;
+    ) -> anyhow::Result<Option<CommunicationMessage>>;
     async fn communication_messages(
         &self,
         scope: &CommunicationHistoryScope,
@@ -152,7 +159,7 @@ pub trait CommunicationRepository: Send + Sync {
         conversation_id: Uuid,
         cursor: Option<Uuid>,
         limit: u32,
-    ) -> anyhow::Result<CommunicationPage<CommunicationAttachment>>;
+    ) -> anyhow::Result<CommunicationPage<CommunicationMessage>>;
     async fn claim_communication_input(
         &self,
         workspace_id: Uuid,

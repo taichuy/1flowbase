@@ -5,8 +5,8 @@ use crate::ports::{
     CommunicationClaim, CommunicationProgress, CommunicationRepository,
 };
 use domain::{
-    CommunicationAttachment, CommunicationBindingInput, CommunicationBindingRecord,
-    CommunicationConversation, CommunicationHistoryScope, CommunicationMessage, CommunicationPage,
+    CommunicationBindingInput, CommunicationBindingRecord, CommunicationConversation,
+    CommunicationHistoryScope, CommunicationMessage, CommunicationPage,
 };
 
 impl<R> NotificationService<R>
@@ -16,6 +16,27 @@ where
         + RoleConsolePolicyReader
         + CommunicationRepository,
 {
+    pub async fn management_history(
+        &self,
+        actor: &ActorContext,
+        conversation_id: Uuid,
+        cursor: Option<Uuid>,
+        limit: u32,
+    ) -> Result<CommunicationPage<CommunicationMessage>> {
+        self.manage(
+            actor,
+            "communications.management.conversations.messages.list",
+        )
+        .await?;
+        self.repository
+            .communication_management_history(
+                actor.current_workspace_id,
+                conversation_id,
+                cursor,
+                limit,
+            )
+            .await
+    }
     pub async fn management_conversations(
         &self,
         actor: &ActorContext,
@@ -162,7 +183,7 @@ where
         conversation_id: Uuid,
         cursor: Option<Uuid>,
         limit: u32,
-    ) -> Result<CommunicationPage<CommunicationAttachment>> {
+    ) -> Result<CommunicationPage<CommunicationMessage>> {
         self.manage(actor, "communications.files.list").await?;
         let scope = self
             .conversation_scope(actor, instance_id, conversation_id)
@@ -174,13 +195,13 @@ where
         &self,
         actor: &ActorContext,
         instance_id: Uuid,
-        attachment_id: Uuid,
-    ) -> Result<CommunicationAttachment> {
+        message_id: Uuid,
+    ) -> Result<CommunicationMessage> {
         self.manage(actor, "communications.files.get").await?;
         self.repository
-            .communication_file(actor.current_workspace_id, instance_id, None, attachment_id)
+            .communication_file(actor.current_workspace_id, instance_id, None, message_id)
             .await?
-            .ok_or_else(|| Error::NotFound("communication_attachment").into())
+            .ok_or_else(|| Error::NotFound("communication_file_message").into())
     }
     /// Only the host may construct scope from its authenticated execution. No model filter is authority.
     pub async fn scoped_conversations(
@@ -216,7 +237,7 @@ where
         conversation_id: Uuid,
         cursor: Option<Uuid>,
         limit: u32,
-    ) -> Result<CommunicationPage<CommunicationAttachment>> {
+    ) -> Result<CommunicationPage<CommunicationMessage>> {
         self.repository
             .communication_files(scope, conversation_id, cursor, limit)
             .await
@@ -224,17 +245,31 @@ where
     pub async fn scoped_file(
         &self,
         scope: &CommunicationHistoryScope,
-        attachment_id: Uuid,
-    ) -> Result<CommunicationAttachment> {
+        message_id: Uuid,
+    ) -> Result<CommunicationMessage> {
         self.repository
             .communication_file(
                 scope.workspace_id,
                 scope.instance_id,
                 Some(&scope.external_identity),
-                attachment_id,
+                message_id,
             )
             .await?
-            .ok_or_else(|| Error::NotFound("communication_attachment").into())
+            .ok_or_else(|| Error::NotFound("communication_file_message").into())
+    }
+    pub async fn retry_message_record(
+        &self,
+        actor: &ActorContext,
+        instance_id: Uuid,
+        message_id: Uuid,
+    ) -> Result<CommunicationMessage> {
+        if !self.retry_message(actor, instance_id, message_id).await? {
+            return Err(Error::Conflict("communication_retry_unavailable").into());
+        }
+        self.repository
+            .communication_management_message(actor.current_workspace_id, message_id)
+            .await?
+            .ok_or_else(|| Error::NotFound("communication_message").into())
     }
     pub async fn retry_message(
         &self,

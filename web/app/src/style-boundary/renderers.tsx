@@ -1,4 +1,8 @@
 import {
+  CommunicationChatStyleBoundaryScene,
+  seedStyleBoundaryCommunicationChatFetch
+} from './scene-fixtures/notifications/communications';
+import {
   NotificationInboxStyleBoundaryScene,
   NotificationLogsStyleBoundaryScene,
   NotificationSettingsStyleBoundaryScene
@@ -196,6 +200,18 @@ function renderVariableGroupsScene(
 }
 
 export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
+  'component.communication-chat.desktop': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryCommunicationChatFetch();
+    return <CommunicationChatStyleBoundaryScene />;
+  },
+  'component.communication-chat.mobile': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryCommunicationChatFetch();
+    return <CommunicationChatStyleBoundaryScene />;
+  },
   'page.notification-logs.desktop': () => {
     seedStyleBoundaryCommonFetch();
     seedStyleBoundaryAuth();

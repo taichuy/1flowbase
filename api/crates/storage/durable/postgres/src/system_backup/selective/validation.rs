@@ -64,10 +64,7 @@ pub(super) fn rekey(table: &str, row: &mut Value, source: &str, target: &str) ->
             }
         }
     }
-    if matches!(
-        table,
-        "communication_bindings" | "communication_attachments"
-    ) {
+    if matches!(table, "communication_bindings" | "communication_messages") {
         let column = if table == "communication_bindings" {
             "encrypted_cursor"
         } else {
@@ -98,7 +95,7 @@ pub(super) fn rekey(table: &str, row: &mut Value, source: &str, target: &str) ->
                 "workspace_id"
             })?;
             let instance = identity("instance_id")?;
-            if table == "communication_attachments" {
+            if table == "communication_messages" {
                 let physical_scope = uuid::Uuid::parse_str(
                     row.get("scope_id")
                         .and_then(Value::as_str)

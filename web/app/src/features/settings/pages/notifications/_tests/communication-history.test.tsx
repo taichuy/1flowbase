@@ -7,18 +7,13 @@ afterEach(async () => {
   cleanup();
   await appI18n.changeLanguage('zh_Hans');
 });
-const message: CommunicationMessage = {
-  id: 'message',
-  conversation_id: 'conversation',
-  external_message_key: 'external',
-  received_at_ms: 1000,
-  content: 'User request',
+const message: Pick<
+  CommunicationMessage,
+  'processing_status' | 'send_status' | 'failure_code'
+> = {
   processing_status: 'succeeded',
-  run_id: 'run',
-  final_reply: 'Assistant response',
   send_status: 'failed',
-  failure_code: 'send_interrupted',
-  can_retry: true
+  failure_code: 'send_interrupted'
 };
 test('delivery failure remains visible after successful processing and translates failure reason', async () => {
   await appI18n.changeLanguage('en_US');

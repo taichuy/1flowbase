@@ -71,7 +71,7 @@ pub(crate) async fn ensure_channel_mcp(
                 "/conversations/{conversation_id}/files",
             ),
             NotificationMcpOperation::ReadFile => {
-                ("communications.files.get", "/files/{attachment_id}")
+                ("communications.files.get", "/files/{message_id}")
             }
         };
         let entry=interfaces.iter().find(|e|e.interface_id==operation || (e.method=="GET"&&e.path==format!("/api/console/communications/instances/{{instance_id}}{path_suffix}")))

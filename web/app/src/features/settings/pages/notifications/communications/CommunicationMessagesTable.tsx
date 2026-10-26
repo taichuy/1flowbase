@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { Alert, Empty } from 'antd';
+import { Alert, Button, Empty } from 'antd';
+import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type {
@@ -15,12 +16,8 @@ import {
 } from '../../../../../shared/ui/data-table/DataTable';
 import { usePersistedDataTableConfiguration } from '../../../../../shared/ui/data-table/data-table-state';
 import { formatDateTime } from '../../../../../shared/i18n/format';
-import {
-  CommunicationLink,
-  CommunicationRunLink,
-  ProcessingStatus,
-  DeliveryStatus
-} from './communication-presentation';
+import { ProcessingStatus, DeliveryStatus } from './communication-presentation';
+import { navigateCommunication } from './communication-navigation';
 import type { ReactNode } from 'react';
 
 export function CommunicationMessagesTable({
@@ -39,6 +36,7 @@ export function CommunicationMessagesTable({
   const { t } = useTranslation('notifications');
   const scope = useAuthStore(selectNavigationQueryScope);
   const input = {
+    direction: 'inbound' as const,
     ...filters,
     ...(conversation_id ? { conversation_id } : {}),
     page,
@@ -51,41 +49,26 @@ export function CommunicationMessagesTable({
   const columns = useMemo<Array<DataTableColumn<CommunicationMessageListItem>>>(
     () => [
       {
-        key: 'received_at_ms',
+        key: 'occurred_at_ms',
         title: t('received_at'),
         width: 170,
         render: (_, item) =>
-          formatDateTime(new Date(item.received_at_ms).toISOString())
+          formatDateTime(new Date(item.occurred_at_ms).toISOString())
       },
       {
         key: 'content_preview',
         title: t('received_message'),
-        width: 180,
+        width: 220,
         ellipsis: true,
         mobileRole: 'title',
-        render: (_, item) => (
-          <CommunicationLink to={{ message_id: item.id, conversation_id }}>
-            {item.content_preview || t('message_without_text')}
-          </CommunicationLink>
-        )
+        render: (_, item) =>
+          item.type === 'file' ? item.file?.file_name : item.content_preview
       },
       {
         key: 'sender_display_name',
         title: t('conversation_user'),
-        width: 150,
-        render: (_, item) => (
-          <CommunicationLink
-            to={{
-              tab: 'conversations',
-              page: 1,
-              conversation_id: item.conversation_id,
-              message_id: undefined,
-              conversation_page: 1
-            }}
-          >
-            {item.sender_display_name ?? item.external_identity}
-          </CommunicationLink>
-        )
+        width: 170,
+        render: (_, item) => item.sender_display_name ?? item.external_identity
       },
       {
         key: 'instance_display_name',
@@ -108,18 +91,28 @@ export function CommunicationMessagesTable({
         render: (_, item) => <DeliveryStatus status={item.send_status} />
       },
       {
-        key: 'run_id',
-        title: t('execution_logs'),
-        width: 130,
+        key: 'actions',
+        title: t('actions'),
+        width: 110,
         mobileRole: 'actions',
-        render: (_, item) => <CommunicationRunLink item={item} />
+        render: (_, item) => (
+          <Button
+            type="link"
+            icon={<MessageOutlined aria-hidden="true" />}
+            onClick={() =>
+              navigateCommunication({ conversation_id: item.conversation_id })
+            }
+          >
+            {t('chat')}
+          </Button>
+        )
       }
     ],
-    [t, conversation_id]
+    [t]
   );
   const configuration = usePersistedDataTableConfiguration({
     columns,
-    storageKey: 'communications.received.columns'
+    storageKey: 'communications.received.timeline.columns'
   });
   return (
     <>

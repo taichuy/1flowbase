@@ -1,16 +1,14 @@
-import { useSyncExternalStore, type MouseEvent } from 'react';
+import { useSyncExternalStore } from 'react';
 import type { CommunicationMessage } from '@1flowbase/api-client';
 
 export interface CommunicationLocation {
   tab: 'channels' | 'conversations' | 'logs';
   record_tab: 'received' | 'sent';
   instance_id?: string;
-  processing_status?: CommunicationMessage['processing_status'];
-  send_status?: CommunicationMessage['send_status'];
+  processing_status?: NonNullable<CommunicationMessage['processing_status']>;
+  send_status?: NonNullable<CommunicationMessage['send_status']>;
   page: number;
-  conversation_page: number;
   conversation_id?: string;
-  message_id?: string;
 }
 const processingStatuses = [
   'pending',
@@ -48,9 +46,7 @@ export function readCommunicationLocation(
     processing_status: processingStatuses.find((value) => value === processing),
     send_status: sendStatuses.find((value) => value === send),
     page: positivePage(params.get('page')),
-    conversation_page: positivePage(params.get('conversation_page')),
-    conversation_id: params.get('conversation_id') || undefined,
-    message_id: params.get('message_id') || undefined
+    conversation_id: params.get('conversation_id') || undefined
   };
 }
 function subscribe(listener: () => void) {
@@ -82,21 +78,6 @@ export function navigateCommunication(patch: Partial<CommunicationLocation>) {
     return;
   window.history.pushState(window.history.state, '', href);
   window.dispatchEvent(new PopStateEvent('popstate'));
-}
-export function openCommunicationLink(
-  event: MouseEvent<HTMLElement>,
-  patch: Partial<CommunicationLocation>
-) {
-  if (
-    event.button !== 0 ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.shiftKey ||
-    event.altKey
-  )
-    return;
-  event.preventDefault();
-  navigateCommunication(patch);
 }
 export function communicationRunHref(item: {
   application_id: string | null;

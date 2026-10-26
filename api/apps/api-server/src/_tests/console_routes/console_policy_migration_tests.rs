@@ -806,6 +806,7 @@ fn communication_operations_preserve_authenticated_access_without_legacy_managem
         "notifications.instances.send",
         "notifications.instances.authorization",
         "notifications.instances.update",
+        "communications.management.conversations.messages.list",
         "communications.management.conversations.list",
         "communications.management.messages.list",
         "communications.management.messages.get",

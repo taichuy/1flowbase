@@ -101,6 +101,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "notifications.logs.list",
             "notifications.logs.get",
             "notifications.instances.update",
+            "communications.management.conversations.messages.list",
             "communications.management.conversations.list",
             "communications.management.messages.list",
             "communications.management.messages.get",
@@ -512,6 +513,7 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "notifications.logs.get",
     "notifications.instances.update",
     // Communications adds new authority; legacy notification grants cannot imply it.
+    "communications.management.conversations.messages.list",
     "communications.management.conversations.list",
     "communications.management.messages.list",
     "communications.management.messages.get",

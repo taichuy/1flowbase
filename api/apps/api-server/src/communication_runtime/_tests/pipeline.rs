@@ -43,8 +43,11 @@ async fn api(
 async fn operator_run_access(f: &Fixture, role_code: &str, allowed_route: Option<&str>) {
     let operations = allowed_route
         .map(|path| {
-            let access = f.state.console_operation_registry
-                .access_for_console_route("POST", path).unwrap();
+            let access = f
+                .state
+                .console_operation_registry
+                .access_for_console_route("POST", path)
+                .unwrap();
             domain::ConsoleOperationPolicy::simple(
                 domain::ConsoleOperationId::try_from(access.operation_id).unwrap(),
                 true,
@@ -68,9 +71,13 @@ async fn operator_run_access(f: &Fixture, role_code: &str, allowed_route: Option
 }
 
 async fn execution_diagnostics(f: &Fixture, application_id: &str, run_id: Uuid) -> Value {
-    let detail = f.state.store
+    let detail = f
+        .state
+        .store
         .get_application_run_detail(Uuid::parse_str(application_id).unwrap(), run_id)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     json!({
         "run_status": detail.flow_run.status,
         "run_error": detail.flow_run.error_payload,
@@ -163,7 +170,7 @@ async fn pipeline(callback: bool) {
     ));
     let outcome = tokio::time::timeout(Duration::from_secs(60), async {
         let run_id = loop {
-            let linked: Option<Uuid> = sqlx::query_scalar("SELECT run_id FROM communication_messages WHERE instance_id=$1 AND external_message_key='alice-input'")
+            let linked: Option<Uuid> = sqlx::query_scalar("SELECT run_id FROM communication_inputs WHERE instance_id=$1 AND external_message_key='alice-input'")
                 .bind(fixture.channel).fetch_one(fixture.state.store.pool()).await.unwrap();
             if let Some(run_id)=linked {
                 let status = fixture.state.store.get_flow_run_metadata(Uuid::parse_str(&application_id).unwrap(),run_id).await.unwrap().unwrap().status;
@@ -202,7 +209,7 @@ async fn pipeline(callback: bool) {
         // Use the production projection owner, as the in-process fixture has no background host workers.
         loop {
             crate::workers::trace_projection::rebuild_trace_projection(&fixture.state.store,Uuid::parse_str(&application_id).unwrap(),run_id).await.unwrap();
-            let (processing,send,reply): (String,String,Option<String>) = sqlx::query_as("SELECT processing_status,send_status,final_reply FROM communication_messages WHERE instance_id=$1 AND external_message_key='alice-input'")
+            let (processing,send,reply): (String,String,Option<String>) = sqlx::query_as("SELECT m.processing_status,m.send_status,(SELECT content FROM communication_messages t WHERE t.input_id=m.id AND t.direction='outbound' AND t.type='text') FROM communication_inputs m WHERE m.instance_id=$1 AND m.external_message_key='alice-input'")
                 .bind(fixture.channel).fetch_one(fixture.state.store.pool()).await.unwrap();
             if processing=="failed" || matches!(send.as_str(),"failed"|"unknown") {
                 panic!("receive/final send failed: processing={processing}, send={send}, run={}",execution_diagnostics(&fixture,&application_id,run_id).await);
@@ -223,10 +230,13 @@ async fn pipeline(callback: bool) {
 
     }).await;
     if outcome.is_err() {
-        let run_id: Option<Uuid> = sqlx::query_scalar("SELECT run_id FROM communication_messages WHERE instance_id=$1 AND external_message_key='alice-input'")
+        let run_id: Option<Uuid> = sqlx::query_scalar("SELECT run_id FROM communication_inputs WHERE instance_id=$1 AND external_message_key='alice-input'")
             .bind(fixture.channel).fetch_one(fixture.state.store.pool()).await.unwrap();
-        if let Some(run_id)=run_id {
-            eprintln!("communication timeout: {}",execution_diagnostics(&fixture,&application_id,run_id).await);
+        if let Some(run_id) = run_id {
+            eprintln!(
+                "communication timeout: {}",
+                execution_diagnostics(&fixture, &application_id, run_id).await
+            );
         }
     }
     stop.send(true).unwrap();

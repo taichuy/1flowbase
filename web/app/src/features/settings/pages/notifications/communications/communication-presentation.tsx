@@ -1,35 +1,12 @@
 import { useMutation } from '@tanstack/react-query';
-import { Button, Space, Tag, Typography } from 'antd';
+import { Button, Space, Tag, Tooltip, Typography } from 'antd';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import FileOutlined from '@ant-design/icons/es/icons/FileOutlined';
 import { useTranslation } from 'react-i18next';
-import type {
-  CommunicationAttachment,
-  CommunicationMessage
-} from '@1flowbase/api-client';
+import type { CommunicationMessage } from '@1flowbase/api-client';
 import { getCommunicationFile } from '../../../../notifications/api/communications';
-import {
-  communicationRunHref,
-  communicationHref,
-  openCommunicationLink,
-  type CommunicationLocation
-} from './communication-navigation';
-import type { ReactNode } from 'react';
+import { communicationRunHref } from './communication-navigation';
 
-export function CommunicationLink({
-  children,
-  to
-}: {
-  children: ReactNode;
-  to: Partial<CommunicationLocation>;
-}) {
-  return (
-    <Typography.Link
-      href={communicationHref(to)}
-      onClick={(event) => openCommunicationLink(event, to)}
-    >
-      {children}
-    </Typography.Link>
-  );
-}
 export function CommunicationRunLink({
   item
 }: {
@@ -38,10 +15,16 @@ export function CommunicationRunLink({
   const { t } = useTranslation('notifications');
   const href = communicationRunHref(item);
   return href ? (
-    <Typography.Link href={href}>{t('view_agent_flow_logs')}</Typography.Link>
-  ) : (
-    <>—</>
-  );
+    <Tooltip title={t('view_agent_flow_logs')}>
+      <Button
+        type="text"
+        size="small"
+        href={href}
+        aria-label={t('view_agent_flow_logs')}
+        icon={<FileTextOutlined />}
+      />
+    </Tooltip>
+  ) : null;
 }
 export function ProcessingStatus({
   status
@@ -49,6 +32,7 @@ export function ProcessingStatus({
   status: CommunicationMessage['processing_status'];
 }) {
   const { t } = useTranslation('notifications');
+  if (!status) return <>—</>;
   const labels = {
     pending: t('processing_pending'),
     processing: t('processing_active'),
@@ -77,6 +61,7 @@ export function DeliveryStatus({
   status: CommunicationMessage['send_status'];
 }) {
   const { t } = useTranslation('notifications');
+  if (!status) return <>—</>;
   const labels = {
     none: t('delivery_none'),
     pending: t('delivery_pending'),
@@ -125,18 +110,19 @@ export function MessageStatus({
   );
 }
 export function CommunicationFile({
-  file,
-  instance_id
+  message
 }: {
-  file: CommunicationAttachment;
-  instance_id: string;
+  message: CommunicationMessage;
 }) {
   const { t } = useTranslation('notifications');
   const link = useMutation({
-    mutationFn: () => getCommunicationFile(instance_id, file.id)
+    mutationFn: () => getCommunicationFile(message.instance_id, message.id)
   });
+  const file = message.file;
+  if (!file) return null;
   return (
-    <Space wrap>
+    <Space wrap className="communication-chat__file">
+      <FileOutlined />
       <Typography.Text>{file.file_name}</Typography.Text>
       <Tag>
         {file.status === 'ready'
@@ -145,7 +131,7 @@ export function CommunicationFile({
             ? t('file_failed')
             : t('file_pending')}
       </Tag>
-      {file.status === 'ready' && file.file_table_id && file.file_record_id && (
+      {file.status === 'ready' && !link.data?.url && (
         <Button loading={link.isPending} onClick={() => link.mutate()}>
           {t('file_access')}
         </Button>

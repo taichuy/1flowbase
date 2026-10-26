@@ -6,6 +6,7 @@ async fn all_management_inputs_reject_delegated_history_authority() {
         Input::ManagementConversations(Default::default()),
         Input::ManagementMessages(Default::default()),
         Input::ManagementMessage(Uuid::now_v7()),
+        Input::ManagementHistory(Uuid::now_v7(), Default::default()),
     ];
     for input in &inputs {
         assert!(input.authorize_scope().is_ok());
