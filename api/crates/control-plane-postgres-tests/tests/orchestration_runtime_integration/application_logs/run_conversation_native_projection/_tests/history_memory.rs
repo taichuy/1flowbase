@@ -7,6 +7,9 @@ use std::{fs::File, path::PathBuf, process::Command};
 mod probe;
 use probe::Probe;
 
+#[path = "history_memory_context.rs"]
+mod context_control;
+
 const TEST: &str = "application_logs::run_conversation_native_projection::incremental::history_memory::history_memory_phase_probe";
 
 fn output() -> PathBuf {
@@ -27,6 +30,10 @@ fn write_json(path: PathBuf, value: &Value) {
 // A exits before B starts. Neither measured process constructs migration data,
 // and B never holds the history inputs or A's returned records.
 async fn coordinate() {
+    if std::env::var("HISTORY_MEMORY_CONTEXT_CONTROL").as_deref() == Ok("1") {
+        context_control::coordinate().await;
+        return;
+    }
     let _explicit_fixture_url =
         std::env::var("DATABASE_URL").expect("explicit owned fixture DB required");
     let root = output();
@@ -135,7 +142,6 @@ async fn teardown(store: PgControlPlaneStore, trace: &mut Probe) {
 async fn seed() {
     let mut trace = Probe::new(output().join("seed"));
     trace.point("process-ready", true);
-    trace.canary();
     trace.begin("connect");
     let store = owned_store().await;
     trace.point("pool-ready", true);
@@ -185,7 +191,6 @@ async fn seed() {
 async fn consume() {
     let mut trace = Probe::new(output().join("consume"));
     trace.point("process-ready", true);
-    trace.canary();
     trace.begin("connect");
     let store = owned_store().await;
     trace.point("pool-ready", true);
@@ -221,6 +226,13 @@ async fn consume() {
     // Teardown this measured connection before the full-body oracle. The oracle
     // below uses a different connection so it cannot inflate append stage peaks.
     teardown(store, &mut trace).await;
+    if trace.is_performance() {
+        write_json(
+            output().join("consume-timing.json"),
+            &json!({"samples_ms":timings,"updates":rounds,"timing_scope":"append only; no canary, native profiles/backtraces or full-history oracle; atomic counters and phase endpoints remain"}),
+        );
+        return;
+    }
     trace.begin("full-history-oracle-connect");
     let store = owned_store().await;
     let app: Uuid = std::env::var("HISTORY_MEMORY_APPLICATION")
@@ -270,12 +282,10 @@ async fn consume() {
         assert_eq!(native["_source_item"], payload["item"]);
         assert_eq!(native["content"], payload["item"]["content"]);
         assert_eq!(native["_log_conflicting"], false);
-        assert!(
-            native["_log_source_revision"]
-                .as_str()
-                .unwrap()
-                .starts_with("v7:")
-        );
+        assert!(native["_log_source_revision"]
+            .as_str()
+            .unwrap()
+            .starts_with("v7:"));
         assert_eq!(native["_log_source_sequence"], *sequence);
     }
     trace.point("full-ui-projection-and-originals-held", true);
@@ -295,7 +305,6 @@ async fn consume() {
 async fn buffers() {
     const BYTES: usize = 16 * 1024 * 1024;
     let mut trace = Probe::new(output().join("buffers"));
-    trace.canary();
     trace.begin("buffer-control-connect");
     let store = owned_store().await;
     let mut connection = store.pool().acquire().await.unwrap();
@@ -343,10 +352,16 @@ async fn buffers() {
 #[tokio::test]
 #[ignore = "owned seed/fresh-consumer memory diagnosis; HISTORY_MEMORY_OUT and explicit DATABASE_URL required"]
 async fn history_memory_phase_probe() {
+    if std::env::var("HISTORY_MEMORY_MODE").as_deref() == Ok("canary") {
+        let mut trace = Probe::new(output().join("canary"));
+        trace.canary();
+        return;
+    }
     match std::env::var("HISTORY_MEMORY_ROLE").as_deref() {
         Ok("seed") => seed().await,
         Ok("consume") => consume().await,
         Ok("buffers") => buffers().await,
+        Ok("context-consume") => context_control::consume().await,
         Err(_) => coordinate().await,
         other => panic!("unknown probe role {other:?}"),
     }

@@ -80,14 +80,14 @@ async fn archive_ownership_preserves_exact_returns_and_projection_failure_rollba
         assert_eq!(body["content"], inputs[index].payload["item"]["content"]);
         assert_eq!(body["_log_source_sequence"], records[index].sequence);
         assert_eq!(body["_log_conflicting"], false);
-        assert!(
-            body["_log_source_revision"]
-                .as_str()
-                .unwrap()
-                .starts_with("v7:")
-        );
+        assert!(body["_log_source_revision"]
+            .as_str()
+            .unwrap()
+            .starts_with("v7:"));
     }
     let before = projection_snapshot(&store, run.id).await;
+    // This is a SAME-RUN batch. The mixed-run fallback retains its existing
+    // independent per-event transactions; it is not a whole-batch guarantee.
     // Fail after runtime event insertion/RETURNING, at the projection write.
     // All materialization and projection failures must still precede commit.
     sqlx::raw_sql(

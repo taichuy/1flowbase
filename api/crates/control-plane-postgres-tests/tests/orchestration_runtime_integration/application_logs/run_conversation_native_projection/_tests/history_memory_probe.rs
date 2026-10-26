@@ -1,7 +1,7 @@
 //! Opt-in Linux GNU test allocator. Requested layouts exclude allocator rounding,
 //! native allocations and temporary storage inside realloc; jemalloc stats and
 //! sampled native profiles expose those separately. No production hooks.
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     alloc::{GlobalAlloc, Layout},
     ffi::{CStr, CString},
@@ -19,6 +19,7 @@ static ALLOCATED: AtomicU64 = AtomicU64::new(0);
 static FREED: AtomicU64 = AtomicU64::new(0);
 static STOP: AtomicBool = AtomicBool::new(false);
 static STAGE: AtomicU64 = AtomicU64::new(0);
+static STACK_ENABLED: AtomicBool = AtomicBool::new(false);
 static CAPTURE_BUSY: AtomicBool = AtomicBool::new(false);
 static CAPTURE_LIVE: AtomicU64 = AtomicU64::new(0);
 static CAPTURE_STAGE: AtomicU64 = AtomicU64::new(0);
@@ -48,7 +49,8 @@ fn add(size: usize) {
     // its exact calling stack above this diagnostic threshold (not a limit).
     // Jemalloc has returned before this hook; this is never called under its
     // allocation locks and never invokes mallctl/profile dumping recursively.
-    if live > previous
+    if STACK_ENABLED.load(SeqCst)
+        && live > previous
         && live >= 96 * 1024 * 1024
         && CAPTURE_BUSY
             .compare_exchange(false, true, SeqCst, SeqCst)
@@ -179,16 +181,33 @@ pub(super) struct Probe {
     started: Instant,
     output: File,
     sampler: Option<std::thread::JoinHandle<()>>,
+    native_profiles: bool,
+    performance: bool,
 }
 
 impl Probe {
     pub(super) fn new(root: PathBuf) -> Self {
         std::fs::create_dir_all(&root).unwrap();
-        std::hint::black_box(native_frames());
+        let mode = std::env::var("HISTORY_MEMORY_MODE").unwrap_or_else(|_| "performance".into());
+        assert!(matches!(
+            mode.as_str(),
+            "performance" | "proof" | "stack" | "canary"
+        ));
+        let native_profiles = matches!(mode.as_str(), "stack" | "canary");
+        STACK_ENABLED.store(native_profiles, SeqCst);
+        if native_profiles {
+            std::hint::black_box(native_frames());
+        }
         assert!(read_ctl::<bool>(c"config.stats"));
         assert!(read_ctl::<bool>(c"config.prof"));
-        assert!(read_ctl::<bool>(c"opt.prof"));
-        assert!(read_ctl::<bool>(c"prof.active"));
+        assert_eq!(
+            read_ctl::<bool>(c"opt.prof"),
+            native_profiles,
+            "use prof:false for performance/proof, prof:true for stack/canary"
+        );
+        if native_profiles {
+            assert!(read_ctl::<bool>(c"prof.active"));
+        }
         let version = read_ctl::<*const std::ffi::c_char>(c"version");
         // SAFETY: jemalloc returns a process-lifetime NUL-terminated version.
         let version = unsafe { CStr::from_ptr(version) }.to_str().unwrap();
@@ -199,11 +218,15 @@ impl Probe {
             "executable": std::env::current_exe().unwrap(),
             "allocator": "CountingJemalloc -> tikv_jemallocator::Jemalloc (prefixed/static)",
             "jemalloc_version": version,
+            "mode":mode,"native_profiles":native_profiles,
+            "canary_in_this_process":mode == "canary",
+            "sampler_thread":native_profiles,
+            "counter_overhead":"identical process-wide atomic live/peak/allocated/freed counters in all modes and builds",
             "lg_prof_sample": read_ctl::<usize>(c"opt.lg_prof_sample"),
             "background_thread": read_ctl::<bool>(c"opt.background_thread"),
             "requested_scope": "process-wide Rust GlobalAlloc layouts; not usable size or allocator resident; realloc counts net layout change",
             "profile_scope": "jemalloc native sampled live stacks; sampled snapshots can lag exact hook peak",
-            "peak_stack_scope": "GNU libc backtrace, prewarmed, fixed atomic slots; exact Rust new-peak hook above 96MiB diagnostic threshold",
+            "peak_stack_scope": "stack/canary only: GNU libc backtrace, prewarmed, fixed atomic slots; exact Rust new-peak hook above 96MiB diagnostic threshold",
             "rss_scope": "OS status and smaps_rollup; VmHWM is lifetime only, never a phase peak",
         });
         std::fs::write(
@@ -219,7 +242,7 @@ impl Probe {
         let started = Instant::now();
         let sample_root = root.clone();
         STOP.store(false, SeqCst);
-        let sampler = std::thread::spawn(move || {
+        let sampler = native_profiles.then(|| std::thread::spawn(move || {
             let mut output = File::create(sample_root.join("samples.jsonl")).unwrap();
             let mut stage = u64::MAX;
             let mut last_profile_live = 0;
@@ -242,13 +265,19 @@ impl Probe {
                 }
                 std::thread::sleep(Duration::from_millis(2));
             }
-        });
+        }));
         Self {
             root,
             started,
             output,
-            sampler: Some(sampler),
+            sampler,
+            native_profiles,
+            performance: mode == "performance",
         }
+    }
+
+    pub(super) fn is_performance(&self) -> bool {
+        self.performance
     }
 
     pub(super) fn begin(&mut self, name: &str) {
@@ -271,6 +300,13 @@ impl Probe {
             .iter()
             .map(|value| value.load(SeqCst))
             .collect::<Vec<_>>();
+        let stat = std::fs::read_to_string("/proc/self/stat").unwrap();
+        let stat = stat
+            .rsplit_once(')')
+            .unwrap()
+            .1
+            .split_whitespace()
+            .collect::<Vec<_>>();
         refresh_epoch();
         let statistics = json!({
             "allocated": read_ctl::<usize>(c"stats.allocated"),
@@ -284,11 +320,12 @@ impl Probe {
             "rust_requested_live":live,"rust_requested_peak":peak,
             "rust_requested_allocated_total":allocated,"rust_requested_freed_total":freed,
             "peak_stack_live":peak_stack_live,"peak_stack_stage":peak_stack_stage,"peak_stack_pcs":peak_stack_pcs,
+            "process_cpu_ticks":{"user":stat[11].parse::<u64>().unwrap(),"system":stat[12].parse::<u64>().unwrap()},
             "jemalloc":statistics,
             "status":proc_fields("/proc/self/status", &["VmRSS","VmHWM","RssAnon","RssFile"]),
             "smaps":proc_fields("/proc/self/smaps_rollup", &["Rss","Anonymous","Private_Dirty","Pss_Anon"]),
         })).unwrap();
-        if profile {
+        if profile && self.native_profiles {
             dump_profile(
                 &self
                     .root
@@ -298,6 +335,11 @@ impl Probe {
     }
 
     pub(super) fn canary(&mut self) {
+        assert_eq!(
+            std::env::var("HISTORY_MEMORY_MODE").as_deref(),
+            Ok("canary"),
+            "calibration must run in its own canary process"
+        );
         const SIZE: usize = 32 * 1024 * 1024;
         self.begin("canary");
         let before = LIVE.load(SeqCst);
