@@ -1,8 +1,12 @@
-use std::{io, ops::Deref, sync::Arc};
+use std::{sync::Arc, time::Duration};
 
-use serde::{Serialize, Serializer};
+use axum::{
+    body::Bytes,
+    http::header,
+    response::{IntoResponse, Response},
+};
 use serde_json::Value;
-use storage_ephemeral::MokaReadThroughCache;
+use storage_ephemeral::{MokaReadThroughCache, ReadThroughCachePolicy};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) enum ScopeKey {
@@ -10,56 +14,70 @@ pub(super) enum ScopeKey {
     Category(String),
 }
 
-pub(super) type DocumentCache = MokaReadThroughCache<ScopeKey, Value>;
+pub(super) type DocumentCache = MokaReadThroughCache<ScopeKey, EncodedApiDocument>;
 
-/// Immutable response body; cloning shares the JSON tree rather than copying it.
-#[derive(Debug, Clone)]
-pub struct SharedApiDocument(Arc<Value>);
+pub(super) fn default_policy() -> anyhow::Result<ReadThroughCachePolicy> {
+    // Disposable wire payload budget, never a document or request capacity limit.
+    // 1MiB admits the largest current category (629,203B) with room for other scopes.
+    ReadThroughCachePolicy::new(1024 * 1024, Duration::from_secs(60))
+}
 
-impl From<Value> for SharedApiDocument {
+#[derive(Debug)]
+pub(super) struct EncodedApiDocument {
+    body: Bytes,
+    managed_projection: Value,
+}
+
+impl From<Value> for EncodedApiDocument {
     fn from(value: Value) -> Self {
-        Self(Arc::new(value))
+        let managed_projection = super::managed_projection::DocsOutputProjection::OpenApi(&value)
+            .project_for_managed_hook()
+            .expect("OpenAPI JSON summary is always representable");
+        // A Value has only valid JSON keys/numbers, and writing to a Vec has no IO failure.
+        let body = serde_json::to_vec(&value)
+            .expect("serializing a JSON Value into memory is infallible")
+            .into();
+        Self {
+            body,
+            managed_projection,
+        }
     }
 }
 
-impl From<Arc<Value>> for SharedApiDocument {
-    fn from(value: Arc<Value>) -> Self {
+/// Immutable, already encoded HTTP body; cloning and responding share its byte allocation.
+#[derive(Debug, Clone)]
+pub struct SharedApiDocument(Arc<EncodedApiDocument>);
+
+impl From<Value> for SharedApiDocument {
+    fn from(value: Value) -> Self {
+        Arc::new(EncodedApiDocument::from(value)).into()
+    }
+}
+
+impl From<Arc<EncodedApiDocument>> for SharedApiDocument {
+    fn from(value: Arc<EncodedApiDocument>) -> Self {
         Self(value)
     }
 }
 
-impl Deref for SharedApiDocument {
-    type Target = Value;
-
-    fn deref(&self) -> &Value {
-        &self.0
+impl SharedApiDocument {
+    pub(crate) fn managed_projection(&self) -> Value {
+        self.0.managed_projection.clone()
     }
 }
 
-impl Serialize for SharedApiDocument {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.0.as_ref().serialize(serializer)
+impl IntoResponse for SharedApiDocument {
+    fn into_response(self) -> Response {
+        (
+            [(header::CONTENT_TYPE, "application/json")],
+            self.0.body.clone(),
+        )
+            .into_response()
     }
 }
 
-pub(super) fn document_weight(value: &Value) -> u64 {
-    struct Counter(u64);
-    impl io::Write for Counter {
-        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-            self.0 = self.0.saturating_add(bytes.len() as u64);
-            Ok(bytes.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-    let mut counter = Counter(0);
-    // Value serialization to this infallible sink cannot encounter user IO errors.
-    if serde_json::to_writer(&mut counter, value).is_err() {
-        return u64::MAX;
-    }
-    counter.0
+pub(super) fn document_weight(value: &EncodedApiDocument) -> u64 {
+    value.body.len() as u64
 }
 
 #[cfg(test)]

@@ -9,9 +9,6 @@ use std::{
     time::Duration,
 };
 
-#[path = "config/docs_cache.rs"]
-mod docs_cache;
-
 pub const DEFAULT_PLUGIN_UPLOAD_MAX_BYTES: usize = 8 * 1024 * 1024;
 pub const DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 pub const DEFAULT_OFFICIAL_EXTENSION_CATALOG_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
@@ -49,7 +46,6 @@ pub struct ApiConfig {
     pub cookie_name: String,
     pub cookie_secure: bool,
     pub session_ttl_days: i64,
-    pub api_docs_cache_policy: Option<storage_ephemeral::ReadThroughCachePolicy>,
     pub cors_allowed_origins: Option<Vec<HeaderValue>>,
     pub api_node_id: String,
     pub provider_install_root: String,
@@ -325,7 +321,6 @@ impl ApiConfig {
             ));
         }
         Ok(Self {
-            api_docs_cache_policy: docs_cache::from_env(&map)?,
             env,
             database_url: get("API_DATABASE_URL")?,
             database_pool_max_connections: parse_positive_u32(

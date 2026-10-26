@@ -159,7 +159,7 @@ impl InterfaceContract for DocsOutput {
         match self {
             Self::Catalog(value) => DocsOutputProjection::Catalog(value),
             Self::CategoryOperations(value) => DocsOutputProjection::CategoryOperations(value),
-            Self::OpenApi(value) => DocsOutputProjection::OpenApi(value),
+            Self::OpenApi(value) => return Some(value.managed_projection()),
         }
         .project_for_managed_hook()
     }

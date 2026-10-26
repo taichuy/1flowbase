@@ -162,7 +162,7 @@ pub async fn get_category_openapi(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(category_id): Path<String>,
-) -> Result<Json<SharedApiDocument>, ApiError> {
+) -> Result<SharedApiDocument, ApiError> {
     let interface::DocsOutput::OpenApi(spec) = invoke(
         state,
         headers,
@@ -173,14 +173,14 @@ pub async fn get_category_openapi(
     else {
         unreachable!()
     };
-    Ok(Json(spec))
+    Ok(spec)
 }
 
 pub async fn get_operation_openapi(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(operation_id): Path<String>,
-) -> Result<Json<SharedApiDocument>, ApiError> {
+) -> Result<SharedApiDocument, ApiError> {
     let interface::DocsOutput::OpenApi(spec) = invoke(
         state,
         headers,
@@ -191,7 +191,7 @@ pub async fn get_operation_openapi(
     else {
         unreachable!()
     };
-    Ok(Json(spec))
+    Ok(spec)
 }
 
 #[utoipa::path(

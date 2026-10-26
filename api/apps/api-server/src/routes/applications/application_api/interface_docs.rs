@@ -16,7 +16,7 @@ use crate::{
     application_public_docs::{
         build_application_public_docs_catalog, build_application_public_docs_category_operations,
         build_application_public_docs_category_spec, build_application_public_docs_operation_spec,
-        ApplicationPublicDocsContext, ApplicationSessionOperation,
+        ApplicationPublicDocsContext,
     },
     error_response::ApiError,
     openapi_docs::{
@@ -344,10 +344,10 @@ impl ApplicationDocsAdapter {
                 let Some(operation) = self.api_docs.operation(operation_id) else {
                     continue;
                 };
-                let Some(spec) = self.api_docs.cached_operation_spec(operation_id).await else {
+                if self.api_docs.operation_spec_view(operation_id).is_none() {
                     continue;
                 };
-                assistant_operations.push(ApplicationSessionOperation { operation, spec });
+                assistant_operations.push(operation);
             }
         }
         Ok(ApplicationPublicDocsContext {
@@ -355,6 +355,7 @@ impl ApplicationDocsAdapter {
             active_publication,
             locale: locale.as_str().to_string(),
             assistant_operations,
+            api_docs: Arc::clone(&self.api_docs),
         })
     }
 }
