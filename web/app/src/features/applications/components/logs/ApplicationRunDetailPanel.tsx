@@ -1,10 +1,11 @@
+import { ReadOnlyConversationInput } from '../../../agent-flow/components/debug-console/conversation/read-only/ReadOnlyConversationInput';
 import { ProviderTrajectory } from '../../../agent-flow/components/debug-console/trajectory/ProviderTrajectory';
 import type { ConversationLogTraceLoader } from '../../../agent-flow/components/debug-console/conversation-log-trace-model';
 import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, App, Button, Empty, Spin, Tooltip, theme } from 'antd';
+import { Alert, App, Button, Empty, Spin, Tooltip } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { AgentFlowDebugConsole } from '../../../agent-flow/components/debug-console/AgentFlowDebugConsole';
@@ -403,7 +404,6 @@ function RunConversation({
   onOpenResumeTimeline?: (message: AgentFlowDebugMessage) => void;
   runId: string;
 }) {
-  const { token } = theme.useToken();
   const [conversationScope, setConversationScope] = useState(true);
   const [previousConversationPages, setPreviousConversationPages] = useState<
     ApplicationRunConversationMessagesPage[]
@@ -755,25 +755,10 @@ function RunConversation({
         onStopRun={() => {}}
         onSubmitPrompt={() => {}}
       />
-      <div
-        className="application-run-detail__model-summary"
-        style={{
-          borderRadius: token.borderRadius * 2,
-          borderColor: token.colorBorder,
-          boxShadow: token.boxShadowTertiary
-        }}
-      >
-        <Tooltip title={i18nText('applications', 'auto.requested_model')}>
-          <span className="application-run-detail__model-name">
-            {requested_model_id || '—'}
-          </span>
-        </Tooltip>
-        <Tooltip title={i18nText('applications', 'auto.reasoning_effort')}>
-          <span className="application-run-detail__reasoning-effort">
-            {reasoning_effort || '—'}
-          </span>
-        </Tooltip>
-      </div>
+      <ReadOnlyConversationInput
+        model={requested_model_id}
+        reasoning_effort={reasoning_effort}
+      />
     </div>
   );
 }

@@ -94,6 +94,7 @@
     "task_request_lane": "Requests / tasks"
   },
   "auto": {
+    "read_only_conversation_input": "Read-only message input",
     "llm_tools": "LLM Tools",
     "tools": "Tools",
     "plugin_node_label": "Plugin Node",

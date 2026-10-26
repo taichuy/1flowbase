@@ -94,6 +94,7 @@
     "task_request_lane": "请求 / 任务"
   },
   "auto": {
+    "read_only_conversation_input": "只读消息输入框",
     "llm_tools": "LLM 工具",
     "tools": "工具",
     "plugin_node_label": "插件节点",

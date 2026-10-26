@@ -445,31 +445,3 @@
     min-height: 320px;
   }
 }
-
-.application-run-detail__model-summary {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: flex-end;
-  justify-content: flex-end;
-  gap: 8px;
-  margin: 0 16px 14px;
-  padding: 12px;
-  min-height: 140px;
-  min-width: 0;
-  border: 1px solid;
-  font-size: 14px;
-}
-
-.application-run-detail__model-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.application-run-detail__reasoning-effort {
-  flex-shrink: 0;
-  color: var(--text-secondary);
-}

@@ -57,7 +57,9 @@ export function seedStyleBoundaryCommunicationChatFetch() {
       window.location.origin
     );
     let data: unknown;
-    if (url.pathname === '/api/console/communications/conversations') {
+    if (url.pathname.endsWith('/instances/style-chat-channel/binding')) {
+      data = { binding: { model: 'deepseek-flash', reasoning_effort: 'high' } };
+    } else if (url.pathname === '/api/console/communications/conversations') {
       data = {
         items: [
           {

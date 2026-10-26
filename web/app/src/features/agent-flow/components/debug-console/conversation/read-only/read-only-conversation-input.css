@@ -1,0 +1,46 @@
+.application-run-detail__model-summary {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 16px 14px;
+  padding: 12px;
+  min-height: 140px;
+  min-width: 0;
+  border: 1px solid;
+  font-size: 14px;
+}
+
+.application-run-detail__model-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.application-run-detail__reasoning-effort {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.read-only-conversation-input__field {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  resize: none;
+  background: transparent;
+  color: inherit;
+  cursor: not-allowed;
+}
+.read-only-conversation-input__metadata {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}

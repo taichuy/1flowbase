@@ -880,7 +880,9 @@
       "web/app/src/shared/ui/data-table/data-table-state.ts",
       "web/app/src/shared/ui/data-table/DataTableColumnSettings.tsx",
       "web/app/src/shared/ui/data-table/data-table-column-settings.css",
-      "web/app/src/shared/ui/data-table/data-table.css"
+      "web/app/src/shared/ui/data-table/data-table.css",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/ReadOnlyConversationInput.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/read-only-conversation-input.css"
     ],
     "boundaryNodes": [
       {
@@ -3020,7 +3022,9 @@
       "web/app/src/features/agent-flow/components/debug-console/conversation/DebugAssistantMessage.tsx",
       "web/app/src/style-boundary/scene-fixtures/notifications/communications.tsx",
       "web/app/src/features/agent-flow/components/debug-console/AgentFlowDebugConsole.tsx",
-      "web/app/src/features/applications/components/logs/ApplicationLogsFloatingWindow.tsx"
+      "web/app/src/features/applications/components/logs/ApplicationLogsFloatingWindow.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/ReadOnlyConversationInput.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/read-only-conversation-input.css"
     ],
     "boundaryNodes": [
       {
@@ -3077,6 +3081,16 @@
         "id": "historical-run-action",
         "selector": ".communication-chat a[href=\"/applications/style-chat-application/logs?run_id=style-chat-run&view=trace\"]",
         "propertyAssertions": []
+      },
+      {
+        "id": "read-only-input",
+        "selector": ".communication-chat .application-run-detail__model-summary",
+        "propertyAssertions": [
+          {
+            "property": "min-height",
+            "expected": "140px"
+          }
+        ]
       }
     ],
     "relationshipAssertions": [
@@ -3102,6 +3116,12 @@
         "type": "within_container",
         "subjectSelector": ".communication-chat__timestamp",
         "containerSelector": ".communication-chat .agent-flow-editor__debug-message-list"
+      },
+      {
+        "id": "input-contained",
+        "type": "within_container",
+        "subjectSelector": ".communication-chat .application-run-detail__model-summary",
+        "containerSelector": ".communication-chat"
       }
     ]
   },
@@ -3121,7 +3141,9 @@
       "web/app/src/features/agent-flow/components/debug-console/conversation/DebugAssistantMessage.tsx",
       "web/app/src/style-boundary/scene-fixtures/notifications/communications.tsx",
       "web/app/src/features/agent-flow/components/debug-console/AgentFlowDebugConsole.tsx",
-      "web/app/src/features/applications/components/logs/ApplicationLogsFloatingWindow.tsx"
+      "web/app/src/features/applications/components/logs/ApplicationLogsFloatingWindow.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/ReadOnlyConversationInput.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/read-only-conversation-input.css"
     ],
     "boundaryNodes": [
       {
@@ -3178,6 +3200,16 @@
         "id": "historical-run-action",
         "selector": ".communication-chat a[href=\"/applications/style-chat-application/logs?run_id=style-chat-run&view=trace\"]",
         "propertyAssertions": []
+      },
+      {
+        "id": "read-only-input",
+        "selector": ".communication-chat .application-run-detail__model-summary",
+        "propertyAssertions": [
+          {
+            "property": "min-height",
+            "expected": "140px"
+          }
+        ]
       }
     ],
     "relationshipAssertions": [
@@ -3203,6 +3235,12 @@
         "type": "within_container",
         "subjectSelector": ".communication-chat__timestamp",
         "containerSelector": ".communication-chat .agent-flow-editor__debug-message-list"
+      },
+      {
+        "id": "input-contained",
+        "type": "within_container",
+        "subjectSelector": ".communication-chat .application-run-detail__model-summary",
+        "containerSelector": ".communication-chat"
       }
     ]
   }

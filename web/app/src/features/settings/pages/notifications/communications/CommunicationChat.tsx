@@ -1,3 +1,4 @@
+import { ReadOnlyConversationInput } from '../../../../agent-flow/components/debug-console/conversation/read-only/ReadOnlyConversationInput';
 import { createPortal } from 'react-dom';
 import {
   useInfiniteQuery,
@@ -11,6 +12,7 @@ import RedoOutlined from '@ant-design/icons/es/icons/RedoOutlined';
 import { useTranslation } from 'react-i18next';
 import type { CommunicationMessage } from '@1flowbase/api-client';
 import {
+  communicationBindingOptions,
   listCommunicationChatMessages,
   listCommunicationConversationOverview,
   retryCommunicationMessage
@@ -63,6 +65,9 @@ export function CommunicationChat({
         signal
       )
   });
+  const binding = useQuery(
+    communicationBindingOptions(scope, conversation.data?.items[0]?.instance_id)
+  );
   const history = useInfiniteQuery({
     queryKey: ['communications', scope, 'chat', conversation_id],
     initialPageParam: undefined as string | undefined,
@@ -215,6 +220,10 @@ export function CommunicationChat({
           onClearSession={noAction}
           onStopRun={noAction}
           onSubmitPrompt={noAction}
+        />
+        <ReadOnlyConversationInput
+          model={binding.data?.binding?.model}
+          reasoning_effort={binding.data?.binding?.reasoning_effort}
         />
       </div>
     </ApplicationLogsFloatingWindow>,

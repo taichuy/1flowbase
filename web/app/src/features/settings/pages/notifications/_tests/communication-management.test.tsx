@@ -100,6 +100,10 @@ beforeEach(async () => {
       if (url.pathname.endsWith('/instances'))
         data = [{ id: 'channel-1', display_name: 'Chat channel' }];
       else if (url.pathname.endsWith('/types')) data = [];
+      else if (url.pathname.endsWith('/binding'))
+        data = {
+          binding: { model: 'deepseek-flash', reasoning_effort: 'high' }
+        };
       else if (url.pathname.endsWith('/retry')) data = messages[9];
       else if (url.pathname.endsWith('/files/message-8'))
         data = {
@@ -218,7 +222,10 @@ test('Chat opens the modeless run-detail floating shell and reused conversation 
   expect(within(shell).getAllByRole('separator')).toHaveLength(3);
   const pane = drawer.getByTestId('debug-conversation-messages');
   expect(drawer.getByText('Chat', { exact: true })).toBeInTheDocument();
-  expect(drawer.queryByRole('textbox')).not.toBeInTheDocument();
+  expect(drawer.getByRole('textbox')).toBeDisabled();
+  expect(drawer.getByRole('textbox')).toHaveValue('');
+  expect(await drawer.findByText('deepseek-flash')).toBeInTheDocument();
+  expect(drawer.getByText('high')).toBeInTheDocument();
   expect(
     drawer.queryByRole('button', { name: /^Send$/ })
   ).not.toBeInTheDocument();
