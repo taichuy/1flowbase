@@ -37,7 +37,10 @@ async fn communication_management_pages_workspace_history_without_channel_presel
             .await
             .unwrap();
     }
-    let defaults = CommunicationManagementQuery::default();
+    let defaults = CommunicationManagementQuery {
+        message_type: Some(CommunicationMessageType::Text),
+        ..Default::default()
+    };
     let all = service
         .management_messages(&actor, &defaults)
         .await
@@ -49,7 +52,7 @@ async fn communication_management_pages_workspace_history_without_channel_presel
     assert_eq!(
         all.items
             .iter()
-            .map(|m| m.received_at_ms)
+            .map(|m| m.occurred_at_ms)
             .collect::<Vec<_>>(),
         vec![201, 200, 101, 100]
     );
@@ -115,7 +118,7 @@ async fn communication_management_pages_workspace_history_without_channel_presel
     assert_eq!(filtered.total, 2);
     assert!(filtered.items.iter().all(|m| m.instance_id == first));
     let newest = &all.items[0];
-    sqlx::query("UPDATE communication_messages SET processing_status='failed',failure_code='fixture_failed' WHERE id=$1").bind(newest.id).execute(store.pool()).await.unwrap();
+    sqlx::query("UPDATE communication_inputs SET processing_status='failed',failure_code='fixture_failed' WHERE id=$1").bind(newest.id).execute(store.pool()).await.unwrap();
     let failed = service
         .management_messages(
             &actor,
@@ -137,14 +140,10 @@ async fn communication_management_pages_workspace_history_without_channel_presel
         .unwrap();
     assert_eq!(conversations.total, 2);
     assert_eq!(conversations.items[0].conversation.instance_id, second);
-    assert_eq!(
-        conversations.items[0]
-            .latest_message
-            .as_ref()
-            .unwrap()
-            .processing_status,
-        CommunicationProcessingStatus::Failed
-    );
+    assert!(serde_json::to_value(&conversations.items[0])
+        .unwrap()
+        .get("latest_message")
+        .is_none());
     let conversations_page = service
         .management_conversations(
             &actor,
@@ -185,12 +184,8 @@ async fn communication_management_pages_workspace_history_without_channel_presel
         .management_message(&actor, all.items[3].id)
         .await
         .unwrap();
-    assert_eq!(detail.message.content.as_deref(), Some("hello"));
-    assert_eq!(detail.attachments.len(), 1);
-    assert!(detail
-        .attachments
-        .iter()
-        .all(|a| a.message_id == detail.message.id));
+    assert_eq!(detail.content.as_deref(), Some("hello"));
+    assert!(detail.file.is_none());
     let wire = serde_json::to_value(detail).unwrap().to_string();
     assert!(!wire.contains("private-download-token"));
     assert!(!wire.contains("encrypted_reference"));
@@ -238,7 +233,7 @@ async fn communication_management_pages_workspace_history_without_channel_presel
     service.delete_instance(&actor, second).await.unwrap();
     let retained = service.management_message(&actor, newest.id).await.unwrap();
     assert!(retained.instance_display_name.is_none());
-    assert!(!retained.message.can_retry);
+    assert!(!retained.can_retry);
     assert_eq!(
         service
             .management_messages(&actor, &defaults)
@@ -255,4 +250,159 @@ async fn communication_management_pages_workspace_history_without_channel_presel
             .total,
         2
     );
+}
+
+#[tokio::test]
+async fn communication_timeline_pages_five_actual_messages_in_time_order_and_fences_cursors() {
+    let (store, w, root) = super::support::seed_store().await;
+    let actor = store
+        .load_actor_context(root.id, w.tenant_id, w.id, None)
+        .await
+        .unwrap();
+    let service = NotificationService::new(store.clone(), KEY.into());
+    let channel = create_channel(&store, w.id).await;
+    service
+        .save_binding(&actor, channel, config(), "timeline-tools".into())
+        .await
+        .unwrap();
+    let revision = store
+        .resolve_notification_authorization(w.id, channel, KEY)
+        .await
+        .unwrap()
+        .revision;
+    let mut inputs = Vec::new();
+    for (index, time) in [70, 10, 50, 50, 30, 90].into_iter().enumerate() {
+        let mut input = received(&format!("message-{index}"), "alice", true);
+        input.received_at_ms = time;
+        inputs.push(input);
+    }
+    inputs.push(received("other-sender", "bob", false));
+    service
+        .commit_receive(CommitCommunicationReceiveInput {
+            authorization: authorization(w.id, channel, revision),
+            candidate_cursor: None,
+            messages: inputs,
+        })
+        .await
+        .unwrap();
+    let conversations = service
+        .conversations(&actor, channel, None, 100)
+        .await
+        .unwrap();
+    let conversation = conversations
+        .items
+        .iter()
+        .find(|c| c.external_identity == "alice")
+        .unwrap()
+        .id;
+    let other = conversations
+        .items
+        .iter()
+        .find(|c| c.external_identity == "bob")
+        .unwrap()
+        .id;
+    let first = service
+        .management_history(&actor, conversation, None, 100)
+        .await
+        .unwrap();
+    assert_eq!(first.items.len(), 5);
+    assert!(first
+        .items
+        .iter()
+        .any(|m| m.message_type == CommunicationMessageType::File));
+    assert!(first
+        .items
+        .windows(2)
+        .all(|p| (p[0].occurred_at_ms, p[0].id) < (p[1].occurred_at_ms, p[1].id)));
+    let mut ids = first.items.iter().map(|m| m.id).collect::<Vec<_>>();
+    let mut cursor = first.next_cursor;
+    while let Some(anchor) = cursor {
+        let older = service
+            .management_history(&actor, conversation, Some(anchor), 5)
+            .await
+            .unwrap();
+        assert!(older
+            .items
+            .iter()
+            .all(|m| m.occurred_at_ms <= first.items[0].occurred_at_ms));
+        ids.extend(older.items.iter().map(|m| m.id));
+        cursor = older.next_cursor;
+    }
+    assert_eq!(ids.len(), 12);
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), 12);
+    assert!(service
+        .management_history(&actor, other, Some(first.items[0].id), 5)
+        .await
+        .is_err());
+    let bob = CommunicationHistoryScope {
+        workspace_id: w.id,
+        instance_id: channel,
+        external_identity: "bob".into(),
+    };
+    assert!(service
+        .scoped_message_history(&bob, conversation, Some(first.items[0].id), 5)
+        .await
+        .is_err());
+    let mut foreign = actor.clone();
+    foreign.current_workspace_id = Uuid::now_v7();
+    assert!(service
+        .management_history(&foreign, conversation, Some(first.items[0].id), 5)
+        .await
+        .is_err());
+    assert!(service
+        .management_history(&foreign, conversation, None, 5)
+        .await
+        .unwrap()
+        .items
+        .is_empty());
+    sqlx::query("DELETE FROM communication_conversations WHERE id=$1")
+        .bind(conversation)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        service
+            .management_history(&actor, conversation, None, 5)
+            .await
+            .unwrap()
+            .items
+            .len(),
+        5
+    );
+    assert_eq!(
+        service
+            .message_history(&actor, channel, conversation, None, 5)
+            .await
+            .unwrap()
+            .items
+            .len(),
+        5
+    );
+}
+
+#[tokio::test]
+async fn communication_orphan_history_does_not_fabricate_processing_success() {
+    let (store, w, root) = super::support::seed_store().await;
+    let actor = store
+        .load_actor_context(root.id, w.tenant_id, w.id, None)
+        .await
+        .unwrap();
+    let service = NotificationService::new(store.clone(), KEY.into());
+    let id = Uuid::now_v7();
+    let conversation = Uuid::now_v7();
+    sqlx::query("INSERT INTO communication_messages(id,scope_id,instance_id,external_identity,conversation_id,input_id,type,direction,occurred_at_ms,content) VALUES($1,$2,$3,'alice',$4,$5,'text','inbound',1,'retained')")
+        .bind(id).bind(w.id).bind(Uuid::now_v7()).bind(conversation).bind(Uuid::now_v7()).execute(store.pool()).await.unwrap();
+    let history = service
+        .management_history(&actor, conversation, None, 5)
+        .await
+        .unwrap();
+    assert_eq!(history.items.len(), 1);
+    assert_eq!(history.items[0].processing_status, None);
+    assert_eq!(history.items[0].send_status, None);
+    assert!(!history.items[0].can_retry);
+    let wire = serde_json::to_value(&history.items[0]).unwrap();
+    assert!(wire["processing_status"].is_null());
+    assert!(wire["send_status"].is_null());
 }

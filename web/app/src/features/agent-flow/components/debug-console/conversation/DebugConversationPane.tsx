@@ -54,6 +54,8 @@ function bubbleMessageStatus(
 }
 
 export function DebugConversationPane({
+  userMessageActions,
+  userMessageMainRender,
   assistantMessageActions,
   assistantMessageMainRender,
   composerUiOnly = false,
@@ -74,6 +76,8 @@ export function DebugConversationPane({
   onSubmitPrompt,
   showComposer = true
 }: {
+  userMessageActions?: (message: AgentFlowDebugMessage) => ReactNode;
+  userMessageMainRender?: (message: AgentFlowDebugMessage) => ReactNode;
   assistantMessageMainRender?: (message: AgentFlowDebugMessage) => ReactNode;
   status: AgentFlowDebugSessionStatus;
   stopping: boolean;
@@ -232,9 +236,11 @@ export function DebugConversationPane({
         },
         contentRender: (message: AgentFlowDebugMessage) => (
           <Flex align="end" gap={4} vertical>
-            <Typography.Paragraph className="agent-flow-editor__debug-message-content">
-              {message.content}
-            </Typography.Paragraph>
+            {userMessageMainRender?.(message) ?? (
+              <Typography.Paragraph className="agent-flow-editor__debug-message-content">
+                {message.content}
+              </Typography.Paragraph>
+            )}
             {message.pageReferences?.map((reference) => (
               <PageReferenceTag
                 key={`${reference.page_url}:${reference.outer_html}`}
@@ -247,6 +253,7 @@ export function DebugConversationPane({
         footer: (message: AgentFlowDebugMessage) => (
           <MessageActions>
             <MessageCopyButton text={message.content} />
+            {userMessageActions?.(message)}
             {onOpenMessageLog && userLogMessageIds.has(message.id) ? (
               <Tooltip
                 title={i18nText('agentFlow', 'auto.view_conversation_log')}
@@ -270,6 +277,8 @@ export function DebugConversationPane({
       logActionRunId,
       assistantMessageActions,
       assistantMessageMainRender,
+      userMessageActions,
+      userMessageMainRender,
       onLoadArtifact,
       onLoadArtifacts,
       onOpenMessageLog,

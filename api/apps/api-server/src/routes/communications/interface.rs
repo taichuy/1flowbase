@@ -46,6 +46,7 @@ impl Dependencies {
 }
 pub(crate) enum Input {
     ManagementConversations(domain::CommunicationManagementQuery),
+    ManagementHistory(Uuid, PageQuery),
     ManagementMessages(domain::CommunicationManagementQuery),
     ManagementMessage(Uuid),
     Options(Option<Uuid>),
@@ -61,6 +62,7 @@ impl Input {
     fn authorize_scope(&self) -> Result<(), ApiError> {
         match self {
             Self::ManagementConversations(_)
+            | Self::ManagementHistory(..)
             | Self::ManagementMessages(_)
             | Self::ManagementMessage(_) => scope::require_management_scope(),
             _ => Ok(()),
@@ -79,7 +81,7 @@ impl InterfaceContract for Input {
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
-            json!({"operation":match self{Self::ManagementConversations(_)=>"management_conversations",Self::ManagementMessages(_)=>"management_messages",Self::ManagementMessage(_)=>"management_message",Self::Options(_)=>"options",Self::Binding(_)=>"binding",Self::SaveBinding(..)=>"save_binding",Self::Conversations(..)=>"conversations",Self::Messages(..)=>"messages",Self::Files(..)=>"files",Self::File(..)=>"file",Self::Retry(..)=>"retry"}}),
+            json!({"operation":match self{Self::ManagementConversations(_)=>"management_conversations",Self::ManagementHistory(..)=>"management_history",Self::ManagementMessages(_)=>"management_messages",Self::ManagementMessage(_)=>"management_message",Self::Options(_)=>"options",Self::Binding(_)=>"binding",Self::SaveBinding(..)=>"save_binding",Self::Conversations(..)=>"conversations",Self::Messages(..)=>"messages",Self::Files(..)=>"files",Self::File(..)=>"file",Self::Retry(..)=>"retry"}}),
         )
     }
 }
@@ -108,6 +110,9 @@ impl Dependencies {
         // Construct the selected operation synchronously so read-only MCP calls do not
         // retain the preparation frames of binding/provisioning and file operations.
         match input {
+            Input::ManagementHistory(id,q) => Box::pin(async move {
+                Ok(Output(serde_json::to_value(self.service.management_history(actor,id,q.cursor,q.limit.unwrap_or(5)).await?)?))
+            }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
             Input::ManagementConversations(q) => Box::pin(async move {
                 Ok(Output(serde_json::to_value(self.service.management_conversations(actor, &q).await?)?))
             }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
@@ -225,12 +230,12 @@ impl Dependencies {
                 let result = match scope::for_channel(actor, id)? {
                 Some(s) => serde_json::to_value(
                     self.service
-                        .scoped_conversations(&s, q.cursor, q.limit.unwrap_or(30))
+                        .scoped_conversations(&s, q.cursor, q.limit.unwrap_or(5))
                         .await?,
                 )?,
                 None => serde_json::to_value(
                     self.service
-                        .conversations(actor, id, q.cursor, q.limit.unwrap_or(30))
+                        .conversations(actor, id, q.cursor, q.limit.unwrap_or(5))
                         .await?,
                 )?,
             };
@@ -240,12 +245,12 @@ impl Dependencies {
                 let result = match scope::for_channel(actor, id)? {
                 Some(s) => serde_json::to_value(
                     self.service
-                        .scoped_message_history(&s, conversation, q.cursor, q.limit.unwrap_or(30))
+                        .scoped_message_history(&s, conversation, q.cursor, q.limit.unwrap_or(5))
                         .await?,
                 )?,
                 None => serde_json::to_value(
                     self.service
-                        .message_history(actor, id, conversation, q.cursor, q.limit.unwrap_or(30))
+                        .message_history(actor, id, conversation, q.cursor, q.limit.unwrap_or(5))
                         .await?,
                 )?,
             };
@@ -255,32 +260,31 @@ impl Dependencies {
                 let result = match scope::for_channel(actor, id)? {
                 Some(s) => serde_json::to_value(
                     self.service
-                        .scoped_files(&s, conversation, q.cursor, q.limit.unwrap_or(30))
+                        .scoped_files(&s, conversation, q.cursor, q.limit.unwrap_or(5))
                         .await?,
                 )?,
                 None => serde_json::to_value(
                     self.service
-                        .files(actor, id, conversation, q.cursor, q.limit.unwrap_or(30))
+                        .files(actor, id, conversation, q.cursor, q.limit.unwrap_or(5))
                         .await?,
                 )?,
             };
                 Ok(Output(result))
             }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
-            Input::File(id, attachment_id, q) => Box::pin(async move {
+            Input::File(id, message_id, q) => Box::pin(async move {
                 let result = {
-                let attachment = match scope::for_channel(actor, id)? {
-                    Some(s) => self.service.scoped_file(&s, attachment_id).await?,
-                    None => self.service.file(actor, id, attachment_id).await?,
+                let message = match scope::for_channel(actor, id)? {
+                    Some(s) => self.service.scoped_file(&s, message_id).await?,
+                    None => self.service.file(actor, id, message_id).await?,
                 };
-                self.read_file(actor, attachment, q).await?
+                self.read_file(actor, message, q).await?
             };
                 Ok(Output(result))
             }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
             Input::Retry(id, message) => Box::pin(async move {
                 let result = {
                 // Retry is a management action; read-only history MCP declarations never expose it.
-                self.service.retry_message(actor, id, message).await?;
-                json!({"accepted":true})
+                serde_json::to_value(self.service.retry_message_record(actor,id,message).await?)?
             };
                 Ok(Output(result))
             }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
@@ -289,12 +293,16 @@ impl Dependencies {
     async fn read_file(
         &self,
         actor: &domain::ActorContext,
-        attachment: domain::CommunicationAttachment,
+        message: domain::CommunicationMessage,
         q: FileQuery,
     ) -> Result<Value, ApiError> {
-        let (Some(table), Some(record)) = (attachment.file_table_id, attachment.file_record_id)
+        let (Some(table), Some(record)) = message
+            .file
+            .as_ref()
+            .map(|file| (file.file_table_id, file.file_record_id))
+            .unwrap_or((None, None))
         else {
-            return Ok(json!({"attachment":attachment,"url":null,"preview_url":null}));
+            return Ok(json!({"message":message,"url":null,"preview_url":null}));
         };
         let content = self.file_service.read(actor.clone(), table, record).await?;
         let offset = q.offset.unwrap_or(0);
@@ -313,7 +321,7 @@ impl Dependencies {
         let next_offset = offset + bytes.len() as u64;
         let text = std::str::from_utf8(&bytes).ok().map(str::to_owned);
         Ok(
-            json!({"attachment":attachment,"file_name":content.filename,"content_type":content.content_type,"content_length":content.content_length,"offset":offset,"next_offset":next_offset,"eof":next_offset>=content.content_length,"content":text,"data_base64":STANDARD.encode(&bytes),"url":format!("/api/console/files/{table}/records/{record}/content"),"preview_url":null}),
+            json!({"message":message,"file_name":content.filename,"content_type":content.content_type,"content_length":content.content_length,"offset":offset,"next_offset":next_offset,"eof":next_offset>=content.content_length,"content":text,"data_base64":STANDARD.encode(&bytes),"url":format!("/api/console/files/{table}/records/{record}/content"),"preview_url":null}),
         )
     }
 }
@@ -340,6 +348,7 @@ pub(crate) fn compile_registry(
     )
 }
 pub(crate) const DECLARATIONS:&[ConsoleInterfaceDeclaration]=&[
+    ConsoleInterfaceDeclaration{interface_id:"communications.management.conversations.messages.list",binding_id:"http.console.communications.management.conversations.messages.list.v1",method:"GET",path:"/api/console/communications/conversations/:conversation_id/messages",mutating:false},
     ConsoleInterfaceDeclaration{interface_id:"communications.management.conversations.list",binding_id:"http.console.communications.management.conversations.list.v1",method:"GET",path:"/api/console/communications/conversations",mutating:false},
     ConsoleInterfaceDeclaration{interface_id:"communications.management.messages.list",binding_id:"http.console.communications.management.messages.list.v1",method:"GET",path:"/api/console/communications/messages",mutating:false},
     ConsoleInterfaceDeclaration{interface_id:"communications.management.messages.get",binding_id:"http.console.communications.management.messages.get.v1",method:"GET",path:"/api/console/communications/messages/:message_id",mutating:false},
@@ -349,7 +358,7 @@ pub(crate) const DECLARATIONS:&[ConsoleInterfaceDeclaration]=&[
     ConsoleInterfaceDeclaration{interface_id:"communications.conversations.list",binding_id:"http.console.communications.conversations.list.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/conversations",mutating:false},
     ConsoleInterfaceDeclaration{interface_id:"communications.messages.list",binding_id:"http.console.communications.messages.list.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/conversations/:conversation_id/messages",mutating:false},
     ConsoleInterfaceDeclaration{interface_id:"communications.files.list",binding_id:"http.console.communications.files.list.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/conversations/:conversation_id/files",mutating:false},
-    ConsoleInterfaceDeclaration{interface_id:"communications.files.get",binding_id:"http.console.communications.files.get.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/files/:attachment_id",mutating:false},
+    ConsoleInterfaceDeclaration{interface_id:"communications.files.get",binding_id:"http.console.communications.files.get.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/files/:message_id",mutating:false},
     ConsoleInterfaceDeclaration{interface_id:"communications.messages.retry",binding_id:"http.console.communications.messages.retry.v1",method:"POST",path:"/api/console/communications/instances/:instance_id/messages/:message_id/retry",mutating:true},
 ];
 

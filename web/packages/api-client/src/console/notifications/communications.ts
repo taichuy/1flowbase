@@ -37,29 +37,7 @@ export interface CommunicationConversation {
   external_conversation_key: string;
   sender_display_name: string | null;
 }
-export interface CommunicationMessage {
-  id: string;
-  conversation_id: string;
-  external_message_key: string;
-  received_at_ms: number;
-  content: string | null;
-  processing_status: 'pending' | 'processing' | 'succeeded' | 'failed';
-  run_id: string | null;
-  final_reply: string | null;
-  send_status:
-    | 'none'
-    | 'pending'
-    | 'sending'
-    | 'succeeded'
-    | 'failed'
-    | 'unknown';
-  failure_code: string | null;
-  can_retry: boolean;
-}
-export interface CommunicationAttachment {
-  id: string;
-  message_id: string;
-  provider_attachment_id: string;
+export interface CommunicationFile {
   file_name: string;
   media_type: string;
   size_bytes: number | null;
@@ -67,6 +45,34 @@ export interface CommunicationAttachment {
   file_table_id: string | null;
   file_record_id: string | null;
   failure_code: string | null;
+  access_path: string;
+}
+export interface CommunicationMessage {
+  id: string;
+  conversation_id: string;
+  input_id: string;
+  instance_id: string;
+  instance_display_name: string | null;
+  external_identity: string;
+  sender_display_name: string | null;
+  type: 'text' | 'file';
+  direction: 'inbound' | 'outbound';
+  occurred_at_ms: number;
+  content: string | null;
+  file: CommunicationFile | null;
+  processing_status: 'pending' | 'processing' | 'succeeded' | 'failed' | null;
+  run_id: string | null;
+  application_id: string | null;
+  send_status:
+    | 'none'
+    | 'pending'
+    | 'sending'
+    | 'succeeded'
+    | 'failed'
+    | 'unknown'
+    | null;
+  failure_code: string | null;
+  can_retry: boolean;
 }
 const path = '/api/console/communications';
 const instancePath = (id: string) =>
@@ -100,7 +106,11 @@ export interface CommunicationPageInput {
   limit?: number;
 }
 const query = (input: CommunicationPageInput) =>
-  new URLSearchParams(Object.entries(input).map(([k, v]) => [k, String(v)]));
+  new URLSearchParams(
+    Object.entries(input)
+      .filter(([, value]) => value !== undefined)
+      .map(([k, v]) => [k, String(v)])
+  );
 export const listCommunicationConversations = (
   id: string,
   input: CommunicationPageInput = {},
@@ -126,7 +136,7 @@ export const listCommunicationFiles = (
   input: CommunicationPageInput = {},
   signal?: AbortSignal
 ) =>
-  apiFetch<CommunicationPage<CommunicationAttachment>>({
+  apiFetch<CommunicationPage<CommunicationMessage>>({
     path: `${instancePath(id)}/conversations/${encodeURIComponent(conversation_id)}/files?${query(input)}`,
     signal
   });
@@ -142,7 +152,7 @@ export const retryCommunicationMessage = (
   });
 
 export interface CommunicationFileRead {
-  attachment: CommunicationAttachment;
+  message: CommunicationMessage;
   file_name: string;
   content_type: string;
   content_length: number;
@@ -156,11 +166,11 @@ export interface CommunicationFileRead {
 }
 export const getCommunicationFile = (
   id: string,
-  attachment_id: string,
+  message_id: string,
   signal?: AbortSignal
 ) =>
   apiFetch<CommunicationFileRead>({
-    path: `${instancePath(id)}/files/${encodeURIComponent(attachment_id)}`,
+    path: `${instancePath(id)}/files/${encodeURIComponent(message_id)}`,
     signal
   });
 
@@ -171,36 +181,16 @@ export interface CommunicationManagementPage<T> {
   page: number;
   page_size: number;
 }
-export interface CommunicationMessageListItem extends Pick<
+export interface CommunicationMessageListItem extends Omit<
   CommunicationMessage,
-  | 'id'
-  | 'conversation_id'
-  | 'received_at_ms'
-  | 'processing_status'
-  | 'send_status'
-  | 'failure_code'
-  | 'can_retry'
-  | 'run_id'
+  'content'
 > {
-  instance_id: string;
-  instance_display_name: string | null;
-  external_identity: string;
-  sender_display_name: string | null;
-  application_id: string | null;
   content_preview: string | null;
 }
 export interface CommunicationConversationListItem extends CommunicationConversation {
   instance_display_name: string | null;
-  latest_message: CommunicationMessageListItem | null;
 }
-export interface CommunicationMessageDetail extends CommunicationMessage {
-  instance_id: string;
-  instance_display_name: string | null;
-  external_identity: string;
-  sender_display_name: string | null;
-  application_id: string | null;
-  attachments: CommunicationAttachment[];
-}
+export type CommunicationMessageDetail = CommunicationMessage;
 export interface CommunicationConversationListInput {
   instance_id?: string;
   conversation_id?: string;
@@ -208,8 +198,10 @@ export interface CommunicationConversationListInput {
   page_size?: number;
 }
 export interface CommunicationMessageListInput extends CommunicationConversationListInput {
-  processing_status?: CommunicationMessage['processing_status'];
-  send_status?: CommunicationMessage['send_status'];
+  direction?: CommunicationMessage['direction'];
+  type?: CommunicationMessage['type'];
+  processing_status?: NonNullable<CommunicationMessage['processing_status']>;
+  send_status?: NonNullable<CommunicationMessage['send_status']>;
 }
 const managementQuery = (input: CommunicationMessageListInput) =>
   new URLSearchParams(
@@ -239,5 +231,15 @@ export const getCommunicationMessageDetail = (
 ) =>
   apiFetch<CommunicationMessageDetail>({
     path: `${path}/messages/${encodeURIComponent(message_id)}`,
+    signal
+  });
+
+export const listCommunicationChatMessages = (
+  conversation_id: string,
+  input: CommunicationPageInput = {},
+  signal?: AbortSignal
+) =>
+  apiFetch<CommunicationPage<CommunicationMessage>>({
+    path: `${path}/conversations/${encodeURIComponent(conversation_id)}/messages?${query(input)}`,
     signal
   });

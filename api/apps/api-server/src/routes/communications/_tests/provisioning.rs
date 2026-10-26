@@ -3,15 +3,16 @@ use super::*;
 #[test]
 fn communication_generated_mapping_obeys_call_controls_and_preserves_channel_binding() {
     let channel = Uuid::now_v7();
-    let parameters =
-        ["instance_id", "conversation_id"].map(|name| domain::mcp_management::McpParameterDescriptor {
+    let parameters = ["instance_id", "conversation_id"].map(|name| {
+        domain::mcp_management::McpParameterDescriptor {
             name: name.into(),
             field_type: "string".into(),
             parameter_type: domain::mcp_management::McpParameterType::Url,
             description: None,
             required: true,
             schema: json!({"type":"string"}),
-        });
+        }
+    });
     let mapping = channel_input_mapping(&parameters, &json!({}), channel);
     domain::mcp_management::validate_mcp_call_parameters(&mapping).unwrap();
     domain::mcp_management::input_defaults::validate_input_defaults(&mapping, &parameters).unwrap();

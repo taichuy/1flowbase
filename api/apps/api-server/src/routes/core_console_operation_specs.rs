@@ -95,6 +95,10 @@ const fn resource_action(
 pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     authenticated_routes("core.authenticated", "core.authenticated"),
     settings(
+        "communications.management.conversations.messages.list",
+        "system.notifications",
+    ),
+    settings(
         "communications.management.conversations.list",
         "system.notifications",
     ),

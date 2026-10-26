@@ -14,6 +14,7 @@ export {
   getCommunicationFile,
   listCommunicationConversationOverview,
   listCommunicationMessageOverview,
+  listCommunicationChatMessages,
   getCommunicationMessageDetail
 } from '@1flowbase/api-client';
 export const communicationBindingOptions = (scope: string, id?: string) =>

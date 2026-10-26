@@ -37,9 +37,13 @@ pub(super) async fn commit(
         }
         let conversation_id:Uuid=sqlx::query_scalar("INSERT INTO communication_conversations(id,scope_id,instance_id,external_identity,external_conversation_key,sender_display_name) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(scope_id,instance_id,external_identity,external_conversation_key) DO UPDATE SET sender_display_name=excluded.sender_display_name RETURNING id")
             .bind(Uuid::now_v7()).bind(w).bind(i).bind(&m.sender_id).bind(m.conversation_id).bind(m.sender_display_name).fetch_one(&mut *tx).await?;
-        let message_id:Option<Uuid>=sqlx::query_scalar("INSERT INTO communication_messages(id,scope_id,instance_id,conversation_id,external_identity,external_message_key,received_at_ms,content) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(scope_id,instance_id,external_identity,external_message_key) DO NOTHING RETURNING id")
-            .bind(Uuid::now_v7()).bind(w).bind(i).bind(conversation_id).bind(m.sender_id).bind(m.provider_message_id).bind(m.received_at_ms).bind(m.text).fetch_optional(&mut *tx).await?;
+        let message_id:Option<Uuid>=sqlx::query_scalar("INSERT INTO communication_inputs(id,scope_id,instance_id,conversation_id,external_identity,external_message_key,received_at_ms) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(scope_id,instance_id,external_identity,external_message_key) DO NOTHING RETURNING id")
+            .bind(Uuid::now_v7()).bind(w).bind(i).bind(conversation_id).bind(&m.sender_id).bind(m.provider_message_id).bind(m.received_at_ms).fetch_optional(&mut *tx).await?;
         if let Some(message_id) = message_id {
+            if let Some(text) = m.text.filter(|text| !text.trim().is_empty()) {
+                sqlx::query("INSERT INTO communication_messages(id,scope_id,instance_id,external_identity,conversation_id,input_id,type,direction,occurred_at_ms,content) VALUES($1,$2,$3,$4,$5,$1,'text','inbound',$6,$7)")
+                    .bind(message_id).bind(w).bind(i).bind(&m.sender_id).bind(conversation_id).bind(m.received_at_ms).bind(text).execute(&mut *tx).await?;
+            }
             for a in m.attachments {
                 if a.provider_attachment_id.trim().is_empty() || a.file_name.trim().is_empty() {
                     return Err(Error::InvalidInput("communication_attachment").into());
@@ -54,8 +58,8 @@ pub(super) async fn commit(
                 // in backups. Runtime decryption still derives AAD from trusted message rows.
                 reference["communication_scope"] =
                     serde_json::json!({"workspace_id":w,"instance_id":i});
-                sqlx::query("INSERT INTO communication_attachments(id,scope_id,message_id,provider_attachment_id,file_name,media_type,size_bytes,encrypted_reference) VALUES($1,$8,$2,$3,$4,$5,$6,$7)")
-                    .bind(id).bind(message_id).bind(a.provider_attachment_id).bind(a.file_name).bind(a.media_type).bind(a.size_bytes).bind(reference).bind(w).execute(&mut *tx).await?;
+                sqlx::query("INSERT INTO communication_messages(id,scope_id,input_id,provider_attachment_id,file_name,media_type,size_bytes,encrypted_reference,instance_id,external_identity,conversation_id,occurred_at_ms,type,direction,status) VALUES($1,$8,$2,$3,$4,$5,$6,$7,$9,$10,$11,$12,'file','inbound','pending')")
+                    .bind(id).bind(message_id).bind(a.provider_attachment_id).bind(a.file_name).bind(a.media_type).bind(a.size_bytes).bind(reference).bind(w).bind(i).bind(&m.sender_id).bind(conversation_id).bind(m.received_at_ms).execute(&mut *tx).await?;
             }
         }
     }

@@ -195,7 +195,7 @@ async fn communication_inbox_cursor_dedup_scope_and_leases_are_durable() {
         .unwrap();
     assert_eq!(
         history.items.len(),
-        2,
+        3,
         "duplicate and stale batch cannot insert input"
     );
     let bob = CommunicationHistoryScope {
@@ -468,7 +468,7 @@ async fn communication_expired_claims_recover_without_repeating_unknown_sends() 
         .unwrap()
         .unwrap();
     sqlx::query(
-        "UPDATE communication_messages SET claim_expires_at=now()-interval '1 second' WHERE id=$1",
+        "UPDATE communication_inputs SET claim_expires_at=now()-interval '1 second' WHERE id=$1",
     )
     .bind(first.message.id)
     .execute(store.pool())
@@ -498,7 +498,7 @@ async fn communication_expired_claims_recover_without_repeating_unknown_sends() 
         .await
         .unwrap());
     sqlx::query(
-        "UPDATE communication_messages SET claim_expires_at=now()-interval '1 second' WHERE id=$1",
+        "UPDATE communication_inputs SET claim_expires_at=now()-interval '1 second' WHERE id=$1",
     )
     .bind(first.message.id)
     .execute(store.pool())
@@ -552,7 +552,7 @@ async fn communication_expired_claims_recover_without_repeating_unknown_sends() 
         .await
         .unwrap());
     sqlx::query(
-        "UPDATE communication_messages SET claim_expires_at=now()-interval '1 second' WHERE id=$1",
+        "UPDATE communication_inputs SET claim_expires_at=now()-interval '1 second' WHERE id=$1",
     )
     .bind(first.message.id)
     .execute(store.pool())
@@ -574,7 +574,7 @@ async fn communication_expired_claims_recover_without_repeating_unknown_sends() 
         .unwrap();
     assert_eq!(
         history.items[0].send_status,
-        CommunicationSendStatus::Unknown
+        Some(CommunicationSendStatus::Unknown)
     );
     assert!(!service
         .retry_message(&actor, channel, first.message.id)
@@ -644,7 +644,7 @@ async fn communication_can_retry_projects_status_lease_and_channel_eligibility()
             .can_retry
     );
     // Model both live/expired crash claims, not just the normally released terminal lease.
-    sqlx::query("UPDATE communication_messages SET claim_id=$2,claim_expires_at=now()+interval '1 hour' WHERE id=$1")
+    sqlx::query("UPDATE communication_inputs SET claim_id=$2,claim_expires_at=now()+interval '1 hour' WHERE id=$1")
         .bind(claim.message.id).bind(claim.claim_id).execute(store.pool()).await.unwrap();
     assert!(
         !service
@@ -659,7 +659,7 @@ async fn communication_can_retry_projects_status_lease_and_channel_eligibility()
         .await
         .unwrap());
     sqlx::query(
-        "UPDATE communication_messages SET claim_expires_at=now()-interval '1 second' WHERE id=$1",
+        "UPDATE communication_inputs SET claim_expires_at=now()-interval '1 second' WHERE id=$1",
     )
     .bind(claim.message.id)
     .execute(store.pool())
@@ -695,7 +695,7 @@ async fn communication_can_retry_projects_status_lease_and_channel_eligibility()
         .execute(store.pool())
         .await
         .unwrap();
-    sqlx::query("UPDATE communication_messages SET send_status='unknown' WHERE id=$1")
+    sqlx::query("UPDATE communication_inputs SET send_status='unknown' WHERE id=$1")
         .bind(claim.message.id)
         .execute(store.pool())
         .await
@@ -712,7 +712,7 @@ async fn communication_can_retry_projects_status_lease_and_channel_eligibility()
         .retry_message(&actor, channel, claim.message.id)
         .await
         .unwrap());
-    sqlx::query("UPDATE communication_messages SET processing_status='succeeded',send_status='failed' WHERE id=$1").bind(claim.message.id).execute(store.pool()).await.unwrap();
+    sqlx::query("UPDATE communication_inputs SET processing_status='succeeded',send_status='failed' WHERE id=$1").bind(claim.message.id).execute(store.pool()).await.unwrap();
     assert!(
         service
             .scoped_message_history(&scope, claim.conversation.id, None, 100)
@@ -805,7 +805,10 @@ async fn communication_preflight_failure_is_durable_before_any_external_send() {
         .message_history(&actor, channel, input.conversation.id, None, 30)
         .await
         .unwrap();
-    assert_eq!(page.items[0].send_status, CommunicationSendStatus::Failed);
+    assert_eq!(
+        page.items[0].send_status,
+        Some(CommunicationSendStatus::Failed)
+    );
     assert_eq!(
         page.items[0].failure_code.as_deref(),
         Some("send_preflight_failed")
@@ -863,7 +866,7 @@ async fn communication_physical_scope_enforces_owner_chain_and_public_workspace_
         ("communication_bindings", "instance_id", channel),
         ("communication_conversations", "id", conversation),
         ("communication_messages", "id", message),
-        ("communication_attachments", "id", attachment),
+        ("communication_messages", "id", attachment),
     ] {
         // Closed fixture table/column set; all identifiers are static values above.
         let sql = format!("SELECT scope_id FROM {table} WHERE {id_column}=$1");
@@ -886,7 +889,7 @@ async fn communication_physical_scope_enforces_owner_chain_and_public_workspace_
         );
     }
     let old_alias_count: i64 = sqlx::query_scalar("SELECT count(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=ANY($1) AND column_name='workspace_id'")
-        .bind(vec!["communication_bindings","communication_conversations","communication_messages","communication_attachments"]).fetch_one(store.pool()).await.unwrap();
+        .bind(vec!["communication_bindings","communication_conversations","communication_inputs","communication_messages"]).fetch_one(store.pool()).await.unwrap();
     assert_eq!(
         old_alias_count, 0,
         "workspace_id is public DTO semantics, not a second physical scope alias"
@@ -900,36 +903,21 @@ async fn communication_physical_scope_enforces_owner_chain_and_public_workspace_
             .await
             .is_err()
     );
-    assert!(
-        sqlx::query("UPDATE communication_messages SET scope_id=$2 WHERE id=$1")
-            .bind(message)
-            .bind(other_scope)
-            .execute(store.pool())
+    let foreign_keys:i64=sqlx::query_scalar("SELECT count(*) FROM pg_constraint WHERE conrelid IN ('communication_inputs'::regclass,'communication_messages'::regclass,'communication_conversations'::regclass) AND contype='f'").fetch_one(store.pool()).await.unwrap();
+    assert_eq!(foreign_keys, 0);
+    sqlx::query("DELETE FROM communication_conversations WHERE id=$1")
+        .bind(conversation)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        service
+            .message_history(&actor, channel, conversation, None, 5)
             .await
-            .is_err()
-    );
-    assert!(
-        sqlx::query("UPDATE communication_messages SET instance_id=$2 WHERE id=$1")
-            .bind(message)
-            .bind(Uuid::now_v7())
-            .execute(store.pool())
-            .await
-            .is_err()
-    );
-    assert!(sqlx::query(
-        "UPDATE communication_messages SET external_identity='other-person' WHERE id=$1"
-    )
-    .bind(message)
-    .execute(store.pool())
-    .await
-    .is_err());
-    assert!(
-        sqlx::query("UPDATE communication_attachments SET scope_id=$2 WHERE id=$1")
-            .bind(attachment)
-            .bind(other_scope)
-            .execute(store.pool())
-            .await
-            .is_err()
+            .unwrap()
+            .items
+            .len(),
+        2
     );
     assert!(store
         .communication_binding(other_scope, channel)

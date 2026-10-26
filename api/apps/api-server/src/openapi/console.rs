@@ -68,6 +68,7 @@ use utoipa::OpenApi;
         crate::routes::communications::management_conversations,
         crate::routes::communications::management_messages,
         crate::routes::communications::management_message,
+        crate::routes::communications::management_history,
         crate::routes::communications::messages,
         crate::routes::communications::files,
         crate::routes::communications::file,

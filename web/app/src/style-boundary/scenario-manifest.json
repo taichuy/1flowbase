@@ -3003,5 +3003,213 @@
         ]
       }
     ]
+  },
+  {
+    "id": "component.communication-chat.desktop",
+    "kind": "component",
+    "title": "Communication Chat Desktop",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/pages/notifications/communications/CommunicationChat.tsx",
+      "web/app/src/features/settings/pages/notifications/communications/communication-chat.css",
+      "web/app/src/features/settings/pages/notifications/communications/communication-presentation.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/DebugConversationPane.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/DebugAssistantMessage.tsx",
+      "web/app/src/shared/ui/resizable-drawer/ResizableDrawer.tsx",
+      "web/app/src/style-boundary/scene-fixtures/notifications/communications.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "drawer",
+        "selector": ".communication-chat",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          },
+          {
+            "property": "flex-direction",
+            "expected": "column"
+          }
+        ]
+      },
+      {
+        "id": "messages",
+        "selector": ".communication-chat [data-testid=\"debug-conversation-messages\"]",
+        "propertyAssertions": [
+          {
+            "property": "overflow-y",
+            "expected": "auto"
+          }
+        ]
+      },
+      {
+        "id": "file",
+        "selector": ".communication-chat__file",
+        "propertyAssertions": [
+          {
+            "property": "max-width",
+            "expected": "100%"
+          }
+        ]
+      },
+      {
+        "id": "footer-timestamp",
+        "selector": ".communication-chat__timestamp",
+        "propertyAssertions": [
+          {
+            "property": "font-size",
+            "expected": "12px"
+          }
+        ]
+      },
+      {
+        "id": "text-bubble",
+        "selector": ".communication-chat .agent-flow-editor__debug-message-content",
+        "propertyAssertions": [
+          {
+            "property": "overflow-wrap",
+            "expected": "anywhere"
+          }
+        ]
+      },
+      {
+        "id": "historical-run-action",
+        "selector": ".communication-chat a[href=\"/applications/style-chat-application/logs?run_id=style-chat-run&view=trace\"]",
+        "propertyAssertions": []
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "drawer-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".communication-chat"
+      },
+      {
+        "id": "messages-contained",
+        "type": "within_container",
+        "subjectSelector": ".communication-chat [data-testid=\"debug-conversation-messages\"]",
+        "containerSelector": ".communication-chat"
+      },
+      {
+        "id": "file-contained",
+        "type": "within_container",
+        "subjectSelector": ".communication-chat__file",
+        "containerSelector": ".communication-chat .agent-flow-editor__debug-message-list"
+      },
+      {
+        "id": "footer-contained",
+        "type": "within_container",
+        "subjectSelector": ".communication-chat__timestamp",
+        "containerSelector": ".communication-chat .agent-flow-editor__debug-message-list"
+      }
+    ]
+  },
+  {
+    "id": "component.communication-chat.mobile",
+    "kind": "component",
+    "title": "Communication Chat Mobile",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/pages/notifications/communications/CommunicationChat.tsx",
+      "web/app/src/features/settings/pages/notifications/communications/communication-chat.css",
+      "web/app/src/features/settings/pages/notifications/communications/communication-presentation.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/DebugConversationPane.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/DebugAssistantMessage.tsx",
+      "web/app/src/shared/ui/resizable-drawer/ResizableDrawer.tsx",
+      "web/app/src/style-boundary/scene-fixtures/notifications/communications.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "drawer",
+        "selector": ".communication-chat",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          },
+          {
+            "property": "flex-direction",
+            "expected": "column"
+          }
+        ]
+      },
+      {
+        "id": "messages",
+        "selector": ".communication-chat [data-testid=\"debug-conversation-messages\"]",
+        "propertyAssertions": [
+          {
+            "property": "overflow-y",
+            "expected": "auto"
+          }
+        ]
+      },
+      {
+        "id": "file",
+        "selector": ".communication-chat__file",
+        "propertyAssertions": [
+          {
+            "property": "max-width",
+            "expected": "100%"
+          }
+        ]
+      },
+      {
+        "id": "footer-timestamp",
+        "selector": ".communication-chat__timestamp",
+        "propertyAssertions": [
+          {
+            "property": "font-size",
+            "expected": "12px"
+          }
+        ]
+      },
+      {
+        "id": "text-bubble",
+        "selector": ".communication-chat .agent-flow-editor__debug-message-content",
+        "propertyAssertions": [
+          {
+            "property": "overflow-wrap",
+            "expected": "anywhere"
+          }
+        ]
+      },
+      {
+        "id": "historical-run-action",
+        "selector": ".communication-chat a[href=\"/applications/style-chat-application/logs?run_id=style-chat-run&view=trace\"]",
+        "propertyAssertions": []
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "drawer-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".communication-chat"
+      },
+      {
+        "id": "messages-contained",
+        "type": "within_container",
+        "subjectSelector": ".communication-chat [data-testid=\"debug-conversation-messages\"]",
+        "containerSelector": ".communication-chat"
+      },
+      {
+        "id": "file-contained",
+        "type": "within_container",
+        "subjectSelector": ".communication-chat__file",
+        "containerSelector": ".communication-chat .agent-flow-editor__debug-message-list"
+      },
+      {
+        "id": "footer-contained",
+        "type": "within_container",
+        "subjectSelector": ".communication-chat__timestamp",
+        "containerSelector": ".communication-chat .agent-flow-editor__debug-message-list"
+      }
+    ]
   }
 ]

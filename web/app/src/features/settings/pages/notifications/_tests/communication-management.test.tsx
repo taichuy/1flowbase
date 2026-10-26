@@ -10,7 +10,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type {
-  CommunicationMessageDetail,
+  CommunicationMessage,
   CommunicationMessageListItem,
   CommunicationConversationListItem
 } from '@1flowbase/api-client';
@@ -19,22 +19,6 @@ import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
 import { NotificationsPage } from '../NotificationsPage';
 import { CommunicationHistory } from '../communications/CommunicationHistory';
 
-const summary: CommunicationMessageListItem = {
-  id: 'message-1',
-  conversation_id: 'conversation-1',
-  instance_id: 'channel-1',
-  instance_display_name: 'Chat channel',
-  external_identity: 'alice',
-  sender_display_name: 'Alice',
-  received_at_ms: 1792960000000,
-  content_preview: 'First request',
-  processing_status: 'succeeded',
-  send_status: 'failed',
-  failure_code: 'send_interrupted',
-  can_retry: true,
-  run_id: 'original-run',
-  application_id: 'original-app'
-};
 const conversation: CommunicationConversationListItem = {
   id: 'conversation-1',
   workspace_id: 'workspace-1',
@@ -42,12 +26,35 @@ const conversation: CommunicationConversationListItem = {
   external_identity: 'alice',
   external_conversation_key: 'thread-1',
   sender_display_name: 'Alice',
-  instance_display_name: 'Chat channel',
-  latest_message: summary
+  instance_display_name: 'Chat channel'
 };
-let detail: CommunicationMessageDetail;
+function message(index: number): CommunicationMessage {
+  return {
+    id: `message-${index}`,
+    conversation_id: conversation.id,
+    input_id: `input-${index}`,
+    instance_id: 'channel-1',
+    instance_display_name: 'Chat channel',
+    external_identity: 'alice',
+    sender_display_name: 'Alice',
+    type: 'text',
+    direction: index % 2 ? 'inbound' : 'outbound',
+    occurred_at_ms: 1792960000000 + index * 1000,
+    content: `Chat message ${index}`,
+    file: null,
+    processing_status: 'succeeded',
+    send_status: 'failed',
+    failure_code: 'send_interrupted',
+    can_retry: index === 10,
+    run_id: index === 10 ? 'original-run' : null,
+    application_id: index === 10 ? 'original-app' : null
+  };
+}
+let messages: CommunicationMessage[];
 let client: QueryClient;
 let calls: URL[];
+const chatRequests = () =>
+  calls.filter((url) => /\/conversations\/[^/]+\/messages$/.test(url.pathname));
 beforeEach(async () => {
   window.history.replaceState(
     {},
@@ -56,12 +63,22 @@ beforeEach(async () => {
   );
   await appI18n.changeLanguage('en_US');
   calls = [];
-  detail = {
-    ...summary,
-    content: '<script>Full request</script>',
-    external_message_key: 'external-1',
-    final_reply: 'Final reply',
-    attachments: []
+  messages = Array.from({ length: 10 }, (_, index) => message(index + 1));
+  messages[7] = {
+    ...messages[7]!,
+    type: 'file',
+    content: null,
+    file: {
+      file_name: 'answer.pdf',
+      media_type: 'application/pdf',
+      size_bytes: 100,
+      status: 'ready',
+      file_table_id: 'files',
+      file_record_id: 'file-8',
+      failure_code: null,
+      access_path:
+        '/api/console/communications/instances/channel-1/files/message-8'
+    }
   };
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   useAuthStore.setState({
@@ -83,9 +100,25 @@ beforeEach(async () => {
       if (url.pathname.endsWith('/instances'))
         data = [{ id: 'channel-1', display_name: 'Chat channel' }];
       else if (url.pathname.endsWith('/types')) data = [];
-      else if (url.pathname.endsWith('/messages/message-1')) data = detail;
-      else if (url.pathname.endsWith('/retry')) data = detail;
-      else if (url.pathname.endsWith('/conversations'))
+      else if (url.pathname.endsWith('/retry')) data = messages[9];
+      else if (url.pathname.endsWith('/files/message-8'))
+        data = {
+          message: messages[7],
+          file_name: 'answer.pdf',
+          content_type: 'application/pdf',
+          content_length: 100,
+          offset: 0,
+          next_offset: null,
+          eof: true,
+          data_base64: '',
+          url: 'https://files.example.test/answer.pdf',
+          preview_url: null
+        };
+      else if (/\/conversations\/[^/]+\/messages$/.test(url.pathname)) {
+        data = url.searchParams.has('cursor')
+          ? { items: messages.slice(0, 5), next_cursor: null }
+          : { items: messages.slice(5), next_cursor: 'message-6' };
+      } else if (url.pathname.endsWith('/conversations'))
         data = {
           items: [
             page === 2
@@ -100,22 +133,14 @@ beforeEach(async () => {
           page,
           page_size: 20
         };
-      else if (url.pathname.endsWith('/messages'))
-        data = {
-          items: [
-            page === 2
-              ? {
-                  ...summary,
-                  id: 'message-2',
-                  content_preview: 'Earlier request'
-                }
-              : summary
-          ],
-          total: 21,
-          page,
-          page_size: 20
+      else if (url.pathname.endsWith('/messages')) {
+        const { content, ...item } = message(page === 2 ? 3 : 1);
+        const summary: CommunicationMessageListItem = {
+          ...item,
+          content_preview: content
         };
-      else if (url.pathname.endsWith('/logs'))
+        data = { items: [summary], total: 21, page, page_size: 20 };
+      } else if (url.pathname.endsWith('/logs'))
         data = { items: [], total: 0, page: 1, page_size: 20 };
       else throw new Error(`Unexpected request: ${url.pathname}`);
       return new Response(JSON.stringify({ data, meta: null }), {
@@ -125,11 +150,8 @@ beforeEach(async () => {
   );
 });
 afterEach(async () => {
-  await waitFor(() => {
-    expect(client.isFetching()).toBe(0);
-    expect(client.isMutating()).toBe(0);
-  });
   cleanup();
+  await client.cancelQueries();
   client.clear();
   resetAuthStore();
   vi.unstubAllGlobals();
@@ -150,66 +172,136 @@ async function click(element: HTMLElement) {
     fireEvent.click(element);
   });
 }
+async function openChat() {
+  await click(await screen.findByRole('button', { name: /^Chat$/ }));
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByText('Chat message 10');
+  return within(dialog);
+}
 
-test('lists conversations across channels immediately with shared table, statuses, links and server pagination', async () => {
+test('default shared table lists basic conversation fields across channels with a single Chat operation', async () => {
   await show();
-  const alice = await screen.findByRole('link', { name: 'Alice' });
+  const alice = await screen.findByText('Alice');
   expect(alice.closest('.data-table')).not.toBeNull();
-  expect(alice).toHaveAttribute(
-    'href',
-    expect.stringContaining('conversation_id=conversation-1')
+  expect(alice.closest('a')).toBeNull();
+  expect(screen.getByText('Chat channel').closest('a')).toBeNull();
+  expect(screen.getAllByRole('columnheader')).toHaveLength(3);
+  expect(
+    screen.getAllByRole('button', { name: /^Chat$/ })
+  ).toHaveLength(1);
+  expect(screen.queryByText('Delivery failed')).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('link', { name: 'View run logs' })
+  ).not.toBeInTheDocument();
+  expect(
+    calls
+      .find((url) => url.pathname.endsWith('/conversations'))!
+      .searchParams.has('instance_id')
+  ).toBe(false);
+  expect(chatRequests()).toHaveLength(0);
+  await click(screen.getByTitle('2'));
+  await screen.findByText('Bob');
+  expect(new URLSearchParams(window.location.search).get('page')).toBe('2');
+});
+
+test('Chat opens the reused conversation pane with only the newest five messages and prepends older messages explicitly', async () => {
+  await show();
+  const drawer = await openChat();
+  const pane = drawer.getByTestId('debug-conversation-messages');
+  expect(drawer.getByText('Chat', { exact: true })).toBeInTheDocument();
+  expect(drawer.queryByRole('textbox')).not.toBeInTheDocument();
+  expect(
+    drawer.queryByRole('button', { name: /^Send$/ })
+  ).not.toBeInTheDocument();
+  expect(chatRequests()).toHaveLength(1);
+  expect(chatRequests()[0]!.searchParams.toString()).toBe('limit=5');
+  expect(within(pane).getByText('answer.pdf')).toBeInTheDocument();
+  expect(calls.some((url) => url.pathname.includes('/files/'))).toBe(false);
+  await click(
+    drawer.getByRole('button', { name: appI18n.t('notifications:file_access') })
   );
-  expect(screen.getByText('Processed')).toBeInTheDocument();
-  expect(screen.getByText('Delivery failed')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'View run logs' })).toHaveAttribute(
+  expect(
+    await drawer.findByRole('link', {
+      name: appI18n.t('notifications:download_file')
+    })
+  ).toHaveAttribute('href', 'https://files.example.test/answer.pdf');
+  expect(
+    calls.filter((url) =>
+      url.pathname.endsWith('/instances/channel-1/files/message-8')
+    )
+  ).toHaveLength(1);
+  expect(pane.textContent).toMatch(
+    /Chat message 6[\s\S]*Chat message 7[\s\S]*answer.pdf[\s\S]*Chat message 9[\s\S]*Chat message 10/
+  );
+  expect(
+    within(pane)
+      .getByText('Chat message 6')
+      .closest('.agent-flow-editor__debug-assistant-bubble')
+  ).not.toBeNull();
+  expect(
+    within(pane)
+      .getByText('Chat message 7')
+      .closest('.agent-flow-editor__debug-assistant-bubble')
+  ).toBeNull();
+  expect(
+    drawer.queryByText('Chat message 1', { exact: true })
+  ).not.toBeInTheDocument();
+  await click(drawer.getByRole('button', { name: 'Load earlier messages' }));
+  await drawer.findByText('Chat message 1', { exact: true });
+  expect(chatRequests()).toHaveLength(2);
+  expect(chatRequests()[1]!.searchParams.get('limit')).toBe('5');
+  expect(chatRequests()[1]!.searchParams.get('cursor')).toBe('message-6');
+  for (const index of [1, 2, 3, 4, 5, 6, 7, 9, 10])
+    expect(
+      within(pane).getAllByText(`Chat message ${index}`, { exact: true })
+    ).toHaveLength(1);
+  expect(pane.textContent).toMatch(
+    /Chat message 1[\s\S]*Chat message 5[\s\S]*Chat message 6[\s\S]*Chat message 10/
+  );
+  expect(
+    drawer.queryByRole('button', { name: 'Load earlier messages' })
+  ).not.toBeInTheDocument();
+  await click(drawer.getByRole('button', { name: 'Close' }));
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  );
+  const reopened = await openChat();
+  expect(chatRequests()).toHaveLength(3);
+  expect(chatRequests()[2]!.searchParams.get('limit')).toBe('5');
+  expect(chatRequests()[2]!.searchParams.has('cursor')).toBe(false);
+  expect(
+    reopened.queryByText('Chat message 1', { exact: true })
+  ).not.toBeInTheDocument();
+  const reopenedPane = reopened.getByTestId('debug-conversation-messages');
+  expect(within(reopenedPane).getAllByText(/^Chat message \d+$/)).toHaveLength(
+    4
+  );
+  expect(within(reopenedPane).getByText('answer.pdf')).toBeInTheDocument();
+  expect(
+    reopened.getByRole('button', { name: 'Load earlier messages' })
+  ).toBeInTheDocument();
+});
+
+test('bubble run link uses historical application and retry visibility follows backend can_retry', async () => {
+  await show();
+  const drawer = await openChat();
+  expect(drawer.getByRole('link', { name: 'View run logs' })).toHaveAttribute(
     'href',
     '/applications/original-app/logs?run_id=original-run&view=trace'
   );
-  const request = calls.find((url) => url.pathname.endsWith('/conversations'))!;
-  expect(request.searchParams.has('instance_id')).toBe(false);
-  await click(screen.getByTitle('2'));
-  await screen.findByRole('link', { name: 'Bob' });
-  expect(window.location.search).toContain('page=2');
   expect(
-    calls.some(
-      (url) =>
-        url.pathname.endsWith('/conversations') &&
-        url.searchParams.get('page') === '2'
-    )
-  ).toBe(true);
-});
-
-test('received records are messages with URL filters, exact detail, plain content and authoritative retry', async () => {
-  window.history.replaceState(
-    {},
-    '',
-    '/settings/communications?tab=logs&record_tab=received&processing_status=succeeded&send_status=failed'
-  );
-  await show(<CommunicationHistory records />);
-  await click(await screen.findByRole('link', { name: 'First request' }));
-  const drawer = within(await screen.findByRole('dialog'));
-  await drawer.findByText('<script>Full request</script>');
-  expect(drawer.getByText('Final reply')).toBeInTheDocument();
-  expect(document.querySelector('.notification-log-detail script')).toBeNull();
-  expect(window.location.search).toContain('message_id=message-1');
-  expect(
-    calls.some(
-      (url) =>
-        url.pathname.endsWith('/messages') &&
-        url.searchParams.get('processing_status') === 'succeeded' &&
-        url.searchParams.get('send_status') === 'failed' &&
-        !url.searchParams.has('instance_id')
-    )
-  ).toBe(true);
+    drawer.getAllByRole('button', { name: 'Retry delivery' })
+  ).toHaveLength(1);
   await click(drawer.getByRole('button', { name: 'Retry delivery' }));
   await waitFor(() =>
     expect(
       calls.some((url) =>
-        url.pathname.endsWith('/instances/channel-1/messages/message-1/retry')
+        url.pathname.endsWith('/instances/channel-1/messages/message-10/retry')
       )
     ).toBe(true)
   );
-  detail = { ...detail, can_retry: false };
+  await waitFor(() => expect(client.isMutating()).toBe(0));
+  messages[9] = { ...messages[9]!, can_retry: false };
   await click(drawer.getByRole('button', { name: 'Refresh' }));
   await waitFor(() =>
     expect(
@@ -218,54 +310,37 @@ test('received records are messages with URL filters, exact detail, plain conten
   );
 });
 
-test('conversation deep link opens its message table and preserves the parent when opening a message', async () => {
+test('conversation deep link restores tabs and Chat after remount and browser back/forward; close clears selection', async () => {
   window.history.replaceState(
     {},
     '',
-    '/settings/communications?tab=conversations&conversation_id=conversation-1&conversation_page=2'
-  );
-  await show();
-  const drawer = within(await screen.findByRole('dialog'));
-  await drawer.findByRole('link', { name: 'Earlier request' });
-  expect(
-    calls.some(
-      (url) =>
-        url.pathname.endsWith('/messages') &&
-        url.searchParams.get('conversation_id') === 'conversation-1' &&
-        url.searchParams.get('page') === '2'
-    )
-  ).toBe(true);
-  await click(drawer.getByTitle('1'));
-  await click(await drawer.findByRole('link', { name: 'First request' }));
-  await drawer.findByText('Final reply');
-  await click(drawer.getByRole('link', { name: 'Back to conversation' }));
-  await drawer.findByRole('link', { name: 'First request' });
-  expect(window.location.search).toContain('conversation_id=conversation-1');
-  expect(window.location.search).not.toContain('message_id');
-});
-
-test('tabs and received selection restore from URL after remount and browser history navigation', async () => {
-  window.history.replaceState(
-    {},
-    '',
-    '/settings/communications?tab=logs&record_tab=received&message_id=message-1'
+    '/settings/communications?tab=logs&record_tab=received&conversation_id=conversation-1'
   );
   const view = await show(<NotificationsPage />);
-  await screen.findByText('Final reply');
-  const recordTab = screen.getByRole('tab', {
-    name: appI18n.t('notifications:send_receive_records')
-  });
-  expect(recordTab).toHaveAttribute('aria-selected', 'true');
+  await screen.findByText('Chat message 10');
+  expect(
+    screen.getByRole('tab', {
+      name: appI18n.t('notifications:send_receive_records')
+    })
+  ).toHaveAttribute('aria-selected', 'true');
+  expect(
+    screen.getByRole('tab', {
+      name: appI18n.t('notifications:received_records')
+    })
+  ).toHaveAttribute('aria-selected', 'true');
+  view.unmount();
+  await show(<NotificationsPage />);
+  await screen.findByText('Chat message 10');
   await click(screen.getByRole('button', { name: 'Close' }));
+  expect(
+    new URLSearchParams(window.location.search).has('conversation_id')
+  ).toBe(false);
   await click(
     screen.getByRole('tab', { name: appI18n.t('notifications:logs') })
   );
-  expect(window.location.search).toContain('record_tab=sent');
-  view.unmount();
-  await show(<NotificationsPage />);
-  expect(
-    screen.getByRole('tab', { name: appI18n.t('notifications:logs') })
-  ).toHaveAttribute('aria-selected', 'true');
+  expect(new URLSearchParams(window.location.search).get('record_tab')).toBe(
+    'sent'
+  );
   await act(async () => {
     window.history.back();
   });
@@ -277,36 +352,50 @@ test('tabs and received selection restore from URL after remount and browser his
     ).toHaveAttribute('aria-selected', 'true')
   );
   await act(async () => {
+    window.history.back();
+  });
+  await screen.findByText('Chat message 10');
+  expect(
+    new URLSearchParams(window.location.search).get('conversation_id')
+  ).toBe('conversation-1');
+  await act(async () => {
     window.history.forward();
   });
   await waitFor(() =>
-    expect(
-      screen.getByRole('tab', { name: appI18n.t('notifications:logs') })
-    ).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   );
+  expect(
+    new URLSearchParams(window.location.search).has('conversation_id')
+  ).toBe(false);
 });
 
-test('opening a conversation from a later received page resets the destination list page', async () => {
+test('received page two Chat preserves tabs, filters and pagination without opening a message detail', async () => {
   window.history.replaceState(
     {},
     '',
-    '/settings/communications?tab=logs&record_tab=received&page=2'
+    '/settings/communications?tab=logs&record_tab=received&page=2&processing_status=succeeded&send_status=failed'
   );
   await show(<NotificationsPage />);
-  await screen.findByRole('link', { name: 'Earlier request' });
-  await click(screen.getByRole('link', { name: 'Alice' }));
-  await screen.findByRole('dialog');
-  expect(new URLSearchParams(window.location.search).get('tab')).toBe(
-    'conversations'
-  );
-  expect(new URLSearchParams(window.location.search).get('page')).toBe('1');
-  await waitFor(() =>
-    expect(
-      calls.some(
-        (url) =>
-          url.pathname.endsWith('/conversations') &&
-          url.searchParams.get('page') === '1'
-      )
-    ).toBe(true)
-  );
+  expect(
+    (await screen.findByText('Chat message 3')).closest('.data-table')
+  ).not.toBeNull();
+  await openChat();
+  const params = new URLSearchParams(window.location.search);
+  expect(params.get('tab')).toBe('logs');
+  expect(params.get('record_tab')).toBe('received');
+  expect(params.get('page')).toBe('2');
+  expect(params.get('conversation_id')).toBe('conversation-1');
+  expect(params.has('message_id')).toBe(false);
+  expect(params.has('conversation_page')).toBe(false);
+  expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  const listRequest = calls.find(
+    (url) => url.pathname === '/api/console/communications/messages'
+  )!;
+  expect(listRequest.searchParams.get('direction')).toBe('inbound');
+  expect(listRequest.searchParams.get('processing_status')).toBe('succeeded');
+  expect(listRequest.searchParams.get('send_status')).toBe('failed');
+  expect(listRequest.searchParams.has('instance_id')).toBe(false);
+  expect(
+    calls.some((url) => /\/messages\/message-\d+$/.test(url.pathname))
+  ).toBe(false);
 });

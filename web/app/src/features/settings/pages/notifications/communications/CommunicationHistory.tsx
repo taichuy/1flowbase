@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Empty, Flex, Select } from 'antd';
+import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import { useTranslation } from 'react-i18next';
 import type { CommunicationConversationListItem } from '@1flowbase/api-client';
@@ -13,19 +14,12 @@ import {
   type DataTableColumn
 } from '../../../../../shared/ui/data-table/DataTable';
 import { usePersistedDataTableConfiguration } from '../../../../../shared/ui/data-table/data-table-state';
-import { formatDateTime } from '../../../../../shared/i18n/format';
 import {
   useCommunicationLocation,
   navigateCommunication
 } from './communication-navigation';
-import {
-  CommunicationLink,
-  CommunicationRunLink,
-  ProcessingStatus,
-  DeliveryStatus
-} from './communication-presentation';
 import { CommunicationMessagesTable } from './CommunicationMessagesTable';
-import { CommunicationDetail } from './CommunicationDetail';
+import { CommunicationChat } from './CommunicationChat';
 
 export function CommunicationHistory({
   records = false
@@ -55,9 +49,7 @@ export function CommunicationHistory({
   };
   const resetSelection = {
     page: 1,
-    conversation_id: undefined,
-    message_id: undefined,
-    conversation_page: 1
+    conversation_id: undefined
   };
   const toolbar = (
     <Flex gap="small" wrap>
@@ -140,99 +132,39 @@ export function CommunicationHistory({
   >(
     () => [
       {
-        key: 'sender_display_name',
-        title: t('conversation_user'),
-        width: 150,
-        mobileRole: 'title',
-        render: (_, item) => (
-          <CommunicationLink
-            to={{
-              conversation_id: item.id,
-              message_id: undefined,
-              conversation_page: 1
-            }}
-          >
-            {item.sender_display_name ?? item.external_identity}
-          </CommunicationLink>
-        )
-      },
-      {
         key: 'instance_display_name',
         title: t('display_name'),
-        width: 140,
+        width: 240,
         render: (_, item) => item.instance_display_name ?? t('deleted_channel')
       },
       {
-        key: 'latest_message.received_at_ms',
-        title: t('latest_message_at'),
-        width: 170,
-        render: (_, item) =>
-          item.latest_message
-            ? formatDateTime(
-                new Date(item.latest_message.received_at_ms).toISOString()
-              )
-            : '—'
+        key: 'sender_display_name',
+        title: t('conversation_user'),
+        width: 280,
+        mobileRole: 'title',
+        render: (_, item) => item.sender_display_name ?? item.external_identity
       },
       {
-        key: 'latest_message.content_preview',
-        title: t('latest_message'),
-        width: 180,
-        ellipsis: true,
-        render: (_, item) =>
-          item.latest_message ? (
-            <CommunicationLink
-              to={{
-                conversation_id: item.id,
-                message_id: item.latest_message.id,
-                conversation_page: 1
-              }}
-            >
-              {item.latest_message.content_preview || t('message_without_text')}
-            </CommunicationLink>
-          ) : (
-            '—'
-          )
-      },
-      {
-        key: 'latest_message.processing_status',
-        title: t('latest_processing_status'),
-        width: 130,
-        render: (_, item) =>
-          item.latest_message ? (
-            <ProcessingStatus status={item.latest_message.processing_status} />
-          ) : (
-            '—'
-          )
-      },
-      {
-        key: 'latest_message.send_status',
-        title: t('latest_send_status'),
-        width: 130,
-        render: (_, item) =>
-          item.latest_message ? (
-            <DeliveryStatus status={item.latest_message.send_status} />
-          ) : (
-            '—'
-          )
-      },
-      {
-        key: 'latest_message.run_id',
-        title: t('execution_logs'),
-        width: 130,
+        key: 'actions',
+        title: t('actions'),
+        width: 120,
         mobileRole: 'actions',
-        render: (_, item) =>
-          item.latest_message ? (
-            <CommunicationRunLink item={item.latest_message} />
-          ) : (
-            '—'
-          )
+        render: (_, item) => (
+          <Button
+            type="link"
+            icon={<MessageOutlined aria-hidden="true" />}
+            onClick={() => navigateCommunication({ conversation_id: item.id })}
+          >
+            {t('chat')}
+          </Button>
+        )
       }
     ],
     [t]
   );
   const configuration = usePersistedDataTableConfiguration({
     columns,
-    storageKey: 'communications.conversations.columns'
+    storageKey: 'communications.conversations.base.columns'
   });
   return (
     <section className="notifications-page">
@@ -262,8 +194,8 @@ export function CommunicationHistory({
           emptyText={<Empty description={t('no_conversations')} />}
         />
       )}
-      {(location.conversation_id || location.message_id) && (
-        <CommunicationDetail />
+      {location.conversation_id && (
+        <CommunicationChat conversation_id={location.conversation_id} />
       )}
     </section>
   );

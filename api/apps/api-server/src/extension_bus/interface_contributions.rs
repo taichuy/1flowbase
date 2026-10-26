@@ -528,6 +528,7 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-communications",
             &[
+                "communications.management.conversations.messages.list",
                 "communications.management.conversations.list",
                 "communications.management.messages.list",
                 "communications.management.messages.get",

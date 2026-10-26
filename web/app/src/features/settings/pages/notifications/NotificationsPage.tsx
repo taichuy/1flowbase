@@ -59,8 +59,7 @@ export function NotificationsPage() {
           navigateCommunication({
             tab: tab as typeof location.tab,
             page: 1,
-            conversation_id: undefined,
-            message_id: undefined
+            conversation_id: undefined
           })
         }
         items={[
@@ -85,8 +84,7 @@ export function NotificationsPage() {
                   navigateCommunication({
                     record_tab: record_tab as typeof location.record_tab,
                     page: 1,
-                    conversation_id: undefined,
-                    message_id: undefined
+                    conversation_id: undefined
                   })
                 }
                 items={[

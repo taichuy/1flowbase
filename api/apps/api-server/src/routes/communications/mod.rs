@@ -41,6 +41,13 @@ pub(crate) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation as Op;
     ConsoleRouteAssembly::new()
         .route(
+            "/communications/conversations/:conversation_id/messages",
+            console_get(
+                management_history,
+                Op("communications.management.conversations.messages.list".into()),
+            ),
+        )
+        .route(
             "/communications/conversations",
             console_get(
                 management_conversations,
@@ -86,7 +93,7 @@ pub(crate) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_get(files, Op("communications.files.list".into())),
         )
         .route(
-            "/communications/instances/:instance_id/files/:attachment_id",
+            "/communications/instances/:instance_id/files/:message_id",
             console_get(file, Op("communications.files.get".into())),
         )
         .route(
@@ -183,7 +190,7 @@ pub(crate) async fn conversations(
     )
     .await
 }
-#[utoipa::path(get,path="/api/console/communications/instances/{instance_id}/conversations/{conversation_id}/messages",tag="Communications",operation_id="communications_messages",params(("instance_id"=Uuid,Path,description="instance id"),("conversation_id"=Uuid,Path,description="conversation id"),("cursor"=Option<Uuid>,Query,description="cursor"),("limit"=Option<u32>,Query,description="limit")),responses((status=200,body=Value))) ]
+#[utoipa::path(get,path="/api/console/communications/instances/{instance_id}/conversations/{conversation_id}/messages",tag="Communications",operation_id="communications_messages",params(("instance_id"=Uuid,Path,description="instance id"),("conversation_id"=Uuid,Path,description="conversation id"),("cursor"=Option<Uuid>,Query,description="cursor"),("limit"=Option<u32>,Query,minimum=1,maximum=5,description="Page size, default and maximum 5")),responses((status=200,body=Value))) ]
 pub(crate) async fn messages(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -199,7 +206,7 @@ pub(crate) async fn messages(
     )
     .await
 }
-#[utoipa::path(get,path="/api/console/communications/instances/{instance_id}/conversations/{conversation_id}/files",tag="Communications",operation_id="communications_files",params(("instance_id"=Uuid,Path,description="instance id"),("conversation_id"=Uuid,Path,description="conversation id"),("cursor"=Option<Uuid>,Query,description="cursor"),("limit"=Option<u32>,Query,description="limit")),responses((status=200,body=Value))) ]
+#[utoipa::path(get,path="/api/console/communications/instances/{instance_id}/conversations/{conversation_id}/files",tag="Communications",operation_id="communications_files",params(("instance_id"=Uuid,Path,description="instance id"),("conversation_id"=Uuid,Path,description="conversation id"),("cursor"=Option<Uuid>,Query,description="cursor"),("limit"=Option<u32>,Query,minimum=1,maximum=5,description="Page size, default and maximum 5")),responses((status=200,body=Value))) ]
 pub(crate) async fn files(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -215,7 +222,7 @@ pub(crate) async fn files(
     )
     .await
 }
-#[utoipa::path(get,path="/api/console/communications/instances/{instance_id}/files/{attachment_id}",tag="Communications",operation_id="communications_file",params(("instance_id"=Uuid,Path,description="instance id"),("attachment_id"=Uuid,Path,description="attachment id"),("offset"=Option<u64>,Query,description="offset"),("max_bytes"=Option<u32>,Query,description="max bytes")),responses((status=200,body=Value))) ]
+#[utoipa::path(get,path="/api/console/communications/instances/{instance_id}/files/{message_id}",tag="Communications",operation_id="communications_file",params(("instance_id"=Uuid,Path,description="instance id"),("message_id"=Uuid,Path,description="attachment id"),("offset"=Option<u64>,Query,description="offset"),("max_bytes"=Option<u32>,Query,description="max bytes")),responses((status=200,body=Value))) ]
 pub(crate) async fn file(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -262,7 +269,7 @@ pub(crate) async fn management_conversations(
     )
     .await
 }
-#[utoipa::path(get,path="/api/console/communications/messages",tag="Communications",operation_id="communications_management_messages",params(("instance_id"=Option<Uuid>,Query,description="Channel filter"),("conversation_id"=Option<Uuid>,Query,description="Conversation filter"),("processing_status"=Option<String>,Query,description="Processing status filter"),("send_status"=Option<String>,Query,description="Send status filter"),("page"=Option<u32>,Query,description="Page number, defaults to 1"),("page_size"=Option<u32>,Query,description="Page size, defaults to 20, maximum 100")),responses((status=200,body=Value)))]
+#[utoipa::path(get,path="/api/console/communications/messages",tag="Communications",operation_id="communications_management_messages",params(("instance_id"=Option<Uuid>,Query,description="Channel filter"),("conversation_id"=Option<Uuid>,Query,description="Conversation filter"),("direction"=Option<String>,Query,description="Inbound or outbound"),("type"=Option<String>,Query,description="Text or file"),("processing_status"=Option<String>,Query,description="Processing status filter"),("send_status"=Option<String>,Query,description="Send status filter"),("page"=Option<u32>,Query,description="Page number, defaults to 1"),("page_size"=Option<u32>,Query,description="Page size, defaults to 20, maximum 100")),responses((status=200,body=Value)))]
 pub(crate) async fn management_messages(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -288,6 +295,23 @@ pub(crate) async fn management_message(
         headers,
         "communications.management.messages.get",
         Input::ManagementMessage(id),
+        false,
+    )
+    .await
+}
+
+#[utoipa::path(get,path="/api/console/communications/conversations/{conversation_id}/messages",tag="Communications",operation_id="communications_management_history",params(("conversation_id"=Uuid,Path,description="Conversation ID"),("cursor"=Option<Uuid>,Query,description="Oldest message anchor"),("limit"=Option<u32>,Query,minimum=1,maximum=5,description="Page size, default and maximum 5")),responses((status=200,body=Value)))]
+pub(crate) async fn management_history(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Query(q): Query<PageQuery>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(
+        state,
+        headers,
+        "communications.management.conversations.messages.list",
+        Input::ManagementHistory(id, q),
         false,
     )
     .await

@@ -488,8 +488,10 @@ async fn communication_management_links_original_run_application_after_binding_c
     let message = Uuid::now_v7();
     sqlx::query("INSERT INTO communication_conversations(id,scope_id,instance_id,external_identity,external_conversation_key) VALUES($1,$2,$3,'alice','chat')")
         .bind(conversation).bind(seeded.workspace_id).bind(channel).execute(store.pool()).await.unwrap();
-    sqlx::query("INSERT INTO communication_messages(id,scope_id,instance_id,conversation_id,external_identity,external_message_key,received_at_ms,run_id) VALUES($1,$2,$3,$4,'alice','message',42,$5)")
+    sqlx::query("INSERT INTO communication_inputs(id,scope_id,instance_id,conversation_id,external_identity,external_message_key,received_at_ms,run_id) VALUES($1,$2,$3,$4,'alice','message',42,$5)")
         .bind(message).bind(seeded.workspace_id).bind(channel).bind(conversation).bind(run.id).execute(store.pool()).await.unwrap();
+    sqlx::query("INSERT INTO communication_messages(id,scope_id,instance_id,conversation_id,external_identity,input_id,type,direction,occurred_at_ms,content) VALUES($1,$2,$3,$4,'alice',$1,'text','inbound',42,'message')")
+        .bind(message).bind(seeded.workspace_id).bind(channel).bind(conversation).execute(store.pool()).await.unwrap();
     let replacement = Uuid::now_v7();
     notification_service
         .save_binding(
@@ -508,7 +510,7 @@ async fn communication_management_links_original_run_application_after_binding_c
         .await
         .unwrap();
     assert_eq!(detail.application_id, Some(run.application_id));
-    assert_eq!(detail.message.run_id, Some(run.id));
+    assert_eq!(detail.run_id, Some(run.id));
     assert_ne!(detail.application_id, Some(replacement));
     let list = notification_service
         .management_messages(&actor, &Default::default())
@@ -519,14 +521,10 @@ async fn communication_management_links_original_run_application_after_binding_c
         .management_conversations(&actor, &Default::default())
         .await
         .unwrap();
-    assert_eq!(
-        conversations.items[0]
-            .latest_message
-            .as_ref()
-            .unwrap()
-            .application_id,
-        Some(run.application_id)
-    );
+    assert!(serde_json::to_value(&conversations.items[0])
+        .unwrap()
+        .get("latest_message")
+        .is_none());
     assert_eq!(
         store
             .communication_run_application_id(seeded.workspace_id, run.id)
