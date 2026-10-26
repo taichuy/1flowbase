@@ -253,13 +253,13 @@ impl PgControlPlaneStore {
         }
         read_contexts += changed.iter().filter(|id| **id != run.id).count() as i64;
         for owner in changed {
-            let row = sqlx::query("select f.*,runtime_original_json(f.input_payload,f.raw_json_payloads,'input_payload') as input_payload,runtime_original_json(f.output_payload,f.raw_json_payloads,'output_payload') as output_payload,runtime_original_json(f.error_payload,f.raw_json_payloads,'error_payload') as error_payload,(select account from users where id=f.created_by) as authorized_account from flow_runs f where id=$1")
-                .bind(owner).fetch_one(&mut **tx).await?;
-            let member = map_flow_run_record(row)?;
+            let member = Self::fetch_application_run_projection_flow_run(tx, owner).await?;
             let mut context: Option<Value> = if owner == run.id {
                 current_context.take()
             } else {
-                sqlx::query_scalar("select runtime_original_json(log_context,raw_json_payloads,'log_context') from flow_runs where id=$1").bind(owner).fetch_one(&mut **tx).await?
+                // A present sidecar, including JSON null, owns restoration and
+                // its errors. Only ordinary objects can omit results on the wire.
+                sqlx::query_scalar("select case when jsonb_typeof(log_context)='object' and not coalesce(raw_json_payloads ? 'log_context',false) then (log_context-'tool_results')::json else runtime_original_json(log_context,raw_json_payloads,'log_context') end from flow_runs where id=$1").bind(owner).fetch_one(&mut **tx).await?
             };
             // Results have already been consumed; retain only request metadata
             // while constructing the run's output rows.
