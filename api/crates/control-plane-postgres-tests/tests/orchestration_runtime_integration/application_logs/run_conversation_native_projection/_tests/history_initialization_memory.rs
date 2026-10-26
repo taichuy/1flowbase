@@ -105,7 +105,7 @@ impl Corpus {
         let entry = std::env::var("HISTORY_INIT_ENTRY").expect("entry");
         assert!(matches!(
             (alias.as_str(), entry.as_str()),
-            ("S03", "create" | "repair") | ("S02", "repair")
+            ("S03", "create" | "repair") | ("S02" | "S04", "repair")
         ));
         let manifest = load(root.join("private/sample-manifest.private.json"));
         let sample = manifest["samples"]
@@ -413,16 +413,16 @@ async fn import_history(store: &PgControlPlaneStore, corpus: &Corpus) -> Value {
     } else {
         assert!(
             progress.len() == runs.len(),
-            "S02 complete original progress"
+            "v7 complete original progress"
         );
         assert!(
             projections
                 .iter()
                 .all(|r| r["metadata"]["projection_version"] == 7),
-            "S02 real v7"
+            "real v7 projection"
         );
         safe(sqlx::query("update application_run_native_projection_progress set invalidated=true where flow_run_id=any($1)")
-            .bind(corpus.members.iter().copied().collect::<Vec<_>>()).execute(store.pool()).await, "owned S02 controlled invalidation");
+            .bind(corpus.members.iter().copied().collect::<Vec<_>>()).execute(store.pool()).await, "owned v7 controlled invalidation");
     }
     let entry_source = if corpus.entry == "create" {
         anchor.clone()
@@ -445,7 +445,7 @@ async fn import_history(store: &PgControlPlaneStore, corpus: &Corpus) -> Value {
         &json!({"alias":corpus.alias,"entry":corpus.entry,"concurrency":1,
         "runs":runs.len(),"events":events.len(),"messages":projections.len(),"original_progress":progress.len(),
         "source_projection_version":if corpus.alias=="S03" {6} else {7},
-        "invalidation":if corpus.alias=="S02" {"controlled in owned fixture DB"} else {"none: real v6/no-progress"},
+        "invalidation":if corpus.alias=="S03" {"none: real v6/no-progress"} else {"controlled in owned fixture DB"},
         "identity":"all original run/event UUIDs and their relative order preserved; coherent scaffold FK/actor domain; source conversation UUID retained",
         "create_scope":"one additional new UUID after all historical members; no original member excluded; source input/prompt/tool-results preserved; production regenerates derived context identity",
         "excluded":"source DB, actual flow/provider/callback execution, original node/billing state; referenced nodes are FK-only scaffold",
@@ -573,6 +573,27 @@ async fn branch_state(store: &PgControlPlaneStore, members: &[Uuid]) -> Value {
         .bind(members).fetch_one(store.pool()).await, "branch scalar evidence")
 }
 
+// Optional runner boundaries for isolated PG CPU/WAL accounting. Both waits
+// occur outside the actual-call wall timer and its frozen Probe phase.
+async fn entry_gate(boundary: &str) {
+    if std::env::var("HISTORY_INIT_ENTRY_GATES").as_deref() != Ok("1") {
+        return;
+    }
+    assert!(
+        matches!(boundary, "before" | "after"),
+        "entry gate boundary"
+    );
+    write_json(
+        output().join(format!("entry-{boundary}-ready.json")),
+        &json!({"boundary":boundary}),
+    );
+    let wait = std::time::Instant::now();
+    while !output().join(format!("entry-{boundary}-release")).exists() {
+        assert!(wait.elapsed().as_secs() < 120, "runner entry gate timeout");
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
 pub(super) async fn measure() {
     let mut trace = Probe::new(output().join("measured"));
     trace.point("process-ready", true);
@@ -596,7 +617,7 @@ pub(super) async fn measure() {
     } else {
         assert!(
             before["invalidated"].as_u64() == Some(members.len() as u64),
-            "controlled S02 full-repair precondition"
+            "controlled v7 full-repair precondition"
         );
     }
     let source = manifest
@@ -617,6 +638,7 @@ pub(super) async fn measure() {
             .expect("source");
         drop(source);
         trace.point("create-input-ready", true);
+        entry_gate("before").await;
         trace.begin("actual-create-published-flow-run");
         started = std::time::Instant::now();
         let receipt = safe(
@@ -626,6 +648,7 @@ pub(super) async fn measure() {
         let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
         trace.point("create-returned-held", true);
         trace.begin("create-return-oracle");
+        entry_gate("after").await;
         assert!(receipt.created, "create must not be an idempotency hit");
         target = receipt.flow_run.id;
         assert!(!members.contains(&target), "new run UUID");
@@ -675,6 +698,7 @@ pub(super) async fn measure() {
         };
         drop(source);
         trace.point("repair-small-update-ready", true);
+        entry_gate("before").await;
         trace.begin("actual-update-flow-run-full-repair");
         started = std::time::Instant::now();
         returned = safe(
@@ -684,6 +708,7 @@ pub(super) async fn measure() {
         let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
         trace.point("repair-returned-held", true);
         trace.begin("repair-return-oracle");
+        entry_gate("after").await;
         exact(
             &returned.output_payload,
             &input.output_payload,
