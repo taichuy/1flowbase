@@ -116,3 +116,50 @@ async fn archive_ownership_preserves_exact_returns_and_projection_failure_rollba
     assert_eq!(returned[0].payload, failed[0].payload);
     assert_eq!(returned[0].sequence, records.last().unwrap().sequence + 1);
 }
+
+// Mixed-run batches retain independent per-event transactions: an error leaves
+// the committed prefix visible and must not execute the remaining inputs.
+#[tokio::test]
+async fn mixed_run_append_failure_keeps_committed_prefix_and_skips_tail() {
+    let (store, run) = setup().await;
+    assert!(persisted_events(&store, run.id).await.is_empty());
+    let missing_run = Uuid::now_v7();
+    let exists: bool = sqlx::query_scalar("select exists(select 1 from flow_runs where id=$1)")
+        .bind(missing_run)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert!(!exists);
+    let inputs = [
+        event(run.id, "mixed-prefix".into(), "committed exact\0".into()),
+        event(missing_run, "mixed-failure".into(), "missing run".into()),
+        event(run.id, "mixed-tail".into(), "later literal \\u0000".into()),
+    ];
+
+    assert!(store.append_runtime_events(&inputs).await.is_err());
+    let committed = persisted_events(&store, run.id).await;
+    assert_eq!(committed.len(), 1, "only the successful prefix may persist");
+    assert_eq!(committed[0].2, inputs[0].payload);
+    let bodies: Vec<Value> = sqlx::query_scalar(
+        "select runtime_original_json(native_message,raw_json_payloads,'native_message') from application_run_conversation_message_items where flow_run_id=$1 and source_occurrence_sequence is not null order by display_sequence",
+    )
+    .bind(run.id)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        bodies.len(),
+        1,
+        "the prefix projection must commit with its event"
+    );
+    assert_eq!(bodies[0]["_source_item"], inputs[0].payload["item"]);
+
+    let tail = store.append_runtime_events(&inputs[2..]).await.unwrap();
+    assert_eq!(tail.len(), 1);
+    assert_eq!(tail[0].payload, inputs[2].payload);
+    assert_eq!(tail[0].sequence, committed[0].1 + 1);
+    let after = persisted_events(&store, run.id).await;
+    assert_eq!(after.len(), 2);
+    assert_eq!(after[0], committed[0]);
+    assert_eq!(after[1].2, inputs[2].payload);
+}
