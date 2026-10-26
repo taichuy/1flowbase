@@ -17,7 +17,9 @@ function fetchPostgres(target, destination) {
   if (download.error || download.status !== 0) throw download.error || new Error('PostgreSQL download failed');
   const digest = crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex');
   if (digest !== source.sha256) throw new Error('PostgreSQL archive checksum mismatch');
-  const unpack = spawnSync('tar', ['-xzf', archive, '-C', directory], { stdio: 'inherit' });
+  // Git Bash GNU tar interprets a drive-letter archive path as host:file.
+  // A relative archive name also works with the system tar on macOS/Linux.
+  const unpack = spawnSync('tar', ['-xzf', path.basename(archive)], { cwd: directory, stdio: 'inherit' });
   if (unpack.error || unpack.status !== 0) throw unpack.error || new Error('PostgreSQL extraction failed');
   fs.unlinkSync(archive);
   // Upstream archives may wrap their relocatable install tree in one directory.

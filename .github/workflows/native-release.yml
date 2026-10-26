@@ -68,12 +68,21 @@ jobs:
           workspaces: api
           key: native-${{ matrix.target }}
           cache-on-failure: true
+          cache-workspace-crates: true
       - name: Test native behavior and build backend
         run: |
           mkdir -p tmp/test-governance/native-release
           node --test scripts/node/native-release/_tests/package.test.js
           cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution
           cargo build --manifest-path api/Cargo.toml --locked --release -p api-server --bin api-server --bin system_recovery
+      - name: Preserve native backend artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-backend-${{ matrix.target }}
+          path: |
+            api/target/release/api-server${{ matrix.suffix }}
+            api/target/release/system_recovery${{ matrix.suffix }}
+          if-no-files-found: error
       - name: Build web
         run: |
           npm install --global pnpm@12.11.2
