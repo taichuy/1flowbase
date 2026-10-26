@@ -1,0 +1,103 @@
+name: Native portable distribution (experimental)
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - '.github/workflows/native-release.yml'
+      - 'api/apps/api-server/src/native_distribution/**'
+      - 'scripts/node/native-release/**'
+      - 'docker/native/**'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Platform to build and verify
+        type: choice
+        default: linux-x64
+        options: [linux-x64, linux-arm64, macos-x64, macos-arm64, windows-x64, all]
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - id: select
+        env:
+          TARGET: ${{ inputs.target || 'all' }}
+        run: |
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const entries = [
+            {target:'linux-x64', platform:'linux', arch:'x64', runner:'ubuntu-24.04', suffix:''},
+            {target:'linux-arm64', platform:'linux', arch:'arm64', runner:'ubuntu-24.04-arm', suffix:''},
+            {target:'macos-x64', platform:'macos', arch:'x64', runner:'macos-15-intel', suffix:''},
+            {target:'macos-arm64', platform:'macos', arch:'arm64', runner:'macos-15', suffix:''},
+            {target:'windows-x64', platform:'windows', arch:'x64', runner:'windows-2025', suffix:'.exe'}
+          ];
+          const include = entries.filter(item => process.env.TARGET === 'all' || item.target === process.env.TARGET);
+          if (!include.length) throw new Error('Unsupported target');
+          console.log('matrix=' + JSON.stringify({include}));
+          NODE
+
+  build:
+    needs: select
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.22.1'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+          key: native-${{ matrix.target }}
+      - name: Test native behavior and build backend
+        run: |
+          mkdir -p tmp/test-governance/native-release
+          node --test scripts/node/native-release/_tests/package.test.js
+          cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution
+          cargo build --manifest-path api/Cargo.toml --locked --release -p api-server --bin api-server --bin system_recovery
+      - name: Build web
+        run: |
+          npm install --global pnpm@12.11.2
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web build
+      - name: Fetch pinned PostgreSQL and package
+        env:
+          NATIVE_TARGET: ${{ matrix.target }}
+          NATIVE_PLATFORM: ${{ matrix.platform }}
+          NATIVE_ARCH: ${{ matrix.arch }}
+          NATIVE_SUFFIX: ${{ matrix.suffix }}
+        run: |
+          node scripts/node/native-release/fetch-postgres.js "$NATIVE_TARGET" tmp/native-postgres > tmp/native-postgres-path.txt
+          pg_root=$(tail -n 1 tmp/native-postgres-path.txt)
+          node scripts/node/native-release/package.js \
+            --platform "$NATIVE_PLATFORM" --arch "$NATIVE_ARCH" \
+            --api-binary "api/target/release/api-server$NATIVE_SUFFIX" \
+            --recovery-binary "api/target/release/system_recovery$NATIVE_SUFFIX" \
+            --web-dir web/app/dist --postgres-dir "$pg_root" --out tmp/native-release
+      - name: Verify startup, restart and shutdown
+        if: runner.os != 'Windows'
+        env:
+          NATIVE_TARGET: ${{ matrix.target }}
+        run: node scripts/node/native-release/smoke.js "tmp/native-release/1flowbase-$NATIVE_TARGET" tmp/test-governance/native-release/smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 1flowbase-${{ matrix.target }}
+          path: |
+            tmp/native-release/*.tar.gz
+            tmp/native-release/*.zip
+          if-no-files-found: error
