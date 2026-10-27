@@ -6,8 +6,8 @@ use control_plane_contracts::ports::{
     CommitInternalCompactionInput, ObserveInternalCompactionInput,
 };
 use orchestration_runtime::execution_engine::internal_compaction::{
-    fingerprint, select_prefix, summary_request, validate_summary, InputBudget, WorkingCheckpoint,
-    POLICY_KEY, SUMMARY_KEY,
+    closed_prefix_ends, fingerprint, select_prefix, summary_request, validate_summary,
+    CompactionSelection, InputBudget, WorkingCheckpoint, POLICY_KEY, SUMMARY_KEY,
 };
 use orchestration_runtime::execution_engine::ProviderInvoker;
 use plugin_framework::provider_contract::{ProviderCountTokensInput, ProviderWireOperation};
@@ -28,13 +28,39 @@ where
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         input: &ProviderInvocationInput,
     ) -> Result<(u64, Value)> {
-        let count = self
+        let provider_count = self
             .count_tokens(
                 runtime,
                 ProviderCountTokensInput::from_invocation(input.clone()),
             )
             .await?;
-        Ok((InputBudget::count(&count)?, serde_json::to_value(count)?))
+        use plugin_framework::provider_contract::{
+            ProviderCountTokensCoverage, ProviderCountTokensFallbackReason,
+        };
+        // A tokenizer may not model visible tool definitions or structured output.
+        // That limitation is different from opaque content. Use the existing host
+        // estimator only when it covers the whole readable input, and retain both
+        // receipts. Coverage is not a claim of tokenizer accuracy or an upper bound.
+        if provider_count.coverage == ProviderCountTokensCoverage::Partial
+            && closed_prefix_ends(&input.messages).is_ok()
+        {
+            let mut estimate = estimate_provider_count_tokens(input)?;
+            if estimate.coverage == ProviderCountTokensCoverage::Complete
+                && estimate.unknown_block_count == 0
+            {
+                estimate.fallback_reason =
+                    Some(ProviderCountTokensFallbackReason::CapabilityUnavailable);
+                let tokens = InputBudget::count(&estimate)?;
+                let mut receipt = serde_json::to_value(estimate)?;
+                receipt["fallback_context"] = json!("provider_count_partial_visible_input");
+                receipt["provider_count"] = serde_json::to_value(provider_count)?;
+                return Ok((tokens, receipt));
+            }
+        }
+        Ok((
+            InputBudget::count(&provider_count)?,
+            serde_json::to_value(provider_count)?,
+        ))
     }
 
     pub(super) async fn apply_internal_compaction(
@@ -65,11 +91,17 @@ where
             );
             return Ok(None);
         }
-        let explicit = input
-            .run_context
-            .get(POLICY_KEY)
-            .and_then(|v| v.get("enabled"))
-            .and_then(Value::as_bool);
+        let enabled = orchestration_runtime::execution_engine::internal_compaction::policy_enabled(
+            input
+                .run_context
+                .get(POLICY_KEY)
+                .and_then(|v| v.get("enabled")),
+        );
+        // Disabled means no compaction work, including repository reads or budget
+        // validation. The ordinary provider, usage and error paths remain owners.
+        if !enabled {
+            return Ok(None);
+        }
         let Some(context) = self.flow_execution_context.as_ref() else {
             return Ok(None);
         };
@@ -77,25 +109,14 @@ where
             return Ok(None);
         };
         let application_id = context.data_model.application_id;
-        let run = self
-            .repository
-            .get_flow_run(application_id, run_id)
-            .await?
-            .context("compaction run is unavailable")?;
-        let assistant = run.compatibility_mode.as_deref() == Some("embedded_assistant");
-        // Client protocol history and native continuations remain owned by their client.
-        let external = input.client_protocol_envelope.is_some() && !assistant;
-        if !orchestration_runtime::execution_engine::internal_compaction::policy_enabled(
-            assistant, explicit, external,
-        ) {
-            return Ok(None);
-        }
         let reserve = output_reserve(input)?;
         // The reserved output must also be the actual limit sent upstream. A provider's
         // unknown default cannot silently exceed the host's independent safety budget.
         input
             .model_parameters
             .insert("max_output_tokens".into(), json!(reserve));
+        input.model_parameters.remove("max_tokens");
+        input.model_parameters.remove("max_completion_tokens");
         ensure!(
             input.previous_response_id.is_none() && input.native_transport.is_none(),
             "internal compaction requires complete canonical history"
@@ -110,6 +131,7 @@ where
             .await?;
         let session_identity = conversation
             .map(|id| id.to_string())
+            // The existing scope is authenticated and absent for stateless calls.
             .or_else(|| self.provider_session_scope.clone())
             .unwrap_or_else(|| run_id.to_string());
         let node = input
@@ -160,28 +182,64 @@ where
             return Ok(Some(receipt));
         }
         let started = std::time::Instant::now();
-        // Exactly one candidate attempt per invocation; failure cannot loop over unchanged source.
-        let attempt:Result<(WorkingCheckpoint, Vec<plugin_framework::provider_contract::ProviderMessage>,u64,Value)>=async {
-            let selection=select_prefix(&source)?;
-            let mut raw=input.clone(); raw.messages=source.clone();
-            let mut summary=summary_request(&raw,&selection,old.as_ref())?;
-            summary.trace_context.insert("node_id".into(),node.clone());
-            let summary_budget=InputBudget::new(budget.window,4096)?;
-            let (summary_tokens,summary_count)=self.complete_input_count(runtime,&summary).await?;
-            ensure!(summary_budget.fits(summary_tokens),"summary request cannot fit its own model budget");
-            self.ensure_internal_compaction_run_active(application_id,run_id).await?;
-            let summary_output=self.invoke_resolved_llm(runtime,route.clone(),summary).await?;
-            ensure!(summary_output.result.tool_calls.is_empty() && summary_output.result.mcp_calls.is_empty(),"summary returned tool calls");
-            let body=validate_summary(summary_output.result.final_content.as_deref(),summary_output.result.finish_reason.as_ref())?;
-            self.ensure_internal_compaction_run_active(application_id,run_id).await?;
-            let checkpoint=WorkingCheckpoint {schema_version:1,prefix_hash:prefix_hash.clone(),
-                covered_source_hashes:source_hashes[..selection.covered_count].to_vec(),
-                retained_item_refs:selection.retained_item_refs,summary:body};
-            let view=checkpoint.view(&source,&prefix_hash)?;
-            let mut candidate_input=input.clone(); candidate_input.messages=view.clone();
-            let (after,after_count)=self.complete_input_count(runtime,&candidate_input).await?;
-            ensure!(budget.fits(after) && after < budget.threshold && after <= before.saturating_sub((before/10).max(1)),"summary did not release enough context growth space");
-            Ok((checkpoint,view,after,json!({"input_tokens":summary_tokens,"count":summary_count,"usage":summary_output.result.usage,"after_count":after_count})))
+        // One candidate publication. Each Generate consumes a new, closed source
+        // prefix; shrinking an unsent batch is planning, not a provider retry.
+        let attempt: Result<(WorkingCheckpoint, Vec<plugin_framework::provider_contract::ProviderMessage>, u64, Value)> = async {
+            let selection = select_prefix(&source)?;
+            let cuts = closed_prefix_ends(&source)?;
+            let mut raw = input.clone();
+            raw.messages = source.clone();
+            let summary_budget = InputBudget::new(budget.window, 4096)?;
+            let mut checkpoint = old.clone();
+            let mut cursor = checkpoint.as_ref().map_or(0, |cp| cp.covered_source_hashes.len());
+            ensure!(cursor < selection.covered_count, "compaction made no source progress");
+            let mut batches = Vec::new();
+            while cursor < selection.covered_count {
+                let ends = cuts.iter().copied().filter(|end| *end > cursor && *end <= selection.covered_count).collect::<Vec<_>>();
+                ensure!(!ends.is_empty(), "no closed history unit available for summary");
+                let mut choice = ends.len() - 1;
+                let (summary, summary_tokens, summary_count, end) = loop {
+                    let end = ends[choice];
+                    let batch = CompactionSelection {
+                        covered_count: end,
+                        retained_item_refs: selection.retained_item_refs.iter().copied().filter(|index| *index < end).collect(),
+                    };
+                    let mut summary = summary_request(&raw, &batch, checkpoint.as_ref())?;
+                    summary.trace_context.insert("node_id".into(), node.clone());
+                    let (tokens, count) = self.complete_input_count(runtime, &summary).await?;
+                    if summary_budget.fits(tokens) {
+                        break (summary, tokens, count, end);
+                    }
+                    ensure!(choice > 0, "one closed history unit plus checkpoint cannot fit the summary model budget");
+                    // No token-monotonicity assumption: only a measured fitting
+                    // request is ever submitted. The finite candidate set shrinks.
+                    choice /= 2;
+                };
+                self.ensure_internal_compaction_run_active(application_id, run_id).await?;
+                let summary_output = self.invoke_resolved_llm(runtime, route.clone(), summary).await?;
+                ensure!(summary_output.result.tool_calls.is_empty() && summary_output.result.mcp_calls.is_empty(), "summary returned tool calls");
+                let body = validate_summary(summary_output.result.final_content.as_deref(), summary_output.result.finish_reason.as_ref())?;
+                self.ensure_internal_compaction_run_active(application_id, run_id).await?;
+                batches.push(json!({"source_start":cursor,"source_end":end,
+                    "input_tokens":summary_tokens,"count":summary_count,
+                    "output_reserve":summary_budget.output_reserve,"safety_margin":summary_budget.safety_margin,
+                    "usage":summary_output.result.usage}));
+                checkpoint = Some(WorkingCheckpoint {
+                    schema_version: 1, prefix_hash: prefix_hash.clone(),
+                    covered_source_hashes: source_hashes[..end].to_vec(),
+                    retained_item_refs: selection.retained_item_refs.iter().copied().filter(|index| *index < end).collect(),
+                    summary: body,
+                });
+                cursor = end;
+            }
+            let checkpoint = checkpoint.context("no summary candidate produced")?;
+            let view = checkpoint.view(&source, &prefix_hash)?;
+            let mut candidate_input = input.clone();
+            candidate_input.messages = view.clone();
+            let (after, after_count) = self.complete_input_count(runtime, &candidate_input).await?;
+            ensure!(budget.fits(after) && after < budget.threshold && after <= before.saturating_sub((before / 10).max(1)),
+                "summary did not release enough context growth space");
+            Ok((checkpoint, view, after, json!({"batches":batches,"after_count":after_count})))
         }.await;
         match attempt {
             Ok((checkpoint, view, after, summary_usage)) => {
@@ -271,7 +329,8 @@ fn output_reserve(input: &ProviderInvocationInput) -> Result<u64> {
     let configured_reserve = input
         .model_parameters
         .get("max_output_tokens")
-        .or_else(|| input.model_parameters.get("max_tokens"));
+        .or_else(|| input.model_parameters.get("max_tokens"))
+        .or_else(|| input.model_parameters.get("max_completion_tokens"));
     let reserve = configured_reserve
         .map(|value| {
             value

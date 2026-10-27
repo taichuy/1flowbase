@@ -20,6 +20,12 @@ impl ProviderInvoker for ReceiptPipelineInvoker {
         input
             .model_parameters
             .insert("pipeline_marker".to_string(), json!(true));
+        input
+            .run_context
+            .insert("internal_compaction_policy".into(), json!({"enabled":true}));
+        input
+            .run_context
+            .insert("internal_local_summary".into(), json!(true));
         Ok(
             crate::provider_input_pipeline::ProviderInputPipelineOutput {
                 input,
@@ -220,6 +226,12 @@ async fn successful_pipeline_receipt_and_rewritten_input_share_the_llm_invocatio
             .model_parameters["pipeline_marker"],
         json!(true)
     );
+    let captured = captured_input.lock().unwrap().clone().unwrap();
+    assert_eq!(
+        captured.run_context["internal_compaction_policy"]["enabled"], false,
+        "input pipeline cannot grant node compaction permission"
+    );
+    assert!(!captured.run_context.contains_key("internal_local_summary"));
     assert_eq!(
         outcome.node_traces[1].debug_payload["llm_context"]["provider_input_pipeline"]
             ["receipt_digest"],

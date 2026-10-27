@@ -132,7 +132,13 @@ where
     let (operation, profile) = provider_operation(runtime_context.operation());
     let previous_response_id =
         pending_llm_tool_callback_previous_response_id(node, runtime, variable_pool);
-    let context_policy = llm_context_policy(node, runtime);
+    let mut context_policy = llm_context_policy(node, runtime);
+    // Only the compiled node configuration grants this permission. Routing defaults,
+    // client inputs and assistant compatibility mode cannot opt a node in.
+    let auto_compact = super::internal_compaction::policy_enabled(
+        node.config.pointer("/context_policy/auto_compact"),
+    );
+    context_policy["auto_compact"] = json!(auto_compact);
     let mut provider_context = if previous_response_id.is_some() {
         let prompt_messages = pending_llm_tool_callback_delta_messages(node, variable_pool)
             .ok_or_else(|| {
@@ -178,12 +184,6 @@ where
         "resolved_inputs".to_string(),
         Value::Object(resolved_inputs.clone()),
     )]);
-    // A host-owned policy hint, outside the provider/model parameter contract. The host
-    // supplies the assistant default and isolates external protocol clients.
-    run_context.insert(
-        super::internal_compaction::POLICY_KEY.to_string(),
-        json!({ "enabled": context_policy.get("auto_compact").and_then(Value::as_bool) }),
-    );
     if let Some(recovery) = variable_pool
         .get("sys")
         .and_then(|sys| sys.get("native_inference_recovery"))
@@ -286,6 +286,15 @@ where
             })
         })?;
     let mut input = pipelined.input;
+    // Seal after the general input pipeline. Only summary_request may create the
+    // internal summary marker; neither clients nor input transforms can mint it.
+    input
+        .run_context
+        .remove(super::internal_compaction::SUMMARY_KEY);
+    input.run_context.insert(
+        super::internal_compaction::POLICY_KEY.to_string(),
+        json!({ "enabled": auto_compact }),
+    );
     let pipeline_receipt = pipelined.receipt;
     if expected_identity
         != (

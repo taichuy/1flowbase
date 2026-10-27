@@ -46,3 +46,17 @@ fn opaque_reasoning_and_unrecognized_blocks_stay_partial() {
         assert!(count.input_tokens > 0);
     }
 }
+
+#[test]
+fn visible_canonical_tool_blocks_are_estimable_without_treating_opaque_as_text() {
+    let visible = estimate_provider_count_tokens(&historical_reply(json!({
+        "type":"tool_use","id":"call-1","name":"lookup","input":{"key":"value"}
+    })))
+    .unwrap();
+    assert_eq!(visible.coverage, ProviderCountTokensCoverage::Complete);
+    assert!(visible.input_tokens > 0);
+    let opaque = estimate_provider_count_tokens(&historical_reply(json!({
+        "type":"tool_result","tool_use_id":"call-1","content":[{"type":"reasoning_redacted","data":"opaque"}]
+    }))).unwrap();
+    assert_eq!(opaque.coverage, ProviderCountTokensCoverage::Partial);
+}

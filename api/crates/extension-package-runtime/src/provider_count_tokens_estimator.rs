@@ -146,6 +146,18 @@ impl CanonicalPromptEstimate {
                 self.add_json(block)?;
                 self.add_tokens(2)
             }
+            Some("tool_use") => self.add_json(block),
+            Some("tool_result") => {
+                self.add_json(block)?;
+                if let Some(content) = block.get("content").and_then(Value::as_array) {
+                    // Inspect nested blocks for opaque content as well as counting
+                    // their visible JSON. Do not upgrade unknown data to complete.
+                    for nested in content {
+                        self.add_content_block(nested)?;
+                    }
+                }
+                Ok(())
+            }
             Some("json" | "input_json" | "output_json") => {
                 self.add_json(block.get("json").unwrap_or(block))
             }
