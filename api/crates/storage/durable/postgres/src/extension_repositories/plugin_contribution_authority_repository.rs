@@ -47,7 +47,8 @@ impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
         mut self: Box<Self>,
         audit_log: domain::AuditLogRecord,
         catalog: Option<control_plane_contracts::CompiledConsolePolicyCatalog>,
-    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> {
+        compatible_notification_types: Vec<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<u64>> + Send>> {
         Box::pin(async move {
             let revision = self
                 .authority
@@ -57,6 +58,20 @@ impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
                 .ok_or(Error::InvalidInput("managed_candidate_authority"))?
                 .revision;
             let transaction = &mut self.authority.transaction;
+            let mut migrated_instances = 0;
+            if !self.system_service {
+                // The workspace lease also serializes channel creation with selection changes.
+                let types: Vec<String> = sqlx::query_scalar("select type_code from notification_instances where workspace_id=$1 and installation_id=$2 order by id for update")
+                    .bind(self.workspace_id).bind(self.current).fetch_all(&mut **transaction).await?;
+                if types
+                    .iter()
+                    .any(|code| !compatible_notification_types.contains(code))
+                {
+                    return Err(Error::Conflict("notification_type_migration_incompatible").into());
+                }
+                migrated_instances = sqlx::query("update notification_instances set installation_id=$3,authorization_revision=authorization_revision+1,updated_at=now() where workspace_id=$1 and installation_id=$2")
+                    .bind(self.workspace_id).bind(self.current).bind(self.target).execute(&mut **transaction).await?.rows_affected();
+            }
             if self.system_service {
                 // The enabled installation is the durable selection for system services.
                 // Both sides change in this transaction; no workspace assignment is created.
@@ -92,9 +107,11 @@ impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
                 )
                 .await?;
             }
+            let mut audit_log = audit_log;
+            audit_log.payload["migrated_instance_count"] = serde_json::json!(migrated_instances);
             append_audit(transaction, &audit_log, revision).await?;
             self.authority.transaction.commit().await?;
-            Ok(())
+            Ok(migrated_instances)
         })
     }
 }

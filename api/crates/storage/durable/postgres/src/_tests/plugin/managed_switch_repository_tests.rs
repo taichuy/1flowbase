@@ -148,7 +148,7 @@ async fn system_managed_switch_is_atomic_without_workspace_assignment() {
         .lock_managed_installation_switch(&command)
         .await
         .unwrap()
-        .commit_with_catalog(invalid, Some(permission_catalog()))
+        .commit_with_catalog(invalid, Some(permission_catalog()), Vec::new())
         .await;
     assert!(failed.is_err());
     assert!(!catalog_published(&store).await);
@@ -167,7 +167,11 @@ async fn system_managed_switch_is_atomic_without_workspace_assignment() {
         .lock_managed_installation_switch(&command)
         .await
         .unwrap()
-        .commit_with_catalog(audit(actor, target.id), Some(permission_catalog()))
+        .commit_with_catalog(
+            audit(actor, target.id),
+            Some(permission_catalog()),
+            Vec::new(),
+        )
         .await
         .unwrap();
     assert!(catalog_published(&store).await);
@@ -545,3 +549,6 @@ async fn system_binding_targets_are_included_in_candidate_switch_set() {
 
 #[path = "authentication_http_authority.rs"]
 mod authentication_http_authority;
+
+#[path = "notification_switch.rs"]
+mod notification_switch;

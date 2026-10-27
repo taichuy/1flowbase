@@ -518,7 +518,8 @@ async fn credentials_are_encrypted_bound_to_instance_and_excluded_from_public_re
         id,
         workspace_id: workspace.id,
         type_code: "fixture/provider/email".into(),
-        installation_id: Some(Uuid::now_v7()),
+        // Ciphertext isolation is independent of a plugin installation.
+        installation_id: None,
         display_name: "Email".into(),
         status: NotificationInstanceStatus::Enabled,
         config_json: json!({"endpoint":"https://example.test"}),
@@ -583,7 +584,8 @@ async fn notification_managed_secrets_are_workspace_bound_encrypted_and_revision
                 id,
                 workspace_id: workspace.id,
                 type_code: "fixture/managed/notification".into(),
-                installation_id: Some(Uuid::now_v7()),
+                // Ciphertext isolation is independent of a plugin installation.
+                installation_id: None,
                 display_name: "Managed".into(),
                 status: NotificationInstanceStatus::Disabled,
                 config_json: json!({}),

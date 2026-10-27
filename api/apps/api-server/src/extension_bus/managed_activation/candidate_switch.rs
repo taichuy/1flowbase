@@ -19,11 +19,11 @@ impl ManagedExtensionComposition {
             let _permit = permit;
             let result = owner.switch_candidate(workspace_id, current, target, audit).await;
             let mut detail = task.detail_json.clone();
-            detail["migrated_instance_count"] = serde_json::json!(0);
+            detail["migrated_instance_count"] = serde_json::json!(result.as_ref().copied().unwrap_or(0));
             let finalized = owner.store.update_task_status(&control_plane_contracts::ports::UpdatePluginTaskStatusInput {
                 task_id: task.id,
                 status: if result.is_ok() { domain::PluginTaskStatus::Succeeded } else { domain::PluginTaskStatus::Failed },
-                status_message: Some(match &result { Ok(()) => "switched".into(), Err(error) => error.to_string() }),
+                status_message: Some(match &result { Ok(_) => "switched".into(), Err(error) => error.to_string() }),
                 detail_json: detail,
             }).await;
             if let Err(error) = &finalized {
@@ -46,7 +46,7 @@ impl ManagedExtensionComposition {
         current: Uuid,
         target: Uuid,
         audit: domain::AuditLogRecord,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         let _assembly = self.assembly.lock().await;
         let old = self
             .snapshot(workspace_id)
@@ -144,10 +144,25 @@ impl ManagedExtensionComposition {
                 .map(|(_, prepared)| prepared.permission_catalog.clone());
             let lease = self.store.lock_managed_installation_switch(&input).await?;
             Self::validate_candidate(&expected, lease.authority())?;
+            let compatible_types =
+                control_plane::notifications::compatible_notification_migration_types(
+                    &lease
+                        .authority()
+                        .installation(current)
+                        .context("managed current missing")?
+                        .metadata_json,
+                    &lease
+                        .authority()
+                        .installation(target)
+                        .context("managed target missing")?
+                        .metadata_json,
+                )?;
             let mut visible = self.snapshots.lock().await;
             // All fallible compilation and activation precedes this durable commit.
             // The owned task cannot be cancelled by a dropped request while committing.
-            lease.commit_with_catalog(audit, permission_catalog).await?;
+            let migrated = lease
+                .commit_with_catalog(audit, permission_catalog, compatible_types)
+                .await?;
             let retained = visible
                 .retained
                 .entry(old.graph.fingerprint().as_str().into())
@@ -161,7 +176,7 @@ impl ManagedExtensionComposition {
             }
             drop(visible);
             self.notify_reclamation();
-            Ok::<_, anyhow::Error>(())
+            Ok::<_, anyhow::Error>(migrated)
         }
         .await;
         if switched.is_err() {

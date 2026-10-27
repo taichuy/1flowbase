@@ -21,6 +21,8 @@ use uuid::Uuid;
 
 mod authorization;
 mod managed_send;
+mod migration;
+pub use migration::compatible_notification_migration_types;
 
 pub use domain::{NotificationSendResult, NotificationSource};
 pub use extension_contracts::{NotificationAuthorizationOperation, NotificationAuthorizationView};

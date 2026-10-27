@@ -192,6 +192,10 @@ impl ProviderContext {
                 &state.provider_secret_master_key,
             )
             .await?;
+        ensure!(
+            authorization.installation_id == instance.installation_id,
+            "notification_authorization_stale"
+        );
         if entry.descriptor.authorization.is_some() {
             ensure!(
                 authorization

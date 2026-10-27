@@ -44,14 +44,18 @@ pub trait ManagedInstallationSwitchLease: Send {
         self: Box<Self>,
         audit_log: AuditLogRecord,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> {
-        self.commit_with_catalog(audit_log, None)
+        let commit = self.commit_with_catalog(audit_log, None, Vec::new());
+        Box::pin(async move { commit.await.map(|_| ()) })
     }
-    /// Commit the selection and optional permission projection in the same transaction.
+    /// Atomically migrate channels accepted by the business owner, select the version and
+    /// publish permissions. Reject existing channels outside the compatible type set.
+    /// Returns the number of migrated notification instances.
     fn commit_with_catalog(
         self: Box<Self>,
         audit_log: AuditLogRecord,
         catalog: Option<crate::CompiledConsolePolicyCatalog>,
-    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
+        compatible_notification_types: Vec<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<u64>> + Send>>;
     fn release(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 }
 

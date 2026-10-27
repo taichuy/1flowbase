@@ -13,6 +13,8 @@ pub struct SaveNotificationInstanceInput {
 // Credentials deliberately have no Debug implementation.
 
 pub struct NotificationAuthorizationSnapshot {
+    /// Read atomically with the revision: rejects old-installation consumers after a switch.
+    pub installation_id: Option<Uuid>,
     pub authorization: Option<extension_contracts::NotificationAuthorizationView>,
     pub managed_secrets: std::collections::BTreeMap<String, Value>,
     pub revision: i64,

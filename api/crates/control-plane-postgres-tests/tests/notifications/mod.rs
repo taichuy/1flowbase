@@ -11,3 +11,6 @@ mod communications;
 
 #[path = "_tests/communication_management.rs"]
 mod communication_management;
+
+#[path = "_tests/version_switch.rs"]
+mod version_switch;

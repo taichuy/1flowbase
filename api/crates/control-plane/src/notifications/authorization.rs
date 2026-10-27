@@ -85,6 +85,9 @@ where
                 &self.master_key,
             )
             .await?;
+        if state.installation_id != record.installation_id {
+            return Err(Error::Conflict("notification_authorization_stale").into());
+        }
         let current = project_for_descriptor(
             state.authorization.clone().unwrap_or_else(unauthorized),
             &entry.descriptor,

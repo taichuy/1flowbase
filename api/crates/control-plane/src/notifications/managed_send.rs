@@ -28,6 +28,9 @@ where
                 &self.master_key,
             )
             .await?;
+        if state.installation_id != instance.installation_id {
+            return Err(Error::Conflict("notification_authorization_stale").into());
+        }
         if descriptor.authorization.is_some() {
             match state
                 .authorization
