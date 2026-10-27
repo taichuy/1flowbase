@@ -3,6 +3,7 @@ use sqlx::{pool::PoolConnection, Connection, Postgres};
 use std::{
     collections::HashMap,
     fmt,
+    future::Future,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex, Weak,
@@ -448,7 +449,19 @@ impl PgConnectionRegistry {
         key: PgAdvisoryLockKey,
         deadline: Instant,
     ) -> Result<PgCoordinationLease> {
-        let result = self.acquire_inner(key, deadline, false).await?;
+        let result = self.acquire_inner(key, Some(deadline), false).await?;
+        result.ok_or_else(|| anyhow::anyhow!("postgres coordination lock was not acquired"))
+    }
+
+    /// Wait in the local FIFO and for cross-node lock ownership without a total logical
+    /// deadline. Caller cancellation still drops the pending acquisition and its guard.
+    /// Each physical attempt (lane admission, connection/probe and clean return) shares
+    /// the configured connection acquire timeout. Resource admission/DB failures return
+    /// Err; only an acknowledged false lock probe retries, retaining the same FIFO turn.
+    /// This preserves callers that historically waited for a lock without a total timeout;
+    /// it neither bypasses finite lane budgets nor promises cross-node fairness/liveness.
+    pub async fn acquire_waiting(&self, key: PgAdvisoryLockKey) -> Result<PgCoordinationLease> {
+        let result = self.acquire_inner(key, None, false).await?;
         result.ok_or_else(|| anyhow::anyhow!("postgres coordination lock was not acquired"))
     }
 
@@ -463,17 +476,17 @@ impl PgConnectionRegistry {
             key.lane == PgCoordinationLane::Dispatch,
             "postgres try-lock requires dispatch lane"
         );
-        self.acquire_inner(key, deadline, true).await
+        self.acquire_inner(key, Some(deadline), true).await
     }
 
     async fn acquire_inner(
         &self,
         key: PgAdvisoryLockKey,
-        deadline: Instant,
+        logical_deadline: Option<Instant>,
         try_only: bool,
     ) -> Result<Option<PgCoordinationLease>> {
         anyhow::ensure!(
-            deadline > Instant::now(),
+            !logical_deadline.is_some_and(|deadline| deadline <= Instant::now()),
             "postgres coordination deadline exceeded"
         );
         anyhow::ensure!(
@@ -487,7 +500,7 @@ impl PgConnectionRegistry {
         } else {
             let cell = self.inner.keys.cell(&key);
             let waiting = Waiting::new(&lane.counts);
-            let guard = timeout_at(deadline, cell.mutex.clone().lock_owned())
+            let guard = await_logical_deadline(logical_deadline, cell.mutex.clone().lock_owned())
                 .await
                 .map_err(|_| anyhow::anyhow!("postgres local queue deadline exceeded"))?;
             drop(waiting);
@@ -497,17 +510,29 @@ impl PgConnectionRegistry {
             })
         };
         // These are polling delays, not capacity or a second business timeout. Bound their
-        // exponential growth to 50ms; every probe, return and delay uses the original deadline.
+        // exponential growth to 50ms. A bounded caller keeps its original deadline;
+        // acquire_waiting has no logical timer while it owns only the FIFO turn.
         let mut retry_delay = Duration::from_millis(1);
         loop {
             anyhow::ensure!(
-                deadline > Instant::now(),
+                !logical_deadline.is_some_and(|deadline| deadline <= Instant::now()),
                 "postgres lock acquire deadline exceeded"
             );
             anyhow::ensure!(
                 !self.inner.closed.load(Ordering::SeqCst),
                 "postgres connection owner closed"
             );
+            // Start this timer only at physical admission. It must not include time
+            // spent in the same-key queue or a previous false-probe backoff. Some keeps
+            // the existing absolute-deadline API unchanged; None adds no synthetic horizon.
+            let deadline = match logical_deadline {
+                Some(deadline) => deadline,
+                None => Instant::now()
+                    .checked_add(self.inner.settings.business.acquire_timeout)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("postgres acquire timeout is not representable")
+                    })?,
+            };
             let (connection, activity) = match &lane.pool {
                 Some(pool) => {
                     let connection =
@@ -606,12 +631,14 @@ impl PgConnectionRegistry {
                     let gate = self.inner.fixtures.retry_delay.lock().unwrap().take();
                     if let Some((observed, resumed)) = gate {
                         let _ = observed.send(());
-                        let _ = timeout_at(deadline, resumed).await.map_err(|_| {
-                            anyhow::anyhow!("postgres lock acquire deadline exceeded")
-                        })?;
+                        let _ = await_logical_deadline(logical_deadline, resumed)
+                            .await
+                            .map_err(|_| {
+                                anyhow::anyhow!("postgres lock acquire deadline exceeded")
+                            })?;
                     }
                 }
-                timeout_at(deadline, sleep(retry_delay))
+                await_logical_deadline(logical_deadline, sleep(retry_delay))
                     .await
                     .map_err(|_| anyhow::anyhow!("postgres lock acquire deadline exceeded"))?;
                 retry_delay = retry_delay.saturating_mul(2).min(Duration::from_millis(50));
@@ -675,6 +702,18 @@ impl PgConnectionRegistry {
             .fixtures
             .legacy_blocking_probe
             .store(true, Ordering::SeqCst);
+    }
+}
+
+/// None removes only the logical-timeout exit; future Drop and all per-attempt
+/// timeout/error cleanup remain the same paths as the finite acquisition model.
+async fn await_logical_deadline<F: Future>(
+    deadline: Option<Instant>,
+    future: F,
+) -> std::result::Result<F::Output, tokio::time::error::Elapsed> {
+    match deadline {
+        Some(deadline) => timeout_at(deadline, future).await,
+        None => Ok(future.await),
     }
 }
 

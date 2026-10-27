@@ -13,6 +13,8 @@ pub use temporary::PgTemporaryPool;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PgPoolSettings {
     pub max_connections: u32,
+    /// Native physical acquisition timeout. acquire_waiting also applies it to each
+    /// connection/probe attempt, without making it a total logical advisory-lock timeout.
     pub acquire_timeout: Duration,
     pub idle_timeout: Option<Duration>,
     pub max_lifetime: Option<Duration>,

@@ -520,6 +520,223 @@ async fn absolute_deadline_expires_in_connection_free_retry_phase_without_discar
 }
 
 #[tokio::test]
+async fn acquire_waiting_keeps_template_fifo_beyond_physical_timeout_then_progresses() {
+    let physical_timeout = Duration::from_millis(250);
+    for lane_cap in [None, Some(2)] {
+        let mut configuration = settings(1);
+        configuration.business.acquire_timeout = physical_timeout;
+        configuration.template_install_max_connections = lane_cap;
+        let fixture = Fixture::new(configuration).await;
+        let registry = fixture.store.connections().clone();
+        let workspace = Uuid::now_v7();
+        let key = PgAdvisoryLockKey::template_install(workspace);
+        let remote = fixture.remote_template_holder(workspace, false).await;
+        // Saturate P=1 as a control: logical queue/probes must use only their own lane.
+        let mut business = fixture.store.pool().acquire().await.unwrap();
+        let (backoff, resume) = registry.pause_next_retry_delay();
+        let head_registry = registry.clone();
+        let head_key = key.clone();
+        let mut head = tokio::spawn(async move { head_registry.acquire_waiting(head_key).await });
+        timeout(Duration::from_secs(2), backoff)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut followers = Vec::new();
+        for index in 0..3 {
+            let follower_registry = registry.clone();
+            let follower_key = key.clone();
+            followers.push(tokio::spawn(async move {
+                follower_registry.acquire_waiting(follower_key).await
+            }));
+            eventually(|| registry.observe().template_install.local_queue == index + 1).await;
+        }
+        // The barrier holds only the FIFO turn. Exceed the configured physical timeout
+        // without making either the head or its local followers expire/rejoin the queue.
+        assert!(timeout(physical_timeout * 2, &mut head).await.is_err());
+        assert!(followers.iter().all(|follower| !follower.is_finished()));
+        let observation = registry.observe();
+        assert_eq!(observation.local_key_cells, 1);
+        assert_eq!(observation.template_install.local_queue, 3);
+        assert_eq!(observation.template_install.active, 0);
+        assert_eq!(observation.template_install.pool.checked_out, 0);
+        let snapshot = fixture.server_lock_snapshot(&remote).await;
+        assert!(
+            snapshot.holder_holds && snapshot.blocked_pids.is_empty(),
+            "{snapshot:?}"
+        );
+        assert_eq!(
+            snapshot.coordinator_pids.len(),
+            if lane_cap.is_some() { 1 } else { 0 }
+        );
+        timeout(
+            Duration::from_secs(2),
+            sqlx::query("SELECT 1").execute(&mut *business),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        resume.send(()).unwrap();
+        // Also exceed the timeout with actual PG false probes/backoff, not just the gate.
+        assert!(timeout(physical_timeout * 2, &mut head).await.is_err());
+        assert!(followers.iter().all(|follower| !follower.is_finished()));
+        let snapshot = fixture.server_lock_snapshot(&remote).await;
+        assert!(
+            snapshot.holder_holds && snapshot.blocked_pids.is_empty(),
+            "{snapshot:?}"
+        );
+        remote.release().await;
+        let lease = timeout(Duration::from_secs(2), head)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(followers.iter().all(|follower| !follower.is_finished()));
+        lease.release().await;
+        for follower in followers {
+            timeout(Duration::from_secs(2), follower)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap()
+                .release()
+                .await;
+        }
+        assert_eq!(registry.observe().local_key_cells, 0);
+        drop(business);
+        fixture.close().await;
+    }
+}
+
+#[tokio::test]
+async fn acquire_waiting_cancellation_leaves_no_template_server_waiter_or_local_owner() {
+    for lane_cap in [None, Some(1)] {
+        let mut configuration = settings(1);
+        configuration.business.acquire_timeout = Duration::from_millis(250);
+        configuration.template_install_max_connections = lane_cap;
+        let fixture = Fixture::new(configuration).await;
+        let registry = fixture.store.connections().clone();
+        let workspace = Uuid::now_v7();
+        let key = PgAdvisoryLockKey::template_install(workspace);
+        let remote = fixture.remote_template_holder(workspace, true).await;
+        for _ in 0..3 {
+            let (backoff, _resume) = registry.pause_next_retry_delay();
+            let pending_registry = registry.clone();
+            let pending_key = key.clone();
+            let pending =
+                tokio::spawn(async move { pending_registry.acquire_waiting(pending_key).await });
+            timeout(Duration::from_secs(2), backoff)
+                .await
+                .unwrap()
+                .unwrap();
+            pending.abort();
+            assert!(pending.await.unwrap_err().is_cancelled());
+            eventually(|| {
+                let observation = registry.observe();
+                observation.local_key_cells == 0
+                    && observation.template_install.local_queue == 0
+                    && observation.template_install.active == 0
+                    && observation.template_install.closing == 0
+            })
+            .await;
+            if lane_cap.is_none() {
+                eventually_async(|| async {
+                    fixture
+                        .server_lock_snapshot(&remote)
+                        .await
+                        .coordinator_pids
+                        .is_empty()
+                })
+                .await;
+            }
+            let snapshot = fixture.server_lock_snapshot(&remote).await;
+            assert!(snapshot.no_waiter_accumulation(1), "{snapshot:?}");
+        }
+        remote.release().await;
+        registry.acquire_waiting(key).await.unwrap().release().await;
+        fixture.close().await;
+    }
+}
+
+#[tokio::test]
+async fn acquire_waiting_probe_timeout_returns_error_and_discards_unknown_session_without_retry() {
+    let mut configuration = settings(1);
+    configuration.business.acquire_timeout = Duration::from_millis(250);
+    configuration.template_install_max_connections = Some(1);
+    let fixture = Fixture::new(configuration).await;
+    let registry = fixture.store.connections().clone();
+    let key = PgAdvisoryLockKey::template_install(Uuid::now_v7());
+    let (probed, _resume) = registry.pause_next_probe_result();
+    let pending_registry = registry.clone();
+    let pending_key = key.clone();
+    let pending = tokio::spawn(async move { pending_registry.acquire_waiting(pending_key).await });
+    // Real PG true, before ownership handoff; the phase gate simulates an unknown
+    // completion, not an actual network response-loss experiment.
+    assert!(timeout(Duration::from_secs(2), probed)
+        .await
+        .unwrap()
+        .unwrap());
+    let pid = fixture.template_pid().await;
+    let error = timeout(Duration::from_secs(2), pending)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert!(error.to_string().contains("lock acquire deadline"));
+    eventually_async(|| async { !fixture.session_exists(pid).await }).await;
+    eventually(|| {
+        let observation = registry.observe();
+        observation.local_key_cells == 0
+            && observation.template_install.pool.size == 0
+            && observation.template_install.active == 0
+            && observation.template_install.closing == 0
+    })
+    .await;
+    let fresh = registry.acquire_waiting(key).await.unwrap();
+    assert_ne!(fixture.template_pid().await, pid);
+    fresh.release().await;
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn acquire_waiting_still_errors_when_finite_template_lane_has_no_physical_slot() {
+    let mut configuration = settings(1);
+    configuration.business.acquire_timeout = Duration::from_millis(250);
+    configuration.template_install_max_connections = Some(1);
+    let fixture = Fixture::new(configuration).await;
+    let registry = fixture.store.connections();
+    let holder = registry
+        .acquire_waiting(PgAdvisoryLockKey::template_install(Uuid::now_v7()))
+        .await
+        .unwrap();
+    let error = timeout(
+        Duration::from_secs(2),
+        registry.acquire_waiting(PgAdvisoryLockKey::template_install(Uuid::now_v7())),
+    )
+    .await
+    .expect("physical admission must have a finite timeout")
+    .unwrap_err();
+    assert!(
+        error.to_string().contains("lane acquire deadline")
+            || matches!(
+                error.downcast_ref::<sqlx::Error>(),
+                Some(sqlx::Error::PoolTimedOut)
+            ),
+        "{error:#}"
+    );
+    assert!(!holder.status().lost && !holder.status().closed);
+    let observation = registry.observe();
+    assert_eq!(observation.local_key_cells, 1);
+    assert_eq!(observation.template_install.active, 1);
+    assert_eq!(observation.template_install.pool.size, 1);
+    sqlx::query("SELECT 1")
+        .execute(fixture.store.pool())
+        .await
+        .unwrap();
+    holder.release().await;
+    fixture.close().await;
+}
+
+#[tokio::test]
 async fn clean_unlock_ack_allows_reuse_without_residual_or_reentrant_lock() {
     let fixture = Fixture::new(settings(1)).await;
     let (installation, scope, key) = managed_key();
