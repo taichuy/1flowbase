@@ -4,7 +4,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { configuration } = require('../config.cjs');
+const { configuration, publicConfiguration } = require('../config.cjs');
+const { apiSpawner } = require('../run.cjs');
+const { spawnOwned } = require('../../gateway-fixture/process-owner');
 const { isolatedObjectRoot, storageBinding, objectSnapshot, uploadFixture, multipart, uploadedRecord, readbackOracle, uploadAndRead } = require('../mixed-workload.cjs');
 const storageId = '11111111-1111-1111-1111-111111111111';
 const tableId = '22222222-2222-2222-2222-222222222222';
@@ -24,8 +26,44 @@ test('configuration defaults to text and only admits fixed mixed upload sizes', 
     RB_ANTHROPIC_PACKAGE: '/anthropic', RB_OPENAI_COMPATIBLE_PACKAGE: '/compatible' };
   assert.equal(configuration(env).workload, 'text');
   for (const size of [1048576, 8388608]) assert.equal(configuration({ ...env, RB_WORKLOAD: 'mixed', RB_UPLOAD_BYTES: String(size) }).uploadBytes, size);
+  for (const concurrency of [1, 3, 8]) {
+    const config = configuration({ ...env, RB_WORKLOAD: 'mixed', RB_CONCURRENCY: String(concurrency),
+      RB_DATABASE_POOL_MAX_CONNECTIONS: '10', RB_DATABASE_MANAGED_MAX_CONNECTIONS: '1' });
+    assert.equal(config.concurrency, concurrency);
+    assert.equal(config.workload, 'mixed');
+    assert.equal(config.uploadBytes, 1048576);
+    assert.deepEqual(publicConfiguration(config).connectionPlan, { API_DATABASE_POOL_MAX_CONNECTIONS: 10, API_DATABASE_MANAGED_MAX_CONNECTIONS: 1 });
+  }
   assert.throws(() => configuration({ ...env, RB_WORKLOAD: 'unknown' }));
   assert.throws(() => configuration({ ...env, RB_UPLOAD_BYTES: '2097152' }));
+});
+
+test('mixed production spawner overrides the fixture P5 while retaining owned cwd and object isolation', () => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'resource-mixed-spawn-'));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'resource-mixed-spawn-repo-'));
+  try {
+    for (const name of ['host-extensions', 'capability-plugins', 'sets']) fs.mkdirSync(path.join(repo, 'api/plugins', name), { recursive: true });
+    const config = configuration({ RB_REPO_ROOT: repo, RB_ARTIFACT_ROOT: path.join(repo, 'tmp/test-governance/run'), RB_DEDICATED_DATABASE: '1',
+      RB_DATABASE_URL: 'postgres://localhost/test_resource', RB_API_BINARY: '/binary', RB_OPENAI_PACKAGE: '/openai',
+      RB_ANTHROPIC_PACKAGE: '/anthropic', RB_OPENAI_COMPATIBLE_PACKAGE: '/compatible', RB_WORKLOAD: 'mixed', RB_CONCURRENCY: '3',
+      RB_DATABASE_POOL_MAX_CONNECTIONS: '10', RB_DATABASE_MANAGED_MAX_CONNECTIONS: '1' });
+    let actual, objectRoot;
+    const start = apiSpawner(config, (binary, env, options) => spawnOwned(binary, env, options, (binary, args, options) => {
+      actual = { binary, args, ...options };
+      return { stdout: null, stderr: null };
+    }), root => { objectRoot = root; });
+    start('/binary', { API_DATABASE_POOL_MAX_CONNECTIONS: '5' }, { cwd: scratch, parentEnv: {} });
+    assert.equal(actual.env.API_DATABASE_POOL_MAX_CONNECTIONS, '10');
+    assert.equal(actual.env.API_DATABASE_MANAGED_MAX_CONNECTIONS, '1');
+    assert.equal(actual.cwd, scratch);
+    assert.equal(objectRoot, path.join(fs.realpathSync(scratch), 'api/storage'));
+    assert.equal(fs.realpathSync(path.join(scratch, 'api/plugins/host-extensions')), path.join(repo, 'api/plugins/host-extensions'));
+    assert.equal(actual.env.API_SYSTEM_BACKUP_REPOSITORY_ROOT, path.join(scratch, 'system-backups'));
+    assert.equal(actual.env.API_MODEL_PRICING_BOOTSTRAP_ROOT, path.join(repo, 'api/resources/model-pricing'));
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
 });
 
 test('multipart sends exact binary file/MIME and omits table to exercise default selection', async () => {

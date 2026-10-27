@@ -2,7 +2,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-const { configuration, publicConfiguration, secrets, safeError } = require('./config.cjs');
+const { configuration, publicConfiguration, connectionEnvironment, secrets, safeError } = require('./config.cjs');
 const { clockTicks, parseStat } = require('./proc.cjs');
 const { requestBody } = require('./payload.cjs');
 const { startMock, delay } = require('./mock.cjs');
@@ -10,6 +10,25 @@ const { measure, request } = require('./measure.cjs');
 const { isolatedObjectRoot, verifyStorage, objectSnapshot, uploadFixture, uploadAndRead } = require('./mixed-workload.cjs');
 const { databaseSnapshot } = require('./database.cjs');
 const { assertNoArtifactSecrets } = require('../cli-smoke/artifact-scan');
+
+function apiSpawner(config, spawnOwned, onObjectRoot = () => {}) {
+  const connectionEnv = connectionEnvironment(config);
+  return (binary, env, options) => {
+    // Runtime builtins need real source assets even when the binary's build tree
+    // is gone; mutable extension/backup state remains fixture-owned.
+    const mixed = config.workload === 'mixed';
+    if (mixed) onObjectRoot(isolatedObjectRoot(options.cwd, config.repoRoot));
+    return spawnOwned(binary, {
+      ...env,
+      API_MCP_TEMPLATE_LIBRARY_ROOT: path.join(options.cwd, 'mcp-library'),
+      API_SYSTEM_BACKUP_REPOSITORY_ROOT: path.join(options.cwd, 'system-backups'),
+      API_APPLICATION_TEMPLATE_ROOT: path.join(config.repoRoot, 'api/resources/application-templates'),
+      API_MODEL_PRICING_BOOTSTRAP_ROOT: path.join(config.repoRoot, 'api/resources/model-pricing'),
+      // Apply only validated P/M overrides AFTER the fixture's default P=5.
+      ...connectionEnv,
+    }, { ...options, cwd: mixed ? options.cwd : path.join(config.repoRoot, 'api') });
+  };
+}
 
 async function run(config) {
   const { createGatewayFixture, sha256File } = require(path.join(config.repoRoot, 'scripts/node/ai-gateway-concurrency/gateway-fixture'));
@@ -67,18 +86,7 @@ async function run(config) {
     phase = 'fixture_bootstrap';
     fixture = await createGatewayFixture({ ...config, apiPort, upstreamBaseUrl: mock.baseUrl, artifactRoot: path.join(config.artifactRoot, 'service') }, {
       OwnerHttpClient: TemporaryOwner,
-      spawnOwned(binary, env, options) {
-        // Runtime builtins need real source assets even when the binary's build tree is gone.
-        // Mutable extension/backup state stays inside the fixture-owned scratch directory.
-        if (mixed) objectRoot = isolatedObjectRoot(options.cwd, config.repoRoot);
-        return spawnOwned(binary, {
-          ...env,
-          API_MCP_TEMPLATE_LIBRARY_ROOT: path.join(options.cwd, 'mcp-library'),
-          API_SYSTEM_BACKUP_REPOSITORY_ROOT: path.join(options.cwd, 'system-backups'),
-          API_APPLICATION_TEMPLATE_ROOT: path.join(config.repoRoot, 'api/resources/application-templates'),
-          API_MODEL_PRICING_BOOTSTRAP_ROOT: path.join(config.repoRoot, 'api/resources/model-pricing'),
-        }, { ...options, cwd: mixed ? options.cwd : path.join(config.repoRoot, 'api') });
-      },
+      spawnOwned: apiSpawner(config, spawnOwned, root => { objectRoot = root; }),
     });
     if (mixed) {
       phase = 'mixed_storage_isolation';
@@ -156,4 +164,4 @@ if (require.main === module) {
     if (!ok) process.exitCode = 1;
   }).catch(() => { console.error('resource benchmark failed; check required environment and artifact directory'); process.exitCode = 1; });
 }
-module.exports = { run };
+module.exports = { run, apiSpawner };
