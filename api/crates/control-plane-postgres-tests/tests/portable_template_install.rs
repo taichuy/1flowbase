@@ -898,7 +898,7 @@ async fn transaction_connection_loss_cannot_reconnect_and_commit_a_partial_batch
 }
 
 #[tokio::test]
-async fn template_install_lock_shares_scoped_budget_and_excludes_another_node_without_business_checkout(
+async fn template_install_waits_past_business_timeout_and_shares_scoped_budget_without_business_checkout(
 ) {
     // Retain the original schema owner while using an explicit P=1 serving pool.
     let (schema_owner, workspace, actor) = support::seed_store().await;
@@ -918,6 +918,30 @@ async fn template_install_lock_shares_scoped_budget_and_excludes_another_node_wi
             .await
             .unwrap();
     let scoped = store.for_actor(context);
+    let resource_timeout = std::time::Duration::from_millis(200);
+    let mut peer_settings =
+        PgConnectionSettings::compatible(PgPoolSettings::with_max_connections(1));
+    peer_settings.business.acquire_timeout = resource_timeout;
+    peer_settings.template_install_max_connections = Some(1);
+    let peer_pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(resource_timeout)
+        .connect_with((*schema_owner.pool().connect_options()).clone())
+        .await
+        .unwrap();
+    let peer = PgControlPlaneStore::with_connection_settings(peer_pool, peer_settings).unwrap();
+    // Warm the bounded peer lane before contention, separating physical session
+    // admission from the logical wait behind another node's healthy holder.
+    drop(
+        peer.lock_application_template_install(workspace.id)
+            .await
+            .unwrap(),
+    );
+    connections_eventually(|| {
+        let lane = peer.connections().observe().template_install;
+        lane.active == 0 && lane.closing == 0
+    })
+    .await;
     let held = store
         .lock_application_template_install(workspace.id)
         .await
@@ -930,21 +954,15 @@ async fn template_install_lock_shares_scoped_budget_and_excludes_another_node_wi
     let sessions: i64 = sqlx::query_scalar("select count(*) from pg_stat_activity where datname=current_database() and application_name='1flowbase:template-lock'")
         .fetch_one(schema_owner.pool()).await.unwrap();
     assert_eq!(
-        sessions, 1,
-        "a scoped local waiter must not create a private session"
+        sessions, 2,
+        "the holder and warm peer pool exist; the scoped waiter creates no extra session"
     );
-    let mut peer_settings = schema_owner.connections().settings().clone();
-    peer_settings.business.acquire_timeout = std::time::Duration::from_secs(2);
-    let peer =
-        PgControlPlaneStore::with_connection_settings(schema_owner.pool().clone(), peer_settings)
-            .unwrap();
-    let other = peer.clone();
-    let mut remote =
-        tokio::spawn(async move { other.lock_application_template_install(workspace.id).await });
+    let mut remote = Box::pin(peer.lock_application_template_install(workspace.id));
     assert!(
-        tokio::time::timeout(std::time::Duration::from_millis(50), &mut remote)
+        tokio::time::timeout(resource_timeout * 3, &mut remote)
             .await
-            .is_err()
+            .is_err(),
+        "healthy cross-node lock contention must outlive the physical resource timeout"
     );
     let ordinary: i32 = tokio::time::timeout(
         std::time::Duration::from_secs(1),
@@ -954,16 +972,62 @@ async fn template_install_lock_shares_scoped_budget_and_excludes_another_node_wi
     .unwrap()
     .unwrap();
     assert_eq!(ordinary, 7, "template waiters must leave P=1 available");
+    let peer_ordinary: i32 = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        sqlx::query_scalar("select 11").fetch_one(peer.pool()),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        peer_ordinary, 11,
+        "the cross-node waiter must also leave its P=1 available"
+    );
+    drop(remote);
+    connections_eventually(|| {
+        let observation = peer.connections().observe();
+        observation.template_install.active == 0
+            && observation.template_install.closing == 0
+            && observation.template_install.local_queue == 0
+            && observation.local_key_cells == 0
+    })
+    .await;
     local.abort();
     assert!(matches!(local.await,Err(error) if error.is_cancelled()));
     connections_eventually(|| store.connections().observe().template_install.local_queue == 0)
         .await;
+    let blocked: i64 = sqlx::query_scalar("select count(*) from pg_locks where database=(select oid from pg_database where datname=current_database()) and locktype='advisory' and not granted")
+        .fetch_one(schema_owner.pool()).await.unwrap();
+    assert_eq!(
+        blocked, 0,
+        "cancelling local and cross-node waiters must leave no server lock waiter"
+    );
+    let mut remote = Box::pin(peer.lock_application_template_install(workspace.id));
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(50), &mut remote)
+            .await
+            .is_err()
+    );
     drop(held);
     let remote = tokio::time::timeout(std::time::Duration::from_secs(5), remote)
         .await
         .unwrap()
-        .unwrap()
         .unwrap();
+    let tenant = schema_owner.upsert_root_tenant().await.unwrap();
+    let other_workspace = schema_owner
+        .upsert_workspace(tenant.id, "Template resource timeout")
+        .await
+        .unwrap();
+    let error = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        peer.lock_application_template_install(other_workspace.id),
+    )
+    .await
+    .expect("a full physical I lane must still return its resource admission timeout")
+    .err()
+    .expect("physical slot exhaustion must remain an error");
+    let message = error.to_string();
+    assert!(message.contains("deadline") || message.contains("timed out"));
     let mut legacy = schema_owner.pool().begin().await.unwrap();
     let acquired: bool =
         sqlx::query_scalar("select pg_try_advisory_xact_lock(hashtextextended($1,0))")

@@ -18,11 +18,9 @@ impl PortableTemplateIdentityRepository for PgControlPlaneStore {
         &self,
         workspace_id: Uuid,
     ) -> Result<Box<dyn ApplicationTemplateInstallGuard>> {
-        let deadline =
-            tokio::time::Instant::now() + self.connections().settings().business.acquire_timeout;
         let lease = self
             .connections()
-            .acquire(PgAdvisoryLockKey::template_install(workspace_id), deadline)
+            .acquire_waiting(PgAdvisoryLockKey::template_install(workspace_id))
             .await?;
         Ok(Box::new(PgApplicationTemplateInstallGuard {
             _lease: lease,
