@@ -288,7 +288,7 @@ pub fn translate_response_request_with_context_and_previous(
     let object = request.as_object().expect("indexed Responses object");
     let operation = classify_response_operation(object, &context, &mut report)?;
     translate_indexed_response_request(
-        request,
+        ResponsesRequestBody::Owned(request),
         request_index,
         operation,
         context,
@@ -311,10 +311,10 @@ pub fn translate_response_envelope_with_decision_and_previous(
     decision: OpenAiResponsesOperationDecision,
     previous_response: Option<OpenAiPreviousResponseContext>,
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
-    let (request, request_index) = envelope.into_parts();
+    let (transport, request_index) = envelope.into_parts();
     let (operation, report, context) = decision.into_parts();
     translate_indexed_response_request(
-        request,
+        ResponsesRequestBody::Captured(transport),
         request_index,
         operation,
         context,
@@ -323,15 +323,24 @@ pub fn translate_response_envelope_with_decision_and_previous(
     )
 }
 
+enum ResponsesRequestBody {
+    Owned(Value),
+    Captured(ProviderTransportPayload),
+}
+
 fn translate_indexed_response_request(
-    request: Value,
+    body: ResponsesRequestBody,
     request_index: super::responses_index::ResponsesRequestIndex,
     operation: AiNativeOperation,
     context: OpenAiResponsesRequestContext,
     previous_response: Option<OpenAiPreviousResponseContext>,
     mut report: TranslationReportBuilder,
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
-    let object = openai_request_object(&request, &mut report)?;
+    let request = match &body {
+        ResponsesRequestBody::Owned(request) => request,
+        ResponsesRequestBody::Captured(transport) => transport.wire_body(),
+    };
+    let object = openai_request_object(request, &mut report)?;
     if let (Some(requested), Some(previous)) = (
         object.get("previous_response_id").and_then(Value::as_str),
         previous_response.as_ref(),
@@ -532,7 +541,7 @@ fn translate_indexed_response_request(
     metadata.set_responses_transport_requirement(transport_requirement);
     if !uses_native_transport {
         metadata.set_responses_configuration_digest(
-            ProviderTransportPayload::openai_responses_configuration_digest(&request)
+            ProviderTransportPayload::openai_responses_configuration_digest(request)
                 .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?,
         );
         let predecessor = previous_response
@@ -554,13 +563,13 @@ fn translate_indexed_response_request(
             .transpose()
             .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?;
         metadata.set_responses_input_history(
-            super::history::completed_history(&request, predecessor.as_ref(), &[])
+            super::history::completed_history(request, predecessor.as_ref(), &[])
                 .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?,
         );
     }
     metadata.set_application_run_log_context(
         super::log_context::capture_application_run_log_context(
-            &request,
+            request,
             context.captured_codex_turn_metadata(),
         ),
         operation,
@@ -591,8 +600,13 @@ fn translate_indexed_response_request(
         || prefers_native_transport
         || matches!(operation, domain::AiNativeOperation::Compact(_))
     {
-        let payload = ProviderTransportPayload::openai_responses(request)
-            .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?;
+        let payload = match body {
+            ResponsesRequestBody::Owned(request) => {
+                ProviderTransportPayload::openai_responses(request)
+                    .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?
+            }
+            ResponsesRequestBody::Captured(transport) => transport,
+        };
         metadata.set_provider_transport_payload(if prefers_native_transport {
             payload.preferred()
         } else {

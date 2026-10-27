@@ -27,6 +27,10 @@ mod native_results;
 mod repository_contracts;
 mod run_input;
 
+#[cfg(test)]
+#[path = "run_service/_tests/input_ownership.rs"]
+mod input_ownership;
+
 use crate::{
     audit::audit_log,
     flow_run_title::build_flow_run_title,

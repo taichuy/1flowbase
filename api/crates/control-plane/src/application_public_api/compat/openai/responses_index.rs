@@ -161,8 +161,8 @@ impl OpenAiResponsesEnvelope {
         &self.index
     }
 
-    pub(crate) fn into_parts(self) -> (Value, ResponsesRequestIndex) {
-        (self.transport.into_wire_body(), self.index)
+    pub(crate) fn into_parts(self) -> (ProviderTransportPayload, ResponsesRequestIndex) {
+        (self.transport, self.index)
     }
 }
 
