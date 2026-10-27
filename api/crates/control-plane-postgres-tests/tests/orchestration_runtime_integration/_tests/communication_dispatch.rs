@@ -6,6 +6,75 @@ use control_plane::{
 };
 use control_plane_contracts::ports::AuthRepository;
 use plugin_framework::provider_contract::{ProviderInvocationInput, ProviderModelDescriptor};
+use storage_durable_postgres::{PgAdvisoryLockKey, PgConnectionSettings, PgPoolSettings};
+
+async fn connection_fixture(
+    business: u32,
+    dispatch: Option<u32>,
+) -> (
+    postgres_test_support::PostgresTestSchema,
+    PgControlPlaneStore,
+) {
+    let database = isolated_database().await;
+    let mut settings =
+        PgConnectionSettings::compatible(PgPoolSettings::with_max_connections(business));
+    if dispatch.is_some() {
+        settings.business.acquire_timeout = std::time::Duration::from_millis(500);
+    }
+    settings.dispatch_max_connections = dispatch;
+    settings.health_check_interval = std::time::Duration::from_millis(20);
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(business)
+        .acquire_timeout(settings.business.acquire_timeout)
+        .connect(database.database_url())
+        .await
+        .unwrap();
+    run_migrations(&pool).await.unwrap();
+    (
+        database,
+        PgControlPlaneStore::with_connection_settings(pool, settings).unwrap(),
+    )
+}
+
+async fn dispatch_drained(store: &PgControlPlaneStore) {
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let lane = store.connections().observe().dispatch;
+            if lane.active == 0 && lane.closing == 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("owned dispatch sessions must drain");
+}
+
+async fn dispatch_backend(store: &PgControlPlaneStore, run: &domain::FlowRunRecord) -> i32 {
+    // Match this fixture's exact legacy key and lane, never an arbitrary backend.
+    sqlx::query_scalar(
+        r#"select l.pid from pg_locks l join pg_stat_activity a on a.pid=l.pid
+        where l.locktype='advisory' and l.granted and l.objsubid=1
+          and l.database=(select oid from pg_database where datname=current_database())
+          and a.application_name='1flowbase:dispatch-lock'
+          and l.classid=((hashtextextended($1,2012)>>32)&4294967295)::oid
+          and l.objid=(hashtextextended($1,2012)&4294967295)::oid"#,
+    )
+    .bind(format!("flow-dispatch:{}:{}", run.application_id, run.id))
+    .fetch_one(store.pool())
+    .await
+    .unwrap()
+}
+
+async fn lose_dispatch_session(store: &PgControlPlaneStore, run: &domain::FlowRunRecord) {
+    let pid = dispatch_backend(store, run).await;
+    let terminated: bool = sqlx::query_scalar("select pg_terminate_backend($1)")
+        .bind(pid)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert!(terminated);
+}
 
 // The real service and PostgreSQL adapter execute a start->answer graph.
 // Provider calls are forbidden in this focused initial-ownership fixture.
@@ -434,7 +503,311 @@ async fn communication_dispatch_completes_with_one_business_pool_connection() {
     );
     assert_eq!(started_events(&store, run.id).await, 1);
     assert_eq!(store.pool().size(), 1);
-    store.pool().close().await;
+    store.connections().close().await;
+}
+
+#[tokio::test]
+async fn communication_default_dispatch_admits_six_and_keeps_cross_node_try_semantics() {
+    let (_database, store) = connection_fixture(5, None).await;
+    assert_eq!(
+        store.connections().settings().dispatch_max_connections,
+        None
+    );
+    let mut runs = Vec::new();
+    for _ in 0..6 {
+        runs.push(queued(&store).await.1);
+    }
+    let mut leases = Vec::new();
+    for run in &runs {
+        leases.push(
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                store.try_acquire_flow_run_dispatch_lease(run.application_id, run.id),
+            )
+            .await
+            .expect("compatibility dispatch must not inherit P=5 as a cap")
+            .unwrap()
+            .unwrap(),
+        );
+    }
+    assert_eq!(store.connections().observe().dispatch.active, 6);
+    let sessions: i64 = sqlx::query_scalar("select count(*) from pg_stat_activity where datname=current_database() and application_name='1flowbase:dispatch-lock'")
+        .fetch_one(store.pool()).await.unwrap();
+    assert_eq!(sessions, 6);
+    let ordinary: i32 = sqlx::query_scalar("select 7")
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(ordinary, 7);
+    assert!(store.pool().size() <= 5);
+    // Independent registry models another node; cloned/scoped stores do not.
+    let peer = PgControlPlaneStore::new(store.pool().clone());
+    let last = runs.last().unwrap();
+    assert!(peer
+        .try_acquire_flow_run_dispatch_lease(last.application_id, last.id)
+        .await
+        .unwrap()
+        .is_none());
+    let lease = leases.pop().unwrap();
+    let cancelled = tokio::spawn(async move {
+        let _lease = lease;
+        std::future::pending::<()>().await;
+    });
+    cancelled.abort();
+    assert!(cancelled.await.unwrap_err().is_cancelled());
+    let replacement = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if let Some(lease) = peer
+                .try_acquire_flow_run_dispatch_lease(last.application_id, last.id)
+                .await
+                .unwrap()
+            {
+                break lease;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    // The original seed remains compatible with legacy transaction locks.
+    let mut legacy = store.pool().begin().await.unwrap();
+    let acquired: bool =
+        sqlx::query_scalar("select pg_try_advisory_xact_lock(hashtextextended($1,2012))")
+            .bind(format!("flow-dispatch:{}:{}", last.application_id, last.id))
+            .fetch_one(&mut *legacy)
+            .await
+            .unwrap();
+    assert!(!acquired);
+    legacy.rollback().await.unwrap();
+    drop(replacement);
+    drop(leases);
+    dispatch_drained(&store).await;
+    dispatch_drained(&peer).await;
+    peer.connections().close().await;
+    store.connections().close().await;
+}
+
+#[tokio::test]
+async fn communication_full_dispatch_budget_is_error_and_parent_can_finish_managed_callback() {
+    let (_database, store) = connection_fixture(1, Some(1)).await;
+    let (seeded, parent) = queued(&store).await;
+    let (_, waiting) = queued(&store).await;
+    let dispatch = store
+        .try_acquire_flow_run_dispatch_lease(parent.application_id, parent.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let error = service(store.clone())
+        .dispatch_communication_run(command(&waiting))
+        .await
+        .err()
+        .expect("D quota exhaustion must propagate an error, not non-owner success");
+    let message = error.to_string();
+    assert!(message.contains("deadline") || message.contains("timed out"));
+    assert_eq!(
+        store
+            .get_flow_run(waiting.application_id, waiting.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        FlowRunStatus::Queued
+    );
+    assert_eq!(started_events(&store, waiting.id).await, 0);
+    let managed = store
+        .connections()
+        .acquire(
+            PgAdvisoryLockKey::managed_mutation(Uuid::now_v7(), seeded.workspace_id),
+            tokio::time::Instant::now() + std::time::Duration::from_secs(2),
+        )
+        .await
+        .unwrap();
+    assert_eq!(store.connections().observe().dispatch.active, 1);
+    assert_eq!(store.connections().observe().managed.active, 1);
+    // Real repository persistence stands in for a Host callback's business SQL.
+    store
+        .append_runtime_event(&AppendRuntimeEventInput {
+            flow_run_id: parent.id,
+            node_run_id: None,
+            span_id: None,
+            parent_span_id: None,
+            event_type: "dispatch_fixture_callback".into(),
+            layer: domain::RuntimeEventLayer::AgentTransition,
+            source: domain::RuntimeEventSource::Host,
+            trust_level: domain::RuntimeTrustLevel::HostFact,
+            item_id: None,
+            ledger_ref: None,
+            visibility: domain::RuntimeEventVisibility::Workspace,
+            durability: domain::RuntimeEventDurability::Durable,
+            payload: json!({"completed":true}),
+        })
+        .await
+        .unwrap();
+    let callbacks: i64 = sqlx::query_scalar("select count(*) from runtime_events where flow_run_id=$1 and event_type='dispatch_fixture_callback' and payload->'completed'='true'::jsonb")
+        .bind(parent.id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(callbacks, 1);
+    assert_eq!(store.pool().size(), 1);
+    assert!(!managed.release().await.lost);
+    drop(dispatch);
+    dispatch_drained(&store).await;
+    let retried = service(store.clone())
+        .dispatch_communication_run(command(&waiting))
+        .await
+        .unwrap();
+    assert_eq!(retried.flow_run.status, FlowRunStatus::Succeeded);
+    assert_eq!(started_events(&store, waiting.id).await, 1);
+    store.connections().close().await;
+}
+
+#[tokio::test]
+async fn communication_dispatch_session_loss_stops_initial_execution_without_replay() {
+    let (_database, store) = connection_fixture(5, None).await;
+    let (_, run) = queued(&store).await;
+    sqlx::raw_sql(
+        r#"
+        create function delay_dispatch_started() returns trigger language plpgsql as $$
+        begin
+            if new.event_type='assistant_execution_started' then perform pg_sleep(0.5); end if;
+            return new;
+        end $$;
+        create trigger delay_dispatch_started before insert on flow_run_events
+            for each row execute function delay_dispatch_started();
+    "#,
+    )
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let execution_store = store.clone();
+    let start = command(&run);
+    let execution = tokio::spawn(async move {
+        service(execution_store)
+            .dispatch_communication_run(start)
+            .await
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(5),async {
+        loop {
+            let sleeping: bool = sqlx::query_scalar("select exists(select 1 from pg_stat_activity where datname=current_database() and wait_event='PgSleep' and query ilike '%insert into flow_run_events%')")
+                .fetch_one(store.pool()).await.unwrap();
+            if sleeping { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    }).await.expect("the initial owner must reach its real post-CAS writer");
+    lose_dispatch_session(&store, &run).await;
+    let detail = tokio::time::timeout(std::time::Duration::from_secs(5), execution)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(detail.flow_run.status, FlowRunStatus::Failed);
+    assert_eq!(
+        detail.flow_run.error_payload.unwrap()["code"],
+        "communication_dispatch_failed"
+    );
+    assert!(
+        detail.node_runs.is_empty(),
+        "the engine must not continue after ownership loss"
+    );
+    let observed = service(store.clone())
+        .dispatch_communication_run(command(&run))
+        .await
+        .unwrap();
+    assert_eq!(observed.flow_run.status, FlowRunStatus::Failed);
+    assert!(observed.node_runs.is_empty());
+    store.connections().close().await;
+}
+
+#[tokio::test]
+async fn communication_dispatch_lost_lease_preserves_waiting_and_resumed_checkpoint_fence() {
+    let (_database, store) = connection_fixture(5, None).await;
+    let (_, run) = queued(&store).await;
+    mark_running(&store, &run).await;
+    store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: FlowRunStatus::WaitingHuman,
+            output_payload: json!({}),
+            error_payload: None,
+            finished_at: None,
+        })
+        .await
+        .unwrap();
+    let checkpoint = store
+        .create_checkpoint(&CreateCheckpointInput {
+            flow_run_id: run.id,
+            node_run_id: None,
+            status: "waiting_human".into(),
+            reason: "committed handoff".into(),
+            locator_payload: json!({}),
+            variable_snapshot: json!({}),
+            external_ref_payload: None,
+        })
+        .await
+        .unwrap();
+    let mut lease = store
+        .try_acquire_flow_run_dispatch_lease(run.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    lose_dispatch_session(&store, &run).await;
+    tokio::time::timeout(std::time::Duration::from_secs(2), lease.wait_for_loss())
+        .await
+        .unwrap();
+    drop(lease);
+    dispatch_drained(&store).await;
+    let runtime = service(store.clone());
+    assert_eq!(
+        runtime
+            .dispatch_communication_run(command(&run))
+            .await
+            .unwrap()
+            .flow_run
+            .status,
+        FlowRunStatus::WaitingHuman
+    );
+    dispatch_drained(&store).await;
+    runtime
+        .reject_communication_dispatch(run.application_id, run.id)
+        .await
+        .unwrap();
+    dispatch_drained(&store).await;
+    // A resumed Running without a claim still has a durable checkpoint. The
+    // original initial_execution CAS fence, not status alone, must protect it.
+    store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: FlowRunStatus::Running,
+            output_payload: json!({}),
+            error_payload: None,
+            finished_at: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        runtime
+            .dispatch_communication_run(command(&run))
+            .await
+            .unwrap()
+            .flow_run
+            .status,
+        FlowRunStatus::Running
+    );
+    dispatch_drained(&store).await;
+    runtime
+        .reject_communication_dispatch(run.application_id, run.id)
+        .await
+        .unwrap();
+    let current = store
+        .get_flow_run(run.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(current.status, FlowRunStatus::Running);
+    assert!(current.error_payload.is_none());
+    let retained: bool = sqlx::query_scalar("select exists(select 1 from flow_run_checkpoints where id=$1 and flow_run_id=$2 and status='waiting_human')")
+        .bind(checkpoint.id).bind(run.id).fetch_one(store.pool()).await.unwrap();
+    assert!(retained);
+    assert_eq!(started_events(&store, run.id).await, 0);
+    store.connections().close().await;
 }
 
 #[tokio::test]

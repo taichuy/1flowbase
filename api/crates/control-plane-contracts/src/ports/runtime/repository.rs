@@ -1,8 +1,13 @@
 use super::*;
 
-/// Exclusive initial-dispatch ownership. Dropping the guard releases ownership even when
-/// execution is interrupted; adapters must never return a session lock to a connection pool.
-pub trait FlowRunDispatchLease: Send {}
+/// Exclusive initial-dispatch ownership. Drop requests cancellation-safe session cleanup;
+/// a session lock may return to a pool only after an acknowledged unlock.
+#[async_trait]
+pub trait FlowRunDispatchLease: Send {
+    /// Resolves when ownership is lost. Stop the initial execution future without replaying
+    /// external effects; terminal cleanup must still honor checkpoints and resume claims.
+    async fn wait_for_loss(&mut self);
+}
 
 #[async_trait]
 pub trait OrchestrationRuntimeRepository: Send + Sync {
@@ -24,6 +29,8 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         anyhow::bail!("internal compaction commit not implemented")
     }
 
+    /// None means another PostgreSQL owner holds the key. Admission timeout/failure is Err,
+    /// so a queued run is not mistaken for work already owned by another executor.
     async fn try_acquire_flow_run_dispatch_lease(
         &self,
         _application_id: Uuid,

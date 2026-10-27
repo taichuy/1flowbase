@@ -1,14 +1,14 @@
 //! Read-only workspace projections for portable definitions; never bootstraps draft state.
-use crate::PgControlPlaneStore;
+use crate::{PgAdvisoryLockKey, PgControlPlaneStore, PgCoordinationLease};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use control_plane_contracts::{portable_template::*, ports::*};
-use sqlx::{Connection, Row};
+use sqlx::Row;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
 struct PgApplicationTemplateInstallGuard {
-    _connection: sqlx::PgConnection,
+    _lease: PgCoordinationLease,
 }
 impl ApplicationTemplateInstallGuard for PgApplicationTemplateInstallGuard {}
 
@@ -18,14 +18,14 @@ impl PortableTemplateIdentityRepository for PgControlPlaneStore {
         &self,
         workspace_id: Uuid,
     ) -> Result<Box<dyn ApplicationTemplateInstallGuard>> {
-        let mut connection =
-            sqlx::PgConnection::connect_with(&self.pool().connect_options()).await?;
-        sqlx::query("SELECT pg_advisory_lock(hashtextextended($1, 0))")
-            .bind(format!("application-template:{workspace_id}"))
-            .execute(&mut connection)
+        let deadline =
+            tokio::time::Instant::now() + self.connections().settings().business.acquire_timeout;
+        let lease = self
+            .connections()
+            .acquire(PgAdvisoryLockKey::template_install(workspace_id), deadline)
             .await?;
         Ok(Box::new(PgApplicationTemplateInstallGuard {
-            _connection: connection,
+            _lease: lease,
         }))
     }
 

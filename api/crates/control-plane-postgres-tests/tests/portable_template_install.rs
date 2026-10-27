@@ -9,7 +9,25 @@ use control_plane_contracts::ports::{
 };
 use serde_json::json;
 use std::collections::BTreeMap;
+use storage_durable_postgres::{PgConnectionSettings, PgControlPlaneStore, PgPoolSettings};
 use uuid::Uuid;
+
+async fn connections_eventually(mut ready: impl FnMut() -> bool) {
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while !ready() {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("owned connection lifecycle must make progress");
+}
+
+fn template_budget(store: &PgControlPlaneStore) -> PgControlPlaneStore {
+    let mut settings = store.connections().settings().clone();
+    settings.template_install_max_connections = Some(1);
+    settings.temporary_max_connections = Some(1);
+    PgControlPlaneStore::with_connection_settings(store.pool().clone(), settings).unwrap()
+}
 
 fn fixture() -> PortableTemplatePackage {
     let model_id = Uuid::new_v4();
@@ -774,6 +792,16 @@ async fn scoped_native_transaction_savepoints_rollback_and_editor_write_exclusio
         .parse()
         .unwrap();
     let transaction = store.begin_portable_template_transaction().await.unwrap();
+    assert_eq!(store.connections().observe().temporary.active, 1);
+    assert_eq!(
+        transaction
+            .repository
+            .connections()
+            .observe()
+            .temporary
+            .active,
+        1
+    );
     // The native owner opens and commits its own transaction, which must be a savepoint.
     FrontstagePageService::new(transaction.repository.clone())
         .update_metadata(UpdateFrontstagePageMetadataCommand {
@@ -827,6 +855,11 @@ async fn scoped_native_transaction_savepoints_rollback_and_editor_write_exclusio
     tokio::time::timeout(std::time::Duration::from_secs(5), scoped_pool.close_event())
         .await
         .unwrap();
+    connections_eventually(|| {
+        let observation = store.connections().observe().temporary;
+        observation.active == 0 && observation.closing == 0
+    })
+    .await;
     tokio::time::timeout(std::time::Duration::from_secs(5), &mut editor)
         .await
         .unwrap()
@@ -860,6 +893,209 @@ async fn transaction_connection_loss_cannot_reconnect_and_commit_a_partial_batch
         "lost outer transaction must never commit a replacement session"
     );
     transaction.guard.rollback().await.unwrap();
+    assert_eq!(store.connections().observe().temporary.active, 0);
+    assert_eq!(store.connections().observe().temporary.closing, 0);
+}
+
+#[tokio::test]
+async fn template_install_lock_shares_scoped_budget_and_excludes_another_node_without_business_checkout(
+) {
+    // Retain the original schema owner while using an explicit P=1 serving pool.
+    let (schema_owner, workspace, actor) = support::seed_store().await;
+    let mut settings = PgConnectionSettings::compatible(PgPoolSettings::with_max_connections(1));
+    settings.business.acquire_timeout = std::time::Duration::from_secs(2);
+    settings.template_install_max_connections = Some(1);
+    settings.temporary_max_connections = Some(1);
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(settings.business.acquire_timeout)
+        .connect_with((*schema_owner.pool().connect_options()).clone())
+        .await
+        .unwrap();
+    let store = PgControlPlaneStore::with_connection_settings(pool, settings).unwrap();
+    let context =
+        FrontstagePageRepository::load_actor_context_for_workspace(&store, actor.id, workspace.id)
+            .await
+            .unwrap();
+    let scoped = store.for_actor(context);
+    let held = store
+        .lock_application_template_install(workspace.id)
+        .await
+        .unwrap();
+    assert_eq!(scoped.connections().observe().template_install.active, 1);
+    let local =
+        tokio::spawn(async move { scoped.lock_application_template_install(workspace.id).await });
+    connections_eventually(|| store.connections().observe().template_install.local_queue == 1)
+        .await;
+    let sessions: i64 = sqlx::query_scalar("select count(*) from pg_stat_activity where datname=current_database() and application_name='1flowbase:template-lock'")
+        .fetch_one(schema_owner.pool()).await.unwrap();
+    assert_eq!(
+        sessions, 1,
+        "a scoped local waiter must not create a private session"
+    );
+    let mut peer_settings = schema_owner.connections().settings().clone();
+    peer_settings.business.acquire_timeout = std::time::Duration::from_secs(2);
+    let peer =
+        PgControlPlaneStore::with_connection_settings(schema_owner.pool().clone(), peer_settings)
+            .unwrap();
+    let other = peer.clone();
+    let mut remote =
+        tokio::spawn(async move { other.lock_application_template_install(workspace.id).await });
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(50), &mut remote)
+            .await
+            .is_err()
+    );
+    let ordinary: i32 = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        sqlx::query_scalar("select 7").fetch_one(store.pool()),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(ordinary, 7, "template waiters must leave P=1 available");
+    local.abort();
+    assert!(matches!(local.await,Err(error) if error.is_cancelled()));
+    connections_eventually(|| store.connections().observe().template_install.local_queue == 0)
+        .await;
+    drop(held);
+    let remote = tokio::time::timeout(std::time::Duration::from_secs(5), remote)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let mut legacy = schema_owner.pool().begin().await.unwrap();
+    let acquired: bool =
+        sqlx::query_scalar("select pg_try_advisory_xact_lock(hashtextextended($1,0))")
+            .bind(format!("application-template:{}", workspace.id))
+            .fetch_one(&mut *legacy)
+            .await
+            .unwrap();
+    assert!(
+        !acquired,
+        "the original template key/seed must still exclude legacy nodes"
+    );
+    legacy.rollback().await.unwrap();
+    drop(remote);
+    connections_eventually(|| {
+        let lane = peer.connections().observe().template_install;
+        lane.active == 0 && lane.closing == 0
+    })
+    .await;
+    store.connections().close().await;
+    peer.connections().close().await;
+}
+
+#[tokio::test]
+async fn template_transaction_quota_is_shared_before_create_and_survives_cancelled_rollback_drain()
+{
+    let (schema_owner, workspace, actor) = support::seed_store().await;
+    let store = template_budget(&schema_owner);
+    let context =
+        FrontstagePageRepository::load_actor_context_for_workspace(&store, actor.id, workspace.id)
+            .await
+            .unwrap();
+    let first = store.begin_portable_template_transaction().await.unwrap();
+    let scoped = first.repository.for_actor(context);
+    assert_eq!(scoped.connections().observe().temporary.active, 1);
+    let waiting_store = store.clone();
+    let waiting =
+        tokio::spawn(async move { waiting_store.begin_portable_template_transaction().await });
+    connections_eventually(|| store.connections().observe().temporary.waiting == 1).await;
+    let sessions: i64 = sqlx::query_scalar("select count(*) from pg_stat_activity where datname=current_database() and application_name='1flowbase:temporary'")
+        .fetch_one(schema_owner.pool()).await.unwrap();
+    assert_eq!(
+        sessions, 1,
+        "T quota must be reserved before creating a second private pool"
+    );
+    waiting.abort();
+    assert!(matches!(waiting.await,Err(error) if error.is_cancelled()));
+    connections_eventually(|| store.connections().observe().temporary.waiting == 0).await;
+    let checkout = first.repository.pool().acquire().await.unwrap();
+    let mut guard = first.guard;
+    let close = tokio::spawn(async move { guard.rollback().await });
+    connections_eventually(|| store.connections().observe().temporary.closing == 1).await;
+    close.abort();
+    assert!(matches!(close.await,Err(error) if error.is_cancelled()));
+    let inherited = scoped.clone();
+    let waiting =
+        tokio::spawn(async move { inherited.begin_portable_template_transaction().await });
+    connections_eventually(|| store.connections().observe().temporary.waiting == 1).await;
+    let observation = scoped.connections().observe().temporary;
+    assert_eq!(observation.active, 0);
+    assert_eq!(observation.closing, 1);
+    assert!(
+        !waiting.is_finished(),
+        "cancelled rollback must retain quota until native checkout drain"
+    );
+    let sessions: i64 = sqlx::query_scalar("select count(*) from pg_stat_activity where datname=current_database() and application_name='1flowbase:temporary'")
+        .fetch_one(schema_owner.pool()).await.unwrap();
+    assert_eq!(sessions, 1);
+    drop(checkout);
+    let mut next = tokio::time::timeout(std::time::Duration::from_secs(5), waiting)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let restored = FrontstagePageRepository::load_actor_context_for_workspace(
+        &next.repository,
+        actor.id,
+        workspace.id,
+    )
+    .await
+    .unwrap();
+    assert_eq!(restored.current_workspace_id, workspace.id);
+    assert_eq!(next.repository.connections().observe().temporary.active, 1);
+    next.guard.rollback().await.unwrap();
+    assert_eq!(store.connections().observe().temporary.active, 0);
+    assert_eq!(store.connections().observe().temporary.closing, 0);
+    store.connections().close().await;
+}
+
+#[tokio::test]
+async fn cancelled_template_transaction_bootstrap_drains_its_real_lock_waiter_and_quota() {
+    let (schema_owner, _, _) = support::seed_store().await;
+    let store = template_budget(&schema_owner);
+    let mut editor = schema_owner.pool().begin().await.unwrap();
+    sqlx::query("lock table roles in access exclusive mode")
+        .execute(&mut *editor)
+        .await
+        .unwrap();
+    let beginning_store = store.clone();
+    let mut beginning =
+        tokio::spawn(async move { beginning_store.begin_portable_template_transaction().await });
+    let pid: i32 = tokio::time::timeout(std::time::Duration::from_secs(5),async {
+        loop {
+            let pid: Option<i32> = sqlx::query_scalar("select pid from pg_stat_activity where datname=current_database() and application_name='1flowbase:temporary'")
+                .fetch_optional(schema_owner.pool()).await.unwrap();
+            if let Some(pid)=pid { break pid; }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }).await.expect("the real template after_connect must establish its owned backend");
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(50), &mut beginning)
+            .await
+            .is_err(),
+        "the editor's table lock must keep the real template bootstrap pending"
+    );
+    assert_eq!(store.connections().observe().temporary.active, 1);
+    beginning.abort();
+    assert!(matches!(beginning.await,Err(error) if error.is_cancelled()));
+    // A cancelled connect hook must not leave an unaccounted backend waiting on
+    // the editor. Keep the editor locked until the owned backend has disappeared.
+    tokio::time::timeout(std::time::Duration::from_secs(5),async {
+        loop {
+            let alive: bool = sqlx::query_scalar("select exists(select 1 from pg_stat_activity where datname=current_database() and pid=$1)")
+                .bind(pid).fetch_one(schema_owner.pool()).await.unwrap();
+            let observation = store.connections().observe().temporary;
+            if !alive && observation.active==0 && observation.closing==0 { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }).await.expect("caller cancellation must close the bootstrap waiter");
+    editor.rollback().await.unwrap();
+    let mut retry = store.begin_portable_template_transaction().await.unwrap();
+    retry.guard.rollback().await.unwrap();
+    store.connections().close().await;
 }
 
 fn mcp_template_fixture() -> domain::McpBundlePackage {

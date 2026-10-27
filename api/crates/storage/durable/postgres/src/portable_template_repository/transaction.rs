@@ -11,43 +11,36 @@ use std::sync::{
 };
 
 struct NativeTemplateTransaction {
-    pool: sqlx::PgPool,
-    finished: bool,
+    pool: Option<crate::PgTemporaryPool>,
 }
 #[async_trait]
 impl PortableTemplateTransactionGuard for NativeTemplateTransaction {
     async fn commit(&mut self) -> Result<()> {
-        anyhow::ensure!(!self.finished, "portable_template_transaction_finished");
-        let mut connection = self.pool.acquire().await?;
+        let owner = self
+            .pool
+            .as_ref()
+            .context("portable_template_transaction_finished")?;
+        let mut connection = owner.pool().acquire().await?;
         anyhow::ensure!(
             PgTransactionManager::get_transaction_depth(&connection) == 1,
             "portable_template_transaction_depth"
         );
         PgTransactionManager::commit(&mut connection).await?;
-        self.finished = true;
         drop(connection);
-        self.pool.close().await;
+        self.pool
+            .take()
+            .expect("unfinished transaction has a pool owner")
+            .close()
+            .await;
         Ok(())
     }
     async fn rollback(&mut self) -> Result<()> {
-        if !self.finished {
+        if let Some(owner) = self.pool.take() {
             // Closing the sole physical session rolls back the outer transaction,
             // even if an owner future failed with an unbalanced savepoint.
-            self.finished = true;
-            self.pool.close().await;
+            owner.close().await;
         }
         Ok(())
-    }
-}
-impl Drop for NativeTemplateTransaction {
-    fn drop(&mut self) {
-        if !self.finished {
-            let pool = self.pool.clone();
-            // Never leave an uncommitted session reusable after cancellation.
-            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
-                runtime.spawn(async move { pool.close().await });
-            }
-        }
     }
 }
 
@@ -57,7 +50,7 @@ impl PortableTemplateTransactionRepository for PgControlPlaneStore {
         &self,
     ) -> Result<PortableTemplateTransaction<Self>> {
         let initialized = Arc::new(AtomicBool::new(false));
-        let pool = PgPoolOptions::new()
+        let options = PgPoolOptions::new()
             .max_connections(1).min_connections(0)
             .max_lifetime(None).idle_timeout(None)
             .acquire_timeout(std::time::Duration::from_secs(30))
@@ -68,26 +61,49 @@ impl PortableTemplateTransactionRepository for PgControlPlaneStore {
                     if initialized.swap(true, Ordering::SeqCst) {
                         return Err(sqlx::Error::Protocol("portable_template_transaction_connection_lost".into()));
                     }
-                    PgTransactionManager::begin(connection, None).await?;
-                    sqlx::query("SET LOCAL lock_timeout = '10s'").execute(&mut *connection).await?;
-                    // These are actual PostgreSQL write locks, including ordinary editor
-                    // UPDATE/INSERT/DELETE transactions. READ queries remain available.
-                    sqlx::query("LOCK TABLE application_api_mappings, application_publication_versions, application_tag_bindings, application_tags, applications, flows, flow_drafts, flow_versions, frontstage_block_codes, frontstage_block_nodes, frontstage_page_schemas, frontstage_page_tabs, frontstage_page_visibility_rules, frontstage_pages, mcp_groups, mcp_instance_discovery_policies, mcp_instances, mcp_tool_bindings, mcp_tools, mcp_upstream_connection_secrets, mcp_upstream_connections, model_definitions, model_fields, roles, workflow_extension_triggers, workflow_schedule_triggers IN SHARE ROW EXCLUSIVE MODE")
-                        .execute(&mut *connection).await?;
-                    Ok(())
+                    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+                    loop {
+                        PgTransactionManager::begin(connection, None).await?;
+                        sqlx::query("SET LOCAL lock_timeout = '10s'").execute(&mut *connection).await?;
+                        // Preserve the complete editor write exclusion and its 10s wait
+                        // window. NOWAIT keeps a cancelled bootstrap from leaving a
+                        // server-side lock waiter after its temporary pool has drained.
+                        let locked = sqlx::query("LOCK TABLE application_api_mappings, application_publication_versions, application_tag_bindings, application_tags, applications, flows, flow_drafts, flow_versions, frontstage_block_codes, frontstage_block_nodes, frontstage_page_schemas, frontstage_page_tabs, frontstage_page_visibility_rules, frontstage_pages, mcp_groups, mcp_instance_discovery_policies, mcp_instances, mcp_tool_bindings, mcp_tools, mcp_upstream_connection_secrets, mcp_upstream_connections, model_definitions, model_fields, roles, workflow_extension_triggers, workflow_schedule_triggers IN SHARE ROW EXCLUSIVE MODE NOWAIT")
+                            .execute(&mut *connection).await;
+                        match locked {
+                            Ok(_) => return Ok(()),
+                            Err(error) if error.as_database_error().is_some_and(|error| error.code().as_deref()==Some("55P03"))
+                                && tokio::time::Instant::now()<deadline => {
+                                // A failed LOCK aborts this attempt. No resource writer
+                                // receives the pool until a fresh outer transaction owns
+                                // every table, at the original transaction depth of one.
+                                PgTransactionManager::rollback(connection).await?;
+                                tokio::time::sleep_until(std::cmp::min(
+                                    deadline,
+                                    tokio::time::Instant::now()+std::time::Duration::from_millis(20),
+                                )).await;
+                            }
+                            Err(error) => return Err(error),
+                        }
+                    }
                 })
             })
             .before_acquire(|connection, _| Box::pin(async move {
                 Ok(PgTransactionManager::get_transaction_depth(connection) == 1)
-            }))
-            .connect_with((*self.pool().connect_options()).clone()).await?;
-        let repository = self.with_portable_template_pool(pool.clone());
+            }));
+        // The factory owns quota before creating the private session and retains
+        // it through rollback/commit drain, even when this caller is cancelled.
+        let owner = self
+            .connections()
+            .temporary_pool(
+                options,
+                tokio::time::Instant::now() + std::time::Duration::from_secs(30),
+            )
+            .await?;
+        let repository = self.with_portable_template_pool(owner.pool().clone());
         Ok(PortableTemplateTransaction {
             repository,
-            guard: Box::new(NativeTemplateTransaction {
-                pool,
-                finished: false,
-            }),
+            guard: Box::new(NativeTemplateTransaction { pool: Some(owner) }),
         })
     }
     async fn retarget_template_mcp_binding(

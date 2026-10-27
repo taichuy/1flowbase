@@ -24,7 +24,7 @@ where
     where
         R: BillingRepository + crate::ports::FileManagementRepository,
     {
-        let Some(_lease) = self
+        let Some(mut lease) = self
             .repository
             .try_acquire_flow_run_dispatch_lease(command.application_id, command.flow_run_id)
             .await?
@@ -40,7 +40,11 @@ where
             domain::FlowRunStatus::Queued => {
                 // This call is the only initial-execution owner while the PG session lease
                 // lives. Its internal Queued->Running CAS remains the durable start fact.
-                let result = self.start_published_flow_run(command).await;
+                let result = tokio::select! {
+                    biased;
+                    _ = lease.wait_for_loss() => Err(anyhow!("communication_dispatch_lease_lost")),
+                    result = self.start_published_flow_run(command) => result,
+                };
                 if result.is_err() {
                     self.finalize_communication_dispatch_failure(
                         run.application_id,
@@ -80,21 +84,25 @@ where
         application_id: Uuid,
         run_id: Uuid,
     ) -> Result<()> {
-        let Some(_lease) = self
+        let Some(mut lease) = self
             .repository
             .try_acquire_flow_run_dispatch_lease(application_id, run_id)
             .await?
         else {
             return Ok(());
         };
-        self.communication_dispatch_run(application_id, run_id)
-            .await?;
-        self.finalize_communication_dispatch_failure(
-            application_id,
-            run_id,
-            "communication_dispatch_preflight_failed",
-        )
-        .await
+        tokio::select! {
+            biased;
+            _ = lease.wait_for_loss() => Err(anyhow!("communication_dispatch_lease_lost")),
+            result = async {
+                self.communication_dispatch_run(application_id, run_id).await?;
+                self.finalize_communication_dispatch_failure(
+                    application_id,
+                    run_id,
+                    "communication_dispatch_preflight_failed",
+                ).await
+            } => result,
+        }
     }
 
     async fn communication_dispatch_run(
