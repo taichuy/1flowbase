@@ -43,6 +43,30 @@ type NodeFieldValue =
   | string[]
   | string[][];
 
+function updateConfigField(
+  config: Record<string, unknown>,
+  path: string,
+  value: NodeFieldValue
+): Record<string, unknown> {
+  const separator = path.indexOf('.');
+
+  if (separator === -1) {
+    return { ...config, [path]: value };
+  }
+
+  const key = path.slice(0, separator);
+  const current = config[key];
+  const nestedConfig =
+    typeof current === 'object' && current !== null && !Array.isArray(current)
+      ? (current as Record<string, unknown>)
+      : {};
+
+  return {
+    ...config,
+    [key]: updateConfigField(nestedConfig, path.slice(separator + 1), value)
+  };
+}
+
 function replaceOutputTitle(
   outputs: FlowNodeDocument['outputs'],
   outputKey: string,
@@ -277,10 +301,7 @@ export function updateNodeField(
 
     if (payload.fieldKey.startsWith('config.')) {
       const configKey = payload.fieldKey.slice('config.'.length);
-      const nextConfig = {
-        ...node.config,
-        [configKey]: payload.value
-      };
+      const nextConfig = updateConfigField(node.config, configKey, payload.value);
 
       return {
         ...node,

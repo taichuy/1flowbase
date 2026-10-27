@@ -4,7 +4,7 @@ use control_plane_contracts::{
     },
     ports::{
         AppendRuntimeEventInput, CommitInternalCompactionInput, InternalCompactionHead,
-        ObserveInternalCompactionInput, OrchestrationRuntimeRepository,
+        ObserveInternalCompactionInput,
     },
 };
 use serde_json::{json, Value};

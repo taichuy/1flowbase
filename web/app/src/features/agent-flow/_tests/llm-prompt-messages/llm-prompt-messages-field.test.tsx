@@ -374,6 +374,7 @@ describe('LLM prompt messages field', () => {
 
     fireEvent.click(autoCompactControl);
 
+    expect(autoCompactControl).toBeChecked();
     expect(llmNodeFrom(latestDocument).config.context_policy).toEqual({
       integration_context: 'enabled',
       context_selector: ['node-start', 'history'],
@@ -386,6 +387,16 @@ describe('LLM prompt messages field', () => {
       integration_context: 'disabled',
       context_selector: ['node-start', 'history'],
       auto_compact: true
+    });
+    expect(autoCompactControl).toBeChecked();
+
+    fireEvent.click(autoCompactControl);
+
+    expect(autoCompactControl).not.toBeChecked();
+    expect(llmNodeFrom(latestDocument).config.context_policy).toEqual({
+      integration_context: 'disabled',
+      context_selector: ['node-start', 'history'],
+      auto_compact: false
     });
   });
 

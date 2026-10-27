@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest';
 
-import { DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE } from '@1flowbase/flow-schema';
+import {
+  createDefaultAgentFlowDocument,
+  DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE
+} from '@1flowbase/flow-schema';
+
+import { createAgentFlowNodeSchemaAdapter } from '../../schema/node-schema-adapter';
 
 import {
   DEFAULT_LLM_PARAMETERS,
@@ -116,6 +121,84 @@ describe('llm-node-config', () => {
     expect(
       getLlmContextPolicy({ context_policy: { auto_compact: 'true' } }).auto_compact
     ).toBe(false);
+  });
+
+  test('the real schema adapter roundtrips nested compaction while preserving config siblings', () => {
+    const original = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+    const originalNode = original.graph.nodes.find(
+      (node) => node.id === 'node-llm'
+    )!;
+    const contextPolicy = {
+      integration_context: 'disabled',
+      context_selector: ['node-code', 'result', 'chat_history'],
+      auto_compact: false,
+      retained_setting: { enabled: true }
+    };
+    originalNode.config.context_policy = contextPolicy;
+    let current = original;
+    const adapter = () =>
+      createAgentFlowNodeSchemaAdapter({
+        document: current,
+        nodeId: 'node-llm',
+        setWorkingDocument(update) {
+          current = typeof update === 'function' ? update(current) : update;
+        },
+        dispatch() {}
+      });
+
+    expect(adapter().getValue('config.context_policy.auto_compact')).toBe(false);
+    adapter().setValue('config.context_policy.auto_compact', true);
+
+    const updatedNode = current.graph.nodes.find(
+      (node) => node.id === 'node-llm'
+    )!;
+    expect(adapter().getValue('config.context_policy.auto_compact')).toBe(true);
+    expect(updatedNode.config.context_policy).toEqual({
+      ...contextPolicy,
+      auto_compact: true
+    });
+    expect(
+      Object.hasOwn(updatedNode.config, 'context_policy.auto_compact')
+    ).toBe(false);
+    expect(updatedNode.config.model_provider).toBe(
+      originalNode.config.model_provider
+    );
+    expect(originalNode.config.context_policy).toBe(contextPolicy);
+    expect(contextPolicy.auto_compact).toBe(false);
+
+    adapter().setValue('config.context_policy.auto_compact', false);
+    expect(adapter().getValue('config.context_policy')).toEqual(contextPolicy);
+    adapter().setValue('config.response_format', { mode: 'json_object' });
+    expect(adapter().getValue('config.context_policy')).toEqual(contextPolicy);
+    expect(adapter().getValue('config.response_format')).toEqual({
+      mode: 'json_object'
+    });
+  });
+
+  test('nested config writes create a missing policy object instead of a dotted config key', () => {
+    let current = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+    const node = current.graph.nodes.find((entry) => entry.id === 'node-llm')!;
+    delete node.config.context_policy;
+    const adapter = createAgentFlowNodeSchemaAdapter({
+      document: current,
+      nodeId: 'node-llm',
+      setWorkingDocument(update) {
+        current = typeof update === 'function' ? update(current) : update;
+      },
+      dispatch() {}
+    });
+
+    expect(adapter.getValue('config.context_policy.auto_compact')).toBeUndefined();
+    adapter.setValue('config.context_policy.auto_compact', true);
+
+    const updatedNode = current.graph.nodes.find(
+      (entry) => entry.id === 'node-llm'
+    )!;
+    expect(updatedNode.config.context_policy).toEqual({ auto_compact: true });
+    expect(
+      Object.hasOwn(updatedNode.config, 'context_policy.auto_compact')
+    ).toBe(false);
+    expect(node.config.context_policy).toBeUndefined();
   });
 
   test('FUA-WEB reads protocol context with legacy three-state compatibility', () => {

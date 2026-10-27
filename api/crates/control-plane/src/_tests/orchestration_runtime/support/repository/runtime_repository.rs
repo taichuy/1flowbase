@@ -22,6 +22,20 @@ use async_trait::async_trait;
 
 #[async_trait]
 impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
+    async fn observe_internal_compaction(
+        &self,
+        input: &control_plane_contracts::ports::ObserveInternalCompactionInput,
+    ) -> Result<control_plane_contracts::ports::InternalCompactionHead> {
+        self.memory_observe_internal_compaction(input)
+    }
+
+    async fn commit_internal_compaction(
+        &self,
+        input: &control_plane_contracts::ports::CommitInternalCompactionInput,
+    ) -> Result<Option<Uuid>> {
+        self.memory_commit_internal_compaction(input)
+    }
+
     async fn get_flow_run_node_usages(
         &self,
         flow_run_id: Uuid,

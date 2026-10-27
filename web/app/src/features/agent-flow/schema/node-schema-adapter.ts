@@ -343,7 +343,13 @@ export function createAgentFlowNodeSchemaAdapter({
       }
 
       if (path.startsWith('config.')) {
-        return node.config[path.slice('config.'.length)];
+        return path.slice('config.'.length).split('.').reduce<unknown>(
+          (value, key) =>
+            typeof value === 'object' && value !== null && !Array.isArray(value)
+              ? (value as Record<string, unknown>)[key]
+              : undefined,
+          node.config
+        );
       }
 
       if (path.startsWith('bindings.')) {

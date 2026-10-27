@@ -1,3 +1,4 @@
+mod internal_compaction;
 mod native_responses;
 use super::fixtures::{write_test_capability_package, write_test_provider_package};
 use super::*;
@@ -6,6 +7,7 @@ type ToolCallbackInboxEntry = (String, Option<(String, serde_json::Value)>);
 
 #[derive(Default)]
 struct InMemoryOrchestrationRuntimeState {
+    internal_compaction: Option<internal_compaction::InternalCompactionFixtureState>,
     console_policies: Vec<domain::RoleConsolePolicy>,
     actor_is_root: bool,
     actor_workspace_id: Uuid,
@@ -649,7 +651,7 @@ impl InMemoryOrchestrationRuntimeRepository {
             .unwrap_or_default()
     }
 
-    pub(super) fn force_flow_run_status(&self, flow_run_id: Uuid, status: domain::FlowRunStatus) {
+    pub(crate) fn force_flow_run_status(&self, flow_run_id: Uuid, status: domain::FlowRunStatus) {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
         let flow_run = inner
             .flow_runs_by_id

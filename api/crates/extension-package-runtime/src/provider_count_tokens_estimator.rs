@@ -139,6 +139,13 @@ impl CanonicalPromptEstimate {
                 )?;
                 self.add_tokens(2)
             }
+            // Canonical assistant history preserves provider reasoning alongside text.
+            // Plain reasoning text has the same estimable representation; opaque or
+            // encrypted reasoning remains unknown and cannot authorize a safe budget.
+            Some("reasoning") if block.get("text").is_some_and(Value::is_string) => {
+                self.add_json(block)?;
+                self.add_tokens(2)
+            }
             Some("json" | "input_json" | "output_json") => {
                 self.add_json(block.get("json").unwrap_or(block))
             }
@@ -196,3 +203,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/provider_count_tokens_estimator.rs"]
+mod reasoning_history_tests;

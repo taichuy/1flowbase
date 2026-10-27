@@ -284,3 +284,7 @@ fn output_reserve(input: &ProviderInvocationInput) -> Result<u64> {
         .unwrap_or(4096);
     Ok(reserve)
 }
+
+#[cfg(test)]
+#[path = "_tests/internal_compaction.rs"]
+mod tests;

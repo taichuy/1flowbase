@@ -15,9 +15,37 @@ pub(crate) struct InMemoryProviderRuntime {
     live_events_then_error: Option<Vec<ProviderStreamEvent>>,
     fail_before_token_models: Vec<String>,
     captured_inputs: Option<Arc<Mutex<Vec<ProviderInvocationInput>>>>,
+    count_tokens_fixture: Option<Arc<Mutex<CountTokensFixture>>>,
+    before_invocation_return: Option<Arc<dyn Fn() + Send + Sync>>,
+}
+
+struct CountTokensFixture {
+    results: VecDeque<plugin_framework::provider_contract::ProviderCountTokensResult>,
+    captured: Arc<Mutex<Vec<ProviderInvocationInput>>>,
 }
 
 impl InMemoryProviderRuntime {
+    /// Script upstream counts without reproducing any host admission policy.
+    pub(crate) fn with_count_tokens_results(
+        mut self,
+        results: Vec<plugin_framework::provider_contract::ProviderCountTokensResult>,
+    ) -> (Self, Arc<Mutex<Vec<ProviderInvocationInput>>>) {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        self.count_tokens_fixture = Some(Arc::new(Mutex::new(CountTokensFixture {
+            results: results.into(),
+            captured: captured.clone(),
+        })));
+        (self, captured)
+    }
+
+    pub(crate) fn before_invocation_return(
+        mut self,
+        hook: impl Fn() + Send + Sync + 'static,
+    ) -> Self {
+        self.before_invocation_return = Some(Arc::new(hook));
+        self
+    }
+
     pub(crate) fn with_capability_output(capability_output: CapabilityExecutionOutput) -> Self {
         Self {
             capability_output: Some(capability_output),
@@ -36,6 +64,8 @@ impl InMemoryProviderRuntime {
             live_events_then_error: None,
             fail_before_token_models: Vec::new(),
             captured_inputs: None,
+            count_tokens_fixture: None,
+            before_invocation_return: None,
         }
     }
 
@@ -50,6 +80,8 @@ impl InMemoryProviderRuntime {
             live_events_then_error: None,
             fail_before_token_models: Vec::new(),
             captured_inputs: None,
+            count_tokens_fixture: None,
+            before_invocation_return: None,
         }
     }
 
@@ -64,6 +96,8 @@ impl InMemoryProviderRuntime {
             live_events_then_error: None,
             fail_before_token_models: Vec::new(),
             captured_inputs: None,
+            count_tokens_fixture: None,
+            before_invocation_return: None,
         }
     }
 
@@ -81,6 +115,8 @@ impl InMemoryProviderRuntime {
             live_events_then_error: None,
             fail_before_token_models: Vec::new(),
             captured_inputs: None,
+            count_tokens_fixture: None,
+            before_invocation_return: None,
         }
     }
 
@@ -95,6 +131,8 @@ impl InMemoryProviderRuntime {
             live_events_then_error: None,
             fail_before_token_models: Vec::new(),
             captured_inputs: None,
+            count_tokens_fixture: None,
+            before_invocation_return: None,
         }
     }
 
@@ -111,6 +149,8 @@ impl InMemoryProviderRuntime {
             live_events_then_error: None,
             fail_before_token_models: Vec::new(),
             captured_inputs: None,
+            count_tokens_fixture: None,
+            before_invocation_return: None,
         }
     }
 
@@ -125,6 +165,8 @@ impl InMemoryProviderRuntime {
             live_events_then_error: Some(live_events),
             fail_before_token_models: Vec::new(),
             captured_inputs: None,
+            count_tokens_fixture: None,
+            before_invocation_return: None,
         }
     }
 
@@ -139,6 +181,8 @@ impl InMemoryProviderRuntime {
             live_events_then_error: None,
             fail_before_token_models: models.into_iter().map(str::to_string).collect(),
             captured_inputs: None,
+            count_tokens_fixture: None,
+            before_invocation_return: None,
         }
     }
 
@@ -232,6 +276,25 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
         Ok(vec![])
     }
 
+    async fn count_tokens(
+        &self,
+        _installation: &domain::LocalPluginInstallationRecord,
+        input: plugin_framework::provider_contract::ProviderCountTokensInput,
+    ) -> Result<plugin_framework::provider_contract::ProviderCountTokensResult> {
+        let Some(fixture) = &self.count_tokens_fixture else {
+            anyhow::bail!("provider CountTokens is not implemented by this runtime");
+        };
+        let mut fixture = fixture.lock().expect("count fixture mutex poisoned");
+        fixture
+            .captured
+            .lock()
+            .expect("count capture mutex poisoned")
+            .push(input.into_invocation());
+        fixture.results.pop_front().ok_or_else(|| {
+            anyhow::anyhow!("scripted CountTokens results exhausted; use host fallback")
+        })
+    }
+
     async fn invoke_stream(
         &self,
         _installation: &domain::LocalPluginInstallationRecord,
@@ -252,6 +315,9 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
         }
         if let Some(delay) = self.invoke_delay {
             tokio::time::sleep(delay).await;
+        }
+        if let Some(hook) = &self.before_invocation_return {
+            hook();
         }
 
         if let Some(output) = self
