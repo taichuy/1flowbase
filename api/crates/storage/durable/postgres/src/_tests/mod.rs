@@ -1,5 +1,6 @@
 mod application;
 mod billing_repository_tests;
+mod connection;
 mod crate_smoke_tests;
 #[path = "migrations/data_model_template_identity_migration_tests.rs"]
 mod data_model_template_identity_migration_tests;

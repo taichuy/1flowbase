@@ -3,9 +3,9 @@ use super::*;
 pub(super) async fn app_and_runtime_host_from_config(
     config: &ApiConfig,
 ) -> Result<(Router, ApiRuntimeShutdown)> {
-    let durable = storage_durable_postgres::build_main_durable_postgres_with_max_connections(
+    let durable = storage_durable_postgres::build_main_durable_postgres_with_connection_settings(
         &config.database_url,
-        config.database_pool_max_connections,
+        config.database_connection_settings.clone(),
     )
     .await?;
     let store = durable
@@ -603,7 +603,9 @@ pub(super) fn api_workspace_root() -> Result<PathBuf> {
     if let Some(root) = std::env::var_os("API_WORKSPACE_ROOT") {
         let root = PathBuf::from(root);
         if !root.join("plugins/host-extensions").is_dir() {
-            return Err(anyhow!("API_WORKSPACE_ROOT must contain plugins/host-extensions"));
+            return Err(anyhow!(
+                "API_WORKSPACE_ROOT must contain plugins/host-extensions"
+            ));
         }
         return Ok(root);
     }

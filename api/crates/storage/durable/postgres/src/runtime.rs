@@ -27,11 +27,23 @@ pub async fn build_main_durable_postgres_with_pool_settings(
     database_url: &str,
     settings: crate::PgPoolSettings,
 ) -> anyhow::Result<MainDurableRuntime> {
-    let pool = crate::connect_with_pool_settings(database_url, settings).await?;
+    build_main_durable_postgres_with_connection_settings(
+        database_url,
+        crate::PgConnectionSettings::compatible(settings),
+    )
+    .await
+}
+
+pub async fn build_main_durable_postgres_with_connection_settings(
+    database_url: &str,
+    settings: crate::PgConnectionSettings,
+) -> anyhow::Result<MainDurableRuntime> {
+    settings.validate()?;
+    let pool = crate::connect_with_pool_settings(database_url, settings.business.clone()).await?;
     crate::run_migrations(&pool).await?;
 
     Ok(MainDurableRuntime {
         kind: DurableBackendKind::Postgres,
-        store: crate::PgControlPlaneStore::new(pool),
+        store: crate::PgControlPlaneStore::with_connection_settings(pool, settings)?,
     })
 }

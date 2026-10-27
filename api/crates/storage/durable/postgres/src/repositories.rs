@@ -19,6 +19,7 @@ use crate::mappers::role_mapper::StoredRoleRow;
 #[derive(Clone)]
 pub struct PgControlPlaneStore {
     pool: PgPool,
+    connections: crate::PgConnectionRegistry,
     pub(crate) portable_template_transaction: bool,
     pub(crate) managed_operations:
         std::sync::Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
@@ -29,8 +30,22 @@ pub struct PgControlPlaneStore {
 
 impl PgControlPlaneStore {
     pub fn new(pool: PgPool) -> Self {
+        let connections = crate::PgConnectionRegistry::from_pool(pool.clone());
+        Self::with_connections(pool, connections)
+    }
+
+    pub fn with_connection_settings(
+        pool: PgPool,
+        settings: crate::PgConnectionSettings,
+    ) -> Result<Self> {
+        let connections = crate::PgConnectionRegistry::new(pool.clone(), settings)?;
+        Ok(Self::with_connections(pool, connections))
+    }
+
+    fn with_connections(pool: PgPool, connections: crate::PgConnectionRegistry) -> Self {
         Self {
             pool,
+            connections,
             portable_template_transaction: false,
             managed_operations: std::sync::Arc::new(
                 crate::managed_operation_lifetime::ManagedOperationOwner::default(),
@@ -62,6 +77,7 @@ impl PgControlPlaneStore {
     pub fn for_actor(&self, actor: ActorContext) -> Self {
         Self {
             pool: self.pool.clone(),
+            connections: self.connections.clone(),
             portable_template_transaction: self.portable_template_transaction,
             managed_operations: self.managed_operations.clone(),
             actor_override: Some(actor),
@@ -124,6 +140,10 @@ impl PgControlPlaneStore {
 
     pub fn pool(&self) -> &PgPool {
         &self.pool
+    }
+
+    pub fn connections(&self) -> &crate::PgConnectionRegistry {
+        &self.connections
     }
 
     pub async fn upsert_login_entry(&self, authenticator: &LoginEntryRecord) -> Result<()> {

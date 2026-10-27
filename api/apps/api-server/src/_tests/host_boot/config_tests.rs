@@ -212,6 +212,175 @@ fn api_config_rejects_invalid_database_pool_max_connections() {
 }
 
 #[test]
+fn api_config_database_lanes_preserve_compatibility_defaults() {
+    let config = ApiConfig::from_env_map(&base_env_without_ephemeral_backend()).unwrap();
+    let settings = &config.database_connection_settings;
+    assert_eq!(settings.business.max_connections, 5);
+    assert_eq!(settings.managed_limit(), 5);
+    assert_eq!(settings.dispatch_max_connections, None);
+    assert_eq!(settings.template_install_max_connections, None);
+    assert_eq!(settings.temporary_max_connections, None);
+    assert_eq!(settings.instance_budget, None);
+}
+
+#[test]
+fn api_config_database_managed_default_follows_p_and_other_lanes_are_independent() {
+    let mut env = base_env_without_ephemeral_backend();
+    env.extend([
+        ("API_DATABASE_POOL_MAX_CONNECTIONS", "1"),
+        ("API_DATABASE_DISPATCH_MAX_CONNECTIONS", "7"),
+        ("API_DATABASE_TEMPLATE_INSTALL_MAX_CONNECTIONS", "3"),
+        ("API_DATABASE_TEMPORARY_MAX_CONNECTIONS", "2"),
+    ]);
+    let config = ApiConfig::from_env_map(&env).unwrap();
+    let settings = &config.database_connection_settings;
+    assert_eq!(settings.business.max_connections, 1);
+    assert_eq!(settings.managed_limit(), 1);
+    assert_eq!(settings.dispatch_max_connections, Some(7));
+    assert_eq!(settings.template_install_max_connections, Some(3));
+    assert_eq!(settings.temporary_max_connections, Some(2));
+    assert_eq!(settings.instance_budget, None);
+}
+
+#[test]
+fn api_config_database_full_budget_includes_explicit_reserve_and_every_lane() {
+    let mut env = base_env_without_ephemeral_backend();
+    env.extend([
+        ("API_DATABASE_MANAGED_MAX_CONNECTIONS", "4"),
+        ("API_DATABASE_DISPATCH_MAX_CONNECTIONS", "7"),
+        ("API_DATABASE_TEMPLATE_INSTALL_MAX_CONNECTIONS", "2"),
+        ("API_DATABASE_TEMPORARY_MAX_CONNECTIONS", "3"),
+        ("API_DATABASE_INSTANCE_MAX_CONNECTIONS", "24"),
+        ("API_DATABASE_RESERVED_CONNECTIONS", "3"),
+    ]);
+    let config = ApiConfig::from_env_map(&env).unwrap();
+    let settings = &config.database_connection_settings;
+    assert_eq!(settings.managed_limit(), 4);
+    let budget = settings.instance_budget.as_ref().unwrap();
+    assert_eq!(budget.max_connections, 24);
+    assert_eq!(budget.reserved_connections, 3);
+    settings.validate().unwrap();
+    // The exact configuration is carried into a fresh startup/serving construction.
+    assert_eq!(config.clone().database_connection_settings, *settings);
+}
+
+#[test]
+fn api_config_database_full_budget_rejects_unknown_lane_instead_of_treating_it_as_zero() {
+    for omitted in [
+        "API_DATABASE_MANAGED_MAX_CONNECTIONS",
+        "API_DATABASE_DISPATCH_MAX_CONNECTIONS",
+        "API_DATABASE_TEMPLATE_INSTALL_MAX_CONNECTIONS",
+        "API_DATABASE_TEMPORARY_MAX_CONNECTIONS",
+    ] {
+        let mut env = base_env_without_ephemeral_backend();
+        env.extend([
+            ("API_DATABASE_MANAGED_MAX_CONNECTIONS", "1"),
+            ("API_DATABASE_DISPATCH_MAX_CONNECTIONS", "1"),
+            ("API_DATABASE_TEMPLATE_INSTALL_MAX_CONNECTIONS", "1"),
+            ("API_DATABASE_TEMPORARY_MAX_CONNECTIONS", "1"),
+            ("API_DATABASE_INSTANCE_MAX_CONNECTIONS", "20"),
+            ("API_DATABASE_RESERVED_CONNECTIONS", "0"),
+        ]);
+        env.retain(|(key, _)| *key != omitted);
+        let error = ApiConfig::from_env_map(&env).unwrap_err();
+        assert!(error.to_string().contains("requires explicit"));
+    }
+}
+
+#[test]
+fn api_config_database_instance_allocation_and_reserve_must_be_supplied_together() {
+    for entry in [
+        ("API_DATABASE_INSTANCE_MAX_CONNECTIONS", "20"),
+        ("API_DATABASE_RESERVED_CONNECTIONS", "0"),
+    ] {
+        let mut env = base_env_without_ephemeral_backend();
+        env.push(entry);
+        assert!(ApiConfig::from_env_map(&env)
+            .unwrap_err()
+            .to_string()
+            .contains("must both be supplied"));
+    }
+}
+
+#[test]
+fn api_config_database_budget_rejects_zero_limits_invalid_text_overallocation_and_overflow() {
+    for key in [
+        "API_DATABASE_MANAGED_MAX_CONNECTIONS",
+        "API_DATABASE_DISPATCH_MAX_CONNECTIONS",
+        "API_DATABASE_TEMPLATE_INSTALL_MAX_CONNECTIONS",
+        "API_DATABASE_TEMPORARY_MAX_CONNECTIONS",
+        "API_DATABASE_INSTANCE_MAX_CONNECTIONS",
+    ] {
+        for value in ["0", "-1", "invalid", "4294967296"] {
+            let mut env = base_env_without_ephemeral_backend();
+            env.push((key, value));
+            assert!(ApiConfig::from_env_map(&env)
+                .unwrap_err()
+                .to_string()
+                .contains(key));
+        }
+    }
+    for (dispatch, reserve, expected) in [
+        ("1", "0", "exceed"),
+        ("4294967295", "0", "overflow"),
+        ("1", "4294967295", "overflow"),
+    ] {
+        let mut env = base_env_without_ephemeral_backend();
+        env.extend([
+            ("API_DATABASE_MANAGED_MAX_CONNECTIONS", "1"),
+            ("API_DATABASE_DISPATCH_MAX_CONNECTIONS", dispatch),
+            ("API_DATABASE_TEMPLATE_INSTALL_MAX_CONNECTIONS", "1"),
+            ("API_DATABASE_TEMPORARY_MAX_CONNECTIONS", "1"),
+            ("API_DATABASE_INSTANCE_MAX_CONNECTIONS", "8"),
+            ("API_DATABASE_RESERVED_CONNECTIONS", reserve),
+        ]);
+        assert!(ApiConfig::from_env_map(&env)
+            .unwrap_err()
+            .to_string()
+            .contains(expected));
+    }
+}
+
+#[test]
+fn api_config_database_lifecycle_can_disable_recycling_without_changing_admission_limit() {
+    let mut env = base_env_without_ephemeral_backend();
+    env.extend([
+        ("API_DATABASE_POOL_ACQUIRE_TIMEOUT_MS", "1250"),
+        ("API_DATABASE_POOL_IDLE_TIMEOUT_SECONDS", "0"),
+        ("API_DATABASE_POOL_MAX_LIFETIME_SECONDS", "0"),
+    ]);
+    let config = ApiConfig::from_env_map(&env).unwrap();
+    assert_eq!(
+        config.database_connection_settings.business.acquire_timeout,
+        std::time::Duration::from_millis(1250)
+    );
+    assert_eq!(
+        config.database_connection_settings.business.idle_timeout,
+        None
+    );
+    assert_eq!(
+        config.database_connection_settings.business.max_lifetime,
+        None
+    );
+    assert_eq!(
+        config.database_connection_settings.business.max_connections,
+        5
+    );
+    for (key, value) in [
+        ("API_DATABASE_POOL_ACQUIRE_TIMEOUT_MS", "0"),
+        ("API_DATABASE_POOL_IDLE_TIMEOUT_SECONDS", "-1"),
+        ("API_DATABASE_POOL_MAX_LIFETIME_SECONDS", "invalid"),
+    ] {
+        let mut env = base_env_without_ephemeral_backend();
+        env.push((key, value));
+        assert!(ApiConfig::from_env_map(&env)
+            .unwrap_err()
+            .to_string()
+            .contains(key));
+    }
+}
+
+#[test]
 fn api_config_uses_a_shared_plugin_upload_byte_limit() {
     let default_config = ApiConfig::from_env_map(&base_env_without_ephemeral_backend()).unwrap();
     assert_eq!(default_config.plugin_upload_max_bytes, 8 * 1024 * 1024);

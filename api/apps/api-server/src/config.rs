@@ -40,6 +40,7 @@ pub struct ApiConfig {
     pub env: ApiEnvironment,
     pub database_url: String,
     pub database_pool_max_connections: u32,
+    pub database_connection_settings: storage_durable_postgres::PgConnectionSettings,
     pub plugin_upload_max_bytes: usize,
     pub runtime_table_name_policy: storage_durable_postgres::RuntimeTableNamePolicy,
     pub business_file_local_root: String,
@@ -320,14 +321,18 @@ impl ApiConfig {
                 "invalid env API_PROVIDER_SECRET_MASTER_KEY when API_ENV=production"
             ));
         }
+        let database_pool_max_connections = parse_positive_u32(
+            "API_DATABASE_POOL_MAX_CONNECTIONS",
+            map.get("API_DATABASE_POOL_MAX_CONNECTIONS"),
+            5,
+        )?;
+        let database_connection_settings =
+            database_connection_settings(&map, database_pool_max_connections)?;
         Ok(Self {
             env,
             database_url: get("API_DATABASE_URL")?,
-            database_pool_max_connections: parse_positive_u32(
-                "API_DATABASE_POOL_MAX_CONNECTIONS",
-                map.get("API_DATABASE_POOL_MAX_CONNECTIONS"),
-                5,
-            )?,
+            database_pool_max_connections,
+            database_connection_settings,
             plugin_upload_max_bytes: parse_positive_usize(
                 "API_PLUGIN_UPLOAD_MAX_BYTES",
                 map.get("API_PLUGIN_UPLOAD_MAX_BYTES"),
@@ -660,6 +665,62 @@ fn parse_positive_u32(key: &str, value: Option<&String>, default: u32) -> Result
     }
 
     Ok(parsed)
+}
+
+fn database_connection_settings(
+    map: &BTreeMap<String, String>,
+    business_max: u32,
+) -> Result<storage_durable_postgres::PgConnectionSettings> {
+    use storage_durable_postgres::{
+        PgConnectionSettings, PgInstanceConnectionBudget, PgPoolSettings,
+    };
+    let optional_limit = |key: &str| -> Result<Option<u32>> {
+        map.get(key)
+            .map(|value| parse_positive_u32(key, Some(value), 1))
+            .transpose()
+    };
+    let lifecycle = |key: &str, default: Option<Duration>| -> Result<Option<Duration>> {
+        let Some(value) = map.get(key) else {
+            return Ok(default);
+        };
+        let seconds = value
+            .parse::<u64>()
+            .map_err(|_| anyhow!("invalid env {key}: expected nonnegative integer seconds"))?;
+        Ok((seconds != 0).then(|| Duration::from_secs(seconds)))
+    };
+    let mut business = PgPoolSettings::with_max_connections(business_max);
+    business.acquire_timeout = Duration::from_millis(u64::from(parse_positive_u32(
+        "API_DATABASE_POOL_ACQUIRE_TIMEOUT_MS",
+        map.get("API_DATABASE_POOL_ACQUIRE_TIMEOUT_MS"),
+        5000,
+    )?));
+    // Zero explicitly disables idle/lifetime recycling; absence retains SQLx defaults.
+    business.idle_timeout = lifecycle(
+        "API_DATABASE_POOL_IDLE_TIMEOUT_SECONDS",
+        business.idle_timeout,
+    )?;
+    business.max_lifetime = lifecycle(
+        "API_DATABASE_POOL_MAX_LIFETIME_SECONDS",
+        business.max_lifetime,
+    )?;
+    let mut settings = PgConnectionSettings::compatible(business);
+    settings.managed_max_connections = optional_limit("API_DATABASE_MANAGED_MAX_CONNECTIONS")?;
+    settings.dispatch_max_connections = optional_limit("API_DATABASE_DISPATCH_MAX_CONNECTIONS")?;
+    settings.template_install_max_connections =
+        optional_limit("API_DATABASE_TEMPLATE_INSTALL_MAX_CONNECTIONS")?;
+    settings.temporary_max_connections = optional_limit("API_DATABASE_TEMPORARY_MAX_CONNECTIONS")?;
+    let instance_max = optional_limit("API_DATABASE_INSTANCE_MAX_CONNECTIONS")?;
+    let reserve = map.get("API_DATABASE_RESERVED_CONNECTIONS");
+    match (instance_max, reserve) {
+        (Some(max_connections), Some(reserve)) => {
+            let reserved_connections = reserve.parse::<u32>().map_err(|_| anyhow!("invalid env API_DATABASE_RESERVED_CONNECTIONS: expected nonnegative integer"))?;
+            settings.instance_budget = Some(PgInstanceConnectionBudget { max_connections, reserved_connections });
+        }
+        (None, None) => {}
+        _ => return Err(anyhow!("API_DATABASE_INSTANCE_MAX_CONNECTIONS and API_DATABASE_RESERVED_CONNECTIONS must both be supplied")),
+    }
+    settings.validate()?;
+    Ok(settings)
 }
 
 fn parse_positive_usize(key: &str, value: Option<&String>, default: usize) -> Result<usize> {
