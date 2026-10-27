@@ -663,11 +663,18 @@ async fn communication_full_dispatch_budget_is_error_and_parent_can_finish_manag
 async fn communication_dispatch_session_loss_stops_initial_execution_without_replay() {
     let (_database, store) = connection_fixture(5, None).await;
     let (_, run) = queued(&store).await;
+    let mut blocker = store.pool().begin().await.unwrap();
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended('dispatch-fixture-start',0))")
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
     sqlx::raw_sql(
         r#"
         create function delay_dispatch_started() returns trigger language plpgsql as $$
         begin
-            if new.event_type='assistant_execution_started' then perform pg_sleep(0.5); end if;
+            if new.event_type='assistant_execution_started' then
+                perform pg_advisory_xact_lock(hashtextextended('dispatch-fixture-start',0));
+            end if;
             return new;
         end $$;
         create trigger delay_dispatch_started before insert on flow_run_events
@@ -686,13 +693,16 @@ async fn communication_dispatch_session_loss_stops_initial_execution_without_rep
     });
     tokio::time::timeout(std::time::Duration::from_secs(5),async {
         loop {
-            let sleeping: bool = sqlx::query_scalar("select exists(select 1 from pg_stat_activity where datname=current_database() and wait_event='PgSleep' and query ilike '%insert into flow_run_events%')")
+            let sleeping: bool = sqlx::query_scalar("select exists(select 1 from pg_stat_activity where datname=current_database() and wait_event_type='Lock' and query ilike '%insert into flow_run_events%')")
                 .fetch_one(store.pool()).await.unwrap();
             if sleeping { break; }
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
     }).await.expect("the initial owner must reach its real post-CAS writer");
     lose_dispatch_session(&store, &run).await;
+    // Observe loss before releasing the writer, independent of scheduler timing.
+    dispatch_drained(&store).await;
+    blocker.rollback().await.unwrap();
     let detail = tokio::time::timeout(std::time::Duration::from_secs(5), execution)
         .await
         .unwrap()
