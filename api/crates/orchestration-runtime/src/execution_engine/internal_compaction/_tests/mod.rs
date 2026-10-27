@@ -1,5 +1,6 @@
 use super::*;
 use extension_contracts::provider_contract::{ProviderCountTokensResult, ProviderFinishReason};
+mod current_user;
 fn message(role: ProviderMessageRole, text: &str) -> ProviderMessage {
     ProviderMessage {
         role,
@@ -262,7 +263,7 @@ fn canonical_parallel_tool_blocks_and_protected_system_preserve_closed_units() {
     assert_eq!(closed_prefix_ends(&source).unwrap(), vec![1, 2, 4, 5, 6]);
     let selection = select_prefix(&source).unwrap();
     assert_eq!(selection.covered_count, 4);
-    assert_eq!(selection.retained_item_refs, vec![0, 2, 3]);
+    assert_eq!(selection.retained_item_refs, vec![0, 1]);
     let mut invalid = source.clone();
     invalid[3].content_blocks.as_mut().unwrap()[0]["tool_use_id"] = json!("orphan");
     assert!(closed_prefix_ends(&invalid).is_err());

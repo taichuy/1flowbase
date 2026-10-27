@@ -104,23 +104,16 @@ impl WorkingCheckpoint {
                 .all(|pair| pair[0] < pair[1]),
             "checkpoint retained references are not ordered and unique"
         );
+        let cuts = closed_prefix_ends(source)?;
         ensure!(
-            source[..count]
-                .iter()
-                .enumerate()
-                .all(
-                    |(index, message)| message.role != ProviderMessageRole::System
-                        || self.retained_item_refs.contains(&index)
-                ),
-            "checkpoint omitted original system instruction"
+            count == 0 || cuts.contains(&count),
+            "checkpoint splits a tool causal group"
         );
-        if let Some(latest) = source
-            .iter()
-            .rposition(|m| m.role == ProviderMessageRole::User)
-        {
+        let mut retained = self.retained_item_refs.iter().copied();
+        for required in history::required_retained_refs(source, count, &cuts) {
             ensure!(
-                latest >= count || self.retained_item_refs.contains(&latest),
-                "checkpoint omitted current user message"
+                retained.any(|index| index == required),
+                "checkpoint omitted protected original history"
             );
         }
         let mut messages = Vec::new();
@@ -152,7 +145,8 @@ pub struct CompactionSelection {
     pub retained_item_refs: Vec<usize>,
 }
 
-/// Select a closed prefix. Protect the latest user *message*, not its entire tool round.
+/// Select a closed prefix. Protect the latest user request and its causal group,
+/// not its entire tool round; pure user-role tool receipts do not replace it.
 /// Keep at least the final causal group, including all members of parallel tool batches.
 pub fn select_prefix(messages: &[ProviderMessage]) -> Result<CompactionSelection> {
     ensure!(
@@ -177,38 +171,8 @@ pub fn select_prefix(messages: &[ProviderMessage]) -> Result<CompactionSelection
     } else {
         latest_closed
     };
-    let latest_user = messages
-        .iter()
-        .rposition(|m| m.role == ProviderMessageRole::User);
-    // A user-role canonical tool-result block belongs to its whole causal group.
-    // Retaining that result alone would orphan it from the assistant call.
-    let protected_group = latest_user
-        .filter(|index| *index < covered_count)
-        .map(|index| {
-            let start = cuts
-                .iter()
-                .copied()
-                .filter(|cut| *cut <= index)
-                .last()
-                .unwrap_or(0);
-            let end = cuts
-                .iter()
-                .copied()
-                .find(|cut| *cut > index)
-                .unwrap_or(messages.len());
-            start..end
-        });
-    let retained_item_refs = messages[..covered_count]
-        .iter()
-        .enumerate()
-        .filter(|(index, message)| {
-            protected_group
-                .as_ref()
-                .is_some_and(|range| range.contains(index))
-                || matches!(message.role, ProviderMessageRole::System)
-        })
-        .map(|(index, _)| index)
-        .collect::<Vec<_>>();
+    let retained_item_refs =
+        history::required_retained_refs(messages, covered_count, &cuts).collect::<Vec<_>>();
     ensure!(
         covered_count > retained_item_refs.len(),
         "no compressible completed steps"

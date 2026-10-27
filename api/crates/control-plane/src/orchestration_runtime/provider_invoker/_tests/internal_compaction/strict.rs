@@ -5,6 +5,66 @@ fn external() -> ProtocolContextEnvelope {
     serde_json::from_value(json!({"source_protocol":"openai_chat","body":{}})).unwrap()
 }
 
+#[tokio::test]
+async fn resolved_host_preserves_current_user_before_user_role_tool_receipts() {
+    use orchestration_runtime::execution_engine::internal_compaction::closed_prefix_ends;
+    let mut fixture = Fixture::new(
+        Runtime::with_provider_results(vec![
+            result("Old action a completed. <checkpoint-complete>"),
+            result("normal response"),
+        ]),
+        &[8_600, 1_000, 1_000, 4_000],
+    )
+    .await;
+    fixture.input.client_protocol_envelope = Some(external());
+    fixture.input.messages = vec![message(ProviderMessageRole::User, RAW_USER)];
+    for id in ["a", "b", "c"] {
+        let mut call = message(ProviderMessageRole::Assistant, "");
+        call.content_blocks =
+            Some(json!([{"type":"tool_use","id":id,"name":"update_record","input":{}}]));
+        let mut result = message(ProviderMessageRole::User, "");
+        result.content_blocks =
+            Some(json!([{"type":"tool_result","tool_use_id":id,"content":"done once"}]));
+        fixture.input.messages.extend([call, result]);
+    }
+    let output = fixture
+        .invoker
+        .invoke_resolved_llm(
+            &fixture.compiled,
+            fixture.route.clone(),
+            fixture.input.clone(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        output.result.final_content.as_deref(),
+        Some("normal response")
+    );
+    let generated = fixture.generated.lock().unwrap();
+    assert_eq!(generated.len(), 2);
+    let answer = &generated[1];
+    assert_eq!(answer.messages[0], fixture.input.messages[0]);
+    assert_eq!(
+        answer
+            .messages
+            .iter()
+            .filter(|message| message.content == RAW_USER)
+            .count(),
+        1
+    );
+    assert_eq!(answer.messages[2..], fixture.input.messages[3..]);
+    assert_eq!(
+        closed_prefix_ends(&answer.messages).unwrap(),
+        vec![1, 2, 4, 6]
+    );
+    let mut cp: WorkingCheckpoint =
+        serde_json::from_value(fixture.head().checkpoint.unwrap()).unwrap();
+    assert_eq!(cp.covered_source_hashes.len(), 3);
+    assert_eq!(cp.retained_item_refs, vec![0]);
+    cp.retained_item_refs.clear();
+    assert!(cp.view(&fixture.input.messages, &cp.prefix_hash).is_err());
+}
+
 // Controlled provider specification: one token per serialized prompt byte plus
 // 32 framing tokens. This is deliberately independent of the production budget.
 fn measured_tokens(input: &ProviderInvocationInput) -> u64 {
