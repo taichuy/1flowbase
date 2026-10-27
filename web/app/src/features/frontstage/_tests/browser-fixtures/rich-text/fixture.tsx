@@ -17,6 +17,15 @@ function Fixture() {
     <>
       <button onClick={() => setValue(sample)}>Load sample</button>
       <button onClick={() => setSaved(editor?.getValue() ?? '')}>Save</button>
+      <button
+        onClick={() =>
+          setSaved(
+            `<button id="article-action" onclick="this.dataset.executed='yes'">Article action</button>`
+          )
+        }
+      >
+        Load HTML
+      </button>
       <button onClick={() => setMounted((v) => !v)}>Toggle editor</button>
       <output data-testid="markdown">{value}</output>
       {mounted && (

@@ -9,7 +9,8 @@ const playwright = createRequire(path.join(process.cwd(), 'web/package.json'))(
 (async () => {
   const output = path.join(
     process.cwd(),
-    'tmp/test-governance/wiki-editor-fix/browser'
+    process.env.WIKI_VERIFY_OUTPUT ||
+      'tmp/test-governance/wiki-editor-fix/browser'
   );
   fs.mkdirSync(output, { recursive: true });
   const browser = await playwright.chromium.launch({
@@ -98,6 +99,21 @@ const playwright = createRequire(path.join(process.cwd(), 'web/package.json'))(
     await reader.locator('.katex').first().waitFor();
     await reader.locator('svg[id^="mermaid"]').waitFor({ timeout: 20000 });
     assert.equal(await reader.locator('table').count(), 1);
+    await page
+      .context()
+      .grantPermissions(['clipboard-read', 'clipboard-write']);
+    const copy = reader.locator('.vditor-copy span[aria-label]').first();
+    await reader.locator('pre').first().hover();
+    await copy.waitFor({ state: 'visible' });
+    assert.ok(
+      await copy.locator('svg use').evaluate((icon) => icon.getBBox().width > 0)
+    );
+    await copy.click();
+    assert.equal(await copy.getAttribute('aria-label'), '已复制');
+    assert.equal(
+      await page.evaluate(() => navigator.clipboard.readText()),
+      'const answer = 42;'
+    );
     await page.screenshot({
       path: path.join(output, 'editor-reader.png'),
       fullPage: true
@@ -138,6 +154,12 @@ const playwright = createRequire(path.join(process.cwd(), 'web/package.json'))(
     await editorFrame
       .locator('.vditor-wysiwyg pre[contenteditable=true]')
       .waitFor();
+    await page.getByRole('button', { name: 'Load HTML', exact: true }).click();
+    await reader.locator('#article-action').click();
+    assert.equal(
+      await reader.locator('#article-action').getAttribute('data-executed'),
+      'yes'
+    );
     assert.deepEqual(errors, []);
     assert.deepEqual(failedRequests, []);
     fs.rmSync(path.join(output, 'failure.json'), { force: true });

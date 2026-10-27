@@ -132,31 +132,12 @@ export function sharedPreviewOptions(
     hljs: {
       enable: true,
       style: dark ? 'github-dark' : 'github',
-      langs: codeLanguages.get(document),
-      renderMenu: (code, menu) => {
-        const button = code.ownerDocument.createElement('button');
-        const copy = locale === 'zh_Hans' ? '复制' : 'Copy';
-        button.type = 'button';
-        button.className = 'oneflow-code-copy';
-        button.textContent = copy;
-        button.onclick = () => {
-          void code.ownerDocument.defaultView?.navigator.clipboard
-            .writeText(code.textContent ?? '')
-            .then(() => {
-              button.textContent = locale === 'zh_Hans' ? '已复制' : 'Copied';
-            })
-            .catch(() => {
-              button.textContent =
-                locale === 'zh_Hans' ? '复制失败' : 'Copy failed';
-            });
-        };
-        menu.replaceChildren(button);
-      }
+      langs: codeLanguages.get(document)
     },
     markdown: {
       codeBlockPreview: true,
       mathBlockPreview: true,
-      sanitize: true
+      sanitize: false
     },
     math: { engine: 'KaTeX' },
     theme: {

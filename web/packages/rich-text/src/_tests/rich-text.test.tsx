@@ -105,7 +105,7 @@ describe('Vditor frame lifecycle', () => {
       preview: {
         hljs: { enable: true },
         markdown: {
-          sanitize: true,
+          sanitize: false,
           codeBlockPreview: true,
           mathBlockPreview: true
         }
