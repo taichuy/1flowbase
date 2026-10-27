@@ -60,6 +60,7 @@ pub struct UpdateFrontstagePageMetadataCommand {
 }
 
 pub struct MoveFrontstagePageCommand {
+    pub placement: Option<domain::frontstage::FrontstageNavigationPlacement>,
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub page_id: Uuid,
@@ -538,13 +539,7 @@ where
         {
             return Err(ControlPlaneError::InvalidInput("move_position").into());
         }
-        // Nested nodes live in the sidebar. At the root, an explicit sibling
-        // anchor determines whether the node becomes a topbar route.
-        let mut placement = if command.parent_id.is_some() {
-            domain::frontstage::FrontstageNavigationPlacement::Sidebar
-        } else {
-            existing.placement
-        };
+        let mut anchor_placement = None;
         if let Some(target_id) = command.before_id.or(command.after_id) {
             let target = self
                 .repository
@@ -555,9 +550,15 @@ where
                 return Err(ControlPlaneError::InvalidInput("move_position").into());
             }
             if command.parent_id.is_none() {
-                placement = target.placement;
+                anchor_placement = Some(target.placement);
             }
         }
+        let placement = navigation::resolve_move_placement(
+            existing.placement,
+            command.parent_id,
+            command.placement,
+            anchor_placement,
+        )?;
         self.ensure_page_parent_placement(command.workspace_id, command.parent_id, placement)
             .await?;
         let slug = if command.parent_id.is_none()

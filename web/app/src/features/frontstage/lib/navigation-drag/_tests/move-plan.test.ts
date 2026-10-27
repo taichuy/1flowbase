@@ -48,7 +48,7 @@ test('cross-parent drafts use destination anchors rather than guessing rank valu
     })
   ).toEqual({ parentId: 'target', after_id: 'anchor' });
 });
-test('rejects self and page-as-parent drafts and filters root anchors by navigation placement', () => {
+test('rejects self and page-as-parent drafts and uses the explicit topbar destination for root anchors', () => {
   expect(
     resolveNavigationMove(tree, 'source', {
       targetNodeId: 'source',
@@ -78,7 +78,7 @@ test('rejects self and page-as-parent drafts and filters root anchors by navigat
       targetNodeId: null,
       position: 'inside'
     })
-  ).toEqual({ parentId: null, after_id: 'target' });
+  ).toEqual({ parentId: null, placement: 'topbar', after_id: 'topbar' });
 });
 
 test('topbar groups append after sidebar children and group descendants remain invalid targets', () => {
@@ -100,4 +100,13 @@ test('topbar groups append after sidebar children and group descendants remain i
       position: 'inside'
     })
   ).toEqual({ parentId: 'origin', rank: '001000' });
+});
+
+test('root destination promotes a sidebar page even without any topbar anchors', () => {
+  expect(
+    resolveNavigationMove(tree.slice(0, 2), 'source', {
+      targetNodeId: null,
+      position: 'inside'
+    })
+  ).toEqual({ parentId: null, placement: 'topbar', rank: '001000' });
 });

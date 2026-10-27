@@ -150,7 +150,7 @@ describe('frontstage page tree feature api', () => {
       await moveFrontstageNode(
         'workspace-1',
         'page-1',
-        { parentId: null, rank: '000000' },
+        { parentId: null, placement: 'topbar', rank: '000000' },
         'csrf-123'
       );
       await deleteFrontstageNode('workspace-1', 'page-1', 'csrf-123');
@@ -192,7 +192,7 @@ describe('frontstage page tree feature api', () => {
       );
       expect(moveSpy).toHaveBeenCalledWith(
         'page-1',
-        { parent_id: null, rank: '000000' },
+        { parent_id: null, placement: 'topbar', rank: '000000' },
         'csrf-123',
         expect.any(String)
       );

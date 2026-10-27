@@ -85,6 +85,7 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                 if self.can_apply("page", page.id) {
                     owner
                         .move_page(MoveFrontstagePageCommand {
+                            placement: Some(page.placement),
                             actor_user_id: actor.user_id,
                             workspace_id: actor.current_workspace_id,
                             page_id: existing.id,

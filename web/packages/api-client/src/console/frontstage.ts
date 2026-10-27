@@ -77,6 +77,7 @@ export interface UpdateFrontstagePageNodeTitleInput {
 }
 
 export interface MoveFrontstagePageNodeInput {
+  placement?: ConsoleFrontstageNavigationPlacement;
   before_id?: string;
   after_id?: string;
   parent_id?: string | null;
