@@ -88,7 +88,10 @@ fn log_contains_credentials(
     fn reflects(public: &Value, secret: &Value) -> bool {
         match secret {
             Value::String(secret) => !secret.is_empty() && contains_scalar(public, secret),
-            Value::Number(secret) => contains_scalar(public, &numeric_scalar(secret)),
+            Value::Number(secret) => {
+                contains_scalar(public, &secret.to_string())
+                    || contains_scalar(public, &numeric_scalar(secret))
+            }
             Value::Array(values) => values.iter().any(|secret| reflects(public, secret)),
             Value::Object(fields) => fields.values().any(|secret| reflects(public, secret)),
             _ => false,

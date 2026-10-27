@@ -906,6 +906,79 @@ async fn numeric_managed_credentials_and_new_patches_never_enter_log_projections
 }
 
 #[tokio::test]
+async fn numeric_credentials_keep_their_original_exponent_spelling_private() {
+    let secret = json!(1e16);
+    let spelling = secret.to_string();
+    assert_eq!(spelling, "1e+16");
+    let fixture = Fixture::new(descriptor(true)).await;
+    let mut state = fixture
+        .store
+        .resolve_notification_authorization(
+            fixture.actor.current_workspace_id,
+            fixture.instance_id,
+            MASTER_KEY,
+        )
+        .await
+        .unwrap();
+    state
+        .managed_secrets
+        .insert("rotated_token".into(), secret.clone());
+    fixture
+        .store
+        .save_notification_authorization(SaveNotificationAuthorizationInput {
+            workspace_id: fixture.actor.current_workspace_id,
+            instance_id: fixture.instance_id,
+            expected_revision: state.revision,
+            authorization: state.authorization.unwrap(),
+            managed_secrets: state.managed_secrets,
+            master_key: MASTER_KEY.into(),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    for input in [
+        json!({"body":format!("Credential: {spelling}")}),
+        json!({"body":"Public message","context":{"token":spelling}}),
+        json!({"body":"Public message","context":{(spelling.clone()):"value"}}),
+    ] {
+        fixture.send(input).await.unwrap_err();
+        assert_eq!(fixture.provider.calls.load(Ordering::SeqCst), 0);
+        let log = fixture.latest().await;
+        assert_eq!(log.failure_code.as_deref(), Some("input_invalid"));
+        assert_metadata_only(&log);
+    }
+
+    let fixture = Fixture::new(descriptor(true)).await;
+    for context in [
+        json!({"token":spelling}),
+        json!({(spelling.clone()):"value"}),
+    ] {
+        fixture.reply(managed_success(
+            json!({"receipt":"safe","context":context}),
+            json!({"rotated_token":secret}),
+        ));
+        fixture
+            .send(json!({"body":"Public message"}))
+            .await
+            .unwrap_err();
+        let log = fixture.latest().await;
+        assert_eq!(log.status, "unknown");
+        assert_eq!(log.failure_code.as_deref(), Some("provider_output_invalid"));
+        assert_message(&log, "Public message", "Public message", json!({}));
+        let state = fixture
+            .store
+            .resolve_notification_authorization(
+                fixture.actor.current_workspace_id,
+                fixture.instance_id,
+                MASTER_KEY,
+            )
+            .await
+            .unwrap();
+        assert!(!state.managed_secrets.contains_key("rotated_token"));
+    }
+}
+
+#[tokio::test]
 async fn numeric_log_credentials_preserve_distinct_large_integer_values() {
     let fixture = Fixture::new(descriptor(true)).await;
     for (secret, public) in [
