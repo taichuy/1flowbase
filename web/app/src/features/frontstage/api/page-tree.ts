@@ -46,6 +46,7 @@ export interface UpdateFrontstageNodeMetadataInput {
 }
 
 export interface MoveFrontstageNodeInput {
+  placement?: FrontstageNavigationPlacement;
   parentId: string | null;
   rank?: string;
   before_id?: string;
@@ -178,6 +179,7 @@ export function moveFrontstageNode(
     pageNodeId,
     {
       parent_id: input.parentId,
+      placement: input.placement,
       rank: input.rank,
       before_id: input.before_id,
       after_id: input.after_id

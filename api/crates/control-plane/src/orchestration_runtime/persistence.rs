@@ -287,7 +287,7 @@ where
         tool_delivery_events.clear();
     }
 
-    match &outcome.stop_reason {
+    let persisted_flow_run = match &outcome.stop_reason {
         orchestration_runtime::execution_state::ExecutionStopReason::WaitingHuman(wait) => {
             let snapshot = outcome
                 .checkpoint_snapshot
@@ -338,7 +338,7 @@ where
                     kind: PersistWaitingKind::Human,
                 })
                 .await?;
-            if updated.is_none() {
+            let Some(persisted_waiting) = updated else {
                 let persisted_flow_run = repository
                     .get_flow_run(application_id, flow_run.id)
                     .await?
@@ -349,10 +349,11 @@ where
                     terminal_event: None,
                     close_reason: None,
                 });
-            }
+            };
             stream_events.extend(presentation_events);
             stream_events.push(waiting_event);
             close_reason = Some(crate::ports::RuntimeEventCloseReason::WaitingHuman);
+            persisted_waiting.flow_run
         }
         orchestration_runtime::execution_state::ExecutionStopReason::WaitingCallback(wait) => {
             let snapshot = outcome
@@ -537,6 +538,7 @@ where
                 stream_events.push(waiting_event);
                 close_reason = Some(crate::ports::RuntimeEventCloseReason::WaitingCallback);
             }
+            persisted_waiting.flow_run
         }
         orchestration_runtime::execution_state::ExecutionStopReason::Completed => {
             ensure_flow_run_transition(
@@ -568,6 +570,7 @@ where
                 CommitFlowRunTerminalInput {
                     flow_run_id: flow_run.id,
                     expected_status: flow_run.status,
+                    require_initial_execution: false,
                     result: CommitFlowRunTerminalResult::Succeeded {
                         output_payload: output_payload.clone(),
                     },
@@ -595,6 +598,7 @@ where
                 CommitFlowRunTerminalInput {
                     flow_run_id: flow_run.id,
                     expected_status: flow_run.status,
+                    require_initial_execution: false,
                     result: CommitFlowRunTerminalResult::Incomplete {
                         output_payload: output_payload.clone(),
                     },
@@ -623,6 +627,7 @@ where
                 CommitFlowRunTerminalInput {
                     flow_run_id: flow_run.id,
                     expected_status: flow_run.status,
+                    require_initial_execution: false,
                     result: CommitFlowRunTerminalResult::Failed {
                         output_payload,
                         error_payload: error_payload.clone(),
@@ -635,12 +640,8 @@ where
             )
             .await;
         }
-    }
+    };
 
-    let persisted_flow_run = repository
-        .get_flow_run(application_id, flow_run.id)
-        .await?
-        .ok_or_else(|| anyhow!("persisted flow run not found"))?;
     Ok(PersistedFlowDebugOutcome {
         flow_run: persisted_flow_run,
         stream_events,
@@ -741,3 +742,7 @@ pub(super) fn materialize_responses_history_checkpoint(
 ) -> Result<Map<String, Value>> {
     checkpoint_locator::materialize_checkpoint_content(lineage)
 }
+
+#[cfg(test)]
+#[path = "../_tests/orchestration_runtime/waiting_commit/mod.rs"]
+mod waiting_commit_tests;

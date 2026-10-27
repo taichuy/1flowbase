@@ -298,17 +298,21 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('@1flowbase/charts', ['EChart'], async () => ({
     module: await import('@1flowbase/charts')
   })),
-  registration('@1flowbase/rich-text', ['VditorEditor'], async () => {
-    const [module, vditorStyle, richTextStyle] = await Promise.all([
-      import('@1flowbase/rich-text'),
-      import('vditor/dist/index.css?inline'),
-      import('@1flowbase/rich-text/styles.css?inline')
-    ]);
-    return {
-      module,
-      styles: [{ css: vditorStyle.default }, { css: richTextStyle.default }]
-    };
-  }),
+  registration(
+    '@1flowbase/rich-text',
+    ['VditorEditor', 'VditorPreview'],
+    async () => {
+      const [module, vditorStyle, richTextStyle] = await Promise.all([
+        import('@1flowbase/rich-text'),
+        import('vditor/dist/index.css?inline'),
+        import('@1flowbase/rich-text/styles.css?inline')
+      ]);
+      return {
+        module,
+        styles: [{ css: vditorStyle.default }, { css: richTextStyle.default }]
+      };
+    }
+  ),
   registration('@ant-design/x', [...ANT_DESIGN_X_EXPORTS], async () => ({
     module: await import('@ant-design/x')
   })),

@@ -360,16 +360,15 @@ impl PgControlPlaneStore {
             _ => {
                 return Err(anyhow!(
                     "resume claim id and token must be provided together"
-                ))
+                ));
             }
         }
+        // Decode the real transaction snapshot before commit. No fallible read may
+        // turn a successful waiting handoff into an apparent persistence failure.
         Self::refresh_completed_output_projection(&mut tx, input.flow_run_id).await?;
+        let flow_run =
+            Self::fetch_application_run_projection_flow_run(&mut tx, input.flow_run_id).await?;
         tx.commit().await?;
-
-        let flow_run = self
-            .get_flow_run(input.application_id, input.flow_run_id)
-            .await?
-            .ok_or_else(|| anyhow!("persisted waiting flow run not found"))?;
         Ok(Some(PersistedWaitingState {
             flow_run,
             checkpoint,

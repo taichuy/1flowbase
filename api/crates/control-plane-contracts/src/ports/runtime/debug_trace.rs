@@ -324,6 +324,8 @@ pub struct PersistWaitingStateInput {
     pub kind: PersistWaitingKind,
 }
 
+/// Successful commit receipt, captured and decoded in the waiting transaction.
+/// This is that handoff snapshot, not a promise that no later cancellation exists.
 #[derive(Debug, Clone)]
 pub struct PersistedWaitingState {
     pub flow_run: domain::FlowRunRecord,

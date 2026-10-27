@@ -141,6 +141,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
                 flow_run_id: input.flow_run_id,
                 expected_status: input.expected_status,
+                require_initial_execution: false,
                 result: CommitFlowRunTerminalResult::Failed {
                     output_payload: input.output_payload.clone(),
                     error_payload: input.error_payload.clone(),

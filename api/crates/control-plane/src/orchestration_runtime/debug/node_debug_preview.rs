@@ -50,7 +50,7 @@ where
 
         let mut compiled_plan = match application.application_type {
             domain::ApplicationType::AgentLogs => {
-                return Err(ControlPlaneError::InvalidInput("application_type").into())
+                return Err(ControlPlaneError::InvalidInput("application_type").into());
             }
             domain::ApplicationType::AgentFlow => {
                 orchestration_runtime::compiler::FlowCompiler::compile(
@@ -181,8 +181,7 @@ where
                         })
                         .await?;
                 }
-                live_debug_run::fail_flow_run(self, command.application_id, flow_run.id, &error)
-                    .await?;
+                live_debug_run::fail_flow_run(self, &flow_run, &error).await?;
                 return Err(error);
             }
         };
@@ -262,6 +261,7 @@ where
             .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
                 flow_run_id: flow_run.id,
                 expected_status: flow_run.status,
+                require_initial_execution: false,
                 result,
                 flow_run_event_payload,
                 terminal_event_payload: terminal_event.payload,

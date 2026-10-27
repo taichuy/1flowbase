@@ -1,101 +1,167 @@
-import 'vditor/dist/js/lute/lute.min.js';
+import type Vditor from 'vditor';
 import { englishEditorMessages } from './locales/en_US';
 import { chineseEditorMessages } from './locales/zh_Hans';
-import vditorAntIconsSource from 'vditor/dist/js/icons/ant.js?raw';
 
-const VDITOR_RUNTIME_MARKERS = [
-  'vditorLuteScript',
-  'vditorIconScript'
-] as const;
-
-let runtimeConsumers = 0;
-const iconSpriteConsumers = new WeakMap<
-  Document | ShadowRoot,
-  { count: number; ownedSprite: SVGSVGElement | null }
->();
-
-const ICON_SOURCE_PREFIX = "document.body.insertAdjacentHTML('afterbegin', `";
-const ICON_SOURCE_SUFFIX = '`)';
-const VDITOR_ICON_SPRITE = extractVditorIconSprite(vditorAntIconsSource);
+import { VDITOR_ASSET_BASE } from './asset-contract';
+export { VDITOR_ASSET_BASE } from './asset-contract';
 
 export function getBundledEditorMessages(locale: 'zh_Hans' | 'en_US') {
   return locale === 'en_US' ? englishEditorMessages : chineseEditorMessages;
 }
 
-export function acquireBundledVditorRuntime(
-  root: Document | ShadowRoot
-): () => void {
-  runtimeConsumers += 1;
-  acquireIconSprite(root);
-  for (const id of VDITOR_RUNTIME_MARKERS) {
-    if (document.getElementById(id)) continue;
+const runtimes = new WeakMap<Document, Promise<typeof Vditor>>();
+const codeLanguages = new WeakMap<Document, string[]>();
+
+function loadScript(document: Document, relative: string, id: string) {
+  return new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = `${VDITOR_ASSET_BASE}/dist/${relative}`;
+    script.onload = () => {
+      script.id = id;
+      resolve();
+    };
+    script.onerror = () =>
+      reject(new Error('Code highlighting could not be loaded.'));
+    document.head.appendChild(script);
+  });
+}
+
+async function ensureIconSprite(document: Document) {
+  if (document.getElementById('vditorIconScript')) return;
+  if (document.getElementById('vditor-icon-bold')) {
+    // Vditor.destroy removes its script marker but leaves the loaded sprite.
     const marker = document.createElement('script');
-    marker.id = id;
+    marker.id = 'vditorIconScript';
     marker.type = 'application/x-1flowbase-bundled-support';
     document.head.appendChild(marker);
+    return;
   }
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    releaseIconSprite(root);
-    runtimeConsumers = Math.max(0, runtimeConsumers - 1);
-    if (runtimeConsumers === 0) {
-      for (const id of VDITOR_RUNTIME_MARKERS) {
-        document.getElementById(id)?.remove();
+  await loadScript(document, 'js/icons/ant.js', 'vditorIconScript');
+}
+
+/** Load the constructor in the frame's realm, not in its Shadow DOM host. */
+export function loadFrameRuntime(document: Document): Promise<typeof Vditor> {
+  const existing = runtimes.get(document);
+  if (existing)
+    return existing.then(async (constructor) => {
+      await ensureIconSprite(document);
+      return constructor;
+    });
+  const runtime = new Promise<typeof Vditor>((resolve, reject) => {
+    const style = document.createElement('link');
+    style.rel = 'stylesheet';
+    style.href = `${VDITOR_ASSET_BASE}/dist/index.css`;
+    document.head.appendChild(style);
+    const script = document.createElement('script');
+    script.src = `${VDITOR_ASSET_BASE}/dist/index.min.js`;
+    script.onload = () => {
+      const view = document.defaultView as
+        | (Window & {
+            Vditor?: typeof Vditor;
+            hljs?: {
+              listLanguages(): string[];
+              getLanguage(name: string): { aliases?: string[] };
+            };
+          })
+        | null;
+      if (!view?.Vditor) {
+        reject(new Error('Vditor runtime is unavailable.'));
+        return;
       }
+      const constructor = view.Vditor;
+      void loadScript(
+        document,
+        'js/highlight.js/highlight.min.js',
+        'vditorHljsScript'
+      )
+        .then(() =>
+          loadScript(
+            document,
+            'js/highlight.js/third-languages.js',
+            'vditorHljsThirdScript'
+          )
+        )
+        .then(() => ensureIconSprite(document))
+        .then(() => {
+          const languages = view
+            .hljs!.listLanguages()
+            .flatMap((name) => [
+              name,
+              ...((view.hljs!.getLanguage(name) as { aliases?: string[] })
+                .aliases ?? [])
+            ]);
+          // Only advertise diagram renderers included in the frontend asset contract.
+          const unsupported = new Set([
+            'abc',
+            'echarts',
+            'flowchart',
+            'graphviz',
+            'markmap',
+            'mindmap',
+            'plantuml',
+            'smiles'
+          ]);
+          codeLanguages.set(
+            document,
+            [...new Set([...languages, 'mermaid', 'math'])]
+              .filter((name) => !unsupported.has(name))
+              .sort()
+          );
+          resolve(constructor);
+        })
+        .catch(reject);
+    };
+    script.onerror = () =>
+      reject(new Error('Vditor runtime could not be loaded.'));
+    document.head.appendChild(script);
+  });
+  runtimes.set(document, runtime);
+  return runtime;
+}
+
+export function sharedPreviewOptions(
+  locale: 'zh_Hans' | 'en_US',
+  dark: boolean,
+  document: Document
+): IPreviewOptions {
+  return {
+    cdn: VDITOR_ASSET_BASE,
+    i18n: getBundledEditorMessages(locale),
+    lang: locale === 'en_US' ? 'en_US' : 'zh_CN',
+    mode: dark ? 'dark' : 'light',
+    hljs: {
+      enable: true,
+      style: dark ? 'github-dark' : 'github',
+      langs: codeLanguages.get(document),
+      renderMenu: (code, menu) => {
+        const button = code.ownerDocument.createElement('button');
+        const copy = locale === 'zh_Hans' ? '复制' : 'Copy';
+        button.type = 'button';
+        button.className = 'oneflow-code-copy';
+        button.textContent = copy;
+        button.onclick = () => {
+          void code.ownerDocument.defaultView?.navigator.clipboard
+            .writeText(code.textContent ?? '')
+            .then(() => {
+              button.textContent = locale === 'zh_Hans' ? '已复制' : 'Copied';
+            })
+            .catch(() => {
+              button.textContent =
+                locale === 'zh_Hans' ? '复制失败' : 'Copy failed';
+            });
+        };
+        menu.replaceChildren(button);
+      }
+    },
+    markdown: {
+      codeBlockPreview: true,
+      mathBlockPreview: true,
+      sanitize: true
+    },
+    math: { engine: 'KaTeX' },
+    theme: {
+      current: dark ? 'dark' : 'ant-design',
+      path: `${VDITOR_ASSET_BASE}/dist/css/content-theme`
     }
   };
-}
-
-function extractVditorIconSprite(source: string): string {
-  const normalized = source.trim();
-  if (
-    !normalized.startsWith(ICON_SOURCE_PREFIX) ||
-    !normalized.endsWith(ICON_SOURCE_SUFFIX)
-  ) {
-    throw new Error('The bundled Vditor Ant icon asset has an unknown format.');
-  }
-  return normalized.slice(ICON_SOURCE_PREFIX.length, -ICON_SOURCE_SUFFIX.length);
-}
-
-function acquireIconSprite(root: Document | ShadowRoot) {
-  const current = iconSpriteConsumers.get(root);
-  if (current) {
-    current.count += 1;
-    return;
-  }
-
-  const existingIcon = root.getElementById('vditor-icon-headings');
-  if (existingIcon) {
-    iconSpriteConsumers.set(root, { count: 1, ownedSprite: null });
-    return;
-  }
-
-  const ownerDocument =
-    root.nodeType === Node.DOCUMENT_NODE
-      ? (root as Document)
-      : (root as ShadowRoot).ownerDocument;
-  const template = ownerDocument.createElement('template');
-  template.innerHTML = VDITOR_ICON_SPRITE;
-  const sprite = template.content.firstElementChild;
-  if (!(sprite instanceof SVGSVGElement)) {
-    throw new Error('The bundled Vditor Ant icon asset is not an SVG sprite.');
-  }
-  sprite.setAttribute('data-1flowbase-vditor-icons', '');
-  if (root.nodeType === Node.DOCUMENT_NODE) {
-    (root as Document).body.prepend(sprite);
-  } else {
-    (root as ShadowRoot).prepend(sprite);
-  }
-  iconSpriteConsumers.set(root, { count: 1, ownedSprite: sprite });
-}
-
-function releaseIconSprite(root: Document | ShadowRoot) {
-  const current = iconSpriteConsumers.get(root);
-  if (!current) return;
-  current.count -= 1;
-  if (current.count > 0) return;
-  current.ownedSprite?.remove();
-  iconSpriteConsumers.delete(root);
 }

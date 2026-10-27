@@ -97,7 +97,7 @@ test('all nodes can initiate independent moves; dropping saves immediately and c
   expect(move).toHaveBeenCalledTimes(2);
 });
 
-test('moving out to an empty placement at root preserves the existing rank contract', () => {
+test('dropping a sidebar node on the top navigation root explicitly promotes it', () => {
   const move = setup();
   fireEvent.click(row('group'));
   const dataTransfer = transfer();
@@ -108,7 +108,8 @@ test('moving out to an empty placement at root preserves the existing rank contr
     'nested',
     {
       parentId: null,
-      rank: '001000'
+      placement: 'topbar',
+      after_id: 'group'
     },
     { targetNodeId: null, position: 'inside' }
   );

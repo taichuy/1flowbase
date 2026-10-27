@@ -167,6 +167,13 @@ impl InMemoryOrchestrationRuntimeRepository {
         let Some(flow_run) = inner.flow_runs_by_id.get(&flow_run_id).cloned() else {
             return Ok(None);
         };
+        if matches!(
+            flow_run.status,
+            domain::FlowRunStatus::WaitingCallback | domain::FlowRunStatus::WaitingHuman
+        ) && std::mem::take(&mut inner.waiting_read_fault.1)
+        {
+            anyhow::bail!("injected committed waiting detail read failure");
+        }
         if flow_run.application_id != application_id {
             return Ok(None);
         }

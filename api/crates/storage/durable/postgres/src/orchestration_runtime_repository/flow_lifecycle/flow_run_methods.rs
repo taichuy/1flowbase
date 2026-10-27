@@ -816,6 +816,15 @@ impl PgControlPlaneStore {
     ) -> Result<CommitFlowRunTerminalReceipt> {
         let mut tx = self.pool().begin().await?;
         lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
+        if input.require_initial_execution {
+            // Waiting and resume-claim writers lock this parent before creating
+            // their handoff facts. Acquire it in a separate statement so the
+            // subsequent READ COMMITTED snapshot sees the winner after a wait.
+            sqlx::query("select id from flow_runs where id = $1 for update")
+                .bind(input.flow_run_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        }
         let error_payload = input.result.error_payload().cloned();
         let row = sqlx::query(
             r#"
@@ -828,6 +837,10 @@ impl PgControlPlaneStore {
                 raw_json_payloads = (flow_runs.raw_json_payloads - 'output_payload' - 'error_payload') || jsonb_strip_nulls(jsonb_build_object('output_payload', ($3::jsonb -> 1), 'error_payload', ($4::jsonb -> 1)))
             where id = $1
               and status = $6
+              and (not $7::boolean or (
+                  not exists (select 1 from flow_run_checkpoints where flow_run_id = $1)
+                  and not exists (select 1 from flow_run_resume_claims where flow_run_id = $1)
+              ))
               and status not in ('succeeded', 'incomplete', 'failed', 'cancelled')
             returning
                 id,
@@ -866,6 +879,7 @@ impl PgControlPlaneStore {
         .bind(lossless_json_parameter(&(&error_payload)))
         .bind(input.finished_at)
         .bind(input.expected_status.as_str())
+        .bind(input.require_initial_execution)
         .fetch_optional(&mut *tx)
         .await?;
 
@@ -1000,6 +1014,7 @@ impl PgControlPlaneStore {
             .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
                 flow_run_id: input.flow_run_id,
                 expected_status: input.expected_status,
+                require_initial_execution: false,
                 result: CommitFlowRunTerminalResult::Failed {
                     output_payload: input.output_payload.clone(),
                     error_payload: input.error_payload.clone(),

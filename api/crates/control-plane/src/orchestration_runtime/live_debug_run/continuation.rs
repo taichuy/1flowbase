@@ -153,9 +153,38 @@ where
         + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
         + Clone,
 {
+    let flow_run = match service
+        .repository
+        .get_flow_run(command.application_id, command.flow_run_id)
+        .await
+    {
+        Ok(Some(run)) => run,
+        Ok(None) => return Err(anyhow!("flow run not found")),
+        Err(error) => {
+            // Preserve pre-execution read-failure cleanup. This retry supplies
+            // payload metadata only: the atomic initial-execution fence below
+            // cannot acquire a checkpoint/resume owner's failure authority.
+            if let Ok(Some(initial)) = service
+                .repository
+                .get_flow_run(command.application_id, command.flow_run_id)
+                .await
+            {
+                if initial.status == domain::FlowRunStatus::Running {
+                    return fail_flow_run(service, &initial, &error)
+                        .await
+                        .or(Err(error));
+                }
+            }
+            return Err(error);
+        }
+    };
+    if flow_run.status != domain::FlowRunStatus::Running {
+        return load_run_detail(&service.repository, command.application_id, flow_run.id).await;
+    }
     let result = continue_flow_debug_run_inner(
         service,
         &command,
+        &flow_run,
         live_provider_events,
         provider_transport_payload,
         transport_connection_scope,
@@ -165,7 +194,7 @@ where
 
     match result {
         Ok(detail) => Ok(detail),
-        Err(error) => fail_flow_run(service, command.application_id, command.flow_run_id, &error)
+        Err(error) => fail_flow_run(service, &flow_run, &error)
             .await
             .or(Err(error)),
     }
@@ -209,6 +238,7 @@ where
         .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
             flow_run_id: flow_run.id,
             expected_status: flow_run.status,
+            require_initial_execution: false,
             result: CommitFlowRunTerminalResult::Cancelled {
                 output_payload,
                 error_payload: flow_run.error_payload.clone(),

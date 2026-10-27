@@ -70,6 +70,7 @@ async fn assistant_conversation_native_history_replays_failed_user_without_assis
         &CommitFlowRunTerminalInput {
             flow_run_id: failed_run.id,
             expected_status: FlowRunStatus::Running,
+            require_initial_execution: false,
             result: CommitFlowRunTerminalResult::Failed {
                 output_payload: json!({}),
                 error_payload: json!({ "code": "provider_timeout" }),
@@ -198,6 +199,7 @@ async fn assistant_conversation_native_history_closes_failed_tool_call_without_r
         &CommitFlowRunTerminalInput {
             flow_run_id: failed_run.id,
             expected_status: FlowRunStatus::Running,
+            require_initial_execution: false,
             result: CommitFlowRunTerminalResult::Failed {
                 output_payload: json!({}),
                 error_payload: json!({ "code": "provider_interrupted" }),
@@ -508,6 +510,7 @@ async fn assistant_conversation_projects_cancelled_partial_answer_status() {
             &CommitFlowRunTerminalInput {
                 flow_run_id: run.id,
                 expected_status: FlowRunStatus::Running,
+                require_initial_execution: false,
                 result: CommitFlowRunTerminalResult::Cancelled {
                     output_payload,
                     error_payload: None,

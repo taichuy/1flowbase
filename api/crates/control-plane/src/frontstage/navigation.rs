@@ -45,3 +45,29 @@ impl<R: FrontstagePageRepository> FrontstagePageService<R> {
         ))
     }
 }
+
+/// An explicit destination owns placement; ordering anchors must agree with it.
+pub(super) fn resolve_move_placement(
+    existing: domain::frontstage::FrontstageNavigationPlacement,
+    parent_id: Option<Uuid>,
+    requested: Option<domain::frontstage::FrontstageNavigationPlacement>,
+    anchor: Option<domain::frontstage::FrontstageNavigationPlacement>,
+) -> Result<domain::frontstage::FrontstageNavigationPlacement> {
+    use domain::frontstage::FrontstageNavigationPlacement::{Sidebar, Topbar};
+    if parent_id.is_some() {
+        if requested == Some(Topbar) {
+            return Err(ControlPlaneError::InvalidInput("placement").into());
+        }
+        return Ok(Sidebar);
+    }
+    if let (Some(requested), Some(anchor)) = (requested, anchor) {
+        if requested != anchor {
+            return Err(ControlPlaneError::InvalidInput("move_position").into());
+        }
+    }
+    Ok(requested.or(anchor).unwrap_or(existing))
+}
+
+#[cfg(test)]
+#[path = "_tests/navigation_move.rs"]
+mod navigation_move_tests;

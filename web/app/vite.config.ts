@@ -18,6 +18,7 @@ import {
   collectDndKitModuleSources,
   nativeDndKitModulesPlugin
 } from './build/native-dnd-kit-modules';
+import { vditorAssetsPlugin } from './build/vditor-assets';
 import { pageTreeIconAssetsPlugin } from './build/page-tree-icon-assets';
 import {
   collectDayjsModuleSources,
@@ -122,6 +123,7 @@ export default defineConfig(({ command, mode }) => {
   return {
     cacheDir: devCacheDirectory,
     plugins: [
+      vditorAssetsPlugin(),
       oneFlowbaseDevRuntimePlugin({ root: process.cwd(), mode, command }),
       pageTreeIconAssetsPlugin({ projectRoot: appRoot }),
       scenarioChunkManifestPlugin(),

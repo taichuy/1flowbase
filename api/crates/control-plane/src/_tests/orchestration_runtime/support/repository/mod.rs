@@ -60,6 +60,8 @@ struct InMemoryOrchestrationRuntimeState {
     scope_data_model_grants: Vec<domain::ScopeDataModelGrantRecord>,
     file_storages_by_id: HashMap<Uuid, domain::FileStorageRecord>,
     file_tables_by_id: HashMap<Uuid, domain::FileTableRecord>,
+    waiting_read_fault: (bool, bool),
+    initial_run_read_fault_once: bool,
     status_after_next_get: Option<(Uuid, domain::FlowRunStatus)>,
     status_before_next_flow_update: Option<(Uuid, domain::FlowRunStatus)>,
     stream_terminal_failure_before_next_flow_update: Option<Uuid>,
@@ -89,6 +91,20 @@ pub(crate) struct InMemoryOrchestrationRuntimeRepository {
 }
 
 impl InMemoryOrchestrationRuntimeRepository {
+    pub(crate) fn fail_initial_run_read_once(&self) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .initial_run_read_fault_once = true;
+    }
+
+    pub(crate) fn inject_waiting_read_fault(&self, flow_read: bool, detail_read: bool) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .waiting_read_fault = (flow_read, detail_read);
+    }
+
     pub(crate) fn verify_fixture_capability(&self) -> Uuid {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
         let installation = inner

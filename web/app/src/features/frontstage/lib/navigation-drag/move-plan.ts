@@ -68,12 +68,12 @@ export function resolveNavigationMove(
   }
   const destination = siblings.filter(
     (node) =>
-      node.id !== sourceId &&
-      (parentId !== null ||
-        !source.placement ||
-        !node.placement ||
-        node.placement === source.placement)
+      node.id !== sourceId && (parentId !== null || node.placement === 'topbar')
   );
   const last = destination.at(-1);
-  return last ? { parentId, after_id: last.id } : { parentId, rank: '001000' };
+  return {
+    parentId,
+    ...(parentId === null ? { placement: 'topbar' as const } : {}),
+    ...(last ? { after_id: last.id } : { rank: '001000' })
+  };
 }

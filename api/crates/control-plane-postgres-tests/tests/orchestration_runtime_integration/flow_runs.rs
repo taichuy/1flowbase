@@ -435,6 +435,7 @@ async fn cancelled_terminal_finalizes_unfinished_nodes_and_fences_late_writes() 
         &CommitFlowRunTerminalInput {
             flow_run_id: run.id,
             expected_status: FlowRunStatus::Running,
+            require_initial_execution: false,
             result: CommitFlowRunTerminalResult::Cancelled {
                 output_payload: json!({ "answer": "partial" }),
                 error_payload: None,
@@ -567,6 +568,7 @@ async fn competing_terminal_commits_persist_exactly_one_winner() {
                 &CommitFlowRunTerminalInput {
                     flow_run_id,
                     expected_status: FlowRunStatus::Running,
+                    require_initial_execution: false,
                     result: CommitFlowRunTerminalResult::Succeeded {
                         output_payload: json!({ "answer": "succeeded winner" }),
                     },
@@ -594,6 +596,7 @@ async fn competing_terminal_commits_persist_exactly_one_winner() {
                 &CommitFlowRunTerminalInput {
                     flow_run_id,
                     expected_status: FlowRunStatus::Running,
+                    require_initial_execution: false,
                     result: CommitFlowRunTerminalResult::Failed {
                         output_payload: json!({ "partial": "failed winner" }),
                         error_payload: json!({ "code": "fixture_failure" }),
@@ -724,6 +727,7 @@ async fn terminal_commit_rolls_back_state_result_and_events_when_terminal_insert
         &CommitFlowRunTerminalInput {
             flow_run_id: run.id,
             expected_status: FlowRunStatus::Running,
+            require_initial_execution: false,
             result: CommitFlowRunTerminalResult::Failed {
                 output_payload: json!({ "partial": "must roll back" }),
                 error_payload: json!({ "code": "must_roll_back" }),
