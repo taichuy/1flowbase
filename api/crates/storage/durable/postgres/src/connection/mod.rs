@@ -164,6 +164,8 @@ impl PgConnectionSettings {
 pub struct PgPoolObservation {
     /// None means compatibility mode, not zero allocation or a deployment-wide bound.
     pub max_connections: Option<u32>,
+    /// Local SQLx/client ownership, including establishment. Discarded remote backends
+    /// can outlive this count; use pg_stat_activity/pg_locks for actual server observations.
     pub size: u32,
     pub idle: usize,
     pub checked_out: u32,
@@ -184,7 +186,9 @@ fn observe_pool(pool: &PgPool, max_connections: Option<u32>) -> PgPoolObservatio
 pub struct PgLaneObservation {
     /// Uncapped lanes report owned session establishment/close here and have no idle pool.
     pub pool: PgPoolObservation,
+    /// Locally owned acquisition attempts or held sessions, not remote PG backend counts.
     pub active: usize,
+    /// Local socket cleanup; its completion is not a server termination acknowledgement.
     pub closing: usize,
     pub local_queue: usize,
 }
@@ -206,6 +210,8 @@ pub struct PgConnectionObservation {
     pub template_install: PgLaneObservation,
     pub temporary: PgTemporaryObservation,
     pub local_key_cells: usize,
+    /// Validated local allocation; not an absolute server backend cap during network
+    /// partitions or delayed reclamation of permanently discarded client sessions.
     pub instance_budget: Option<PgInstanceConnectionBudget>,
 }
 

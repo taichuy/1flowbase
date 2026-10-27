@@ -10,7 +10,7 @@ use std::{
 };
 use tokio::{
     sync::{oneshot, watch, Mutex as AsyncMutex, Notify, OwnedMutexGuard},
-    time::{timeout, timeout_at, Instant},
+    time::{sleep, timeout, timeout_at, Instant},
 };
 use uuid::Uuid;
 
@@ -78,7 +78,8 @@ impl PgAdvisoryLockKey {
 pub struct PgSessionStatus {
     /// Ownership is uncertain; cancel local work and never automatically replay it.
     pub lost: bool,
-    /// Connection cleanup AND release of the last retained local owner have completed.
+    /// Client cleanup and release of the last retained local owner have completed.
+    /// Socket close/discard does not acknowledge termination of the remote PG backend.
     pub closed: bool,
 }
 
@@ -364,6 +365,16 @@ pub(super) struct RegistryInner {
     keys: Arc<KeyRegistry>,
     pub(super) temporary: Arc<temporary::TemporaryFactory>,
     closed: AtomicBool,
+    #[cfg(test)]
+    fixtures: AcquisitionFixtures,
+}
+
+#[cfg(test)]
+#[derive(Default)]
+struct AcquisitionFixtures {
+    legacy_blocking_probe: AtomicBool,
+    probe_result: Mutex<Option<(oneshot::Sender<bool>, oneshot::Receiver<()>)>>,
+    retry_delay: Mutex<Option<(oneshot::Sender<()>, oneshot::Receiver<()>)>>,
 }
 
 impl RegistryInner {
@@ -392,6 +403,8 @@ impl RegistryInner {
             settings,
             keys: Arc::default(),
             closed: AtomicBool::new(false),
+            #[cfg(test)]
+            fixtures: AcquisitionFixtures::default(),
         }
     }
 
@@ -429,14 +442,14 @@ impl RegistryInner {
 
 impl PgConnectionRegistry {
     /// FIFO among polled, noncancelled local callers of the same key. One absolute deadline
-    /// covers the local queue, native pool admission and PostgreSQL lock acquisition.
+    /// covers local queue, pool admission, nonblocking probes and connection-free backoff.
     pub async fn acquire(
         &self,
         key: PgAdvisoryLockKey,
         deadline: Instant,
     ) -> Result<PgCoordinationLease> {
         let result = self.acquire_inner(key, deadline, false).await?;
-        result.ok_or_else(|| anyhow::anyhow!("postgres blocking lock was not acquired"))
+        result.ok_or_else(|| anyhow::anyhow!("postgres coordination lock was not acquired"))
     }
 
     /// Only a negative PG try-lock ACK returns None. Budget wait/failure is an error.
@@ -469,7 +482,7 @@ impl PgConnectionRegistry {
         );
         let started = Instant::now();
         let lane = self.inner.lane(key.lane).clone();
-        let local = if try_only {
+        let mut local = if try_only {
             None
         } else {
             let cell = self.inner.keys.cell(&key);
@@ -483,79 +496,185 @@ impl PgConnectionRegistry {
                 _cell: cell,
             })
         };
-        let (connection, activity) = match &lane.pool {
-            Some(pool) => {
-                let connection = timeout_at(deadline, pool.acquire())
-                    .await
-                    .map_err(|_| anyhow::anyhow!("postgres lane acquire deadline exceeded"))??;
-                (
-                    OwnedConnection::Pooled(connection),
-                    Activity::new(&lane.counts),
-                )
-            }
-            None => {
-                // Count establishment as well as held sessions, like native pool size.
-                let activity = Activity::new(&lane.counts);
-                anyhow::ensure!(!*lane.shutdown.borrow(), "postgres connection owner closed");
-                let connection =
-                    timeout_at(deadline, sqlx::PgConnection::connect_with(&lane.options))
-                        .await
-                        .map_err(|_| {
+        // These are polling delays, not capacity or a second business timeout. Bound their
+        // exponential growth to 50ms; every probe, return and delay uses the original deadline.
+        let mut retry_delay = Duration::from_millis(1);
+        loop {
+            anyhow::ensure!(
+                deadline > Instant::now(),
+                "postgres lock acquire deadline exceeded"
+            );
+            anyhow::ensure!(
+                !self.inner.closed.load(Ordering::SeqCst),
+                "postgres connection owner closed"
+            );
+            let (connection, activity) = match &lane.pool {
+                Some(pool) => {
+                    let connection =
+                        timeout_at(deadline, pool.acquire()).await.map_err(|_| {
                             anyhow::anyhow!("postgres lane acquire deadline exceeded")
                         })??;
-                (OwnedConnection::Direct(connection), activity)
+                    (
+                        OwnedConnection::Pooled(connection),
+                        Activity::new(&lane.counts),
+                    )
+                }
+                None => {
+                    // Count establishment as well as held sessions, like native pool size.
+                    let activity = Activity::new(&lane.counts);
+                    anyhow::ensure!(!*lane.shutdown.borrow(), "postgres connection owner closed");
+                    let connection =
+                        timeout_at(deadline, sqlx::PgConnection::connect_with(&lane.options))
+                            .await
+                            .map_err(|_| {
+                                anyhow::anyhow!("postgres lane acquire deadline exceeded")
+                            })??;
+                    (OwnedConnection::Direct(connection), activity)
+                }
+            };
+            // Construct the cancellation guard BEFORE any possibly locking statement.
+            let mut session = Session {
+                connection: Some(connection),
+                local: local.take(),
+                activity: Some(activity),
+                lane: lane.clone(),
+                runtime: tokio::runtime::Handle::current(),
+            };
+            anyhow::ensure!(
+                deadline > Instant::now(),
+                "postgres coordination deadline exceeded"
+            );
+            let query = "SELECT pg_try_advisory_lock(hashtextextended($1, $2))";
+            // Test-only controlled negative: the old query and its actual native close path.
+            // This connection-local setting reproduces PG's default without changing the server.
+            #[cfg(test)]
+            let query = if !try_only
+                && self
+                    .inner
+                    .fixtures
+                    .legacy_blocking_probe
+                    .load(Ordering::SeqCst)
+            {
+                sqlx::query("SET client_connection_check_interval = 0")
+                    .execute(session.connection())
+                    .await?;
+                "SELECT true FROM pg_advisory_lock(hashtextextended($1, $2))"
+            } else {
+                query
+            };
+            let acquired: bool = timeout_at(
+                deadline,
+                sqlx::query_scalar(query)
+                    .bind(&key.text)
+                    .bind(key.seed)
+                    .fetch_one(session.connection()),
+            )
+            .await
+            .map_err(|_| anyhow::anyhow!("postgres lock acquire deadline exceeded"))??;
+            #[cfg(test)]
+            {
+                let gate = self.inner.fixtures.probe_result.lock().unwrap().take();
+                if let Some((observed, resumed)) = gate {
+                    let _ = observed.send(acquired);
+                    let _ = timeout_at(deadline, resumed)
+                        .await
+                        .map_err(|_| anyhow::anyhow!("postgres lock acquire deadline exceeded"))?;
+                }
             }
-        };
-        // Construct the cancellation guard BEFORE any possibly locking statement.
-        let mut session = Session {
-            connection: Some(connection),
-            local,
-            activity: Some(activity),
-            lane: lane.clone(),
-            runtime: tokio::runtime::Handle::current(),
-        };
-        anyhow::ensure!(
-            deadline > Instant::now(),
-            "postgres coordination deadline exceeded"
-        );
-        let query = if try_only {
-            "SELECT pg_try_advisory_lock(hashtextextended($1, $2))"
-        } else {
-            // Both functions return one bool row while the blocking function itself returns void.
-            "SELECT true FROM pg_advisory_lock(hashtextextended($1, $2))"
-        };
-        let acquired: bool = timeout_at(
-            deadline,
-            sqlx::query_scalar(query)
-                .bind(&key.text)
-                .bind(key.seed)
-                .fetch_one(session.connection()),
-        )
-        .await
-        .map_err(|_| anyhow::anyhow!("postgres lock acquire deadline exceeded"))??;
-        tracing::debug!(
-            lane = lane.label,
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            acquired,
-            "postgres coordination admission"
-        );
-        if !acquired {
-            session.return_clean().await;
-            return Ok(None);
+            tracing::debug!(
+                lane = lane.label,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                acquired,
+                "postgres coordination admission"
+            );
+            if !acquired {
+                // False is a clean ACK. Keep the FIFO turn across retries, but release both
+                // native checkout and per-attempt accounting BEFORE sleeping without a session.
+                local = session.local.take();
+                timeout_at(deadline, session.return_clean())
+                    .await
+                    .map_err(|_| anyhow::anyhow!("postgres lock acquire deadline exceeded"))?;
+                anyhow::ensure!(
+                    deadline > Instant::now(),
+                    "postgres lock acquire deadline exceeded"
+                );
+                if try_only {
+                    return Ok(None);
+                }
+                #[cfg(test)]
+                {
+                    let gate = self.inner.fixtures.retry_delay.lock().unwrap().take();
+                    if let Some((observed, resumed)) = gate {
+                        let _ = observed.send(());
+                        let _ = timeout_at(deadline, resumed).await.map_err(|_| {
+                            anyhow::anyhow!("postgres lock acquire deadline exceeded")
+                        })?;
+                    }
+                }
+                timeout_at(deadline, sleep(retry_delay))
+                    .await
+                    .map_err(|_| anyhow::anyhow!("postgres lock acquire deadline exceeded"))?;
+                retry_delay = retry_delay.saturating_mul(2).min(Duration::from_millis(50));
+                continue;
+            }
+            // A true ACK is still guarded, even if it races the deadline. There is no await
+            // between this check and transferring Session to the retained ownership task.
+            anyhow::ensure!(
+                deadline > Instant::now(),
+                "postgres lock acquire deadline exceeded"
+            );
+            let (release, released) = oneshot::channel();
+            let (status, receiver) = watch::channel(PgSessionStatus::default());
+            let interval = self.inner.settings.health_check_interval;
+            let io_timeout = self.inner.settings.business.acquire_timeout;
+            tokio::spawn(hold_session(
+                session, key, released, status, interval, io_timeout,
+            ));
+            return Ok(Some(PgCoordinationLease {
+                lifetime: Arc::new(LeaseLifetime {
+                    _release: release,
+                    status: receiver,
+                }),
+            }));
         }
-        let (release, released) = oneshot::channel();
-        let (status, receiver) = watch::channel(PgSessionStatus::default());
-        let interval = self.inner.settings.health_check_interval;
-        let io_timeout = self.inner.settings.business.acquire_timeout;
-        tokio::spawn(hold_session(
-            session, key, released, status, interval, io_timeout,
-        ));
-        Ok(Some(PgCoordinationLease {
-            lifetime: Arc::new(LeaseLifetime {
-                _release: release,
-                status: receiver,
-            }),
-        }))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pause_next_probe_result(&self) -> (oneshot::Receiver<bool>, oneshot::Sender<()>) {
+        let (observed, result) = oneshot::channel();
+        let (resume, resumed) = oneshot::channel();
+        assert!(self
+            .inner
+            .fixtures
+            .probe_result
+            .lock()
+            .unwrap()
+            .replace((observed, resumed))
+            .is_none());
+        (result, resume)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pause_next_retry_delay(&self) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
+        let (observed, result) = oneshot::channel();
+        let (resume, resumed) = oneshot::channel();
+        assert!(self
+            .inner
+            .fixtures
+            .retry_delay
+            .lock()
+            .unwrap()
+            .replace((observed, resumed))
+            .is_none());
+        (result, resume)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn use_legacy_blocking_probe(&self) {
+        self.inner
+            .fixtures
+            .legacy_blocking_probe
+            .store(true, Ordering::SeqCst);
     }
 }
 
@@ -611,8 +730,12 @@ impl Session {
         if matches!(self.connection, Some(OwnedConnection::Direct(_))) {
             self.close().await;
         } else {
-            // SQLx performs its normal ping/recycle. Only a clean ACK makes reuse safe.
-            drop(self.connection.take());
+            // SQLx 0.9's public eager return owns its floating native permit until ping/
+            // recycle completes; cancellation drops that socket rather than releasing a
+            // pending return into our backoff. Only a clean lock/unlock ACK reaches here.
+            if let Some(OwnedConnection::Pooled(mut connection)) = self.connection.take() {
+                connection.return_to_pool().await;
+            }
         }
     }
 
@@ -646,7 +769,7 @@ impl Drop for Session {
                 let _ = timeout(Duration::from_secs(5), connection.close()).await;
                 drop(local);
                 drop(activity);
-                tracing::debug!(lane, "postgres uncertain session closed");
+                tracing::debug!(lane, "postgres uncertain client session discarded");
             });
         }
     }
@@ -711,7 +834,10 @@ async fn hold_session(
         });
         session.close().await;
     } else {
-        session.return_clean().await;
+        // Unlock is acknowledged. Bound native ping/recycle as well: a connection
+        // lost during clean return must not indefinitely retain the local FIFO turn.
+        // Cancelling SQLx's eager return destroys its floating socket/permit owner.
+        let _ = timeout(io_timeout, session.return_clean()).await;
     }
     status.send_replace(PgSessionStatus { lost, closed: true });
 }

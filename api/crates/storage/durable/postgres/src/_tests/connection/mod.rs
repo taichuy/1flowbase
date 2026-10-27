@@ -3,7 +3,7 @@ mod settings;
 mod temporary;
 
 use postgres_test_support::PostgresTestSchema;
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::{postgres::PgPoolOptions, Connection, PgConnection, PgPool};
 use std::{future::Future, time::Duration};
 use storage_durable_postgres::{
     build_main_durable_postgres_with_connection_settings, PgAdvisoryLockKey, PgConnectionSettings,
@@ -65,6 +65,35 @@ struct Fixture {
     schema: PostgresTestSchema,
 }
 
+struct RemoteHolder {
+    connection: PgConnection,
+    pid: i32,
+    application_name: String,
+    installation: Uuid,
+    scope: Uuid,
+}
+
+impl RemoteHolder {
+    async fn release(self) {
+        self.connection.close().await.unwrap();
+    }
+}
+
+#[derive(Debug)]
+struct ServerLockSnapshot {
+    coordinator_pids: Vec<i32>,
+    blocked_pids: Vec<i32>,
+    holder_holds: bool,
+}
+
+impl ServerLockSnapshot {
+    fn no_waiter_accumulation(&self, local_cap: u32) -> bool {
+        self.holder_holds
+            && self.blocked_pids.is_empty()
+            && self.coordinator_pids.len() <= local_cap as usize
+    }
+}
+
 impl Fixture {
     async fn new(settings: PgConnectionSettings) -> Self {
         // The batch supplies the base URL. All migrations, locks and backend termination
@@ -114,6 +143,65 @@ impl Fixture {
     async fn lock_waiter_pid(&self) -> Option<i32> {
         sqlx::query_scalar("SELECT a.pid FROM pg_stat_activity a WHERE a.datname = current_database() AND a.application_name = '1flowbase:managed-lock' AND EXISTS(SELECT 1 FROM pg_locks l WHERE l.pid = a.pid AND l.locktype = 'advisory' AND NOT l.granted)")
             .fetch_optional(&self.observer).await.unwrap()
+    }
+
+    async fn has_managed_probe(&self) -> bool {
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND application_name = '1flowbase:managed-lock' AND position('advisory' IN query) > 0)")
+            .fetch_one(&self.observer).await.unwrap()
+    }
+
+    async fn remote_holder(
+        &self,
+        installation: Uuid,
+        scope: Uuid,
+        transaction: bool,
+    ) -> RemoteHolder {
+        let application_name = format!("w1a-remote-holder-{}", Uuid::now_v7().simple());
+        let options = (*self.observer.connect_options())
+            .clone()
+            .application_name(&application_name);
+        let mut connection = PgConnection::connect_with(&options).await.unwrap();
+        let pid = sqlx::query_scalar("SELECT pg_backend_pid()")
+            .fetch_one(&mut connection)
+            .await
+            .unwrap();
+        if transaction {
+            sqlx::query("BEGIN").execute(&mut connection).await.unwrap();
+        }
+        let query = if transaction {
+            "SELECT pg_advisory_xact_lock(hashtextextended('managed-service-mutation:' || $1 || ':' || $2, 0))"
+        } else {
+            "SELECT pg_advisory_lock(hashtextextended('managed-service-mutation:' || $1 || ':' || $2, 0))"
+        };
+        sqlx::query(query)
+            .bind(installation.to_string())
+            .bind(scope.to_string())
+            .execute(&mut connection)
+            .await
+            .unwrap();
+        RemoteHolder {
+            connection,
+            pid,
+            application_name,
+            installation,
+            scope,
+        }
+    }
+
+    async fn server_lock_snapshot(&self, holder: &RemoteHolder) -> ServerLockSnapshot {
+        let coordinator_pids = sqlx::query_scalar("SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND application_name = '1flowbase:managed-lock' ORDER BY pid")
+            .fetch_all(&self.observer).await.unwrap();
+        // bigint advisory keys occupy two uint32 lock-tag fields; objsubid=1 is the
+        // single-bigint API. Match the exact legacy key, database, application and PID.
+        let blocked_pids = sqlx::query_scalar("WITH target AS (SELECT hashtextextended('managed-service-mutation:' || $1 || ':' || $2, 0) AS key) SELECT a.pid FROM pg_stat_activity a JOIN pg_locks l ON l.pid = a.pid CROSS JOIN target t WHERE a.datname = current_database() AND a.application_name = '1flowbase:managed-lock' AND l.locktype = 'advisory' AND NOT l.granted AND l.objsubid = 1 AND l.classid::bigint = ((t.key >> 32) & 4294967295) AND l.objid::bigint = (t.key & 4294967295) ORDER BY a.pid")
+            .bind(holder.installation.to_string()).bind(holder.scope.to_string()).fetch_all(&self.observer).await.unwrap();
+        let holder_holds = sqlx::query_scalar("WITH target AS (SELECT hashtextextended('managed-service-mutation:' || $1 || ':' || $2, 0) AS key) SELECT EXISTS(SELECT 1 FROM pg_stat_activity a JOIN pg_locks l ON l.pid = a.pid CROSS JOIN target t WHERE a.datname = current_database() AND a.pid = $3 AND a.application_name = $4 AND l.locktype = 'advisory' AND l.granted AND l.objsubid = 1 AND l.classid::bigint = ((t.key >> 32) & 4294967295) AND l.objid::bigint = (t.key & 4294967295))")
+            .bind(holder.installation.to_string()).bind(holder.scope.to_string()).bind(holder.pid).bind(&holder.application_name).fetch_one(&self.observer).await.unwrap();
+        ServerLockSnapshot {
+            coordinator_pids,
+            blocked_pids,
+            holder_holds,
+        }
     }
 
     async fn close(self) {

@@ -82,6 +82,7 @@ async fn independent_coordinators_keep_existing_key_seed_and_legacy_xact_exclusi
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('managed-service-mutation:' || $1 || ':' || $2, 0))")
         .bind(installation.to_string()).bind(scope.to_string()).execute(&mut *legacy).await.unwrap();
     let second_registry = second.connections().clone();
+    let (probed, resume) = second_registry.pause_next_retry_delay();
     let pending_key = key.clone();
     let pending = tokio::spawn(async move {
         second_registry
@@ -89,8 +90,13 @@ async fn independent_coordinators_keep_existing_key_seed_and_legacy_xact_exclusi
             .await
             .unwrap()
     });
-    eventually_async(|| async { fixture.lock_waiter_pid().await.is_some() }).await;
+    timeout(Duration::from_secs(2), probed)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(fixture.lock_waiter_pid().await.is_none());
     assert!(!pending.is_finished());
+    resume.send(()).unwrap();
     legacy.rollback().await.unwrap();
     let lease = pending.await.unwrap();
     let mut probe = fixture.observer.begin().await.unwrap();
@@ -105,12 +111,18 @@ async fn independent_coordinators_keep_existing_key_seed_and_legacy_xact_exclusi
         .await
         .unwrap();
     let own_registry = fixture.store.connections().clone();
+    let (probed, resume) = own_registry.pause_next_retry_delay();
     let pending = tokio::spawn(async move { own_registry.acquire(key, deadline()).await.unwrap() });
     eventually(|| fixture.store.connections().observe().local_key_cells == 2).await;
-    // The other key uses this node's one session. Releasing it admits the PG waiter.
+    // The other key uses this node's one session. Releasing it admits a short PG probe.
     other.release().await;
-    eventually_async(|| async { fixture.lock_waiter_pid().await.is_some() }).await;
+    timeout(Duration::from_secs(2), probed)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(fixture.lock_waiter_pid().await.is_none());
     assert!(!pending.is_finished());
+    resume.send(()).unwrap();
     lease.release().await;
     pending.await.unwrap().release().await;
     second.connections().close().await;
@@ -189,25 +201,23 @@ async fn expired_local_and_pool_deadlines_never_admit_work() {
 #[tokio::test]
 async fn cancelled_pg_acquisition_closes_session_instead_of_returning_it_to_pool() {
     let fixture = Fixture::new(settings(1)).await;
-    let (installation, scope, key) = managed_key();
-    let mut legacy = fixture.observer.begin().await.unwrap();
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('managed-service-mutation:' || $1 || ':' || $2, 0))")
-        .bind(installation.to_string()).bind(scope.to_string()).execute(&mut *legacy).await.unwrap();
-    // Use the business pool as observer here because the sole observer connection owns legacy.
+    let (_, _, key) = managed_key();
     let registry = fixture.store.connections().clone();
+    // Real PG has acquired the lock, but the caller has not received ownership yet.
+    // The fixture gate makes cancellation at that handoff deterministic; it is not
+    // evidence of a real network response-loss experiment.
+    let (probed, _resume) = registry.pause_next_probe_result();
     let pending_registry = registry.clone();
     let pending_key = key.clone();
     let pending =
         tokio::spawn(async move { pending_registry.acquire(pending_key, deadline()).await });
-    eventually_async(|| async {
-        sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND database = (SELECT oid FROM pg_database WHERE datname = current_database()))")
-            .fetch_one(fixture.store.pool()).await.unwrap()
-    }).await;
-    let pid: i32 = sqlx::query_scalar("SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND application_name = '1flowbase:managed-lock'")
-        .fetch_one(fixture.store.pool()).await.unwrap();
+    assert!(timeout(Duration::from_secs(2), probed)
+        .await
+        .unwrap()
+        .unwrap());
+    let pid = fixture.managed_pid().await;
     pending.abort();
     assert!(pending.await.unwrap_err().is_cancelled());
-    legacy.rollback().await.unwrap();
     eventually_async(|| async { !fixture.session_exists(pid).await }).await;
     eventually(|| {
         registry.observe().managed.closing == 0 && registry.observe().local_key_cells == 0
@@ -220,40 +230,293 @@ async fn cancelled_pg_acquisition_closes_session_instead_of_returning_it_to_pool
 }
 
 #[tokio::test]
-async fn pg_acquire_error_and_deadline_both_discard_uncertain_connections() {
-    for server_cancel in [true, false] {
-        let fixture = Fixture::new(settings(1)).await;
-        let (installation, scope, key) = managed_key();
-        let mut legacy = fixture.store.pool().begin().await.unwrap();
-        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('managed-service-mutation:' || $1 || ':' || $2, 0))")
-            .bind(installation.to_string()).bind(scope.to_string()).execute(&mut *legacy).await.unwrap();
+async fn unacknowledged_probe_deadline_discards_owned_connection_before_any_reuse() {
+    for cap in [1, 2] {
+        let mut configuration = settings(1);
+        configuration.managed_max_connections = Some(cap);
+        let fixture = Fixture::new(configuration).await;
+        let (_, _, key) = managed_key();
         let registry = fixture.store.connections().clone();
+        let (probed, _resume) = registry.pause_next_probe_result();
         let pending_registry = registry.clone();
+        let pending_key = key.clone();
         let pending = tokio::spawn(async move {
             pending_registry
-                .acquire(key, Instant::now() + Duration::from_secs(1))
+                .acquire(pending_key, Instant::now() + Duration::from_secs(1))
                 .await
         });
-        eventually_async(|| async { fixture.lock_waiter_pid().await.is_some() }).await;
-        let pid = fixture.lock_waiter_pid().await.unwrap();
-        if server_cancel {
-            let cancelled: bool = sqlx::query_scalar("SELECT pg_cancel_backend($1)")
-                .bind(pid)
-                .fetch_one(&fixture.observer)
-                .await
-                .unwrap();
-            assert!(cancelled);
-        }
+        assert!(timeout(Duration::from_secs(2), probed)
+            .await
+            .unwrap()
+            .unwrap());
+        let pid = fixture.managed_pid().await;
         assert!(pending.await.unwrap().is_err());
-        legacy.rollback().await.unwrap();
         eventually_async(|| async { !fixture.session_exists(pid).await }).await;
         eventually(|| {
             registry.observe().managed.closing == 0 && registry.observe().local_key_cells == 0
         })
         .await;
         assert_eq!(registry.observe().managed.pool.size, 0);
+        let fresh = registry.acquire(key, deadline()).await.unwrap();
+        assert_ne!(fixture.managed_pid().await, pid);
+        fresh.release().await;
         fixture.close().await;
     }
+}
+
+#[tokio::test]
+async fn repeated_timeouts_and_cancels_do_not_accumulate_server_waiters_while_remote_holder_stays()
+{
+    for cap in [1, 2] {
+        let mut configuration = settings(1);
+        configuration.managed_max_connections = Some(cap);
+        let fixture = Fixture::new(configuration).await;
+        let registry = fixture.store.connections().clone();
+        for transaction in [true, false] {
+            let (installation, scope, key) = managed_key();
+            let holder = fixture
+                .remote_holder(installation, scope, transaction)
+                .await;
+            for attempt in 0..6 {
+                let cancelled = attempt % 2 == 0;
+                let gate = cancelled.then(|| registry.pause_next_retry_delay());
+                let pending_registry = registry.clone();
+                let pending_key = key.clone();
+                let pending = tokio::spawn(async move {
+                    let limit = if cancelled {
+                        deadline()
+                    } else {
+                        Instant::now() + Duration::from_millis(250)
+                    };
+                    pending_registry.acquire(pending_key, limit).await
+                });
+                if let Some((probed, _resume)) = gate {
+                    // Cancel after this attempt's actual false ACK and native clean return.
+                    timeout(Duration::from_secs(2), probed)
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    let snapshot = fixture.server_lock_snapshot(&holder).await;
+                    assert!(snapshot.no_waiter_accumulation(cap), "{snapshot:?}");
+                    pending.abort();
+                    assert!(pending.await.unwrap_err().is_cancelled());
+                } else {
+                    eventually_async(|| async { fixture.has_managed_probe().await }).await;
+                    let snapshot = fixture.server_lock_snapshot(&holder).await;
+                    assert!(snapshot.no_waiter_accumulation(cap), "{snapshot:?}");
+                    let error = pending.await.unwrap().unwrap_err();
+                    assert!(error.to_string().contains("lock acquire deadline"));
+                }
+                eventually(|| {
+                    let observation = registry.observe();
+                    observation.local_key_cells == 0
+                        && observation.managed.active == 0
+                        && observation.managed.closing == 0
+                })
+                .await;
+                // Inspect PG BEFORE releasing the holder. Rust counters alone cannot
+                // distinguish a closed client from a backend still blocked on its key.
+                let snapshot = fixture.server_lock_snapshot(&holder).await;
+                assert!(
+                    snapshot.no_waiter_accumulation(cap),
+                    "cap={cap} attempt={attempt}: {snapshot:?}"
+                );
+                timeout(
+                    Duration::from_secs(2),
+                    sqlx::query("SELECT 1").execute(fixture.store.pool()),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+            }
+            assert!(fixture.server_lock_snapshot(&holder).await.holder_holds);
+            holder.release().await;
+            registry
+                .acquire(key, deadline())
+                .await
+                .unwrap()
+                .release()
+                .await;
+        }
+        fixture.close().await;
+    }
+}
+
+#[tokio::test]
+async fn legacy_blocking_probe_negative_exceeds_cap_in_same_server_waiter_oracle() {
+    for cap in [1, 2] {
+        let mut configuration = settings(1);
+        configuration.managed_max_connections = Some(cap);
+        let fixture = Fixture::new(configuration).await;
+        let registry = fixture.store.connections().clone();
+        // Select only the old SQL in the actual production factory/Session cleanup.
+        // Its test-only per-session interval=0 reproduces the documented default.
+        registry.use_legacy_blocking_probe();
+        let (installation, scope, key) = managed_key();
+        let holder = fixture.remote_holder(installation, scope, true).await;
+        for cancelled in 0..3 {
+            let pending_registry = registry.clone();
+            let pending_key = key.clone();
+            let pending =
+                tokio::spawn(
+                    async move { pending_registry.acquire(pending_key, deadline()).await },
+                );
+            eventually_async(|| async {
+                fixture
+                    .server_lock_snapshot(&holder)
+                    .await
+                    .blocked_pids
+                    .len()
+                    == cancelled + 1
+            })
+            .await;
+            pending.abort();
+            assert!(pending.await.unwrap_err().is_cancelled());
+            eventually(|| {
+                let observation = registry.observe();
+                observation.local_key_cells == 0
+                    && observation.managed.active == 0
+                    && observation.managed.closing == 0
+            })
+            .await;
+            let snapshot = fixture.server_lock_snapshot(&holder).await;
+            assert!(snapshot.holder_holds);
+            assert_eq!(snapshot.blocked_pids.len(), cancelled + 1, "{snapshot:?}");
+            assert!(
+                !snapshot.no_waiter_accumulation(cap),
+                "legacy must fail the candidate oracle: {snapshot:?}"
+            );
+        }
+        let snapshot = fixture.server_lock_snapshot(&holder).await;
+        assert!(
+            snapshot.coordinator_pids.len() > cap as usize,
+            "{snapshot:?}"
+        );
+        // Let the owned remote transaction end only after observing all three stale
+        // server waiters. Then wait for their late Terminate/socket handling for cleanup.
+        holder.release().await;
+        eventually_async(|| async {
+            sqlx::query_scalar::<_, i64>("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND application_name = '1flowbase:managed-lock'")
+                .fetch_one(&fixture.observer).await.unwrap() == 0
+        }).await;
+        fixture.close().await;
+    }
+}
+
+#[tokio::test]
+async fn false_probe_returns_and_reuses_connection_but_retains_fifo_head_during_backoff() {
+    let mut configuration = settings(1);
+    configuration.managed_max_connections = Some(2);
+    let fixture = Fixture::new(configuration).await;
+    let registry = fixture.store.connections().clone();
+    let (installation, scope, key) = managed_key();
+    let remote = fixture.remote_holder(installation, scope, true).await;
+    let (backoff, resume) = registry.pause_next_retry_delay();
+    let pending_registry = registry.clone();
+    let pending_key = key.clone();
+    let head = tokio::spawn(async move {
+        pending_registry
+            .acquire(pending_key, deadline())
+            .await
+            .unwrap()
+    });
+    timeout(Duration::from_secs(2), backoff)
+        .await
+        .unwrap()
+        .unwrap();
+    let pid = fixture.managed_pid().await;
+    let observation = registry.observe();
+    assert_eq!(observation.managed.active, 0);
+    assert_eq!(observation.managed.pool.checked_out, 0);
+    assert_eq!(observation.managed.pool.idle, 1);
+    assert_eq!(observation.local_key_cells, 1);
+    let mut followers = Vec::new();
+    for index in 0..3 {
+        let pending_registry = registry.clone();
+        let pending_key = key.clone();
+        followers.push(tokio::spawn(async move {
+            pending_registry
+                .acquire(pending_key, deadline())
+                .await
+                .unwrap()
+        }));
+        eventually(|| registry.observe().managed.local_queue == index + 1).await;
+    }
+    // cap=2 leaves spare capacity: followers still must not borrow. A different key
+    // can reuse the exact idle PID while the original FIFO head owns only its turn.
+    let child = registry.acquire(managed_key().2, deadline()).await.unwrap();
+    assert_eq!(fixture.managed_pid().await, pid);
+    assert_eq!(registry.observe().managed.pool.size, 1);
+    timeout(
+        Duration::from_secs(2),
+        sqlx::query("SELECT 1").execute(fixture.store.pool()),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    child.release().await;
+    let snapshot = fixture.server_lock_snapshot(&remote).await;
+    assert!(snapshot.no_waiter_accumulation(2), "{snapshot:?}");
+    assert!(followers.iter().all(|follower| !follower.is_finished()));
+    remote.release().await;
+    assert!(followers.iter().all(|follower| !follower.is_finished()));
+    resume.send(()).unwrap();
+    let lease = timeout(Duration::from_secs(2), head)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(followers.iter().all(|follower| !follower.is_finished()));
+    lease.release().await;
+    for follower in followers {
+        timeout(Duration::from_secs(2), follower)
+            .await
+            .unwrap()
+            .unwrap()
+            .release()
+            .await;
+    }
+    assert_eq!(registry.observe().local_key_cells, 0);
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn absolute_deadline_expires_in_connection_free_retry_phase_without_discarding_clean_session()
+{
+    let fixture = Fixture::new(settings(1)).await;
+    let registry = fixture.store.connections().clone();
+    let (installation, scope, key) = managed_key();
+    let remote = fixture.remote_holder(installation, scope, true).await;
+    let (backoff, _resume) = registry.pause_next_retry_delay();
+    let pending_registry = registry.clone();
+    let pending = tokio::spawn(async move {
+        pending_registry
+            .acquire(key, Instant::now() + Duration::from_secs(1))
+            .await
+    });
+    timeout(Duration::from_secs(2), backoff)
+        .await
+        .unwrap()
+        .unwrap();
+    let pid = fixture.managed_pid().await;
+    let error = timeout(Duration::from_secs(2), pending)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert!(error.to_string().contains("lock acquire deadline"));
+    let observation = registry.observe();
+    assert_eq!(observation.local_key_cells, 0);
+    assert_eq!(observation.managed.active, 0);
+    assert_eq!(observation.managed.closing, 0);
+    assert_eq!(observation.managed.pool.idle, 1);
+    let snapshot = fixture.server_lock_snapshot(&remote).await;
+    assert!(snapshot.no_waiter_accumulation(1), "{snapshot:?}");
+    assert_eq!(snapshot.coordinator_pids, vec![pid]);
+    let other = registry.acquire(managed_key().2, deadline()).await.unwrap();
+    assert_eq!(fixture.managed_pid().await, pid);
+    other.release().await;
+    remote.release().await;
+    fixture.close().await;
 }
 
 #[tokio::test]
