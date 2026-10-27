@@ -308,7 +308,8 @@ async fn resolved_host_uses_output_reserve_then_reuses_checkpoint_for_tool_conti
         .invoke_resolved_llm(&fixture.compiled, fixture.route.clone(), input.clone())
         .await
         .unwrap();
-    let receipt = &output.result.provider_metadata["_1flowbase_internal_compaction"];
+    let receipt = &output.result.provider_metadata["_1flowbase_upstream_provider_metadata"]
+        ["_1flowbase_internal_compaction"];
     assert_eq!(receipt["status"], "activated");
     assert_eq!(receipt["input_tokens_before"], 8_300);
     assert_eq!(receipt["threshold"], 8_500);
@@ -328,7 +329,8 @@ async fn resolved_host_uses_output_reserve_then_reuses_checkpoint_for_tool_conti
         .await
         .unwrap();
     assert_eq!(
-        output.result.provider_metadata["_1flowbase_internal_compaction"]["status"],
+        output.result.provider_metadata["_1flowbase_upstream_provider_metadata"]
+            ["_1flowbase_internal_compaction"]["status"],
         "reused"
     );
     assert_eq!(fixture.head(), active);
@@ -762,7 +764,8 @@ async fn real_host_fallback_count_accepts_plaintext_reasoning_and_reuses_existin
         .invoke_resolved_llm(&fixture.compiled, fixture.route.clone(), input)
         .await
         .unwrap();
-    let receipt = &output.result.provider_metadata["_1flowbase_internal_compaction"];
+    let receipt = &output.result.provider_metadata["_1flowbase_upstream_provider_metadata"]
+        ["_1flowbase_internal_compaction"];
     assert_eq!(receipt["status"], "reused");
     assert_eq!(receipt["count"]["method"], "generic_estimate");
     assert_eq!(receipt["count"]["coverage"], "complete");
