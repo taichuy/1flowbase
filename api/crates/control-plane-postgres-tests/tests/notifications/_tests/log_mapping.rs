@@ -812,64 +812,9 @@ async fn finalization_failure_keeps_external_send_pending_and_rolls_back_system_
 
 #[tokio::test]
 async fn numeric_managed_credentials_and_new_patches_never_enter_log_projections() {
-    let fixture = Fixture::new(descriptor(true)).await;
-    let mut state = fixture
-        .store
-        .resolve_notification_authorization(
-            fixture.actor.current_workspace_id,
-            fixture.instance_id,
-            MASTER_KEY,
-        )
-        .await
-        .unwrap();
-    state
-        .managed_secrets
-        .insert("rotated_token".into(), json!(726493));
-    fixture
-        .store
-        .save_notification_authorization(SaveNotificationAuthorizationInput {
-            workspace_id: fixture.actor.current_workspace_id,
-            instance_id: fixture.instance_id,
-            expected_revision: state.revision,
-            authorization: state.authorization.unwrap(),
-            managed_secrets: state.managed_secrets,
-            master_key: MASTER_KEY.into(),
-        })
-        .await
-        .unwrap()
-        .unwrap();
-    for input in [
-        json!({"body":"Public message","context":{"otp":726493}}),
-        json!({"body":"Private OTP: 726493"}),
-        json!({"body":"Public message","context":{"726493":"value"}}),
-    ] {
-        fixture.send(input).await.unwrap_err();
-        assert_eq!(fixture.provider.calls.load(Ordering::SeqCst), 0);
-        let log = fixture.latest().await;
-        assert_eq!(log.failure_code.as_deref(), Some("input_invalid"));
-        assert_metadata_only(&log);
-        assert!(!serde_json::to_string(&log).unwrap().contains("726493"));
-    }
-
-    let fixture = Fixture::new(descriptor(true)).await;
-    for context in [
-        json!({"otp":726493}),
-        json!({"otp":"value:726493"}),
-        json!({"726493":"safe"}),
-    ] {
-        fixture.reply(managed_success(
-            json!({"receipt":"safe","context":context}),
-            json!({"rotated_token":726493}),
-        ));
-        fixture
-            .send(json!({"body":"Public message"}))
-            .await
-            .unwrap_err();
-        let log = fixture.latest().await;
-        assert_eq!(log.status, "unknown");
-        assert_eq!(log.failure_code.as_deref(), Some("provider_output_invalid"));
-        assert_message(&log, "Public message", "Public message", json!({}));
-        let state = fixture
+    for secret in [json!(726493), json!(726493.0)] {
+        let fixture = Fixture::new(descriptor(true)).await;
+        let mut state = fixture
             .store
             .resolve_notification_authorization(
                 fixture.actor.current_workspace_id,
@@ -878,7 +823,70 @@ async fn numeric_managed_credentials_and_new_patches_never_enter_log_projections
             )
             .await
             .unwrap();
-        assert!(!state.managed_secrets.contains_key("rotated_token"));
+        state.managed_secrets.insert("rotated_token".into(), secret);
+        fixture
+            .store
+            .save_notification_authorization(SaveNotificationAuthorizationInput {
+                workspace_id: fixture.actor.current_workspace_id,
+                instance_id: fixture.instance_id,
+                expected_revision: state.revision,
+                authorization: state.authorization.unwrap(),
+                managed_secrets: state.managed_secrets,
+                master_key: MASTER_KEY.into(),
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        for input in [
+            json!({"body":"Public message","context":{"otp":726493}}),
+            json!({"body":"Public message","context":{"otp":726493.0}}),
+            json!({"body":"Private OTP: 726493"}),
+            json!({"body":"Private OTP: 726493.0"}),
+            json!({"body":"Public message","context":{"726493":"value"}}),
+            json!({"body":"Public message","context":{"726493.0":"value"}}),
+        ] {
+            fixture.send(input).await.unwrap_err();
+            assert_eq!(fixture.provider.calls.load(Ordering::SeqCst), 0);
+            let log = fixture.latest().await;
+            assert_eq!(log.failure_code.as_deref(), Some("input_invalid"));
+            assert_metadata_only(&log);
+            assert!(!serde_json::to_string(&log).unwrap().contains("726493"));
+        }
+    }
+
+    let fixture = Fixture::new(descriptor(true)).await;
+    for secret in [json!(726493), json!(726493.0)] {
+        for context in [
+            json!({"otp":726493}),
+            json!({"otp":726493.0}),
+            json!({"otp":"value:726493"}),
+            json!({"otp":"value:726493.0"}),
+            json!({"726493":"safe"}),
+            json!({"726493.0":"safe"}),
+        ] {
+            fixture.reply(managed_success(
+                json!({"receipt":"safe","context":context}),
+                json!({"rotated_token":secret}),
+            ));
+            fixture
+                .send(json!({"body":"Public message"}))
+                .await
+                .unwrap_err();
+            let log = fixture.latest().await;
+            assert_eq!(log.status, "unknown");
+            assert_eq!(log.failure_code.as_deref(), Some("provider_output_invalid"));
+            assert_message(&log, "Public message", "Public message", json!({}));
+            let state = fixture
+                .store
+                .resolve_notification_authorization(
+                    fixture.actor.current_workspace_id,
+                    fixture.instance_id,
+                    MASTER_KEY,
+                )
+                .await
+                .unwrap();
+            assert!(!state.managed_secrets.contains_key("rotated_token"));
+        }
     }
     // Boolean/null are ordinary protocol state, and unrelated numeric data is still public.
     fixture.reply(managed_success(
@@ -895,6 +903,37 @@ async fn numeric_managed_credentials_and_new_patches_never_enter_log_projections
             "receipt":"safe","result_context":{"accepted":true,"empty":null,"count":42}
         })
     );
+}
+
+#[tokio::test]
+async fn numeric_log_credentials_preserve_distinct_large_integer_values() {
+    let fixture = Fixture::new(descriptor(true)).await;
+    for (secret, public) in [
+        (
+            json!(9_007_199_254_740_993_u64),
+            json!(9_007_199_254_740_992.0),
+        ),
+        (json!(u64::MAX), json!(18_446_744_073_709_551_616.0)),
+    ] {
+        fixture.reply(managed_success(
+            json!({"receipt":"safe","context":{"count":public}}),
+            json!({"rotated_token":secret}),
+        ));
+        fixture
+            .send(json!({"body":"Public message"}))
+            .await
+            .unwrap();
+        let log = fixture.latest().await;
+        assert_eq!(log.status, "success");
+        assert_eq!(log.extra["result_context"]["count"], public);
+        // The now-persisted credential must not block distinct input business data either.
+        fixture.reply(managed_success(json!({"receipt":"safe"}), json!({})));
+        fixture
+            .send(json!({"body":"Public message","context":{"count":public}}))
+            .await
+            .unwrap();
+        assert_eq!(fixture.latest().await.extra["context"]["count"], public);
+    }
 }
 
 #[tokio::test]

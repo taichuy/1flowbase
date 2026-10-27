@@ -62,10 +62,22 @@ fn log_contains_credentials(
     managed: &BTreeMap<String, Value>,
     patch: &BTreeMap<String, Value>,
 ) -> bool {
+    fn numeric_scalar(value: &serde_json::Number) -> String {
+        // Preserve integer precision. Only integral floats in the JSON integer range
+        // share an integer spelling; converting every number to f64 would round u64s.
+        if !value.is_i64() && !value.is_u64() {
+            if let Some(number) = value.as_f64() {
+                if number.fract() == 0.0 && number >= i64::MIN as f64 && number < u64::MAX as f64 {
+                    return (number as i128).to_string();
+                }
+            }
+        }
+        value.to_string()
+    }
     fn contains_scalar(public: &Value, secret: &str) -> bool {
         match public {
             Value::String(value) => value.contains(secret),
-            Value::Number(value) => value.to_string() == secret,
+            Value::Number(value) => value.to_string() == secret || numeric_scalar(value) == secret,
             Value::Array(values) => values.iter().any(|value| contains_scalar(value, secret)),
             Value::Object(fields) => fields
                 .iter()
@@ -76,7 +88,7 @@ fn log_contains_credentials(
     fn reflects(public: &Value, secret: &Value) -> bool {
         match secret {
             Value::String(secret) => !secret.is_empty() && contains_scalar(public, secret),
-            Value::Number(secret) => contains_scalar(public, &secret.to_string()),
+            Value::Number(secret) => contains_scalar(public, &numeric_scalar(secret)),
             Value::Array(values) => values.iter().any(|secret| reflects(public, secret)),
             Value::Object(fields) => fields.values().any(|secret| reflects(public, secret)),
             _ => false,
