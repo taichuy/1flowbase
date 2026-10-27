@@ -130,6 +130,7 @@ jobs:
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts 2>&1 | tee tmp/test-governance/communications/ci/repository-contracts.log
+          cargo fetch --locked --manifest-path api/Cargo.toml
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test dependency_boundaries 2>&1 | tee tmp/test-governance/communications/ci/dependency-boundaries.log
           cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib managed_switch_repository_tests 2>&1 | tee tmp/test-governance/communications/ci/version-migration.log
       - name: Build canonical managed workers

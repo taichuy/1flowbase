@@ -450,8 +450,10 @@ impl NotificationRepository for PgControlPlaneStore {
         for user_id in recipients {
             records.push(message(sqlx::query("INSERT INTO system_notifications (id,workspace_id,instance_id,recipient_user_id,title,content) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *").bind(Uuid::now_v7()).bind(workspace_id).bind(instance_id).bind(user_id).bind(title).bind(content).fetch_one(&mut *tx).await?));
         }
-        let updated = sqlx::query("UPDATE notification_send_logs SET status='success',title=$3,content=$4,recipient_count=$5,completed_at=now() WHERE workspace_id=$1 AND id=$2 AND instance_id=$6 AND status='pending'")
-            .bind(workspace_id).bind(send_log_id).bind(title).bind(content).bind(recipients.len() as i64).bind(instance_id).execute(&mut *tx).await?.rows_affected();
+        // Message projection is already durable; terminal settlement must not replace the
+        // Host-generated title with the original (possibly blank) system input title.
+        let updated = sqlx::query("UPDATE notification_send_logs SET status='success',recipient_count=$3,completed_at=now() WHERE workspace_id=$1 AND id=$2 AND instance_id=$4 AND status='pending'")
+            .bind(workspace_id).bind(send_log_id).bind(recipients.len() as i64).bind(instance_id).execute(&mut *tx).await?.rows_affected();
         if updated != 1 {
             return Err(Error::Conflict("notification_log_state").into());
         }

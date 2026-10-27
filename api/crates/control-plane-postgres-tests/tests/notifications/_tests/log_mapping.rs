@@ -809,3 +809,146 @@ async fn finalization_failure_keeps_external_send_pending_and_rolls_back_system_
         serde_json::to_value(pending).unwrap()
     );
 }
+
+#[tokio::test]
+async fn numeric_managed_credentials_and_new_patches_never_enter_log_projections() {
+    let fixture = Fixture::new(descriptor(true)).await;
+    let mut state = fixture
+        .store
+        .resolve_notification_authorization(
+            fixture.actor.current_workspace_id,
+            fixture.instance_id,
+            MASTER_KEY,
+        )
+        .await
+        .unwrap();
+    state
+        .managed_secrets
+        .insert("rotated_token".into(), json!(726493));
+    fixture
+        .store
+        .save_notification_authorization(SaveNotificationAuthorizationInput {
+            workspace_id: fixture.actor.current_workspace_id,
+            instance_id: fixture.instance_id,
+            expected_revision: state.revision,
+            authorization: state.authorization.unwrap(),
+            managed_secrets: state.managed_secrets,
+            master_key: MASTER_KEY.into(),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    for input in [
+        json!({"body":"Public message","context":{"otp":726493}}),
+        json!({"body":"Private OTP: 726493"}),
+        json!({"body":"Public message","context":{"726493":"value"}}),
+    ] {
+        fixture.send(input).await.unwrap_err();
+        assert_eq!(fixture.provider.calls.load(Ordering::SeqCst), 0);
+        let log = fixture.latest().await;
+        assert_eq!(log.failure_code.as_deref(), Some("input_invalid"));
+        assert_metadata_only(&log);
+        assert!(!serde_json::to_string(&log).unwrap().contains("726493"));
+    }
+
+    let fixture = Fixture::new(descriptor(true)).await;
+    for context in [
+        json!({"otp":726493}),
+        json!({"otp":"value:726493"}),
+        json!({"726493":"safe"}),
+    ] {
+        fixture.reply(managed_success(
+            json!({"receipt":"safe","context":context}),
+            json!({"rotated_token":726493}),
+        ));
+        fixture
+            .send(json!({"body":"Public message"}))
+            .await
+            .unwrap_err();
+        let log = fixture.latest().await;
+        assert_eq!(log.status, "unknown");
+        assert_eq!(log.failure_code.as_deref(), Some("provider_output_invalid"));
+        assert_message(&log, "Public message", "Public message", json!({}));
+        let state = fixture
+            .store
+            .resolve_notification_authorization(
+                fixture.actor.current_workspace_id,
+                fixture.instance_id,
+                MASTER_KEY,
+            )
+            .await
+            .unwrap();
+        assert!(!state.managed_secrets.contains_key("rotated_token"));
+    }
+    // Boolean/null are ordinary protocol state, and unrelated numeric data is still public.
+    fixture.reply(managed_success(
+        json!({"receipt":"safe","context":{"accepted":true,"empty":null,"count":42}}),
+        json!({"rotated_token":true}),
+    ));
+    fixture
+        .send(json!({"body":"Public message"}))
+        .await
+        .unwrap();
+    assert_eq!(
+        fixture.latest().await.extra,
+        json!({
+            "receipt":"safe","result_context":{"accepted":true,"empty":null,"count":42}
+        })
+    );
+}
+
+#[tokio::test]
+async fn system_success_preserves_the_host_generated_title_and_complete_body() {
+    let fixture = Fixture::new(descriptor(false)).await;
+    let system_id = fixture
+        .service
+        .list_instances(&fixture.actor)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|instance| instance.record.type_code == "system")
+        .unwrap()
+        .record
+        .id;
+    let content = "系统🙂".repeat(180);
+    fixture
+        .service
+        .send(
+            &fixture.actor,
+            NotificationSource::Api,
+            system_id,
+            json!({"user_ids":[fixture.actor.user_id],"title":"  ","content":content}),
+        )
+        .await
+        .unwrap();
+    let log = fixture
+        .service
+        .logs(
+            &fixture.actor,
+            NotificationLogListInput {
+                instance_id: Some(system_id),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .items
+        .remove(0);
+    assert_eq!(log.status, "success");
+    assert_eq!(log.recipient_count, Some(1));
+    assert_message(
+        &log,
+        &content.chars().take(255).collect::<String>(),
+        &content,
+        json!({}),
+    );
+    // Logging does not rewrite the user's separately committed inbox message.
+    let inbox = fixture
+        .service
+        .messages(&fixture.actor, Default::default())
+        .await
+        .unwrap();
+    assert_eq!(inbox.items.len(), 1);
+    assert_eq!(inbox.items[0].title, "  ");
+    assert_eq!(inbox.items[0].content, content);
+}

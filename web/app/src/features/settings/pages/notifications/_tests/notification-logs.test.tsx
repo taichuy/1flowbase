@@ -174,7 +174,7 @@ test('renders the complete backend body and title without guessing provider fiel
   const title = drawer.getByRole('group', { name: '消息标题' });
   const body = drawer.getByRole('group', { name: '消息内容' });
   expect(within(title).getByText(storedTitle)).toBeInTheDocument();
-  expect(body.textContent).toContain(content);
+  expect(body).toHaveTextContent(content, { normalizeWhitespace: false });
   expect(body.querySelector('script')).toBeNull();
   expect(drawer.queryByText('UNMAPPED_PROVIDER_TEXT')).not.toBeInTheDocument();
   expect(
