@@ -2,6 +2,7 @@ use super::*;
 
 fn descriptor() -> NotificationTypeDescriptor {
     let mut descriptor = system_notification_descriptor();
+    descriptor.log = None;
     descriptor.type_code = "example/notification/private".into();
     descriptor.authorization = Some(
         serde_json::from_value(json!({

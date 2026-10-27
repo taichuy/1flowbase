@@ -80,12 +80,20 @@ pub trait NotificationRepository: Send + Sync {
         &self,
         log: domain::NotificationSendLog,
     ) -> anyhow::Result<()>;
+    /// Snapshot only validated, credential-checked business fields before provider I/O.
+    async fn snapshot_notification_send_log(
+        &self,
+        workspace_id: Uuid,
+        id: Uuid,
+        snapshot: extension_contracts::NotificationLogSnapshot,
+    ) -> anyhow::Result<()>;
     async fn complete_notification_send_log(
         &self,
         workspace_id: Uuid,
         id: Uuid,
         status: &str,
         failure_code: Option<&str>,
+        extra: Option<serde_json::Value>,
     ) -> anyhow::Result<()>;
     async fn list_notification_send_logs(
         &self,

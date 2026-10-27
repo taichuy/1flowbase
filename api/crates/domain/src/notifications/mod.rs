@@ -96,6 +96,7 @@ pub struct NotificationSendLog {
     pub title: Option<String>,
     pub content: Option<String>,
     pub recipient_count: Option<i64>,
+    pub extra: serde_json::Value,
     #[serde(with = "timestamp")]
     pub created_at: OffsetDateTime,
     #[serde(with = "optional_timestamp")]
@@ -269,6 +270,7 @@ pub(crate) fn notification_send_log_model_contract() -> crate::BuiltinDataModelC
             "recipient_count",
             "created_at",
             "completed_at",
+            "extra",
         ],
     )
 }

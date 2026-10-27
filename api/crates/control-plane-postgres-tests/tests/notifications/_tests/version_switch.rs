@@ -56,6 +56,7 @@ async fn version_switch_between_channel_and_authorization_reads_preserves_creden
         .await
         .unwrap();
     let mut descriptor = system_notification_descriptor();
+    descriptor.log = None;
     descriptor.type_code = "acme/catalog/notification".into();
     descriptor.contribution_id = extension_contracts::ContributionId::new("acme.catalog").unwrap();
     descriptor.authorization = Some(

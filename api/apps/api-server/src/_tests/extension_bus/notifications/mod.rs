@@ -189,7 +189,7 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
     // A provider can accept externally while the final durable log update fails. The caller
     // receives an error, but the invocation must remain pending rather than become failure.
     sqlx::query("CREATE FUNCTION reject_notification_log_finalize() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture finalize unavailable'; END $$").execute(state.store.pool()).await.unwrap();
-    sqlx::query("CREATE TRIGGER notification_log_finalize_fixture BEFORE UPDATE ON notification_send_logs FOR EACH ROW EXECUTE FUNCTION reject_notification_log_finalize()").execute(state.store.pool()).await.unwrap();
+    sqlx::query("CREATE TRIGGER notification_log_finalize_fixture BEFORE UPDATE ON notification_send_logs FOR EACH ROW WHEN (NEW.status <> OLD.status) EXECUTE FUNCTION reject_notification_log_finalize()").execute(state.store.pool()).await.unwrap();
     assert!(service
         .send(
             &actor,

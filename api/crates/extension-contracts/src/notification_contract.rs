@@ -19,6 +19,8 @@ mod i18n;
 pub use i18n::*;
 mod receive;
 pub use receive::*;
+mod log;
+pub use log::*;
 mod managed;
 pub use managed::*;
 
@@ -37,6 +39,9 @@ pub struct NotificationTypeDescriptor {
     pub input_form: PluginFormSchema,
     pub output_schema: Value,
     pub contribution_id: ContributionId,
+    /// Optional plugin-owned public send-log projection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log: Option<NotificationLogDescriptor>,
     /// Optional authorization capability, independent of receive/send support.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authorization: Option<NotificationAuthorizationDescriptor>,
@@ -101,6 +106,9 @@ impl NotificationTypeDescriptor {
                     "receive cursor must be separate from managed secrets",
                 ));
             }
+        }
+        if let Some(log) = &self.log {
+            log.validate(self)?;
         }
         i18n::validate(self)?;
         Ok(())

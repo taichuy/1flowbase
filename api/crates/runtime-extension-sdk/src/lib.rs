@@ -27,8 +27,9 @@ mod simulator;
 pub use extension_contracts::{
     CapabilityStdioError, CapabilityStdioMethod, CapabilityStdioRequest, CapabilityStdioResponse,
     NotificationAuthorizationActionLocale, NotificationAuthorizationLocale,
-    NotificationFieldLocale, NotificationFormLocale, NotificationTypeDescriptor,
-    NotificationTypeLocale,
+    NotificationFieldLocale, NotificationFormLocale, NotificationLogDescriptor,
+    NotificationLogExtraField, NotificationLogSnapshot, NotificationLogSource,
+    NotificationTypeDescriptor, NotificationTypeLocale,
 };
 pub use extension_contracts::{
     ManagedCreateHookInput, ManagedCreateView, ManagedHookHostFrame, ManagedHookOutcome,

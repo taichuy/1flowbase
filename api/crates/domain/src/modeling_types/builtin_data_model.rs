@@ -165,6 +165,9 @@ fn field_code_to_static(model_code: &'static str, field_code: &str) -> Option<&'
 }
 
 fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKind {
+    if model_code == "notification_send_logs" && field_code == "extra" {
+        return crate::ModelFieldKind::Json;
+    }
     if model_code == "attachments" && field_code == "preview_url" {
         return crate::ModelFieldKind::FilePreviewUrl;
     }

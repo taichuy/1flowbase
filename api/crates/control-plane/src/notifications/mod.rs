@@ -20,6 +20,7 @@ use std::{collections::BTreeSet, sync::Arc};
 use uuid::Uuid;
 
 mod authorization;
+mod logging;
 mod managed_send;
 mod migration;
 pub use migration::compatible_notification_migration_types;
@@ -592,7 +593,8 @@ where
     ) -> Result<NotificationSendResult> {
         self.ensure_actor(actor).await?;
         let log_id = Uuid::now_v7();
-        // Snapshot only public instance identity. Never persist raw invocation/provider data.
+        // Always create durable invocation metadata. Validated business projections follow
+        // before provider I/O; raw invocation/provider envelopes are never persisted.
         let instance = self
             .repository
             .get_notification_instance(actor.current_workspace_id, instance_id)
@@ -611,6 +613,7 @@ where
                 title: None,
                 content: None,
                 recipient_count: None,
+                extra: json!({}),
                 created_at: time::OffsetDateTime::now_utc(),
                 completed_at: None,
             })
@@ -668,6 +671,7 @@ where
                         log_id,
                         status,
                         Some(code),
+                        None,
                     )
                     .await;
             }
@@ -713,7 +717,17 @@ where
         if target.is_some() {
             return Err(Error::InvalidInput("communication_send_target").into());
         }
+        let mut log_config = None;
         let result = if instance.type_code == "system" {
+            self.snapshot_send_message(
+                actor,
+                log_id,
+                &entry.descriptor,
+                &input,
+                &json!({}),
+                &Default::default(),
+            )
+            .await?;
             #[derive(Deserialize)]
             struct SystemInput {
                 user_ids: Vec<Uuid>,
@@ -766,6 +780,15 @@ where
                 .descriptor
                 .validate_config(&config)
                 .map_err(|_| Error::InvalidInput("notification_config_schema"))?;
+            self.snapshot_send_message(
+                actor,
+                log_id,
+                &entry.descriptor,
+                &input,
+                &config,
+                &Default::default(),
+            )
+            .await?;
             let provider = self
                 .provider
                 .as_ref()
@@ -777,22 +800,23 @@ where
                         .installation_id
                         .ok_or(Error::Conflict("type_unavailable"))?,
                     &entry.descriptor,
-                    config,
+                    config.clone(),
                     input,
                 )
                 .await
                 .map_err(|_| Error::UpstreamUnavailable("notification_provider_failed"))?;
-            if secret.as_object().is_some_and(|fields| {
-                fields
-                    .values()
-                    .filter_map(Value::as_str)
-                    .filter(|secret| !secret.is_empty())
-                    .any(|secret| contains_secret(&result, secret))
-            }) {
+            if authorization::public_contains_credentials(
+                &json!({"result":result}),
+                &entry.descriptor,
+                &config,
+                &Default::default(),
+                &Default::default(),
+            ) {
                 return Err(
                     Error::UpstreamUnavailable("notification_provider_unsafe_output").into(),
                 );
             }
+            log_config = Some(config);
             result
         };
         entry
@@ -800,8 +824,21 @@ where
             .validate_output(&result)
             .map_err(|_| Error::Conflict("notification_output_schema"))?;
         if instance.type_code != "system" {
+            let log_extra = logging::result_extra(
+                &entry.descriptor,
+                &result,
+                &log_config.expect("plugin config was validated"),
+                &Default::default(),
+                &Default::default(),
+            )?;
             self.repository
-                .complete_notification_send_log(actor.current_workspace_id, log_id, "success", None)
+                .complete_notification_send_log(
+                    actor.current_workspace_id,
+                    log_id,
+                    "success",
+                    None,
+                    log_extra,
+                )
                 .await?;
         }
         Ok(NotificationSendResult {
@@ -840,6 +877,7 @@ fn split_config(
 pub fn system_notification_descriptor() -> NotificationTypeDescriptor {
     NotificationTypeDescriptor{
         i18n:Default::default(),
+        log:Some(serde_json::from_value(json!({"title":"/title","content":"/content"})).expect("builtin log mapping")),
         authorization:None,
         receive:None,
         type_code:"system".into(),display_name:"System notification".into(),description:"Deliver a message to workspace members' inboxes".into(),

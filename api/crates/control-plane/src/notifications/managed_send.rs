@@ -31,6 +31,19 @@ where
         if state.installation_id != instance.installation_id {
             return Err(Error::Conflict("notification_authorization_stale").into());
         }
+        // Account authorization alone permits a provider attempt; context_token is optional.
+        let config = self
+            .notification_config(actor, instance, descriptor)
+            .await?;
+        self.snapshot_send_message(
+            actor,
+            log_id,
+            descriptor,
+            &input_payload,
+            &config,
+            &state.managed_secrets,
+        )
+        .await?;
         if descriptor.authorization.is_some() {
             match state
                 .authorization
@@ -44,10 +57,6 @@ where
                 Status::Authorized => {}
             }
         }
-        // Account authorization alone permits a provider attempt; context_token is optional.
-        let config = self
-            .notification_config(actor, instance, descriptor)
-            .await?;
         let input = NotificationRuntimeInput {
             delivery_window: state
                 .authorization
@@ -103,6 +112,16 @@ where
         ) {
             return Err(Error::UpstreamUnavailable("notification_provider_failed").into());
         }
+        let log_extra = match &outcome {
+            NotificationSendOutcome::Succeeded { result } => super::logging::result_extra(
+                descriptor,
+                result,
+                &config,
+                &state.managed_secrets,
+                &managed_secret_patch,
+            )?,
+            _ => None,
+        };
         self.apply_runtime_authorization(
             actor,
             instance.id,
@@ -119,6 +138,7 @@ where
                         log_id,
                         "success",
                         None,
+                        log_extra,
                     )
                     .await?;
                 Ok(NotificationSendResult {

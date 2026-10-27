@@ -4,6 +4,7 @@ use serde_json::json;
 fn descriptor() -> NotificationTypeDescriptor {
     NotificationTypeDescriptor {
         i18n: Default::default(),
+        log: None,
         type_code: "acme/fixture/webhook".into(),
         display_name: "Webhook".into(),
         description: "Sends a provider payload".into(),
@@ -528,3 +529,6 @@ fn subscription_failures_keep_account_authorized_and_round_trip_fixed_codes() {
         }
     }
 }
+
+#[path = "notification/log_tests.rs"]
+mod log_tests;

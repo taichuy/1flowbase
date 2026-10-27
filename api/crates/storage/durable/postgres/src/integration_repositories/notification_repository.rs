@@ -68,6 +68,7 @@ fn send_log(row: PgRow) -> Result<domain::NotificationSendLog> {
         title: row.get("title"),
         content: row.get("content"),
         recipient_count: row.get("recipient_count"),
+        extra: row.get("extra"),
         created_at: row.get("created_at"),
         completed_at: row.get("completed_at"),
     })
@@ -168,15 +169,30 @@ impl NotificationRepository for PgControlPlaneStore {
             .bind(log.id).bind(log.workspace_id).bind(log.actor_user_id).bind(log.instance_id).bind(log.display_name).bind(log.type_code).bind(log.source.as_str()).bind(log.created_at).execute(self.pool()).await?;
         Ok(())
     }
+    async fn snapshot_notification_send_log(
+        &self,
+        workspace_id: Uuid,
+        id: Uuid,
+        snapshot: extension_contracts::NotificationLogSnapshot,
+    ) -> Result<()> {
+        let count = sqlx::query("UPDATE notification_send_logs SET title=$3,content=$4,extra=$5 WHERE workspace_id=$1 AND id=$2 AND status='pending'")
+            .bind(workspace_id).bind(id).bind(snapshot.title).bind(snapshot.content).bind(snapshot.extra)
+            .execute(self.pool()).await?.rows_affected();
+        if count != 1 {
+            return Err(Error::Conflict("notification_log_state").into());
+        }
+        Ok(())
+    }
     async fn complete_notification_send_log(
         &self,
         workspace_id: Uuid,
         id: Uuid,
         status: &str,
         failure_code: Option<&str>,
+        extra: Option<Value>,
     ) -> Result<()> {
-        let count = sqlx::query("UPDATE notification_send_logs SET status=$3,failure_code=$4,completed_at=now() WHERE workspace_id=$1 AND id=$2 AND status='pending'")
-            .bind(workspace_id).bind(id).bind(status).bind(failure_code).execute(self.pool()).await?.rows_affected();
+        let count = sqlx::query("UPDATE notification_send_logs SET status=$3,failure_code=$4,extra=extra || coalesce($5,'{}'::jsonb),completed_at=now() WHERE workspace_id=$1 AND id=$2 AND status='pending'")
+            .bind(workspace_id).bind(id).bind(status).bind(failure_code).bind(extra).execute(self.pool()).await?.rows_affected();
         if count != 1 {
             return Err(Error::Conflict("notification_log_state").into());
         }

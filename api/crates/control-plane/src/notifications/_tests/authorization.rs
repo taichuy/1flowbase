@@ -5,6 +5,7 @@ fn opted_in_legacy_account_projects_unknown_without_changing_other_channels() {
     let view: NotificationAuthorizationView =
         serde_json::from_value(json!({"status":"authorized"})).unwrap();
     let mut descriptor = system_notification_descriptor();
+    descriptor.log = None;
     descriptor.authorization = Some(
         serde_json::from_value(json!({
             "actions":[{"code":"qr","label":"Scan","kind":"qr_code"}],
@@ -41,6 +42,7 @@ fn opted_in_legacy_account_projects_unknown_without_changing_other_channels() {
 #[test]
 fn host_secret_projection_rejects_existing_and_new_credentials_and_patch_deletion_is_exact() {
     let mut descriptor = system_notification_descriptor();
+    descriptor.log = None;
     descriptor.config_form=serde_json::from_value(json!({"schema_version":"1.0.0","fields":[{"key":"token","label":"Token","type":"string","control":"password"}]})).unwrap();
     let config = json!({"token":"private-config-token"});
     let managed = BTreeMap::from([
