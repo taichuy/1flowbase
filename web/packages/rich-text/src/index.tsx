@@ -1,13 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import Vditor from 'vditor';
+import type Vditor from 'vditor';
+import { VditorFrame } from './frame';
+export { VditorPreview } from './preview';
 
 import {
-  acquireBundledVditorRuntime,
+  loadFrameRuntime,
+  sharedPreviewOptions,
+  VDITOR_ASSET_BASE,
   getBundledEditorMessages
 } from './runtime-assets';
-
-const NO_REMOTE_ASSET_BASE = '/__1flowbase_bundled_vditor__';
 
 export interface RichTextApiRequest {
   readonly body?: unknown;
@@ -64,7 +66,8 @@ export function VditorEditor({
   theme = 'classic',
   value
 }: VditorEditorProps) {
-  const mountRef = useRef<HTMLDivElement>(null);
+  const [frameDocument, setFrameDocument] = useState<Document | null>(null);
+  const [failed, setFailed] = useState(false);
   const editorRef = useRef<Vditor | null>(null);
   const readyRef = useRef(false);
   const valueRef = useRef(value);
@@ -94,118 +97,130 @@ export function VditorEditor({
   }, [value]);
 
   useEffect(() => {
-    const mount = mountRef.current;
-    if (!mount) return undefined;
+    if (!frameDocument) return undefined;
+    const mount = frameDocument.createElement('div');
+    frameDocument.body.appendChild(mount);
 
-    let disposed = false;
-    let releaseRuntime: () => void = () => undefined;
-    queueMicrotask(() => {
-      if (disposed) return;
-      releaseRuntime = acquireBundledVditorRuntime(
-        mount.getRootNode() as Document | ShadowRoot
-      );
-      const toolbar: IOptions['toolbar'] = [
-        'headings',
-        'bold',
-        'italic',
-        'strike',
-        'link',
-        '|',
-        'list',
-        'ordered-list',
-        'check',
-        'outdent',
-        'indent',
-        '|',
-        'quote',
-        'line',
-        'code',
-        'inline-code',
-        'insert-before',
-        'insert-after',
-        '|',
-        ...(uploadEnabled ? (['upload'] as const) : []),
-        'table',
-        '|',
-        'undo',
-        'redo',
-        '|',
-        'fullscreen',
-        'edit-mode',
-        {
-          name: 'more',
-          toolbar: [
-            'both',
-            'code-theme',
-            'content-theme',
-            'outline',
-            'preview',
-            'info'
-          ]
-        }
-      ];
-      const editor = new Vditor(mount, {
-        _lutePath: NO_REMOTE_ASSET_BASE,
-        cache: { enable: false },
-        cdn: NO_REMOTE_ASSET_BASE,
-        height,
-        hint: { emoji: {}, emojiPath: NO_REMOTE_ASSET_BASE },
-        i18n: getBundledEditorMessages(locale),
-        lang: locale === 'en_US' ? 'en_US' : 'zh_CN',
-        image: { isPreview: true },
-        mode,
-        outline: { enable: outline, position: 'left' },
-        placeholder,
-        preview: {
-          hljs: { enable: false },
-          markdown: {
-            codeBlockPreview: false,
-            mathBlockPreview: false,
-            sanitize: true
-          },
-          mode: previewMode,
-          render: { media: { enable: true } },
-          theme: { current: 'ant-design', path: NO_REMOTE_ASSET_BASE }
-        },
-        theme,
-        toolbar,
-        upload: {
-          accept: 'image/*,.pdf,.txt,.md,.csv,.json,.zip',
-          handler: uploadFiles,
-          linkToImgUrl: '',
-          multiple: true,
-          url: ''
-        },
-        value: valueRef.current,
-        after: () => {
-          if (disposed) {
-            disposeEditor(editor);
-            return;
-          }
-          readyRef.current = true;
-          if (editor.getValue() !== valueRef.current) {
-            editor.setValue(valueRef.current, true);
-          }
-          onReadyRef.current?.(createEditorHandle(editor));
-        },
-        input: (nextValue) => {
-          if (disposed) return;
-          valueRef.current = nextValue;
-          onChangeRef.current(nextValue);
-        }
-      });
-      editorRef.current = editor;
-
-      async function uploadFiles(files: File[]): Promise<null> {
-        const currentApi = apiRef.current;
-        if (!currentApi) throw new Error('File upload is unavailable.');
-        const links = await Promise.all(
-          files.map((file) => uploadFile(currentApi, file))
-        );
-        editor.insertValue(`${links.join('\n')}\n`);
-        return null;
+    const frame = frameDocument.defaultView?.frameElement;
+    const outerDocument = frame?.ownerDocument;
+    const exitFullscreen = () => {
+      if (
+        !outerDocument?.fullscreenElement &&
+        mount.classList.contains('vditor--fullscreen')
+      ) {
+        mount.querySelector<HTMLElement>('[data-type="fullscreen"]')?.click();
       }
-    });
+    };
+    outerDocument?.addEventListener('fullscreenchange', exitFullscreen);
+    let disposed = false;
+    setFailed(false);
+    void loadFrameRuntime(frameDocument)
+      .then((FrameVditor) => {
+        if (disposed) return;
+        const toolbar: IOptions['toolbar'] = [
+          'headings',
+          'bold',
+          'italic',
+          'strike',
+          'link',
+          '|',
+          'list',
+          'ordered-list',
+          'check',
+          'outdent',
+          'indent',
+          '|',
+          'quote',
+          'line',
+          'code',
+          'inline-code',
+          'insert-before',
+          'insert-after',
+          '|',
+          ...(uploadEnabled ? (['upload'] as const) : []),
+          'table',
+          '|',
+          'undo',
+          'redo',
+          '|',
+          {
+            name: 'fullscreen',
+            click: () => {
+              const frame = frameDocument.defaultView
+                ?.frameElement as HTMLIFrameElement | null;
+              if (!frame) return;
+              if (mount.classList.contains('vditor--fullscreen')) {
+                void frame.requestFullscreen?.().catch(() => undefined);
+              } else if (frame.matches(':fullscreen')) {
+                void frame.ownerDocument.exitFullscreen();
+              }
+            }
+          },
+          'edit-mode',
+          {
+            name: 'more',
+            toolbar: ['both', 'outline', 'preview', 'info']
+          }
+        ];
+        const editor = new FrameVditor(mount, {
+          _lutePath: `${VDITOR_ASSET_BASE}/dist/js/lute/lute.min.js`,
+          cache: { enable: false },
+          cdn: VDITOR_ASSET_BASE,
+          height,
+          hint: { emoji: {}, emojiPath: VDITOR_ASSET_BASE },
+          i18n: getBundledEditorMessages(locale),
+          lang: locale === 'en_US' ? 'en_US' : 'zh_CN',
+          image: { isPreview: true },
+          mode,
+          outline: { enable: outline, position: 'left' },
+          placeholder,
+          preview: {
+            ...sharedPreviewOptions(locale, theme === 'dark', frameDocument),
+            mode: previewMode
+          },
+          theme,
+          customWysiwygToolbar: () => undefined,
+          toolbar,
+          upload: {
+            accept: 'image/*,.pdf,.txt,.md,.csv,.json,.zip',
+            handler: uploadFiles,
+            linkToImgUrl: '',
+            multiple: true,
+            url: ''
+          },
+          value: valueRef.current,
+          after: () => {
+            if (disposed) {
+              disposeEditor(editor);
+              return;
+            }
+            readyRef.current = true;
+            if (editor.getValue() !== valueRef.current) {
+              editor.setValue(valueRef.current, true);
+            }
+            onReadyRef.current?.(createEditorHandle(editor));
+          },
+          input: (nextValue) => {
+            if (disposed) return;
+            valueRef.current = nextValue;
+            onChangeRef.current(nextValue);
+          }
+        });
+        editorRef.current = editor;
+
+        async function uploadFiles(files: File[]): Promise<null> {
+          const currentApi = apiRef.current;
+          if (!currentApi) throw new Error('File upload is unavailable.');
+          const links = await Promise.all(
+            files.map((file) => uploadFile(currentApi, file))
+          );
+          editor.insertValue(`${links.join('\n')}\n`);
+          return null;
+        }
+      })
+      .catch(() => {
+        if (!disposed) setFailed(true);
+      });
 
     return () => {
       const editor = editorRef.current;
@@ -219,20 +234,41 @@ export function VditorEditor({
         }
       }
       disposed = true;
-      releaseRuntime();
+
       readyRef.current = false;
       onReadyRef.current?.(null);
       editorRef.current = null;
       if (editor) disposeEditor(editor);
+      outerDocument?.removeEventListener('fullscreenchange', exitFullscreen);
+      mount.remove();
     };
-  }, [height, locale, mode, outline, placeholder, previewMode, theme, uploadEnabled]);
+  }, [
+    frameDocument,
+    height,
+    locale,
+    mode,
+    outline,
+    placeholder,
+    previewMode,
+    theme,
+    uploadEnabled
+  ]);
 
   return (
-    <div
-      ref={mountRef}
-      aria-label={ariaLabel}
-      className={joinClassNames('oneflow-markdown-editor', className)}
-    />
+    <div className={joinClassNames('oneflow-markdown-editor', className)}>
+      {failed && (
+        <div role="alert">
+          {locale === 'zh_Hans'
+            ? '编辑器加载失败，请刷新重试。'
+            : 'Could not load the editor. Please refresh to retry.'}
+        </div>
+      )}
+      <VditorFrame
+        title={ariaLabel}
+        height={height}
+        onDocument={setFrameDocument}
+      />
+    </div>
   );
 }
 
@@ -275,7 +311,10 @@ function encodeBase64(buffer: ArrayBuffer): string {
 }
 
 function escapeMarkdownLabel(value: string): string {
-  return value.replaceAll('\\', '\\\\').replaceAll('[', '\\[').replaceAll(']', '\\]');
+  return value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('[', '\\[')
+    .replaceAll(']', '\\]');
 }
 
 function createEditorHandle(editor: Vditor): VditorEditorHandle {
