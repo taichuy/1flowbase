@@ -565,7 +565,7 @@ function renderLlmContextPolicyField({
         value={selectedValue}
         onChange={(nextValue) =>
           adapter.setValue(block.path, {
-            integration_context: contextPolicy.integration_context,
+            ...contextPolicy,
             context_selector: decodeSelectorValue(nextValue)
           })
         }
@@ -575,6 +575,7 @@ function renderLlmContextPolicyField({
         checked={contextPolicy.integration_context === 'enabled'}
         onChange={(checked) =>
           adapter.setValue(block.path, {
+            ...contextPolicy,
             integration_context: checked ? 'enabled' : 'disabled',
             context_selector: selectedSelector
           })

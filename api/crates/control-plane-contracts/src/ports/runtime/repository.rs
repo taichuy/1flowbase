@@ -6,6 +6,24 @@ pub trait FlowRunDispatchLease: Send {}
 
 #[async_trait]
 pub trait OrchestrationRuntimeRepository: Send + Sync {
+    /// Archive the original source and observe the current internal checkpoint.
+    /// A stale source prefix must not replace a newer append-only observation.
+    async fn observe_internal_compaction(
+        &self,
+        _input: &ObserveInternalCompactionInput,
+    ) -> anyhow::Result<InternalCompactionHead> {
+        anyhow::bail!("internal compaction observation not implemented")
+    }
+
+    /// Archive the candidate before atomically comparing and replacing its head.
+    /// A conflict returns None and preserves both the old checkpoint and source suffix.
+    async fn commit_internal_compaction(
+        &self,
+        _input: &CommitInternalCompactionInput,
+    ) -> anyhow::Result<Option<Uuid>> {
+        anyhow::bail!("internal compaction commit not implemented")
+    }
+
     async fn try_acquire_flow_run_dispatch_lease(
         &self,
         _application_id: Uuid,

@@ -6,6 +6,20 @@ mod dispatch_lease;
 mod log_operations;
 
 log_operations::with_log_operations! {
+    async fn observe_internal_compaction(
+        &self,
+        input: &ObserveInternalCompactionInput,
+    ) -> Result<InternalCompactionHead> {
+        PgControlPlaneStore::observe_internal_compaction(self, input).await
+    }
+
+    async fn commit_internal_compaction(
+        &self,
+        input: &CommitInternalCompactionInput,
+    ) -> Result<Option<Uuid>> {
+        PgControlPlaneStore::commit_internal_compaction(self, input).await
+    }
+
     async fn try_acquire_flow_run_dispatch_lease(
         &self,
         application_id: Uuid,

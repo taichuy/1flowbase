@@ -14,6 +14,7 @@ export type InspectorSectionKey =
 export type NodeEditorKind =
   | 'notification'
   | 'text'
+  | 'switch'
   | 'static_select'
   | 'data_model'
   | 'data_model_query'

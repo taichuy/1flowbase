@@ -54,6 +54,7 @@ pub mod branching;
 #[path = "execution_engine/llm_operations/compact_operation.rs"]
 mod compact_operation;
 mod http_request;
+pub mod internal_compaction;
 #[path = "execution_engine/llm_operations/llm_callbacks.rs"]
 mod llm_callbacks;
 mod llm_context;

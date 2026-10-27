@@ -26,8 +26,9 @@ use control_plane_contracts::{
         CallbackResumeWaitingNode, ClaimRuntimeEventDeliveriesInput,
         ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
         CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
-        CommitToolCallbackResultsInput, CommitToolCallbackResultsOutput, CompleteCallbackTaskInput,
-        CompleteFlowRunInput, CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
+        CommitInternalCompactionInput, CommitToolCallbackResultsInput,
+        CommitToolCallbackResultsOutput, CompleteCallbackTaskInput, CompleteFlowRunInput,
+        CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
         ConvertLegacyRuntimeShadowBatchResult, CreateCallbackTaskInput, CreateCheckpointInput,
         CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
         CreateRuntimeDebugArtifactInput, CreditReservation, CreditTransactionRecord,
@@ -38,13 +39,15 @@ use control_plane_contracts::{
         FinalizePublishedRunMissingStreamTerminalPersistenceOutcome, FinalizedModelBilling,
         FinishFlowRunCallbackResumeAttemptInput, FinishResumeClaimInput,
         GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
-        LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
+        InternalCompactionHead, LinkUsageLedgerToModelFailoverAttemptInput,
+        ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunTraceChildrenPage,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
         ListModelProviderRequestLogsPageInput, ListPricingRulesInput,
         MarkRuntimeEventDeliveryUncertainInput, ModelBillingAdmission, ModelBillingAdmissionInput,
-        ModelProviderRequestLogsPage, OrchestrationRuntimeRepository, PersistWaitingKind,
-        PersistWaitingStateInput, PersistedWaitingState, PutCanonicalRuntimeContentInput,
+        ModelProviderRequestLogsPage, ObserveInternalCompactionInput,
+        OrchestrationRuntimeRepository, PersistWaitingKind, PersistWaitingStateInput,
+        PersistedWaitingState, PutCanonicalRuntimeContentInput,
         RecordFlowRunCallbackResumeAttemptInput, RecordFlowRunCallbackResumeAttemptOutput,
         RecordModelObservationInput, RecordedModelObservation, ReleaseRuntimeEventDeliveryInput,
         RenewResumeClaimInput, ReplaceApplicationRunTraceProjectionInput, ReserveCreditInput,
@@ -113,6 +116,7 @@ include!("context_storage/debug_variable_cache_methods.rs");
 include!("flow_lifecycle/flow_run_methods.rs");
 include!("flow_lifecycle/flow_run_callback_resume_attempt_methods.rs");
 include!("context_storage/storage_foundation_methods.rs");
+include!("context_storage/internal_compaction_methods.rs");
 include!("legacy_shadow_methods.rs");
 include!("flow_lifecycle/waiting_state_methods.rs");
 include!("flow_lifecycle/tool_callback_inbox_methods.rs");
@@ -132,3 +136,7 @@ mod public_conversations_port;
 mod published_flow_runs_port;
 #[path = "repository_ports/published_run_control.rs"]
 mod published_run_control_port;
+
+#[cfg(test)]
+#[path = "../_tests/internal_compaction/mod.rs"]
+mod internal_compaction_tests;

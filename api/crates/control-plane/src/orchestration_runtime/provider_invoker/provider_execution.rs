@@ -137,14 +137,16 @@ where
 
         match attempted {
             Ok(result) => Ok(result),
-            Err(_) => Ok(match estimate_provider_count_tokens(input.as_invocation()) {
-                Ok(mut result) => {
-                    result.fallback_reason =
-                        Some(ProviderCountTokensFallbackReason::PluginUnavailable);
-                    result
-                }
-                Err(_) => plugin_framework::provider_contract::ProviderCountTokensResult::fallback_zero(),
-            }),
+            Err(_) => Ok(
+                match estimate_provider_count_tokens(input.as_invocation()) {
+                    Ok(mut result) => {
+                        result.fallback_reason =
+                            Some(ProviderCountTokensFallbackReason::PluginUnavailable);
+                        result
+                    }
+                    Err(error) => return Err(error.into()),
+                },
+            ),
         }
     }
 
@@ -326,11 +328,8 @@ where
             .configured_models
             .iter()
             .find(|model| model.model_id == runtime.model);
-        let effective_context_window = input
-            .model_parameters
-            .get("requested_context_window")
-            .and_then(Value::as_u64)
-            .or_else(|| configured_model.and_then(|model| model.context_window_override_tokens))
+        let model_context_window = configured_model
+            .and_then(|model| model.context_window_override_tokens)
             .or_else(|| {
                 package
                     .predefined_models
@@ -338,6 +337,31 @@ where
                     .find(|model| model.model_id == runtime.model)
                     .and_then(|model| model.context_window)
             });
+        let requested_context_window = input
+            .model_parameters
+            .get("requested_context_window")
+            .and_then(|value| {
+                value
+                    .as_u64()
+                    .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
+            });
+        let effective_context_window = match (requested_context_window, model_context_window) {
+            (Some(requested), Some(model)) => Some(requested.min(model)),
+            (requested, model) => requested.or(model),
+        };
+        let is_internal_summary = input
+            .run_context
+            .get(orchestration_runtime::execution_engine::internal_compaction::SUMMARY_KEY)
+            .and_then(Value::as_bool)
+            == Some(true);
+        let internal_compaction_receipt = self
+            .apply_internal_compaction(
+                runtime,
+                &resolved_route,
+                &mut input,
+                effective_context_window,
+            )
+            .await?;
         let provider_invoke_started_at = OffsetDateTime::now_utc();
         let provider_invoke_started = std::time::Instant::now();
         let first_token_timing = Arc::new(Mutex::new(None::<FirstTokenTiming>));
@@ -472,7 +496,7 @@ where
         let live_provider_events = if let Some(RuntimeActiveNode {
             node_id,
             node_run_id,
-        }) = active_node
+        }) = active_node.filter(|_| !is_internal_summary)
         {
             let live_sender = self.live_provider_events.clone();
             let runtime_event_stream = self.runtime_event_stream.clone();
@@ -992,6 +1016,14 @@ where
         }
         let mut invocation_output = invocation_output
             .ok_or_else(|| anyhow!("provider invocation completed without output or error"))?;
+        if let Some(receipt) = internal_compaction_receipt {
+            if !invocation_output.result.provider_metadata.is_object() {
+                let upstream = std::mem::take(&mut invocation_output.result.provider_metadata);
+                invocation_output.result.provider_metadata =
+                    json!({"_1flowbase_upstream_provider_metadata": upstream});
+            }
+            invocation_output.result.provider_metadata["_1flowbase_internal_compaction"] = receipt;
+        }
         let runtime_stream_timing = std::mem::replace(
             &mut *provider_stream_timing
                 .lock()

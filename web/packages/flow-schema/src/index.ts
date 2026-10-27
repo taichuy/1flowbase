@@ -646,7 +646,8 @@ export function createDefaultAgentFlowDocument({
             },
             context_policy: {
               integration_context: 'enabled',
-              context_selector: ['node-start', 'history']
+              context_selector: ['node-start', 'history'],
+              auto_compact: false
             },
             external_reasoning_policy: {
               follow_external_reasoning: false

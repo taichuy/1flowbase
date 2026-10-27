@@ -144,6 +144,7 @@
     "follow_external_max_output_tokens": "跟随外部最大输出 Token",
     "follow_external_max_output_tokens_help": "使用外部请求的最大输出 Token；LLM 节点显式开启的 max_tokens 优先。",
     "llm_context_help": "将传入上下文注入当前 LLM 节点中。",
+    "auto_compact_context": "自动压缩上下文",
     "llm_protocol_context_help": "将选中的协议上下文透传给当前 LLM 节点调用的模型服务。",
     "system_variable_model_parameters": "模型运行参数",
     "edit_model": "编辑模型",

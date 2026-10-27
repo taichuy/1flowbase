@@ -16,6 +16,7 @@ use crate::installed_provider_package::load_installed_provider_package;
 
 mod failover_queue;
 mod fee_lifecycle;
+mod internal_compaction;
 mod main_instance_routing;
 mod native_trajectory;
 mod protocol_context;

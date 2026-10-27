@@ -110,7 +110,8 @@ function createLlmContract(): NodeRuntimeUiContract {
       },
       context_policy: {
         integration_context: 'enabled',
-        context_selector: ['node-start', 'history']
+        context_selector: ['node-start', 'history'],
+        auto_compact: false
       },
       external_reasoning_policy: {
         follow_external_reasoning: false
@@ -167,6 +168,12 @@ function createLlmContract(): NodeRuntimeUiContract {
           title: '上下文',
           renderer: 'llm_context_policy',
           valueType: 'json'
+        }),
+        panelField({
+          key: 'config.context_policy.auto_compact',
+          title: i18nText('agentFlow', 'auto.auto_compact_context'),
+          renderer: 'switch',
+          valueType: 'boolean'
         }),
         panelField({
           key: 'config.protocol_context',

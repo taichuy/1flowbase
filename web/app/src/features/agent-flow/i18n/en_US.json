@@ -144,6 +144,7 @@
     "follow_external_max_output_tokens": "Follow external maximum output tokens",
     "follow_external_max_output_tokens_help": "Use the external request maximum output tokens; an enabled max_tokens value on the LLM node takes precedence.",
     "llm_context_help": "Injects the incoming context into the current LLM node.",
+    "auto_compact_context": "Automatically compact context",
     "llm_protocol_context_help": "Passes the selected protocol context through to the model service called by this LLM node.",
     "system_variable_model_parameters": "Model runtime parameters",
     "edit_model": "Edit model",

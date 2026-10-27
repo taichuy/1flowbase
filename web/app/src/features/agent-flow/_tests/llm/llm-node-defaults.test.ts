@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
+import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
+
 import { createNodeDocument } from '../../lib/document/node-factory';
 
 describe('LLM node defaults', () => {
@@ -21,7 +23,8 @@ describe('LLM node defaults', () => {
     });
     expect(node.config.context_policy).toEqual({
       integration_context: 'enabled',
-      context_selector: ['node-start', 'history']
+      context_selector: ['node-start', 'history'],
+      auto_compact: false
     });
     expect(node.bindings.prompt_messages).toEqual({
       kind: 'prompt_messages',
@@ -34,5 +37,16 @@ describe('LLM node defaults', () => {
       ]
     });
     expect(node.bindings).not.toHaveProperty('user_prompt');
+  });
+
+  test('the initial flow LLM requires explicit opt-in to automatic compaction', () => {
+    const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+    const llmNode = document.graph.nodes.find((node) => node.type === 'llm');
+
+    expect(llmNode?.config.context_policy).toEqual({
+      integration_context: 'enabled',
+      context_selector: ['node-start', 'history'],
+      auto_compact: false
+    });
   });
 });

@@ -178,6 +178,12 @@ where
         "resolved_inputs".to_string(),
         Value::Object(resolved_inputs.clone()),
     )]);
+    // A host-owned policy hint, outside the provider/model parameter contract. The host
+    // supplies the assistant default and isolates external protocol clients.
+    run_context.insert(
+        super::internal_compaction::POLICY_KEY.to_string(),
+        json!({ "enabled": context_policy.get("auto_compact").and_then(Value::as_bool) }),
+    );
     if let Some(recovery) = variable_pool
         .get("sys")
         .and_then(|sys| sys.get("native_inference_recovery"))

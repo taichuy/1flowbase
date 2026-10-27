@@ -367,12 +367,25 @@ describe('LLM prompt messages field', () => {
     });
     expect(switchControl).toBeChecked();
     expect(screen.getByRole('combobox', { name: '上下文变量' })).toBeInTheDocument();
+    const autoCompactControl = screen.getByRole('switch', {
+      name: '自动压缩上下文'
+    });
+    expect(autoCompactControl).not.toBeChecked();
+
+    fireEvent.click(autoCompactControl);
+
+    expect(llmNodeFrom(latestDocument).config.context_policy).toEqual({
+      integration_context: 'enabled',
+      context_selector: ['node-start', 'history'],
+      auto_compact: true
+    });
 
     fireEvent.click(switchControl);
 
     expect(llmNodeFrom(latestDocument).config.context_policy).toEqual({
       integration_context: 'disabled',
-      context_selector: ['node-start', 'history']
+      context_selector: ['node-start', 'history'],
+      auto_compact: true
     });
   });
 

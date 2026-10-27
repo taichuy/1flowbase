@@ -36,6 +36,11 @@ export const llmNodeDefinition: NodeDefinition = {
           editor: 'llm_context_policy'
         },
         {
+          key: 'config.context_policy.auto_compact',
+          label: i18nText('agentFlow', 'auto.auto_compact_context'),
+          editor: 'switch'
+        },
+        {
           key: 'bindings.prompt_messages',
           label: i18nText('agentFlow', 'auto.context_alt'),
           editor: 'llm_prompt_messages'

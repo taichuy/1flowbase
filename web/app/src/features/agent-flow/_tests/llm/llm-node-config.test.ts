@@ -86,8 +86,9 @@ describe('llm-node-config', () => {
     ).toEqual(DEFAULT_LLM_PARAMETERS);
   });
 
-  test('getLlmContextPolicy defaults integration context to enabled', () => {
+  test('getLlmContextPolicy defaults ordinary nodes to explicit opt-in compaction', () => {
     expect(getLlmContextPolicy({})).toEqual(DEFAULT_LLM_CONTEXT_POLICY);
+    expect(getLlmContextPolicy({}).auto_compact).toBe(false);
     expect(
       getLlmContextPolicy({
         context_policy: {
@@ -97,8 +98,24 @@ describe('llm-node-config', () => {
       })
     ).toEqual({
       integration_context: 'disabled',
-      context_selector: ['node-code', 'result', 'chat_history']
+      context_selector: ['node-code', 'result', 'chat_history'],
+      auto_compact: false
     });
+  });
+
+  test('getLlmContextPolicy roundtrips explicit compaction without changing history settings', () => {
+    const context_policy = {
+      integration_context: 'disabled',
+      context_selector: ['node-code', 'result', 'chat_history'],
+      auto_compact: true
+    };
+
+    expect(
+      getLlmContextPolicy(JSON.parse(JSON.stringify({ context_policy })))
+    ).toEqual(context_policy);
+    expect(
+      getLlmContextPolicy({ context_policy: { auto_compact: 'true' } }).auto_compact
+    ).toBe(false);
   });
 
   test('FUA-WEB reads protocol context with legacy three-state compatibility', () => {

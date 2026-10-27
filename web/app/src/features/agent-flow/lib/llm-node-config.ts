@@ -34,6 +34,7 @@ export interface LlmNodeResponseFormat {
 export interface LlmNodeContextPolicy {
   integration_context: 'enabled' | 'disabled';
   context_selector?: string[];
+  auto_compact: boolean;
 }
 
 export interface LlmNodeExternalReasoningPolicy {
@@ -65,7 +66,8 @@ export interface LlmVisibleInternalTool {
 
 export const DEFAULT_LLM_CONTEXT_POLICY: LlmNodeContextPolicy = {
   integration_context: 'enabled',
-  context_selector: ['node-start', 'history']
+  context_selector: ['node-start', 'history'],
+  auto_compact: false
 };
 
 export const DEFAULT_LLM_EXTERNAL_REASONING_POLICY: LlmNodeExternalReasoningPolicy =
@@ -287,7 +289,8 @@ export function getLlmContextPolicy(
       ? contextPolicy.context_selector.filter(
           (segment): segment is string => typeof segment === 'string'
         )
-      : DEFAULT_LLM_CONTEXT_POLICY.context_selector
+      : DEFAULT_LLM_CONTEXT_POLICY.context_selector,
+    auto_compact: contextPolicy.auto_compact === true
   };
 }
 

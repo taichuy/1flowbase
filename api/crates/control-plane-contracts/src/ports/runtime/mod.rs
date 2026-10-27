@@ -9,6 +9,7 @@ use extension_contracts::{
 pub mod billing;
 pub mod data_source;
 pub mod debug_trace;
+pub mod internal_compaction;
 pub mod monitoring;
 pub mod provider_logs;
 pub mod query_models;
@@ -19,6 +20,7 @@ pub mod trace_projection;
 pub use billing::*;
 pub use data_source::*;
 pub use debug_trace::*;
+pub use internal_compaction::*;
 pub use monitoring::*;
 pub use provider_logs::*;
 pub use query_models::*;

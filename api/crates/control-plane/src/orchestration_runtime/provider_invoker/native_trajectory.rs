@@ -826,7 +826,14 @@ fn invocation_purpose(
         ProviderWireOperation::Compact => "compact",
         ProviderWireOperation::CountTokens => "unknown",
         ProviderWireOperation::Generate => {
-            if super::is_responses_prewarm(input) {
+            if input
+                .run_context
+                .get(orchestration_runtime::execution_engine::internal_compaction::SUMMARY_KEY)
+                .and_then(Value::as_bool)
+                == Some(true)
+            {
+                "local_summary"
+            } else if super::is_responses_prewarm(input) {
                 "prewarm"
             } else if context.is_some_and(|context| context.is_resume) {
                 "tool_resume"

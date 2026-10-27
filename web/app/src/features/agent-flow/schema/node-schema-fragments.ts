@@ -21,6 +21,7 @@ import { i18nText } from '../../../shared/i18n/text';
 const FIELD_RENDERER_BY_EDITOR: Record<NodeEditorKind, string> = {
   notification: 'notification',
   text: 'text',
+  switch: 'switch',
   static_select: 'static_select',
   data_model: 'data_model',
   data_model_query: 'data_model_query',
