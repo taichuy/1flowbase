@@ -414,6 +414,7 @@ async fn root_2007_ac_002_contribution_execution_identity() {
             config_payload: serde_json::json!({}),
             input_payload: serde_json::json!({"workspace_id": "forged", "contribution_id": "forged", "granted_permissions": ["admin"]}),
             duplex: None,
+            lifetime: None,
         }
     };
     let first_output = host

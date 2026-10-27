@@ -17,6 +17,9 @@ pub(crate) mod managed_snapshot_tests;
 #[path = "managed/managed_candidate_tests.rs"]
 mod managed_candidate_tests;
 
+#[path = "managed/connection_reliability.rs"]
+pub(crate) mod connection_reliability;
+
 #[path = "managed/managed_governance_tests.rs"]
 mod managed_governance_tests;
 

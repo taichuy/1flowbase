@@ -1,11 +1,8 @@
 use super::{invalid, process::ManagedChild, LoadedManagedBinding};
-use crate::{
-    capability_stdio::{parse_stdio_response, CapabilityStdioRequest},
-    plugin_scope::PluginScopeLease,
-};
+use crate::capability_stdio::{parse_stdio_response, CapabilityStdioRequest};
 use extension_package_runtime::FrameworkResult;
 use serde_json::Value;
-use std::{process::Stdio, sync::Arc};
+use std::process::Stdio;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     process::Command,
@@ -14,7 +11,7 @@ const MAX_OUTPUT_BYTES: u64 = 1024 * 1024;
 pub(super) async fn exchange(
     binding: &LoadedManagedBinding,
     request: &CapabilityStdioRequest,
-    lease: Arc<PluginScopeLease>,
+    lifetime: Box<dyn Send + Sync>,
 ) -> FrameworkResult<Value> {
     let payload =
         serde_json::to_vec(request).map_err(|_| invalid("managed capability cannot be encoded"))?;
@@ -45,7 +42,7 @@ pub(super) async fn exchange(
     let child = command
         .spawn()
         .map_err(|_| invalid("managed capability worker could not start"))?;
-    let mut owner = ManagedChild::new(child, lease);
+    let mut owner = ManagedChild::with_lifetime(child, lifetime);
     let child = owner.child();
     let mut stdin = child
         .stdin

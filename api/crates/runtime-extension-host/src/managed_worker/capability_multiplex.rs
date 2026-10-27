@@ -2,7 +2,6 @@
 use super::{invalid, LoadedManagedBinding};
 use crate::{
     capability_stdio::{CapabilityStdioRequest, CapabilityStdioResponse},
-    plugin_scope::PluginScopeLease,
     stdio_runtime::{
         MultiplexProviderWorker, ProviderHostCallContext, ProviderWorkerProcessControl,
         StreamingCallContext,
@@ -14,7 +13,7 @@ use std::sync::Arc;
 
 struct ProcessOwner {
     control: ProviderWorkerProcessControl,
-    lease: Arc<PluginScopeLease>,
+    lease: Arc<Box<dyn Send + Sync>>,
     finished: bool,
 }
 impl Drop for ProcessOwner {
@@ -25,7 +24,12 @@ impl Drop for ProcessOwner {
             // Keep the generation admitted until its worker has actually been reaped.
             tokio::spawn(async move {
                 control.terminate().await;
-                drop(lease);
+                if control.confirmed_exit().await {
+                    drop(lease);
+                } else {
+                    tracing::error!("managed worker reap unconfirmed; quarantining ownership");
+                    std::mem::forget(lease);
+                }
             });
         }
     }
@@ -34,7 +38,7 @@ impl Drop for ProcessOwner {
 pub(super) async fn exchange(
     binding: &LoadedManagedBinding,
     request: &CapabilityStdioRequest,
-    lease: Arc<PluginScopeLease>,
+    lifetime: Box<dyn Send + Sync>,
     host_calls: Option<ProviderHostCallContext>,
     duplex: Option<runtime_core::runtime_backend::RuntimeManagedDuplex>,
     cancel: Option<tokio::sync::watch::Receiver<bool>>,
@@ -44,6 +48,7 @@ pub(super) async fn exchange(
         binding.limits.clone(),
         1,
     )?;
+    let lease = Arc::new(lifetime);
     let mut owner = ProcessOwner {
         control: worker.process_control(),
         lease: lease.clone(),
@@ -60,7 +65,7 @@ pub(super) async fn exchange(
     )
     .await;
     owner.control.terminate().await;
-    owner.finished = true;
+    owner.finished = owner.control.confirmed_exit().await;
     result
 }
 

@@ -217,6 +217,7 @@ async fn root_2007_ac_003_004_hook_transport_scope_generation_phase_and_deadline
             config_payload: serde_json::json!({}),
             input_payload: serde_json::json!({}),
             duplex: None,
+            lifetime: None,
         })
         .is_err());
     workers.unmount(&handle).unwrap().dispose().await.unwrap();
@@ -576,6 +577,7 @@ async fn root_2007_ac_010_lane_budgets_capability_output_and_reap() {
                 config_payload: serde_json::json!({}),
                 input_payload: serde_json::json!({}),
                 duplex: None,
+                lifetime: None,
             })
             .unwrap();
         let operation = tokio::spawn(operation);

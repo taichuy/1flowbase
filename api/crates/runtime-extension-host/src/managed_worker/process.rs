@@ -4,10 +4,13 @@ use std::sync::Arc;
 use tokio::process::Child;
 pub(super) struct ManagedChild {
     child: Option<Child>,
-    lease: Option<Arc<PluginScopeLease>>,
+    lease: Option<Box<dyn Send + Sync>>,
 }
 impl ManagedChild {
     pub(super) fn new(child: Child, lease: Arc<PluginScopeLease>) -> Self {
+        Self::with_lifetime(child, Box::new(lease))
+    }
+    pub(super) fn with_lifetime(child: Child, lease: Box<dyn Send + Sync>) -> Self {
         Self {
             child: Some(child),
             lease: Some(lease),

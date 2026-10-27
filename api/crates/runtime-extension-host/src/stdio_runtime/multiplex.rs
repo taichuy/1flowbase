@@ -793,8 +793,14 @@ async fn run_reader(
             message: Err(reason.clone()),
         });
     }
-    let _ = control.terminate().await;
-    drop(active);
+    if control.terminate().await.exited {
+        drop(active);
+    } else {
+        // A kill request is not a reap receipt. Retain every carrier if process
+        // state is unknown; do not unlock a live mutation or admit replacement work.
+        tracing::error!("multiplex worker reap unconfirmed; quarantining active calls");
+        std::mem::forget(active);
+    }
 }
 
 fn request_cancel(id: &str, call: &mut ActiveCall, controls: &mpsc::Sender<ControlFrame>) {

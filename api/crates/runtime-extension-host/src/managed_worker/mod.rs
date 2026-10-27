@@ -471,6 +471,13 @@ impl ManagedWorkers {
         {
             return Err(invalid("duplex requires multiplex transport").into());
         }
+        // Installed synchronously in the admitted future, before any queue or
+        // worker publication. The loss observer is independent of this owner.
+        let mut ownership_loss = request
+            .lifetime
+            .as_ref()
+            .map(|lifetime| lifetime.lost.clone());
+        let lease = Arc::new((lease, request.lifetime));
         Ok(async move {
             let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
             let cancel_task = scope_cancel.map(|mut scope| {
@@ -493,7 +500,6 @@ impl ManagedWorkers {
             let indefinite = duplex_call && request.principal.deadline_unix_ms == i64::MAX;
             let duplex = request.duplex;
             let cancel = duplex.as_ref().map(|_| cancel_rx);
-            let lease = Arc::new(lease);
             let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
             let remaining_ms =
                 u64::try_from(i128::from(request.principal.deadline_unix_ms) - now_ms)
@@ -536,21 +542,33 @@ impl ManagedWorkers {
                         .await
                     } else {
                         capability_multiplex::exchange(
-                            &binding, &request, lease, host_calls, duplex, cancel,
+                            &binding,
+                            &request,
+                            Box::new(lease),
+                            host_calls,
+                            duplex,
+                            cancel,
                         )
                         .await
                     }
                 } else {
-                    capability::exchange(&binding, &request, lease).await
+                    capability::exchange(&binding, &request, Box::new(lease)).await
                 }
             };
-            if indefinite {
-                // Do not create an enormous timer: i64::MAX is the trusted stream sentinel.
-                operation.await
-            } else {
-                tokio::time::timeout(std::time::Duration::from_millis(duration_ms), operation)
-                    .await
-                    .map_err(|_| invalid("managed execution deadline elapsed"))?
+            let execution = async {
+                if indefinite {
+                    // Do not create an enormous timer: i64::MAX is the trusted stream sentinel.
+                    operation.await
+                } else {
+                    tokio::time::timeout(std::time::Duration::from_millis(duration_ms), operation)
+                        .await
+                        .map_err(|_| invalid("managed execution deadline elapsed"))?
+                }
+            };
+            tokio::select! {
+                biased;
+                _ = ownership_lost(&mut ownership_loss) => Err(invalid("managed ownership lost; external result is uncertain")),
+                result = execution => result,
             }
         })
     }
@@ -576,6 +594,17 @@ impl ManagedWorkers {
             ));
         }
         Ok(mounted)
+    }
+}
+
+async fn ownership_lost(loss: &mut Option<tokio::sync::watch::Receiver<bool>>) {
+    let Some(loss) = loss else {
+        return std::future::pending().await;
+    };
+    while !*loss.borrow_and_update() {
+        if loss.changed().await.is_err() {
+            return;
+        }
     }
 }
 

@@ -11,10 +11,10 @@ use control_plane::{
 };
 use lifetime::*;
 use plugin_framework::{extension_bus::*, ManagedManifest, PluginManifestV1};
-use runtime_core::runtime_backend::RuntimeManagedCapabilityRequest;
 use runtime_core::runtime_backend::{
     RuntimeArtifactReference, RuntimeBackend, RuntimeExecutionPrincipal, RuntimeManagedActivation,
 };
+use runtime_core::runtime_backend::{RuntimeManagedCapabilityRequest, RuntimeManagedLifetime};
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 use storage_durable_postgres::MainDurableStore;
 use tokio::sync::Mutex;
@@ -355,6 +355,44 @@ impl ManagedExtensionComposition {
         Ok(self.backend.reset_managed_service_workers(handle).await?)
     }
 
+    /// Publish ownership with the supervised reset, before the caller can drop
+    /// its waiting future. The Host's existing retirement still performs reap.
+    pub(crate) async fn reset_service_workers_with_lifetime(
+        &self,
+        handle: &extension_contracts::ManagedExecutionHandle,
+        lifetime: Option<RuntimeManagedLifetime>,
+    ) -> Result<()> {
+        let Some(lifetime) = lifetime else {
+            return self.reset_service_workers(handle).await;
+        };
+        struct ResetOwner(Option<RuntimeManagedLifetime>);
+        impl Drop for ResetOwner {
+            fn drop(&mut self) {
+                if let Some(lifetime) = self.0.take() {
+                    tracing::error!(
+                        "managed reset reap unconfirmed; quarantining mutation ownership"
+                    );
+                    std::mem::forget(lifetime);
+                }
+            }
+        }
+        let backend = self.backend.clone();
+        let handle = handle.clone();
+        let owner = ResetOwner(Some(lifetime));
+        tokio::spawn(async move {
+            let mut owner = owner;
+            #[cfg(test)]
+            crate::_tests::extension_bus::connection_reliability::reset_barrier(&handle).await;
+            let result = backend.reset_managed_service_workers(&handle).await;
+            if result.is_ok() {
+                drop(owner.0.take());
+            }
+            result
+        })
+        .await??;
+        Ok(())
+    }
+
     pub(crate) async fn execute_snapshot(
         &self,
         snapshot: Arc<ManagedWorkspaceSnapshot>,
@@ -364,7 +402,29 @@ impl ManagedExtensionComposition {
         config_payload: serde_json::Value,
         input_payload: serde_json::Value,
     ) -> Result<serde_json::Value> {
-        self.execute_snapshot_duplex(
+        self.execute_snapshot_with_lifetime(
+            snapshot,
+            workspace_id,
+            contribution_id,
+            principal,
+            config_payload,
+            input_payload,
+            None,
+        )
+        .await
+    }
+
+    pub(crate) async fn execute_snapshot_with_lifetime(
+        &self,
+        snapshot: Arc<ManagedWorkspaceSnapshot>,
+        workspace_id: Uuid,
+        contribution_id: &ContributionId,
+        principal: RuntimeExecutionPrincipal,
+        config_payload: serde_json::Value,
+        input_payload: serde_json::Value,
+        lifetime: Option<RuntimeManagedLifetime>,
+    ) -> Result<serde_json::Value> {
+        self.execute_snapshot_duplex_with_lifetime(
             snapshot,
             workspace_id,
             contribution_id,
@@ -374,6 +434,7 @@ impl ManagedExtensionComposition {
                 input_payload,
                 duplex: None,
             },
+            lifetime,
         )
         .await
     }
@@ -384,6 +445,24 @@ impl ManagedExtensionComposition {
         workspace_id: Uuid,
         contribution_id: &ContributionId,
         input: ManagedExecutionInput,
+    ) -> Result<serde_json::Value> {
+        self.execute_snapshot_duplex_with_lifetime(
+            snapshot,
+            workspace_id,
+            contribution_id,
+            input,
+            None,
+        )
+        .await
+    }
+
+    async fn execute_snapshot_duplex_with_lifetime(
+        &self,
+        snapshot: Arc<ManagedWorkspaceSnapshot>,
+        workspace_id: Uuid,
+        contribution_id: &ContributionId,
+        input: ManagedExecutionInput,
+        lifetime: Option<RuntimeManagedLifetime>,
     ) -> Result<serde_json::Value> {
         let ManagedExecutionInput {
             principal,
@@ -413,6 +492,7 @@ impl ManagedExtensionComposition {
                 config_payload,
                 input_payload,
                 duplex,
+                lifetime,
             })
             .await?;
         // On release failure the already-admitted future drops here, releasing its execution lease.

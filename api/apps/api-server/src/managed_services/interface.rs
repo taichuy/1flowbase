@@ -92,7 +92,10 @@ impl Adapter {
             as i64)
             .checked_add(i64::try_from(timeout_ms).map_err(|_| Error::InvalidInput("timeout_ms"))?)
             .ok_or(Error::InvalidInput("timeout_ms"))?;
-        let result = tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), async {
+        let execution_deadline = tokio::time::Instant::now()
+            .checked_add(std::time::Duration::from_millis(timeout_ms))
+            .ok_or(Error::InvalidInput("timeout_ms"))?;
+        let result = tokio::time::timeout_at(execution_deadline, async {
             let _mutation = if op.declaration.requires_mutation_lock() {
                 Some(
                     state
@@ -107,83 +110,100 @@ impl Adapter {
             } else {
                 None
             };
-            let composition = state.provider_runtime.managed_composition()?;
-            let snapshot = match state
-                .extension_boot_snapshot
-                .as_ref()
-                .filter(|boot| boot.has_pinned_managed_snapshots())
-            {
-                Some(boot) => boot.managed_snapshot(domain::SYSTEM_SCOPE_ID),
-                None => composition.snapshot(domain::SYSTEM_SCOPE_ID).await,
-            }
-            .ok_or(Error::Conflict("managed_service_inactive"))?;
-            let contribution_id = plugin_framework::extension_bus::ContributionId::new(
-                &op.declaration.contribution_id,
-            )?;
-            let binding = snapshot
-                .bindings
-                .get(&contribution_id)
+            let lifetime = _mutation.as_ref().map(|mutation| {
+                runtime_core::runtime_backend::RuntimeManagedLifetime {
+                    owner: mutation.owner.clone(),
+                    lost: mutation.lost.clone(),
+                }
+            });
+            let mut loss = lifetime.as_ref().map(|lifetime| lifetime.lost.clone());
+            let execution = async {
+                let composition = state.provider_runtime.managed_composition()?;
+                let snapshot = match state
+                    .extension_boot_snapshot
+                    .as_ref()
+                    .filter(|boot| boot.has_pinned_managed_snapshots())
+                {
+                    Some(boot) => boot.managed_snapshot(domain::SYSTEM_SCOPE_ID),
+                    None => composition.snapshot(domain::SYSTEM_SCOPE_ID).await,
+                }
                 .ok_or(Error::Conflict("managed_service_inactive"))?;
-            if binding.handle.identity().installation_id().as_str()
-                != self.registration.installation_id.to_string()
-            {
-                return Err(Error::Conflict("managed_service_generation_mismatch").into());
-            }
-            let needs_call_context = self.registration.declaration.worker_lifetime
-                == plugin_framework::ManagedServiceWorkerLifetime::ActorWorkspaceScope;
-            let caller = if needs_call_context
-                || binding
-                    .descriptor
-                    .required_permissions
-                    .iter()
-                    .any(|permission| {
-                        matches!(
-                            permission.as_str(),
-                            "file.import.resource"
-                                | "file.read.content"
-                                | "application.logs.read"
-                                | "application.logs.import"
-                                | "network.http.request"
-                        )
-                    }) {
-                crate::resource_import::capture_caller(
-                    &state,
-                    principal,
-                    &op.declaration.interface_id,
-                )
-                .await
-                .map_err(|error| error.0)?
-            } else {
-                None
+                let contribution_id = plugin_framework::extension_bus::ContributionId::new(
+                    &op.declaration.contribution_id,
+                )?;
+                let binding = snapshot
+                    .bindings
+                    .get(&contribution_id)
+                    .ok_or(Error::Conflict("managed_service_inactive"))?;
+                if binding.handle.identity().installation_id().as_str()
+                    != self.registration.installation_id.to_string()
+                {
+                    return Err(Error::Conflict("managed_service_generation_mismatch").into());
+                }
+                let needs_call_context = self.registration.declaration.worker_lifetime
+                    == plugin_framework::ManagedServiceWorkerLifetime::ActorWorkspaceScope;
+                let caller = if needs_call_context
+                    || binding
+                        .descriptor
+                        .required_permissions
+                        .iter()
+                        .any(|permission| {
+                            matches!(
+                                permission.as_str(),
+                                "file.import.resource"
+                                    | "file.read.content"
+                                    | "application.logs.read"
+                                    | "application.logs.import"
+                                    | "network.http.request"
+                            )
+                        }) {
+                    crate::resource_import::capture_caller(
+                        &state,
+                        principal,
+                        &op.declaration.interface_id,
+                    )
+                    .await
+                    .map_err(|error| error.0)?
+                } else {
+                    None
+                };
+                if needs_call_context && caller.is_none() {
+                    return Err(Error::NotAuthenticated.into());
+                }
+                let output = composition
+                    .execute_snapshot_with_lifetime(
+                        snapshot.clone(),
+                        domain::SYSTEM_SCOPE_ID,
+                        &contribution_id,
+                        runtime_core::runtime_backend::RuntimeExecutionPrincipal {
+                            caller,
+                            workspace_id: domain::SYSTEM_SCOPE_ID.to_string(),
+                            actor_id: Some(principal.actor().user_id.to_string()),
+                            deadline_unix_ms: deadline,
+                        },
+                        serde_json::json!({}),
+                        input.payload,
+                        lifetime.clone(),
+                    )
+                    .await?;
+                if !op.output.is_valid(&output) {
+                    return Err(Error::UpstreamUnavailable("managed_service_output_contract").into());
+                }
+                if op.declaration.invalidates_streams {
+                    super::stream::revoke_installation(self.registration.installation_id);
+                }
+                if op.declaration.invalidates_workers {
+                    composition
+                        .reset_service_workers_with_lifetime(&binding.handle, lifetime.clone())
+                        .await?;
+                }
+                Ok::<_, anyhow::Error>(ManagedServiceOutput(output))
             };
-            if needs_call_context && caller.is_none() {
-                return Err(Error::NotAuthenticated.into());
+            tokio::select! {
+                biased;
+                _ = mutation_loss(&mut loss) => Err(Error::UpstreamUnavailable("managed_service_ownership_lost").into()),
+                result = execution => result,
             }
-            let output = composition
-                .execute_snapshot(
-                    snapshot.clone(),
-                    domain::SYSTEM_SCOPE_ID,
-                    &contribution_id,
-                    runtime_core::runtime_backend::RuntimeExecutionPrincipal {
-                        caller,
-                        workspace_id: domain::SYSTEM_SCOPE_ID.to_string(),
-                        actor_id: Some(principal.actor().user_id.to_string()),
-                        deadline_unix_ms: deadline,
-                    },
-                    serde_json::json!({}),
-                    input.payload,
-                )
-                .await?;
-            if !op.output.is_valid(&output) {
-                return Err(Error::UpstreamUnavailable("managed_service_output_contract").into());
-            }
-            if op.declaration.invalidates_streams {
-                super::stream::revoke_installation(self.registration.installation_id);
-            }
-            if op.declaration.invalidates_workers {
-                composition.reset_service_workers(&binding.handle).await?;
-            }
-            Ok::<_, anyhow::Error>(ManagedServiceOutput(output))
         })
         .await
         .map_err(|_| Error::UpstreamUnavailable("managed_service_deadline_exceeded"))?;
@@ -198,6 +218,17 @@ impl Adapter {
                 Error::UpstreamUnavailable("managed_service_execution").into()
             }
         })
+    }
+}
+
+async fn mutation_loss(loss: &mut Option<tokio::sync::watch::Receiver<bool>>) {
+    let Some(loss) = loss else {
+        return std::future::pending().await;
+    };
+    while !*loss.borrow_and_update() {
+        if loss.changed().await.is_err() {
+            return;
+        }
     }
 }
 pub(crate) fn registry_contribution(

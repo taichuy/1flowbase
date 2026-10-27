@@ -107,6 +107,7 @@ sys.stdin.read()
         config_payload: serde_json::json!({}),
         input_payload: serde_json::json!({}),
         duplex: None,
+        lifetime: None,
     };
     let services = |plugin_data: Arc<dyn PluginDataPort>| ManagedHostServices {
         plugin_data,
@@ -281,6 +282,7 @@ fn service_request(
         config_payload: serde_json::json!({}),
         input_payload: body,
         duplex: None,
+        lifetime: None,
     }
 }
 #[cfg(unix)]
@@ -510,6 +512,244 @@ async fn actor_scope_unmount_reaps_an_active_worker_before_scope_disposal() {
         "dispose cannot acknowledge an unreaped process"
     );
     assert!(task.await.unwrap().is_err());
+}
+
+// Ownership probes exercise the production admission, queue, carrier and reaper;
+// the API fixture separately observes the real PostgreSQL lock and callback pool.
+#[cfg(unix)]
+mod mutation_ownership {
+    use super::*;
+    use runtime_core::runtime_backend::RuntimeManagedLifetime;
+    use std::time::Duration;
+    use tokio::sync::watch;
+
+    struct Owner(watch::Sender<bool>, PathBuf);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            if let Ok(pid) = std::fs::read_to_string(&self.1) {
+                assert!(
+                    !process_exists(pid.parse().unwrap()),
+                    "owner released before reap"
+                );
+            }
+            self.0.send_replace(true);
+        }
+    }
+    fn attach(
+        request: &mut RuntimeManagedCapabilityRequest,
+        reaped_pid: PathBuf,
+    ) -> (watch::Sender<bool>, watch::Receiver<bool>) {
+        let (lost, loss) = watch::channel(false);
+        let (released, release) = watch::channel(false);
+        request.lifetime = Some(RuntimeManagedLifetime {
+            owner: Arc::new(Owner(released, reaped_pid)),
+            lost: loss,
+        });
+        (lost, release)
+    }
+    async fn file(path: &std::path::Path) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !path.exists() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    async fn released(mut signal: watch::Receiver<bool>) {
+        tokio::time::timeout(Duration::from_secs(6), async {
+            while !*signal.borrow_and_update() {
+                signal.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+    }
+    fn fixture() -> (Fixture, PathBuf) {
+        let (root, executable) = service_fixture();
+        crate::_tests::write_executable_fixture(&executable, r#"#!/usr/bin/env python3
+import json, os, sys, time
+calls={}
+def send(kind,cid,**fields):
+    print(json.dumps(dict(protocol='stdio_json_multiplex_v1',kind=kind,call_id=cid,**fields)),flush=True)
+for line in sys.stdin:
+    f=json.loads(line); cid=f['call_id']
+    if f['kind']=='call':
+        b=f['request']['input']['input_payload']; calls[cid]=b
+        if b.get('started'): open(b['started'],'w').write(str(os.getpid()))
+        if b.get('callback'):
+            send('callback',cid,callback_id='1',service='plugin_data_v1',request={'operations':[{'operation':'count','target':{'kind':'owned_collection','collection_code':'hosts'},'filters':[]}]})
+            while not os.path.exists(b['terminal_gate']): time.sleep(.005)
+            send('response',cid,response={'ok':True,'result':{'pid':os.getpid()}})
+        elif not b.get('hold'): send('response',cid,response={'ok':True,'result':{'pid':os.getpid()}})
+    elif f['kind']=='cancel':
+        b=calls[cid]
+        open(b['cancelled'],'w').close()
+        if b.get('no_ack'): continue
+        while not os.path.exists(b['ack_gate']): time.sleep(.005)
+        send('cancelled',cid)
+"#.as_bytes(), 0o700);
+        (root, executable)
+    }
+
+    #[tokio::test]
+    async fn admitted_unpolled_mutation_has_owner_and_cannot_start_after_drop() {
+        let (root, executable) = fixture();
+        let mut workers = ManagedWorkers::default();
+        let handle = mount_service(&mut workers, &executable, "service.open", None);
+        let started = root.0.join("started");
+        let mut request = service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({"started":started}),
+        );
+        let (_lost, release) = attach(&mut request, started.clone());
+        let admitted = workers.execute(request).unwrap();
+        assert!(!*release.borrow());
+        drop(admitted);
+        released(release).await;
+        assert!(!started.exists(), "unpublished execution must never start");
+        let mut expired = service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({"started":started}),
+        );
+        expired.principal.deadline_unix_ms = 1;
+        assert!(workers.execute(expired).is_err());
+        assert!(
+            !started.exists(),
+            "expired admission must never spawn a worker"
+        );
+        reap_service(&mut workers, &handle).await;
+    }
+
+    #[tokio::test]
+    async fn mutation_drop_waits_for_delayed_cancel_ack_without_pinning_shared_process() {
+        let (root, executable) = fixture();
+        let mut workers = ManagedWorkers::default();
+        let handle = mount_service(&mut workers, &executable, "service.open", Some(1800000));
+        let started = root.0.join("started");
+        let cancel = root.0.join("cancel");
+        let ack = root.0.join("ack");
+        let mut request = service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({"hold":true,"started":started,"cancelled":cancel,"ack_gate":ack}),
+        );
+        // A shared process may remain alive after this operation's terminal ACK.
+        let (_lost, release) = attach(&mut request, root.0.join("not-a-per-call-pid"));
+        let task = tokio::spawn(workers.execute(request).unwrap());
+        file(&started).await;
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        file(&cancel).await;
+        assert!(!*release.borrow(), "cancel reception is not completion");
+        let pid: i64 = std::fs::read_to_string(&started).unwrap().parse().unwrap();
+        assert!(process_exists(pid));
+        std::fs::write(&ack, "ack").unwrap();
+        released(release).await;
+        assert!(
+            process_exists(pid),
+            "operation must not pin a persistent worker"
+        );
+        reap_service(&mut workers, &handle).await;
+    }
+
+    #[tokio::test]
+    async fn mutation_loss_and_timeout_without_ack_hold_through_confirmed_reap() {
+        for loss in [false, true] {
+            let (root, executable) = fixture();
+            let mut workers = ManagedWorkers::default();
+            let handle = mount_service(&mut workers, &executable, "service.open", None);
+            let started = root.0.join("started");
+            let mut request = service_request(
+                &handle,
+                Some("alice"),
+                serde_json::json!({"hold":true,"no_ack":true,"started":started,"cancelled":root.0.join("cancel")}),
+            );
+            if !loss {
+                request.principal.deadline_unix_ms =
+                    (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64
+                        + 500;
+            }
+            let (lost, release) = attach(&mut request, started.clone());
+            let task = tokio::spawn(workers.execute(request).unwrap());
+            file(&started).await;
+            if loss {
+                lost.send_replace(true);
+            }
+            assert!(tokio::time::timeout(Duration::from_secs(6), task)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_err());
+            released(release).await;
+            assert!(!process_exists(
+                std::fs::read_to_string(&started).unwrap().parse().unwrap()
+            ));
+            reap_service(&mut workers, &handle).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn lost_before_poll_never_dispatches_or_replays_mutation() {
+        let (root, executable) = fixture();
+        let mut workers = ManagedWorkers::default();
+        let handle = mount_service(&mut workers, &executable, "service.open", None);
+        let started = root.0.join("started");
+        let mut request = service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({"started":started}),
+        );
+        let (lost, release) = attach(&mut request, started.clone());
+        let admitted = workers.execute(request).unwrap();
+        lost.send_replace(true);
+        assert!(admitted.await.is_err());
+        released(release).await;
+        assert!(!started.exists());
+        reap_service(&mut workers, &handle).await;
+    }
+
+    #[tokio::test]
+    async fn published_queue_retains_owner_when_registration_future_is_dropped_unpolled() {
+        use std::{future::Future, task::Poll};
+        let (root, executable) = fixture();
+        let limits = PluginRuntimeLimits {
+            timeout_ms: Some(5000),
+            ..Default::default()
+        };
+        let worker =
+            crate::stdio_runtime::MultiplexProviderWorker::activate(executable, limits.clone(), 1)
+                .unwrap();
+        let cancel = root.0.join("cancel");
+        let ack = root.0.join("ack");
+        let (done, release) = watch::channel(false);
+        let mut waiting = Box::pin(worker.call_json(
+            serde_json::json!({"input":{"input_payload":{"hold":true,"cancelled":cancel,"ack_gate":ack}}}),
+            &limits,
+            None,
+            Some(Box::new(Owner(done, root.0.join("shared-pid-not-required")))),
+        ));
+        // Current-thread runtime: this poll enqueues Call but cannot poll the
+        // reader actor/registration. Its returned waiting future stays unpolled.
+        std::future::poll_fn(|cx| {
+            assert!(waiting.as_mut().poll(cx).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+        assert!(!*release.borrow());
+        drop(waiting);
+        file(&cancel).await;
+        assert!(
+            !*release.borrow(),
+            "queued publication already owns the lease"
+        );
+        std::fs::write(&ack, "ack").unwrap();
+        released(release).await;
+        worker.process_control().terminate().await;
+        assert!(worker.process_control().confirmed_exit().await);
+    }
 }
 
 #[cfg(unix)]

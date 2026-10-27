@@ -343,6 +343,24 @@ pub struct RuntimeManagedCapabilityRequest {
     pub config_payload: Value,
     pub input_payload: Value,
     pub duplex: Option<RuntimeManagedDuplex>,
+    pub lifetime: Option<RuntimeManagedLifetime>,
+}
+
+/// Opaque in-process ownership; never serialized or passed to a worker. Install
+/// before admission/publication and clone into every callback and reap owner.
+#[derive(Clone)]
+pub struct RuntimeManagedLifetime {
+    pub owner: Arc<dyn Send + Sync>,
+    /// Observation alone must not keep the owner alive. True/closed requests
+    /// local cancellation; unknown external results must not be replayed.
+    pub lost: tokio::sync::watch::Receiver<bool>,
+}
+impl std::fmt::Debug for RuntimeManagedLifetime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RuntimeManagedLifetime")
+            .field("lost", &*self.lost.borrow())
+            .finish_non_exhaustive()
+    }
 }
 
 /// Host-owned channels attached to one admitted call; no browser or worker identity is accepted.
