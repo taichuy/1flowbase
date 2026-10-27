@@ -1,5 +1,268 @@
 use super::*;
 
+#[test]
+fn ingress_transport_handoff_preserves_unique_and_shared_snapshots_in_every_branch() {
+    for shared in [false, true] {
+        for branch in [
+            "native",
+            "preferred",
+            "compact_v2",
+            "compact_endpoint",
+            "semantic",
+        ] {
+            let mut body = json!({
+                "model": "fixture",
+                "input": [{"role": "user", "content": "text\0literal\\u0000"}],
+                "z_unknown": {"z": [null, "\0", "\\u0000"], "a": "中文"},
+                "a_unknown": [false, {"future": true}]
+            });
+            let context = match branch {
+                "native" => {
+                    body["background"] = json!(false);
+                    OpenAiResponsesRequestContext::responses()
+                }
+                "preferred" => {
+                    body["text"] = json!({"verbosity": "low"});
+                    OpenAiResponsesRequestContext::responses()
+                }
+                "compact_v2" => {
+                    body["input"][0]["type"] = json!("message");
+                    body["input"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(json!({"type": "compaction_trigger"}));
+                    OpenAiResponsesRequestContext::responses()
+                }
+                "compact_endpoint" => OpenAiResponsesRequestContext::responses_compact(),
+                _ => OpenAiResponsesRequestContext::responses(),
+            };
+            let expected = crate::ports::ProviderTransportPayload::openai_responses(body.clone())
+                .expect("synthetic body is an object");
+            let reference = translate_response_request_with_context(body.clone(), context.clone())
+                .expect("Value entry point accepts the same body");
+            let envelope = OpenAiResponsesEnvelope::capture(body.clone()).expect("capture body");
+            let original_pointer = envelope.raw_body() as *const Value;
+            let retained = shared.then(|| envelope.provider_transport_payload());
+
+            let mut translated =
+                translate_response_envelope_with_context_and_previous(envelope, context, None)
+                    .expect("captured entry point accepts the same body");
+
+            assert_eq!(translated.request, reference.request);
+            assert_eq!(translated.report, reference.report);
+            assert_eq!(
+                translated.request.query.is_empty(),
+                matches!(branch, "compact_v2")
+            );
+            if branch == "compact_v2" || branch == "compact_endpoint" {
+                assert!(matches!(
+                    translated.request.execution.execution_operation(),
+                    domain::AiNativeOperation::Compact(_)
+                ));
+            }
+            let payload = translated
+                .request
+                .metadata
+                .take_provider_transport_payload();
+            if branch == "semantic" {
+                assert!(payload.is_none());
+                assert_eq!(translated.request.query, "text\0literal\\u0000");
+            } else {
+                let payload = payload.expect("native/preferred/compact retains transport");
+                assert_eq!(payload.wire_body(), &body);
+                assert_eq!(
+                    serde_json::to_vec(payload.wire_body()).unwrap(),
+                    serde_json::to_vec(&body).unwrap()
+                );
+                assert_eq!(payload.digest(), expected.digest());
+                assert_eq!(payload.size_bytes(), expected.size_bytes());
+                assert_eq!(payload.is_preferred(), branch == "preferred");
+                assert!(std::ptr::eq(payload.wire_body(), original_pointer));
+            }
+            if let Some(retained) = retained {
+                assert_eq!(retained.wire_body(), &body);
+                assert_eq!(retained.digest(), expected.digest());
+                assert_eq!(retained.size_bytes(), expected.size_bytes());
+            }
+        }
+    }
+}
+
+#[test]
+fn ingress_transport_handoff_keeps_real_validation_error_precedence() {
+    for (body, param, message) in [
+        (
+            json!({"model": 42, "input": [], "text": {"verbosity": "invalid"}, "store": 7}),
+            "text.verbosity",
+            "verbosity must be low, medium, or high",
+        ),
+        (
+            json!({"input": [], "store": 7, "tools": false}),
+            "store",
+            "store must be a boolean",
+        ),
+        (
+            json!({"input": [{"type": "function_call_output", "call_id": " "}], "instructions": 7}),
+            "model",
+            "model is required and must be text",
+        ),
+        (
+            json!({"model": "fixture", "input": [{"type": "function_call_output", "call_id": " "}], "instructions": 7, "tools": false}),
+            "input",
+            "function_call_output call_id must be non-empty text",
+        ),
+        (
+            json!({"model": "fixture", "input": [{"type": "function_call_output"}], "instructions": 7, "tools": false}),
+            "input",
+            "function_call_output output is required",
+        ),
+        (
+            json!({"model": "fixture", "input": [{"role": false, "content": "valid"}], "instructions": 7, "tools": false}),
+            "input",
+            "message role must be text",
+        ),
+        (
+            json!({"model": "fixture", "input": "valid", "instructions": 7, "stream": "bad", "tools": false}),
+            "instructions",
+            "instructions must be text",
+        ),
+        (
+            json!({"model": "fixture", "input": "valid", "stream": "bad", "tools": false}),
+            "stream",
+            "stream must be a boolean",
+        ),
+        (
+            json!({"model": "fixture", "input": "valid", "tools": false}),
+            "tools",
+            "tools must be an array",
+        ),
+    ] {
+        let reference =
+            translate_response_request(body.clone()).expect_err("invalid synthetic request");
+        let envelope =
+            OpenAiResponsesEnvelope::capture(body).expect("body passes structural capture");
+        let error = translate_response_envelope_with_context_and_previous(
+            envelope,
+            OpenAiResponsesRequestContext::responses(),
+            None,
+        )
+        .expect_err("translation preserves rejection");
+        assert_eq!(error.param.as_deref(), Some(param));
+        assert_eq!(error.message, message);
+        assert_eq!(error.code, reference.code);
+        assert_eq!(error.error_type, reference.error_type);
+        assert_eq!(error.report, reference.report);
+    }
+
+    let body =
+        json!({"input": [false], "previous_response_id": 7, "text": {"verbosity": "invalid"}});
+    let error = OpenAiResponsesEnvelope::capture(body.clone())
+        .expect_err("index validates previous ID first");
+    assert_eq!(error.param.as_deref(), Some("previous_response_id"));
+    assert_eq!(error.message, "previous_response_id must be non-empty text");
+    assert_eq!(
+        translate_response_request(body).unwrap_err().message,
+        error.message
+    );
+
+    let envelope = OpenAiResponsesEnvelope::capture(json!({
+        "model": "fixture", "input": "valid", "previous_response_id": "resp_requested",
+        "text": {"verbosity": "invalid"}, "tools": false
+    }))
+    .unwrap();
+    let error = translate_response_envelope_with_context_and_previous(
+        envelope,
+        OpenAiResponsesRequestContext::responses(),
+        Some(OpenAiPreviousResponseContext {
+            response_id: "resp_other".to_string(),
+            history: None,
+            provider_continuation: None,
+            external_user: None,
+            external_conversation_id: None,
+            answer: None,
+        }),
+    )
+    .expect_err("predecessor mismatch wins over field validation");
+    assert_eq!(error.param.as_deref(), Some("previous_response_id"));
+    assert_eq!(error.message, "previous_response_context_mismatch");
+}
+
+#[test]
+fn ingress_transport_handoff_preserves_session_owner_and_redigests_mutated_continuation() {
+    let body = json!({
+        "model": "fixture", "previous_response_id": "resp_public",
+        "input": [{"type": "function_call_output", "call_id": "call_original", "output": "\0literal\\u0000"}],
+        "unknown": {"nested": [null, "中文", "\\u0000"]}
+    });
+    let session = "a".repeat(64);
+    let envelope = OpenAiResponsesEnvelope::capture(body.clone())
+        .unwrap()
+        .with_session_identity(session.clone());
+    let retained_envelope = envelope.clone();
+    assert_eq!(envelope.session_identity(), Some(session.as_str()));
+    let original = envelope.provider_transport_payload();
+    let affinity = crate::ports::ProviderTransportAffinity::new(
+        "provider",
+        "openai",
+        "openai_responses",
+        "fixture",
+    );
+    let continuation =
+        crate::ports::ProviderContinuation::new("resp_upstream_longer", affinity.clone())
+            .unwrap()
+            .with_session_identity(Some(&session))
+            .unwrap();
+    let mut translated = translate_response_envelope_with_context_and_previous(
+        envelope,
+        OpenAiResponsesRequestContext::responses(),
+        Some(OpenAiPreviousResponseContext {
+            response_id: "resp_public".to_string(),
+            history: None,
+            provider_continuation: Some(continuation.clone()),
+            external_user: Some("inherited-user".to_string()),
+            external_conversation_id: Some("inherited-conversation".to_string()),
+            answer: None,
+        }),
+    )
+    .expect("native continuation stays provider-opaque");
+    assert_eq!(retained_envelope.session_identity(), Some(session.as_str()));
+    // Authentication/session binding still belongs to response_dispatch's route owner.
+    assert!(translated
+        .request
+        .metadata
+        .provider_session_identity()
+        .is_none());
+    assert_eq!(
+        translated.request.conversation.as_value(),
+        json!({"user": "inherited-user", "conversation_id": "inherited-conversation"})
+    );
+    let payload = translated
+        .request
+        .metadata
+        .take_provider_transport_payload()
+        .unwrap();
+    assert!(std::ptr::eq(payload.wire_body(), original.wire_body()));
+    assert_eq!(payload.digest(), original.digest());
+    assert_eq!(payload.size_bytes(), original.size_bytes());
+
+    let bound = payload
+        .bind_openai_continuation(continuation)
+        .expect("real continuation binding");
+    let mut expected_body = body.clone();
+    expected_body["previous_response_id"] = json!("resp_upstream_longer");
+    let expected =
+        crate::ports::ProviderTransportPayload::openai_responses(expected_body.clone()).unwrap();
+    assert_eq!(bound.wire_body(), &expected_body);
+    assert_eq!(bound.digest(), expected.digest());
+    assert_eq!(bound.size_bytes(), expected.size_bytes());
+    assert_ne!(bound.digest(), original.digest());
+    assert_ne!(bound.size_bytes(), original.size_bytes());
+    assert_eq!(bound.affinity(), Some(&affinity));
+    assert!(!bound.is_preferred());
+    assert_eq!(original.wire_body(), &body);
+    assert_eq!(retained_envelope.raw_body(), &body);
+}
+
 // #2028 AC-007/008: a native function result remains a sealed delta even
 // when this turn has no custom tool declaration to trigger native admission.
 #[test]

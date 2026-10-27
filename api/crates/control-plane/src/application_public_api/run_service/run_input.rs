@@ -15,15 +15,18 @@ pub(crate) fn freeze_run_input_environment(
     external_model_parameters: Option<&NativeExecutionModelParameters>,
     defaulted_effort: Option<&str>,
 ) -> Value {
-    let mut payload = input_payload.as_object().cloned().unwrap_or_default();
+    let mut payload = match input_payload {
+        Value::Object(map) => map,
+        _ => Map::new(),
+    };
     payload.insert(
         "env".to_string(),
         Value::Object(application_environment_variable_payload(variables)),
     );
-    let mut sys = payload
-        .remove("sys")
-        .and_then(|value| value.as_object().cloned())
-        .unwrap_or_default();
+    let mut sys = match payload.remove("sys") {
+        Some(Value::Object(map)) => map,
+        _ => Map::new(),
+    };
     // Recovery authorization is attached by the Native owner after public input mapping.
     sys.remove("native_inference_recovery");
     NativeExecutionModelParameters::freeze_published_reasoning_default(&mut sys, defaulted_effort);
@@ -60,7 +63,10 @@ pub(crate) fn freeze_workflow_run_input_environment(
     variables: &[domain::ApplicationEnvironmentVariable],
     trigger_context: WorkflowRunTriggerContext<'_>,
 ) -> Result<Value, time::error::Format> {
-    let mut payload = input_payload.as_object().cloned().unwrap_or_default();
+    let mut payload = match input_payload {
+        Value::Object(map) => map,
+        _ => Map::new(),
+    };
     payload.remove("sys");
     payload.remove("trigger");
     payload.insert(
