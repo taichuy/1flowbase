@@ -648,6 +648,20 @@ where
         capabilities: &std::collections::BTreeSet<String>,
         input: &mut ProviderInvocationInput,
     ) -> Result<()> {
+        use orchestration_runtime::execution_engine::internal_compaction::{
+            policy_enabled, POLICY_KEY, SUMMARY_KEY,
+        };
+        if input.run_context.get(SUMMARY_KEY).and_then(Value::as_bool) == Some(true) {
+            // A host summary is a new semantic Generate, never a replay of the
+            // client's original native wire body or its continuation delta.
+            return Ok(());
+        }
+        let auto_compact = policy_enabled(
+            input
+                .run_context
+                .get(POLICY_KEY)
+                .and_then(|v| v.get("enabled")),
+        );
         if self
             .provider_transport_payload
             .as_ref()
@@ -658,8 +672,8 @@ where
             && !input.required_capabilities.contains(
                 &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativeOutputV1)
             && self.continuation_affinity().is_none()
-            && !(capabilities.contains("responses.native_passthrough")
-                && capabilities.contains("responses.native_output.v1"))
+            && (auto_compact || !(capabilities.contains("responses.native_passthrough")
+                && capabilities.contains("responses.native_output.v1")))
         {
             input.native_transport = None;
             input.required_capabilities.remove(

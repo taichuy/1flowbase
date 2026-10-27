@@ -20,6 +20,7 @@ pub(crate) struct InMemoryProviderRuntime {
 }
 
 struct CountTokensFixture {
+    measure: Option<Arc<dyn Fn(&ProviderInvocationInput) -> u64 + Send + Sync>>,
     results: VecDeque<plugin_framework::provider_contract::ProviderCountTokensResult>,
     captured: Arc<Mutex<Vec<ProviderInvocationInput>>>,
 }
@@ -32,7 +33,22 @@ impl InMemoryProviderRuntime {
     ) -> (Self, Arc<Mutex<Vec<ProviderInvocationInput>>>) {
         let captured = Arc::new(Mutex::new(Vec::new()));
         self.count_tokens_fixture = Some(Arc::new(Mutex::new(CountTokensFixture {
+            measure: None,
             results: results.into(),
+            captured: captured.clone(),
+        })));
+        (self, captured)
+    }
+
+    /// Controlled provider token semantics derived from each actual request.
+    pub(crate) fn with_count_tokens_measurement(
+        mut self,
+        measure: impl Fn(&ProviderInvocationInput) -> u64 + Send + Sync + 'static,
+    ) -> (Self, Arc<Mutex<Vec<ProviderInvocationInput>>>) {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        self.count_tokens_fixture = Some(Arc::new(Mutex::new(CountTokensFixture {
+            measure: Some(Arc::new(measure)),
+            results: VecDeque::new(),
             captured: captured.clone(),
         })));
         (self, captured)
@@ -285,11 +301,23 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
             anyhow::bail!("provider CountTokens is not implemented by this runtime");
         };
         let mut fixture = fixture.lock().expect("count fixture mutex poisoned");
+        let measured = fixture
+            .measure
+            .as_ref()
+            .map(|measure| measure(input.as_invocation()));
         fixture
             .captured
             .lock()
             .expect("count capture mutex poisoned")
             .push(input.into_invocation());
+        if let Some(input_tokens) = measured {
+            return Ok(
+                plugin_framework::provider_contract::ProviderCountTokensResult {
+                    input_tokens,
+                    ..Default::default()
+                },
+            );
+        }
         fixture.results.pop_front().ok_or_else(|| {
             anyhow::anyhow!("scripted CountTokens results exhausted; use host fallback")
         })

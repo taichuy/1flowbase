@@ -784,3 +784,6 @@ async fn real_host_fallback_count_accepts_plaintext_reasoning_and_reuses_existin
     );
     assert_eq!(generated[0].messages.last(), Some(&historical_reasoning));
 }
+
+#[path = "internal_compaction/strict.rs"]
+mod strict;

@@ -12,6 +12,22 @@ pub(super) struct InternalCompactionFixtureState {
 }
 
 impl InMemoryOrchestrationRuntimeRepository {
+    pub(crate) fn set_compaction_model_window(&self, instance_id: Uuid, window: u64) {
+        let mut inner = self.inner.lock().unwrap();
+        let instance = inner.instances_by_id.get_mut(&instance_id).unwrap();
+        instance.configured_models[0].context_window_override_tokens = Some(window);
+    }
+
+    pub(crate) fn set_compaction_compatibility_mode(&self, run_id: Uuid, mode: Option<&str>) {
+        self.inner
+            .lock()
+            .unwrap()
+            .flow_runs_by_id
+            .get_mut(&run_id)
+            .unwrap()
+            .compatibility_mode = mode.map(str::to_owned);
+    }
+
     pub(crate) fn enable_internal_compaction_fixture(&self) {
         self.inner
             .lock()

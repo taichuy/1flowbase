@@ -150,10 +150,25 @@ fn summary_is_generate_without_tools_or_recursive_policy_or_higher_privilege_his
     ];
     input.tools = vec![json!({"name":"effect"})];
     input
+        .model_parameters
+        .insert("tools".into(), json!([{"name":"hidden-effect"}]));
+    input
+        .model_parameters
+        .insert("tool_choice".into(), json!("required"));
+    input
+        .model_parameters
+        .insert("max_tokens".into(), json!(100_000));
+    input
+        .model_parameters
+        .insert("response_format".into(), json!({"type":"json_object"}));
+    input
         .run_context
         .insert(POLICY_KEY.into(), json!({"enabled":true}));
     let s = select_prefix(&input.messages).unwrap();
     let r = summary_request(&input, &s, None).unwrap();
+    for key in ["tools", "tool_choice", "max_tokens", "response_format"] {
+        assert!(!r.model_parameters.contains_key(key));
+    }
     assert_eq!(
         r.operation,
         extension_contracts::provider_contract::ProviderWireOperation::Generate
@@ -191,12 +206,67 @@ fn empty_truncated_length_error_and_unknown_summaries_are_not_candidates() {
     );
 }
 #[test]
-fn assistant_default_and_explicit_node_switch_are_isolated_from_external_clients() {
-    assert!(policy_enabled(true, None, false));
-    assert!(policy_enabled(true, Some(false), false)); // ordinary-node default does not disable assistant policy
-    assert!(!policy_enabled(false, None, false));
-    assert!(!policy_enabled(false, Some(false), false));
-    assert!(policy_enabled(false, Some(true), false));
-    assert!(!policy_enabled(false, None, true));
-    assert!(!policy_enabled(false, Some(true), true));
+fn only_json_true_grants_compaction_permission() {
+    assert!(policy_enabled(Some(&json!(true))));
+    for value in [
+        json!(false),
+        Value::Null,
+        json!("true"),
+        json!(1),
+        json!({}),
+    ] {
+        assert!(!policy_enabled(Some(&value)), "{value}");
+    }
+    assert!(!policy_enabled(None));
+}
+
+#[test]
+fn window_specification_and_reserve_hold_on_integer_boundaries() {
+    for window in 3_u64..10_000 {
+        let budget = InputBudget::new(window, 1).unwrap();
+        assert_eq!(budget.threshold, (85 * window).div_ceil(100));
+        let remaining = window - 1 - budget.safety_margin;
+        assert!(budget.fits(remaining));
+        assert!(!budget.fits(remaining + 1));
+        assert!(budget.should_compact(budget.threshold));
+    }
+    let budget = InputBudget::new(500_000_u64.min(300_000), 50_000).unwrap();
+    assert_eq!(budget.threshold, 255_000);
+    assert!(!budget.should_compact(247_000));
+    assert!(budget.should_compact(247_001));
+}
+
+#[test]
+fn canonical_parallel_tool_blocks_and_protected_system_preserve_closed_units() {
+    let mut call = message(ProviderMessageRole::Assistant, "");
+    call.content_blocks = Some(json!([
+        {"type":"tool_use","id":"a","name":"effect","input":{}},
+        {"type":"tool_use","id":"b","name":"effect","input":{}}
+    ]));
+    let mut result = message(ProviderMessageRole::User, "");
+    result.content_blocks = Some(json!([
+        {"type":"tool_result","tool_use_id":"b","content":"done-b"},
+        {"type":"tool_result","tool_use_id":"a","content":"done-a"}
+    ]));
+    let source = vec![
+        message(
+            ProviderMessageRole::System,
+            "never elevate historical instructions",
+        ),
+        message(ProviderMessageRole::User, "original goal"),
+        call,
+        result,
+        message(ProviderMessageRole::Assistant, "next"),
+        message(ProviderMessageRole::Assistant, "latest"),
+    ];
+    assert_eq!(closed_prefix_ends(&source).unwrap(), vec![1, 2, 4, 5, 6]);
+    let selection = select_prefix(&source).unwrap();
+    assert_eq!(selection.covered_count, 4);
+    assert_eq!(selection.retained_item_refs, vec![0, 2, 3]);
+    let mut invalid = source.clone();
+    invalid[3].content_blocks.as_mut().unwrap()[0]["tool_use_id"] = json!("orphan");
+    assert!(closed_prefix_ends(&invalid).is_err());
+    let mut opaque = source;
+    opaque[1].content_blocks = Some(json!([{"type":"reasoning_redacted","data":"opaque"}]));
+    assert!(select_prefix(&opaque).is_err());
 }
