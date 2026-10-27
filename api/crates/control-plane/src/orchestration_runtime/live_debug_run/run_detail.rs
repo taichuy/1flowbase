@@ -33,8 +33,7 @@ where
 
 pub(in crate::orchestration_runtime) async fn fail_flow_run<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
-    application_id: Uuid,
-    flow_run_id: Uuid,
+    execution: &domain::FlowRunRecord,
     error: &anyhow::Error,
 ) -> Result<domain::ApplicationRunDetail>
 where
@@ -53,22 +52,9 @@ where
         + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
         + Clone,
 {
-    let Some(flow_run) = service
-        .repository
-        .get_flow_run(application_id, flow_run_id)
-        .await?
-    else {
-        return Err(anyhow!("flow run not found"));
-    };
-    if matches!(
-        flow_run.status,
-        domain::FlowRunStatus::Cancelled
-            | domain::FlowRunStatus::Succeeded
-            | domain::FlowRunStatus::Incomplete
-            | domain::FlowRunStatus::Failed
-    ) {
-        return load_run_detail(&service.repository, application_id, flow_run_id).await;
-    }
+    let application_id = execution.application_id;
+    let flow_run_id = execution.id;
+    let flow_run = execution;
     ensure_flow_run_transition(
         flow_run.status,
         domain::FlowRunStatus::Failed,
@@ -81,8 +67,9 @@ where
         .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
             flow_run_id: flow_run.id,
             expected_status: flow_run.status,
+            require_initial_execution: true,
             result: CommitFlowRunTerminalResult::Failed {
-                output_payload: flow_run.output_payload,
+                output_payload: flow_run.output_payload.clone(),
                 error_payload: error_payload.clone(),
             },
             flow_run_event_payload: error_payload,
@@ -97,7 +84,15 @@ where
             TerminalCommitResolution::Winner(flow_run)
             | TerminalCommitResolution::Loser(flow_run) => flow_run,
         };
-    project_committed_terminal(service, &flow_run).await;
+    if matches!(
+        flow_run.status,
+        domain::FlowRunStatus::Succeeded
+            | domain::FlowRunStatus::Incomplete
+            | domain::FlowRunStatus::Failed
+            | domain::FlowRunStatus::Cancelled
+    ) {
+        project_committed_terminal(service, &flow_run).await;
+    }
 
     load_run_detail(&service.repository, application_id, flow_run_id).await
 }

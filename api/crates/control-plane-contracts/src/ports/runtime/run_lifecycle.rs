@@ -200,6 +200,10 @@ impl CommitFlowRunTerminalResult {
 pub struct CommitFlowRunTerminalInput {
     pub flow_run_id: Uuid,
     pub expected_status: domain::FlowRunStatus,
+    /// Initial-execution cleanup loses ownership permanently once a checkpoint
+    /// or resume claim commits. Check under the run lock, independently of node
+    /// writes to updated_at. Explicit business transitions retain their own fence.
+    pub require_initial_execution: bool,
     pub result: CommitFlowRunTerminalResult,
     pub flow_run_event_payload: serde_json::Value,
     pub terminal_event_payload: serde_json::Value,

@@ -45,91 +45,112 @@ async fn persist_callback_wait_with_tool_count(
     resume_claim: Option<(Uuid, Uuid)>,
     tool_count: usize,
 ) -> control_plane_contracts::ports::PersistedWaitingState {
-    let (resume_claim_id, resume_claim_token) = resume_claim.unzip();
     store
-        .persist_waiting_state(&PersistWaitingStateInput {
-            checkpoint_id: Uuid::now_v7(),
-            scope_id: seeded.workspace_id,
-            application_id: seeded.application_id,
-            flow_run_id: run.id,
-            node_run_id: node_run.id,
-            expected_status: if wait_index == 1 {
-                FlowRunStatus::Running
-            } else {
-                FlowRunStatus::WaitingCallback
-            },
-            output_payload: json!({ "wait_index": wait_index }),
-            checkpoint_status: "waiting_callback".into(),
-            checkpoint_reason: "issue_1736_consecutive_callback".into(),
-            locator_payload: json!({
-                "node_id": "node-llm",
-                "next_node_index": 1,
-                "active_node_ids": ["node-llm"]
-            }),
-            variable_snapshot: json!({ "wait_index": wait_index }),
-            checkpoint_external_ref_payload: None,
-            context_content: json!({
-                "format": "runtime_snapshot_v1",
-                "variable_pool": { "wait_index": wait_index }
-            }),
+        .persist_waiting_state(&callback_wait_input(
+            seeded,
+            run,
+            node_run,
+            wait_index,
             parent_context_version_id,
-            context_transition_kind: if wait_index == 1 {
-                ContextTransitionKind::Append
-            } else {
-                ContextTransitionKind::Callback
-            },
-            recovery_idempotency_key: format!("issue-1736-wait-{wait_index}"),
-            resume_claim_id,
-            resume_claim_token,
-            waiting_event: AppendRuntimeEventInput {
-                flow_run_id: run.id,
-                node_run_id: Some(node_run.id),
-                span_id: None,
-                parent_span_id: None,
-                event_type: "flow.waiting_callback".into(),
-                layer: domain::RuntimeEventLayer::AgentTransition,
-                source: domain::RuntimeEventSource::Host,
-                trust_level: domain::RuntimeTrustLevel::HostFact,
-                item_id: None,
-                ledger_ref: None,
-                payload: json!({ "wait_index": wait_index }),
-                visibility: domain::RuntimeEventVisibility::Workspace,
-                durability: domain::RuntimeEventDurability::Durable,
-            },
-            tool_delivery_events: vec![AppendRuntimeEventInput {
-                flow_run_id: run.id,
-                node_run_id: Some(node_run.id),
-                span_id: None,
-                parent_span_id: None,
-                event_type: "provider_output_item_done".into(),
-                layer: domain::RuntimeEventLayer::ProviderRaw,
-                source: domain::RuntimeEventSource::ProviderPlugin,
-                trust_level: domain::RuntimeTrustLevel::HostFact,
-                item_id: None,
-                ledger_ref: None,
-                payload: json!({
-                    "output_index": wait_index - 1,
-                    "item": { "type": "function_call", "call_id": format!("call-{wait_index}") }
-                }),
-                visibility: domain::RuntimeEventVisibility::Workspace,
-                durability: domain::RuntimeEventDurability::Durable,
-            }],
-            kind: PersistWaitingKind::Callback(PersistWaitingCallbackTaskInput {
-                id: Uuid::now_v7(),
-                callback_kind: "llm_tool_calls".into(),
-                request_payload: json!({
-                    "tool_calls": (0..tool_count).map(|index| json!({
-                        "id": format!("call-{wait_index}-{index}"),
-                        "name": "Bash",
-                        "arguments": { "command": format!("step-{wait_index}-{index}") }
-                    })).collect::<Vec<_>>()
-                }),
-                external_ref_payload: None,
-            }),
-        })
+            resume_claim,
+            tool_count,
+        ))
         .await
         .unwrap()
         .expect("the callback wait should win its expected status transition")
+}
+
+#[allow(clippy::too_many_arguments)]
+fn callback_wait_input(
+    seeded: &RuntimeSeedState,
+    run: &domain::FlowRunRecord,
+    node_run: &domain::NodeRunRecord,
+    wait_index: usize,
+    parent_context_version_id: Option<Uuid>,
+    resume_claim: Option<(Uuid, Uuid)>,
+    tool_count: usize,
+) -> PersistWaitingStateInput {
+    let (resume_claim_id, resume_claim_token) = resume_claim.unzip();
+    PersistWaitingStateInput {
+        checkpoint_id: Uuid::now_v7(),
+        scope_id: seeded.workspace_id,
+        application_id: seeded.application_id,
+        flow_run_id: run.id,
+        node_run_id: node_run.id,
+        expected_status: if wait_index == 1 {
+            FlowRunStatus::Running
+        } else {
+            FlowRunStatus::WaitingCallback
+        },
+        output_payload: json!({ "wait_index": wait_index }),
+        checkpoint_status: "waiting_callback".into(),
+        checkpoint_reason: "issue_1736_consecutive_callback".into(),
+        locator_payload: json!({
+            "node_id": "node-llm",
+            "next_node_index": 1,
+            "active_node_ids": ["node-llm"]
+        }),
+        variable_snapshot: json!({ "wait_index": wait_index }),
+        checkpoint_external_ref_payload: None,
+        context_content: json!({
+            "format": "runtime_snapshot_v1",
+            "variable_pool": { "wait_index": wait_index }
+        }),
+        parent_context_version_id,
+        context_transition_kind: if wait_index == 1 {
+            ContextTransitionKind::Append
+        } else {
+            ContextTransitionKind::Callback
+        },
+        recovery_idempotency_key: format!("issue-1736-wait-{wait_index}"),
+        resume_claim_id,
+        resume_claim_token,
+        waiting_event: AppendRuntimeEventInput {
+            flow_run_id: run.id,
+            node_run_id: Some(node_run.id),
+            span_id: None,
+            parent_span_id: None,
+            event_type: "flow.waiting_callback".into(),
+            layer: domain::RuntimeEventLayer::AgentTransition,
+            source: domain::RuntimeEventSource::Host,
+            trust_level: domain::RuntimeTrustLevel::HostFact,
+            item_id: None,
+            ledger_ref: None,
+            payload: json!({ "wait_index": wait_index }),
+            visibility: domain::RuntimeEventVisibility::Workspace,
+            durability: domain::RuntimeEventDurability::Durable,
+        },
+        tool_delivery_events: vec![AppendRuntimeEventInput {
+            flow_run_id: run.id,
+            node_run_id: Some(node_run.id),
+            span_id: None,
+            parent_span_id: None,
+            event_type: "provider_output_item_done".into(),
+            layer: domain::RuntimeEventLayer::ProviderRaw,
+            source: domain::RuntimeEventSource::ProviderPlugin,
+            trust_level: domain::RuntimeTrustLevel::HostFact,
+            item_id: None,
+            ledger_ref: None,
+            payload: json!({
+                "output_index": wait_index - 1,
+                "item": { "type": "function_call", "call_id": format!("call-{wait_index}") }
+            }),
+            visibility: domain::RuntimeEventVisibility::Workspace,
+            durability: domain::RuntimeEventDurability::Durable,
+        }],
+        kind: PersistWaitingKind::Callback(PersistWaitingCallbackTaskInput {
+            id: Uuid::now_v7(),
+            callback_kind: "llm_tool_calls".into(),
+            request_payload: json!({
+                "tool_calls": (0..tool_count).map(|index| json!({
+                    "id": format!("call-{wait_index}-{index}"),
+                    "name": "Bash",
+                    "arguments": { "command": format!("step-{wait_index}-{index}") }
+                })).collect::<Vec<_>>()
+            }),
+            external_ref_payload: None,
+        }),
+    }
 }
 
 #[tokio::test]
@@ -1186,3 +1207,6 @@ async fn replay_gc_callback_checkpoint_reads_version_locator_and_preserves_legac
 
 #[path = "callback_resume/_tests/public_round_context.rs"]
 mod public_round_context;
+
+#[path = "_tests/waiting_commit.rs"]
+mod waiting_commit;

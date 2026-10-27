@@ -263,7 +263,7 @@ where
             domain::ApplicationType::AgentLogs => {
                 return Err(
                     crate::errors::ControlPlaneError::InvalidInput("application_type").into(),
-                )
+                );
             }
             domain::ApplicationType::AgentFlow => {
                 orchestration_runtime::compiler::FlowCompiler::compile(
@@ -376,7 +376,7 @@ where
     .await;
 
     if let Err(error) = post_attach_result {
-        fail_flow_run(service, command.application_id, command.flow_run_id, &error).await?;
+        fail_flow_run(service, &flow_run, &error).await?;
         return Err(error);
     }
 
@@ -427,6 +427,7 @@ where
         .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
             flow_run_id: flow_run.id,
             expected_status: flow_run.status,
+            require_initial_execution: false,
             result: CommitFlowRunTerminalResult::Failed {
                 output_payload: json!({}),
                 error_payload: error_payload.clone(),

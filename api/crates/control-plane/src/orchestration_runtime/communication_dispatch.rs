@@ -147,6 +147,7 @@ where
             .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
                 flow_run_id: run.id,
                 expected_status: run.status,
+                require_initial_execution: true,
                 result: CommitFlowRunTerminalResult::Failed {
                     output_payload: run.output_payload,
                     error_payload: error.clone(),

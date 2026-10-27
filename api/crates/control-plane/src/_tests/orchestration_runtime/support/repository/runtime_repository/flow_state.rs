@@ -127,11 +127,24 @@ impl InMemoryOrchestrationRuntimeRepository {
         flow_run_id: Uuid,
     ) -> Result<Option<domain::FlowRunRecord>> {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        if std::mem::take(&mut inner.initial_run_read_fault_once) {
+            anyhow::bail!("injected initial run read failure");
+        }
         let record = inner
             .flow_runs_by_id
             .get(&flow_run_id)
             .filter(|record| record.application_id == application_id)
             .cloned();
+        if inner.waiting_read_fault.0
+            && record.as_ref().is_some_and(|run| {
+                matches!(
+                    run.status,
+                    domain::FlowRunStatus::WaitingCallback | domain::FlowRunStatus::WaitingHuman
+                )
+            })
+        {
+            anyhow::bail!("injected waiting run read failure");
+        }
         if let Some((race_flow_run_id, status)) = inner.status_after_next_get.take() {
             if race_flow_run_id == flow_run_id {
                 if let Some(stored) = inner.flow_runs_by_id.get_mut(&flow_run_id) {
@@ -168,7 +181,11 @@ impl InMemoryOrchestrationRuntimeRepository {
         record.metrics_payload = input.metrics_payload.clone();
         record.debug_payload = input.debug_payload.clone();
         record.finished_at = input.finished_at;
-        Ok(record.clone())
+        let record = record.clone();
+        if let Some(parent) = inner.flow_runs_by_id.get_mut(&record.flow_run_id) {
+            parent.updated_at = input.finished_at.unwrap_or_else(OffsetDateTime::now_utc);
+        }
+        Ok(record)
     }
 
     pub(super) fn memory_update_flow_run(
@@ -220,6 +237,15 @@ impl InMemoryOrchestrationRuntimeRepository {
             return Err(ControlPlaneError::NotFound("flow_run").into());
         };
         if existing.status != input.expected_status
+            || (input.require_initial_execution
+                && (inner
+                    .checkpoints_by_id
+                    .values()
+                    .any(|checkpoint| checkpoint.flow_run_id == input.flow_run_id)
+                    || inner
+                        .resume_claims_by_target
+                        .values()
+                        .any(|claim| claim.flow_run_id == input.flow_run_id)))
             || matches!(
                 existing.status,
                 domain::FlowRunStatus::Succeeded

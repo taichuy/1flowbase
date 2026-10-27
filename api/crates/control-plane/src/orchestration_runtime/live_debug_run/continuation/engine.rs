@@ -12,6 +12,7 @@ use crate::orchestration_runtime::persistence::PersistFlowDebugOutcomeInput;
 pub(super) async fn continue_flow_debug_run_inner<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     command: &ContinueFlowDebugRunCommand,
+    flow_run: &domain::FlowRunRecord,
     live_provider_events: Option<LiveProviderStreamEventSender>,
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
     transport_connection_scope: Option<String>,
@@ -37,15 +38,6 @@ where
         + Send
         + Sync,
 {
-    let flow_run = service
-        .repository
-        .get_flow_run(command.application_id, command.flow_run_id)
-        .await?
-        .ok_or_else(|| anyhow!("flow run not found"))?;
-    if flow_run.status != domain::FlowRunStatus::Running {
-        return load_run_detail(&service.repository, command.application_id, flow_run.id).await;
-    }
-
     let actor = crate::ports::ApplicationRepository::load_actor_context_for_user(
         &service.repository,
         flow_run.created_by,
@@ -179,7 +171,7 @@ where
             application_name: &application.name,
             task_queue: service.provider_request_log_queue.as_ref(),
             application_id: command.application_id,
-            flow_run: &flow_run,
+            flow_run,
             compiled_plan: Some(&compiled_plan),
             outcome: &outcome,
             prepared_node_runs: Some(&prepared_node_runs),

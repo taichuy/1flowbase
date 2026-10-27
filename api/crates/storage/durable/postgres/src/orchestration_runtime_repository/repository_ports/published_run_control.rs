@@ -140,6 +140,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
             &CommitFlowRunTerminalInput {
                 flow_run_id: input.flow_run_id,
                 expected_status: input.from_status,
+                require_initial_execution: false,
                 result: CommitFlowRunTerminalResult::Cancelled {
                     output_payload: input.output_payload.clone(),
                     error_payload: input.error_payload.clone(),
