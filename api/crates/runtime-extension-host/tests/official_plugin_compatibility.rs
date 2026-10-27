@@ -32,7 +32,7 @@ const PROVIDERS: [&str; 7] = [
     "openai_compatible",
 ];
 
-const PROCESS_PER_CALL_MANIFEST_BUILD_ONLY: [&str; 2] = ["langfuse", "wechat-notification"];
+const PROCESS_PER_CALL_MANIFEST_BUILD_ONLY: [&str; 2] = ["langfuse", "wechat-chat-channels"];
 
 // This inventory is deliberately closed: a newly added stateful package needs a
 // real-host execution case before it can become compatibility evidence.
@@ -68,7 +68,7 @@ fn official_evidence_scope(
                     "stdio_json_worker",
                     true,
                 ),
-                "langfuse" | "wechat-notification" => (
+                "langfuse" | "wechat-chat-channels" => (
                     PluginExecutionMode::ProcessPerCall,
                     "1flowbase.extension-bus/v1",
                     "stdio_json_multiplex_v1",
@@ -343,7 +343,7 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
         manifest_build_only,
         BTreeSet::from(PROCESS_PER_CALL_MANIFEST_BUILD_ONLY.map(str::to_string))
     );
-    eprintln!("official compatibility: 11 manifests and built binaries; 9 stateful real-host targets; langfuse and wechat-notification manifest/build-only (not executed)");
+    eprintln!("official compatibility: 11 manifests and built binaries; 9 stateful real-host targets; langfuse and wechat-chat-channels manifest/build-only (not executed)");
     assert_eq!(actual, expected);
     assert_eq!(
         modes,
