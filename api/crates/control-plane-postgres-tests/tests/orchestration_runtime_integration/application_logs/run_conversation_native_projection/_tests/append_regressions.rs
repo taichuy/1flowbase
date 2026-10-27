@@ -104,7 +104,7 @@ async fn repair_observables(store: &PgControlPlaneStore, runs: &[domain::FlowRun
                 scope,
                 application_id,
                 run.api_key_id.unwrap(),
-                run.created_by.unwrap(),
+                run.created_by,
                 &format!("resp_{}", run.id),
             )
             .await
