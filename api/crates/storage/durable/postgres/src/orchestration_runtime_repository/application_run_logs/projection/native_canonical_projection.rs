@@ -281,7 +281,11 @@ impl PgControlPlaneStore {
             });
             Self::write_application_run_conversation_projection(tx, &member, native).await?;
             Self::upsert_application_run_log_summary_projection_for_flow_run(tx, &member).await?;
-            Self::refresh_application_run_log_task_for_flow_run(tx, owner).await?;
+            // Every caller refreshes the current task after the complete repair.
+            // Historical owners still need their task refreshed here.
+            if owner != run.id {
+                Self::refresh_application_run_log_task_for_flow_run(tx, owner).await?;
+            }
             // Progress publication is part of the same transaction as every
             // affected owner, summary and task projection.
             Self::publish_native_projection_progress(

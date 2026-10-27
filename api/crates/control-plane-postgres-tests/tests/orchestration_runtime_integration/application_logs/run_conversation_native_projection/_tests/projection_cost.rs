@@ -76,6 +76,119 @@ pub(super) async fn counters(store: &PgControlPlaneStore) -> Value {
         .fetch_one(store.pool()).await.unwrap()
 }
 
+// Attribute actual task upsert tuples to their task, including partial sharing.
+// Install separately so the existing append benchmark's instrumentation is stable.
+pub(super) async fn install_task_counters(store: &PgControlPlaneStore) {
+    sqlx::raw_sql(r#"
+        create table projection_task_cost_counter(task_run_id uuid primary key, writes bigint not null);
+        create function projection_task_cost_count() returns trigger language plpgsql as $$
+        begin
+            insert into projection_task_cost_counter
+                select id,count(*) from affected_rows group by id
+            on conflict(task_run_id) do update set
+                writes=projection_task_cost_counter.writes+excluded.writes;
+            return null;
+        end $$;
+        create trigger task_cost_insert after insert on application_run_log_tasks
+            referencing new table as affected_rows for each statement execute function projection_task_cost_count();
+        create trigger task_cost_update after update on application_run_log_tasks
+            referencing new table as affected_rows for each statement execute function projection_task_cost_count();
+    "#).execute(store.pool()).await.unwrap();
+}
+
+pub(super) async fn task_writes(store: &PgControlPlaneStore, task: Uuid) -> i64 {
+    sqlx::query_scalar(
+        "select coalesce((select writes from projection_task_cost_counter where task_run_id=$1),0)",
+    )
+    .bind(task)
+    .fetch_one(store.pool())
+    .await
+    .unwrap()
+}
+
+fn dml_count(writes: &Value, relation: &str, operation: &str, metric: &str) -> i64 {
+    writes
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["relation"] == relation && row["operation"] == operation)
+        .map(|row| row[metric].as_i64().unwrap())
+        .unwrap_or(0)
+}
+
+#[tokio::test]
+async fn full_native_repair_refreshes_current_task_once() {
+    let (store, run) = setup().await;
+    store
+        .append_runtime_events(&[
+            event(run.id, "retained-0".into(), "first retained body".into()),
+            event(run.id, "retained-1".into(), "second retained body".into()),
+        ])
+        .await
+        .unwrap();
+    let retained: i64 = sqlx::query_scalar(
+        "select count(*) from application_run_conversation_message_items where flow_run_id=$1",
+    )
+    .bind(run.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert!(retained >= 3);
+    // An invalidated progress row forces the production full-repair branch;
+    // this measurement must not accidentally exercise the existing append path.
+    sqlx::query("update application_run_native_projection_progress set invalidated=true where flow_run_id=$1")
+        .bind(run.id).execute(store.pool()).await.unwrap();
+    install_counters(&store).await;
+    install_task_counters(&store).await;
+    store
+        .append_runtime_event(&event(run.id, "new".into(), "new body".into()))
+        .await
+        .unwrap();
+    let writes = counters(&store).await;
+    assert_eq!(
+        dml_count(
+            &writes,
+            "application_run_conversation_message_items",
+            "DELETE",
+            "tuples"
+        ),
+        retained
+    );
+    assert_eq!(
+        dml_count(
+            &writes,
+            "application_run_conversation_message_items",
+            "INSERT",
+            "tuples"
+        ),
+        retained + 1
+    );
+    // Existing task: one SQL upsert issues one INSERT statement and updates one
+    // tuple. The pre-trim full repair issues two of each, so it fails this oracle.
+    assert_eq!(
+        dml_count(&writes, "application_run_log_tasks", "INSERT", "statements"),
+        1
+    );
+    assert_eq!(
+        dml_count(&writes, "application_run_log_tasks", "UPDATE", "tuples"),
+        1
+    );
+    assert_eq!(task_writes(&store, run.id).await, 1);
+    // Both summary upserts are still required, including the fresh inner read.
+    assert_eq!(
+        dml_count(
+            &writes,
+            "application_run_log_summaries",
+            "INSERT",
+            "statements"
+        ),
+        2
+    );
+    let current: bool = sqlx::query_scalar("select not p.invalidated and p.source_revision=f.message_projection_revision from application_run_native_projection_progress p join flow_runs f on f.id=p.flow_run_id where f.id=$1")
+        .bind(run.id).fetch_one(store.pool()).await.unwrap();
+    assert!(current);
+}
+
 async fn storage(store: &PgControlPlaneStore) -> Value {
     sqlx::query_scalar(r#"select jsonb_build_object(
         'message_logical_bytes',coalesce((select sum(pg_column_size(m)) from application_run_conversation_message_items m),0),
