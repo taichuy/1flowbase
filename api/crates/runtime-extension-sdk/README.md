@@ -210,8 +210,11 @@ Cache a displayable QR URL as `qr_code_url` and its encoded challenge as
 `qr_credential`. The Host allows those two values only in the exact cached
 `user_action.qr_code_url`; reflection into another output field is rejected.
 This exception never permits bot tokens or other managed secrets in a QR URL.
-Never log config/input/result, QR credentials, tokens or raw provider errors;
-notification logs expose only fixed `failure_code` and terminal delivery status.
+Never log raw config/input/result envelopes, QR credentials, tokens or provider errors.
+The optional descriptor `log` selects public business input fields into title/content and
+input/result fields into extra information. The Host checks credentials before storage,
+retains complete content and defaults a missing title to its first 255 Unicode characters.
+See the bilingual [notification contract guide](../../../docs/architecture/notifications.en.md#plugin-declared-send-logs).
 
 The `notification_authorization_worker` example under
 `src/_tests/notification/authorizable_worker.rs` uses the shared multiplex runner

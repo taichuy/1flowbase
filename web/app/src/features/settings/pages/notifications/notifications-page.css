@@ -77,8 +77,24 @@
   margin-bottom: 6px;
 }
 .notification-log-detail__value {
+  min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
+}
+.notification-log-detail__extra-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding-inline-start: 12px;
+  border-inline-start: 1px solid var(--border-subtle);
+}
+.notification-log-detail__extra-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding-inline-start: 24px;
 }
 .notification-log-detail__id {
   width: 100%;

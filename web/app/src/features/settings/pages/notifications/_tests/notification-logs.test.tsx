@@ -28,6 +28,7 @@ const log: NotificationSendLog = {
   failure_code: 'input_invalid',
   title: 'Plain title',
   content: '<script>raw text</script>',
+  extra: {},
   recipient_count: 2,
   created_at: '2026-10-13T00:00:00Z',
   completed_at: null
@@ -152,6 +153,109 @@ test('uses backend pages and exposes only safe, plain-text log detail', async ()
     )
   ).toBe(true);
 });
+
+test('renders the complete backend body and title without guessing provider fields', async () => {
+  const storedTitle = '后端保存的标题（与正文首行不同）';
+  const content = `${'完整正文🙂'.repeat(180)}\n最后一行：<script>window.notificationLogExecuted = true</script>`;
+  detail = {
+    ...log,
+    type_code: 'plugin-message',
+    title: storedTitle,
+    content,
+    ...{
+      text: 'UNMAPPED_PROVIDER_TEXT',
+      provider_error: 'INTERNAL_EXCEPTION_WITH_SECRET_TOKEN'
+    }
+  };
+  await renderLogs();
+  await click(await screen.findByRole('button', { name: '详情' }));
+  await screen.findByText(storedTitle);
+  const drawer = within(screen.getByRole('dialog'));
+  const title = drawer.getByRole('group', { name: '消息标题' });
+  const body = drawer.getByRole('group', { name: '消息内容' });
+  expect(within(title).getByText(storedTitle)).toBeInTheDocument();
+  expect(body.textContent).toContain(content);
+  expect(body.querySelector('script')).toBeNull();
+  expect(drawer.queryByText('UNMAPPED_PROVIDER_TEXT')).not.toBeInTheDocument();
+  expect(
+    drawer.queryByText('INTERNAL_EXCEPTION_WITH_SECRET_TOKEN')
+  ).not.toBeInTheDocument();
+});
+
+test.each([
+  ['zh_Hans', '详情', '附属信息', '是', '否'],
+  ['en_US', 'Details', 'Additional information', 'Yes', 'No']
+])(
+  'renders structured extra values and translated labels in %s',
+  async (locale, action, extraLabel, trueLabel, falseLabel) => {
+    await act(async () => {
+      await appI18n.changeLanguage(locale);
+    });
+    detail = {
+      ...log,
+      extra: {
+        delivery_id: 'receipt-42',
+        accepted: true,
+        retry_required: false,
+        attempts: 0,
+        recipients: ['contact-1', { name: 'Nested recipient' }],
+        context: { provider: { receipt: 'nested-receipt-77' } },
+        message_fragment: '<img src=x onerror="alert(1)">',
+        empty_array: [],
+        empty_object: {},
+        unavailable: null
+      }
+    };
+    await renderLogs();
+    await click(await screen.findByRole('button', { name: action }));
+    const extra = within(
+      await screen.findByRole('group', { name: extraLabel })
+    );
+    expect(extra.getByText('delivery_id').tagName).toBe('DT');
+    expect(extra.getByText('receipt-42')).toBeInTheDocument();
+    expect(extra.getByText(trueLabel)).toBeInTheDocument();
+    expect(extra.getByText(falseLabel)).toBeInTheDocument();
+    expect(extra.getByText('0')).toBeInTheDocument();
+    const recipients = within(extra.getByRole('list'));
+    expect(recipients.getAllByRole('listitem')).toHaveLength(2);
+    expect(recipients.getByText('contact-1')).toBeInTheDocument();
+    expect(recipients.getByText('Nested recipient')).toBeInTheDocument();
+    expect(extra.getByText('provider').tagName).toBe('DT');
+    expect(extra.getByText('receipt').tagName).toBe('DT');
+    expect(extra.getByText('nested-receipt-77')).toBeInTheDocument();
+    expect(
+      extra.getByText('<img src=x onerror="alert(1)">')
+    ).toBeInTheDocument();
+    expect(extra.queryByRole('img')).not.toBeInTheDocument();
+    expect(extra.getAllByText('—')).toHaveLength(3);
+    expect(extra.queryByText('[object Object]')).not.toBeInTheDocument();
+    expect(
+      extra.queryByText(JSON.stringify(detail.extra))
+    ).not.toBeInTheDocument();
+  }
+);
+
+test.each([null, 'A stored body does not supply a missing title'])(
+  'keeps legacy empty titles and extra without inferring from content %s',
+  async (content) => {
+    detail = {
+      ...log,
+      title: null,
+      content,
+      extra: {},
+      ...{ text: 'UNMAPPED_LEGACY_TEXT' }
+    };
+    await renderLogs();
+    await click(await screen.findByRole('button', { name: '详情' }));
+    const title = await screen.findByRole('group', { name: '消息标题' });
+    expect(within(title).getByText('—')).toBeInTheDocument();
+    const body = within(screen.getByRole('group', { name: '消息内容' }));
+    expect(body.getByText(content ?? '—')).toBeInTheDocument();
+    expect(screen.queryByText('附属信息')).not.toBeInTheDocument();
+    expect(screen.queryByText('UNMAPPED_LEGACY_TEXT')).not.toBeInTheDocument();
+  }
+);
+
 test('sends source filter to the server and resets the page', async () => {
   await renderLogs();
   await screen.findByText('Delivery channel');

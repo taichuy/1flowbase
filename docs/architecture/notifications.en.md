@@ -40,11 +40,25 @@ Real package intake, PostgreSQL, independent grants and SDK binary fixtures cove
 
 Every authorized workspace send persists one pending `notification_send_logs` fact before validation or execution. The shared `NotificationSenderPort` receives a trusted `api` or `workflow` source from its caller; HTTP bodies cannot select it. Instance and actor UUIDs have no foreign keys and historical sends are not backfilled. Missing instance names/types are nullable. Log list/get have independent workspace-scoped settings operations.
 
-System messages and log success commit in one transaction, recording only safe system title/content and deduplicated recipient count. Plugin config, input, result and raw errors are never logged. Pre-send instance/type/plugin/input/config/recipient rejection has a fixed failure code. Provider errors may follow an external effect and become unknown/provider_result_unknown. Unsafe or schema-invalid provider output becomes unknown/provider_output_invalid. Failed finalization leaves pending rather than asserting definite failure.
+System messages and log success still commit in one transaction with a deduplicated recipient count. Types declaring `log` persist validated, credential-checked title, full content and input extra fields before provider I/O. Completion merges only declared business receipt fields into the `extra` JSONB object. Whole raw inputs/results, config, managed credentials, runtime envelopes and raw errors are never logged. Pre-send instance/type/plugin/input/config/recipient rejection has a fixed failure code. Provider errors may follow an external effect and become unknown/provider_result_unknown. Unsafe or schema-invalid provider output becomes unknown/provider_output_invalid. Failed finalization leaves pending rather than asserting definite failure.
 
 The channels endpoint aggregates only the current workspace and authenticated recipient. It applies all/unread/read before choosing each channel's latest message, orders by that latest time, and independently counts all unread messages per channel. Cursor pages are bounded to 100. Messages support instance_id/read_status; explicit read_status takes precedence over the retained unread_only parameter. LEFT JOIN preserves deleted-instance history with deleted=true, display_name='Deleted notification channel', type_code='system', because the inbox table contains only system messages.
 
 Message unread clears only the recipient's read_at. Channel read-all changes only that recipient/channel, including deleted-channel history. Both publish recipient/workspace refresh signals. Existing global read-all remains available.
+
+## Plugin-declared send logs
+
+```yaml
+log:
+  content: /text
+  extra:
+    accepted: {source: result, pointer: /accepted}
+    delivery_id: {source: result, pointer: /delivery_id}
+```
+
+The optional `title` and required `content` are RFC 6901 JSON Pointers into declared string fields of the business input, including `~0` and `~1` escaping. A missing title mapping, absent title or blank title uses the first 255 Unicode scalar characters of content. The full body and any explicit title remain unchanged. Missing or non-string content is rejected before provider I/O. Each `extra` key declares `source: input|result` and a pointer to a JSON value; absent optional values are omitted. Root pointers, undeclared fields, writeOnly fields and invalid escapes are rejected. Configuration, managed secrets and runtime envelopes are not available as mapping sources.
+
+The Host checks the complete message projection against known password configuration and managed credentials. Unsafe input projections are rejected before delivery and are not stored. Results pass their business schema and existing credential checks before receipt projection. Failed or uncertain attempts retain their previously persisted message. The UI consumes the Host-generated title and complete body and renders extra fields as structured key/value data. Legacy types without `log` remain loadable and keep their metadata-only behavior; missing historic content is not inferred, and existing rows receive `extra: {}`.
 
 ## Notification instance QR authorization
 

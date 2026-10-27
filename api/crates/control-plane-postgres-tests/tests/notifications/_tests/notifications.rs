@@ -353,6 +353,9 @@ async fn committed_inbox_deduplicates_and_enforces_recipient_workspace_and_manag
     assert_eq!(logs.total, 1);
     assert_eq!(logs.items[0].status, "success");
     assert_eq!(logs.items[0].recipient_count, Some(2));
+    assert_eq!(logs.items[0].title.as_deref(), Some("Ready"));
+    assert_eq!(logs.items[0].content.as_deref(), Some("Committed"));
+    assert_eq!(logs.items[0].extra, json!({}));
     assert!(service
         .logs(&member_actor, Default::default())
         .await
@@ -465,9 +468,25 @@ async fn committed_inbox_deduplicates_and_enforces_recipient_workspace_and_manag
         .await
         .unwrap();
     assert_eq!(failure_logs.total, 4);
+    // A valid message whose recipient is unavailable retains its input snapshot.
+    // Schema rejection and a disabled instance still retain metadata only.
+    let recipient_failures = failure_logs
+        .items
+        .iter()
+        .filter(|log| log.title.is_some())
+        .collect::<Vec<_>>();
+    assert_eq!(recipient_failures.len(), 1);
+    assert_eq!(
+        recipient_failures[0].failure_code.as_deref(),
+        Some("input_invalid")
+    );
+    assert_eq!(recipient_failures[0].title.as_deref(), Some("t"));
+    assert_eq!(recipient_failures[0].content.as_deref(), Some("c"));
+    assert!(failure_logs.items.iter().all(|log| log.extra == json!({})));
     assert!(failure_logs
         .items
         .iter()
+        .filter(|log| log.id != recipient_failures[0].id)
         .all(|log| log.title.is_none() && log.content.is_none()));
     assert!(service
         .log(&foreign_actor, failure_logs.items[0].id)

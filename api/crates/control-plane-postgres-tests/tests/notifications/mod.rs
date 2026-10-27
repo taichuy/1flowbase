@@ -14,3 +14,6 @@ mod communication_management;
 
 #[path = "_tests/version_switch.rs"]
 mod version_switch;
+
+#[path = "_tests/log_mapping.rs"]
+mod log_mapping;

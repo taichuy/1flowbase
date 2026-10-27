@@ -351,7 +351,11 @@ function NotificationLogDetail({
             </NotificationLogField>
             <NotificationLogField label={t('message')}>
               <div className="notification-log-detail__message">
-                <div className="notification-log-detail__message-part">
+                <div
+                  className="notification-log-detail__message-part"
+                  role="group"
+                  aria-label={t('message_title')}
+                >
                   <span className="notification-log-detail__message-label">
                     {t('message_title')}
                   </span>
@@ -359,7 +363,11 @@ function NotificationLogDetail({
                     {item.title ?? '—'}
                   </div>
                 </div>
-                <div className="notification-log-detail__message-part">
+                <div
+                  className="notification-log-detail__message-part"
+                  role="group"
+                  aria-label={t('message_content')}
+                >
                   <span className="notification-log-detail__message-label">
                     {t('message_content')}
                   </span>
@@ -369,6 +377,13 @@ function NotificationLogDetail({
                 </div>
               </div>
             </NotificationLogField>
+            {Object.keys(item.extra).length > 0 && (
+              <NotificationLogField label={t('message_extra')}>
+                <div role="group" aria-label={t('message_extra')}>
+                  <NotificationLogValue value={item.extra} />
+                </div>
+              </NotificationLogField>
+            )}
             {(item.status === 'failure' || item.status === 'unknown') &&
               item.failure_code !== null && (
                 <NotificationLogField label={t('failure_reason')}>
@@ -388,6 +403,48 @@ function NotificationLogDetail({
         </section>
       )}
     </ResizableDrawer>
+  );
+}
+
+function NotificationLogValue({ value }: { value: unknown }) {
+  const { t } = useTranslation('notifications');
+  if (Array.isArray(value)) {
+    return value.length ? (
+      <ol className="notification-log-detail__extra-list">
+        {value.map((entry, index) => (
+          <li key={index}>
+            <NotificationLogValue value={entry} />
+          </li>
+        ))}
+      </ol>
+    ) : (
+      <>—</>
+    );
+  }
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value);
+    return entries.length ? (
+      <dl className="notification-log-detail__extra-fields">
+        {entries.map(([key, entry]) => (
+          <NotificationLogField key={key} label={key}>
+            <NotificationLogValue value={entry} />
+          </NotificationLogField>
+        ))}
+      </dl>
+    ) : (
+      <>—</>
+    );
+  }
+  return (
+    <span className="notification-log-detail__text">
+      {typeof value === 'boolean'
+        ? value
+          ? t('log_value_true')
+          : t('log_value_false')
+        : value == null
+          ? '—'
+          : String(value)}
+    </span>
   );
 }
 

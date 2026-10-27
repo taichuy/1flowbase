@@ -1,6 +1,7 @@
 import type {
   NotificationInstance,
   NotificationMessage,
+  NotificationSendLog,
   NotificationType
 } from '@1flowbase/api-client';
 
@@ -33,6 +34,32 @@ const notificationInstance: NotificationInstance = {
   created_at: '2026-10-13T00:00:00Z',
   updated_at: '2026-10-13T00:00:00Z'
 };
+const notificationLog: NotificationSendLog = {
+  id: 'log-1',
+  workspace_id: 'workspace-1',
+  actor_user_id: 'user-1',
+  instance_id: notificationInstance.id,
+  display_name: notificationInstance.display_name,
+  type_code: 'system',
+  source: 'workflow',
+  status: 'success',
+  failure_code: null,
+  title: '工作流运行完成',
+  content: `${'工作流已成功运行，完整处理结果已保存。\n'.repeat(30)}结果地址：https://example.com/${'notification-result-'.repeat(12)}`,
+  extra: {
+    accepted: true,
+    delivery_id: 'provider-receipt-20261027',
+    recipients: ['团队成员甲', '团队成员乙'],
+    delivery: {
+      attempts: 1,
+      retry_required: false,
+      receipt_url: `https://example.com/${'delivery-receipt-'.repeat(12)}`
+    }
+  },
+  recipient_count: 2,
+  created_at: '2026-10-13T00:00:00Z',
+  completed_at: '2026-10-13T00:01:00Z'
+};
 
 export function seedStyleBoundaryNotificationSettingsFetch() {
   const originalFetch = globalThis.fetch.bind(globalThis);
@@ -52,29 +79,14 @@ export function seedStyleBoundaryNotificationSettingsFetch() {
           ? [notificationInstance]
           : url.pathname === '/api/console/communications/logs'
             ? {
-                items: [
-                  {
-                    id: 'log-1',
-                    workspace_id: 'workspace-1',
-                    actor_user_id: 'user-1',
-                    instance_id: notificationInstance.id,
-                    display_name: notificationInstance.display_name,
-                    type_code: 'system',
-                    source: 'workflow',
-                    status: 'success',
-                    failure_code: null,
-                    title: '工作流运行完成',
-                    content: '工作流已成功运行。',
-                    recipient_count: 2,
-                    created_at: '2026-10-13T00:00:00Z',
-                    completed_at: '2026-10-13T00:01:00Z'
-                  }
-                ],
+                items: [notificationLog],
                 total: 1,
                 page: 1,
                 page_size: 20
               }
-            : undefined;
+            : url.pathname === '/api/console/communications/logs/log-1'
+              ? notificationLog
+              : undefined;
     if (payload !== undefined)
       return new Response(JSON.stringify({ data: payload, meta: null }), {
         headers: { 'content-type': 'application/json' }

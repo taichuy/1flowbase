@@ -216,6 +216,8 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
     assert_eq!(pending.total, 1);
     assert!(pending.items[0].failure_code.is_none());
     assert!(pending.items[0].completed_at.is_none());
+    assert!(pending.items[0].title.is_none() && pending.items[0].content.is_none());
+    assert_eq!(pending.items[0].extra, json!({}));
     let changed = service
         .patch_instance(
             &actor,
@@ -353,6 +355,7 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
         .items
         .iter()
         .all(|log| log.title.is_none() && log.content.is_none()));
+    assert!(logs.items.iter().all(|log| log.extra == json!({})));
 }
 
 mod authorization;

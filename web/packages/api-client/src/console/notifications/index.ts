@@ -50,6 +50,11 @@ export interface NotificationTypeLocale {
   input_form?: NotificationFormLocale;
   authorization?: NotificationAuthorizationLocale;
 }
+export interface NotificationLogDescriptor {
+  title?: string;
+  content: string;
+  extra?: Record<string, { source: 'input' | 'result'; pointer: string }>;
+}
 export interface NotificationType {
   type_code: string;
   display_name: string;
@@ -59,6 +64,7 @@ export interface NotificationType {
   input_schema: Record<string, unknown>;
   input_form: ConsolePluginFormSchema;
   output_schema: Record<string, unknown>;
+  log?: NotificationLogDescriptor | null;
   receive?: { default_system_prompt: string; mcp_tools: unknown } | null;
   authorization?: NotificationAuthorizationDescriptor | null;
   i18n?: Partial<Record<'zh_Hans' | 'en_US', NotificationTypeLocale>>;
@@ -136,6 +142,7 @@ export interface NotificationSendLog {
   failure_code: string | null;
   title: string | null;
   content: string | null;
+  extra: Record<string, unknown>;
   recipient_count: number | null;
   created_at: string;
   completed_at: string | null;

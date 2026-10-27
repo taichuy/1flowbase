@@ -21,6 +21,7 @@
 | `input_schema` / `input_form` | 单次发送的参数与表单，与配置分离 |
 | `output_schema` | 单次结果对象的 JSON Schema |
 | `contribution_id` | 对应受管发送贡献 |
+| `log` | 可选的标题、完整正文和附属信息映射，只读取业务输入与业务结果 |
 
 表单使用已有 string、number、boolean、select 控件、默认值与条件；`control: password` 只用于配置中的 string 字段，`control: multi-select` 对应 array schema，选项值按 `items` 校验。Schema 自包含，不解析外部 `$ref`。系统类型的收件人选项由类型 API 按当前工作区成员提供。
 
@@ -60,11 +61,25 @@ HTTP owner 是 `/api/console/notifications`：types、instances CRUD、`instance
 
 每次授权工作区发送先持久化一个 `notification_send_logs` pending，再执行校验和发送；HTTP 与工作流通过 `NotificationSenderPort` 显式指定可信 `api` / `workflow` 来源，客户端 body 不接受来源字段。日志保留实例 UUID，无实例/用户外键，也不回填历史。实例缺失时名称、类型为空。日志 list/get 是独立设置 operation，按工作区授权与查询。
 
-站内消息与日志 success 在同一事务提交，安全 title/content 和去重后的 recipient_count 仅来自站内正文。插件调用不记录 config、input、result 或原始错误。发送前的缺失实例、停用、不可用类型/插件、输入/配置/收件人校验失败有固定 failure_code。插件错误可能已产生外部效果，记录 unknown/provider_result_unknown；成功返回后的输出 schema/秘密校验失败记录 unknown/provider_output_invalid。日志收尾写失败保留 pending，不能把不确定外部结果写成确定失败。
+站内消息与日志 success 在同一事务提交，保留去重后的 recipient_count。声明 `log` 的类型在供应商调用前保存经过校验和秘密检查的 `title`、完整 `content` 与输入附属信息；调用完成后仅合并显式声明的业务回执到 `extra`（JSONB 对象）。不保存完整原始 input/result、config、受管凭据、内部协议或原始错误。发送前的缺失实例、停用、不可用类型/插件、输入/配置/收件人校验失败有固定 failure_code。插件错误可能已产生外部效果，记录 unknown/provider_result_unknown；成功返回后的输出 schema/秘密校验失败记录 unknown/provider_output_invalid。日志收尾写失败保留 pending，不能把不确定外部结果写成确定失败。
 
 `channels` 只聚合当前工作区当前用户的站内消息。`read_status=all|unread|read` 先过滤，再选渠道最新消息并按最新时间排序；每渠道 unread_count 独立计算全部未读事实。cursor 分页上限 100。消息接口支持 instance_id/read_status，保留 unread_only 兼容参数；显式 read_status 优先。删除实例后 left join 保留渠道，deleted=true，display_name='Deleted notification channel'，type_code='system'（历史消息表只保存系统站内消息）。
 
 `messages/{id}/unread` 清除本人消息 read_at；`channels/{instance_id}/read-all` 只标记本人该渠道消息，包含已删除渠道历史。两个写入口都发布同一 recipient/workspace SSE 刷新信号。旧全局 read-all 保留。
+
+## 插件声明发送日志
+
+```yaml
+log:
+  content: /text
+  extra:
+    accepted: {source: result, pointer: /accepted}
+    delivery_id: {source: result, pointer: /delivery_id}
+```
+
+`title` 可选，`content` 必需，均是指向已声明字符串输入字段的 RFC 6901 JSON Pointer；支持 `~0`、`~1` 转义。未给标题路径、输入未给标题或标题为空白时，从正文取前 255 个 Unicode scalar characters，正文不截断，显式标题保留。正文缺失或类型错误在调用供应商前拒绝。`extra` 按目标 key 显式声明 `source: input|result` 与 `pointer`，可投影 JSON 值，缺失可选值省略；禁止根指针、未声明字段、writeOnly 字段和非法转义。来源不包含 config、managed secrets 或 runtime envelope。
+
+宿主检查完整消息投影中的已知配置密码和受管凭据，敏感输入投影在供应商调用前拒绝，不落入正文或附属信息。结果先通过业务输出 schema 和现有秘密检查，再提取回执；调用失败或不确定结果保留已持久化消息。界面消费后端生成的标题和完整正文，以键值结构展示附属信息，不按供应商猜测字段。未声明 `log` 的旧类型仍可加载并保留原来的 metadata-only 记录；历史缺失正文不推测回填，`extra` 迁移默认为 `{}`。
 
 ## 通知实例扫码授权
 

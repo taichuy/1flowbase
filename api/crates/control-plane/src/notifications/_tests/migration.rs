@@ -35,6 +35,32 @@ fn migration_ignores_presentation_and_secret_key_order() {
 }
 
 #[test]
+fn migration_keeps_channel_configuration_compatible_when_log_mapping_changes() {
+    let legacy = descriptor();
+    let mut mapped = legacy.clone();
+    mapped.log = Some(
+        serde_json::from_value(json!({
+            "title":"/title", "content":"/content",
+            "extra":{"recipient_count":{"source":"result","pointer":"/recipient_count"}}
+        }))
+        .unwrap(),
+    );
+    let mut changed = mapped.clone();
+    changed.log = Some(
+        serde_json::from_value(json!({
+            "content":"/content",
+            "extra":{"notification_ids":{"source":"result","pointer":"/notification_ids"}}
+        }))
+        .unwrap(),
+    );
+    for (old, new) in [(&legacy, &mapped), (&mapped, &changed), (&changed, &legacy)] {
+        old.validate().unwrap();
+        new.validate().unwrap();
+        assert_eq!(types(old, new), vec![legacy.type_code.clone()]);
+    }
+}
+
+#[test]
 fn migration_rejects_changed_type_config_payload_or_authority() {
     let old = descriptor();
     let mut candidates = vec![];

@@ -49,6 +49,12 @@ fn authorizable_package() -> Vec<u8> {
         "managed_secret_keys":["qr_credential","qr_code_url","bot_token","bound_user_id","context_token","cursor"]
     });
     manifest["notification_types"][0]["i18n"] = notification_i18n();
+    manifest["notification_types"][0]["log"] = json!({
+        "content":"/text", "extra":{
+            "message":{"source":"input","pointer":"/text"},
+            "delivery_id":{"source":"result","pointer":"/delivery_id"}
+        }
+    });
     plugin_framework::parse_plugin_manifest(&manifest.to_string()).unwrap();
     let bytes = serde_json::to_vec(&manifest).unwrap();
     let executable = PathBuf::from(
@@ -458,13 +464,14 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         json!({"status":"enabled"}),
     )
     .await;
+    let message = format!("{}\nFull notification body", "汉😀".repeat(300));
     let (status, sent) = api(
         &app,
         &cookie,
         &csrf,
         "POST",
         &send_path,
-        json!({"input":{"text":"hello"}}),
+        json!({"input":{"text":message}}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{sent}");
@@ -472,6 +479,62 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         sent["data"]["result"],
         json!({"accepted":true,"delivery_id":"ops:fixture"})
     );
+    let (status, logs) = api(
+        &app,
+        &cookie,
+        &csrf,
+        "GET",
+        &format!("/api/console/communications/logs?instance_id={id}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{logs}");
+    assert_eq!(logs["data"]["total"], 1);
+    let log = &logs["data"]["items"][0];
+    assert_eq!(log["status"], "success");
+    assert_eq!(log["title"], format!("{}汉", "汉😀".repeat(127)));
+    assert_eq!(log["content"], message);
+    assert_eq!(
+        log["extra"],
+        json!({"message":message,"delivery_id":"ops:fixture"})
+    );
+    let log_id = log["id"].as_str().unwrap();
+    let (status, detail) = api(
+        &app,
+        &cookie,
+        &csrf,
+        "GET",
+        &format!("/api/console/communications/logs/{log_id}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert_eq!(&detail["data"], log);
+    let (status, invalid_send) = api(
+        &app,
+        &cookie,
+        &csrf,
+        "POST",
+        &send_path,
+        json!({"input":{"text":42}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{invalid_send}");
+    let invalid_log = service
+        .logs(
+            &actor,
+            control_plane::ports::NotificationLogListInput {
+                instance_id: Some(id),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .items
+        .remove(0);
+    assert_eq!(invalid_log.failure_code.as_deref(), Some("input_invalid"));
+    assert!(invalid_log.title.is_none() && invalid_log.content.is_none());
+    assert_eq!(invalid_log.extra, json!({}));
     let persisted = state
         .store
         .resolve_notification_authorization(
@@ -549,6 +612,9 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         assert_eq!(logs.items[0].status, status);
         assert_eq!(logs.items[0].failure_code.as_deref(), Some(code));
         assert!(logs.items[0].completed_at.is_some());
+        assert_eq!(logs.items[0].title.as_deref(), Some(text));
+        assert_eq!(logs.items[0].content.as_deref(), Some(text));
+        assert_eq!(logs.items[0].extra, json!({"message":text}));
         if code.starts_with("subscription_") {
             assert_eq!(error["code"], code);
             assert!(error["message"].as_str().unwrap().contains("retry"));
