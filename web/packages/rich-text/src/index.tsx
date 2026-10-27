@@ -118,6 +118,8 @@ export function VditorEditor({
       .then((FrameVditor) => {
         if (disposed) return;
         const toolbar: IOptions['toolbar'] = [
+          // Vditor 3.11.2 also gates language-hint keyboard selection on this entry.
+          'emoji',
           'headings',
           'bold',
           'italic',
@@ -167,7 +169,7 @@ export function VditorEditor({
           cache: { enable: false },
           cdn: VDITOR_ASSET_BASE,
           height,
-          hint: { emoji: {}, emojiPath: VDITOR_ASSET_BASE },
+          hint: { emojiPath: `${VDITOR_ASSET_BASE}/dist/images/emoji` },
           i18n: getBundledEditorMessages(locale),
           lang: locale === 'en_US' ? 'en_US' : 'zh_CN',
           image: { isPreview: true },

@@ -55,11 +55,17 @@ const playwright = createRequire(path.join(process.cwd(), 'web/package.json'))(
     await editable.click();
     await page.keyboard.type('```', { delay: 50 });
     await editorFrame.locator('.vditor-hint:visible button').first().waitFor();
-    await page.keyboard.type('js', { delay: 50 });
+    await page.keyboard.type('mark', { delay: 0 });
     await editorFrame
-      .getByRole('button', { name: 'js', exact: true })
+      .getByRole('button', { name: 'markdown', exact: true })
       .waitFor();
     await page.keyboard.press('Enter');
+    assert.equal(
+      (await editable.locator('[data-type="code-block-info"]').innerText())
+        .replace(/\u200b/g, '')
+        .trim(),
+      'markdown'
+    );
     await page.keyboard.press('Enter');
     await page.keyboard.type('const answer = 42;', { delay: 30 });
     await page.waitForFunction(() =>
@@ -69,7 +75,7 @@ const playwright = createRequire(path.join(process.cwd(), 'web/package.json'))(
         .textContent.includes('const answer = 42;')
     );
     const markdown = await page.getByTestId('markdown').textContent();
-    assert.match(markdown, /```js\s+const answer = 42;/);
+    assert.match(markdown, /```markdown\s+const answer = 42;/);
     await page.keyboard.press('Control+z');
     await page.waitForFunction(
       (expected) =>
@@ -125,6 +131,21 @@ const playwright = createRequire(path.join(process.cwd(), 'web/package.json'))(
     await editorFrame
       .getByRole('button', { name: 'ts', exact: true })
       .waitFor();
+    // Native matching includes dts; select ts with the keyboard before accepting it.
+    const languageHints = editorFrame.locator('.vditor-hint:visible button');
+    for (let i = 0; i < (await languageHints.count()); i++) {
+      if (
+        (
+          await editorFrame.locator('.vditor-hint--current').innerText()
+        ).trim() === 'ts'
+      )
+        break;
+      await page.keyboard.press('ArrowDown');
+    }
+    assert.equal(
+      (await editorFrame.locator('.vditor-hint--current').innerText()).trim(),
+      'ts'
+    );
     await page.keyboard.press('Enter');
     await page.keyboard.press('Enter');
     await page.keyboard.type('let value: number = 1;', { delay: 30 });
