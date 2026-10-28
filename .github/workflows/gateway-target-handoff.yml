@@ -1,479 +1,109 @@
-name: Gateway target handoff regression
+name: Root2691 frozen candidate positive gaps
 
 on:
-  push:
-    branches: [codex/gateway-target-handoff, codex/gateway-session-affinity]
   workflow_dispatch:
-    inputs:
-      session_affinity_only:
-        description: Verify persistent session ownership and explicit distribution rules without deployment
-        type: boolean
-        default: false
-      responses_transport_only:
-        description: Verify Responses WebSocket transport and build its candidate API artifact
-        type: boolean
-        default: false
-      weak_network_lifecycle:
-        description: Verify delivery handoff and build paired candidates for local acceptance
-        type: boolean
-        default: false
-      weak_network_plugin_ref:
-        description: Exact official-plugins commit for the weak-network candidate
-        type: string
-        required: false
-      verify_callback_attachment:
-        description: Verify callback attachment live and durable delivery before building the candidate
-        type: boolean
-        default: false
-      build_history_maintenance:
-        description: Verify changed offline storage and build its maintenance artifact in the narrow lane
-        type: boolean
-        default: false
-      build_history_runtime:
-        description: Build the ordinary API after merging separately accepted runtime changes
-        type: boolean
-        default: false
-      history_fixtures_only:
-        description: Run history service fixtures and dependency checks with optional artifact builds
-        type: boolean
-        default: false
-      verify_history_migration:
-        description: Verify the single Responses history path and offline migration with PostgreSQL
-        type: boolean
-        default: false
-      verify_fork_projection:
-        description: Verify native fork task projections with real PostgreSQL migrations
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: gateway-target-handoff-${{ github.ref }}
-  cancel-in-progress: true
+  group: root2691-positive-gaps
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  CARGO_PROFILE_TEST_DEBUG: '0'
-  CARGO_PROFILE_DEV_DEBUG: '0'
   CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_PROFILE_DEV_DEBUG_ASSERTIONS: 'true'
+  CARGO_PROFILE_TEST_DEBUG_ASSERTIONS: 'true'
+  CARGO_PROFILE_DEV_OVERFLOW_CHECKS: 'true'
+  CARGO_PROFILE_TEST_OVERFLOW_CHECKS: 'true'
+  CANDIDATE_SHA: 9cf059b9635ebbb1e117bb503672cf032d5c3c7b
+  QA_CI_OUT: ${{ github.workspace }}/qa-ci-artifacts
+  QA_CI_INPUT: executor/.github/qa/gateway-connection-reliability-20261028
 
 jobs:
-  regression:
-    if: ${{ !inputs.history_fixtures_only && !inputs.responses_transport_only && !inputs.weak_network_lifecycle && !inputs.session_affinity_only && github.ref_name != 'codex/gateway-session-affinity' }}
+  positive-gaps:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name != 'dev' && github.ref_name != 'main' && github.ref_name != 'master' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 180
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18.4
         env:
-          POSTGRES_PASSWORD: gateway-fixture
-          POSTGRES_DB: gateway_fixture
+          POSTGRES_PASSWORD: gateway2691-ci-fixture
+          POSTGRES_DB: qadb_gateway2691_positive
         ports: [5432:5432]
         options: >-
-          --health-cmd "pg_isready -U postgres -d gateway_fixture"
+          --health-cmd "pg_isready -U postgres -d qadb_gateway2691_positive"
           --health-interval 5s --health-timeout 5s --health-retries 12
     env:
-      DATABASE_URL: postgres://postgres:gateway-fixture@127.0.0.1:5432/gateway_fixture
-      API_DATABASE_URL: postgres://postgres:gateway-fixture@127.0.0.1:5432/gateway_fixture
+      PG_SERVICE_ID: ${{ job.services.postgres.id }}
     steps:
-      - uses: actions/checkout@v5
+      - name: Initialize public-only evidence
+        shell: bash
+        run: |
+          mkdir -p "$QA_CI_OUT"
+          python3 - <<'PY'
+          import json, os, pathlib, platform
+          out = pathlib.Path(os.environ['QA_CI_OUT'])
+          receipt = {key: os.environ.get(key) for key in ['GITHUB_SHA', 'GITHUB_REF', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH', 'ImageOS', 'ImageVersion']}
+          receipt['platform'] = platform.platform()
+          receipt['candidate_sha'] = os.environ['CANDIDATE_SHA']
+          receipt['stage'] = 'positive-gaps-only; no deployment or full Root verdict'
+          (out / 'bootstrap.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          PY
+      - name: Checkout execution branch separately
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          path: executor
+          persist-credentials: false
+      - name: Checkout immutable product candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
-          node-version-file: web/.nvmrc
+          node-version-file: candidate/web/.nvmrc
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
-          shared-key: gateway-target-handoff
+          shared-key: gateway2691-positive-r2
+          workspaces: candidate/api -> target
+          cache-targets: false
           cache-on-failure: true
-          workspaces: api -> target
-      - name: Resolve source and repository resources
-        run: |
-          mkdir -p tmp/test-governance/gateway-target-handoff/ci
-          git rev-parse HEAD > tmp/test-governance/gateway-target-handoff/ci/source-sha.txt
-          jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
-          echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
-      - name: Registry settlement, fencing and existing transport invariants
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p orchestration-runtime transport_session > tmp/test-governance/gateway-target-handoff/ci/registry.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/registry.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/registry.log
-      - name: Coordinator target handoff and existing lifecycle regressions
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib provider_runtime::transport_session_lifecycle > tmp/test-governance/gateway-target-handoff/ci/coordinator.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/coordinator.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/coordinator.log
-      - name: Callback admission ownership and recovery regressions
-        if: ${{ !cancelled() && inputs.verify_callback_attachment }}
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib application_public_api::resume > tmp/test-governance/gateway-target-handoff/ci/callback-admission.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-admission.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/callback-admission.log
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib application_public_api::native_tool_resume > tmp/test-governance/gateway-target-handoff/ci/native-tool-resume.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/native-tool-resume.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/native-tool-resume.log
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration callback_resume > tmp/test-governance/gateway-target-handoff/ci/postgres-callback.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/postgres-callback.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/postgres-callback.log
-      - name: Callback execution ownership and port contracts
-        if: ${{ !cancelled() && inputs.verify_callback_attachment }}
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib application_public_api::callback_resume::prepared::tests > tmp/test-governance/gateway-target-handoff/ci/prepared-callback.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/prepared-callback.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/prepared-callback.log
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib orchestration_runtime::callback_completion > tmp/test-governance/gateway-target-handoff/ci/callback-execution.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-execution.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/callback-execution.log
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts > tmp/test-governance/gateway-target-handoff/ci/callback-contracts.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-contracts.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/callback-contracts.log
-      - name: Callback attachment live and durable delivery regressions
-        if: ${{ !cancelled() && inputs.verify_callback_attachment }}
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib routes::application_public_api::compat_sse::tests::forwarding > tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log
-      - name: Runtime event generation retirement regressions
-        if: ${{ !cancelled() && inputs.verify_callback_attachment }}
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib _tests::runtime_event_stream > tmp/test-governance/gateway-target-handoff/ci/runtime-event-stream.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/runtime-event-stream.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/runtime-event-stream.log
-      - name: Build candidate API for task-owned runtime verification
-        run: |
-          cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server --features tikv-jemallocator/stats > tmp/test-governance/gateway-target-handoff/ci/build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/build.log; exit 1; }
-          cp api/target/debug/api-server tmp/test-governance/gateway-target-handoff/ci/api-server
-          sha256sum tmp/test-governance/gateway-target-handoff/ci/api-server > tmp/test-governance/gateway-target-handoff/ci/api-server.sha256
-      - name: Nullable Responses continuation cursor contract
-        if: ${{ !cancelled() }}
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane nullable_previous_response_id > tmp/test-governance/gateway-target-handoff/ci/nullable-cursor.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/nullable-cursor.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/nullable-cursor.log
-      - name: Native fork visibility, child boundaries and populated migration
-        if: ${{ inputs.verify_fork_projection }}
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration application_logs::task_projection > tmp/test-governance/gateway-target-handoff/ci/fork-projection.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/fork-projection.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/fork-projection.log
-      - name: Single runtime Responses history and recovery invariants
-        if: ${{ !cancelled() && inputs.verify_history_migration }}
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib application_public_api::compat::openai > tmp/test-governance/gateway-target-handoff/ci/history-runtime.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-runtime.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-runtime.log
-      - name: Offline history verification and DAG planner
-        if: ${{ !cancelled() && inputs.verify_history_migration }}
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --features responses-history-migration --lib application_public_api::compat::openai::history > tmp/test-governance/gateway-target-handoff/ci/history-migration.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-migration.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-migration.log
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts --features responses-history-migration responses_history_migration > tmp/test-governance/gateway-target-handoff/ci/history-contracts.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-contracts.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-contracts.log
-          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --features responses-history-migration --lib responses_history_migration > tmp/test-governance/gateway-target-handoff/ci/history-storage.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-storage.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-storage.log
-      - name: Real PostgreSQL history migration and dependency boundaries
-        if: ${{ !cancelled() && inputs.verify_history_migration }}
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --features responses-history-migration --test responses_history_migration > tmp/test-governance/gateway-target-handoff/ci/history-postgres.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-postgres.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-postgres.log
-          cargo fetch --locked --manifest-path api/Cargo.toml > tmp/test-governance/gateway-target-handoff/ci/history-dependencies-fetch.log 2>&1 || { tail -c 4000 tmp/test-governance/gateway-target-handoff/ci/history-dependencies-fetch.log; exit 1; }
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test dependency_boundaries > tmp/test-governance/gateway-target-handoff/ci/history-dependencies.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-dependencies.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-dependencies.log
-      - name: Build explicit offline maintenance executable
-        if: ${{ !cancelled() && inputs.verify_history_migration }}
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --bin responses-history-migrate --features responses-history-migration > tmp/test-governance/gateway-target-handoff/ci/history-cli.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-cli.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-cli.log
-          cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin responses-history-migrate --features responses-history-migration > tmp/test-governance/gateway-target-handoff/ci/history-maintenance-build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-maintenance-build.log; exit 1; }
-          cp api/target/debug/responses-history-migrate tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate
-          sha256sum tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate > tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate.sha256
-      - uses: actions/upload-artifact@v6
+      - name: Build and execute only frozen positive gaps
+        shell: bash
+        run: >-
+          python3 "$QA_CI_INPUT/runner.py" run
+          --candidate "$GITHUB_WORKSPACE/candidate"
+          --executor "$GITHUB_WORKSPACE/executor"
+          --output "$QA_CI_OUT"
+          --manifest "$QA_CI_INPUT/manifest.json"
+      - name: Always retain available binaries and receipts
         if: always()
-        with:
-          name: gateway-target-handoff-evidence
-          path: tmp/test-governance/gateway-target-handoff/ci
-
-  history-fixtures:
-    if: ${{ inputs.history_fixtures_only && !inputs.responses_transport_only }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 55
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_PASSWORD: gateway-fixture
-          POSTGRES_DB: gateway_fixture
-        ports: [5432:5432]
-        options: >-
-          --health-cmd "pg_isready -U postgres -d gateway_fixture"
-          --health-interval 5s --health-timeout 5s --health-retries 12
-    env:
-      DATABASE_URL: postgres://postgres:gateway-fixture@127.0.0.1:5432/gateway_fixture
-      API_DATABASE_URL: postgres://postgres:gateway-fixture@127.0.0.1:5432/gateway_fixture
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version-file: web/.nvmrc
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
-        with:
-          shared-key: gateway-target-handoff
-          cache-on-failure: true
-          workspaces: api -> target
-      - name: Resolve source and repository resources
+        shell: bash
         run: |
-          mkdir -p tmp/test-governance/gateway-target-handoff/ci
-          git rev-parse HEAD > tmp/test-governance/gateway-target-handoff/ci/source-sha.txt
-          jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
-          echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
-      - name: Real PostgreSQL history migration service fixtures
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --features responses-history-migration --test responses_history_migration > tmp/test-governance/gateway-target-handoff/ci/history-postgres.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-postgres.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-postgres.log
-      - name: Dependency ownership boundaries
-        if: ${{ !cancelled() }}
-        run: |
-          cargo fetch --locked --manifest-path api/Cargo.toml > tmp/test-governance/gateway-target-handoff/ci/history-dependencies-fetch.log 2>&1 || { tail -c 4000 tmp/test-governance/gateway-target-handoff/ci/history-dependencies-fetch.log; exit 1; }
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test dependency_boundaries > tmp/test-governance/gateway-target-handoff/ci/history-dependencies.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-dependencies.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-dependencies.log
-      - name: Changed history storage and offline executable
-        if: ${{ !cancelled() && inputs.build_history_maintenance }}
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --features responses-history-migration --lib application_public_api::compat::openai::history > tmp/test-governance/gateway-target-handoff/ci/history-migration.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-migration.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-migration.log
-          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --features responses-history-migration --lib responses_history_migration > tmp/test-governance/gateway-target-handoff/ci/history-storage.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-storage.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-storage.log
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --bin responses-history-migrate --features responses-history-migration > tmp/test-governance/gateway-target-handoff/ci/history-cli.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-cli.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-cli.log
-          cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin responses-history-migrate --features responses-history-migration > tmp/test-governance/gateway-target-handoff/ci/history-maintenance-build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-maintenance-build.log; exit 1; }
-          cp api/target/debug/responses-history-migrate tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate
-          sha256sum tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate > tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate.sha256
-      - name: Lint maintenance feature targets
-        if: ${{ !cancelled() && inputs.build_history_maintenance }}
-        run: |
-          cargo clippy --locked --manifest-path api/Cargo.toml \
-            -p api-server -p control-plane -p control-plane-contracts \
-            -p storage-durable-postgres -p control-plane-postgres-tests \
-            --all-targets \
-            --features api-server/responses-history-migration,control-plane-postgres-tests/responses-history-migration \
-            -- -D warnings > tmp/test-governance/gateway-target-handoff/ci/history-clippy.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-clippy.log; exit 1; }
-      - name: Build combined ordinary runtime artifact
-        if: ${{ !cancelled() && inputs.build_history_runtime }}
-        run: |
-          cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server --features tikv-jemallocator/stats > tmp/test-governance/gateway-target-handoff/ci/build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/build.log; exit 1; }
-          cp api/target/debug/api-server tmp/test-governance/gateway-target-handoff/ci/api-server
-          sha256sum tmp/test-governance/gateway-target-handoff/ci/api-server > tmp/test-governance/gateway-target-handoff/ci/api-server.sha256
-      - uses: actions/upload-artifact@v6
+          if test -f "$QA_CI_INPUT/runner.py"; then
+            python3 "$QA_CI_INPUT/runner.py" finalize \
+              --candidate "$GITHUB_WORKSPACE/candidate" \
+              --executor "$GITHUB_WORKSPACE/executor" \
+              --output "$QA_CI_OUT" \
+              --manifest "$QA_CI_INPUT/manifest.json"
+          else
+            printf '%s\n' 'Executor checkout unavailable; bootstrap only; no tests claimed.' > "$QA_CI_OUT/executor-unavailable.txt"
+          fi
+      - name: Upload all public synthetic-fixture evidence
         if: always()
+        uses: actions/upload-artifact@v6
         with:
-          name: gateway-target-handoff-evidence
-          path: tmp/test-governance/gateway-target-handoff/ci
-
-  responses-transport:
-    if: ${{ inputs.responses_transport_only || inputs.weak_network_lifecycle }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 55
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version-file: web/.nvmrc
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
-        with:
-          shared-key: gateway-target-handoff
-          cache-on-failure: true
-          workspaces: api -> target
-      - name: Record candidate and resolve repository resources
-        run: |
-          mkdir -p tmp/test-governance/responses-websocket-transport/ci
-          git rev-parse HEAD > tmp/test-governance/responses-websocket-transport/ci/source-sha.txt
-          rustc -Vv > tmp/test-governance/responses-websocket-transport/ci/toolchain.txt
-          jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
-          echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
-      - name: Verify actual compressed and plain WebSocket transport
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test responses_websocket_transport --features tikv-jemallocator/stats > tmp/test-governance/responses-websocket-transport/ci/transport.log 2>&1 || { tail -c 6000 tmp/test-governance/responses-websocket-transport/ci/transport.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/responses-websocket-transport/ci/transport.log
-      - name: Verify weak-network delivery ownership and recovery
-        if: ${{ inputs.weak_network_lifecycle }}
-        run: |
-          for selector in transport_session_lifecycle responses_websocket::tests::turn_finalization external_protocol_context_cannot_claim_host_transport_connection_scope routes::application_public_api::openai::tests; do
-            log="tmp/test-governance/responses-websocket-transport/ci/${selector//::/-}.log"
-            cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib "$selector" > "$log" 2>&1 || { tail -c 6000 "$log"; exit 1; }
-            node scripts/node/verify/cargo-test-results.js "$log"
-          done
-      - name: Build API artifact for local runtime acceptance
-        run: |
-          cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server --features tikv-jemallocator/stats > tmp/test-governance/responses-websocket-transport/ci/build.log 2>&1 || { tail -c 6000 tmp/test-governance/responses-websocket-transport/ci/build.log; exit 1; }
-          cp api/target/debug/api-server tmp/test-governance/responses-websocket-transport/ci/api-server
-          strip --strip-debug tmp/test-governance/responses-websocket-transport/ci/api-server
-          sha256sum tmp/test-governance/responses-websocket-transport/ci/api-server > tmp/test-governance/responses-websocket-transport/ci/api-server.sha256
-      - uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: responses-websocket-transport-evidence
-          path: tmp/test-governance/responses-websocket-transport/ci
+          name: root2691-positive-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.QA_CI_OUT }}
           if-no-files-found: error
-
-  weak-network-provider:
-    if: ${{ inputs.weak_network_lifecycle }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-      - name: Require an immutable paired provider revision
-        env:
-          PLUGIN_REF: ${{ inputs.weak_network_plugin_ref }}
-        run: '[[ "$PLUGIN_REF" =~ ^[0-9a-f]{40}$ ]]'
-      - uses: actions/checkout@v6
-        with:
-          repository: taichuy/1flowbase-official-plugins
-          ref: ${{ inputs.weak_network_plugin_ref }}
-          path: tmp/weak-network-provider
-      - uses: actions/setup-node@v5
-        with:
-          node-version-file: web/.nvmrc
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
-        with:
-          shared-key: weak-network-openai-provider
-          workspaces: tmp/weak-network-provider/runtime-extensions/@taichuy/openai -> target
-      - name: Verify and build the native provider candidate
-        env:
-          PLUGIN_DIR: tmp/weak-network-provider/runtime-extensions/@taichuy/openai
-        run: |
-          mkdir -p tmp/test-governance/weak-network-provider/ci
-          git -C tmp/weak-network-provider rev-parse HEAD > tmp/test-governance/weak-network-provider/ci/source-sha.txt
-          export CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)"
-          cargo test --locked --manifest-path "$PLUGIN_DIR/Cargo.toml" --lib > tmp/test-governance/weak-network-provider/ci/tests.log 2>&1 || { tail -c 6000 tmp/test-governance/weak-network-provider/ci/tests.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/weak-network-provider/ci/tests.log
-          cargo build --locked --manifest-path "$PLUGIN_DIR/Cargo.toml" --bin openai-provider > tmp/test-governance/weak-network-provider/ci/build.log 2>&1 || { tail -c 6000 tmp/test-governance/weak-network-provider/ci/build.log; exit 1; }
-          cp "$PLUGIN_DIR/target/debug/openai-provider" tmp/test-governance/weak-network-provider/ci/openai-provider
-          strip --strip-debug tmp/test-governance/weak-network-provider/ci/openai-provider
-          node scripts/node/plugin/cli.js package "$PLUGIN_DIR" --out tmp/test-governance/weak-network-provider/ci --runtime-binary tmp/test-governance/weak-network-provider/ci/openai-provider --target x86_64-unknown-linux-gnu
-          sha256sum tmp/test-governance/weak-network-provider/ci/openai-provider > tmp/test-governance/weak-network-provider/ci/openai-provider.sha256
-      - uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: weak-network-provider-evidence
-          path: tmp/test-governance/weak-network-provider/ci
-          if-no-files-found: error
-
-  session-affinity:
-    if: ${{ inputs.session_affinity_only || github.ref_name == 'codex/gateway-session-affinity' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 75
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_PASSWORD: gateway-fixture
-          POSTGRES_DB: gateway_fixture
-        ports: [5432:5432]
-        options: >-
-          --health-cmd "pg_isready -U postgres -d gateway_fixture"
-          --health-interval 5s --health-timeout 5s --health-retries 12
-    env:
-      DATABASE_URL: postgres://postgres:gateway-fixture@127.0.0.1:5432/gateway_fixture
-      API_DATABASE_URL: postgres://postgres:gateway-fixture@127.0.0.1:5432/gateway_fixture
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version-file: web/.nvmrc
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
-        with:
-          shared-key: gateway-target-handoff
-          cache-on-failure: true
-          workspaces: api -> target
-      - name: Record candidate and resource settings
-        run: |
-          mkdir -p tmp/test-governance/session-affinity-20261017/ci
-          git rev-parse HEAD > tmp/test-governance/session-affinity-20261017/ci/source-sha.txt
-          jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
-          echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
-      - name: Specialized schema ownership contracts and controlled negatives
-        run: |
-          node --test scripts/node/schema-hygiene/_tests/ownership.test.js > tmp/test-governance/session-affinity-20261017/ci/schema-ownership.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/schema-ownership.log; exit 1; }
-      - name: Stable control-plane contracts
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts > tmp/test-governance/session-affinity-20261017/ci/contracts.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/contracts.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/session-affinity-20261017/ci/contracts.log
-      - name: Existing failover, transport recovery and capability selection
-        run: |
-          for suite in answer_and_failover transport_retry llm_metrics; do
-            cargo test --locked --manifest-path api/Cargo.toml -p orchestration-runtime --lib "$suite" > "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log" 2>&1 || { tail -c 6000 "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log"; exit 1; }
-            node scripts/node/verify/cargo-test-results.js "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log"
-          done
-      - name: Host identity, unavailable owners and continuation safety
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib provider_session > tmp/test-governance/session-affinity-20261017/ci/host-session.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/host-session.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/session-affinity-20261017/ci/host-session.log
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib native_transport > tmp/test-governance/session-affinity-20261017/ci/continuation.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/continuation.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/session-affinity-20261017/ci/continuation.log
-      - name: Three protocol ingress identities through the Native mapper
-        run: |
-          for suite in provider_session::tests responses_session_identity_reaches_native_input_and_headerless_continuation claude_code_session_header_fills_missing_metadata_session_id; do
-            cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib "$suite" > "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log" 2>&1 || { tail -c 6000 "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log"; exit 1; }
-            node scripts/node/verify/cargo-test-results.js "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log"
-          done
-      - name: PostgreSQL first writer, persistence and deletion behavior
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib provider_session > tmp/test-governance/session-affinity-20261017/ci/postgres-session.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/postgres-session.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/session-affinity-20261017/ci/postgres-session.log
-      - name: Prove route fixture rejects the old stateless first-candidate behavior
-        run: |
-          python3 - <<'PYCODE'
-          from pathlib import Path
-          import re
-          import subprocess
-          metrics = Path('api/crates/orchestration-runtime/src/execution_engine/llm_metrics.rs')
-          routing = Path('api/crates/orchestration-runtime/src/execution_engine/provider_routing.rs')
-          originals = {p: p.read_bytes() for p in (metrics, routing)}
-          anchor = b'if default_rule {'
-          assert originals[metrics].count(anchor) == 1
-          routing_mutant, count = re.subn(rb'let is_default = matches!\(.*?\);', b'let is_default = false;', originals[routing], count=1, flags=re.S)
-          assert count == 1
-          log = Path('tmp/test-governance/session-affinity-20261017/ci/routing-controlled-negative.log')
-          try:
-              metrics.write_bytes(originals[metrics].replace(anchor, b'if false && default_rule {'))
-              routing.write_bytes(routing_mutant)
-              with log.open('wb') as output:
-                  result = subprocess.run(['cargo', 'test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'orchestration-runtime', '--lib', 'provider_session_none_session_keeps_first_owner_after_candidate_reordering_and_failure'], stdout=output, stderr=subprocess.STDOUT)
-              evidence = log.read_text()
-              assert result.returncode != 0 and 'assertion `left == right` failed' in evidence and '["provider-a", "provider-b"' in evidence, evidence[-6000:]
-              print('Controlled negative rejected stateless None => first candidate through the flow engine')
-          finally:
-              for source, original in originals.items():
-                  source.write_bytes(original)
-          PYCODE
-          git diff --exit-code
-      - name: Prove concurrency fixture rejects overwriting an established owner
-        run: |
-          python3 - <<'PYCODE'
-          from pathlib import Path
-          import subprocess
-          source = Path('api/crates/storage/durable/postgres/src/model_provider_repository/session_affinity.rs')
-          original = source.read_bytes()
-          before = b'set provider_instance_id = model_provider_session_bindings.provider_instance_id'
-          after = b'set provider_instance_id = excluded.provider_instance_id'
-          assert original.count(before) == 1, 'controlled-negative anchor must identify one assignment'
-          log = Path('tmp/test-governance/session-affinity-20261017/ci/postgres-controlled-negative.log')
-          try:
-              source.write_bytes(original.replace(before, after))
-              with log.open('wb') as output:
-                  result = subprocess.run(['cargo', 'test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'storage-durable-postgres', '--lib', 'provider_session_binding_has_one_concurrent_first_writer'], stdout=output, stderr=subprocess.STDOUT)
-              evidence = log.read_text()
-              assert result.returncode != 0 and 'assertion failed: owners.iter().all' in evidence, evidence[-6000:]
-              print('Controlled negative rejected owner overwrite through real concurrent PostgreSQL calls')
-          finally:
-              source.write_bytes(original)
-          PYCODE
-          git diff --exit-code
-      - name: Real orchestration adapter consumer test-target compilation
-        run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration --no-run > tmp/test-governance/session-affinity-20261017/ci/consumer-test-compilation.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/consumer-test-compilation.log; exit 1; }
-      - name: Adapter dependency boundaries
-        run: |
-          cargo fetch --locked --manifest-path api/Cargo.toml > tmp/test-governance/session-affinity-20261017/ci/fetch.log 2>&1 || { tail -c 4000 tmp/test-governance/session-affinity-20261017/ci/fetch.log; exit 1; }
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test dependency_boundaries > tmp/test-governance/session-affinity-20261017/ci/dependencies.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/dependencies.log; exit 1; }
-          node scripts/node/verify/cargo-test-results.js tmp/test-governance/session-affinity-20261017/ci/dependencies.log
-      - uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: session-affinity-${{ github.sha }}
-          if-no-files-found: error
-          path: tmp/test-governance/session-affinity-20261017/ci
+          retention-days: 7
+          compression-level: 1

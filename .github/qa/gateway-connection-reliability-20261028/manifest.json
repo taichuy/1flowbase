@@ -1,0 +1,295 @@
+{
+  "schema": "gateway2691-positive-executor/v1",
+  "root": 2691,
+  "delivery": 2692,
+  "candidate_sha": "9cf059b9635ebbb1e117bb503672cf032d5c3c7b",
+  "previous_candidate_sha": "66db3d2e2045c208316b06775753facd427b5374",
+  "baseline_sha": "8f03e003a192106566e2d115698fc4d4ab4d9c29",
+  "stage": "positive-gaps-only",
+  "expected_tests": 64,
+  "groups": [
+    {
+      "id": "f1-dispatch",
+      "target": "orchestration_runtime_integration",
+      "expected_n": 11,
+      "selectors": [
+        "communication_dispatch::communication_active_dispatch_is_not_failed_and_post_cas_crash_is_not_replayed",
+        "communication_dispatch::communication_default_dispatch_admits_six_and_keeps_cross_node_try_semantics",
+        "communication_dispatch::communication_dispatch_completes_with_one_business_pool_connection",
+        "communication_dispatch::communication_dispatch_leaves_expired_resume_claims_to_resume_recovery",
+        "communication_dispatch::communication_dispatch_lost_lease_preserves_waiting_and_resumed_checkpoint_fence",
+        "communication_dispatch::communication_dispatch_session_loss_stops_initial_execution_without_replay",
+        "communication_dispatch::communication_execution_and_actor_reload_preserve_nondefault_workspace",
+        "communication_dispatch::communication_full_dispatch_budget_is_error_and_parent_can_finish_managed_callback",
+        "communication_dispatch::communication_management_links_original_run_application_after_binding_changes",
+        "communication_dispatch::communication_prestart_failure_settles_instead_of_observing_forever",
+        "communication_dispatch::communication_queued_crash_recovery_and_concurrent_dispatch_have_one_engine_owner"
+      ],
+      "source_files": [
+        "api/crates/control-plane-postgres-tests/tests/orchestration_runtime_integration/_tests/communication_dispatch.rs"
+      ]
+    },
+    {
+      "id": "f2-template-fifo",
+      "target": "storage_durable_postgres",
+      "expected_n": 1,
+      "selectors": [
+        "_tests::connection::coordination::acquire_waiting_keeps_template_fifo_beyond_physical_timeout_then_progresses"
+      ],
+      "source_files": [
+        "api/crates/storage/durable/postgres/src/_tests/connection/coordination.rs"
+      ]
+    },
+    {
+      "id": "api-host-pg",
+      "target": "api_server",
+      "expected_n": 9,
+      "selectors": [
+        "_tests::extension_bus::connection_reliability::adapter_host_pg_callback_progresses_at_p1_and_p5_with_four_local_followers",
+        "_tests::extension_bus::connection_reliability::legacy_business_transaction_lock_control_starves_the_real_worker_callback_at_p5",
+        "_tests::extension_bus::connection_reliability::mutation_repository_two_coordinators_preserve_key_compatibility_and_release_healthy_watch",
+        "_tests::extension_bus::connection_reliability::adapter_drop_keeps_pg_lock_until_delayed_ack_and_no_ack_reap",
+        "_tests::extension_bus::connection_reliability::terminal_response_keeps_pg_ownership_for_a_callback_still_executing",
+        "_tests::extension_bus::connection_reliability::mutation_queue_expiry_uses_one_deadline_without_an_extra_session",
+        "_tests::extension_bus::connection_reliability::pg_session_loss_cancels_host_without_replaying_unknown_external_result",
+        "_tests::extension_bus::connection_reliability::adapter_reset_publication_keeps_ownership_after_caller_drop_until_reap",
+        "_tests::extension_bus::connection_reliability::adapter_get_parallel_capture_contract_errors_and_generation_drain_are_preserved"
+      ],
+      "source_files": [
+        "api/apps/api-server/src/_tests/extension_bus/managed/connection_reliability.rs"
+      ]
+    },
+    {
+      "id": "database-config",
+      "target": "api_server",
+      "expected_n": 9,
+      "selectors": [
+        "_tests::config_tests::api_config_reads_database_pool_max_connections",
+        "_tests::config_tests::api_config_rejects_invalid_database_pool_max_connections",
+        "_tests::config_tests::api_config_database_lanes_preserve_compatibility_defaults",
+        "_tests::config_tests::api_config_database_managed_default_follows_p_and_other_lanes_are_independent",
+        "_tests::config_tests::api_config_database_full_budget_includes_explicit_reserve_and_every_lane",
+        "_tests::config_tests::api_config_database_full_budget_rejects_unknown_lane_instead_of_treating_it_as_zero",
+        "_tests::config_tests::api_config_database_instance_allocation_and_reserve_must_be_supplied_together",
+        "_tests::config_tests::api_config_database_budget_rejects_zero_limits_invalid_text_overallocation_and_overflow",
+        "_tests::config_tests::api_config_database_lifecycle_can_disable_recycling_without_changing_admission_limit"
+      ],
+      "source_files": [
+        "api/apps/api-server/src/_tests/host_boot/config_tests.rs"
+      ]
+    },
+    {
+      "id": "sdk-host",
+      "target": "runtime_extension_host",
+      "expected_n": 12,
+      "selectors": [
+        "_tests::managed_event_transport::root_2007_ac_005_event_authority_real_worker",
+        "_tests::managed_event_transport::root_2007_ac_005_event_authority_untrusted_output",
+        "_tests::managed_event_transport::root_2007_ac_010_lane_budgets_event_cancel_and_reap",
+        "_tests::managed_hook_transport::root_2007_ac_003_004_hook_transport_cancel_timeout_and_scope_cleanup",
+        "_tests::managed_hook_transport::root_2007_ac_003_004_hook_transport_real_sdk_roundtrip_and_identity",
+        "_tests::managed_hook_transport::root_2007_ac_003_004_hook_transport_scope_generation_phase_and_deadline",
+        "_tests::managed_hook_transport::root_2007_ac_003_004_hook_transport_untrusted_output_is_bounded_and_rejected",
+        "_tests::managed_hook_transport::root_2007_ac_008_snapshot_restart_exact_worker_versions",
+        "_tests::managed_hook_transport::root_2007_ac_010_lane_budgets_capability_output_and_reap",
+        "_tests::managed_hook_transport::root_2007_ac_010_lane_budgets_worker_cancel_and_reap",
+        "_tests::managed_hook_transport::root_2014_interface_transport_real_sdk_and_peer_rejection",
+        "_tests::managed_hook_transport::root_2014_r3_probe_reference_worker_roundtrip"
+      ],
+      "source_files": [
+        "api/crates/runtime-extension-host/src/_tests/managed_hook_transport.rs",
+        "api/crates/runtime-extension-host/src/_tests/managed_event_transport.rs"
+      ]
+    },
+    {
+      "id": "responses-direct",
+      "target": "api_server",
+      "expected_n": 22,
+      "selectors": [
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::responses_usage_details_terminal_sse_projects_cached_and_reasoning_tokens",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::responses_tool_done_projects_only_after_committed_delivery",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::issue_1474_responses_sse_error_preserves_native_message_exactly",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::ac_001_ac_002_responses_decoder_preserves_ordered_text_deltas_exactly",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::transparent_sse_uses_only_provider_responses_and_preserves_utf8_text_identity",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::ac_003_responses_terminal_is_absorbing",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::ac_006_provider_native_events_are_not_a_public_response_truth",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::responses_projects_typed_mcp_approval_and_keeps_unknown_native_hidden",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::native_sse_keeps_phase_and_opaque_items_without_answer_mirrors",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::failed_terminal_preserves_committed_output_and_absorbs_late_success",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::semantic_responses_done_completed_and_blocking_preserve_presented_prefix",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::responses_sse_preserves_full_upstream_error_object",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::preferred_responses_sse_uses_ordered_host_selection_for_live_and_cold_output",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::openai_responses::preferred_sse_missing_host_selection_fails_instead_of_completing_empty",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::responses_callback::openai_responses_waiting_callback_projects_client_function_call",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::responses_callback::openai_responses_waiting_internal_llm_tool_callback_is_explicitly_unsupported",
+        "routes::application_public_api::compat_sse::tests::protocol_projection::responses_callback::native_callback_completion_keeps_custom_call_and_response_round_identity",
+        "routes::application_public_api::compat_sse::tests::forwarding::typed_responses_stream_claims_orders_deduplicates_and_acks_projected_tool_deliveries",
+        "routes::application_public_api::compat_sse::tests::forwarding::durable_callback_boundary_excludes_the_next_response_round",
+        "routes::application_public_api::compat_sse::tests::forwarding::typed_responses_stream_releases_a_tool_delivery_dropped_before_any_write",
+        "routes::application_public_api::compat_sse::tests::forwarding::typed_responses_stream_marks_a_tool_delivery_lost_mid_write_uncertain",
+        "routes::application_public_api::compat_sse::tests::forwarding::typed_responses_stream_claims_and_acks_a_live_committed_tool_delivery"
+      ],
+      "source_files": [
+        "api/apps/api-server/src/routes/application_public_api/compat_sse/tests/protocol_projection/openai_responses.rs",
+        "api/apps/api-server/src/routes/application_public_api/compat_sse/tests/protocol_projection/responses_callback.rs",
+        "api/apps/api-server/src/routes/application_public_api/compat_sse/tests/forwarding.rs"
+      ]
+    }
+  ],
+  "source_sha256": {
+    "api/crates/control-plane-postgres-tests/tests/orchestration_runtime_integration/_tests/communication_dispatch.rs": "6a9c33c61070ecbb42160cd42e725c3e53ebdb831decb4a7dea7a05f9a2c1c7e",
+    "api/crates/storage/durable/postgres/src/_tests/connection/coordination.rs": "bef2570d85ba59203a8b663ecde3f9cdb2cb26e204006b70b4ce17aac5843889",
+    "api/apps/api-server/src/_tests/extension_bus/managed/connection_reliability.rs": "a9d5f8e71786754ba9a9c478ca70eea1563174e3a1cdf02386e0fd8827829a25",
+    "api/apps/api-server/src/_tests/host_boot/config_tests.rs": "e727b7acb947be81a6912657ac87a209c3b169c813d26fc4e1b935d798b56ba0",
+    "api/crates/runtime-extension-host/src/_tests/managed_hook_transport.rs": "7d5d3b54923c1117b5fde6b12a22a03a590630d6c04ba9d5974e3ba029c4bbc4",
+    "api/crates/runtime-extension-host/src/_tests/managed_event_transport.rs": "33554bcbf2dbf3f20cc0d521c1aafe0a7b8ae017c2a8b39ca15c6ca7827a0c2b",
+    "api/apps/api-server/src/routes/application_public_api/compat_sse/tests/protocol_projection/openai_responses.rs": "7a2be8a42c29955318866eed71bc22a2214750351c6f1518de467e3dbbfca033",
+    "api/apps/api-server/src/routes/application_public_api/compat_sse/tests/protocol_projection/responses_callback.rs": "18114aa4b5153243c1997949e847b71de5bd2e93cef2ebd34bce6b4750409021",
+    "api/apps/api-server/src/routes/application_public_api/compat_sse/tests/forwarding.rs": "10dfefdb929f2a57a944578f00bf4aa408d86b3e7af8573ad6e18776199f6068",
+    "api/Cargo.toml": "4ac15deb715f3217e74b883f50dd67b45663370268730fcbf7c570917de72345",
+    "api/Cargo.lock": "8e67412d56cec3c6c97eceea7992cdffa96d4ef099b6b61a63ab9d4ce4394bb0",
+    "api/apps/api-server/Cargo.toml": "2e80a94a943fa920325316eab27796b74ab2d4c296cf1631e9766008d5ed19b4",
+    "api/crates/runtime-extension-sdk/Cargo.toml": "1c3ed79f8255a56312f1d02fa0f9f089baf71b8b139f73942148f3944b577205",
+    "scripts/node/testing/verify-runtime.js": "c7fa1a5bf0b34d67b1fea21bce173d8a4672e63adab6dee3671ec80b1e9a572a",
+    "web/.nvmrc": "d9f318747a126ce2247661af67852b185def7789492eabfad7bba322be087c33"
+  },
+  "features": [
+    "tikv-jemallocator/stats"
+  ],
+  "required_examples": [
+    "managed_hook_worker",
+    "managed_event_worker"
+  ],
+  "required_test_targets": [
+    "api_server",
+    "storage_durable_postgres",
+    "orchestration_runtime_integration",
+    "runtime_extension_host"
+  ],
+  "build_entry_limit": 3,
+  "build_entries": [
+    {
+      "id": "sdk-build",
+      "purpose": "Existing normal SDK worker executables; needed before Host consumer tests",
+      "profile": "test",
+      "arguments": [
+        "build",
+        "--locked",
+        "--manifest-path",
+        "api/Cargo.toml",
+        "-p",
+        "runtime-extension-sdk",
+        "--example",
+        "managed_hook_worker",
+        "--example",
+        "managed_event_worker",
+        "--profile",
+        "test"
+      ]
+    },
+    {
+      "id": "test-build",
+      "purpose": "Only named library/integration targets; no behavior run by cargo",
+      "profile": "test",
+      "arguments": [
+        "test",
+        "--locked",
+        "--manifest-path",
+        "api/Cargo.toml",
+        "-p",
+        "api-server",
+        "-p",
+        "storage-durable-postgres",
+        "-p",
+        "control-plane-postgres-tests",
+        "-p",
+        "runtime-extension-host",
+        "--lib",
+        "--test",
+        "orchestration_runtime_integration",
+        "--features",
+        "tikv-jemallocator/stats",
+        "--no-run",
+        "--no-fail-fast"
+      ]
+    },
+    {
+      "id": "api-build",
+      "purpose": "After all 64 positives pass; same candidate/profile policy/stats feature for later comparison",
+      "profile": "dev",
+      "arguments": [
+        "build",
+        "--locked",
+        "--manifest-path",
+        "api/Cargo.toml",
+        "-p",
+        "api-server",
+        "--bin",
+        "api-server",
+        "--features",
+        "tikv-jemallocator/stats"
+      ]
+    }
+  ],
+  "cargo_config_overrides": [
+    "profile.dev.package.api-server.debug=0",
+    "profile.test.package.api-server.debug=0"
+  ],
+  "profile_policy": {
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_PROFILE_DEV_DEBUG": "0",
+    "CARGO_PROFILE_TEST_DEBUG": "0",
+    "CARGO_PROFILE_DEV_DEBUG_ASSERTIONS": "true",
+    "CARGO_PROFILE_TEST_DEBUG_ASSERTIONS": "true",
+    "CARGO_PROFILE_DEV_OVERFLOW_CHECKS": "true",
+    "CARGO_PROFILE_TEST_OVERFLOW_CHECKS": "true",
+    "api_server_package_override": {
+      "source_dev_debug": "line-tables-only",
+      "effective_dev_debug": 0,
+      "effective_test_debug": 0,
+      "owner": "command-line --config only; Cargo.toml unchanged"
+    },
+    "future_baseline_policy": "Root must use identical overrides, env and feature for B0; no baseline is built in this stage"
+  },
+  "resource_policy": {
+    "job_timeout_minutes": 180,
+    "runner_work_budget_seconds": 9000,
+    "command_timeout_seconds": 3600,
+    "test_group_timeout_seconds": 600,
+    "memory_used_stop_fraction": 0.9,
+    "disk_used_stop_fraction": 0.9,
+    "host_cpu_policy": "measure; isolated CI uses verify-runtime CI allocation, no local CPU redline imposed on dedicated runner",
+    "new_memory_high_max_oom_stop": true,
+    "retries": 0,
+    "heavy_concurrency": 1,
+    "cargo_jobs_owner": "candidate/scripts/node/testing/verify-runtime.js cargo-jobs"
+  },
+  "database": {
+    "image": "postgres:18.4",
+    "service_database": "qadb_gateway2691_positive",
+    "service_role": "postgres",
+    "data": "fresh independent synthetic fixture only; no external credentials or DB URL serialized"
+  },
+  "reuse": {
+    "rust": 274,
+    "node": 118,
+    "old147": 147,
+    "CI_reruns": 0,
+    "receipt": "reuse.json",
+    "boundary": "Prior evidence is dependency-bound existing execution; not CI executions under the new profile; exact candidate source hashes/delta are rechecked. CI does not claim complete Root QA_PASS."
+  },
+  "next_stage_excluded": [
+    "four historical and three new source mutants",
+    "B0 build",
+    "P5/P10 ABBA",
+    "real upstream requests",
+    "local runtime acceptance",
+    "merge/push/dispatch/Issue writes"
+  ],
+  "packaging": {
+    "format": "tar.gz",
+    "compression": "gzip level 1; mtime=0",
+    "contents": "only emitted and hash-bound executable copies, including partial valid builds; no DBs/checkouts/private state",
+    "raw_and_compressed_sizes_sha256": true
+  }
+}
