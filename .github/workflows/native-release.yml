@@ -115,6 +115,12 @@ jobs:
             --api-binary "api/target/release/api-server$NATIVE_SUFFIX" \
             --recovery-binary "api/target/release/system_recovery$NATIVE_SUFFIX" \
             --web-dir web/app/dist --postgres-dir "$FLOWBASE_TEST_POSTGRES_ROOT" --resources-dir tmp/native-resources --out tmp/native-release
+      - name: Verify packaged application bootstrap and reopen
+        env:
+          NATIVE_TARGET: ${{ matrix.target }}
+        run: |
+          export FLOWBASE_TEST_PACKAGE_ROOT="$(node -e 'console.log(require("node:path").resolve("tmp/native-release/1flowbase-" + process.env.NATIVE_TARGET))')"
+          cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution::tests::bootstrap::packaged_application_bootstraps_and_reopens -- --ignored --exact
       - name: Verify startup, restart and shutdown
         if: runner.os != 'Windows'
         env:

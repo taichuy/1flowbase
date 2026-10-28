@@ -8,6 +8,8 @@ use axum::{
 use std::{fs, path::PathBuf};
 use tower::ServiceExt;
 
+mod bootstrap;
+
 struct Directory(PathBuf);
 impl Directory {
     fn new() -> Self {
