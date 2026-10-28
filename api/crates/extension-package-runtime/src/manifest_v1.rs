@@ -243,6 +243,9 @@ pub struct PluginManifestV1 {
     pub managed_service: Option<crate::managed_service::ManagedServiceManifest>,
     #[serde(default)]
     pub notification_types: Vec<extension_contracts::NotificationTypeDescriptor>,
+    /// Workspace commands may be contributed by any managed plugin, independently of channels.
+    #[serde(default)]
+    pub communication_commands: Vec<extension_contracts::CommunicationCommandDescriptor>,
     #[serde(default)]
     pub authentication_providers: Vec<extension_contracts::AuthenticationProviderDescriptor>,
     #[serde(default)]
@@ -477,6 +480,11 @@ fn validate_plugin_manifest(
     if !manifest.notification_types.is_empty() {
         return Err(PluginFrameworkError::invalid_provider_package(
             "notification_types requires manifest_version=2",
+        ));
+    }
+    if !manifest.communication_commands.is_empty() {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "communication_commands requires manifest_version=2",
         ));
     }
     if manifest.managed.is_some() {

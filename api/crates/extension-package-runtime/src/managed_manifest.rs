@@ -15,6 +15,8 @@ use crate::{
     PluginManifestV1, PluginRuntimeManifest,
 };
 
+mod notification_commands;
+
 /// References existing typed manifest payloads; execution does not infer a payload from a slot.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -478,6 +480,7 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
             "every managed contribution requires exactly one execution binding",
         ));
     }
+    notification_commands::validate(manifest)?;
     Ok(())
 }
 

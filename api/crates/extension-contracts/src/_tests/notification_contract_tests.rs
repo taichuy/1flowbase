@@ -1,6 +1,9 @@
 use crate::{ContributionId, NotificationTypeDescriptor, PluginFormSchema};
 use serde_json::json;
 
+#[path = "notification/command_tests.rs"]
+mod command_tests;
+
 fn descriptor() -> NotificationTypeDescriptor {
     NotificationTypeDescriptor {
         i18n: Default::default(),

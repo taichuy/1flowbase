@@ -1,6 +1,9 @@
 use crate::{parse_plugin_manifest, ManagedContributionPayload};
 use serde_json::{json, Value};
 
+#[path = "notification/command_manifest_tests.rs"]
+mod command_manifest_tests;
+
 fn fixture() -> Value {
     let mut value: Value = serde_yaml::from_str(include_str!("managed_manifest.yaml")).unwrap();
     value["notification_types"] = json!([{
