@@ -324,7 +324,11 @@ impl RuntimeExtensionHost {
     }
 
     pub async fn stop(&self) -> Result<(), RuntimeBackendError> {
-        self.drain().await?;
+        // Per-call cancellation must preserve shared peers. Global stop owns all peers
+        // and must still reach their quiesce owners when graceful draining cannot join.
+        if let Err(error) = self.drain().await {
+            tracing::warn!(%error, "runtime graceful drain incomplete; continuing global cleanup");
+        }
         let budget = std::time::Duration::from_secs(5);
         let _hashes = tokio::time::timeout(
             budget,
@@ -365,6 +369,34 @@ impl RuntimeExtensionHost {
         }
         if let Err(error) = self.network_egress_host.write().await.stop_all().await {
             first_error.get_or_insert_with(|| RuntimeBackendError::from(error));
+        }
+        // Registry shutdown releases busy carriers. Confirm their request/forwarder
+        // owners too; a successful global stop must not leave a detached producer.
+        let requests = self
+            .active_requests
+            .lock()
+            .await
+            .iter()
+            .map(|(id, owner)| (id.clone(), owner.clone()))
+            .collect::<Vec<_>>();
+        let mut joins = tokio::task::JoinSet::new();
+        for (id, owner) in requests {
+            joins.spawn(async move { owner.join(&id).await });
+        }
+        while let Some(joined) = joins.join_next().await {
+            match joined {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    first_error.get_or_insert(error);
+                }
+                Err(error) => {
+                    first_error.get_or_insert_with(|| {
+                        RuntimeBackendError::InvalidRequest(format!(
+                            "runtime stop join owner failed: {error}"
+                        ))
+                    });
+                }
+            }
         }
         let mut lifecycle = self.lifecycle.write().map_err(|_| {
             RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".to_string())

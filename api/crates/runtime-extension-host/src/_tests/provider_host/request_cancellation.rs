@@ -280,3 +280,34 @@ async fn communication_serial_cancel_reports_bounded_join_failure_without_killin
     );
     fixture.host.stop().await.unwrap();
 }
+
+#[tokio::test]
+async fn communication_global_stop_reaps_busy_serial_carrier_without_releasing_work() {
+    let fixture = Fixture::new("serial").await;
+    let a = fixture.start("a");
+    let pid = fixture.marker("pid-a").await;
+    let b = fixture.start("b");
+    tokio::time::timeout(Duration::from_secs(15), fixture.host.stop())
+        .await
+        .expect("global stop must reach quiesce even after graceful join failure")
+        .unwrap();
+    assert!(
+        !alive(&pid),
+        "global stop confirms physical carrier cleanup"
+    );
+    assert!(!fixture.path("release-a").exists());
+    assert!(!fixture.path("release-b").exists());
+    assert!(
+        !fixture.path("pid-b").exists(),
+        "queued work must not start during stop"
+    );
+    assert!(a.await.unwrap().is_err());
+    assert!(b.await.unwrap().is_err());
+    let snapshot = fixture.host.snapshot().await.unwrap();
+    assert_eq!(
+        snapshot.lifecycle,
+        runtime_core::runtime_backend::RuntimeBackendLifecycle::Stopped
+    );
+    assert!(snapshot.active_request_ids.is_empty());
+    fixture.host.stop().await.unwrap();
+}
