@@ -496,7 +496,9 @@ async fn communication_turn_merges_before_and_during_generation_without_repeatin
         }).collect::<Vec<_>>();
         assert_eq!(completed_tools, TOOL_IDS, "each completed tool has exactly one canonical runtime receipt");
         assert_eq!(runtime_events.iter().filter(|event| event.event_type == "runtime_stream_opened").count(), 1, "same-turn continuation reuses one event generation");
-        let memberships: Vec<(Uuid, i64, Uuid, String)> = sqlx::query_as("SELECT turn_id,turn_sequence,run_id,processing_status FROM communication_inputs WHERE instance_id=$1 AND external_identity='alice' ORDER BY id")
+        // Every member resolves the canonical run through its scoped turn; only the
+        // anchor input carries the legacy unique run_id association.
+        let memberships: Vec<(Uuid, i64, Uuid, String)> = sqlx::query_as("SELECT m.turn_id,m.turn_sequence,rt.run_id,m.processing_status FROM communication_inputs m JOIN communication_reply_turns rt ON rt.id=m.turn_id AND rt.scope_id=m.scope_id AND rt.instance_id=m.instance_id AND rt.external_identity=m.external_identity AND rt.conversation_id=m.conversation_id WHERE m.instance_id=$1 AND m.external_identity='alice' ORDER BY m.id")
             .bind(f.key().1).fetch_all(f.fixture.state.store.pool()).await.unwrap();
         assert_eq!(memberships, vec![(turn_id,1,run_id,"succeeded".into()),(turn_id,2,run_id,"succeeded".into()),(turn_id,3,run_id,"succeeded".into())]);
         f.assert_successful_deliveries(1).await;
