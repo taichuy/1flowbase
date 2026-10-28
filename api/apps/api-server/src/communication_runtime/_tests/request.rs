@@ -64,9 +64,11 @@ fn new_message_changes_only_current_user_and_has_public_file_reference() {
     assert!(second.query.starts_with("Second query"));
     assert!(second.query.contains(&file.to_string()));
     assert_eq!(second.attachments.len(), 1);
-    assert!(!serde_json::to_string(&second)
-        .unwrap()
-        .contains("download_token"));
+    assert!(
+        !serde_json::to_string(&second)
+            .unwrap()
+            .contains("download_token")
+    );
 }
 #[test]
 fn only_canonical_successful_final_business_answer_can_be_sent() {
@@ -122,6 +124,7 @@ fn turn() -> ClaimedCommunicationTurn {
     let session_id = Uuid::now_v7();
     let turn_id = Uuid::now_v7();
     ClaimedCommunicationTurn {
+        anchor_external_message_key: "anchor-input".into(),
         claim: CommunicationTurnClaim {
             scope: domain::CommunicationConversationScope {
                 workspace_id: input.binding.workspace_id,
@@ -223,9 +226,11 @@ fn logical_session_identity_is_stable_across_turns_without_replaying_history() {
         json!({})
     );
     assert!(second.expand_id.is_none());
-    assert!(!serde_json::to_string(&second)
-        .unwrap()
-        .contains("Old private history"));
+    assert!(
+        !serde_json::to_string(&second)
+            .unwrap()
+            .contains("Old private history")
+    );
 }
 
 #[test]

@@ -6,7 +6,9 @@ pub(in super::super) async fn scan(
     i: Uuid,
     limit: u32,
 ) -> Result<Vec<CommunicationPendingAdmission>> {
-    let sql = format!("SELECT c.*,m.id AS input_id,m.external_message_key,m.received_at_ms,(SELECT a.content FROM communication_messages a WHERE a.scope_id=m.scope_id AND a.instance_id=m.instance_id AND a.external_identity=m.external_identity AND a.conversation_id=m.conversation_id AND a.input_id=m.id AND a.type='text' AND a.direction='inbound') AS content,EXISTS(SELECT 1 FROM communication_messages a WHERE a.scope_id=m.scope_id AND a.instance_id=m.instance_id AND a.external_identity=m.external_identity AND a.conversation_id=m.conversation_id AND a.input_id=m.id AND a.type='file' AND a.direction='inbound') AS has_attachments FROM communication_inputs m JOIN communication_conversations c ON c.id=m.conversation_id AND c.scope_id=m.scope_id AND c.instance_id=m.instance_id AND c.external_identity=m.external_identity JOIN notification_instances n ON n.id=m.instance_id AND n.workspace_id=m.scope_id AND n.status='enabled' JOIN communication_bindings b ON b.scope_id=m.scope_id AND b.instance_id=m.instance_id WHERE m.scope_id=$1 AND m.instance_id=$2 AND ({ADMISSIBLE}) ORDER BY m.id LIMIT $3");
+    let sql = format!(
+        "SELECT candidate.* FROM (SELECT DISTINCT ON (m.conversation_id) c.*,m.id AS input_id,m.external_message_key,m.received_at_ms,(SELECT a.content FROM communication_messages a WHERE a.scope_id=m.scope_id AND a.instance_id=m.instance_id AND a.external_identity=m.external_identity AND a.conversation_id=m.conversation_id AND a.input_id=m.id AND a.type='text' AND a.direction='inbound') AS content,EXISTS(SELECT 1 FROM communication_messages a WHERE a.scope_id=m.scope_id AND a.instance_id=m.instance_id AND a.external_identity=m.external_identity AND a.conversation_id=m.conversation_id AND a.input_id=m.id AND a.type='file' AND a.direction='inbound') AS has_attachments FROM communication_inputs m JOIN communication_conversations c ON c.id=m.conversation_id AND c.scope_id=m.scope_id AND c.instance_id=m.instance_id AND c.external_identity=m.external_identity JOIN notification_instances n ON n.id=m.instance_id AND n.workspace_id=m.scope_id AND n.status='enabled' JOIN communication_bindings b ON b.scope_id=m.scope_id AND b.instance_id=m.instance_id WHERE m.scope_id=$1 AND m.instance_id=$2 AND ({ADMISSIBLE}) ORDER BY m.conversation_id,m.id) candidate WHERE NOT EXISTS(SELECT 1 FROM communication_command_events e WHERE e.scope_id=candidate.scope_id AND e.instance_id=candidate.instance_id AND e.input_id=candidate.input_id) ORDER BY candidate.input_id LIMIT $3"
+    );
     let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(w)
         .bind(i)
@@ -110,7 +112,9 @@ pub(in super::super) async fn exclude(
     if lock_chat(&mut tx, s, true).await?.is_none() {
         return Ok(false);
     }
-    let sql = format!("UPDATE communication_inputs m SET admission_status='excluded',claim_id=NULL,claim_expires_at=NULL WHERE m.scope_id=$1 AND m.instance_id=$2 AND m.external_identity=$3 AND m.conversation_id=$4 AND m.id=$5 AND (({ADMISSIBLE}) OR m.admission_status='excluded')");
+    let sql = format!(
+        "UPDATE communication_inputs m SET admission_status='excluded',claim_id=NULL,claim_expires_at=NULL WHERE m.scope_id=$1 AND m.instance_id=$2 AND m.external_identity=$3 AND m.conversation_id=$4 AND m.id=$5 AND (({ADMISSIBLE}) OR m.admission_status='excluded')"
+    );
     let changed = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(s.workspace_id)
         .bind(s.instance_id)

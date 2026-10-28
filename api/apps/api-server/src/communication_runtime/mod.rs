@@ -16,9 +16,14 @@ use uuid::Uuid;
 
 use crate::{app_state::ApiState, notification_runtime::ManagedNotificationProvider};
 
+mod activity;
 mod attachments;
+pub use activity::CommunicationActivity;
 pub(crate) mod command_capabilities;
+mod commands;
 mod execution;
+mod turn_inputs;
+mod turns;
 pub(crate) use execution::validate_binding;
 mod receive;
 mod request;
@@ -75,7 +80,12 @@ async fn supervise(state: Arc<ApiState>, mut stop: watch::Receiver<bool>) {
                         workers.insert(key, signal);
                         let state = state.clone();
                         tasks.spawn(async move {
-                            tokio::join!(receive::run(state.clone(), key, receiver.clone()), execution::run(state, key, receiver));
+                            tokio::join!(
+                                receive::run(state.clone(), key, receiver.clone()),
+                                commands::run(state.clone(), key, receiver.clone()),
+                                turns::run(state.clone(), key, receiver.clone()),
+                                execution::run(state, key, receiver),
+                            );
                             key
                         });
                     }

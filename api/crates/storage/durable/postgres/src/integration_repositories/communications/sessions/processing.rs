@@ -51,9 +51,12 @@ pub(in super::super) async fn claim(
     };
     let final_reply = sqlx::query_scalar("SELECT content FROM communication_messages WHERE id=$1 AND scope_id=$2 AND instance_id=$3 AND external_identity=$4 AND conversation_id=$5 AND direction='outbound' AND type='text'")
         .bind(row.try_get::<Option<Uuid>, _>("outbound_message_id")?).bind(w).bind(i).bind(&claim.scope.external_identity).bind(claim.scope.conversation_id).fetch_optional(&mut *tx).await?.flatten();
+    let anchor_external_message_key = sqlx::query_scalar("SELECT external_message_key FROM communication_inputs WHERE id=$1 AND scope_id=$2 AND instance_id=$3 AND external_identity=$4 AND conversation_id=$5")
+        .bind(row.try_get::<Uuid,_>("anchor_input_id")?).bind(w).bind(i).bind(&claim.scope.external_identity).bind(claim.scope.conversation_id).fetch_one(&mut *tx).await?;
     let pending = snapshot(&mut tx, &claim.scope, row, key).await?;
     tx.commit().await?;
     Ok(Some(ClaimedCommunicationTurn {
+        anchor_external_message_key,
         binding,
         conversation,
         session,
@@ -275,7 +278,9 @@ pub(in super::super) async fn retry(
     if lock_chat(&mut tx, &scope, true).await?.is_none() {
         return Ok(false);
     }
-    let sql = format!("SELECT m.id FROM communication_inputs m WHERE m.id=$1 AND m.scope_id=$2 AND m.instance_id=$3 AND ({RETRY_ELIGIBILITY}) FOR UPDATE");
+    let sql = format!(
+        "SELECT m.id FROM communication_inputs m WHERE m.id=$1 AND m.scope_id=$2 AND m.instance_id=$3 AND ({RETRY_ELIGIBILITY}) FOR UPDATE"
+    );
     if sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(input_id)
         .bind(w)

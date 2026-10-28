@@ -299,6 +299,16 @@ pub trait CommunicationRepository: Send + Sync {
         lease_seconds: u32,
         master_key: &str,
     ) -> anyhow::Result<Option<ClaimedCommunicationInput>>;
+    /// Upgrade-only observer. Never claims newly received inputs awaiting turn admission.
+    async fn claim_communication_legacy_input(
+        &self,
+        _workspace_id: Uuid,
+        _instance_id: Uuid,
+        _lease_seconds: u32,
+        _master_key: &str,
+    ) -> anyhow::Result<Option<ClaimedCommunicationInput>> {
+        Ok(None)
+    }
     async fn renew_communication_claim(
         &self,
         claim: &CommunicationClaim,

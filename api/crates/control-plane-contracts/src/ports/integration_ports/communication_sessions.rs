@@ -44,6 +44,8 @@ pub struct CommunicationTurnInputs {
 }
 
 pub struct ClaimedCommunicationTurn {
+    /// Original supplier reply correlation, also present after the anchor has been consumed.
+    pub anchor_external_message_key: String,
     pub binding: CommunicationBindingRecord,
     pub conversation: CommunicationConversation,
     pub session: CommunicationSession,

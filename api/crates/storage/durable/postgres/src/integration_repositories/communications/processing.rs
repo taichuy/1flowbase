@@ -6,6 +6,7 @@ pub(super) async fn claim(
     i: Uuid,
     l: u32,
     k: &str,
+    legacy_only: bool,
 ) -> Result<Option<ClaimedCommunicationInput>> {
     let mut tx = store.pool().begin().await?;
     let row=sqlx::query("SELECT b.* FROM communication_bindings b JOIN notification_instances n ON n.id=b.instance_id AND n.workspace_id=b.scope_id WHERE b.scope_id=$1 AND b.instance_id=$2 AND n.status='enabled' FOR SHARE OF n,b")
@@ -17,10 +18,13 @@ pub(super) async fn claim(
         .bind(w).bind(i).execute(&mut *tx).await?;
     // Reclaim the observation lease, retaining any reserved run ID. The execution owner
     // inspects that run and must never invoke it a second time after a restart.
-    let sql=format!("SELECT m.*, (SELECT content FROM communication_messages t WHERE t.input_id=m.id AND t.type='text' AND t.direction='inbound') AS content,(SELECT content FROM communication_messages t WHERE t.input_id=m.id AND t.type='text' AND t.direction='outbound') AS final_reply,({RETRY_ELIGIBILITY}) AS can_retry FROM communication_inputs m JOIN communication_conversations c ON c.id=m.conversation_id AND c.scope_id=m.scope_id AND c.instance_id=m.instance_id AND c.external_identity=m.external_identity WHERE m.scope_id=$1 AND m.instance_id=$2 AND m.turn_id IS NULL AND m.admission_status<>'excluded' AND ((m.processing_status='pending') OR (m.processing_status='processing' AND m.claim_expires_at<=now()) OR (m.processing_status='succeeded' AND m.send_status='pending' AND (m.claim_id IS NULL OR m.claim_expires_at<=now()))) AND NOT EXISTS(SELECT 1 FROM communication_inputs p WHERE p.conversation_id=m.conversation_id AND p.id<m.id AND p.admission_status<>'excluded' AND (p.processing_status IN ('pending','processing') OR p.send_status IN ('pending','sending'))) ORDER BY m.id LIMIT 1 FOR UPDATE OF c,m SKIP LOCKED");
+    let sql = format!(
+        "SELECT m.*, (SELECT content FROM communication_messages t WHERE t.input_id=m.id AND t.type='text' AND t.direction='inbound') AS content,(SELECT content FROM communication_messages t WHERE t.input_id=m.id AND t.type='text' AND t.direction='outbound') AS final_reply,({RETRY_ELIGIBILITY}) AS can_retry FROM communication_inputs m JOIN communication_conversations c ON c.id=m.conversation_id AND c.scope_id=m.scope_id AND c.instance_id=m.instance_id AND c.external_identity=m.external_identity WHERE m.scope_id=$1 AND m.instance_id=$2 AND m.turn_id IS NULL AND m.admission_status<>'excluded' AND (NOT $3 OR m.admission_status='legacy') AND ((m.processing_status='pending') OR (m.processing_status='processing' AND m.claim_expires_at<=now()) OR (m.processing_status='succeeded' AND m.send_status='pending' AND (m.claim_id IS NULL OR m.claim_expires_at<=now()))) AND NOT EXISTS(SELECT 1 FROM communication_inputs p WHERE p.conversation_id=m.conversation_id AND p.id<m.id AND p.admission_status<>'excluded' AND (p.processing_status IN ('pending','processing') OR p.send_status IN ('pending','sending'))) ORDER BY m.id LIMIT 1 FOR UPDATE OF c,m SKIP LOCKED"
+    );
     let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(w)
         .bind(i)
+        .bind(legacy_only)
         .fetch_optional(&mut *tx)
         .await?;
     let Some(row) = row else {
@@ -100,17 +104,61 @@ pub(super) async fn progress(
         &p,
         CommunicationProgress::RunStarted { .. } | CommunicationProgress::SendStarted
     );
-    let (set,condition,run,reply,failure)=match p {
-        CommunicationProgress::RunStarted{run_id}=>("processing_status='processing'","processing_status='processing' AND run_id IS NULL AND NOT EXISTS(SELECT 1 FROM communication_messages a WHERE a.input_id=m.id AND a.status<>'ready')",Some(run_id),None,None),
-        CommunicationProgress::RunSucceeded{final_reply}=>{
-            if final_reply.trim().is_empty(){return Err(Error::InvalidInput("communication_final_reply").into());}
-            ("processing_status='succeeded',send_status='pending'","processing_status='processing' AND run_id IS NOT NULL",None,Some(final_reply),None)
-        },
-        CommunicationProgress::RunFailed{failure_code}=>("processing_status='failed',claim_id=NULL,claim_expires_at=NULL","processing_status='processing'",None,None,Some(failure_code)),
-        CommunicationProgress::SendStarted=>("send_status='sending'","processing_status='succeeded' AND send_status='pending' AND EXISTS(SELECT 1 FROM communication_messages t WHERE t.input_id=m.id AND t.direction='outbound' AND t.type='text')",None,None,None),
-        CommunicationProgress::SendSucceeded=>("send_status='succeeded',claim_id=NULL,claim_expires_at=NULL","send_status='sending'",None,None,None),
-        CommunicationProgress::SendFailed{failure_code}=>("send_status='failed',claim_id=NULL,claim_expires_at=NULL","send_status IN ('pending','sending')",None,None,Some(failure_code)),
-        CommunicationProgress::SendUnknown{failure_code}=>("send_status='unknown',claim_id=NULL,claim_expires_at=NULL","send_status='sending'",None,None,Some(failure_code)),
+    let (set, condition, run, reply, failure) = match p {
+        CommunicationProgress::RunStarted { run_id } => (
+            "processing_status='processing'",
+            "processing_status='processing' AND run_id IS NULL AND NOT EXISTS(SELECT 1 FROM communication_messages a WHERE a.input_id=m.id AND a.status<>'ready')",
+            Some(run_id),
+            None,
+            None,
+        ),
+        CommunicationProgress::RunSucceeded { final_reply } => {
+            if final_reply.trim().is_empty() {
+                return Err(Error::InvalidInput("communication_final_reply").into());
+            }
+            (
+                "processing_status='succeeded',send_status='pending'",
+                "processing_status='processing' AND run_id IS NOT NULL",
+                None,
+                Some(final_reply),
+                None,
+            )
+        }
+        CommunicationProgress::RunFailed { failure_code } => (
+            "processing_status='failed',claim_id=NULL,claim_expires_at=NULL",
+            "processing_status='processing'",
+            None,
+            None,
+            Some(failure_code),
+        ),
+        CommunicationProgress::SendStarted => (
+            "send_status='sending'",
+            "processing_status='succeeded' AND send_status='pending' AND EXISTS(SELECT 1 FROM communication_messages t WHERE t.input_id=m.id AND t.direction='outbound' AND t.type='text')",
+            None,
+            None,
+            None,
+        ),
+        CommunicationProgress::SendSucceeded => (
+            "send_status='succeeded',claim_id=NULL,claim_expires_at=NULL",
+            "send_status='sending'",
+            None,
+            None,
+            None,
+        ),
+        CommunicationProgress::SendFailed { failure_code } => (
+            "send_status='failed',claim_id=NULL,claim_expires_at=NULL",
+            "send_status IN ('pending','sending')",
+            None,
+            None,
+            Some(failure_code),
+        ),
+        CommunicationProgress::SendUnknown { failure_code } => (
+            "send_status='unknown',claim_id=NULL,claim_expires_at=NULL",
+            "send_status='sending'",
+            None,
+            None,
+            Some(failure_code),
+        ),
     };
     // Terminal facts remain recordable if the channel is disabled while provider I/O is in
     // flight. Only starting another run/send requires the channel to still be enabled.
@@ -119,7 +167,9 @@ pub(super) async fn progress(
     } else {
         ""
     };
-    let sql=format!("UPDATE communication_inputs m SET {set},run_id=COALESCE($5,run_id),failure_code=$6 WHERE scope_id=$1 AND instance_id=$2 AND id=$3 AND turn_id IS NULL AND admission_status<>'excluded' AND claim_id=$4 AND claim_expires_at>now() AND ({condition}) {enabled}");
+    let sql = format!(
+        "UPDATE communication_inputs m SET {set},run_id=COALESCE($5,run_id),failure_code=$6 WHERE scope_id=$1 AND instance_id=$2 AND id=$3 AND turn_id IS NULL AND admission_status<>'excluded' AND claim_id=$4 AND claim_expires_at>now() AND ({condition}) {enabled}"
+    );
     let mut tx = store.pool().begin().await?;
     let changed = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(c.workspace_id)
@@ -147,7 +197,9 @@ pub(super) async fn retry(store: &PgControlPlaneStore, w: Uuid, i: Uuid, m: Uuid
         return sessions::processing::retry(store, w, i, m).await;
     }
     let mut tx = store.pool().begin().await?;
-    let sql=format!("UPDATE communication_inputs m SET processing_status=CASE WHEN processing_status='failed' THEN 'pending' ELSE processing_status END,send_status=CASE WHEN send_status='failed' THEN 'pending' ELSE send_status END,run_id=CASE WHEN processing_status='failed' THEN NULL ELSE run_id END,failure_code=NULL,claim_id=NULL,claim_expires_at=NULL WHERE scope_id=$1 AND instance_id=$2 AND id=$3 AND ({RETRY_ELIGIBILITY}) RETURNING id");
+    let sql = format!(
+        "UPDATE communication_inputs m SET processing_status=CASE WHEN processing_status='failed' THEN 'pending' ELSE processing_status END,send_status=CASE WHEN send_status='failed' THEN 'pending' ELSE send_status END,run_id=CASE WHEN processing_status='failed' THEN NULL ELSE run_id END,failure_code=NULL,claim_id=NULL,claim_expires_at=NULL WHERE scope_id=$1 AND instance_id=$2 AND id=$3 AND ({RETRY_ELIGIBILITY}) RETURNING id"
+    );
     let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(w)
         .bind(i)

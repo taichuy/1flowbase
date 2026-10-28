@@ -8,11 +8,11 @@ use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
     orchestration_runtime::{
-        debug_stream_events, project_runtime_event_stream_terminal,
-        start_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
         CancelFlowRunCommand, CompleteCallbackTaskCommand, ContinueFlowDebugRunCommand,
         OrchestrationRuntimeService, PrepareFlowDebugRunCommand, ResumeFlowRunCommand,
-        StartFlowDebugRunCommand, StartNodeDebugPreviewCommand,
+        StartFlowDebugRunCommand, StartNodeDebugPreviewCommand, debug_stream_events,
+        project_runtime_event_stream_terminal, start_runtime_debug_event_persister,
+        wait_for_runtime_debug_event_persister,
     },
     ports::{
         ApplicationRepository, CommunicationRepository, OrchestrationRuntimeRepository,
@@ -25,11 +25,11 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::{
+    ApplicationActivityKind, ApplicationRunDetailResponse, CompleteCallbackTaskBody,
+    NodeLastRunResponse, ResumeFlowRunBody, StartFlowDebugRunBody, StartNodeDebugPreviewBody,
     offload_application_run_detail_artifacts_with_dependencies, scope_application_activity,
     to_application_run_detail_response, to_node_last_run_response,
-    to_trace_projection_statistics_response, ApplicationActivityKind, ApplicationRunDetailResponse,
-    CompleteCallbackTaskBody, NodeLastRunResponse, ResumeFlowRunBody, StartFlowDebugRunBody,
-    StartNodeDebugPreviewBody,
+    to_trace_projection_statistics_response,
 };
 use crate::{
     app_state::ApiState,
@@ -146,6 +146,7 @@ pub(crate) struct RuntimeDebugCommandDependencies {
     store: MainDurableStore,
     provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
     runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
+    communication_activity: Arc<crate::communication_runtime::CommunicationActivity>,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     provider_secret_master_key: String,
     model_billing_require_provider_usage: bool,
@@ -168,6 +169,7 @@ pub(crate) fn dependencies(state: Arc<ApiState>) -> RuntimeDebugCommandDependenc
         store: state.store.clone(),
         provider_runtime: state.provider_runtime.clone(),
         runtime_activity: state.runtime_activity.clone(),
+        communication_activity: state.communication_activity.clone(),
         runtime_engine: state.runtime_engine.clone(),
         provider_secret_master_key: state.provider_secret_master_key.clone(),
         model_billing_require_provider_usage: state.model_billing_require_provider_usage,
@@ -193,9 +195,9 @@ pub(crate) fn port(
     dependencies: RuntimeDebugCommandDependencies,
 ) -> Arc<
     dyn ConsoleInterfacePort<
-        ApplicationRuntimeDebugCommandsInput,
-        ApplicationRuntimeDebugCommandsOutput,
-    >,
+            ApplicationRuntimeDebugCommandsInput,
+            ApplicationRuntimeDebugCommandsOutput,
+        >,
 > {
     Arc::new(ApplicationRuntimeDebugCommandsAdapter { dependencies })
 }
@@ -204,10 +206,10 @@ pub(crate) fn stream_port(
     dependencies: RuntimeDebugCommandDependencies,
 ) -> Arc<
     dyn ConsoleServerStreamPort<
-        ApplicationRuntimeDebugStreamInput,
-        ApplicationRuntimeDebugStreamEvent,
-        ApplicationRuntimeDebugStreamOutput,
-    >,
+            ApplicationRuntimeDebugStreamInput,
+            ApplicationRuntimeDebugStreamEvent,
+            ApplicationRuntimeDebugStreamOutput,
+        >,
 > {
     Arc::new(ApplicationRuntimeDebugCommandsAdapter { dependencies })
 }
@@ -249,6 +251,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         )
         .with_file_storage_registry(self.dependencies.file_storage_registry.clone())
         .with_notification_sender(self.dependencies.notification_sender.clone())
+        .with_communication_execution_resolver(self.dependencies.communication_activity.clone())
         .with_llm_routing_counter_store(self.dependencies.cache_store.clone())
         .with_provider_request_log_queue(self.dependencies.task_queue.clone())
     }
@@ -1099,8 +1102,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         interface_id: "applications.runtime.callback-tasks.complete",
         binding_id: "http.console.applications.runtime.callback-tasks.complete.v1",
         method: "POST",
-        path:
-            "/api/console/applications/:id/orchestration/callback-tasks/:callback_task_id/complete",
+        path: "/api/console/applications/:id/orchestration/callback-tasks/:callback_task_id/complete",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {

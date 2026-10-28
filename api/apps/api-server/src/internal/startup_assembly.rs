@@ -433,6 +433,7 @@ pub(super) async fn app_and_runtime_host_from_config(
         runtime_activity,
         assistant_conversation_events,
         notification_service,
+        communication_activity: Arc::default(),
         notification_events,
         assistant_executions: Default::default(),
         assistant_client_sessions: Default::default(),

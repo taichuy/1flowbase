@@ -2,9 +2,9 @@
 use super::*;
 use crate::_tests::{application, support};
 use axum::{
-    body::{to_bytes, Body},
-    http::{Request, StatusCode},
     Router,
+    body::{Body, to_bytes},
+    http::{Request, StatusCode},
 };
 use control_plane::ports::{OrchestrationRuntimeRepository, RoleRepository};
 use tower::ServiceExt;
@@ -163,7 +163,12 @@ async fn pipeline(callback: bool) {
         support::login_and_capture_cookie(&app, "communication-operator", "temp-pass").await;
     assert_ne!(operator_id, fixture.actor.user_id.to_string());
     let (stop, signal) = watch::channel(false);
-    let execution = tokio::spawn(super::super::execution::run(
+    let admission = tokio::spawn(super::super::commands::run(
+        fixture.state.clone(),
+        (fixture.actor.current_workspace_id, fixture.channel),
+        signal.clone(),
+    ));
+    let execution = tokio::spawn(super::super::turns::run(
         fixture.state.clone(),
         (fixture.actor.current_workspace_id, fixture.channel),
         signal,
@@ -241,6 +246,7 @@ async fn pipeline(callback: bool) {
     }
     stop.send(true).unwrap();
     execution.await.unwrap();
+    admission.await.unwrap();
     fixture.runtime.host.stop().await.unwrap();
     outcome.expect("communication pipeline must complete within its bounded fixture budget");
 }

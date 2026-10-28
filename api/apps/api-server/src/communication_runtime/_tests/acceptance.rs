@@ -34,9 +34,11 @@ impl runtime_extension_host::RuntimeArtifactResolver for FixtureArtifactResolver
         if path.is_absolute() && path.starts_with(&self.provider_install_root) && path.is_dir() {
             return Ok(path);
         }
-        Err(runtime_core::runtime_backend::RuntimeBackendError::InvalidRequest(
-            "provider fixture artifact must be inside its installation root".into(),
-        ))
+        Err(
+            runtime_core::runtime_backend::RuntimeBackendError::InvalidRequest(
+                "provider fixture artifact must be inside its installation root".into(),
+            ),
+        )
     }
 }
 
@@ -129,10 +131,8 @@ impl Fixture {
         state_mut.notification_service = service;
         // Match production boot: freeze the complete interface catalogue before
         // plugin activation compiles a workspace's managed interface points.
-        let app = crate::app_with_state_and_config(
-            state.clone(),
-            &crate::_tests::support::test_config(),
-        );
+        let app =
+            crate::app_with_state_and_config(state.clone(), &crate::_tests::support::test_config());
         let management = PluginManagementService::new(
             runtime.store.clone(),
             crate::provider_runtime::ApiProviderRuntime::new(runtime.services.clone()),
@@ -206,6 +206,7 @@ impl Fixture {
                 &actor,
                 channel,
                 domain::CommunicationBindingInput {
+                    command_settings: vec![],
                     application_id: Uuid::now_v7(),
                     model: None,
                     reasoning_effort: None,
@@ -364,7 +365,11 @@ async fn communication_receive_session_progressive_mcp_reaches_scoped_history() 
     .await;
     assert!(!tampered.content.to_string().contains("Bob private input"));
     let injected = invoke(&invoker,"call",json!({"tool_id":tool,"des_id":des_id,"arguments":{"conversation_id":session["conversation_id"],"external_identity":"bob","instance_id":Uuid::now_v7()}})).await;
-    assert!(!injected.is_error, "hidden channel retains its canonical default: {:?}", injected.content);
+    assert!(
+        !injected.is_error,
+        "hidden channel retains its canonical default: {:?}",
+        injected.content
+    );
     let injected = injected.content.to_string();
     assert!(injected.contains("Alice private input"), "{injected}");
     assert!(!injected.contains("Bob private input"), "{injected}");
@@ -380,10 +385,12 @@ async fn communication_receive_session_progressive_mcp_reaches_scoped_history() 
     );
     let other_sender = fixture.invoker("bob").await;
     let alice_under_bob = invoke(&other_sender,"call",json!({"tool_id":tool,"des_id":des_id,"arguments":{"conversation_id":session["conversation_id"]}})).await;
-    assert!(!alice_under_bob
-        .content
-        .to_string()
-        .contains("Alice private input"));
+    assert!(
+        !alice_under_bob
+            .content
+            .to_string()
+            .contains("Alice private input")
+    );
     fixture.runtime.host.stop().await.unwrap();
 }
 

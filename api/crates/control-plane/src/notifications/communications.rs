@@ -334,6 +334,21 @@ where
             .claim_communication_input(workspace_id, instance_id, lease_seconds, &self.master_key)
             .await
     }
+    pub async fn claim_pending_legacy_input(
+        &self,
+        workspace_id: Uuid,
+        instance_id: Uuid,
+        lease_seconds: u32,
+    ) -> Result<Option<ClaimedCommunicationInput>> {
+        self.repository
+            .claim_communication_legacy_input(
+                workspace_id,
+                instance_id,
+                lease_seconds,
+                &self.master_key,
+            )
+            .await
+    }
     pub async fn renew_claim(
         &self,
         claim: &CommunicationClaim,

@@ -1,20 +1,20 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use orchestration_runtime::compiler::FlowCompiler;
 use serde_json::json;
 use uuid::Uuid;
 
 use super::mapping::{
-    ensure_extension_registration_unchanged, validate_application_api_mapping,
     ApplicationApiMappingConfig, ApplicationApiMappingOutput,
+    ensure_extension_registration_unchanged, validate_application_api_mapping,
 };
 use super::published_workflow_operation::{
     validate_published_workflow_contract, workflow_route_shapes_conflict,
 };
 use crate::{
     application::{
-        ensure_existing_application_non_crud_console_operation, ApplicationNonCrudConsoleOperation,
+        ApplicationNonCrudConsoleOperation, ensure_existing_application_non_crud_console_operation,
     },
     errors::ControlPlaneError,
     flow::FlowService,
@@ -189,7 +189,7 @@ where
             .await?;
         let compiled_plan = match application.application_type {
             domain::ApplicationType::AgentLogs => {
-                return Err(ControlPlaneError::InvalidInput("application_type").into())
+                return Err(ControlPlaneError::InvalidInput("application_type").into());
             }
             domain::ApplicationType::AgentFlow => FlowCompiler::compile(
                 publication_state.flow.id,
@@ -273,7 +273,7 @@ where
         self.repository
             .load_active_application_publication(command.application_id)
             .await?
-            .ok_or_else(|| anyhow!("application_not_published"))
+            .ok_or_else(|| ControlPlaneError::NotFound("application_not_published").into())
     }
 
     pub async fn set_api_enabled(&self, command: SetApplicationApiEnabledCommand) -> Result<()>
