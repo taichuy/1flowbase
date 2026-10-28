@@ -151,7 +151,7 @@ fn package() -> Vec<u8> {
         ("reset", "POST", "serialized", true),
     ] {
         let id = format!("acme.composition-a.{name}");
-        contributions.push(json!({"contribution_id":id,"contributor_module_id":"acme.composition-a","point_id":"1flowbase.managed-service.operation","contract_version":"1","required_permissions":["service.execute","plugin_data.owned.read"],"mode":"append"}));
+        contributions.push(json!({"contribution_id":id,"contributor_module_id":"acme.composition-a","point_id":"1flowbase.managed-service.operation","contract_version":"1","required_permissions":["service.execute","plugin_data.owned.write"],"mode":"append"}));
         bindings.push(json!({"contribution_id":id,"execution_mode":"process_per_call","runtime":{"protocol":"stdio_json_multiplex_v1","entry":"bin/worker.py"},"handler":name}));
         operations.push(json!({"interface_id":id,"contribution_id":id,"method":method,"path":format!("/api/console/managed-services/acme.composition-a/{name}"),"summary":"Exercise managed ownership","description":"Run the connection ownership fixture.","execution_concurrency":concurrency,"invalidates_streams":reset,"invalidates_workers":reset,"input_schema":{"type":"object"},"output_schema":{"type":"object"}}));
     }
