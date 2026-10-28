@@ -97,6 +97,7 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                         .await?;
                     owner
                         .update_metadata(UpdateFrontstagePageMetadataCommand {
+                            show_title: None,
                             actor_user_id: actor.user_id,
                             workspace_id: actor.current_workspace_id,
                             page_id: existing.id,
@@ -206,6 +207,7 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                 .await?;
             owner
                 .update_metadata(UpdateFrontstagePageMetadataCommand {
+                    show_title: None,
                     actor_user_id: actor.user_id,
                     workspace_id: actor.current_workspace_id,
                     page_id,

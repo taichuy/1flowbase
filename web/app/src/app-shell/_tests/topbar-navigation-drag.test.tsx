@@ -28,6 +28,7 @@ const nodes = ['报表', '应用'].map<FrontstagePageTreeNode>((title, index) =>
   kind: 'page',
   placement: 'topbar',
   content_presentation: 'single',
+  show_title: true,
   children: []
 }));
 

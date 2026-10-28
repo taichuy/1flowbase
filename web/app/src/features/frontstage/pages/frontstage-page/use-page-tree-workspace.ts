@@ -308,6 +308,22 @@ export function usePageTreeWorkspace({
     });
   };
 
+  const handlePageTitleChange = (
+    show_title: boolean,
+    targetNode = selectedPageNode
+  ) => {
+    if (!targetNode || targetNode.kind !== 'page') return;
+    void runPageTreeOperation(async () => {
+      await onRenamePageNode?.(targetNode.id, {
+        title: targetNode.title,
+        show_title
+      });
+      setPageTree((current) =>
+        updatePageTreeNode(current, targetNode.id, { show_title })
+      );
+    });
+  };
+
   const handlePageTabsEnabledChange = (
     enabled: boolean,
     targetNode = selectedPageNode
@@ -444,6 +460,7 @@ export function usePageTreeWorkspace({
     handleSubmitPageTreeForm,
     handleRenameNode,
     handlePageTabsEnabledChange,
+    handlePageTitleChange,
     handleEditNodeTooltip,
     handleUpdateNodeMetadata,
     handleMoveNodeToPosition,

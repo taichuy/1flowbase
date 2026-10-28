@@ -70,6 +70,36 @@ beforeEach(() => {
 });
 
 describe('Vditor frame lifecycle', () => {
+  it('shows loading until initialization finishes and replaces it on failure', async () => {
+    let reject!: (error: Error) => void;
+    load.mockImplementationOnce(
+      () =>
+        new Promise((_, fail) => {
+          reject = fail;
+        })
+    );
+    const view = render(
+      <VditorEditor value="" onChange={vi.fn()} ariaLabel="editor" />
+    );
+    expect(screen.getByRole('status').textContent).toContain('编辑器加载中');
+    await mountFrame();
+    expect(screen.getByRole('status')).toBeTruthy();
+    await act(async () => reject(new Error('Resource unavailable')));
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('加载失败');
+    view.unmount();
+  });
+
+  it('removes loading only when the editor is ready', async () => {
+    const view = render(
+      <VditorEditor value="" onChange={vi.fn()} ariaLabel="editor" />
+    );
+    expect(screen.getByRole('status')).toBeTruthy();
+    await mountFrame();
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    view.unmount();
+  });
+
   it('keeps editor selections in its own document, including when hosted by a ShadowRoot', async () => {
     const host = document.createElement('div');
     const shadow = host.attachShadow({ mode: 'open' });
@@ -222,9 +252,11 @@ describe('Vditor frame lifecycle', () => {
     );
     const view = render(<VditorPreview value="old" ariaLabel="reader" />);
     const frame = await mountFrame('reader');
+    expect(screen.getByRole('status').textContent).toContain('正文加载中');
     view.rerender(<VditorPreview value="new" ariaLabel="reader" />);
     await waitFor(() => expect(pending).toHaveLength(2));
     await act(async () => pending[0]());
+    expect(screen.getByRole('status')).toBeTruthy();
     expect(frame.contentDocument?.body.textContent).not.toContain('old');
     view.unmount();
     await act(async () => pending[1]());

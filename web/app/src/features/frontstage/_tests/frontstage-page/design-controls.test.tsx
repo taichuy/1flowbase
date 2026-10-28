@@ -190,7 +190,7 @@ describe('FrontStagePage - design controls', () => {
     fireEvent.click(configurePage);
 
     const pageMenu = await screen.findByRole('menu');
-    expect(within(pageMenu).getAllByRole('menuitem')).toHaveLength(4);
+    expect(within(pageMenu).getAllByRole('menuitem')).toHaveLength(5);
     expect(within(pageMenu).getByText('编辑')).toBeInTheDocument();
     expect(within(pageMenu).getByText('刷新')).toBeInTheDocument();
     const layoutMode = within(pageMenu).getByRole('combobox', {

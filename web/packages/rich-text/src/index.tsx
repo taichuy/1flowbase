@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 
 import type Vditor from 'vditor';
 import { VditorFrame } from './frame';
+import { preserveCodeSelection } from './code-selection';
+import { preferredEditorMode, rememberEditorMode } from './mode-preference';
 export { VditorPreview } from './preview';
 
 import {
@@ -68,6 +70,7 @@ export function VditorEditor({
 }: VditorEditorProps) {
   const [frameDocument, setFrameDocument] = useState<Document | null>(null);
   const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
   const editorRef = useRef<Vditor | null>(null);
   const readyRef = useRef(false);
   const valueRef = useRef(value);
@@ -100,6 +103,7 @@ export function VditorEditor({
     if (!frameDocument) return undefined;
     const mount = frameDocument.createElement('div');
     frameDocument.body.appendChild(mount);
+    const releaseCodeSelection = preserveCodeSelection(mount);
 
     const frame = frameDocument.defaultView?.frameElement;
     const outerDocument = frame?.ownerDocument;
@@ -113,7 +117,9 @@ export function VditorEditor({
     };
     outerDocument?.addEventListener('fullscreenchange', exitFullscreen);
     let disposed = false;
+    let releaseModePreference = () => {};
     setFailed(false);
+    setLoading(true);
     void loadFrameRuntime(frameDocument)
       .then((FrameVditor) => {
         if (disposed) return;
@@ -173,7 +179,7 @@ export function VditorEditor({
           i18n: getBundledEditorMessages(locale),
           lang: locale === 'en_US' ? 'en_US' : 'zh_CN',
           image: { isPreview: true },
-          mode,
+          mode: preferredEditorMode(frameDocument, mode),
           outline: { enable: outline, position: 'left' },
           placeholder,
           preview: {
@@ -196,7 +202,9 @@ export function VditorEditor({
               disposeEditor(editor);
               return;
             }
+            releaseModePreference = rememberEditorMode(mount, editor);
             readyRef.current = true;
+            setLoading(false);
             if (editor.getValue() !== valueRef.current) {
               editor.setValue(valueRef.current, true);
             }
@@ -221,7 +229,10 @@ export function VditorEditor({
         }
       })
       .catch(() => {
-        if (!disposed) setFailed(true);
+        if (!disposed) {
+          setFailed(true);
+          setLoading(false);
+        }
       });
 
     return () => {
@@ -242,6 +253,8 @@ export function VditorEditor({
       editorRef.current = null;
       if (editor) disposeEditor(editor);
       outerDocument?.removeEventListener('fullscreenchange', exitFullscreen);
+      releaseModePreference();
+      releaseCodeSelection();
       mount.remove();
     };
   }, [
@@ -266,6 +279,10 @@ export function VditorEditor({
         </div>
       )}
       <VditorFrame
+        loading={loading}
+        loadingLabel={
+          locale === 'zh_Hans' ? '编辑器加载中…' : 'Loading editor…'
+        }
         title={ariaLabel}
         height={height}
         onDocument={setFrameDocument}

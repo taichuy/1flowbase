@@ -24,6 +24,8 @@ export function useFrontstageWorkspace(pageId?: string) {
     ...workspace,
     selectedPageId,
     selectedPageNode,
+    handlePageTitleChange: (show_title: boolean) =>
+      workspace.handlePageTitleChange(show_title, selectedPageNode),
     handlePageTabsEnabledChange: (enabled: boolean) =>
       workspace.handlePageTabsEnabledChange(enabled, selectedPageNode)
   };

@@ -134,7 +134,8 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     operationStatus,
     isOperationPending,
     handleRenameNode,
-    handlePageTabsEnabledChange
+    handlePageTabsEnabledChange,
+    handlePageTitleChange
   } = useFrontstageWorkspace(pageId);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isJsxStudioOpen, setIsJsxStudioOpen] = useState(false);
@@ -1070,18 +1071,31 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
               : undefined
           }
         >
-          {selectedPageNode ? (
+          {selectedPageNode &&
+          (selectedPageNode.show_title || canEditPageTree) ? (
             <>
-              <header className="frontstage-page-workspace__header">
-                <Typography.Title
-                  className="frontstage-page-workspace__title"
-                  level={4}
-                >
-                  {selectedPageLabel}
-                </Typography.Title>
+              <header
+                className={[
+                  'frontstage-page-workspace__header',
+                  !selectedPageNode.show_title &&
+                    'frontstage-page-workspace__header--compact'
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                {selectedPageNode.show_title ? (
+                  <Typography.Title
+                    className="frontstage-page-workspace__title"
+                    level={4}
+                  >
+                    {selectedPageLabel}
+                  </Typography.Title>
+                ) : null}
                 {canEditPageTree ? (
                   <div className="frontstage-page-workspace__page-action">
                     <PageWorkspaceActionMenu
+                      show_title={selectedPageNode.show_title}
+                      onTitleChange={handlePageTitleChange}
                       disabled={isOperationPending || isPageContentSavePending}
                       refreshing={isPageRefreshPending}
                       tabsEnabled={
@@ -1098,7 +1112,9 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
                   </div>
                 ) : null}
               </header>
-              <Divider style={{ margin: 0 }} />
+              {selectedPageNode.show_title ? (
+                <Divider style={{ margin: 0 }} />
+              ) : null}
             </>
           ) : null}
           <div

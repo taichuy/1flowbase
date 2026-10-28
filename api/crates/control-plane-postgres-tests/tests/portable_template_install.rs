@@ -677,6 +677,7 @@ async fn safe_merge_preserves_local_page_and_unknown_block_but_updates_and_adds_
         .unwrap();
     FrontstagePageService::new(store.clone())
         .update_metadata(UpdateFrontstagePageMetadataCommand {
+            show_title: None,
             actor_user_id: actor.id,
             workspace_id: workspace.id,
             page_id,
@@ -777,6 +778,7 @@ async fn scoped_native_transaction_savepoints_rollback_and_editor_write_exclusio
     // The native owner opens and commits its own transaction, which must be a savepoint.
     FrontstagePageService::new(transaction.repository.clone())
         .update_metadata(UpdateFrontstagePageMetadataCommand {
+            show_title: None,
             actor_user_id: actor.id,
             workspace_id: workspace.id,
             page_id,
@@ -803,6 +805,7 @@ async fn scoped_native_transaction_savepoints_rollback_and_editor_write_exclusio
     let mut editor = tokio::spawn(async move {
         FrontstagePageService::new(editing_store)
             .update_metadata(UpdateFrontstagePageMetadataCommand {
+                show_title: None,
                 actor_user_id: actor.id,
                 workspace_id: workspace.id,
                 page_id,

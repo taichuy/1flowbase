@@ -214,6 +214,7 @@
     "configure_tab": "Configure tab",
     "delete_tab_confirm": "Delete this tab?",
     "drag_handle": "Drag to reorder",
+    "page_title": "Page title",
     "enable_tabs": "Enable Tabs",
     "last_tab_hint": "A page keeps at least one tab; the last tab cannot be deleted.",
     "layout_mode": "Layout mode",
