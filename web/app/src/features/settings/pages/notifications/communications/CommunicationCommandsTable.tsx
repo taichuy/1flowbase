@@ -28,6 +28,7 @@ export function CommunicationCommandsTable({
     ['host/help', t('command_help_description')]
   ]);
   const reasons = new Map([
+    ['application_unavailable', t('command_application_unavailable')],
     ['model_selection_unavailable', t('command_model_selection_unavailable')],
     ['no_models_available', t('command_no_models_available')],
     ['plugin_unavailable', t('command_plugin_unavailable')],

@@ -138,6 +138,7 @@
   "command_model_description": "查看或选择当前聊天允许使用的模型。",
   "command_help_description": "查看已启用且可用的指令。",
   "command_plugin_unavailable": "指令插件不可用",
+  "command_application_unavailable": "应用不可用或无权访问",
   "command_model_selection_unavailable": "此应用不允许选择模型",
   "command_no_models_available": "此应用暂无可用模型",
   "command_not_installed": "指令声明已不再安装",

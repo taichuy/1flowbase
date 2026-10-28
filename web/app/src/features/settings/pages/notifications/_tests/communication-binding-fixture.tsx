@@ -85,7 +85,8 @@ export function setupCommunicationBinding({
   failBinding = false,
   omitRetiredFromCatalog = false,
   pluginUnavailableReason = 'plugin_unavailable',
-  duplicateIdentity = false
+  duplicateIdentity = false,
+  applicationUnavailable = false
 }: {
   existing?: boolean;
   failSave?: boolean;
@@ -94,6 +95,7 @@ export function setupCommunicationBinding({
   omitRetiredFromCatalog?: boolean;
   pluginUnavailableReason?: string;
   duplicateIdentity?: boolean;
+  applicationUnavailable?: boolean;
 } = {}) {
   const writes: CommunicationBindingInput[] = [];
   const optionRequests: URL[] = [];
@@ -152,10 +154,15 @@ export function setupCommunicationBinding({
       ...(duplicateIdentity && command.command_id === 'acme/reports/summary'
         ? { available: false, unavailable_reason: 'duplicate_command_identity' }
         : {}),
-      ...(application_id === 'app-2' && command.command_id === 'host/model'
+      ...((application_id === 'app-2' ||
+        (applicationUnavailable && application_id === saved?.application_id)) &&
+      command.command_id === 'host/model'
         ? {
             available: false,
-            unavailable_reason: 'model_selection_unavailable'
+            unavailable_reason:
+              applicationUnavailable && application_id === saved?.application_id
+                ? 'application_unavailable'
+                : 'model_selection_unavailable'
           }
         : {})
     }));
@@ -177,12 +184,24 @@ export function setupCommunicationBinding({
           published_agent_flows: [
             { application_id: 'app-1', name: 'Published App' },
             { application_id: 'app-2', name: 'Restricted App' }
-          ],
+          ].filter(
+            (application) =>
+              !applicationUnavailable ||
+              application.application_id !== saved?.application_id
+          ),
           enabled_mcp_instances: [
             { instance_id: 'extra', name: 'Extra service' },
             { instance_id: 'dedicated', name: 'Channel service' }
           ],
-          run_capabilities: capabilities,
+          run_capabilities:
+            applicationUnavailable &&
+            url.searchParams.get('application_id') === saved?.application_id
+              ? {
+                  model_selection_enabled: false,
+                  reasoning_effort_enabled: false,
+                  models: []
+                }
+              : capabilities,
           commands: catalog(
             url.searchParams.get('application_id'),
             url.searchParams.get('instance_id')

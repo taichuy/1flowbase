@@ -233,6 +233,28 @@ test('changing the application keeps unsaved toggles and requests the saved-chan
   });
 });
 
+test('an unavailable bound application stays readable and displays its backend command reason in both languages', async () => {
+  setup({ existing: true, applicationUnavailable: true });
+  await screen.findByDisplayValue('Custom prompt');
+  await settle();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(
+    screen.getByText(
+      'Unavailable: The application is unavailable or inaccessible'
+    )
+  ).toBeInTheDocument();
+  expect(commandSwitch('model')).toBeChecked();
+  expect(commandSwitch('model')).not.toBeDisabled();
+  expect(commandSwitch('summary')).toBeChecked();
+  fireEvent.click(commandSwitch('model'));
+  expect(commandSwitch('model')).toBeDisabled();
+  await act(async () => {
+    await appI18n.changeLanguage('zh_Hans');
+  });
+  expect(screen.getByText('不可用：应用不可用或无权访问')).toBeInTheDocument();
+  expect(screen.getByRole('switch', { name: '启用 model' })).not.toBeChecked();
+});
+
 test('conflicting installations remain visible and disabling their shared command writes one setting', async () => {
   const { ref, writes } = setup({ existing: true, duplicateIdentity: true });
   await screen.findByDisplayValue('Custom prompt');
