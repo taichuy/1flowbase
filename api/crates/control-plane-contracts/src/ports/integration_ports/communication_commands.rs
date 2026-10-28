@@ -103,12 +103,28 @@ pub trait CommunicationCommandRepository: Send + Sync {
         reply: CommunicationCommandReply,
         failure_code: Option<String>,
     ) -> Result<CommunicationCommandRecord>;
+    /// Host already validated the requested model against the bound application's capabilities.
+    /// Fence the command claim and active request session, select the chat model and commit the
+    /// reply/exclusion together, so an expired worker cannot overwrite a later selection.
+    async fn select_communication_command_model(
+        &self,
+        claim: &ClaimedBuiltinCommunicationCommand,
+        model: &str,
+        reply: CommunicationCommandReply,
+    ) -> Result<CommunicationCommandRecord>;
     async fn pending_communication_command_responses(
         &self,
         workspace_id: Uuid,
         instance_id: Uuid,
         limit: u32,
     ) -> Result<Vec<CommunicationCommandRecord>>;
+    /// Resolve immutable provider destination only from the fully scoped persisted request,
+    /// original inbound receipt and conversation. Worker results cannot supply any selector.
+    async fn communication_command_response_target(
+        &self,
+        scope: &CommunicationConversationScope,
+        event_id: Uuid,
+    ) -> Result<Option<extension_contracts::NotificationSendTarget>>;
     /// Reserves once. An abandoned reservation becomes unknown; it is never automatically resent.
     async fn reserve_communication_command_response(
         &self,

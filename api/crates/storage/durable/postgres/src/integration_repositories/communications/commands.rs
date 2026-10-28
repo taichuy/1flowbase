@@ -326,6 +326,62 @@ impl CommunicationCommandRepository for PgControlPlaneStore {
         rows.iter().map(record).collect()
     }
 
+    async fn select_communication_command_model(
+        &self,
+        claim: &ClaimedBuiltinCommunicationCommand,
+        model: &str,
+        reply: CommunicationCommandReply,
+    ) -> Result<CommunicationCommandRecord> {
+        anyhow::ensure!(!model.trim().is_empty(), "command model must not be empty");
+        reply.validate()?;
+        let scope = &claim.record.scope;
+        let mut tx = self.pool().begin().await?;
+        anyhow::ensure!(
+            sessions::lock_chat(&mut tx, scope, true).await?.is_some(),
+            "command channel inactive"
+        );
+        let row = scoped(&mut tx, scope, claim.record.event_id)
+            .await?
+            .ok_or(Error::NotFound("communication_command"))?;
+        let current = record(&row)?;
+        anyhow::ensure!(
+            current.installation_id.is_none() && current.request.command_id == "host/model",
+            "model selection requires registered builtin command"
+        );
+        anyhow::ensure!(
+            current.request.arguments == model,
+            "model selection must match persisted command intent"
+        );
+        if current.reply.is_some() {
+            tx.commit().await?;
+            return Ok(current);
+        }
+        let requested = Uuid::parse_str(&current.request.session_id)?;
+        let valid: bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM communication_command_events e JOIN communication_sessions s ON s.id=e.session_id AND s.scope_id=e.scope_id AND s.instance_id=e.instance_id AND s.external_identity=e.external_identity AND s.conversation_id=e.conversation_id AND s.active WHERE e.event_id=$1 AND e.effect_claim_id=$2 AND e.effect_claim_expires_at>clock_timestamp())")
+            .bind(current.event_id).bind(claim.claim_id).fetch_one(&mut *tx).await?;
+        anyhow::ensure!(valid, "command effect claim or session expired");
+        let config: Value = sqlx::query_scalar(
+            "SELECT config_json FROM communication_bindings WHERE scope_id=$1 AND instance_id=$2",
+        )
+        .bind(scope.workspace_id)
+        .bind(scope.instance_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let binding: CommunicationBindingInput = serde_json::from_value(config)?;
+        anyhow::ensure!(
+            !binding
+                .command_settings
+                .iter()
+                .any(|setting| setting.command_id == "host/model" && !setting.enabled),
+            "model command disabled before selection"
+        );
+        sqlx::query("UPDATE communication_conversations SET selected_model=$5 WHERE scope_id=$1 AND instance_id=$2 AND external_identity=$3 AND id=$4")
+            .bind(scope.workspace_id).bind(scope.instance_id).bind(&scope.external_identity).bind(scope.conversation_id).bind(model).execute(&mut *tx).await?;
+        let result = finish(&mut tx, current, requested, reply, None).await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+
     async fn reserve_communication_command_response(
         &self,
         scope: &CommunicationConversationScope,
@@ -356,6 +412,24 @@ impl CommunicationCommandRepository for PgControlPlaneStore {
             record: record(&row)?,
             claim_id,
         }))
+    }
+
+    async fn communication_command_response_target(
+        &self,
+        scope: &CommunicationConversationScope,
+        event_id: Uuid,
+    ) -> Result<Option<extension_contracts::NotificationSendTarget>> {
+        let row = sqlx::query("SELECT c.external_identity,c.external_conversation_key,i.external_message_key FROM communication_command_events e JOIN communication_inputs i ON i.id=e.input_id AND i.scope_id=e.scope_id AND i.instance_id=e.instance_id AND i.external_identity=e.external_identity AND i.conversation_id=e.conversation_id JOIN communication_conversations c ON c.id=e.conversation_id AND c.scope_id=e.scope_id AND c.instance_id=e.instance_id AND c.external_identity=e.external_identity WHERE e.scope_id=$1 AND e.instance_id=$2 AND e.external_identity=$3 AND e.conversation_id=$4 AND e.event_id=$5 AND e.reply_json IS NOT NULL")
+            .bind(scope.workspace_id).bind(scope.instance_id).bind(&scope.external_identity).bind(scope.conversation_id).bind(event_id).fetch_optional(self.pool()).await?;
+        row.as_ref()
+            .map(|row| {
+                Ok(extension_contracts::NotificationSendTarget {
+                    sender_id: row.try_get("external_identity")?,
+                    conversation_id: row.try_get("external_conversation_key")?,
+                    provider_message_id: row.try_get("external_message_key")?,
+                })
+            })
+            .transpose()
     }
 
     async fn record_communication_command_response(

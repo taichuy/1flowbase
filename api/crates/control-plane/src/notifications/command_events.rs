@@ -142,6 +142,18 @@ where
             .complete_builtin_communication_command(claim, response_session_id, reply, failure_code)
             .await
     }
+    pub async fn select_command_model(
+        &self,
+        claim: &ClaimedBuiltinCommunicationCommand,
+        model: &str,
+        reply: CommunicationCommandReply,
+    ) -> Result<CommunicationCommandRecord> {
+        anyhow::ensure!(!model.trim().is_empty(), "command model must not be empty");
+        reply.validate()?;
+        self.repository
+            .select_communication_command_model(claim, model, reply)
+            .await
+    }
     pub async fn pending_command_responses(
         &self,
         workspace_id: Uuid,
@@ -159,6 +171,15 @@ where
     ) -> Result<Option<ClaimedCommunicationCommandResponse>> {
         self.repository
             .reserve_communication_command_response(scope, event_id)
+            .await
+    }
+    pub async fn command_response_target(
+        &self,
+        scope: &CommunicationConversationScope,
+        event_id: Uuid,
+    ) -> Result<Option<extension_contracts::NotificationSendTarget>> {
+        self.repository
+            .communication_command_response_target(scope, event_id)
             .await
     }
     pub async fn record_command_response(
