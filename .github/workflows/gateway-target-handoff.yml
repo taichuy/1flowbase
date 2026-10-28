@@ -38,8 +38,6 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres -d qadb_gateway2691_positive"
           --health-interval 5s --health-timeout 5s --health-retries 12
-    env:
-      PG_SERVICE_ID: ${{ job.services.postgres.id }}
     steps:
       - name: Initialize public-only evidence
         shell: bash
@@ -78,6 +76,8 @@ jobs:
           cache-targets: false
           cache-on-failure: true
       - name: Build and execute only frozen positive gaps
+        env:
+          PG_SERVICE_ID: ${{ job.services.postgres.id }}
         shell: bash
         run: >-
           python3 "$QA_CI_INPUT/runner.py" run
@@ -86,6 +86,8 @@ jobs:
           --output "$QA_CI_OUT"
           --manifest "$QA_CI_INPUT/manifest.json"
       - name: Always retain available binaries and receipts
+        env:
+          PG_SERVICE_ID: ${{ job.services.postgres.id }}
         if: always()
         shell: bash
         run: |
