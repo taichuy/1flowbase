@@ -1,5 +1,5 @@
 //! Real PostgreSQL ordering/fencing fixtures for the Root's single concentrated Test Batch.
-use super::communications::{authorization, config, create_channel, received, KEY};
+use super::communications::{KEY, authorization, config, create_channel, received};
 use control_plane::{notifications::NotificationService, ports::*};
 use domain::*;
 use serde_json::json;
@@ -169,11 +169,13 @@ async fn communication_session_first_admission_and_turn_claim_have_one_owner() {
         },
     ] {
         assert!(service.admit_input(&forged, input).await.unwrap().is_none());
-        assert!(service
-            .pending_admissions(&forged)
-            .await
-            .unwrap()
-            .is_empty());
+        assert!(
+            service
+                .pending_admissions(&forged)
+                .await
+                .unwrap()
+                .is_empty()
+        );
         assert!(service.active_session(&forged).await.unwrap().is_none());
         let bad = CommunicationTurnClaim {
             scope: forged,
@@ -212,10 +214,12 @@ async fn communication_turn_append_checkpoint_and_seal_preserve_every_original_o
         assert_eq!(peek.inputs[0].input_id, first);
         assert_eq!(peek.turn.consumed_watermark, 0, "peek does not ACK input");
     }
-    assert!(service
-        .checkpoint_turn(claim, checkpoint(0, 1))
-        .await
-        .unwrap());
+    assert!(
+        service
+            .checkpoint_turn(claim, checkpoint(0, 1))
+            .await
+            .unwrap()
+    );
     let second = receive(&store, &service, &scope, "supplement", true).await;
     let pending = match service.seal_turn(claim, candidate(1, 1)).await.unwrap() {
         CommunicationTurnSeal::Pending(pending) => pending,
@@ -252,18 +256,20 @@ async fn communication_turn_append_checkpoint_and_seal_preserve_every_original_o
     let file = peek.inputs[0].attachments[0].record.id;
     let file_table = Uuid::now_v7();
     let file_record = Uuid::now_v7();
-    assert!(service
-        .record_turn_attached_file(
-            claim,
-            CommunicationAttachmentUpdate {
-                attachment_id: file,
-                file_table_id: Some(file_table),
-                file_record_id: Some(file_record),
-                failure_code: None
-            }
-        )
-        .await
-        .unwrap());
+    assert!(
+        service
+            .record_turn_attached_file(
+                claim,
+                CommunicationAttachmentUpdate {
+                    attachment_id: file,
+                    file_table_id: Some(file_table),
+                    file_record_id: Some(file_record),
+                    failure_code: None
+                }
+            )
+            .await
+            .unwrap()
+    );
     assert!(
         !service
             .checkpoint_turn(claim, checkpoint(0, 2))
@@ -271,10 +277,12 @@ async fn communication_turn_append_checkpoint_and_seal_preserve_every_original_o
             .unwrap(),
         "old checkpoint writers lose CAS"
     );
-    assert!(service
-        .checkpoint_turn(claim, checkpoint(1, 2))
-        .await
-        .unwrap());
+    assert!(
+        service
+            .checkpoint_turn(claim, checkpoint(1, 2))
+            .await
+            .unwrap()
+    );
     let stale = match service.seal_turn(claim, candidate(1, 1)).await.unwrap() {
         CommunicationTurnSeal::Pending(pending) => pending,
         _ => panic!("stale final watermark must resume, never send"),
@@ -310,14 +318,18 @@ async fn communication_turn_append_checkpoint_and_seal_preserve_every_original_o
             .is_none(),
         "prior send remains ordered before next turn"
     );
-    assert!(service
-        .record_turn_progress(claim, CommunicationTurnProgress::SendSucceeded)
-        .await
-        .unwrap());
-    assert!(!service
-        .record_turn_progress(claim, CommunicationTurnProgress::SendSucceeded)
-        .await
-        .unwrap());
+    assert!(
+        service
+            .record_turn_progress(claim, CommunicationTurnProgress::SendSucceeded)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !service
+            .record_turn_progress(claim, CommunicationTurnProgress::SendSucceeded)
+            .await
+            .unwrap()
+    );
     assert_eq!(
         service
             .claim_pending_turn(scope.workspace_id, scope.instance_id, 60)
@@ -372,14 +384,18 @@ async fn communication_session_rotation_is_idempotent_fenced_and_chat_model_scop
         .unwrap();
     let run = Uuid::now_v7();
     assert!(service.link_turn_run(&claimed.claim, run).await.unwrap());
-    assert!(service
-        .checkpoint_turn(&claimed.claim, checkpoint(0, 1))
-        .await
-        .unwrap());
-    assert!(service
-        .select_model(&scope, Some("chat-selected-model"))
-        .await
-        .unwrap());
+    assert!(
+        service
+            .checkpoint_turn(&claimed.claim, checkpoint(0, 1))
+            .await
+            .unwrap()
+    );
+    assert!(
+        service
+            .select_model(&scope, Some("chat-selected-model"))
+            .await
+            .unwrap()
+    );
     assert_eq!(
         claimed.pending.turn.selected_model.as_deref(),
         Some("binding-model"),
@@ -402,10 +418,12 @@ async fn communication_session_rotation_is_idempotent_fenced_and_chat_model_scop
     );
     assert!(!service.renew_turn_claim(&claimed.claim, 60).await.unwrap());
     assert!(service.turn_inputs(&claimed.claim).await.unwrap().is_none());
-    assert!(!service
-        .checkpoint_turn(&claimed.claim, checkpoint(1, 1))
-        .await
-        .unwrap());
+    assert!(
+        !service
+            .checkpoint_turn(&claimed.claim, checkpoint(1, 1))
+            .await
+            .unwrap()
+    );
     assert!(matches!(
         service
             .seal_turn(&claimed.claim, candidate(1, 1))
@@ -413,19 +431,23 @@ async fn communication_session_rotation_is_idempotent_fenced_and_chat_model_scop
             .unwrap(),
         CommunicationTurnSeal::Fenced
     ));
-    assert!(!service
-        .record_turn_progress(
-            &claimed.claim,
-            CommunicationTurnProgress::RunFailed {
-                failure_code: "late-result".into()
-            }
-        )
-        .await
-        .unwrap());
-    assert!(!store
-        .retry_communication_message(scope.workspace_id, scope.instance_id, first)
-        .await
-        .unwrap());
+    assert!(
+        !service
+            .record_turn_progress(
+                &claimed.claim,
+                CommunicationTurnProgress::RunFailed {
+                    failure_code: "late-result".into()
+                }
+            )
+            .await
+            .unwrap()
+    );
+    assert!(
+        !store
+            .retry_communication_message(scope.workspace_id, scope.instance_id, first)
+            .await
+            .unwrap()
+    );
     let input = receive(&store, &service, &scope, "new-session-input", false).await;
     let next = service.admit_input(&scope, input).await.unwrap().unwrap();
     assert_eq!(next.session.id, left.session.id);
@@ -438,15 +460,19 @@ async fn communication_session_rotation_is_idempotent_fenced_and_chat_model_scop
         external_identity: "bob".into(),
         ..scope.clone()
     };
-    assert!(!service
-        .select_model(&wrong, Some("forged-model"))
-        .await
-        .unwrap());
-    assert!(service
-        .rotate_session(&wrong, "command-provider-id")
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        !service
+            .select_model(&wrong, Some("forged-model"))
+            .await
+            .unwrap()
+    );
+    assert!(
+        service
+            .rotate_session(&wrong, "command-provider-id")
+            .await
+            .unwrap()
+            .is_none()
+    );
     let revision = store
         .resolve_notification_authorization(scope.workspace_id, scope.instance_id, KEY)
         .await
@@ -501,10 +527,12 @@ async fn communication_turn_reclaim_and_explicit_send_retry_keep_run_and_unknown
         .unwrap();
     let run = Uuid::now_v7();
     assert!(service.link_turn_run(&original.claim, run).await.unwrap());
-    assert!(service
-        .checkpoint_turn(&original.claim, checkpoint(0, 1))
-        .await
-        .unwrap());
+    assert!(
+        service
+            .checkpoint_turn(&original.claim, checkpoint(0, 1))
+            .await
+            .unwrap()
+    );
     sqlx::query("UPDATE communication_reply_turns SET claim_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1").bind(original.claim.turn_id).execute(store.pool()).await.unwrap();
     let resumed = service
         .claim_pending_turn(scope.workspace_id, scope.instance_id, 60)
@@ -519,10 +547,12 @@ async fn communication_turn_reclaim_and_explicit_send_retry_keep_run_and_unknown
         resumed.pending.checkpoint.unwrap()["completed_nodes"]["tool"]["effect_id"],
         "already-committed"
     );
-    assert!(!service
-        .link_turn_run(&resumed.claim, Uuid::now_v7())
-        .await
-        .unwrap());
+    assert!(
+        !service
+            .link_turn_run(&resumed.claim, Uuid::now_v7())
+            .await
+            .unwrap()
+    );
     assert!(matches!(
         service
             .seal_turn(&original.claim, candidate(1, 1))
@@ -537,19 +567,23 @@ async fn communication_turn_reclaim_and_explicit_send_retry_keep_run_and_unknown
             .unwrap(),
         CommunicationTurnSeal::Reserved { .. }
     ));
-    assert!(service
-        .record_turn_progress(
-            &resumed.claim,
-            CommunicationTurnProgress::SendFailed {
-                failure_code: "known-rejected".into()
-            }
-        )
-        .await
-        .unwrap());
-    assert!(store
-        .retry_communication_message(scope.workspace_id, scope.instance_id, first)
-        .await
-        .unwrap());
+    assert!(
+        service
+            .record_turn_progress(
+                &resumed.claim,
+                CommunicationTurnProgress::SendFailed {
+                    failure_code: "known-rejected".into()
+                }
+            )
+            .await
+            .unwrap()
+    );
+    assert!(
+        store
+            .retry_communication_message(scope.workspace_id, scope.instance_id, first)
+            .await
+            .unwrap()
+    );
     let retried = service
         .claim_pending_turn(scope.workspace_id, scope.instance_id, 60)
         .await
@@ -565,21 +599,27 @@ async fn communication_turn_reclaim_and_explicit_send_retry_keep_run_and_unknown
             .as_deref(),
         Some("one complete answer")
     );
-    assert!(service
-        .reserve_turn_send(&retried.claim)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        service
+            .reserve_turn_send(&retried.claim)
+            .await
+            .unwrap()
+            .is_none()
+    );
     sqlx::query("UPDATE communication_reply_turns SET claim_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1").bind(retried.claim.turn_id).execute(store.pool()).await.unwrap();
-    assert!(service
-        .claim_pending_turn(scope.workspace_id, scope.instance_id, 60)
-        .await
-        .unwrap()
-        .is_none());
-    assert!(!store
-        .retry_communication_message(scope.workspace_id, scope.instance_id, first)
-        .await
-        .unwrap());
+    assert!(
+        service
+            .claim_pending_turn(scope.workspace_id, scope.instance_id, 60)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !store
+            .retry_communication_message(scope.workspace_id, scope.instance_id, first)
+            .await
+            .unwrap()
+    );
     let facts: (String, i64) = sqlx::query_as("SELECT t.send_status,(SELECT count(*) FROM communication_messages WHERE direction='outbound') FROM communication_reply_turns t WHERE t.id=$1").bind(retried.claim.turn_id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(facts, ("unknown".into(), 1));
 }
@@ -589,16 +629,20 @@ async fn communication_command_exclusion_and_rotation_revoke_unsent_retry() {
     let (store, service, scope, command) = fixture().await;
     assert!(service.exclude_input(&scope, command).await.unwrap());
     assert!(service.exclude_input(&scope, command).await.unwrap());
-    assert!(service
-        .admit_input(&scope, command)
-        .await
-        .unwrap()
-        .is_none());
-    assert!(service
-        .claim_pending_input(scope.workspace_id, scope.instance_id, 60)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        service
+            .admit_input(&scope, command)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        service
+            .claim_pending_input(scope.workspace_id, scope.instance_id, 60)
+            .await
+            .unwrap()
+            .is_none()
+    );
     let ordinary = receive(&store, &service, &scope, "ordinary", false).await;
     service
         .admit_input(&scope, ordinary)
@@ -610,14 +654,18 @@ async fn communication_command_exclusion_and_rotation_revoke_unsent_retry() {
         .await
         .unwrap()
         .unwrap();
-    assert!(service
-        .link_turn_run(&claimed.claim, Uuid::now_v7())
-        .await
-        .unwrap());
-    assert!(service
-        .checkpoint_turn(&claimed.claim, checkpoint(0, 1))
-        .await
-        .unwrap());
+    assert!(
+        service
+            .link_turn_run(&claimed.claim, Uuid::now_v7())
+            .await
+            .unwrap()
+    );
+    assert!(
+        service
+            .checkpoint_turn(&claimed.claim, checkpoint(0, 1))
+            .await
+            .unwrap()
+    );
     assert!(matches!(
         service
             .seal_turn(&claimed.claim, candidate(1, 1))
@@ -625,19 +673,23 @@ async fn communication_command_exclusion_and_rotation_revoke_unsent_retry() {
             .unwrap(),
         CommunicationTurnSeal::Reserved { .. }
     ));
-    assert!(service
-        .record_turn_progress(
-            &claimed.claim,
-            CommunicationTurnProgress::SendFailed {
-                failure_code: "not-submitted".into()
-            }
-        )
-        .await
-        .unwrap());
-    assert!(store
-        .retry_communication_message(scope.workspace_id, scope.instance_id, ordinary)
-        .await
-        .unwrap());
+    assert!(
+        service
+            .record_turn_progress(
+                &claimed.claim,
+                CommunicationTurnProgress::SendFailed {
+                    failure_code: "not-submitted".into()
+                }
+            )
+            .await
+            .unwrap()
+    );
+    assert!(
+        store
+            .retry_communication_message(scope.workspace_id, scope.instance_id, ordinary)
+            .await
+            .unwrap()
+    );
     let retry = service
         .claim_pending_turn(scope.workspace_id, scope.instance_id, 60)
         .await
@@ -648,15 +700,19 @@ async fn communication_command_exclusion_and_rotation_revoke_unsent_retry() {
         .await
         .unwrap()
         .unwrap();
-    assert!(service
-        .reserve_turn_send(&retry.claim)
-        .await
-        .unwrap()
-        .is_none());
-    assert!(!store
-        .retry_communication_message(scope.workspace_id, scope.instance_id, ordinary)
-        .await
-        .unwrap());
+    assert!(
+        service
+            .reserve_turn_send(&retry.claim)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !store
+            .retry_communication_message(scope.workspace_id, scope.instance_id, ordinary)
+            .await
+            .unwrap()
+    );
     let originals: i64 =
         sqlx::query_scalar("SELECT count(*) FROM communication_messages WHERE direction='inbound'")
             .fetch_one(store.pool())
@@ -696,13 +752,14 @@ async fn communication_pending_scan_keeps_file_only_inputs_and_command_order_bar
         .scan_pending_admissions(scope.workspace_id, scope.instance_id, 100)
         .await
         .unwrap();
-    assert_eq!(scan.len(), 2);
+    assert_eq!(
+        scan.len(),
+        1,
+        "scan exposes only the earliest input in each chat"
+    );
     assert_eq!(scan[0].input_id, command);
     assert_eq!(scan[0].content.as_deref(), Some("/model selected-model"));
-    assert_eq!(scan[1].content, None);
-    assert!(scan[1].has_attachments);
-    assert_eq!(scan[1].conversation.id, scope.conversation_id);
-    let file_input = scan[1].input_id;
+    let file_input = service.pending_admissions(&scope).await.unwrap()[1];
     assert_eq!(
         service
             .scan_pending_admissions(scope.workspace_id, scope.instance_id, 1)
@@ -711,11 +768,13 @@ async fn communication_pending_scan_keeps_file_only_inputs_and_command_order_bar
             .len(),
         1
     );
-    assert!(service
-        .scan_pending_admissions(Uuid::now_v7(), scope.instance_id, 100)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        service
+            .scan_pending_admissions(Uuid::now_v7(), scope.instance_id, 100)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(
         service
             .admit_input(&scope, file_input)
@@ -724,12 +783,23 @@ async fn communication_pending_scan_keeps_file_only_inputs_and_command_order_bar
             .is_none(),
         "later ordinary input cannot overtake an unresolved command"
     );
-    assert!(service
-        .select_model(&scope, Some("selected-model"))
-        .await
-        .unwrap());
+    assert!(
+        service
+            .select_model(&scope, Some("selected-model"))
+            .await
+            .unwrap()
+    );
     // The command lane commits its own effect/reply receipt before this completion call.
     assert!(service.exclude_input(&scope, command).await.unwrap());
+    let scan = service
+        .scan_pending_admissions(scope.workspace_id, scope.instance_id, 100)
+        .await
+        .unwrap();
+    assert_eq!(scan.len(), 1);
+    assert_eq!(scan[0].input_id, file_input);
+    assert_eq!(scan[0].content, None);
+    assert!(scan[0].has_attachments);
+    assert_eq!(scan[0].conversation.id, scope.conversation_id);
     let admitted = service
         .admit_input(&scope, file_input)
         .await
@@ -760,37 +830,47 @@ async fn communication_turn_explicit_failed_run_retry_updates_all_members_togeth
         .await
         .unwrap()
         .unwrap();
-    assert!(service
-        .link_turn_run(&claimed.claim, Uuid::now_v7())
-        .await
-        .unwrap());
-    assert!(service
-        .checkpoint_turn(&claimed.claim, checkpoint(0, 2))
-        .await
-        .unwrap());
-    assert!(service
-        .record_turn_progress(
-            &claimed.claim,
-            CommunicationTurnProgress::RunFailed {
-                failure_code: "runtime-failed".into()
-            }
-        )
-        .await
-        .unwrap());
+    assert!(
+        service
+            .link_turn_run(&claimed.claim, Uuid::now_v7())
+            .await
+            .unwrap()
+    );
+    assert!(
+        service
+            .checkpoint_turn(&claimed.claim, checkpoint(0, 2))
+            .await
+            .unwrap()
+    );
+    assert!(
+        service
+            .record_turn_progress(
+                &claimed.claim,
+                CommunicationTurnProgress::RunFailed {
+                    failure_code: "runtime-failed".into()
+                }
+            )
+            .await
+            .unwrap()
+    );
     let statuses: Vec<String> =
         sqlx::query_scalar("SELECT processing_status FROM communication_inputs ORDER BY id")
             .fetch_all(store.pool())
             .await
             .unwrap();
     assert_eq!(statuses, vec!["failed", "failed"]);
-    assert!(store
-        .retry_communication_message(scope.workspace_id, scope.instance_id, second)
-        .await
-        .unwrap());
-    assert!(!store
-        .retry_communication_message(scope.workspace_id, scope.instance_id, first)
-        .await
-        .unwrap());
+    assert!(
+        store
+            .retry_communication_message(scope.workspace_id, scope.instance_id, second)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !store
+            .retry_communication_message(scope.workspace_id, scope.instance_id, first)
+            .await
+            .unwrap()
+    );
     let retried = service
         .claim_pending_turn(scope.workspace_id, scope.instance_id, 60)
         .await
@@ -824,14 +904,18 @@ async fn communication_rotation_retains_unknown_submission_and_accepts_only_its_
         .await
         .unwrap()
         .unwrap();
-    assert!(service
-        .link_turn_run(&claimed.claim, Uuid::now_v7())
-        .await
-        .unwrap());
-    assert!(service
-        .checkpoint_turn(&claimed.claim, checkpoint(0, 1))
-        .await
-        .unwrap());
+    assert!(
+        service
+            .link_turn_run(&claimed.claim, Uuid::now_v7())
+            .await
+            .unwrap()
+    );
+    assert!(
+        service
+            .checkpoint_turn(&claimed.claim, checkpoint(0, 1))
+            .await
+            .unwrap()
+    );
     assert!(matches!(
         service
             .seal_turn(&claimed.claim, candidate(1, 1))
@@ -854,15 +938,19 @@ async fn communication_rotation_retains_unknown_submission_and_accepts_only_its_
         send, "unknown",
         "rotation cannot claim an in-flight provider submission was undone"
     );
-    assert!(service
-        .reserve_turn_send(&claimed.claim)
-        .await
-        .unwrap()
-        .is_none());
-    assert!(!store
-        .retry_communication_message(scope.workspace_id, scope.instance_id, first)
-        .await
-        .unwrap());
+    assert!(
+        service
+            .reserve_turn_send(&claimed.claim)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !store
+            .retry_communication_message(scope.workspace_id, scope.instance_id, first)
+            .await
+            .unwrap()
+    );
     assert!(
         service
             .record_turn_progress(&claimed.claim, CommunicationTurnProgress::SendSucceeded)
@@ -870,10 +958,12 @@ async fn communication_rotation_retains_unknown_submission_and_accepts_only_its_
             .unwrap(),
         "a response from the already submitted send may settle its original receipt"
     );
-    assert!(!service
-        .record_turn_progress(&claimed.claim, CommunicationTurnProgress::SendSucceeded)
-        .await
-        .unwrap());
+    assert!(
+        !service
+            .record_turn_progress(&claimed.claim, CommunicationTurnProgress::SendSucceeded)
+            .await
+            .unwrap()
+    );
     let sent: (String, String) =
         sqlx::query_as("SELECT state,send_status FROM communication_reply_turns WHERE id=$1")
             .bind(claimed.claim.turn_id)
