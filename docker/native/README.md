@@ -8,22 +8,48 @@ Extract the archive. On Windows, double-click `1flowbase.exe`. On Linux/macOS, r
 
 PostgreSQL listens only on `127.0.0.1:35432`. An occupied port causes an error; the launcher never adopts or stops another database. Platforms such as Windows ARM64 need matching PostgreSQL and plugin artifacts; an archive name does not certify platform support.
 
-The initial `root` password is the `root_password` field in `settings.json` inside the data directory. Startup prints the file location. Keep this file private: it also contains the database password and credential encryption key.
+The default account is `root`. Its randomly generated initial password is the `root_password` field in `data/settings.json` beside the executable. Startup prints the file location. Keep this file private: it also contains the database password and credential encryption key.
 
 ## Persistent data
 
-Defaults: Linux `${XDG_DATA_HOME:-$HOME/.local/share}/1flowbase`; macOS `~/Library/Application Support/1flowbase`; Windows `%LOCALAPPDATA%\1flowbase`.
+All platforms default to **`data/` beside the executable**, regardless of the working directory used to launch it. Extract the package to a writable directory; there is no automatic fallback to a user profile directory.
+
+```text
+1flowbase-windows-x64/
+├── 1flowbase.exe
+├── postgres/             # Bundled database binaries
+└── data/                 # Created on first launch; preserve during upgrades
+    ├── settings.json     # root_password, database password, encryption key
+    ├── postgres/         # Database cluster
+    ├── postgres.log
+    ├── api/              # Business files, installed plugins, etc.
+    └── backups/
+```
+
+Linux/macOS use the executable name `1flowbase` with the same data layout. Distribution archives never include existing `data/` or user passwords.
 
 | Environment variable | Default | Purpose |
 | --- | --- | --- |
-| `FLOWBASE_DATA_DIR` | User directory above | Persistent data location |
+| `FLOWBASE_DATA_DIR` | `<executable-directory>/data` | Explicit alternative data location; relative values resolve against the launch working directory |
 | `FLOWBASE_PORT` | `7800` | Local web/API port |
 | `FLOWBASE_POSTGRES_PORT` | `35432` | Private database port |
 | `FLOWBASE_OPEN_BROWSER` | Enabled | Set to `false` to disable browser opening |
 
 Example on Linux/macOS: `FLOWBASE_PORT=17800 FLOWBASE_POSTGRES_PORT=45432 ./start.sh`. On Windows PowerShell, set `$env:FLOWBASE_PORT='17800'`, then run `.\1flowbase.exe`.
 
-Only one instance may use a data directory. Do not delete `settings.json` or copy/move live database files. Before upgrading, stop normally and create a restorable backup, then extract the new program archive while preserving the complete data directory and configuration. Automatic PostgreSQL major upgrades are not supported; schema migrations may prevent running an older application binary against the updated database. After an abnormal exit, if PostgreSQL is still running, verify the instance and stop it with the bundled `postgres/bin/pg_ctl -D <data-directory>/postgres stop -m fast -w` before restarting. Do not remove PID files manually.
+Only one instance may use a data directory. Do not delete `settings.json` or copy/move live database files. Before upgrading, stop normally and create a restorable backup, then extract the new program archive while preserving the complete `data/` directory and configuration. When upgrading into another program directory, copy the complete `data/` there before launching. Automatic PostgreSQL major upgrades are not supported; schema migrations may prevent running an older application binary against the updated database. After an abnormal exit, if PostgreSQL is still running, verify the instance and stop it with the bundled `postgres/bin/pg_ctl -D <data-directory>/postgres stop -m fast -w` before restarting. Do not remove PID files manually.
+
+## Migrating from earlier experimental packages
+
+Earlier defaults were `%LOCALAPPDATA%\1flowbase` on Windows, `${XDG_DATA_HOME:-$HOME/.local/share}/1flowbase` on Linux, and `~/Library/Application Support/1flowbase` on macOS.
+
+If the new local data directory has no configuration or database but the old location does, startup stops with both paths. It does not create an empty replacement database or move files automatically.
+
+1. Stop the old application normally with Ctrl+C and confirm its PostgreSQL instance has stopped.
+2. Copy the **entire contents** of the old directory into `data/` beside the new executable, including `settings.json`, `postgres/`, business files and plugins. Do not copy only the password file or merge two existing databases.
+3. Launch the new package and confirm the original account and data work before deciding what to do with the retained old backup.
+
+To intentionally keep using the old location, set `FLOWBASE_DATA_DIR` explicitly. Existing local data takes precedence; the launcher never merges or overwrites the old directory.
 
 ## Build and validation scope
 

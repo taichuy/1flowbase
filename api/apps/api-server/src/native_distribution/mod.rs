@@ -1,4 +1,5 @@
 //! Native distribution owns a private PostgreSQL instance; the API remains one process.
+mod paths;
 mod postgres;
 mod settings;
 pub mod static_web;
@@ -36,7 +37,7 @@ impl NativeDistribution {
             root.join("web/index.html").is_file(),
             "Incomplete native package: web/index.html"
         );
-        let data = settings::data_root()?;
+        let data = paths::data_root(&root)?;
         settings::private_dir(&data)?;
         let lock = fs::OpenOptions::new()
             .read(true)

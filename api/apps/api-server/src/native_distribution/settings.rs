@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     env, fs,
     io::Write,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -32,25 +32,6 @@ pub(super) fn private_file(path: &Path) -> Result<fs::File> {
         options.mode(0o600);
     }
     Ok(options.open(path)?)
-}
-
-pub(super) fn data_root() -> Result<PathBuf> {
-    if let Some(path) = env::var_os("FLOWBASE_DATA_DIR") {
-        anyhow::ensure!(!path.is_empty(), "FLOWBASE_DATA_DIR is empty");
-        return Ok(std::path::absolute(path)?);
-    }
-    #[cfg(target_os = "windows")]
-    let root = PathBuf::from(env::var_os("LOCALAPPDATA").context("LOCALAPPDATA missing")?);
-    #[cfg(target_os = "macos")]
-    let root = PathBuf::from(env::var_os("HOME").context("HOME missing")?)
-        .join("Library/Application Support");
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    let root = match env::var_os("XDG_DATA_HOME").filter(|value| !value.is_empty()) {
-        Some(path) => PathBuf::from(path),
-        None => PathBuf::from(env::var_os("HOME").context("HOME missing")?).join(".local/share"),
-    };
-    anyhow::ensure!(root.is_absolute(), "User data directory must be absolute");
-    Ok(root.join("1flowbase"))
 }
 
 pub(super) fn port(key: &str, default: u16) -> Result<u16> {

@@ -11,8 +11,14 @@ fn packaged_application_bootstraps_and_reopens() {
         std::env::var_os("FLOWBASE_TEST_PACKAGE_ROOT")
             .expect("FLOWBASE_TEST_PACKAGE_ROOT must point to the staged distribution"),
     );
-    let directory = Directory::new();
-    let data = directory.0.join("application data with spaces");
+    std::env::remove_var("FLOWBASE_DATA_DIR");
+    let data = crate::native_distribution::paths::data_root(&root).unwrap();
+    assert_eq!(data, root.join("data"));
+    assert!(
+        !data.exists(),
+        "bootstrap test requires a fresh staged package"
+    );
+    let _directory = Directory(data.clone());
     private_dir(&data).unwrap();
     let settings = Settings::load_or_create(&data).unwrap();
     let http = TcpListener::bind(("127.0.0.1", 0)).unwrap();
