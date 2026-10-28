@@ -1,4 +1,5 @@
 //! Communication adapter and final-success gate. File authorization/import stays in the host.
+mod events;
 use super::*;
 use crate::{
     notifications::NotificationService,

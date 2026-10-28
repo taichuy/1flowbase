@@ -9,6 +9,9 @@ use axum::{
 use control_plane::ports::{OrchestrationRuntimeRepository, RoleRepository};
 use tower::ServiceExt;
 
+#[path = "waiting_stream.rs"]
+mod waiting_stream;
+
 pub(super) async fn api(
     app: &Router,
     cookie: &str,
@@ -92,7 +95,8 @@ pub(super) async fn execution_diagnostics(
 }
 
 async fn pipeline(callback: bool) {
-    let fixture = Fixture::new().await;
+    let stream = Arc::new(waiting_stream::WaitingStream::default());
+    let fixture = Fixture::with_event_stream(None, Some(stream.clone())).await;
     fixture.receive().await;
     let foreign_conversation: Uuid = sqlx::query_scalar("SELECT id FROM communication_conversations WHERE instance_id=$1 AND external_identity='bob'")
         .bind(fixture.channel).fetch_one(fixture.state.store.pool()).await.unwrap();
@@ -213,7 +217,16 @@ async fn pipeline(callback: bool) {
         sqlx::query("UPDATE users SET status='active' WHERE id=$1").bind(fixture.actor.user_id).execute(fixture.state.store.pool()).await.unwrap();
         assert_eq!(status,StatusCode::FORBIDDEN,"operator must not substitute for a disabled configuring actor: {denied}");
         assert_eq!(denied["code"], "communication_execution_denied", "the configuring-actor guard must be reached: {denied}");
-        let (status,resumed) = api(&app,&operator_cookie,&operator_csrf,"POST",&path,body).await;
+        // Force a resume after the waiting DB commit but before the old stream closes.
+        // The new producer must wait for the old one, then own a fresh generation.
+        stream.waiting_entered.notified().await;
+        let resume_app = app.clone();
+        let resume = tokio::spawn(async move {
+            api(&resume_app,&operator_cookie,&operator_csrf,"POST",&path,body).await
+        });
+        stream.resume_entered.notified().await;
+        stream.release_waiting.notify_one();
+        let (status,resumed) = resume.await.unwrap();
         assert_eq!(status,StatusCode::OK,"distinct operator may resume using live configuring authority: {resumed}");
         // Use the production projection owner, as the in-process fixture has no background host workers.
         loop {
@@ -226,6 +239,11 @@ async fn pipeline(callback: bool) {
             if send=="succeeded" { assert_eq!(processing,"succeeded");assert_eq!(reply.as_deref(),Some("Final for alice"));break; }
             tokio::time::sleep(Duration::from_millis(30)).await;
         }
+        let runtime_events = fixture.state.store.list_runtime_events(run_id, 0).await.unwrap();
+        assert_eq!(runtime_events.iter().filter(|event| event.event_type == "runtime_stream_opened").count(), 2, "initial dispatch and the exclusively claimed resume each own a persistence generation");
+        let completed_tools = runtime_events.iter().filter(|event| event.event_type == "assistant_tool_call_finished").collect::<Vec<_>>();
+        assert_eq!(completed_tools.len(), 4, "all four real scoped MCP calls must have durable completion receipts");
+        assert!(completed_tools.iter().all(|event| event.flow_run_id == run_id && event.node_run_id.is_some()));
         let run = fixture.state.store.get_flow_run_metadata(Uuid::parse_str(&application_id).unwrap(),run_id).await.unwrap().unwrap();
         assert_eq!(run.created_by,fixture.actor.user_id,"callback operator cannot take ownership of execution");
         let logs = fixture.state.notification_service.logs(&fixture.actor,Default::default()).await.unwrap();

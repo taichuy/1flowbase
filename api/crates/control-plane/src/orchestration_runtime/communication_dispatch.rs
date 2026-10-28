@@ -40,17 +40,22 @@ where
             domain::FlowRunStatus::Queued => {
                 // This call is the only initial-execution owner while the PG session lease
                 // lives. Its internal Queued->Running CAS remains the durable start fact.
+                let events = self.begin_communication_events(&run).await?;
                 let result = self.start_published_flow_run(command).await;
-                if result.is_err() {
+                let result = if result.is_err() {
                     self.finalize_communication_dispatch_failure(
                         run.application_id,
                         run.id,
                         "communication_dispatch_failed",
                     )
                     .await?;
-                    return self
-                        .communication_dispatch_detail(run.application_id, run.id)
-                        .await;
+                    self.communication_dispatch_detail(run.application_id, run.id)
+                        .await
+                } else {
+                    result
+                };
+                if let Some(events) = events {
+                    events.finish().await;
                 }
                 result
             }

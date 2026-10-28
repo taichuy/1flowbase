@@ -299,7 +299,9 @@ where
         if claim.disposition != ResumeClaimDisposition::Acquired {
             return Ok(current_detail);
         }
+        let mut communication_events = None;
         let result = async {
+            communication_events = self.begin_communication_events(&flow_run).await?;
             let execution = self
                 .resume_execution_segment(ResumeExecutionSegmentInput {
                     transport_connection_scope: None,
@@ -372,6 +374,9 @@ where
             {
                 tracing::warn!(flow_run_id = %flow_run.id, error = %error, "resume claim continuation cleanup failed");
             }
+        }
+        if let Some(events) = communication_events {
+            events.finish().await;
         }
         result
     }

@@ -284,6 +284,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         (
             Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
             domain::ActorContext,
+            bool,
         ),
         ApiError,
     > {
@@ -333,6 +334,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                     scope,
                 }),
                 execution_actor,
+                true,
             ));
         }
         if run.compatibility_mode.as_deref() == Some("communication") {
@@ -347,7 +349,11 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .transpose()
             .map_err(|_| ControlPlaneError::InvalidInput("mcp_instance_ids"))?
             .unwrap_or_default();
-        Ok((self.mcp_invoker(actor, headers, ids).await?, actor.clone()))
+        Ok((
+            self.mcp_invoker(actor, headers, ids).await?,
+            actor.clone(),
+            false,
+        ))
     }
 
     async fn application(
@@ -481,20 +487,25 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .start(application_id, ApplicationActivityKind::HttpRequest);
         let checkpoint_id = Uuid::parse_str(&body.checkpoint_id)
             .map_err(|_| ControlPlaneError::InvalidInput("checkpoint_id"))?;
-        let (mcp, execution_actor) = self
+        let (mcp, execution_actor, communication_run) = self
             .mcp_invoker_for_run(actor, headers, application_id, run_id)
             .await?;
+        let mut runtime = self
+            .runtime_for_actor(&execution_actor)
+            .with_runtime_internal_tool_invoker(mcp);
+        if communication_run {
+            runtime =
+                runtime.with_runtime_event_stream(self.dependencies.runtime_event_stream.clone());
+        }
         let detail = scope_application_activity(
             application_id,
-            self.runtime_for_actor(&execution_actor)
-                .with_runtime_internal_tool_invoker(mcp)
-                .resume_flow_run(ResumeFlowRunCommand {
-                    actor_user_id: execution_actor.user_id,
-                    application_id,
-                    flow_run_id: run_id,
-                    checkpoint_id,
-                    input_payload: body.input_payload,
-                }),
+            runtime.resume_flow_run(ResumeFlowRunCommand {
+                actor_user_id: execution_actor.user_id,
+                application_id,
+                flow_run_id: run_id,
+                checkpoint_id,
+                input_payload: body.input_payload,
+            }),
         )
         .await?;
         let application = self.application(actor, application_id).await?;
@@ -573,23 +584,28 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .get_callback_task(callback_task_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("callback_task"))?;
-        let (mcp, execution_actor) = self
+        let (mcp, execution_actor, communication_run) = self
             .mcp_invoker_for_run(actor, headers, application_id, callback.flow_run_id)
             .await?;
+        let mut runtime = self
+            .runtime_for_actor(&execution_actor)
+            .with_runtime_internal_tool_invoker(mcp);
+        if communication_run {
+            runtime =
+                runtime.with_runtime_event_stream(self.dependencies.runtime_event_stream.clone());
+        }
         let detail = scope_application_activity(
             application_id,
-            self.runtime_for_actor(&execution_actor)
-                .with_runtime_internal_tool_invoker(mcp)
-                .complete_callback_task(CompleteCallbackTaskCommand {
-                    responses_continuation: None,
-                    transport_connection_scope: None,
-                    observation_context: None,
-                    native_transport: None,
-                    actor_user_id: execution_actor.user_id,
-                    application_id,
-                    callback_task_id,
-                    response_payload: body.response_payload,
-                }),
+            runtime.complete_callback_task(CompleteCallbackTaskCommand {
+                responses_continuation: None,
+                transport_connection_scope: None,
+                observation_context: None,
+                native_transport: None,
+                actor_user_id: execution_actor.user_id,
+                application_id,
+                callback_task_id,
+                response_payload: body.response_payload,
+            }),
         )
         .await?;
         let application = self.application(actor, application_id).await?;

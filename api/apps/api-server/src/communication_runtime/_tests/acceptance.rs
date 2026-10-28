@@ -103,6 +103,13 @@ impl Fixture {
     }
 
     async fn with_expected_sends(expected_sends: Option<Value>) -> Self {
+        Self::with_event_stream(expected_sends, None).await
+    }
+
+    async fn with_event_stream(
+        expected_sends: Option<Value>,
+        stream: Option<Arc<dyn control_plane::ports::RuntimeEventStream>>,
+    ) -> Self {
         let (mut state, _) = crate::_tests::support::test_api_state_with_database_url().await;
         let actor_id: Uuid = sqlx::query_scalar("SELECT id FROM users WHERE account='root'")
             .fetch_one(state.store.pool())
@@ -137,6 +144,9 @@ impl Fixture {
         state_mut.store = runtime.store.clone();
         state_mut.provider_runtime = runtime.services.clone();
         state_mut.notification_service = service;
+        if let Some(stream) = stream {
+            state_mut.runtime_event_stream = stream;
+        }
         // Match production boot: freeze the complete interface catalogue before
         // plugin activation compiles a workspace's managed interface points.
         let app =
