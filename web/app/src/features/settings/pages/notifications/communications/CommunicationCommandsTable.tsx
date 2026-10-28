@@ -1,4 +1,3 @@
-import { useId } from 'react';
 import { Flex, Grid, Switch, Table, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type {
@@ -20,7 +19,6 @@ export function CommunicationCommandsTable({
 }) {
   const { t } = useTranslation('notifications');
   const screens = Grid.useBreakpoint();
-  const id = useId();
   // Static translation calls keep built-in copy visible to i18n hygiene.
   const descriptions = new Map([
     ['host/new', t('command_new_description')],
@@ -116,12 +114,8 @@ export function CommunicationCommandsTable({
           width: 86,
           align: 'center',
           render: (_, command) => (
-            <label
-              className="communication-commands__toggle"
-              htmlFor={`${id}-${command.installation_id}-${command.command_id}`}
-            >
+            <span className="communication-commands__toggle">
               <Switch
-                id={`${id}-${command.installation_id}-${command.command_id}`}
                 aria-label={t('command_toggle', { command: command.name })}
                 checked={command.enabled}
                 disabled={disabled || (!command.available && !command.enabled)}
@@ -129,7 +123,7 @@ export function CommunicationCommandsTable({
                   onChange({ command_id: command.command_id, enabled })
                 }
               />
-            </label>
+            </span>
           )
         }
       ]}
