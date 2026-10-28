@@ -29,10 +29,12 @@ use tokio::{
     sync::Mutex,
 };
 
+mod cancellation;
 mod multiplex;
 mod streaming;
+pub(crate) use cancellation::ProviderCallCancellation;
 pub(crate) use multiplex::MultiplexProviderWorker;
-pub use streaming::call_executable_streaming;
+pub(crate) use streaming::call_executable_streaming;
 use streaming::ProviderStreamOutcome;
 
 pub const DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS: u64 = 300_000;

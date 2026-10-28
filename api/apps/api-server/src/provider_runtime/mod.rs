@@ -433,6 +433,7 @@ impl ApiRuntimeServices {
 #[derive(Clone)]
 pub struct ApiProviderRuntime {
     services: Arc<ApiRuntimeServices>,
+    communication_activity: Option<Arc<crate::communication_runtime::CommunicationActivity>>,
     runtime_activity: Option<Arc<ApplicationRuntimeActivityTracker>>,
     network_egress: Option<Arc<NetworkEgressHttpClientResolver>>,
 }
@@ -441,6 +442,7 @@ impl ApiProviderRuntime {
     pub fn new(services: Arc<ApiRuntimeServices>) -> Self {
         Self {
             services,
+            communication_activity: None,
             runtime_activity: None,
             network_egress: None,
         }
@@ -452,9 +454,18 @@ impl ApiProviderRuntime {
     ) -> Self {
         Self {
             services,
+            communication_activity: None,
             runtime_activity: Some(runtime_activity),
             network_egress: None,
         }
+    }
+
+    pub(crate) fn with_communication_activity(
+        mut self,
+        activity: Arc<crate::communication_runtime::CommunicationActivity>,
+    ) -> Self {
+        self.communication_activity = Some(activity);
+        self
     }
 
     pub fn with_network_egress(

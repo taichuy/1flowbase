@@ -80,7 +80,7 @@ async fn own_turn(
             tokio::select! {
                 biased;
                 _ = session.cancelled() => break true,
-                _ = stop.changed() => break true,
+                _ = stop.changed() => { session.cancel(); break true; },
                 result = &mut work => {
                     if result.is_err() {
                         record_interruption(&state, &claim, &stage, "communication_execution_failed").await;
@@ -89,9 +89,9 @@ async fn own_turn(
                     break false;
                 }
                 _ = heartbeat.tick() => {
-                    let Ok(_permit) = state.system_maintenance.try_enter_write(control_plane::system_recovery::SystemWriteOwner::CommunicationExecution) else { break true; };
+                    let Ok(_permit) = state.system_maintenance.try_enter_write(control_plane::system_recovery::SystemWriteOwner::CommunicationExecution) else { session.cancel(); break true; };
                     match state.notification_service.renew_turn_claim(&claim, LEASE_SECONDS).await {
-                        Ok(true) => {}, _ => break true,
+                        Ok(true) => {}, _ => { session.cancel(); break true; },
                     }
                 }
             }
@@ -102,10 +102,13 @@ async fn own_turn(
     }
     drop(lease);
     if stopped {
-        state
+        if let Err(error) = state
             .communication_activity
             .cancel_session(claim.session_id)
-            .await;
+            .await
+        {
+            tracing::warn!(session_id=%claim.session_id, %error, "communication_provider_cancel_join_failed");
+        }
     }
 }
 
@@ -154,6 +157,12 @@ async fn process(
     );
     // Every initial request contains exactly member 1. Later members are appended by the
     // runtime hook, including when a queued run is reclaimed before its first checkpoint.
+    let provider_session = state
+        .communication_activity
+        .session(input.claim.session_id, input.claim.session_epoch)?;
+    let _provider_registration = state
+        .communication_activity
+        .register_provider_run(run_id, provider_session)?;
     let _registration = state.communication_activity.register_run(
         run_id,
         CommunicationExecutionBinding {

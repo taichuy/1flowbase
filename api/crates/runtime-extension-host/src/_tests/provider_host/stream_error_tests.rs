@@ -176,7 +176,7 @@ async fn standalone_first_error_survives_result_eof_parse_io_exit_and_closed_lan
         let package = TempProviderPackage::new();
         let path = error_script(&package, tail);
         assert_primary(
-            call_executable_streaming(&path, &request(), &limits(), None, None, None, None)
+            call_executable_streaming(&path, &request(), &limits(), stream_context(None), None)
                 .await
                 .unwrap_err(),
         );
@@ -186,9 +186,15 @@ async fn standalone_first_error_survives_result_eof_parse_io_exit_and_closed_lan
     let (sender, receiver) = tokio::sync::mpsc::channel(1);
     drop(receiver);
     assert_primary(
-        call_executable_streaming(&path, &request(), &limits(), Some(sender), None, None, None)
-            .await
-            .unwrap_err(),
+        call_executable_streaming(
+            &path,
+            &request(),
+            &limits(),
+            stream_context(Some(sender)),
+            None,
+        )
+        .await
+        .unwrap_err(),
     );
 }
 
@@ -209,11 +215,23 @@ async fn secondary_failure_without_provider_error_remains_a_failure() {
         PluginFrameworkError::RuntimeContract { .. }
     ));
     let standalone =
-        call_executable_streaming(&path, &request(), &limits(), None, None, None, None)
+        call_executable_streaming(&path, &request(), &limits(), stream_context(None), None)
             .await
             .unwrap_err();
     assert!(!matches!(
         standalone,
         PluginFrameworkError::RuntimeContract { .. }
     ));
+}
+
+fn stream_context(
+    required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+) -> crate::stdio_runtime::StreamingCallContext {
+    crate::stdio_runtime::StreamingCallContext {
+        required_live_events,
+        diagnostic_live_events: None,
+        protocol_observation: None,
+        event_observer: None,
+        host_calls: None,
+    }
 }

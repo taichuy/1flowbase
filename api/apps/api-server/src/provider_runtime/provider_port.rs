@@ -525,10 +525,25 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                 stage = "runtime_execution",
                 "provider invocation stage entered"
             );
-            self.services
-                .orchestration_backend
-                .execute_stream(request, sinks)
-                .await
+            let output = match (&self.communication_activity, context.flow_run_id) {
+                (Some(activity), Some(run_id)) => {
+                    activity
+                        .execute_provider(
+                            run_id,
+                            &self.services.orchestration_backend,
+                            request,
+                            sinks,
+                        )
+                        .await
+                }
+                _ => {
+                    self.services
+                        .orchestration_backend
+                        .execute_stream(request, sinks)
+                        .await
+                }
+            };
+            output
                 .map(|output| ProviderRuntimeInvocationOutput {
                     events: output.events,
                     result: output.result,

@@ -96,16 +96,23 @@ async fn execute(state: &ApiState, claim: &ClaimedBuiltinCommunicationCommand) -
                             .await?
                             .context("command session rotation unavailable")?
                     };
-                    if let Some(previous) = rotation.invalidated_session_id {
-                        // The activity owner signals cancellation and joins every registered task.
-                        // No success receipt or later ordinary admission precedes this boundary.
-                        state.communication_activity.cancel_session(previous).await;
+                    // Both owners must be signalled even if one cannot join. A bounded
+                    // failure is a durable command result, never a stopped-generation ACK.
+                    let mut join_failed = false;
+                    for session_id in rotation
+                        .invalidated_session_id
+                        .into_iter()
+                        .chain(std::iter::once(scope.conversation_id))
+                    {
+                        if let Err(error) = state
+                            .communication_activity
+                            .cancel_session(session_id)
+                            .await
+                        {
+                            join_failed = true;
+                            tracing::warn!(%session_id, %error, "communication_provider_cancel_join_failed");
+                        }
                     }
-                    // Upgrade-only legacy execution uses the stable history UUID at epoch zero.
-                    state
-                        .communication_activity
-                        .cancel_session(scope.conversation_id)
-                        .await;
                     for run_id in rotation.cancel_run_ids {
                         let application_id = state
                             .store
@@ -142,6 +149,15 @@ async fn execute(state: &ApiState, claim: &ClaimedBuiltinCommunicationCommand) -
                                 return Err(error);
                             }
                         }
+                    }
+                    if join_failed {
+                        return complete(
+                            state,
+                            claim,
+                            rotation.session.id,
+                            "The previous conversation could not be confirmed stopped. Replies from it are blocked. A new conversation has been created.".into(),
+                            Some("communication_provider_cancel_join_failed".into()),
+                        ).await;
                     }
                     (rotation.session.id, NEW_SESSION_REPLY.into(), None)
                 }

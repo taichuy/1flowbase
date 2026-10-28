@@ -16,6 +16,8 @@ pub struct ProviderLiveEventSenders {
 
 #[derive(Debug, Clone)]
 pub struct ProviderRuntimeExecutionContext {
+    /// Trusted execution owner, never taken from provider wire input or protocol headers.
+    pub flow_run_id: Option<uuid::Uuid>,
     pub workspace_id: uuid::Uuid,
     pub actor_id: Option<uuid::Uuid>,
     pub deadline_unix_ms: i64,

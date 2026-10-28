@@ -27,17 +27,20 @@ impl ProviderStreamOutcome {
     }
 }
 
-pub async fn call_executable_streaming(
+pub(crate) async fn call_executable_streaming(
     executable_path: &Path,
     request: &ProviderStdioRequest,
     limits: &PluginRuntimeLimits,
-    required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
-    diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
-    protocol_observation: Option<
-        Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>,
-    >,
-    event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
+    context: StreamingCallContext,
+    cancellation: Option<ProviderCallCancellation>,
 ) -> FrameworkResult<StreamingProviderOutput> {
+    let StreamingCallContext {
+        required_live_events,
+        diagnostic_live_events,
+        protocol_observation,
+        event_observer,
+        host_calls: _,
+    } = context;
     let mut command = Command::new(executable_path);
     command
         .stdin(Stdio::piped())
@@ -50,44 +53,46 @@ pub async fn call_executable_streaming(
         .spawn()
         .map_err(|error| PluginFrameworkError::io(Some(executable_path), error.to_string()))?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let mut payload = serialize_provider_stdio_request(request, protocol_observation.is_some())
-            .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
-        payload.push(b'\n');
-        stdin
-            .write_all(&payload)
-            .await
-            .map_err(|error| PluginFrameworkError::io(Some(executable_path), error.to_string()))?;
-    }
-
-    let stdout = child.stdout.take().ok_or_else(|| {
-        PluginFrameworkError::runtime(ProviderRuntimeError::normalize(
-            "provider_runtime",
-            "provider runtime stdout was not captured",
-            None,
-        ))
-    })?;
-    let stderr = child.stderr.take().ok_or_else(|| {
-        PluginFrameworkError::runtime(ProviderRuntimeError::normalize(
-            "provider_runtime",
-            "provider runtime stderr was not captured",
-            None,
-        ))
-    })?;
-
-    let mut stderr_task = tokio::spawn(async move {
-        let mut text = String::new();
-        let _ = BufReader::new(stderr).read_to_string(&mut text).await;
-        text
-    });
-
-    let mut lines = BufReader::new(stdout).lines();
-    let mut events = Vec::new();
-    let mut result = None;
-    let mut timeout_state = ProviderStreamTimeoutState::new();
-
+    let mut stderr_task = None;
     let mut outcome = ProviderStreamOutcome::default();
-    let output = async {
+    let output = ProviderCallCancellation::run(cancellation.as_ref(), async {
+        if let Some(mut stdin) = child.stdin.take() {
+            let mut payload =
+                serialize_provider_stdio_request(request, protocol_observation.is_some()).map_err(
+                    |error| PluginFrameworkError::serialization(None, error.to_string()),
+                )?;
+            payload.push(b'\n');
+            stdin.write_all(&payload).await.map_err(|error| {
+                PluginFrameworkError::io(Some(executable_path), error.to_string())
+            })?;
+        }
+
+        let stdout = child.stdout.take().ok_or_else(|| {
+            PluginFrameworkError::runtime(ProviderRuntimeError::normalize(
+                "provider_runtime",
+                "provider runtime stdout was not captured",
+                None,
+            ))
+        })?;
+        let stderr = child.stderr.take().ok_or_else(|| {
+            PluginFrameworkError::runtime(ProviderRuntimeError::normalize(
+                "provider_runtime",
+                "provider runtime stderr was not captured",
+                None,
+            ))
+        })?;
+
+        stderr_task = Some(tokio::spawn(async move {
+            let mut text = String::new();
+            let _ = BufReader::new(stderr).read_to_string(&mut text).await;
+            text
+        }));
+
+        let mut lines = BufReader::new(stdout).lines();
+        let mut events = Vec::new();
+        let mut result = None;
+        let mut timeout_state = ProviderStreamTimeoutState::new();
+
         while let Some(line) =
             next_provider_stdout_line(&mut lines, executable_path, limits, &mut timeout_state)
                 .await?
@@ -148,7 +153,11 @@ pub async fn call_executable_streaming(
             .wait()
             .await
             .map_err(|error| PluginFrameworkError::io(Some(executable_path), error.to_string()))?;
-        let stderr = (&mut stderr_task).await.unwrap_or_default();
+        let stderr = match stderr_task.as_mut() {
+            Some(task) => task.await.unwrap_or_default(),
+            None => String::new(),
+        };
+        stderr_task.take();
         if !status.success() {
             let summary = stderr.trim();
             // Provider stderr is intentionally surfaced as upstream runtime detail.
@@ -175,14 +184,34 @@ pub async fn call_executable_streaming(
         })?;
 
         Ok(StreamingProviderOutput { events, result })
-    }
+    })
     .await;
     if output.is_err() {
-        // A damaged stream is not reusable. Reap the one-shot process without
-        // promoting kill/wait failures over the invocation's primary error.
-        let _ = child.kill().await;
-        let _ = child.wait().await;
-        stderr_task.abort();
+        // Keep the child owner until kill/reap has completed. An explicit cancellation
+        // cannot acknowledge completion merely because its stdout reader was dropped.
+        let cleanup = tokio::time::timeout(Duration::from_secs(2), async {
+            if child.try_wait()?.is_none() {
+                child.kill().await?;
+            }
+            child.wait().await?;
+            Ok::<_, std::io::Error>(())
+        })
+        .await;
+        if let Some(cancellation) = &cancellation {
+            match cleanup {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    cancellation.failed_cleanup(format!("provider process reap failed: {error}"))
+                }
+                Err(_) => {
+                    cancellation.failed_cleanup("provider process kill/reap deadline exceeded")
+                }
+            }
+        }
+        if let Some(task) = stderr_task {
+            task.abort();
+            let _ = task.await;
+        }
     }
     outcome.finish(output)
 }

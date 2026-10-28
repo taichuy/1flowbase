@@ -291,7 +291,8 @@ pub(crate) fn runtime(
         crate::provider_runtime::ApiProviderRuntime::new_with_activity(
             state.provider_runtime.clone(),
             state.runtime_activity.clone(),
-        ),
+        )
+        .with_communication_activity(state.communication_activity.clone()),
         state.runtime_engine.clone(),
         state.provider_secret_master_key.clone(),
         state.infrastructure.provider_transport_store(),
@@ -402,6 +403,13 @@ async fn observe(
         .communication_run_application_id(input.binding.workspace_id, run_id)
         .await?
         .context("linked_run_missing")?;
+    // Keep legacy callback/human resumes under the same epoch-zero owner while observing.
+    let session = state
+        .communication_activity
+        .session(input.conversation.id, 0)?;
+    let _provider_registration = state
+        .communication_activity
+        .register_provider_run(run_id, session)?;
     let mut dispatch: Option<tokio::task::JoinHandle<()>> = None;
     loop {
         let metadata = state

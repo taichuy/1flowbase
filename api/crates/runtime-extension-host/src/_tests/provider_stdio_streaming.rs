@@ -43,9 +43,13 @@ async fn provider_stdio_v2_reads_ndjson_stream_until_result() {
         &script,
         &invoke_request(),
         &limits(),
-        None,
-        None,
-        None,
+        crate::stdio_runtime::StreamingCallContext {
+            required_live_events: None,
+            diagnostic_live_events: None,
+            protocol_observation: None,
+            event_observer: None,
+            host_calls: None,
+        },
         None,
     )
     .await
@@ -68,9 +72,13 @@ async fn provider_stdio_default_invocation_budget_is_300_seconds() {
         &script,
         &invoke_request(),
         &default_limits(),
-        None,
-        None,
-        None,
+        crate::stdio_runtime::StreamingCallContext {
+            required_live_events: None,
+            diagnostic_live_events: None,
+            protocol_observation: None,
+            event_observer: None,
+            host_calls: None,
+        },
         None,
     )
     .await
@@ -90,9 +98,13 @@ async fn provider_stdio_v2_rejects_bad_json_line() {
         &script,
         &invoke_request(),
         &limits(),
-        None,
-        None,
-        None,
+        crate::stdio_runtime::StreamingCallContext {
+            required_live_events: None,
+            diagnostic_live_events: None,
+            protocol_observation: None,
+            event_observer: None,
+            host_calls: None,
+        },
         None,
     )
     .await

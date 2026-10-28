@@ -28,6 +28,7 @@ where
                 plugin_id,
                 invocation,
                 crate::ports::ProviderRuntimeExecutionContext {
+                    flow_run_id: self.flow_run_id,
                     workspace_id: self.workspace_id,
                     actor_id: None,
                     deadline_unix_ms: time::OffsetDateTime::now_utc().unix_timestamp() * 1000
@@ -843,6 +844,7 @@ where
                 input,
                 live_provider_events,
                 crate::ports::ProviderRuntimeExecutionContext {
+                    flow_run_id: self.flow_run_id,
                     workspace_id: self.workspace_id,
                     actor_id: self
                         .flow_execution_context

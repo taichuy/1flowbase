@@ -158,6 +158,93 @@ fn capabilities() -> AssistantRunCapabilities {
 }
 
 #[tokio::test]
+async fn communication_command_new_persists_join_failure_reply_and_releases_admission() {
+    use crate::communication_runtime::activity::tests::{provider_request, OwnedProviderFixture};
+    let fixture = Fixture::new().await;
+    let (scope, _) = fixture.receive("alice", "ordinary", "old answer").await;
+    super::super::admission::admit_available(&fixture.state, fixture.key)
+        .await
+        .unwrap();
+    let session = fixture
+        .state
+        .notification_service
+        .active_session(&scope)
+        .await
+        .unwrap()
+        .unwrap();
+    let activity = fixture
+        .state
+        .communication_activity
+        .session(session.id, session.epoch)
+        .unwrap();
+    let run_id = Uuid::now_v7();
+    let _registration = fixture
+        .state
+        .communication_activity
+        .register_provider_run(run_id, activity)
+        .unwrap();
+    let provider = Arc::new(OwnedProviderFixture::new(true));
+    let backend =
+        orchestration_runtime::runtime_backend::OrchestrationRuntimeBackend::new(provider.clone());
+    let registry = fixture.state.communication_activity.clone();
+    let execution = tokio::spawn(async move {
+        registry
+            .execute_provider(run_id, &backend, provider_request(), Default::default())
+            .await
+    });
+    provider.wait_started().await;
+    let (_, command_input) = fixture.receive("alice", "new", "/new").await;
+    super::super::admission::admit_available(&fixture.state, fixture.key)
+        .await
+        .unwrap();
+    let (_signal, stop) = watch::channel(false);
+    super::super::effects::process_next(&fixture.state, fixture.key, stop)
+        .await
+        .unwrap();
+    assert!(execution.await.unwrap().is_err());
+
+    let result = fixture
+        .state
+        .notification_service
+        .command_for_input(&scope, command_input)
+        .await
+        .unwrap()
+        .unwrap();
+    let current = fixture
+        .state
+        .notification_service
+        .active_session(&scope)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(current.id, session.id);
+    assert_eq!(result.response_session_id, Some(current.id));
+    assert_eq!(
+        result.failure_code.as_deref(),
+        Some("communication_provider_cancel_join_failed")
+    );
+    assert_eq!(result.reply.unwrap().text,
+        "The previous conversation could not be confirmed stopped. Replies from it are blocked. A new conversation has been created.");
+    assert!(!fixture
+        .state
+        .notification_service
+        .pending_admissions(&scope)
+        .await
+        .unwrap()
+        .contains(&command_input));
+    assert!(
+        fixture
+            .state
+            .notification_service
+            .claim_builtin_command(fixture.key.0, fixture.key.1, 60)
+            .await
+            .unwrap()
+            .is_none(),
+        "the physical join failure must be terminal evidence, not an endless command retry"
+    );
+}
+
+#[tokio::test]
 async fn communication_command_model_allowed_choice_is_atomic_and_current_turn_stays_frozen() {
     let fixture = Fixture::new().await;
     let (scope, ordinary) = fixture.receive("alice", "ordinary", "existing turn").await;

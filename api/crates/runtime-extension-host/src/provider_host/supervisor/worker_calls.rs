@@ -1,4 +1,14 @@
 use super::*;
+use crate::stdio_runtime::ProviderCallCancellation;
+
+struct CallReleased(Option<tokio::sync::oneshot::Sender<()>>);
+impl Drop for CallReleased {
+    fn drop(&mut self) {
+        if let Some(released) = self.0.take() {
+            let _ = released.send(());
+        }
+    }
+}
 
 impl ProviderWorkerSupervisor {
     #[cfg(test)]
@@ -131,10 +141,11 @@ impl ProviderWorkerSupervisor {
         timeout_limits: &PluginRuntimeLimits,
         context: crate::stdio_runtime::StreamingCallContext,
     ) -> FrameworkResult<StreamingProviderOutput> {
-        self.call_streaming_inner(request, timeout_limits, context, None)
+        self.call_streaming_inner(request, timeout_limits, context, None, None)
             .await
     }
 
+    #[cfg(test)]
     pub(crate) async fn call_streaming_admitted(
         self: &Arc<Self>,
         request: &ProviderStdioRequest,
@@ -142,8 +153,26 @@ impl ProviderWorkerSupervisor {
         context: crate::stdio_runtime::StreamingCallContext,
         resource: Box<dyn Send + Sync>,
     ) -> FrameworkResult<StreamingProviderOutput> {
-        self.call_streaming_inner(request, timeout_limits, context, Some(resource))
+        self.call_streaming_inner(request, timeout_limits, context, Some(resource), None)
             .await
+    }
+
+    pub(crate) async fn call_streaming_cancellable(
+        self: &Arc<Self>,
+        request: &ProviderStdioRequest,
+        timeout_limits: &PluginRuntimeLimits,
+        context: crate::stdio_runtime::StreamingCallContext,
+        resource: Box<dyn Send + Sync>,
+        cancellation: Option<ProviderCallCancellation>,
+    ) -> FrameworkResult<StreamingProviderOutput> {
+        self.call_streaming_inner(
+            request,
+            timeout_limits,
+            context,
+            Some(resource),
+            cancellation,
+        )
+        .await
     }
 
     pub(super) async fn call_streaming_inner(
@@ -152,6 +181,7 @@ impl ProviderWorkerSupervisor {
         timeout_limits: &PluginRuntimeLimits,
         context: crate::stdio_runtime::StreamingCallContext,
         resource: Option<Box<dyn Send + Sync>>,
+        cancellation: Option<ProviderCallCancellation>,
     ) -> FrameworkResult<StreamingProviderOutput> {
         let lease = self.admit()?;
         if let Some(multiplex) = &self.multiplex {
@@ -159,12 +189,16 @@ impl ProviderWorkerSupervisor {
                 self.fail_multiplex().await?;
             }
             self.ensure_multiplex_can_dispatch(multiplex)?;
+            let (released_tx, released_rx) = tokio::sync::oneshot::channel();
             let result = multiplex
-                .call(
+                .call_cancellable(
                     request,
                     timeout_limits,
                     Some(context),
-                    Some(Box::new((lease, resource))),
+                    Some(Box::new((lease, resource, CallReleased(Some(released_tx))))),
+                    cancellation
+                        .as_ref()
+                        .map(ProviderCallCancellation::subscribe),
                 )
                 .await
                 .and_then(|(response, events)| {
@@ -173,18 +207,33 @@ impl ProviderWorkerSupervisor {
                     })?;
                     Ok(StreamingProviderOutput { events, result })
                 });
+            // The actor owns callbacks and admission until the result/cancel delimiter or
+            // confirmed process retirement. Its resource release is the join boundary.
+            let _ = released_rx.await;
             if multiplex.is_failed() {
                 if let Err(error) = self.fail_multiplex().await {
                     tracing::warn!(%error, "secondary multiplex cleanup failure");
                 }
             }
+            if let Some(cancellation) = &cancellation {
+                if multiplex.is_failed() && !self.process_control.confirmed_exit().await {
+                    cancellation
+                        .failed_cleanup("multiplex provider process exit was not confirmed");
+                }
+            }
             return result;
         }
-        let mut worker = Arc::clone(&self.worker).lock_owned().await;
+        let mut worker = ProviderCallCancellation::run(cancellation.as_ref(), async {
+            Ok(Arc::clone(&self.worker).lock_owned().await)
+        })
+        .await?;
         self.ensure_lease_can_dispatch(&worker)?;
         let supervisor = Arc::clone(self);
         let request = request.clone();
         let timeout_limits = timeout_limits.clone();
+        // Serial stdio has no call-specific cancellation frame. Once dispatched, keep
+        // the original carrier owner until its result/deadline; never kill peers or
+        // retained sessions. Runtime cancel reports a bounded join failure if necessary.
         tokio::spawn(async move {
             let _resource = resource;
             let result = worker
