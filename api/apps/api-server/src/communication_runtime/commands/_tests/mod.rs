@@ -108,24 +108,26 @@ impl Fixture {
             .await
             .unwrap()
             .unwrap();
-        let pending = self
-            .state
-            .notification_service
-            .scan_pending_admissions(self.key.0, self.key.1, 100)
-            .await
-            .unwrap();
-        let input = pending
-            .into_iter()
-            .find(|input| input.external_message_key == message_key)
-            .unwrap();
+        // Admission scanning intentionally exposes only each chat's earliest unresolved input.
+        // A receive fixture locates its exact durable receipt by the provider's dedup identity.
+        let (input_id, conversation_id): (Uuid, Uuid) = sqlx::query_as(
+            "SELECT id,conversation_id FROM communication_inputs WHERE scope_id=$1 AND instance_id=$2 AND external_identity=$3 AND external_message_key=$4",
+        )
+        .bind(self.key.0)
+        .bind(self.key.1)
+        .bind(sender)
+        .bind(message_key)
+        .fetch_one(self.state.store.pool())
+        .await
+        .unwrap();
         (
             CommunicationConversationScope {
                 workspace_id: self.key.0,
                 instance_id: self.key.1,
                 external_identity: sender.into(),
-                conversation_id: input.conversation.id,
+                conversation_id,
             },
-            input.input_id,
+            input_id,
         )
     }
 
