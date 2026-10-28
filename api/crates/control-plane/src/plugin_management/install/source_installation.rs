@@ -227,7 +227,9 @@ where
                     detail_json,
                 )
                 .await?;
-            if is_host_extension_installation(&install.installation) {
+            if is_host_extension_installation(&install.installation)
+                || is_system_managed_service(&install.installation)
+            {
                 return Ok::<InstallPluginResult, anyhow::Error>(install);
             }
             if self.is_network_egress_provider_console_operation() {
@@ -312,7 +314,9 @@ where
                 detail_json,
             )
             .await?;
-        if is_host_extension_installation(&install.installation) {
+        if is_host_extension_installation(&install.installation)
+            || is_system_managed_service(&install.installation)
+        {
             return Ok(install);
         }
         if self.is_network_egress_provider_console_operation() {

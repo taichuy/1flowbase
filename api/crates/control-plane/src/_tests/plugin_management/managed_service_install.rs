@@ -93,6 +93,87 @@ managed_service:
 }
 
 #[tokio::test]
+async fn generic_official_system_managed_install_preserves_explicit_activation() {
+    use crate::plugin_management::{
+        InstallResolvedOfficialPluginCommand, PluginRiskOverride, PLUGIN_RISK_SIGNATURE_MISSING,
+    };
+    use sha2::Digest;
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        Uuid::now_v7(),
+        &["plugin_config.configure.all"],
+    ));
+    let runtime = MemoryProviderRuntime::default();
+    let install_root =
+        std::env::temp_dir().join(format!("generic-system-install-{}", Uuid::now_v7()));
+    // Deliberately omit managed activation preparation: an install-only entry must not invoke it.
+    let service = PluginManagementService::new(
+        repository.clone(),
+        runtime.clone(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    let bytes = package("0.1.0");
+    let command = || InstallResolvedOfficialPluginCommand {
+        actor_user_id: repository.actor.user_id,
+        plugin_id: "acme.managed_fixture".into(),
+        plugin_type: "runtime_extension".into(),
+        minimum_host_version: "0.1.0".into(),
+        source_kind: "official_registry".into(),
+        file_name: "managed.1flowbasepkg".into(),
+        package_bytes: bytes.clone(),
+        expected_checksum: format!(
+            "sha256:{:x}",
+            base16ct::HexDisplay(&sha2::Sha256::digest(&bytes))
+        ),
+        compatibility_override: None,
+        risk_override: Some(PluginRiskOverride {
+            reason: "isolated unsigned fixture".into(),
+            acknowledged_warnings: vec![PLUGIN_RISK_SIGNATURE_MISSING.into()],
+        }),
+    };
+    let first = service
+        .install_resolved_official_plugin(command())
+        .await
+        .unwrap();
+    assert_eq!(
+        first.installation.desired_state,
+        PluginDesiredState::Disabled
+    );
+    for state in [
+        PluginDesiredState::Disabled,
+        PluginDesiredState::ActiveRequested,
+    ] {
+        repository
+            .update_desired_state(&UpdatePluginDesiredStateInput {
+                installation_id: first.installation.id,
+                actor_user_id: repository.actor.user_id,
+                desired_state: state,
+            })
+            .await
+            .unwrap();
+        let retry = service
+            .install_resolved_official_plugin(command())
+            .await
+            .unwrap();
+        assert_eq!(retry.installation.id, first.installation.id);
+        assert_eq!(retry.installation.desired_state, state);
+    }
+    assert!(runtime.loaded_installations().await.is_empty());
+    assert!(repository
+        .list_assigned_installation_ids()
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(repository
+        .list_tasks()
+        .await
+        .unwrap()
+        .iter()
+        .all(|task| task.task_kind == domain::PluginTaskKind::Install));
+    std::fs::remove_dir_all(install_root).unwrap();
+}
+
+#[tokio::test]
 async fn managed_service_install_and_reupload_preserve_explicit_activation_boundary() {
     let repository =
         MemoryPluginManagementRepository::new(actor_with_permissions(Uuid::now_v7(), &[]));
