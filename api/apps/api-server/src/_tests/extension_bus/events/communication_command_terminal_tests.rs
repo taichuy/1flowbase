@@ -415,7 +415,12 @@ async fn communication_command_terminal_commit_failure_recovers_without_sdk_effe
         .execute(fixture.base.store.pool())
         .await
         .unwrap();
-    sqlx::query("UPDATE lifecycle_outbox_deliveries SET claim_expires_at=clock_timestamp()-interval '1 second' WHERE event_id=$1").bind(fixture.input).execute(fixture.base.store.pool()).await.unwrap();
+    let expired = sqlx::query("UPDATE lifecycle_outbox_deliveries SET claimed_at=clock_timestamp()-interval '2 seconds',claim_expires_at=clock_timestamp()-interval '1 second' WHERE event_id=$1 AND status='claimed'").bind(fixture.input).execute(fixture.base.store.pool()).await.unwrap();
+    assert_eq!(
+        expired.rows_affected(),
+        1,
+        "expire exactly the live command target while preserving the claim interval"
+    );
     assert_eq!(dispatcher(&fixture).run_once().await.unwrap(), 1);
     assert_eq!(
         fixture.worker_frames().len(),
