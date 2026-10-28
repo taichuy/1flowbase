@@ -217,16 +217,22 @@ async fn pipeline(callback: bool) {
         sqlx::query("UPDATE users SET status='active' WHERE id=$1").bind(fixture.actor.user_id).execute(fixture.state.store.pool()).await.unwrap();
         assert_eq!(status,StatusCode::FORBIDDEN,"operator must not substitute for a disabled configuring actor: {denied}");
         assert_eq!(denied["code"], "communication_execution_denied", "the configuring-actor guard must be reached: {denied}");
-        // Force a resume after the waiting DB commit but before the old stream closes.
-        // The new producer must wait for the old one, then own a fresh generation.
-        stream.waiting_entered.notified().await;
-        let resume_app = app.clone();
-        let resume = tokio::spawn(async move {
-            api(&resume_app,&operator_cookie,&operator_csrf,"POST",&path,body).await
-        });
-        stream.resume_entered.notified().await;
-        stream.release_waiting.notify_one();
-        let (status,resumed) = resume.await.unwrap();
+        let (status,resumed) = if callback {
+            // Assistant LLM callbacks deliberately omit a Preview WaitingCallback close.
+            // Exercise their real completion entry; the segment owner closes its generation.
+            api(&app,&operator_cookie,&operator_csrf,"POST",&path,body).await
+        } else {
+            // Force a human resume after its waiting DB commit but before stream closure.
+            // The shared begin path must wait for the old producer and reopen a generation.
+            stream.waiting_entered.notified().await;
+            let resume_app = app.clone();
+            let resume = tokio::spawn(async move {
+                api(&resume_app,&operator_cookie,&operator_csrf,"POST",&path,body).await
+            });
+            stream.resume_entered.notified().await;
+            stream.release_waiting.notify_one();
+            resume.await.unwrap()
+        };
         assert_eq!(status,StatusCode::OK,"distinct operator may resume using live configuring authority: {resumed}");
         // Use the production projection owner, as the in-process fixture has no background host workers.
         loop {

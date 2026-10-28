@@ -486,15 +486,16 @@ async fn communication_turn_merges_before_and_during_generation_without_repeatin
             assert_eq!(event["tool_call_id"], id);
             assert_eq!(event["execution_status"], "succeeded");
         }
-        // The authorized detail reader hydrates canonical runtime payloads for the exact run.
-        let trace = detail.stitched_trace.iter().find(|trace| trace.source_flow_run.id == run_id).unwrap();
-        let completed_tools = trace.runtime_events.iter().filter(|event| event.event_type == "assistant_tool_call_finished").map(|event| {
+        // This fixture has established the application's own run. Stitched traces contain
+        // prior runs only; the canonical repository reader hydrates this run's payloads.
+        let runtime_events = f.fixture.state.store.list_runtime_events(run_id, 0).await.unwrap();
+        let completed_tools = runtime_events.iter().filter(|event| event.event_type == "assistant_tool_call_finished").map(|event| {
             assert_eq!(event.flow_run_id, run_id);
             assert_eq!(event.node_run_id, Some(llm_receipt));
             event.payload.pointer("/tool_call/id").and_then(Value::as_str).unwrap()
         }).collect::<Vec<_>>();
         assert_eq!(completed_tools, TOOL_IDS, "each completed tool has exactly one canonical runtime receipt");
-        assert_eq!(trace.runtime_events.iter().filter(|event| event.event_type == "runtime_stream_opened").count(), 1, "same-turn continuation reuses one event generation");
+        assert_eq!(runtime_events.iter().filter(|event| event.event_type == "runtime_stream_opened").count(), 1, "same-turn continuation reuses one event generation");
         let memberships: Vec<(Uuid, i64, Uuid, String)> = sqlx::query_as("SELECT turn_id,turn_sequence,run_id,processing_status FROM communication_inputs WHERE instance_id=$1 AND external_identity='alice' ORDER BY id")
             .bind(f.key().1).fetch_all(f.fixture.state.store.pool()).await.unwrap();
         assert_eq!(memberships, vec![(turn_id,1,run_id,"succeeded".into()),(turn_id,2,run_id,"succeeded".into()),(turn_id,3,run_id,"succeeded".into())]);
