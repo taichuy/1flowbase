@@ -902,6 +902,29 @@ impl PluginRepository for MemoryPluginManagementRepository {
         Ok(record)
     }
 
+    async fn create_initial_assignment(
+        &self,
+        input: &CreatePluginAssignmentInput,
+    ) -> Result<Option<PluginAssignmentRecord>> {
+        let mut assignments = self.assignments.write().await;
+        if assignments.iter().any(|assignment| {
+            assignment.workspace_id == input.workspace_id
+                && assignment.provider_code == input.provider_code
+        }) {
+            return Ok(None);
+        }
+        let record = PluginAssignmentRecord {
+            id: Uuid::now_v7(),
+            installation_id: input.installation_id,
+            workspace_id: input.workspace_id,
+            provider_code: input.provider_code.clone(),
+            assigned_by: input.actor_user_id,
+            created_at: OffsetDateTime::now_utc(),
+        };
+        assignments.push(record.clone());
+        Ok(Some(record))
+    }
+
     async fn list_assignments(&self, workspace_id: Uuid) -> Result<Vec<PluginAssignmentRecord>> {
         Ok(self
             .assignments

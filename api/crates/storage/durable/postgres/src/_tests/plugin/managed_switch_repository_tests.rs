@@ -10,6 +10,101 @@ fn managed_input(actor: Uuid, version: &str) -> CommitPluginInstallationInput {
     record
 }
 
+async fn managed_initial_assignment_fixture() -> (
+    PgControlPlaneStore,
+    CreatePluginAssignmentInput,
+    CreatePluginAssignmentInput,
+) {
+    let store = store().await;
+    let actor = actor(&store).await;
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "initial-assignment")
+        .await
+        .unwrap();
+    let mut ids = Vec::new();
+    let mut provider_code = String::new();
+    for version in ["1.0.0", "2.0.0"] {
+        let mut input = managed_input(actor, version);
+        input.installation.metadata_json = json!({"binding_targets":["workspace"]});
+        input.settings_templates.clear();
+        let installation = store.commit_plugin_installation(&input).await.unwrap();
+        provider_code = installation.provider_code;
+        ids.push(installation.id);
+    }
+    let command = |installation_id| CreatePluginAssignmentInput {
+        installation_id,
+        workspace_id: workspace.id,
+        provider_code: provider_code.clone(),
+        actor_user_id: actor,
+    };
+    (store, command(ids[0]), command(ids[1]))
+}
+
+#[tokio::test]
+async fn managed_initial_assignment_preserves_an_existing_family_and_other_workspace() {
+    let (store, first, mut second) = managed_initial_assignment_fixture().await;
+    let initial = store
+        .create_initial_assignment(&first)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(store
+        .create_initial_assignment(&second)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(store
+        .create_initial_assignment(&first)
+        .await
+        .unwrap()
+        .is_none());
+    let selected = store.list_assignments(first.workspace_id).await.unwrap();
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].id, initial.id);
+    assert_eq!(selected[0].installation_id, first.installation_id);
+    assert_eq!(selected[0].assigned_by, initial.assigned_by);
+    assert_eq!(selected[0].created_at, initial.created_at);
+    second.workspace_id = store
+        .upsert_workspace(
+            store.upsert_root_tenant().await.unwrap().id,
+            "other-assignment",
+        )
+        .await
+        .unwrap()
+        .id;
+    assert_eq!(
+        store
+            .create_initial_assignment(&second)
+            .await
+            .unwrap()
+            .unwrap()
+            .installation_id,
+        second.installation_id
+    );
+    assert_eq!(
+        store.list_assignments(first.workspace_id).await.unwrap()[0].installation_id,
+        first.installation_id
+    );
+}
+
+#[tokio::test]
+async fn managed_initial_assignment_concurrent_first_installs_never_replace_the_winner() {
+    let (store, first, second) = managed_initial_assignment_fixture().await;
+    let (left, right) = tokio::join!(
+        store.create_initial_assignment(&first),
+        store.create_initial_assignment(&second),
+    );
+    let left = left.unwrap();
+    let right = right.unwrap();
+    assert_ne!(left.is_some(), right.is_some());
+    let winner = left.or(right).unwrap();
+    let selected = store.list_assignments(first.workspace_id).await.unwrap();
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].id, winner.id);
+    assert_eq!(selected[0].installation_id, winner.installation_id);
+}
+
 fn permission_catalog() -> control_plane_contracts::CompiledConsolePolicyCatalog {
     control_plane_contracts::CompiledConsolePolicyCatalog {
         complete: true,

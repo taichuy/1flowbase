@@ -93,6 +93,8 @@ jobs:
             export NOTIFICATION_WORKER_FIXTURE="$GITHUB_WORKSPACE/api/target/debug/examples/notification_worker"
             run_test catalog-types -p control-plane --lib _tests::plugin_management::package_router::
             run_test official-install -p control-plane --lib _tests::plugin_management::install::
+            run_test system-managed-lifecycle -p control-plane --lib _tests::plugin_management::managed_service_install::
+            run_test initial-assignment -p storage-durable-postgres --lib managed_initial_assignment_
             run_test extension-install-http -p api-server --lib _tests::plugin_routes::extension_center
           else
             if [ "$TEST_SCOPE" = full ]; then

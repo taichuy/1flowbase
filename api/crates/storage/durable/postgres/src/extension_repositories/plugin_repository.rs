@@ -857,6 +857,25 @@ impl PluginRepository for PgControlPlaneStore {
         Ok(assignment)
     }
 
+    async fn create_initial_assignment(
+        &self,
+        input: &CreatePluginAssignmentInput,
+    ) -> Result<Option<domain::PluginAssignmentRecord>> {
+        let mut transaction = self.pool().begin().await?;
+        crate::plugin_contribution_authority_repository::lock_managed_workspace(
+            &mut transaction,
+            input.workspace_id,
+        )
+        .await?;
+        let row = sqlx::query("insert into plugin_assignments (id,installation_id,workspace_id,provider_code,assigned_by) values ($1,$2,$3,$4,$5) on conflict (workspace_id,provider_code) do nothing returning id,installation_id,workspace_id,provider_code,assigned_by,created_at")
+            .bind(Uuid::now_v7()).bind(input.installation_id).bind(input.workspace_id)
+            .bind(&input.provider_code).bind(input.actor_user_id)
+            .fetch_optional(&mut *transaction).await?;
+        let assignment = row.map(map_assignment).transpose()?;
+        transaction.commit().await?;
+        Ok(assignment)
+    }
+
     async fn list_assignments(
         &self,
         workspace_id: Uuid,

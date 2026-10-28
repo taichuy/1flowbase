@@ -447,6 +447,13 @@ pub trait PluginRepository: Send + Sync {
         &self,
         input: &CreatePluginAssignmentInput,
     ) -> anyhow::Result<domain::PluginAssignmentRecord>;
+    /// Establish a first workspace selection atomically; never replace an existing family.
+    async fn create_initial_assignment(
+        &self,
+        _input: &CreatePluginAssignmentInput,
+    ) -> anyhow::Result<Option<domain::PluginAssignmentRecord>> {
+        anyhow::bail!("initial plugin assignment is not supported")
+    }
     async fn list_assignments(
         &self,
         workspace_id: Uuid,

@@ -206,6 +206,32 @@ async fn managed_runtime_catalog_install_succeeds_and_is_idempotent() {
         "notification-fixture"
     );
     assert_eq!(first["data"]["installation"]["version"], "1.0.0");
+    assert_eq!(
+        first["data"]["installation"]["desired_state"],
+        "active_requested"
+    );
+    assert_eq!(first["data"]["installation"]["runtime_status"], "active");
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/communications/types")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let types: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let notification = types["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["type_code"] == "acme/notification-fixture/receipt")
+        .unwrap();
+    assert_eq!(notification["available"], true, "{notification}");
     let (status, second) = install(&app, &cookie, &csrf, &body).await;
     assert_eq!(status, StatusCode::OK, "{second}");
     assert_eq!(
