@@ -1,6 +1,6 @@
 {
   "schema": "gateway2691-dependency-reuse/v1",
-  "candidate_sha": "9cf059b9635ebbb1e117bb503672cf032d5c3c7b",
+  "candidate_sha": "45933db316b3824623a669075dbfcd14d0db2e9a",
   "execution_source_sha": "66db3d2e2045c208316b06775753facd427b5374",
   "qa1_report_sha256": "68e9d83ac94920a6ec2cb0df8cab86504891b15142bf9bfaf2ae5f5df794bfbf",
   "qa1_results_sha256": "2657590c00f34df8d03b80b53d6364e181be4df153e24a72a721f9bd0c8ba1d3",
@@ -14,7 +14,8 @@
   },
   "invalidated_paths": [
     "api/crates/control-plane-postgres-tests/tests/orchestration_runtime_integration/_tests/communication_dispatch.rs",
-    "api/crates/storage/durable/postgres/src/_tests/connection/coordination.rs"
+    "api/crates/storage/durable/postgres/src/_tests/connection/coordination.rs",
+    "api/apps/api-server/src/_tests/extension_bus/managed/connection_reliability.rs"
   ],
   "invalidated_selectors": [
     {
@@ -37,6 +38,20 @@
       "target": "storage_durable_postgres",
       "selectors": [
         "_tests::connection::coordination::acquire_waiting_keeps_template_fifo_beyond_physical_timeout_then_progresses"
+      ]
+    },
+    {
+      "target": "api_server",
+      "selectors": [
+        "_tests::extension_bus::connection_reliability::adapter_host_pg_callback_progresses_at_p1_and_p5_with_four_local_followers",
+        "_tests::extension_bus::connection_reliability::legacy_business_transaction_lock_control_starves_the_real_worker_callback_at_p5",
+        "_tests::extension_bus::connection_reliability::mutation_repository_two_coordinators_preserve_key_compatibility_and_release_healthy_watch",
+        "_tests::extension_bus::connection_reliability::adapter_drop_keeps_pg_lock_until_delayed_ack_and_no_ack_reap",
+        "_tests::extension_bus::connection_reliability::terminal_response_keeps_pg_ownership_for_a_callback_still_executing",
+        "_tests::extension_bus::connection_reliability::mutation_queue_expiry_uses_one_deadline_without_an_extra_session",
+        "_tests::extension_bus::connection_reliability::pg_session_loss_cancels_host_without_replaying_unknown_external_result",
+        "_tests::extension_bus::connection_reliability::adapter_reset_publication_keeps_ownership_after_caller_drop_until_reap",
+        "_tests::extension_bus::connection_reliability::adapter_get_parallel_capture_contract_errors_and_generation_drain_are_preserved"
       ]
     }
   ],

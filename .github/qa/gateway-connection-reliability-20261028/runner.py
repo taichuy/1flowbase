@@ -3,7 +3,7 @@
 import argparse, datetime, gzip, hashlib, io, json, os, pathlib, re, resource
 import shutil, signal, subprocess, sys, tarfile, threading, time, traceback, urllib.parse
 
-FROZEN = '9cf059b9635ebbb1e117bb503672cf032d5c3c7b'
+FROZEN = '45933db316b3824623a669075dbfcd14d0db2e9a'
 
 def sha(path):
     digest = hashlib.sha256()

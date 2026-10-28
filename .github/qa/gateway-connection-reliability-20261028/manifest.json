@@ -2,7 +2,7 @@
   "schema": "gateway2691-positive-executor/v1",
   "root": 2691,
   "delivery": 2692,
-  "candidate_sha": "9cf059b9635ebbb1e117bb503672cf032d5c3c7b",
+  "candidate_sha": "45933db316b3824623a669075dbfcd14d0db2e9a",
   "previous_candidate_sha": "66db3d2e2045c208316b06775753facd427b5374",
   "baseline_sha": "8f03e003a192106566e2d115698fc4d4ab4d9c29",
   "stage": "positive-gaps-only",
@@ -139,7 +139,7 @@
   "source_sha256": {
     "api/crates/control-plane-postgres-tests/tests/orchestration_runtime_integration/_tests/communication_dispatch.rs": "6a9c33c61070ecbb42160cd42e725c3e53ebdb831decb4a7dea7a05f9a2c1c7e",
     "api/crates/storage/durable/postgres/src/_tests/connection/coordination.rs": "bef2570d85ba59203a8b663ecde3f9cdb2cb26e204006b70b4ce17aac5843889",
-    "api/apps/api-server/src/_tests/extension_bus/managed/connection_reliability.rs": "a9d5f8e71786754ba9a9c478ca70eea1563174e3a1cdf02386e0fd8827829a25",
+    "api/apps/api-server/src/_tests/extension_bus/managed/connection_reliability.rs": "0e5a11d87f52f54ea5f7caf213357763f8784533929ae9bddd03a68ab02d01f4",
     "api/apps/api-server/src/_tests/host_boot/config_tests.rs": "e727b7acb947be81a6912657ac87a209c3b169c813d26fc4e1b935d798b56ba0",
     "api/crates/runtime-extension-host/src/_tests/managed_hook_transport.rs": "7d5d3b54923c1117b5fde6b12a22a03a590630d6c04ba9d5974e3ba029c4bbc4",
     "api/crates/runtime-extension-host/src/_tests/managed_event_transport.rs": "33554bcbf2dbf3f20cc0d521c1aafe0a7b8ae017c2a8b39ca15c6ca7827a0c2b",

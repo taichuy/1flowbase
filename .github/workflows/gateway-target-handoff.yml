@@ -2,6 +2,11 @@ name: Root2691 frozen candidate positive gaps
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact frozen product source SHA
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -19,7 +24,7 @@ env:
   CARGO_PROFILE_TEST_DEBUG_ASSERTIONS: 'true'
   CARGO_PROFILE_DEV_OVERFLOW_CHECKS: 'true'
   CARGO_PROFILE_TEST_OVERFLOW_CHECKS: 'true'
-  CANDIDATE_SHA: 9cf059b9635ebbb1e117bb503672cf032d5c3c7b
+  CANDIDATE_SHA: ${{ inputs.candidate_sha }}
   QA_CI_OUT: ${{ github.workspace }}/qa-ci-artifacts
   QA_CI_INPUT: executor/.github/qa/gateway-connection-reliability-20261028
 
