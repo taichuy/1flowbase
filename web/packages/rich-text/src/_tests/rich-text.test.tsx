@@ -131,6 +131,7 @@ describe('Vditor frame lifecycle', () => {
     expect(instances[0].mount.getRootNode()).toBe(frame.contentDocument);
     expect(instances[0].options).toMatchObject({
       mode: 'ir',
+      typewriterMode: true,
       cache: { enable: false },
       preview: {
         hljs: { enable: true },

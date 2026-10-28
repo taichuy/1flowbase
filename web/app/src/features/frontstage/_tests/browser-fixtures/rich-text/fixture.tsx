@@ -8,6 +8,9 @@ import {
 
 const sample =
   '# 文档\n\n**加粗** 与中文输入\n\n```javascript\nconst answer = 42;\n```\n\n$$\nx^2 + y^2 = z^2\n$$\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n```mermaid\ngraph TD\n  A[Start] --> B[End]\n```\n';
+const scrollSample = new URLSearchParams(location.search).has('scroll')
+  ? Array.from({ length: 35 }, (_, index) => `Line ${index + 1}`).join('\n\n')
+  : null;
 function Fixture() {
   const [value, setValue] = useState('');
   const [saved, setSaved] = useState('');
@@ -31,7 +34,7 @@ function Fixture() {
       {mounted && (
         <VditorEditor
           ariaLabel="Fixture editor"
-          value={value}
+          value={scrollSample ?? value}
           onChange={setValue}
           onReady={setEditor}
           outline={false}

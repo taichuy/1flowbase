@@ -175,6 +175,7 @@ export function VditorEditor({
           cache: { enable: false },
           cdn: VDITOR_ASSET_BASE,
           height,
+          typewriterMode: true,
           hint: { emojiPath: `${VDITOR_ASSET_BASE}/dist/images/emoji` },
           i18n: getBundledEditorMessages(locale),
           lang: locale === 'en_US' ? 'en_US' : 'zh_CN',
