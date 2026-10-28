@@ -117,6 +117,13 @@ jobs:
           run_acceptance command-plan -p plugin-framework --lib communication_command
           run_acceptance command-sdk -p runtime-extension-sdk --lib communication_command
           run_acceptance session-migration -p storage-durable-postgres --lib communication_session_migration
+          run_acceptance runtime-request-cancel -p runtime-extension-host --lib communication_
+          run_acceptance runtime-serial-cancel -p runtime-extension-host --lib serial_cancellation
+          run_acceptance runtime-multiplex-drop -p runtime-extension-host --lib cancelled_caller_retains_activity_until_carrier_acknowledges
+          run_acceptance runtime-host-lifecycle -p runtime-extension-host --test runtime_host_lifecycle
+          run_acceptance runtime-admission-owner -p runtime-extension-host --lib every_stateful_runtime_dispatch_uses_the_supervisor_admission_gate
+          run_acceptance runtime-provider-stream -p runtime-extension-host --lib provider_stdio_streaming
+          run_acceptance runtime-stream-errors -p runtime-extension-host --lib stream_error_tests
           test "$failures" -eq 0
       - name: Communication durable inbox acceptance
         if: ${{ !cancelled() }}
@@ -191,6 +198,9 @@ jobs:
           set -o pipefail
           test_batch_status=0
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib communication 2>&1 | tee tmp/test-governance/communications/ci/communication-host.log || test_batch_status=$?
+          if [ "${{ inputs.session_commands }}" = "true" ]; then
+            cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib http_body_drop_detaches_unpolled_silent_and_partial_deliveries_without_cancelling_execution 2>&1 | tee tmp/test-governance/communications/ci/native-drop-lifetime.log || test_batch_status=$?
+          fi
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib notification_http_crud_send_inbox_and_operations_are_authorized 2>&1 | tee tmp/test-governance/communications/ci/inbox-http.log || test_batch_status=$?
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib console_route_assembly 2>&1 | tee tmp/test-governance/communications/ci/route-ownership.log || test_batch_status=$?
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib console_policy_migration_tests 2>&1 | tee tmp/test-governance/communications/ci/management-registration.log || test_batch_status=$?
