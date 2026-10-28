@@ -185,7 +185,8 @@ jobs:
       - name: Communication and notification HTTP ownership regression
         if: ${{ !cancelled() }}
         env:
-          RUST_MIN_STACK: "2097152"
+          # Constrain the executed test process, not rustc's own compilation threads.
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "env RUST_MIN_STACK=2097152"
         run: |
           set -o pipefail
           test_batch_status=0
