@@ -4,7 +4,7 @@ use control_plane::{
     file_management::{FileUploadService, FileUploadTarget, UploadFileCommand},
     ports::{
         ClaimedCommunicationInput, CommunicationAttachmentUpdate, CommunicationClaim,
-        FileManagementRepository,
+        CommunicationPendingAttachment, CommunicationTurnClaim, FileManagementRepository,
     },
 };
 use extension_contracts::{
@@ -51,10 +51,39 @@ pub(super) async fn attach(
     input: &ClaimedCommunicationInput,
     claim: &CommunicationClaim,
 ) -> Result<Vec<Value>> {
-    let context = ProviderContext::load(state, &input.binding).await?;
-    validate_target(&state.store, &context.actor, &input.binding).await?;
+    attach_files(
+        state,
+        &input.binding,
+        &input.attachments,
+        AttachmentClaim::Input(claim),
+    )
+    .await
+}
+
+pub(super) async fn attach_turn(
+    state: &ApiState,
+    binding: &CommunicationBindingRecord,
+    attachments: &[CommunicationPendingAttachment],
+    claim: &CommunicationTurnClaim,
+) -> Result<Vec<Value>> {
+    attach_files(state, binding, attachments, AttachmentClaim::Turn(claim)).await
+}
+
+enum AttachmentClaim<'a> {
+    Input(&'a CommunicationClaim),
+    Turn(&'a CommunicationTurnClaim),
+}
+
+async fn attach_files(
+    state: &ApiState,
+    binding: &CommunicationBindingRecord,
+    attachments: &[CommunicationPendingAttachment],
+    claim: AttachmentClaim<'_>,
+) -> Result<Vec<Value>> {
+    let context = ProviderContext::load(state, binding).await?;
+    validate_target(&state.store, &context.actor, binding).await?;
     let mut files = Vec::new();
-    for attachment in &input.attachments {
+    for attachment in attachments {
         let record = &attachment.record;
         if let (Some(table_id), Some(record_id)) = (record.file_table_id, record.file_record_id) {
             files.push(file_reference(record, table_id, record_id));
@@ -101,8 +130,7 @@ pub(super) async fn attach(
             )
             .upload(UploadFileCommand {
                 actor: context.actor.clone(),
-                target: input
-                    .binding
+                target: binding
                     .config
                     .file_table_id
                     .map_or(FileUploadTarget::Default, FileUploadTarget::Table),
@@ -134,18 +162,31 @@ pub(super) async fn attach(
                 failure_code: Some("attachment_upload_failed".into()),
             },
         };
-        ensure!(
-            state
-                .notification_service
-                .record_attached_file(claim, update)
-                .await?,
-            "claim_lost"
-        );
+        match claim {
+            AttachmentClaim::Input(claim) => ensure!(
+                state
+                    .notification_service
+                    .record_attached_file(claim, update)
+                    .await?,
+                "claim_lost"
+            ),
+            AttachmentClaim::Turn(claim) => ensure!(
+                state
+                    .notification_service
+                    .record_turn_attached_file(claim, update)
+                    .await?,
+                "communication_turn_fenced"
+            ),
+        }
         let (table, id) = result?;
         files.push(file_reference(record, table, id));
     }
     Ok(files)
 }
-fn file_reference(record: &domain::CommunicationAttachment, table: Uuid, file: Uuid) -> Value {
+pub(super) fn file_reference(
+    record: &domain::CommunicationAttachment,
+    table: Uuid,
+    file: Uuid,
+) -> Value {
     serde_json::json!({"source":"upload_file_id","value":file.to_string(),"name":record.file_name,"mime_type":record.media_type,"metadata":{"file_table_id":table}})
 }
