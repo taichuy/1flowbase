@@ -2418,7 +2418,11 @@
       "web/app/src/features/settings/pages/notifications/NotificationInstanceFilters.tsx",
       "web/app/src/features/settings/pages/notifications/notifications-page.css",
       "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
-      "web/app/src/style-boundary/scene-fixtures/notifications/data.ts"
+      "web/app/src/style-boundary/scene-fixtures/notifications/data.ts",
+      "web/app/src/style-boundary/scene-fixtures/notifications/command-binding.ts",
+      "web/app/src/features/settings/pages/notifications/communications/CommunicationBindingForm.tsx",
+      "web/app/src/features/settings/pages/notifications/communications/CommunicationCommandsTable.tsx",
+      "web/app/src/features/settings/pages/notifications/communications/communication-commands.css"
     ],
     "boundaryNodes": [
       {
@@ -2470,7 +2474,11 @@
       "web/app/src/features/settings/pages/notifications/NotificationInstanceFilters.tsx",
       "web/app/src/features/settings/pages/notifications/notifications-page.css",
       "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
-      "web/app/src/style-boundary/scene-fixtures/notifications/data.ts"
+      "web/app/src/style-boundary/scene-fixtures/notifications/data.ts",
+      "web/app/src/style-boundary/scene-fixtures/notifications/command-binding.ts",
+      "web/app/src/features/settings/pages/notifications/communications/CommunicationBindingForm.tsx",
+      "web/app/src/features/settings/pages/notifications/communications/CommunicationCommandsTable.tsx",
+      "web/app/src/features/settings/pages/notifications/communications/communication-commands.css"
     ],
     "boundaryNodes": [
       {

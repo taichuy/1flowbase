@@ -4,6 +4,11 @@ import type {
   NotificationSendLog,
   NotificationType
 } from '@1flowbase/api-client';
+import {
+  commandBindingInstance,
+  commandBindingType,
+  createStyleBoundaryCommandBindingResponse
+} from './command-binding';
 
 const notificationType: NotificationType = {
   type_code: 'system',
@@ -63,6 +68,7 @@ const notificationLog: NotificationSendLog = {
 
 export function seedStyleBoundaryNotificationSettingsFetch() {
   const originalFetch = globalThis.fetch.bind(globalThis);
+  const commandBindingResponse = createStyleBoundaryCommandBindingResponse();
   globalThis.fetch = async (input, init) => {
     const url = new URL(
       typeof input === 'string'
@@ -72,11 +78,13 @@ export function seedStyleBoundaryNotificationSettingsFetch() {
           : input.url,
       window.location.origin
     );
+    const bindingResponse = commandBindingResponse(url, init);
+    if (bindingResponse) return bindingResponse;
     const payload =
       url.pathname === '/api/console/communications/types'
-        ? [notificationType]
+        ? [notificationType, commandBindingType]
         : url.pathname === '/api/console/communications/instances'
-          ? [notificationInstance]
+          ? [notificationInstance, commandBindingInstance]
           : url.pathname === '/api/console/communications/logs'
             ? {
                 items: [notificationLog],

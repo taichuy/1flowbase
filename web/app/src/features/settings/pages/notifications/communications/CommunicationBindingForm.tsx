@@ -15,6 +15,7 @@ import {
 } from '../../../../notifications/api/communications';
 import { useAuthStore } from '../../../../../state/auth-store';
 import { selectNavigationQueryScope } from '../../../../../state/navigation-query-scope';
+import { CommunicationCommandsTable } from './CommunicationCommandsTable';
 export interface CommunicationBindingHandle {
   validate: () => boolean;
   save: (id: string) => Promise<void>;
@@ -32,13 +33,14 @@ export const CommunicationBindingForm = forwardRef<
     reasoning_effort: null,
     file_table_id: null,
     mcp_instance_ids: [],
-    system_prompt: receive.default_system_prompt
+    system_prompt: receive.default_system_prompt,
+    command_settings: []
   });
   const [dirty, setDirty] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const binding = useQuery(communicationBindingOptions(scope, instance_id));
   const options = useQuery(
-    communicationOptions(scope, draft.application_id || undefined)
+    communicationOptions(scope, draft.application_id || undefined, instance_id)
   );
   const tables = useQuery(communicationFileTablesOptions(scope));
   useEffect(() => {
@@ -51,7 +53,8 @@ export const CommunicationBindingForm = forwardRef<
         reasoning_effort: value.reasoning_effort,
         file_table_id: value.file_table_id,
         mcp_instance_ids: value.mcp_instance_ids,
-        system_prompt: value.system_prompt
+        system_prompt: value.system_prompt,
+        command_settings: value.command_settings
       });
     else
       setDraft((d) => ({
@@ -67,6 +70,19 @@ export const CommunicationBindingForm = forwardRef<
     setDirty(true);
     setDraft((d) => ({ ...d, ...value }));
   };
+  // Keep saved settings whose declarations temporarily disappear, and overlay
+  // only the form's switch draft on the current backend catalogue.
+  const command_settings = new Map(
+    draft.command_settings.map((setting) => [setting.command_id, setting])
+  );
+  const commands = options.data ? options.data.commands : [];
+  for (const command of commands) {
+    if (!command_settings.has(command.command_id))
+      command_settings.set(command.command_id, {
+        command_id: command.command_id,
+        enabled: command.enabled
+      });
+  }
   useImperativeHandle(ref, () => ({
     validate: () => {
       const valid =
@@ -78,12 +94,15 @@ export const CommunicationBindingForm = forwardRef<
       return valid;
     },
     save: async (id) => {
-      let value = draft;
+      let value = {
+        ...draft,
+        command_settings: [...command_settings.values()]
+      };
       if (!instance_id) {
         const current = await getCommunicationBinding(id);
         if (current.plugin_mcp_instance_id)
           value = {
-            ...draft,
+            ...value,
             mcp_instance_ids: [
               ...new Set([
                 ...draft.mcp_instance_ids,
@@ -107,7 +126,11 @@ export const CommunicationBindingForm = forwardRef<
   if (pluginId && !mcpOptions.some((m) => m.value === pluginId))
     mcpOptions.push({ value: pluginId, label: t('channel_tools') });
   return (
-    <Form layout="vertical" component={false}>
+    <Form
+      layout="vertical"
+      component={false}
+      disabled={!!instance_id && !binding.isSuccess}
+    >
       {(options.isError || binding.isError || tables.isError) && (
         <Alert type="error" title={t('binding_load_failed')} />
       )}
@@ -194,6 +217,24 @@ export const CommunicationBindingForm = forwardRef<
           value={draft.system_prompt}
           onChange={(e) => change({ system_prompt: e.target.value })}
         />
+      </Form.Item>
+      <Form.Item label={t('commands')}>
+        {!options.isError && (
+          <CommunicationCommandsTable
+            commands={commands.map((command) => ({
+              ...command,
+              enabled: command_settings.get(command.command_id)!.enabled
+            }))}
+            loading={options.isPending}
+            disabled={
+              options.isPending || (!!instance_id && !binding.isSuccess)
+            }
+            onChange={(setting) => {
+              command_settings.set(setting.command_id, setting);
+              change({ command_settings: [...command_settings.values()] });
+            }}
+          />
+        )}
       </Form.Item>
     </Form>
   );

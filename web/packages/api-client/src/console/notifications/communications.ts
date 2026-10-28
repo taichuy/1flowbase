@@ -1,5 +1,21 @@
 import { apiFetch } from '../../transport';
 import type { ConsoleAssistantRunCapabilities } from '../administration/assistant';
+export interface CommunicationCommandSetting {
+  command_id: string;
+  enabled: boolean;
+}
+export interface CommunicationCommandView {
+  command_id: string;
+  name: string;
+  description: string;
+  usage: string;
+  source_kind: 'builtin' | 'plugin';
+  source_name: string;
+  installation_id: string | null;
+  enabled: boolean;
+  available: boolean;
+  unavailable_reason: string | null;
+}
 export interface CommunicationBindingInput {
   application_id: string;
   model: string | null;
@@ -7,6 +23,7 @@ export interface CommunicationBindingInput {
   file_table_id: string | null;
   mcp_instance_ids: string[];
   system_prompt: string;
+  command_settings: CommunicationCommandSetting[];
 }
 export interface CommunicationBindingRecord extends CommunicationBindingInput {
   workspace_id: string;
@@ -19,11 +36,13 @@ export interface CommunicationBindingView {
   binding: CommunicationBindingRecord | null;
   plugin_mcp_instance_id: string | null;
   default_system_prompt: string | null;
+  commands: CommunicationCommandView[];
 }
 export interface CommunicationOptions {
   published_agent_flows: Array<{ application_id: string; name: string }>;
   enabled_mcp_instances: Array<{ instance_id: string; name: string }>;
   run_capabilities: ConsoleAssistantRunCapabilities;
+  commands: CommunicationCommandView[];
 }
 export interface CommunicationPage<T> {
   items: T[];
@@ -79,12 +98,17 @@ const instancePath = (id: string) =>
   `${path}/instances/${encodeURIComponent(id)}`;
 export const getCommunicationOptions = (
   application_id?: string,
-  signal?: AbortSignal
-) =>
-  apiFetch<CommunicationOptions>({
-    path: `${path}/options${application_id ? `?${new URLSearchParams({ application_id })}` : ''}`,
+  signal?: AbortSignal,
+  instance_id?: string
+) => {
+  const query = new URLSearchParams();
+  if (application_id) query.set('application_id', application_id);
+  if (instance_id) query.set('instance_id', instance_id);
+  return apiFetch<CommunicationOptions>({
+    path: `${path}/options${query.size ? `?${query}` : ''}`,
     signal
   });
+};
 export const getCommunicationBinding = (id: string, signal?: AbortSignal) =>
   apiFetch<CommunicationBindingView>({
     path: `${instancePath(id)}/binding`,

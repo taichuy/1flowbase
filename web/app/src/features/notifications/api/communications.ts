@@ -23,10 +23,15 @@ export const communicationBindingOptions = (scope: string, id?: string) =>
     queryFn: ({ signal }) => getCommunicationBinding(id!, signal),
     enabled: !!id
   });
-export const communicationOptions = (scope: string, application_id?: string) =>
+export const communicationOptions = (
+  scope: string,
+  application_id?: string,
+  instance_id?: string
+) =>
   queryOptions({
-    queryKey: ['communications', scope, 'options', application_id],
-    queryFn: ({ signal }) => getCommunicationOptions(application_id, signal)
+    queryKey: ['communications', scope, 'options', application_id, instance_id],
+    queryFn: ({ signal }) =>
+      getCommunicationOptions(application_id, signal, instance_id)
   });
 export const communicationFileTablesOptions = (scope: string) =>
   queryOptions({
