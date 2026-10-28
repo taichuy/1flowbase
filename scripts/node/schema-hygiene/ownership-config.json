@@ -987,6 +987,14 @@
         "managed-table-id",
         "managed-table-scope-time-index"
       ]
+    },
+    "communication_command_events": {
+      "kind": "external_conversation_owned_command_event",
+      "reason": "The durable lifecycle event_id is the UUIDv7 primary identity; a second id would duplicate the command receipt. Scope/time lookup uses (scope_id,created_at,event_id).",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-time-index"
+      ]
     }
   },
   "ownedTableContracts": {
@@ -1850,6 +1858,49 @@
           "scope_id",
           "created_at"
         ]
+      ]
+    },
+    "communication_command_events": {
+      "primaryKey": [
+        "event_id"
+      ],
+      "ownerColumns": [
+        "scope_id",
+        "instance_id",
+        "external_identity",
+        "conversation_id"
+      ],
+      "requiredColumns": [
+        "input_id",
+        "session_id",
+        "request_json",
+        "effect_claim_id",
+        "reply_json",
+        "response_session_id",
+        "send_status",
+        "created_at",
+        "updated_at"
+      ],
+      "unconditionalIndexes": [
+        [
+          "scope_id",
+          "created_at",
+          "event_id"
+        ]
+      ],
+      "triggers": [
+        {
+          "table": "communication_command_events",
+          "name": "communication_command_updated_at",
+          "timing": "before",
+          "events": [
+            {
+              "event": "update",
+              "columns": []
+            }
+          ],
+          "function": "communication_touch_updated_at"
+        }
       ]
     }
   }

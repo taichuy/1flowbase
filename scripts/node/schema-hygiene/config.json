@@ -874,6 +874,12 @@
       "scopeGenerationSource": "authenticated workspace and persisted external conversation scope are checked together by the communication repository",
       "backfillSource": "new session and turn state is created on admission; existing message history and credentials are retained",
       "writePathSource": "communication session owner inserts immutable rotation receipts keyed by the complete external conversation scope and command receipt key"
+    },
+    "communication_command_events": {
+      "category": "managed_table",
+      "scopeGenerationSource": "host command admission derives scope from the durable inbound conversation",
+      "backfillSource": "new command event table; existing message history retained without replay",
+      "writePathSource": "command event repository owns effect claims, selected target, reply receipt and independent send claim"
     }
   },
   "needsOwnerReviewTables": {},
