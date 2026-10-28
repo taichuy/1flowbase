@@ -67,8 +67,24 @@ pub enum CommunicationCommandSendOutcome {
     Unknown,
 }
 
+/// Host-owned terminal delivery adjudication. An unknown prior attempt cannot be executed again.
+#[derive(Debug, Clone, Copy)]
+pub enum CommunicationCommandTermination {
+    Unavailable(super::LifecycleDeliveryPauseReason),
+    OutcomeUnknown,
+}
+
 #[async_trait]
 pub trait CommunicationCommandRepository: Send + Sync {
+    /// Exact live Outbox claim and frozen target are required. This is a Host failure receipt,
+    /// not a plugin effect: it remains possible after contribution/installation removal.
+    /// Preserve an already committed result and atomically exclude only its original input.
+    async fn terminate_communication_command_delivery(
+        &self,
+        delivery: &super::LifecycleOutboxRecord,
+        reply: CommunicationCommandReply,
+        failure_code: &str,
+    ) -> Result<CommunicationCommandRecord>;
     /// Serializes on the durable input. Repeated identical input reuses the original frozen target.
     async fn begin_communication_command(
         &self,

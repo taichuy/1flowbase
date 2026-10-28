@@ -3,6 +3,41 @@ use control_plane_contracts::ports::*;
 use domain::CommunicationConversationScope;
 use extension_contracts::CommunicationCommandReply;
 
+/// The delivery owner invokes this before ACK; no active worker or plugin grant is required
+/// to record a Host rejection. The repository still fences the exact durable claim and target.
+pub async fn terminate_communication_command_delivery<R: CommunicationCommandRepository>(
+    repository: &R,
+    delivery: &LifecycleOutboxRecord,
+    termination: CommunicationCommandTermination,
+) -> Result<()> {
+    anyhow::ensure!(
+        delivery.contract_id == extension_contracts::COMMUNICATION_COMMAND_POINT
+            && delivery.contract_version
+                == extension_contracts::COMMUNICATION_COMMAND_CONTRACT_VERSION,
+        "command terminal owner received another contract"
+    );
+    let (code,text) = match termination {
+        CommunicationCommandTermination::Unavailable(LifecycleDeliveryPauseReason::AuthorityRevoked) =>
+            ("command_authorization_revoked","This command is no longer enabled or authorized."),
+        CommunicationCommandTermination::Unavailable(LifecycleDeliveryPauseReason::InstallationInactive) =>
+            ("command_plugin_unavailable","This command is unavailable because its plugin is disabled or removed."),
+        CommunicationCommandTermination::Unavailable(LifecycleDeliveryPauseReason::FrozenGraphUnavailable | LifecycleDeliveryPauseReason::FrozenHandlerUnavailable) =>
+            ("command_handler_unavailable","This command is unavailable because its original handler cannot be restored."),
+        CommunicationCommandTermination::Unavailable(LifecycleDeliveryPauseReason::RetryBudgetExhausted) =>
+            ("command_delivery_exhausted","The command could not be completed and will not be retried. External actions may already have occurred."),
+        CommunicationCommandTermination::OutcomeUnknown =>
+            ("command_outcome_unknown","The command result is unknown and will not be retried. External actions may already have occurred."),
+    };
+    repository
+        .terminate_communication_command_delivery(
+            delivery,
+            CommunicationCommandReply { text: text.into() },
+            code,
+        )
+        .await?;
+    Ok(())
+}
+
 /// Decode only a persisted Host request after exclusive claim. Host registers the finite typed
 /// executors; ordinary receive classification only enqueues this intent.
 pub fn decode_builtin_command(

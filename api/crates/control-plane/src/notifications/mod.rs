@@ -23,7 +23,7 @@ mod authorization;
 mod command_catalog;
 mod command_events;
 pub use command_catalog::*;
-pub use command_events::decode_builtin_command;
+pub use command_events::{decode_builtin_command, terminate_communication_command_delivery};
 mod logging;
 mod managed_send;
 mod migration;

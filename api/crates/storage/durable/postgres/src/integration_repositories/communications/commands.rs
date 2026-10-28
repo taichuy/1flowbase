@@ -132,6 +132,76 @@ pub(crate) async fn complete_managed(
 
 #[async_trait]
 impl CommunicationCommandRepository for PgControlPlaneStore {
+    async fn terminate_communication_command_delivery(
+        &self,
+        delivery: &LifecycleOutboxRecord,
+        reply: CommunicationCommandReply,
+        failure_code: &str,
+    ) -> Result<CommunicationCommandRecord> {
+        let claim_id = delivery.claim_id.ok_or(LifecycleClaimLost)?;
+        let worker_id = delivery.claimed_by.ok_or(LifecycleClaimLost)?;
+        let mut tx = self.pool().begin().await?;
+        let row = sqlx::query("SELECT * FROM communication_command_events WHERE event_id=$1")
+            .bind(delivery.event_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        let scope = record(&row)?.scope;
+        // Rejection is still necessary after channel disable/delete and plugin uninstall.
+        // The durable conversation/input, not current activation, owns this negative receipt.
+        anyhow::ensure!(
+            sessions::lock_chat(&mut tx, &scope, false).await?.is_some(),
+            "command history scope missing"
+        );
+        let row = scoped(&mut tx, &scope, delivery.event_id)
+            .await?
+            .ok_or(Error::NotFound("communication_command"))?;
+        let current = record(&row)?;
+        let frozen=sqlx::query("SELECT o.contract_id,o.contract_version,o.canonical_payload,o.graph_fingerprint,d.handler_id,d.handler_version,d.attempt_count,(SELECT count(*) FROM lifecycle_outbox_deliveries all_targets WHERE all_targets.event_id=o.event_id) AS target_count FROM lifecycle_outbox o JOIN lifecycle_outbox_deliveries d ON d.event_id=o.event_id WHERE o.event_id=$1 AND d.subscriber_id=$2 AND d.status='claimed' AND d.claimed_by=$3 AND d.claim_id=$4 AND d.claim_expires_at>clock_timestamp() FOR UPDATE OF o,d")
+            .bind(delivery.event_id).bind(&delivery.subscriber_id).bind(worker_id).bind(claim_id).fetch_optional(&mut *tx).await?.ok_or(LifecycleClaimLost)?;
+        let contract_id: String = frozen.try_get("contract_id")?;
+        let contract_version: String = frozen.try_get("contract_version")?;
+        let canonical_payload: Vec<u8> = frozen.try_get("canonical_payload")?;
+        let graph: String = frozen.try_get("graph_fingerprint")?;
+        let handler_id: String = frozen.try_get("handler_id")?;
+        let handler_version: String = frozen.try_get("handler_version")?;
+        anyhow::ensure!(
+            contract_id == extension_contracts::COMMUNICATION_COMMAND_POINT
+                && contract_version == extension_contracts::COMMUNICATION_COMMAND_CONTRACT_VERSION
+                && delivery.contract_id == contract_id
+                && delivery.contract_version == contract_version
+                && delivery.canonical_payload == canonical_payload
+                && delivery.graph_fingerprint == graph
+                && delivery.handler_id == handler_id
+                && delivery.handler_version == handler_version
+                && delivery.attempt_count == frozen.try_get::<i32, _>("attempt_count")?
+                && frozen.try_get::<i64, _>("target_count")? == 1
+                && current.installation_id.is_some()
+                && current.subscriber_id.as_deref() == Some(delivery.subscriber_id.as_str())
+                && current
+                    .target
+                    .as_ref()
+                    .is_some_and(|target| target.graph_fingerprint == graph
+                        && target.handler_id == handler_id
+                        && target.handler_version == handler_version),
+            "command terminal receipt frozen target mismatch"
+        );
+        let fact: extension_contracts::ManagedEventDelivery =
+            serde_json::from_slice(&canonical_payload)?;
+        fact.validate()?;
+        anyhow::ensure!(
+            fact.event_id == current.event_id.to_string()
+                && fact.workspace_id == scope.workspace_id.to_string()
+                && fact.payload == serde_json::to_value(&current.request)?
+                && fact.causation_id == current.request.input_id
+                && fact.correlation_id == current.request.input_id,
+            "command terminal receipt request mismatch"
+        );
+        let session = Uuid::parse_str(&current.request.session_id)?;
+        let result = finish(&mut tx, current, session, reply, Some(failure_code.into())).await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+
     async fn begin_communication_command(
         &self,
         input: BeginCommunicationCommand,

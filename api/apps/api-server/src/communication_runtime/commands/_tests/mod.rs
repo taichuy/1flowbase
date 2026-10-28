@@ -19,7 +19,9 @@ impl Fixture {
             .fetch_one(state.store.pool())
             .await
             .unwrap();
-        let actor = state.store.load_actor_context_for_user(user).await.unwrap();
+        let actor = ApplicationRepository::load_actor_context_for_user(&state.store, user)
+            .await
+            .unwrap();
         let channel = Uuid::now_v7();
         let now = time::OffsetDateTime::now_utc();
         state

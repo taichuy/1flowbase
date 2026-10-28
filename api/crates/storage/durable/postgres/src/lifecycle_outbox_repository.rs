@@ -176,17 +176,25 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
         let rows = sqlx::query(
             r#"
             with candidates as (
-                select event_id, subscriber_id from lifecycle_outbox_deliveries
-                where (status = 'pending' and available_at <= now())
-                   or (status = 'claimed' and claim_expires_at <= now())
-                order by available_at, event_id, subscriber_id
+                select delivery.event_id, delivery.subscriber_id from lifecycle_outbox_deliveries delivery
+                where (delivery.status = 'pending' and delivery.available_at <= now())
+                   or (delivery.status = 'claimed' and delivery.claim_expires_at <= now())
+                   or (delivery.status = 'paused' and exists (
+                       select 1 from lifecycle_outbox fact join communication_command_events command on command.event_id=fact.event_id
+                       where fact.event_id=delivery.event_id and fact.contract_id='1flowbase.communication.command.requested'
+                         and fact.contract_version='1' and command.reply_json is null
+                   ))
+                order by delivery.available_at, delivery.event_id, delivery.subscriber_id
                 for update skip locked
                 limit $2
             ), claimed as (
                 update lifecycle_outbox_deliveries as delivery
                 set status = 'claimed', claimed_by = $1, claimed_at = now(),
                     claim_id = gen_random_uuid(), claim_expires_at = now() + $3::bigint * interval '1 microsecond',
-                    attempt_count = attempt_count + 1
+                    pause_reason = null, paused_at = null,
+                    attempt_count = case when delivery.status = 'paused'
+                        then greatest(delivery.attempt_count + 1, 2)
+                        else delivery.attempt_count + 1 end
                 from candidates
                 where delivery.event_id = candidates.event_id
                   and delivery.subscriber_id = candidates.subscriber_id

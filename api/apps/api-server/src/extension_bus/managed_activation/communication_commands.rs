@@ -152,6 +152,20 @@ impl control_plane::notifications::CommunicationCommandProviderPort
 }
 
 impl ManagedExtensionComposition {
+    /// Frozen graph loss and revoked authority can reject execution, but cannot prevent the
+    /// Host from resolving the persisted request and releasing its ordinary-input barrier.
+    pub(crate) async fn terminate_command_delivery(
+        &self,
+        fact: &control_plane_contracts::ports::LifecycleOutboxRecord,
+        termination: control_plane_contracts::ports::CommunicationCommandTermination,
+    ) -> Result<()> {
+        control_plane::notifications::terminate_communication_command_delivery(
+            &self.store,
+            fact,
+            termination,
+        )
+        .await
+    }
     /// Return true only for an already committed result. Current authority is checked by the
     /// caller before this receipt shortcut, so revocation never becomes a replay authorization.
     pub(super) async fn validate_command_delivery(

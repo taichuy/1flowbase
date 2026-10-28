@@ -9,7 +9,7 @@ use control_plane::{
 use control_plane_contracts::ports::*;
 use extension_contracts::*;
 use serde_json::json;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
 struct CommandFixture {
@@ -18,6 +18,7 @@ struct CommandFixture {
     installation: Uuid,
     scope: domain::CommunicationConversationScope,
     input: Uuid,
+    trace_path: PathBuf,
 }
 impl CommandFixture {
     async fn new() -> Self {
@@ -46,6 +47,14 @@ impl CommandFixture {
             .await
             .unwrap();
         let installation = installed.installation.id;
+        let trace_path = PathBuf::from(
+            installed
+                .local_artifact
+                .local_path
+                .clone()
+                .expect("installed SDK path"),
+        )
+        .join("bin/worker.trace");
         management
             .assign_plugin(AssignPluginCommand {
                 actor_user_id: base.actor.user_id,
@@ -102,6 +111,7 @@ impl CommandFixture {
             installation,
             scope,
             input,
+            trace_path,
         }
     }
     async fn enqueue(&self) -> CommunicationCommandRecord {
@@ -139,31 +149,6 @@ async fn communication_command_installed_sdk_uses_one_frozen_target_and_one_dura
     payload["payload"]["arguments"] = "forged".into();
     forged.canonical_payload = serde_json::to_vec(&payload).unwrap();
     assert!(fixture.base.delivery.deliver(&forged).await.is_err());
-    // A receipt commit failure rolls back both history projection and result; transport is not ACKed.
-    sqlx::query("CREATE FUNCTION reject_command_reply() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.reply_json IS NOT NULL THEN RAISE EXCEPTION 'fixture reply abort'; END IF; RETURN NEW; END $$").execute(fixture.base.store.pool()).await.unwrap();
-    sqlx::query("CREATE TRIGGER reject_command_reply BEFORE UPDATE ON communication_command_events FOR EACH ROW EXECUTE FUNCTION reject_command_reply()").execute(fixture.base.store.pool()).await.unwrap();
-    assert!(fixture.base.delivery.deliver(command[0]).await.is_err());
-    assert!(fixture
-        .base
-        .store
-        .communication_command(fixture.scope.workspace_id, queued.event_id)
-        .await
-        .unwrap()
-        .unwrap()
-        .reply
-        .is_none());
-    let rolled_back: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM communication_messages WHERE input_id=$1 AND direction='outbound'",
-    )
-    .bind(fixture.input)
-    .fetch_one(fixture.base.store.pool())
-    .await
-    .unwrap();
-    assert_eq!(rolled_back, 0);
-    sqlx::query("DROP TRIGGER reject_command_reply ON communication_command_events")
-        .execute(fixture.base.store.pool())
-        .await
-        .unwrap();
     fixture.base.delivery.deliver(command[0]).await.unwrap();
     fixture.base.delivery.deliver(command[0]).await.unwrap();
     let result = fixture
@@ -310,3 +295,6 @@ async fn communication_command_explicit_handler_failure_is_a_durable_reply_recei
         .unwrap()
         .is_empty());
 }
+
+#[path = "communication_command_terminal_tests.rs"]
+mod terminal_tests;

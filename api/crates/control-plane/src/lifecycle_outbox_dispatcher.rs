@@ -3,8 +3,8 @@ use std::{sync::Arc, time::Duration as StdDuration};
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::ports::{
-    LifecycleClaimLost, LifecycleDeliveryBlocked, LifecycleDeliveryPauseReason,
-    LifecycleOutboxRecord, LifecycleOutboxRepository,
+    CommunicationCommandTermination, LifecycleClaimLost, LifecycleDeliveryBlocked,
+    LifecycleDeliveryPauseReason, LifecycleOutboxRecord, LifecycleOutboxRepository,
 };
 use extension_contracts::{
     CompletionOutcome, CompletionTerminal, LifecycleContract, LifecycleOperationId,
@@ -28,6 +28,15 @@ impl LifecycleContract for LifecycleFactDeliveryCompletion {
 #[async_trait]
 pub trait LifecycleFactDeliveryPort: Send + Sync {
     async fn deliver(&self, fact: &LifecycleOutboxRecord) -> Result<()>;
+    /// Registered command consumers must commit their Host failure receipt before transport ACK.
+    /// Other lifecycle contracts never invoke this command-specific terminal owner.
+    async fn terminate_command(
+        &self,
+        _fact: &LifecycleOutboxRecord,
+        _termination: CommunicationCommandTermination,
+    ) -> Result<()> {
+        anyhow::bail!("communication command terminal owner unavailable")
+    }
 }
 
 pub trait LifecycleDeliveryCompletionPort: Send + Sync {
@@ -120,20 +129,30 @@ where
         if remaining.is_zero() {
             return Ok(());
         }
-        let (terminal, error) = match tokio::time::timeout(
-            self.delivery_deadline.min(remaining),
-            self.delivery.deliver(&fact),
-        )
-        .await
-        {
-            Ok(Ok(())) => (CompletionTerminal::Succeeded, None),
-            Ok(Err(error)) => (CompletionTerminal::Failed, Some(error)),
-            Err(_) => (
-                CompletionTerminal::TimedOut,
-                Some(anyhow::anyhow!(
-                    "lifecycle subscriber delivery deadline elapsed"
-                )),
-            ),
+        let command = fact.contract_id == extension_contracts::COMMUNICATION_COMMAND_POINT;
+        // A reclaimed command may have run before its process/ACK was lost. Its durable result
+        // wins when present; otherwise terminate as unknown without invoking the worker again.
+        let (terminal, error) = if command && fact.attempt_count > 1 {
+            (
+                CompletionTerminal::Failed,
+                Some(anyhow::anyhow!("previous command delivery outcome unknown")),
+            )
+        } else {
+            match tokio::time::timeout(
+                self.delivery_deadline.min(remaining),
+                self.delivery.deliver(&fact),
+            )
+            .await
+            {
+                Ok(Ok(())) => (CompletionTerminal::Succeeded, None),
+                Ok(Err(error)) => (CompletionTerminal::Failed, Some(error)),
+                Err(_) => (
+                    CompletionTerminal::TimedOut,
+                    Some(anyhow::anyhow!(
+                        "lifecycle subscriber delivery deadline elapsed"
+                    )),
+                ),
+            }
         };
         let update = if let Some(error) = error {
             let blocked = error
@@ -143,7 +162,26 @@ where
                     (fact.attempt_count >= 5)
                         .then_some(LifecycleDeliveryPauseReason::RetryBudgetExhausted)
                 });
-            if let Some(reason) = blocked {
+            if command {
+                let termination = blocked
+                    .map(CommunicationCommandTermination::Unavailable)
+                    .unwrap_or(CommunicationCommandTermination::OutcomeUnknown);
+                match self.delivery.terminate_command(&fact, termination).await {
+                    Ok(()) => {
+                        self.repository
+                            .mark_lifecycle_fact_delivered(
+                                fact.event_id,
+                                &fact.subscriber_id,
+                                self.worker_id,
+                                claim_id,
+                            )
+                            .await
+                    }
+                    // Leave the claim recoverable if the receipt transaction failed. On reclaim
+                    // the command is terminalized before any possible worker admission.
+                    Err(error) => Err(error),
+                }
+            } else if let Some(reason) = blocked {
                 self.repository
                     .pause_lifecycle_fact(
                         fact.event_id,
@@ -571,6 +609,84 @@ mod tests {
                 *repository.completed.lock().unwrap(),
                 Some(LifecycleOutboxStatus::Paused)
             );
+        }
+    }
+
+    struct CommandTerminalDelivery {
+        calls: std::sync::atomic::AtomicUsize,
+        completed: Arc<Mutex<Option<CommunicationCommandTermination>>>,
+        fail_commit: bool,
+    }
+    #[async_trait]
+    impl LifecycleFactDeliveryPort for CommandTerminalDelivery {
+        async fn deliver(&self, _fact: &LifecycleOutboxRecord) -> Result<()> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(LifecycleDeliveryBlocked(LifecycleDeliveryPauseReason::AuthorityRevoked).into())
+        }
+        async fn terminate_command(
+            &self,
+            _fact: &LifecycleOutboxRecord,
+            reason: CommunicationCommandTermination,
+        ) -> Result<()> {
+            if self.fail_commit {
+                anyhow::bail!("receipt storage unavailable");
+            }
+            *self.completed.lock().unwrap() = Some(reason);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn communication_command_dispatcher_requires_terminal_receipt_before_ack_and_never_replays(
+    ) {
+        for (attempt, fail_commit) in [(1, false), (1, true), (2, false), (5, false)] {
+            let mut repository = repository();
+            repository.record.contract_id = extension_contracts::COMMUNICATION_COMMAND_POINT.into();
+            repository.record.contract_version = "1".into();
+            repository.record.attempt_count = attempt;
+            let delivery = Arc::new(CommandTerminalDelivery {
+                calls: Default::default(),
+                completed: Default::default(),
+                fail_commit,
+            });
+            let dispatcher = LifecycleOutboxDispatcher::new(
+                repository.clone(),
+                delivery.clone(),
+                Arc::new(Completion::default()),
+            );
+            assert_eq!(dispatcher.run_once().await.is_err(), fail_commit);
+            assert_eq!(
+                delivery.calls.load(std::sync::atomic::Ordering::SeqCst),
+                if attempt == 1 { 1 } else { 0 }
+            );
+            if fail_commit {
+                assert!(
+                    repository.completed.lock().unwrap().is_none(),
+                    "never park the outbox before its barrier receipt commits"
+                );
+            } else {
+                assert_eq!(
+                    *repository.completed.lock().unwrap(),
+                    Some(LifecycleOutboxStatus::Delivered)
+                );
+                let terminal = delivery.completed.lock().unwrap();
+                match (attempt, terminal.as_ref().unwrap()) {
+                    (
+                        1,
+                        CommunicationCommandTermination::Unavailable(
+                            LifecycleDeliveryPauseReason::AuthorityRevoked,
+                        ),
+                    )
+                    | (2, CommunicationCommandTermination::OutcomeUnknown)
+                    | (
+                        5,
+                        CommunicationCommandTermination::Unavailable(
+                            LifecycleDeliveryPauseReason::RetryBudgetExhausted,
+                        ),
+                    ) => {}
+                    other => panic!("unexpected command terminal decision: {other:?}"),
+                }
+            }
         }
     }
 }
