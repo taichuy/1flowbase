@@ -521,10 +521,9 @@ async fn absolute_deadline_expires_in_connection_free_retry_phase_without_discar
 
 #[tokio::test]
 async fn acquire_waiting_keeps_template_fifo_beyond_physical_timeout_then_progresses() {
-    let physical_timeout = Duration::from_millis(250);
     for lane_cap in [None, Some(2)] {
         let mut configuration = settings(1);
-        configuration.business.acquire_timeout = physical_timeout;
+        let physical_timeout = configuration.business.acquire_timeout;
         configuration.template_install_max_connections = lane_cap;
         let fixture = Fixture::new(configuration).await;
         let registry = fixture.store.connections().clone();
@@ -537,7 +536,7 @@ async fn acquire_waiting_keeps_template_fifo_beyond_physical_timeout_then_progre
         let head_registry = registry.clone();
         let head_key = key.clone();
         let mut head = tokio::spawn(async move { head_registry.acquire_waiting(head_key).await });
-        timeout(Duration::from_secs(2), backoff)
+        timeout(physical_timeout * 2, backoff)
             .await
             .unwrap()
             .unwrap();
@@ -550,9 +549,11 @@ async fn acquire_waiting_keeps_template_fifo_beyond_physical_timeout_then_progre
             }));
             eventually(|| registry.observe().template_install.local_queue == index + 1).await;
         }
-        // The barrier holds only the FIFO turn. Exceed the configured physical timeout
-        // without making either the head or its local followers expire/rejoin the queue.
-        assert!(timeout(physical_timeout * 2, &mut head).await.is_err());
+        // Keep the normal physical timeout for healthy connections. Spend 101% of that
+        // window only at the connection-free gate; neither the head nor its followers
+        // may expire/rejoin the FIFO while no physical attempt is running.
+        let logical_wait = physical_timeout + physical_timeout / 100;
+        assert!(timeout(logical_wait, &mut head).await.is_err());
         assert!(followers.iter().all(|follower| !follower.is_finished()));
         let observation = registry.observe();
         assert_eq!(observation.local_key_cells, 1);
@@ -575,17 +576,34 @@ async fn acquire_waiting_keeps_template_fifo_beyond_physical_timeout_then_progre
         .await
         .unwrap()
         .unwrap();
+        // Install the next gate before resuming. Reaching it requires another actual
+        // PG false ACK and clean return after the logical wait exceeded one physical
+        // window, without spending a second arbitrary interval polling real connections.
+        let (retried, resume_retry) = registry.pause_next_retry_delay();
         resume.send(()).unwrap();
-        // Also exceed the timeout with actual PG false probes/backoff, not just the gate.
-        assert!(timeout(physical_timeout * 2, &mut head).await.is_err());
+        timeout(physical_timeout * 2, retried)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!head.is_finished());
         assert!(followers.iter().all(|follower| !follower.is_finished()));
+        let observation = registry.observe();
+        assert_eq!(observation.local_key_cells, 1);
+        assert_eq!(observation.template_install.local_queue, 3);
+        assert_eq!(observation.template_install.active, 0);
+        assert_eq!(observation.template_install.pool.checked_out, 0);
         let snapshot = fixture.server_lock_snapshot(&remote).await;
         assert!(
             snapshot.holder_holds && snapshot.blocked_pids.is_empty(),
             "{snapshot:?}"
         );
+        assert_eq!(
+            snapshot.coordinator_pids.len(),
+            if lane_cap.is_some() { 1 } else { 0 }
+        );
         remote.release().await;
-        let lease = timeout(Duration::from_secs(2), head)
+        resume_retry.send(()).unwrap();
+        let lease = timeout(physical_timeout * 2, head)
             .await
             .unwrap()
             .unwrap()
@@ -593,7 +611,7 @@ async fn acquire_waiting_keeps_template_fifo_beyond_physical_timeout_then_progre
         assert!(followers.iter().all(|follower| !follower.is_finished()));
         lease.release().await;
         for follower in followers {
-            timeout(Duration::from_secs(2), follower)
+            timeout(physical_timeout * 2, follower)
                 .await
                 .unwrap()
                 .unwrap()
