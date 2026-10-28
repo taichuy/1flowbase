@@ -2,14 +2,14 @@
 use super::*;
 use crate::_tests::{application, support};
 use axum::{
-    Router,
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
+    Router,
 };
 use control_plane::ports::{OrchestrationRuntimeRepository, RoleRepository};
 use tower::ServiceExt;
 
-async fn api(
+pub(super) async fn api(
     app: &Router,
     cookie: &str,
     csrf: &str,
@@ -70,7 +70,11 @@ async fn operator_run_access(f: &Fixture, role_code: &str, allowed_route: Option
         .unwrap();
 }
 
-async fn execution_diagnostics(f: &Fixture, application_id: &str, run_id: Uuid) -> Value {
+pub(super) async fn execution_diagnostics(
+    f: &Fixture,
+    application_id: &str,
+    run_id: Uuid,
+) -> Value {
     let detail = f
         .state
         .store

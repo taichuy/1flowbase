@@ -42,7 +42,7 @@ impl runtime_extension_host::RuntimeArtifactResolver for FixtureArtifactResolver
     }
 }
 
-fn receive_package() -> Vec<u8> {
+fn receive_package(turn_fixture: bool) -> Vec<u8> {
     let fixture = crate::api_workspace_root()
         .unwrap()
         .join("plugins/fixtures/acme.notification");
@@ -50,6 +50,10 @@ fn receive_package() -> Vec<u8> {
         serde_json::from_slice(&std::fs::read(fixture.join("manifest.yaml")).unwrap()).unwrap();
     manifest["notification_types"][0]["receive"] =
         serde_json::from_slice(&std::fs::read(fixture.join("receive.json")).unwrap()).unwrap();
+    if turn_fixture {
+        manifest["notification_types"][0]["config_schema"]["properties"]
+            ["fixture_expected_sends"] = json!({"type":"array"});
+    }
     manifest["managed"]["module"]["contributions"].as_array_mut().unwrap().push(json!({
         "contribution_id":"acme.notification-fixture.receive", "contributor_module_id":"notification-fixture",
         "point_id":"1flowbase.notification.receive", "contract_version":"1flowbase.notification/v1",
@@ -95,6 +99,10 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::with_expected_sends(None).await
+    }
+
+    async fn with_expected_sends(expected_sends: Option<Value>) -> Self {
         let (mut state, _) = crate::_tests::support::test_api_state_with_database_url().await;
         let actor_id: Uuid = sqlx::query_scalar("SELECT id FROM users WHERE account='root'")
             .fetch_one(state.store.pool())
@@ -145,7 +153,7 @@ impl Fixture {
             .install_uploaded_plugin(InstallUploadedPluginCommand {
                 actor_user_id: actor_id,
                 file_name: "communication-fixture.1flowbasepkg".into(),
-                package_bytes: receive_package(),
+                package_bytes: receive_package(expected_sends.is_some()),
             })
             .await
             .unwrap();
@@ -164,6 +172,10 @@ impl Fixture {
             })
             .await
             .unwrap();
+        let mut config = json!({"token":"private-token","channel":"ops"});
+        if let Some(expected_sends) = expected_sends {
+            config["fixture_expected_sends"] = expected_sends;
+        }
         let instance = state
             .notification_service
             .create_instance(
@@ -172,7 +184,7 @@ impl Fixture {
                     type_code: "acme/notification-fixture/receipt".into(),
                     installation_id: Some(installation_id),
                     display_name: "Scoped receive".into(),
-                    config_json: json!({"token":"private-token","channel":"ops"}),
+                    config_json: config,
                     status: None,
                 },
             )
@@ -385,14 +397,15 @@ async fn communication_receive_session_progressive_mcp_reaches_scoped_history() 
     );
     let other_sender = fixture.invoker("bob").await;
     let alice_under_bob = invoke(&other_sender,"call",json!({"tool_id":tool,"des_id":des_id,"arguments":{"conversation_id":session["conversation_id"]}})).await;
-    assert!(
-        !alice_under_bob
-            .content
-            .to_string()
-            .contains("Alice private input")
-    );
+    assert!(!alice_under_bob
+        .content
+        .to_string()
+        .contains("Alice private input"));
     fixture.runtime.host.stop().await.unwrap();
 }
 
 #[path = "pipeline.rs"]
 mod pipeline;
+
+#[path = "turn_pipeline.rs"]
+mod turn_pipeline;
