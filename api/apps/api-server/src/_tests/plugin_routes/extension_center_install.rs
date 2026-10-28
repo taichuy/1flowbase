@@ -247,11 +247,16 @@ async fn managed_runtime_catalog_install_succeeds_and_is_idempotent() {
         "notification-fixture"
     );
     assert_eq!(first["data"]["installation"]["version"], "1.0.0");
-    assert_eq!(
-        first["data"]["installation"]["desired_state"],
-        "active_requested"
-    );
-    assert_eq!(first["data"]["installation"]["runtime_status"], "active");
+    // The install receipt describes the artifact; the inventory endpoint enriches
+    // it with the current desired state and local runtime status.
+    let inventory = installed(&app, &cookie).await;
+    let installation = inventory
+        .iter()
+        .find(|row| row["id"] == first["data"]["installation"]["id"])
+        .unwrap();
+    assert_eq!(installation["desired_state"], "active_requested");
+    assert_eq!(installation["runtime_status"], "active");
+    assert_eq!(installation["availability_status"], "available");
     let response = app
         .clone()
         .oneshot(
