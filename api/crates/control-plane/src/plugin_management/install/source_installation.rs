@@ -99,38 +99,8 @@ where
         {
             return Ok(install);
         }
-        if package_kind == RoutedPluginPackageKind::ManagedContributions
-            && crate::plugin_management::family::supports_workspace_assignment(
-                &install.installation,
-            )
-        {
-            let actor =
-                load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-            // First activation needs a workspace scope. An existing family selection must
-            // stay intact until the separate, validated managed version-switch operation.
-            if self
-                .repository
-                .create_initial_assignment(&CreatePluginAssignmentInput {
-                    installation_id: install.installation.id,
-                    workspace_id: actor.current_workspace_id,
-                    provider_code: install.installation.provider_code.clone(),
-                    actor_user_id: command.actor_user_id,
-                })
-                .await?
-                .is_some()
-            {
-                self.repository
-                    .append_audit_log(&audit_log(
-                        Some(actor.current_workspace_id),
-                        Some(command.actor_user_id),
-                        "plugin_assignment",
-                        Some(install.installation.id),
-                        "plugin.assigned",
-                        json!({"provider_code":install.installation.provider_code}),
-                    ))
-                    .await?;
-            }
-        }
+        self.ensure_initial_managed_assignment(command.actor_user_id, &install.installation)
+            .await?;
         self.enable_plugin(EnablePluginCommand {
             actor_user_id: command.actor_user_id,
             installation_id: install.installation.id,

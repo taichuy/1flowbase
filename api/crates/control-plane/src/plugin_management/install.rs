@@ -644,22 +644,77 @@ where
         Ok(())
     }
 
+    async fn ensure_initial_managed_assignment(
+        &self,
+        actor_user_id: Uuid,
+        installation: &domain::PluginInstallationRecord,
+    ) -> Result<()> {
+        if installation.contract_version != "1flowbase.extension-bus/v1"
+            || !crate::plugin_management::family::supports_workspace_assignment(installation)
+        {
+            return Ok(());
+        }
+        let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
+        // Establish first-install scope without replacing an existing family selection,
+        // including when another install wins concurrently. Assignment grants no capability.
+        if self
+            .repository
+            .create_initial_assignment(&CreatePluginAssignmentInput {
+                installation_id: installation.id,
+                workspace_id: actor.current_workspace_id,
+                provider_code: installation.provider_code.clone(),
+                actor_user_id,
+            })
+            .await?
+            .is_some()
+        {
+            self.repository
+                .append_audit_log(&audit_log(
+                    Some(actor.current_workspace_id),
+                    Some(actor_user_id),
+                    "plugin_assignment",
+                    Some(installation.id),
+                    "plugin.assigned",
+                    json!({"provider_code":installation.provider_code}),
+                ))
+                .await?;
+            self.invalidate_model_routing_catalog(actor.current_workspace_id)
+                .await;
+        }
+        Ok(())
+    }
+
     async fn enable_and_assign_model_provider_installation(
         &self,
         actor_user_id: Uuid,
         installation_id: Uuid,
     ) -> Result<InstallPluginResult> {
-        self.enable_plugin(EnablePluginCommand {
-            actor_user_id,
-            installation_id,
-        })
-        .await?;
-        let task = self
-            .assign_plugin(AssignPluginCommand {
+        let before = self
+            .repository
+            .get_installation(installation_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        self.ensure_initial_managed_assignment(actor_user_id, &before)
+            .await?;
+        let enabled = self
+            .enable_plugin(EnablePluginCommand {
                 actor_user_id,
                 installation_id,
             })
             .await?;
+        // Managed version selection is owned by the validated switch operation. Its
+        // first assignment already exists; generic install must not overwrite a family.
+        let task = if before.contract_version == "1flowbase.extension-bus/v1" {
+            enabled
+        } else {
+            self.assign_plugin(AssignPluginCommand {
+                actor_user_id,
+                installation_id,
+            })
+            .await?
+        };
         let installation = self
             .repository
             .get_installation(installation_id)

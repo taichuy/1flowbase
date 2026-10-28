@@ -5,8 +5,9 @@ use crate::official_extension_catalog::{
     DownloadedOfficialExtensionArtifact, LocatedOfficialExtensionCatalogEntry,
     OfficialExtensionArtifactDescriptor, OfficialExtensionCatalogEntry,
     OfficialExtensionCatalogEntrySource, OfficialExtensionCatalogFreshness,
-    OfficialExtensionCatalogPage, OfficialExtensionCatalogSearchQuery,
-    OfficialExtensionCatalogSearchResult, OfficialExtensionCatalogSourcePort,
+    OfficialExtensionCatalogPage, OfficialExtensionCatalogPageMetadata,
+    OfficialExtensionCatalogSearchQuery, OfficialExtensionCatalogSearchResult,
+    OfficialExtensionCatalogSourcePort,
 };
 use async_trait::async_trait;
 use axum::{
@@ -112,10 +113,24 @@ impl OfficialExtensionCatalogSourcePort for ManagedCatalog {
     }
     async fn list_page(
         &self,
-        _: &str,
+        category: &str,
         _: Option<&str>,
     ) -> anyhow::Result<OfficialExtensionCatalogPage> {
-        anyhow::bail!("page not used by install fixture")
+        Ok(OfficialExtensionCatalogPage {
+            source_kind: "official_registry".into(),
+            category: category.into(),
+            metadata: OfficialExtensionCatalogPageMetadata {
+                page: 1,
+                cursor: "start".into(),
+                checksum: "sha256:fixture".into(),
+                locator: "fixture://catalog".into(),
+                next_cursor: None,
+                page_size: 100,
+                total_entries: 1,
+                freshness: OfficialExtensionCatalogFreshness::Fresh,
+            },
+            entries: vec![self.entry.clone()],
+        })
     }
     async fn find_entry(
         &self,
@@ -194,10 +209,7 @@ async fn installed(app: &Router, cookie: &str) -> Vec<Value> {
     body["data"]["entries"].as_array().unwrap().clone()
 }
 
-#[tokio::test]
-async fn managed_runtime_catalog_install_succeeds_and_is_idempotent() {
-    let source = ManagedCatalog::new();
-    let body = source.request_body();
+async fn managed_app(source: ManagedCatalog) -> (Router, RuntimeFixture) {
     // The common route fixture has no managed composition. Assemble the same real
     // runtime fixture used by notification lifecycle tests for the successful install.
     let (mut state, _) = crate::_tests::support::test_api_state_with_database_url().await;
@@ -219,6 +231,14 @@ async fn managed_runtime_catalog_install_succeeds_and_is_idempotent() {
     state_mut.notification_service = notifications;
     state_mut.official_extension_catalog_source = Arc::new(source);
     let app = crate::app_with_state_and_config(state, &crate::_tests::support::test_config());
+    (app, runtime)
+}
+
+#[tokio::test]
+async fn managed_runtime_catalog_install_succeeds_and_is_idempotent() {
+    let source = ManagedCatalog::new();
+    let body = source.request_body();
+    let (app, runtime) = managed_app(source).await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let (status, first) = install(&app, &cookie, &csrf, &body).await;
     assert_eq!(status, StatusCode::CREATED, "{first}");
@@ -260,6 +280,55 @@ async fn managed_runtime_catalog_install_succeeds_and_is_idempotent() {
         second["data"]["installation"]["id"]
     );
     assert_eq!(second["data"]["local_artifact_was_present"], true);
+    assert_eq!(
+        installed(&app, &cookie)
+            .await
+            .iter()
+            .filter(|row| row["artifact_id"] == "notification-fixture")
+            .count(),
+        1
+    );
+    runtime.host.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn generic_official_managed_install_establishes_workspace_scope_before_enable() {
+    let source = ManagedCatalog::new();
+    let (app, runtime) = managed_app(source).await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/plugins/install-official")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "plugin_id":"acme.notification-fixture",
+                        "risk_override":{"reason":"isolated unsigned SDK fixture",
+                            "acknowledged_warnings":["signature_missing"]}
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(
+        body["data"]["installation"]["desired_state"],
+        "active_requested"
+    );
+    assert_eq!(
+        body["data"]["installation"]["local_artifact"]["runtime_status"],
+        "active"
+    );
     assert_eq!(
         installed(&app, &cookie)
             .await

@@ -91,6 +91,9 @@ jobs:
           if [ "$TEST_SCOPE" = extension-install ]; then
             cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example notification_worker
             export NOTIFICATION_WORKER_FIXTURE="$GITHUB_WORKSPACE/api/target/debug/examples/notification_worker"
+            run_test repository-contract -p control-plane-contracts
+            cargo fetch --locked --manifest-path api/Cargo.toml
+            run_test dependency-boundaries -p control-plane-postgres-tests --test dependency_boundaries
             run_test catalog-types -p control-plane --lib _tests::plugin_management::package_router::
             run_test official-install -p control-plane --lib _tests::plugin_management::install::
             run_test system-managed-lifecycle -p control-plane --lib _tests::plugin_management::managed_service_install::
