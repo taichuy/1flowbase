@@ -69,6 +69,7 @@ type RenderPlanSlotProps = {
   ) => void;
   intrinsicHeight?: number;
   allocatedHeightEpoch?: number;
+  fillsPageViewport?: boolean;
   onRuntimeDemandChange?: (
     blockId: string,
     priority: FrontstageRuntimeDemandPriority
@@ -208,6 +209,7 @@ export const RenderPlanSlot = memo(function RenderPlanSlot({
   onAutoHeightChange,
   intrinsicHeight,
   allocatedHeightEpoch,
+  fillsPageViewport = false,
   onRuntimeDemandChange,
   onRuntimeRetry,
   onRuntimeRefresh
@@ -245,7 +247,9 @@ export const RenderPlanSlot = memo(function RenderPlanSlot({
   const rendererVersionError = resolveRendererVersionError(item);
   const isFixedHeight = item.presentation.heightMode === 'fixed';
   const fillsAvailableHeight =
-    isFixedHeight || allocatedHeightEpoch === measurementEpoch;
+    fillsPageViewport ||
+    isFixedHeight ||
+    allocatedHeightEpoch === measurementEpoch;
   const viewportDemand = useRef({
     priority: 3 as FrontstageRuntimeDemandPriority,
     visible: false,
@@ -383,7 +387,13 @@ export const RenderPlanSlot = memo(function RenderPlanSlot({
         ? FRONTSTAGE_DESIGN_PREVIEW_MIN_HEIGHT
         : undefined,
     boxSizing: 'border-box',
-    overflow: isDesignMode ? 'clip' : isFixedHeight ? 'auto' : 'visible',
+    overflow: fillsPageViewport
+      ? 'auto'
+      : isDesignMode
+        ? 'clip'
+        : isFixedHeight
+          ? 'auto'
+          : 'visible',
     padding: isDesignMode ? '40px 24px 20px' : 12,
     ...(isDesignMode
       ? {
@@ -469,7 +479,9 @@ export const RenderPlanSlot = memo(function RenderPlanSlot({
       ref={blockRef}
       style={{
         ...blockFrameBaseStyle,
-        height: `calc(100% - ${FRONTSTAGE_GRID_ROW_GAP}px)`,
+        height: fillsPageViewport
+          ? '100%'
+          : `calc(100% - ${FRONTSTAGE_GRID_ROW_GAP}px)`,
         overflow: isFixedHeight ? 'hidden' : 'visible',
         ...borderStyle,
         position: 'relative',

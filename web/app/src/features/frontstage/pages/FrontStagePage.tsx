@@ -1029,6 +1029,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
         <Button
           size="middle"
           aria-label={i18nText('frontstage', 'auto.create_block')}
+          data-flowbase-frontstage-canvas-footer=""
           onClick={() => void handleAddBlock()}
           disabled={!canAddBlock || blockCatalog.loading}
           loading={isBlockSavePending || blockCatalog.loading}

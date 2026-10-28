@@ -5,6 +5,7 @@ import {
 } from './canvas/RenderPlanSlot';
 
 import { useFrontstagePageCanvasWidth } from '../lib/page-canvas/geometry/use-canvas-width';
+import { useFrontstageCanvasViewportHeight } from '../lib/page-canvas/geometry/use-canvas-viewport-height';
 import { Alert, Button, Empty, Space, Typography } from 'antd';
 
 import type { IsolatedFrontendBlockCapabilityHandlers } from '@1flowbase/page-runtime';
@@ -301,6 +302,16 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     containerNode: gridContainerNode,
     containerRef
   } = useFrontstagePageCanvasWidth();
+  const singleAutoBlock =
+    document?.layoutMode !== 'free' &&
+    renderItems.length === 1 &&
+    renderItems[0].presentation.heightMode === 'auto';
+  const viewportHeight = useFrontstageCanvasViewportHeight(
+    gridContainerNode,
+    singleAutoBlock,
+    isDesignMode
+  );
+  const fillsPageViewport = singleAutoBlock && viewportHeight > 0;
   const interactionCompactor = useMemo(
     () => createFrontstageInteractionCompactor(document?.layoutMode ?? 'auto'),
     [document?.layoutMode]
@@ -326,10 +337,26 @@ export const PageCanvas: FC<PageCanvasProps> = ({
       renderItems,
       autoRows
     );
+    if (fillsPageViewport) {
+      for (const layout of Object.values(responsiveLayouts)) {
+        for (const item of layout) {
+          item.h = Math.max(
+            1,
+            Math.floor(viewportHeight / FRONTSTAGE_GRID_ROW_HEIGHT)
+          );
+        }
+      }
+    }
     return document?.layoutMode === 'free'
       ? responsiveLayouts
       : normalizeFrontstageAutomaticResponsiveLayouts(responsiveLayouts);
-  }, [autoRows, document?.layoutMode, renderItems]);
+  }, [
+    autoRows,
+    document?.layoutMode,
+    renderItems,
+    fillsPageViewport,
+    viewportHeight
+  ]);
   useEffect(() => {
     autoRowsRef.current = autoRows;
   }, [autoRows]);
@@ -414,6 +441,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
       height: number,
       context: FrontstageIntrinsicMeasurementContext
     ) => {
+      if (fillsPageViewport) return;
       autoHeightBatchRef.current!.measure(
         blockId,
         height,
@@ -495,7 +523,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
       };
       autoHeightFrameRef.current = requestAnimationFrame(flush);
     },
-    [document?.layoutMode, gridContainerNode, renderItems]
+    [document?.layoutMode, gridContainerNode, renderItems, fillsPageViewport]
   );
 
   if (isLoading) {
@@ -529,7 +557,11 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   }
 
   return (
-    <Space orientation="vertical" size={12} style={{ width: '100%' }}>
+    <Space
+      orientation="vertical"
+      size={12}
+      style={{ width: '100%', display: 'flex' }}
+    >
       {showTitle ? (
         <Typography.Title level={4} style={{ margin: 0 }}>
           {formatPageTitle(content)}
@@ -697,6 +729,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                       : frontstageGridRowsToPixels(autoRows[item.blockId])
                   }
                   allocatedHeightEpoch={autoAllocatedHeightEpochs[item.blockId]}
+                  fillsPageViewport={fillsPageViewport}
                   onRuntimeDemandChange={onRuntimeDemandChange}
                   onRuntimeRetry={onRuntimeRetry}
                   onRuntimeRefresh={onRuntimeRefresh}

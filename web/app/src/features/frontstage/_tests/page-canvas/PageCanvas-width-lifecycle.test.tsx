@@ -35,6 +35,112 @@ const runtimeBlock: FrontstageBlockInstance = {
 };
 
 describe('PageCanvas width lifecycle', () => {
+  test.each([false, true])(
+    'fills a single automatic block and follows viewport resizing (design=%s)',
+    async (isDesignMode) => {
+      const width = vi
+        .spyOn(HTMLElement.prototype, 'offsetWidth', 'get')
+        .mockReturnValue(1200);
+      const bounds = vi
+        .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+        .mockImplementation(function (this: HTMLElement) {
+          return {
+            x: 0,
+            y: 80,
+            top: 80,
+            bottom: 1000,
+            left: 0,
+            right: 1200,
+            width: 1200,
+            height: this.hasAttribute('data-flowbase-frontstage-canvas-footer')
+              ? 32
+              : 920,
+            toJSON: () => ({})
+          };
+        });
+      const originalHeight = window.innerHeight;
+      Object.defineProperty(window, 'innerHeight', {
+        configurable: true,
+        value: 1000
+      });
+      const content = createFrontstagePageContentFixture();
+      const canvas = (
+        blocks: FrontstageBlockInstance[],
+        layoutMode = 'auto'
+      ) => (
+        <div data-flowbase-frontstage-scroll-owner="">
+          <PageCanvas
+            content={{
+              ...content,
+              document: {
+                ...content.document,
+                payload: { 'x-layout-mode': layoutMode }
+              }
+            }}
+            runtimeBlocks={blocks}
+            isDesignMode={isDesignMode}
+          />
+          {isDesignMode && (
+            <button
+              data-flowbase-frontstage-canvas-footer=""
+              style={{ margin: '8px 16px 16px' }}
+            >
+              Add block
+            </button>
+          )}
+        </div>
+      );
+      const view = render(canvas([runtimeBlock]));
+      const itemHeight = () =>
+        Number.parseFloat(
+          view.container.querySelector<HTMLElement>('.react-grid-item')?.style
+            .height ?? '0'
+        );
+      try {
+        await waitFor(() =>
+          expect(itemHeight()).toBe(isDesignMode ? 864 : 918)
+        );
+        act(() => {
+          Object.defineProperty(window, 'innerHeight', {
+            configurable: true,
+            value: 700
+          });
+          window.dispatchEvent(new Event('resize'));
+        });
+        await waitFor(() =>
+          expect(itemHeight()).toBe(isDesignMode ? 564 : 618)
+        );
+        view.rerender(
+          canvas([runtimeBlock, { ...runtimeBlock, id: 'second' }])
+        );
+        await waitFor(() => expect(itemHeight()).toBeLessThan(618));
+        view.rerender(
+          canvas([
+            {
+              ...runtimeBlock,
+              presentation: { heightMode: 'fixed', height: 240 }
+            }
+          ])
+        );
+        await waitFor(() => expect(itemHeight()).toBe(252));
+        view.rerender(canvas([runtimeBlock], 'free'));
+        await waitFor(() => expect(itemHeight()).toBeLessThan(618));
+        view.rerender(canvas([runtimeBlock]));
+        await waitFor(() =>
+          expect(itemHeight()).toBe(isDesignMode ? 564 : 618)
+        );
+      } finally {
+        view.unmount();
+        width.mockRestore();
+        bounds.mockRestore();
+        Object.defineProperty(window, 'innerHeight', {
+          configurable: true,
+          value: originalHeight
+        });
+      }
+    }
+  );
+
   test('AC-001 measures a host mounted after loading and tracks later resizes', async () => {
     const originalResizeObserver = globalThis.ResizeObserver;
     const observe = vi.fn();
