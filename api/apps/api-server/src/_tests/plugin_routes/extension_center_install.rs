@@ -64,7 +64,10 @@ impl ManagedCatalog {
                     ]),
                 },
                 signature: None,
-                checksum: Some(format!("sha256:{:x}", Sha256::digest(&bytes))),
+                checksum: Some(format!(
+                    "sha256:{:x}",
+                    base16ct::HexDisplay(&Sha256::digest(&bytes))
+                )),
                 download_locator: json!({"kind":"https","locator":"https://example.test/notification.1flowbasepkg"}),
                 catalog_page: 1,
             },
