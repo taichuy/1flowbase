@@ -12,6 +12,14 @@ on:
         description: Exact frozen candidate SHA
         required: true
         type: string
+      session_commands:
+        description: Include appendable session and command event acceptance
+        type: boolean
+        default: false
+      build_runtime_artifact:
+        description: Build a separate runtime artifact after source acceptance
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -86,6 +94,30 @@ jobs:
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib communication 2>&1 | tee tmp/test-governance/communications/ci/run-mapping.log
+      - name: Appendable execution and command event contracts
+        if: ${{ !cancelled() && inputs.session_commands }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          failures=0
+          run_acceptance() {
+            local label="$1"
+            shift
+            set +e
+            cargo test --locked --manifest-path api/Cargo.toml "$@" 2>&1 | tee "tmp/test-governance/communications/ci/$label.log"
+            local statuses=("${PIPESTATUS[@]}")
+            node -e 'const s=require("fs").readFileSync(process.argv[1],"utf8"); const n=[...s.matchAll(/test result: (?:ok|FAILED)\. (\d+) passed/g)].reduce((a,m)=>a+Number(m[1]),0); if(n===0)throw new Error("No passing target tests executed"); console.log(`${n} target tests passed`)' "tmp/test-governance/communications/ci/$label.log"
+            local count_status=$?
+            set -e
+            if (( statuses[0] != 0 || statuses[1] != 0 || count_status != 0 )); then
+              failures=$((failures + 1))
+            fi
+          }
+          run_acceptance appendable-execution -p orchestration-runtime --lib communication
+          run_acceptance command-plan -p plugin-framework --lib communication_command
+          run_acceptance command-sdk -p runtime-extension-sdk --lib communication_command
+          run_acceptance session-migration -p storage-durable-postgres --lib communication_session_migration
+          test "$failures" -eq 0
       - name: Communication durable inbox acceptance
         if: ${{ !cancelled() }}
         run: |
@@ -201,6 +233,7 @@ jobs:
           RUST_MIN_STACK=2097152 timeout 180s gdb --quiet --batch -x /tmp/communications-stack.gdb --args "$test_binary" --exact communication_runtime::acceptance_tests::pipeline::communication_callback_preserves_configuring_actor_and_sends_final_scoped_reply --nocapture > tmp/test-governance/communications/ci/stack/callback-backtrace.log 2>&1
           git rev-parse HEAD > tmp/test-governance/communications/ci/stack/candidate-sha.txt
       - name: Build local runtime candidate
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_runtime_artifact }}
         run: |
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server
           cp api/target/debug/api-server tmp/test-governance/communications/ci/api-server-candidate

@@ -206,7 +206,8 @@
     "runtime_events",
     "runtime_usage_ledger",
     "ui_code_template_revisions",
-    "ui_component_contract_revisions"
+    "ui_component_contract_revisions",
+    "communication_session_rotations"
   ],
   "systemScopeTables": [
     "console_permission_catalog_groups",
@@ -855,6 +856,24 @@
       "scopeGenerationSource": "communication_messages.scope_id enforced by composite foreign key",
       "backfillSource": "new table; no historical backfill",
       "writePathSource": "communication repository writes physical scope_id from authenticated workspace; update triggers maintain mutable audit time"
+    },
+    "communication_sessions": {
+      "category": "managed_table",
+      "scopeGenerationSource": "authenticated workspace and persisted external conversation scope are checked together by the communication repository",
+      "backfillSource": "new session and turn state is created on admission; existing message history and credentials are retained",
+      "writePathSource": "communication session owner creates a UUIDv7 AI session under the stable scoped external conversation lock; no historical input identifiers are rewritten"
+    },
+    "communication_reply_turns": {
+      "category": "managed_table",
+      "scopeGenerationSource": "authenticated workspace and persisted external conversation scope are checked together by the communication repository",
+      "backfillSource": "new session and turn state is created on admission; existing message history and credentials are retained",
+      "writePathSource": "communication turn owner admits ordered inputs and fences checkpoint and send mutations by scoped session epoch and renewable claim"
+    },
+    "communication_session_rotations": {
+      "category": "join_or_child",
+      "scopeGenerationSource": "authenticated workspace and persisted external conversation scope are checked together by the communication repository",
+      "backfillSource": "new session and turn state is created on admission; existing message history and credentials are retained",
+      "writePathSource": "communication session owner inserts immutable rotation receipts keyed by the complete external conversation scope and command receipt key"
     }
   },
   "needsOwnerReviewTables": {},
