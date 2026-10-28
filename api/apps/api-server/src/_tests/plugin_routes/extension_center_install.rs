@@ -1,4 +1,5 @@
 //! Real HTTP + PostgreSQL intake: public catalog identity is independent of installation routing.
+use crate::_tests::extension_bus::managed_snapshot_tests::RuntimeFixture;
 use crate::_tests::support::{login_and_capture_cookie, test_app_with_official_extension_source};
 use crate::official_extension_catalog::{
     DownloadedOfficialExtensionArtifact, LocatedOfficialExtensionCatalogEntry,
@@ -197,7 +198,27 @@ async fn installed(app: &Router, cookie: &str) -> Vec<Value> {
 async fn managed_runtime_catalog_install_succeeds_and_is_idempotent() {
     let source = ManagedCatalog::new();
     let body = source.request_body();
-    let app = test_app_with_official_extension_source(Arc::new(source)).await;
+    // The common route fixture has no managed composition. Assemble the same real
+    // runtime fixture used by notification lifecycle tests for the successful install.
+    let (mut state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let runtime = RuntimeFixture::new(&state);
+    let notifications = Arc::new(
+        control_plane::notifications::NotificationService::new(
+            runtime.store.clone(),
+            state.provider_secret_master_key.clone(),
+        )
+        .with_provider(Arc::new(
+            crate::notification_runtime::ManagedNotificationProvider::new(
+                runtime.composition.clone(),
+            ),
+        )),
+    );
+    let state_mut = Arc::get_mut(&mut state).unwrap();
+    state_mut.store = runtime.store.clone();
+    state_mut.provider_runtime = runtime.services.clone();
+    state_mut.notification_service = notifications;
+    state_mut.official_extension_catalog_source = Arc::new(source);
+    let app = crate::app_with_state_and_config(state, &crate::_tests::support::test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let (status, first) = install(&app, &cookie, &csrf, &body).await;
     assert_eq!(status, StatusCode::CREATED, "{first}");
@@ -247,6 +268,7 @@ async fn managed_runtime_catalog_install_succeeds_and_is_idempotent() {
             .count(),
         1
     );
+    runtime.host.stop().await.unwrap();
 }
 
 #[tokio::test]
