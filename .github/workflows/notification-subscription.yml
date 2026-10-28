@@ -16,6 +16,10 @@ on:
         description: Include appendable session and command event acceptance
         type: boolean
         default: false
+      communication_host_only:
+        description: Recheck host fixtures and HTTP regressions; reuse other evidence only after dependency review
+        type: boolean
+        default: false
       build_runtime_artifact:
         description: Build a separate runtime artifact after source acceptance
         type: boolean
@@ -57,7 +61,10 @@ jobs:
       - name: Verify frozen candidate
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha || github.sha }}
-        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+        run: |
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          mkdir -p tmp/test-governance/communications/ci
+          git rev-parse HEAD > tmp/test-governance/communications/ci/candidate-sha.txt
       - uses: actions/setup-node@v5
         with:
           node-version-file: web/.nvmrc
@@ -74,6 +81,7 @@ jobs:
             notification-subscription-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-
             notification-subscription-nodebug-${{ runner.os }}-
       - name: Contract and SDK acceptance
+        if: ${{ !inputs.communication_host_only }}
         run: |
           mkdir -p tmp/test-governance/communications/ci
           set -o pipefail
@@ -82,7 +90,7 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk notification 2>&1 | tee tmp/test-governance/communications/ci/sdk.log || test_batch_status=$?
           exit "$test_batch_status"
       - name: Receive manifest and binding contract acceptance
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.communication_host_only }}
         run: |
           set -o pipefail
           test_batch_status=0
@@ -90,12 +98,12 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p plugin-framework notification_plan_tests 2>&1 | tee tmp/test-governance/communications/ci/bindings.log || test_batch_status=$?
           exit "$test_batch_status"
       - name: Communication mapping and durable state acceptance
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.communication_host_only }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib communication 2>&1 | tee tmp/test-governance/communications/ci/run-mapping.log
       - name: Appendable execution and command event contracts
-        if: ${{ !cancelled() && inputs.session_commands }}
+        if: ${{ !cancelled() && inputs.session_commands && !inputs.communication_host_only }}
         shell: bash
         run: |
           set -euo pipefail
@@ -126,22 +134,22 @@ jobs:
           run_acceptance runtime-stream-errors -p runtime-extension-host --lib stream_error_tests
           test "$failures" -eq 0
       - name: Communication durable inbox acceptance
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.communication_host_only }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test notifications_integration 2>&1 | tee tmp/test-governance/communications/ci/inbox-postgres.log
       - name: Communication dispatch recovery and workspace acceptance
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.communication_host_only }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration communication_ 2>&1 | tee tmp/test-governance/communications/ci/dispatch-recovery.log
       - name: Communication typed timeline migration acceptance
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.communication_host_only }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib communication_timeline_migration_preserves_inputs_files_ciphertext_and_history 2>&1 | tee tmp/test-governance/communications/ci/timeline-migration.log
       - name: Communication backup scope and rekey acceptance
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.communication_host_only }}
         run: |
           set -o pipefail
           test_batch_status=0
@@ -150,22 +158,22 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective::_tests::notification_backup_keeps_channel_configuration_separate_from_inbox_history 2>&1 | tee tmp/test-governance/communications/ci/backup-selection.log || test_batch_status=$?
           exit "$test_batch_status"
       - name: Invocation Kernel lifecycle regression
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.communication_host_only }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p interface-runtime --lib 2>&1 | tee tmp/test-governance/communications/ci/kernel-lifecycle.log
       - name: Callback execution lease regression
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.communication_host_only }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib resume_claim_heartbeat_tests 2>&1 | tee tmp/test-governance/communications/ci/callback-lease.log
       - name: Host state and projection acceptance
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.communication_host_only }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib notifications:: 2>&1 | tee tmp/test-governance/communications/ci/control-plane.log
       - name: Channel version migration and repository contract acceptance
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.communication_host_only }}
         run: |
           set -o pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts 2>&1 | tee tmp/test-governance/communications/ci/repository-contracts.log
@@ -181,7 +189,7 @@ jobs:
           echo "MANAGED_HOOK_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - name: Canonical HTTP, PostgreSQL and real worker acceptance
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.communication_host_only }}
         run: |
           set -o pipefail
           test_batch_status=0
