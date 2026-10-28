@@ -125,7 +125,7 @@ class Runner:
 
     def save(self): write(self.out/'state.json', self.state)
 
-    def command(self, label, argv, *, heavy=False, timeout=3600, pg=False):
+    def command(self, label, argv, *, heavy=False, timeout=3600, pg=False, live=False):
         assert re.fullmatch(r'[a-z0-9-]+', label)
         folder = self.out/'commands'/label; folder.mkdir(parents=True, exist_ok=False)
         start = snapshot(); begin = time.monotonic(); samples=[]; known={}; stop=None; killed=[]
@@ -145,7 +145,8 @@ class Runner:
         def consume():
             with logpath.open('w') as log:
                 for line in iter(child.stdout.readline, b''):
-                    log.write(scrub(line.decode(errors='replace'))); log.flush()
+                    clean=scrub(line.decode(errors='replace')); log.write(clean); log.flush()
+                    if live: sys.stdout.write(clean); sys.stdout.flush()
         reader = threading.Thread(target=consume, daemon=True); reader.start()
         done = threading.Event(); observer = None
         if pg:
@@ -321,6 +322,70 @@ class Runner:
             self.state['tests'].append(dict(id=group['id'],target=group['target'],expected=group['expected_n'],status='PASS' if passed else 'FAIL',actual_summary=summary,cases=cases,binary_sha256=binary['sha256'],receipt=result)); self.save()
         return good and len(self.state['tests'])==len(self.plan['groups']) and not (self.out/'pg-observer-errors.jsonl').exists()
 
+    def diagnose(self, archive_path, case):
+        import zipfile
+        cases = {
+            'capture-contract': 'adapter_get_parallel_capture_contract_errors_and_generation_drain_are_preserved',
+            'terminal-callback': 'terminal_response_keeps_pg_ownership_for_a_callback_still_executing',
+        }
+        assert case in cases and archive_path
+        selector = '_tests::extension_bus::connection_reliability::' + cases[case]
+        self.state.update(diagnostic_case=case, diagnostic_selector=selector, diagnostic_only=True)
+        assert self.checked('candidate-sha', ['git','rev-parse','HEAD']) == FROZEN
+        assert self.checked('candidate-clean', ['git','status','--porcelain']) == ''
+        self.state['candidate_sha'] = FROZEN
+        self.state['executor_sha'] = self.checked('executor-sha', ['git','-C',str(self.executor),'rev-parse','HEAD'])
+        for name, digest in self.plan['source_sha256'].items(): assert sha(self.root/name) == digest, name
+        before=snapshot(); start=time.monotonic(); cpu=time.process_time()
+        assert max(before['memory_used_fraction'], before['disk_used_fraction']) < .9
+        archive=pathlib.Path(archive_path).resolve()
+        expected_archive='6282e0f80d37446eaf12649b238ac064ca7528b8d3c4468f7c2f99b8e4f31191'
+        assert sha(archive) == expected_archive, 'Original artifact ZIP hash mismatch'
+        expected_binary='1adc2d132c12e27c403fcdef4b07a4c29d6501c746131853e0feec6f5d722826'
+        binary_path=self.bin_dir/'api_server'
+        with zipfile.ZipFile(archive) as source:
+            manifest=json.loads(source.read('binary-manifest.json'))
+            assert manifest['candidate_sha'] == FROZEN
+            assert manifest['executor_sha'] == '35cbdde635db27bbbeda0dfa90c57aea513050ad'
+            binary=manifest['binaries']['api_server']
+            assert binary['sha256'] == expected_binary and binary['profile']['test']
+            assert binary['profile']['debuginfo'] in [0,'0','none']
+            assert binary['profile']['debug_assertions'] and binary['profile']['overflow_checks']
+            with source.open('bundles/candidate-executables.tar.gz') as compressed:
+                found=False
+                with tarfile.open(fileobj=compressed, mode='r|gz') as bundle:
+                    for member in bundle:
+                        if member.name != 'executables/api_server': continue
+                        assert member.isfile() and member.size == binary['size_bytes']
+                        with bundle.extractfile(member) as stream, binary_path.open('xb') as output:
+                            shutil.copyfileobj(stream, output, length=1024*1024)
+                        found=True
+                while compressed.read(1024*1024): pass
+                assert found
+        binary_path.chmod(0o755)
+        assert sha(binary_path) == expected_binary, 'Reused api_server hash mismatch'
+        binary=dict(binary, saved_path=str(binary_path))
+        self.state['binaries']['api_server']=binary
+        write(self.out/'binary-binding.json', dict(candidate_sha=FROZEN, executor_sha=self.state['executor_sha'], source_run_id=40620942522, source_executor_sha=manifest['executor_sha'], source_artifact_id=12788351454, archive_sha256=expected_archive, archive_sha256_verified=True, binary_sha256=expected_binary, binary_sha256_verified=True, binary=binary, preparation_wall_seconds=time.monotonic()-start, preparation_cpu_seconds=time.process_time()-cpu, before=before, after=snapshot(), cargo_builds=0))
+        listed=self.checked('diagnostic-selector-list', [str(binary_path),'--list','--format','terse'])
+        assert selector + ': test' in listed.splitlines(), 'Diagnostic exact selector missing'
+        pg=self.pg_snapshot('diagnostic-pg-preflight', sql="SELECT json_build_object('version',version(),'role',current_user,'databases',(SELECT json_agg(datname ORDER BY datname) FROM pg_database))")
+        assert pg['role']=='postgres' and sorted(pg['databases'])==['postgres','qadb_gateway2691_positive','template0','template1']
+        try:
+            result=self.command('diagnostic-'+case, [str(binary_path),selector,'--exact','--test-threads=1','--nocapture'], heavy=True, timeout=90, pg=True, live=True)
+            text=(self.out/result['log']).read_text(errors='replace')
+            summary=re.findall(r'test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured; (\d+) filtered out',text)
+            passed=result['exit_code']==0 and result['stop_reason'] is None and len(summary)==1 and summary[0][0]=='ok' and summary[0][1:5]==('1','0','0','0')
+            self.state['diagnostic_result']=dict(selector=selector, command=result, actual_summary=summary, passed=passed)
+            return passed
+        finally:
+            self.pg_snapshot('diagnostic-pg-final')
+            self.state['candidate_clean_after']=self.checked('final-candidate-clean',['git','status','--porcelain'])==''
+            self.save()
+
+    def diagnostic_summary(self):
+        write(self.out/'diagnostic-summary.json', dict(stage='two-case-original-binary-diagnostic', candidate_sha=FROZEN, executor_sha=self.state.get('executor_sha'), diagnostic_case=self.state.get('diagnostic_case'), selector=self.state.get('diagnostic_selector'), result=self.state.get('diagnostic_result'), error=self.state.get('error'), stop_reason=self.state.get('stop_reason'), cargo_builds=0, original_64_positive_verdict='NOT_CHANGED: previous run remains failed', root_verdict='NOT_DECIDED', timeout_seconds=90, source_run_id=40620942522, binary_sha256='1adc2d132c12e27c403fcdef4b07a4c29d6501c746131853e0feec6f5d722826', state='COMPLETE'))
+
     def execute(self):
         self.preflight()
         if not self.build(0): return False
@@ -362,15 +427,18 @@ class Runner:
         write(self.out/'summary.json',dict(verdict='CI_POSITIVE_PASS' if self.state.get('success') else 'CI_POSITIVE_FAIL',root_verdict='NOT_DECIDED: source negatives and ABBA deferred to Root',candidate_sha=FROZEN,executor_sha=self.state.get('executor_sha'),build_entries_used=len(self.state['builds']),build_entry_limit=3,expected_tests=64,groups=self.state['tests'],blocked_groups=sorted(planned-ran),positive_green=self.state.get('positive_green',False),stop_reason=self.state.get('stop_reason'),error=self.state.get('error'),counts=dict(passed=sum(int(row['actual_summary'][0][1]) for row in self.state['tests'] if row.get('actual_summary')),reused_rust=274 if self.state.get('reuse_verified') else None,reused_node=118 if self.state.get('reuse_verified') else None,old147_reused=147 if self.state.get('reuse_verified') else None,reused_CI_executions=0,mutants_executed=0,ABBA_runs=0,real_PR_samples=0,real_PR_p50=None,real_PR_p95=None),command_count=len(commands),command_wall_seconds=sum(row['wall_seconds'] for row in commands),command_user_cpu_seconds=sum(row['user_cpu_seconds'] or 0 for row in commands),command_system_cpu_seconds=sum(row['system_cpu_seconds'] or 0 for row in commands),peak_gnu_rss_kib=max([row['peak_rss_kib'] or 0 for row in commands] or [0]),pg_observer_invocations=len(pg),pg_observer_wall_seconds=sum(row['wall_seconds'] for row in pg),cost_boundary='GNU child CPU/RSS per command; process RSS/HWM sampled separately; observer commands and archive CPU separated; action bootstrap/cache/upload overhead not included; no CI latency improvement inferred',state='COMPLETE'))
 
 def main():
-    parser=argparse.ArgumentParser(); parser.add_argument('mode',choices=['run','finalize']);parser.add_argument('--candidate',required=True);parser.add_argument('--executor',required=True);parser.add_argument('--output',required=True);parser.add_argument('--manifest',required=True);args=parser.parse_args()
+    parser=argparse.ArgumentParser(); parser.add_argument('mode',choices=['run','finalize','diagnose']);parser.add_argument('--candidate',required=True);parser.add_argument('--executor',required=True);parser.add_argument('--output',required=True);parser.add_argument('--manifest',required=True);parser.add_argument('--source-artifact-zip');parser.add_argument('--diagnostic-case',choices=['capture-contract','terminal-callback']);args=parser.parse_args()
     runner=Runner(args)
     try:
         if args.mode=='run': runner.state['success']=runner.execute()
+        elif args.mode=='diagnose': runner.state['success']=runner.diagnose(args.source_artifact_zip,args.diagnostic_case)
         else: runner.finalize()
     except Exception:
         runner.state['success']=False;runner.state['error']=scrub(traceback.format_exc())
     finally:
-        runner.save();runner.summary()
+        runner.save()
+        if args.mode=='diagnose': runner.diagnostic_summary()
+        else: runner.summary()
         hashes={str(path.relative_to(runner.out)):dict(size_bytes=path.stat().st_size,sha256=sha(path)) for path in runner.out.rglob('*') if path.is_file() and path.name!='artifact-hashes.json'}
         write(runner.out/'artifact-hashes.json',hashes)
         print(json.dumps(dict(success=runner.state.get('success',False),stop_reason=runner.state.get('stop_reason'),output=str(runner.out))),flush=True)

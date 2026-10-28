@@ -7,6 +7,10 @@ on:
         description: Exact frozen product source SHA
         required: true
         type: string
+      diagnostic_only:
+        description: Reuse the recorded F3 binary for two independent nocapture cases only
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,7 +34,7 @@ env:
 
 jobs:
   positive-gaps:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name != 'dev' && github.ref_name != 'main' && github.ref_name != 'master' }}
+    if: ${{ !inputs.diagnostic_only && github.event_name == 'workflow_dispatch' && github.ref_name != 'dev' && github.ref_name != 'main' && github.ref_name != 'master' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     services:
@@ -114,3 +118,77 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 1
+
+  diagnostic:
+    if: ${{ inputs.diagnostic_only && github.event_name == 'workflow_dispatch' && github.ref_name != 'dev' && github.ref_name != 'main' && github.ref_name != 'master' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        case: [capture-contract, terminal-callback]
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_PASSWORD: gateway2691-ci-fixture
+          POSTGRES_DB: qadb_gateway2691_positive
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d qadb_gateway2691_positive"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          path: executor
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: candidate/web/.nvmrc
+      - name: Download and verify exact original artifact on CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$QA_CI_OUT"
+          /usr/bin/time -v -o "$QA_CI_OUT/artifact-download.time" gh api repos/taichuy/1flowbase/actions/artifacts/12788351454/zip > "$RUNNER_TEMP/f3-original-artifact.zip"
+          printf '%s  %s\n' '6282e0f80d37446eaf12649b238ac064ca7528b8d3c4468f7c2f99b8e4f31191' "$RUNNER_TEMP/f3-original-artifact.zip" | sha256sum --check --strict
+      - name: Execute one original case with live panic and independent 90s bound
+        env:
+          PG_SERVICE_ID: ${{ job.services.postgres.id }}
+          DIAGNOSTIC_CASE: ${{ matrix.case }}
+        shell: bash
+        run: >-
+          python3 "$QA_CI_INPUT/runner.py" diagnose
+          --candidate "$GITHUB_WORKSPACE/candidate"
+          --executor "$GITHUB_WORKSPACE/executor"
+          --output "$QA_CI_OUT"
+          --manifest "$QA_CI_INPUT/manifest.json"
+          --source-artifact-zip "$RUNNER_TEMP/f3-original-artifact.zip"
+          --diagnostic-case "$DIAGNOSTIC_CASE"
+      - name: Retain only diagnosis logs, hashes, cost and PG receipts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: root2691-diagnostic-${{ github.run_id }}-${{ matrix.case }}
+          path: |
+            qa-ci-artifacts/diagnostic-summary.json
+            qa-ci-artifacts/binary-binding.json
+            qa-ci-artifacts/artifact-download.time
+            qa-ci-artifacts/commands/**
+            qa-ci-artifacts/pg-samples.jsonl
+            qa-ci-artifacts/artifact-hashes.json
+          retention-days: 7
+          if-no-files-found: warn
