@@ -67,6 +67,24 @@ pub trait ContributionAuthorityLease: Send {
     fn snapshot(&self) -> &PluginContributionAuthoritySnapshot;
     fn snapshots(&self) -> &[PluginContributionAuthoritySnapshot];
     fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord>;
+    /// Reuse this lease's connection. Hold shared channel/binding locks until release/commit;
+    /// callers must not borrow another repository connection while the authority lease is held.
+    fn load_communication_command_context<'a>(
+        &'a mut self,
+        subject: &'a ManagedContributionSubject,
+        event_id: Uuid,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Option<super::CommunicationCommandValidationContext>>>
+                + Send
+                + 'a,
+        >,
+    >;
+    /// Commit a typed command reply and its receipt under the current authority lock.
+    fn commit_communication_command_reply(
+        self: Box<Self>,
+        input: super::CompleteManagedCommunicationCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<super::CommunicationCommandRecord>> + Send>>;
     /// Commit the typed owned subscriber effect and its receipt under the current authority lock.
     fn commit_owned_event_effect(
         self: Box<Self>,

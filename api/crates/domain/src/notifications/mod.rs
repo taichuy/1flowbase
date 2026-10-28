@@ -277,3 +277,8 @@ pub(crate) fn notification_send_log_model_contract() -> crate::BuiltinDataModelC
 
 mod communications;
 pub use communications::*;
+mod communication_sessions;
+pub use communication_sessions::*;
+
+mod communication_commands;
+pub use communication_commands::*;

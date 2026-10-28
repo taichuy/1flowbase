@@ -3,6 +3,7 @@ extern crate self as plugin_framework;
 pub mod artifact_reconcile;
 pub mod assignment;
 pub mod capability_kind;
+pub mod communication_commands;
 pub mod data_model_template_contract;
 pub mod data_source_contract;
 pub mod data_source_package;

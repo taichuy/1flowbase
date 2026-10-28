@@ -979,6 +979,22 @@
         "managed-table-id",
         "managed-table-scope-time-index"
       ]
+    },
+    "communication_session_rotations": {
+      "kind": "external_conversation_owned_command_receipt",
+      "reason": "Immutable session rotation receipts use the complete external conversation scope and command receipt key as their identity. They retain created_at and a scope-created_at index; an independent UUID and mutable updated_at lifecycle would duplicate the existing idempotency owner.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "communication_command_events": {
+      "kind": "external_conversation_owned_command_event",
+      "reason": "The durable lifecycle event_id is the UUIDv7 primary identity; a second id would duplicate the command receipt. Scope/time lookup uses (scope_id,created_at,event_id).",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-time-index"
+      ]
     }
   },
   "ownedTableContracts": {
@@ -1704,6 +1720,178 @@
         {
           "table": "communication_attachments",
           "name": "communication_attachments_updated_at",
+          "timing": "before",
+          "events": [
+            {
+              "event": "update",
+              "columns": []
+            }
+          ],
+          "function": "communication_touch_updated_at"
+        }
+      ]
+    },
+    "communication_sessions": {
+      "primaryKey": [
+        "id"
+      ],
+      "ownerColumns": [
+        "scope_id",
+        "instance_id",
+        "external_identity",
+        "conversation_id"
+      ],
+      "requiredColumns": [
+        "created_at",
+        "updated_at"
+      ],
+      "unconditionalIndexes": [
+        [
+          "scope_id",
+          "created_at",
+          "id"
+        ]
+      ],
+      "triggers": [
+        {
+          "table": "communication_sessions",
+          "name": "communication_sessions_updated_at",
+          "timing": "before",
+          "events": [
+            {
+              "event": "update",
+              "columns": []
+            }
+          ],
+          "function": "communication_touch_updated_at"
+        }
+      ]
+    },
+    "communication_reply_turns": {
+      "primaryKey": [
+        "id"
+      ],
+      "ownerColumns": [
+        "scope_id",
+        "instance_id",
+        "external_identity",
+        "conversation_id"
+      ],
+      "requiredColumns": [
+        "created_at",
+        "updated_at",
+        "session_id",
+        "session_epoch",
+        "anchor_input_id",
+        "received_watermark",
+        "consumed_watermark",
+        "checkpoint_revision",
+        "checkpoint_json",
+        "claim_id",
+        "claim_expires_at",
+        "send_status"
+      ],
+      "unconditionalIndexes": [
+        [
+          "scope_id",
+          "created_at",
+          "id"
+        ]
+      ],
+      "triggers": [
+        {
+          "table": "communication_reply_turns",
+          "name": "communication_turns_updated_at",
+          "timing": "before",
+          "events": [
+            {
+              "event": "update",
+              "columns": []
+            }
+          ],
+          "function": "communication_touch_updated_at"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "scope_id",
+            "instance_id",
+            "external_identity",
+            "conversation_id",
+            "session_id",
+            "session_epoch"
+          ],
+          "table": "communication_sessions",
+          "references": [
+            "scope_id",
+            "instance_id",
+            "external_identity",
+            "conversation_id",
+            "id",
+            "epoch"
+          ]
+        }
+      ]
+    },
+    "communication_session_rotations": {
+      "primaryKey": [
+        "scope_id",
+        "instance_id",
+        "external_identity",
+        "conversation_id",
+        "receipt_key"
+      ],
+      "ownerColumns": [
+        "scope_id",
+        "instance_id",
+        "external_identity",
+        "conversation_id"
+      ],
+      "requiredColumns": [
+        "receipt_key",
+        "result_json",
+        "created_at"
+      ],
+      "unconditionalIndexes": [
+        [
+          "scope_id",
+          "created_at"
+        ]
+      ]
+    },
+    "communication_command_events": {
+      "primaryKey": [
+        "event_id"
+      ],
+      "ownerColumns": [
+        "scope_id",
+        "instance_id",
+        "external_identity",
+        "conversation_id"
+      ],
+      "requiredColumns": [
+        "input_id",
+        "session_id",
+        "request_json",
+        "effect_claim_id",
+        "reply_json",
+        "response_session_id",
+        "send_status",
+        "created_at",
+        "updated_at"
+      ],
+      "unconditionalIndexes": [
+        [
+          "scope_id",
+          "created_at",
+          "event_id"
+        ]
+      ],
+      "triggers": [
+        {
+          "table": "communication_command_events",
+          "name": "communication_command_updated_at",
           "timing": "before",
           "events": [
             {

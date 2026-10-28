@@ -319,6 +319,12 @@ where
                 route_events.clone(),
             )?;
 
+            if let Some(communication) = &runtime_context.communication {
+                communication
+                    .retain_pool(node, &llm_variable_pool, "after_visible_tools")
+                    .await?;
+            }
+
             remove_visible_internal_tool_calls(&mut execution.output_payload, &internal_tool_calls);
             if let Some(output) = execution.output_payload.as_object_mut() {
                 output.insert(
@@ -446,6 +452,11 @@ where
             &node.node_id,
             route_events.clone(),
         )?;
+        if let Some(communication) = &runtime_context.communication {
+            communication
+                .retain_pool(node, &llm_variable_pool, "after_visible_tools")
+                .await?;
+        }
     }
 }
 async fn execute_remaining_visible_internal_llm_tool_calls<I>(

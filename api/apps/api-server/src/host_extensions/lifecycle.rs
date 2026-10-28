@@ -167,6 +167,18 @@ impl ApiLifecycleFactDelivery {
 impl control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryPort
     for ApiLifecycleFactDelivery
 {
+    async fn terminate_command(
+        &self,
+        fact: &LifecycleOutboxRecord,
+        termination: control_plane_contracts::ports::CommunicationCommandTermination,
+    ) -> Result<()> {
+        let owner = self
+            .managed
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+            .ok_or_else(|| anyhow::anyhow!("command termination composition unavailable"))?;
+        owner.terminate_command_delivery(fact, termination).await
+    }
     async fn deliver(&self, fact: &LifecycleOutboxRecord) -> Result<()> {
         if let Some(owner) = &self.managed {
             let owner = owner.upgrade().ok_or({

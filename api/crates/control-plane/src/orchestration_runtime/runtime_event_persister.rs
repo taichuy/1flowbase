@@ -15,6 +15,7 @@ use crate::ports::{
 
 const RUNTIME_EVENT_BATCH_MAX_BYTES: usize = 64 * 1024;
 pub(crate) const RUNTIME_EVENT_BATCH_MAX_DELAY: Duration = Duration::from_millis(20);
+pub(super) const RUNTIME_EVENT_PERSISTER_JOIN_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Default)]
 struct RuntimeEventPersistenceBatch {
@@ -471,7 +472,7 @@ pub async fn wait_for_runtime_debug_event_persister(
     application_id: Uuid,
     run_id: Uuid,
 ) {
-    match tokio::time::timeout(std::time::Duration::from_secs(2), handle).await {
+    match tokio::time::timeout(RUNTIME_EVENT_PERSISTER_JOIN_TIMEOUT, handle).await {
         Ok(Ok(())) => {}
         Ok(Err(error)) => {
             warn!(

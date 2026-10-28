@@ -1,20 +1,22 @@
 use crate::{
-    secret_crypto::{decrypt_secret_json_with_aad, encrypt_secret_json_with_aad},
     PgControlPlaneStore,
+    secret_crypto::{decrypt_secret_json_with_aad, encrypt_secret_json_with_aad},
 };
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane_contracts::{ports::*, ControlPlaneContractError as Error};
+use control_plane_contracts::{ControlPlaneContractError as Error, ports::*};
 use domain::*;
 use serde_json::Value;
-use sqlx::{postgres::PgRow, Row};
+use sqlx::{Row, postgres::PgRow};
 use uuid::Uuid;
 // Shared by history projection and the atomic retry write to prevent UI eligibility drift.
-const RETRY_ELIGIBILITY: &str = "m.send_status<>'unknown' AND (m.processing_status='failed' OR m.send_status='failed') AND (m.claim_id IS NULL OR m.claim_expires_at<=now()) AND EXISTS(SELECT 1 FROM notification_instances n WHERE n.id=m.instance_id AND n.workspace_id=m.scope_id AND n.status='enabled')";
+const RETRY_ELIGIBILITY: &str = "m.admission_status<>'excluded' AND m.send_status<>'unknown' AND (m.processing_status='failed' OR m.send_status='failed') AND (m.claim_id IS NULL OR m.claim_expires_at<=now()) AND EXISTS(SELECT 1 FROM notification_instances n WHERE n.id=m.instance_id AND n.workspace_id=m.scope_id AND n.status='enabled') AND (m.turn_id IS NULL OR EXISTS(SELECT 1 FROM communication_reply_turns rt JOIN communication_sessions rs ON rs.id=rt.session_id AND rs.scope_id=rt.scope_id AND rs.instance_id=rt.instance_id AND rs.external_identity=rt.external_identity AND rs.conversation_id=rt.conversation_id AND rs.epoch=rt.session_epoch AND rs.active WHERE rt.id=m.turn_id AND rt.scope_id=m.scope_id AND rt.instance_id=m.instance_id AND rt.external_identity=m.external_identity AND rt.conversation_id=m.conversation_id AND (rt.claim_id IS NULL OR rt.claim_expires_at<=clock_timestamp()) AND (rt.state='sealed' OR (rt.state='failed' AND NOT EXISTS(SELECT 1 FROM communication_reply_turns other WHERE other.session_id=rt.session_id AND other.state='open')))))";
+pub(crate) mod commands;
 mod history;
 mod management;
 mod processing;
 mod receive;
+mod sessions;
 
 fn binding(row: PgRow) -> Result<CommunicationBindingRecord> {
     Ok(CommunicationBindingRecord {
@@ -78,6 +80,120 @@ fn page<T>(mut items: Vec<T>, limit: u32, id: impl Fn(&T) -> Uuid) -> Communicat
 
 #[async_trait]
 impl CommunicationRepository for PgControlPlaneStore {
+    async fn scan_communication_admissions(
+        &self,
+        w: Uuid,
+        i: Uuid,
+        limit: u32,
+    ) -> Result<Vec<CommunicationPendingAdmission>> {
+        sessions::admission::scan(self, w, i, limit).await
+    }
+    async fn pending_communication_admissions(
+        &self,
+        s: &CommunicationConversationScope,
+    ) -> Result<Vec<Uuid>> {
+        sessions::admission::pending(self, s).await
+    }
+    async fn admit_communication_input(
+        &self,
+        s: &CommunicationConversationScope,
+        id: Uuid,
+    ) -> Result<Option<CommunicationAdmission>> {
+        sessions::admission::admit(self, s, id).await
+    }
+    async fn exclude_communication_input(
+        &self,
+        s: &CommunicationConversationScope,
+        id: Uuid,
+    ) -> Result<bool> {
+        sessions::admission::exclude(self, s, id).await
+    }
+    async fn active_communication_session(
+        &self,
+        s: &CommunicationConversationScope,
+    ) -> Result<Option<CommunicationSession>> {
+        sessions::lifecycle::active(self, s).await
+    }
+    async fn select_communication_model(
+        &self,
+        s: &CommunicationConversationScope,
+        model: Option<&str>,
+    ) -> Result<bool> {
+        sessions::lifecycle::select_model(self, s, model).await
+    }
+    async fn rotate_communication_session(
+        &self,
+        s: &CommunicationConversationScope,
+        receipt_key: &str,
+    ) -> Result<Option<CommunicationSessionRotation>> {
+        sessions::lifecycle::rotate(self, s, receipt_key).await
+    }
+    async fn claim_communication_turn(
+        &self,
+        w: Uuid,
+        i: Uuid,
+        lease: u32,
+        key: &str,
+    ) -> Result<Option<ClaimedCommunicationTurn>> {
+        sessions::processing::claim(self, w, i, lease, key).await
+    }
+    async fn renew_communication_turn_claim(
+        &self,
+        c: &CommunicationTurnClaim,
+        lease: u32,
+    ) -> Result<bool> {
+        sessions::processing::renew(self, c, lease).await
+    }
+    async fn communication_turn_inputs(
+        &self,
+        c: &CommunicationTurnClaim,
+        key: &str,
+    ) -> Result<Option<CommunicationTurnInputs>> {
+        sessions::processing::inputs(self, c, key).await
+    }
+    async fn record_communication_turn_attachment(
+        &self,
+        c: &CommunicationTurnClaim,
+        u: CommunicationAttachmentUpdate,
+    ) -> Result<bool> {
+        sessions::processing::record_attachment(self, c, u).await
+    }
+    async fn link_communication_turn_run(
+        &self,
+        c: &CommunicationTurnClaim,
+        run: Uuid,
+    ) -> Result<bool> {
+        sessions::processing::link_run(self, c, run).await
+    }
+    async fn checkpoint_communication_turn(
+        &self,
+        c: &CommunicationTurnClaim,
+        checkpoint: CommunicationTurnCheckpoint,
+    ) -> Result<bool> {
+        sessions::processing::checkpoint(self, c, checkpoint).await
+    }
+    async fn seal_communication_turn(
+        &self,
+        c: &CommunicationTurnClaim,
+        candidate: CommunicationTurnFinalCandidate,
+        key: &str,
+    ) -> Result<CommunicationTurnSeal> {
+        sessions::processing::seal(self, c, candidate, key).await
+    }
+    async fn reserve_communication_turn_send(
+        &self,
+        c: &CommunicationTurnClaim,
+    ) -> Result<Option<String>> {
+        sessions::processing::reserve_send(self, c).await
+    }
+    async fn record_communication_turn_progress(
+        &self,
+        c: &CommunicationTurnClaim,
+        p: CommunicationTurnProgress,
+    ) -> Result<bool> {
+        sessions::processing::progress(self, c, p).await
+    }
+
     async fn communication_management_history(
         &self,
         w: Uuid,
@@ -241,7 +357,16 @@ impl CommunicationRepository for PgControlPlaneStore {
         l: u32,
         k: &str,
     ) -> Result<Option<ClaimedCommunicationInput>> {
-        processing::claim(self, w, i, l, k).await
+        processing::claim(self, w, i, l, k, false).await
+    }
+    async fn claim_communication_legacy_input(
+        &self,
+        w: Uuid,
+        i: Uuid,
+        l: u32,
+        k: &str,
+    ) -> Result<Option<ClaimedCommunicationInput>> {
+        processing::claim(self, w, i, l, k, true).await
     }
     async fn renew_communication_claim(&self, c: &CommunicationClaim, l: u32) -> Result<bool> {
         processing::renew(self, c, l).await

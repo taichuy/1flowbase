@@ -344,6 +344,7 @@ async fn test_state_with_runtime_profile_state(
         runtime_engine,
         provider_runtime,
         process_started_at,
+        communication_activity: Default::default(),
         runtime_activity: Arc::new(
             crate::runtime_activity::ApplicationRuntimeActivityTracker::default(),
         ),

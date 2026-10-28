@@ -197,6 +197,7 @@ fn invocation_input(session_id: &str, operation: ProviderWireOperation) -> Provi
 
 fn context(deadline_ms: u64) -> ProviderRuntimeExecutionContext {
     ProviderRuntimeExecutionContext {
+        flow_run_id: None,
         workspace_id: uuid::Uuid::nil(),
         actor_id: None,
         deadline_unix_ms: i64::try_from(deadline_ms).unwrap(),

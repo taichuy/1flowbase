@@ -94,6 +94,7 @@ domain = { path = "../domain" }
 extension-contracts = { path = "../extension-contracts" }
 plugin-framework = { path = "../plugin-framework" }
 interface-runtime = { path = "../interface-runtime" }
+orchestration-runtime = { path = "../orchestration-runtime" }
 runtime-core = { path = "../runtime-core" }
 postgres-test-support = { path = "../postgres-test-support" }
 serde_json.workspace = true

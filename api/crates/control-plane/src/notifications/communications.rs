@@ -106,6 +106,29 @@ where
             .repository
             .communication_binding(actor.current_workspace_id, instance_id)
             .await?;
+        let prior_settings = prior
+            .as_ref()
+            .map(|binding| binding.config.command_settings.as_slice())
+            .unwrap_or_default();
+        if !prior_settings.is_empty() {
+            for entry in self.command_catalog(actor, prior_settings).await? {
+                if entry.unavailable_reason.as_deref() == Some("command_not_installed")
+                    && !input
+                        .command_settings
+                        .iter()
+                        .any(|setting| setting.command_id == entry.command_id)
+                {
+                    input
+                        .command_settings
+                        .push(domain::CommunicationCommandSetting {
+                            command_id: entry.command_id,
+                            enabled: entry.enabled,
+                        });
+                }
+            }
+        }
+        self.validate_command_settings(actor, &input.command_settings, prior_settings)
+            .await?;
         if prior.is_none() && !input.mcp_instance_ids.contains(&plugin_mcp_instance_id) {
             input
                 .mcp_instance_ids
@@ -309,6 +332,21 @@ where
     ) -> Result<Option<ClaimedCommunicationInput>> {
         self.repository
             .claim_communication_input(workspace_id, instance_id, lease_seconds, &self.master_key)
+            .await
+    }
+    pub async fn claim_pending_legacy_input(
+        &self,
+        workspace_id: Uuid,
+        instance_id: Uuid,
+        lease_seconds: u32,
+    ) -> Result<Option<ClaimedCommunicationInput>> {
+        self.repository
+            .claim_communication_legacy_input(
+                workspace_id,
+                instance_id,
+                lease_seconds,
+                &self.master_key,
+            )
             .await
     }
     pub async fn renew_claim(

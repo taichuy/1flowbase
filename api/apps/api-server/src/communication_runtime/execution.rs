@@ -43,7 +43,7 @@ async fn process_next(
     };
     let Some(input) = state
         .notification_service
-        .claim_pending_input(key.0, key.1, LEASE_SECONDS)
+        .claim_pending_legacy_input(key.0, key.1, LEASE_SECONDS)
         .await?
     else {
         return Ok(());
@@ -279,7 +279,7 @@ async fn start_new(
     Ok(run.id)
 }
 
-fn runtime(
+pub(crate) fn runtime(
     state: &ApiState,
     store: storage_durable_postgres::MainDurableStore,
 ) -> OrchestrationRuntimeService<
@@ -291,7 +291,8 @@ fn runtime(
         crate::provider_runtime::ApiProviderRuntime::new_with_activity(
             state.provider_runtime.clone(),
             state.runtime_activity.clone(),
-        ),
+        )
+        .with_communication_activity(state.communication_activity.clone()),
         state.runtime_engine.clone(),
         state.provider_secret_master_key.clone(),
         state.infrastructure.provider_transport_store(),
@@ -304,6 +305,7 @@ fn runtime(
     )
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_notification_sender(state.notification_service.clone())
+    .with_communication_execution_resolver(state.communication_activity.clone())
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
     .with_runtime_event_stream(state.runtime_event_stream.clone())
@@ -344,21 +346,29 @@ async fn spawn_dispatch(
 
     let runtime =
         runtime(state, state.store.for_actor(actor)).with_runtime_internal_tool_invoker(invoker);
+    let session = state
+        .communication_activity
+        .session(input.conversation.id, 0)?;
+    let lease = session.enter()?;
     Ok(tokio::spawn(async move {
         let _permit = execution_permit;
-        if runtime
-            .dispatch_communication_run(StartPublishedFlowRunCommand {
-                transport_connection_scope: None,
-                observation_context: None,
-                application_id,
-                flow_run_id: run_id,
-                provider_transport_slot: None,
-            })
-            .await
-            .is_err()
-        {
-            tracing::warn!(%run_id,"communication_dispatch_failed");
-        }
+        let _lease = lease;
+        let work = async {
+            if runtime
+                .dispatch_communication_run(StartPublishedFlowRunCommand {
+                    transport_connection_scope: None,
+                    observation_context: None,
+                    application_id,
+                    flow_run_id: run_id,
+                    provider_transport_slot: None,
+                })
+                .await
+                .is_err()
+            {
+                tracing::warn!(%run_id,"communication_dispatch_failed");
+            }
+        };
+        tokio::select! { biased; _ = session.cancelled() => {}, _ = work => {} }
     }))
 }
 
@@ -393,6 +403,13 @@ async fn observe(
         .communication_run_application_id(input.binding.workspace_id, run_id)
         .await?
         .context("linked_run_missing")?;
+    // Keep legacy callback/human resumes under the same epoch-zero owner while observing.
+    let session = state
+        .communication_activity
+        .session(input.conversation.id, 0)?;
+    let _provider_registration = state
+        .communication_activity
+        .register_provider_run(run_id, session)?;
     let mut dispatch: Option<tokio::task::JoinHandle<()>> = None;
     loop {
         let metadata = state
@@ -505,7 +522,7 @@ fn interrupted(stage: &AtomicU8, code: &str) -> Option<CommunicationProgress> {
         },
     })
 }
-fn send_failure(error: &anyhow::Error) -> CommunicationProgress {
+pub(super) fn send_failure(error: &anyhow::Error) -> CommunicationProgress {
     use control_plane::errors::ControlPlaneError as Error;
     let known = match error.downcast_ref::<Error>() {
         Some(

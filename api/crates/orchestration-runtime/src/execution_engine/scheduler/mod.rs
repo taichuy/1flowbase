@@ -39,6 +39,17 @@ where
         if mounted_llm_target_node_ids.contains(node_id) {
             continue;
         }
+        if runtime_context.communication.is_some()
+            && !communication::allow_scheduled_node(&variable_pool, node)
+        {
+            continue;
+        }
+        if let Some(communication) = &runtime_context.communication {
+            communication.check_active().await?;
+            if node.node_type == "llm" {
+                communication.activate_node(node).await?;
+            }
+        }
 
         let (resolved_inputs, answer_binding_error_payload) =
             match if node.node_type == "variable_aggregator" {
@@ -101,6 +112,13 @@ where
             Value::Object(resolved_inputs.clone())
         };
         lifecycle.begin_node(node, &node_input_payload).await?;
+        if node.node_type == "llm" {
+            if let Some(communication) = &runtime_context.communication {
+                communication
+                    .record_node_receipt(node, lifecycle.communication_node_receipt(node).await?)
+                    .await;
+            }
+        }
         let mut selected_source_handle: Option<String> = None;
 
         match node.node_type.as_str() {
@@ -204,6 +222,11 @@ where
                     continue;
                 }
 
+                if let Some(communication) = &runtime_context.communication {
+                    communication
+                        .retain_trace(node_traces.last().expect("LLM trace just appended"))
+                        .await?;
+                }
                 if let Some(wait) = execution.pending_callback {
                     if let Some(trace) = wait.node_trace.clone() {
                         node_traces.push(trace);
@@ -733,7 +756,11 @@ where
                 });
             }
         }
-        complete_latest_node_trace(lifecycle, &node_traces).await?;
+        // A communication LLM remains running across final-candidate continuation.
+        // The persistence owner commits its one terminal node fact after send seal.
+        if runtime_context.communication.is_none() || node.node_type != "llm" {
+            complete_latest_node_trace(lifecycle, &node_traces).await?;
+        }
         // CountTokens and Compact terminate at the LLM node selected by the
         // workflow. Generate-only downstream nodes (for example Answer) must
         // not reinterpret their typed provider terminal as generated text.

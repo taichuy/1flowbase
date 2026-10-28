@@ -185,6 +185,10 @@ pub struct ManagedEventHostFrame {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ManagedEventOutcome {
+    /// A command response has no destination or authority; host persists it before ACK.
+    CommandReply {
+        reply: crate::CommunicationCommandReply,
+    },
     Acknowledged,
     ApplyOwned {
         operations: Vec<crate::PluginDataOperation>,
@@ -243,13 +247,40 @@ impl ManagedEventWorkerFrame {
                 "uncorrelated or oversized response",
             ));
         }
+        let command = frame.delivery.point_id == crate::COMMUNICATION_COMMAND_POINT;
+        if command
+            && !matches!(
+                &self.result,
+                ManagedEventOutcome::CommandReply { .. } | ManagedEventOutcome::Failed { .. }
+            )
+        {
+            return Err(ManagedEventContractError(
+                "command event requires a typed reply or failure",
+            ));
+        }
         match &self.result {
+            ManagedEventOutcome::CommandReply { reply } => {
+                if !command
+                    || frame.delivery.contract_id != crate::COMMUNICATION_COMMAND_POINT
+                    || frame.delivery.point_contract_version
+                        != crate::COMMUNICATION_COMMAND_CONTRACT_VERSION
+                    || frame.delivery.contract_version
+                        != crate::COMMUNICATION_COMMAND_CONTRACT_VERSION
+                {
+                    return Err(ManagedEventContractError(
+                        "command reply requires command event contract",
+                    ));
+                }
+                reply
+                    .validate()
+                    .map_err(|_| ManagedEventContractError("invalid bounded command reply"))?;
+            }
             ManagedEventOutcome::ApplyOwned { operations } => {
                 validate_owned_event_operations(operations)?
             }
             ManagedEventOutcome::Publish { publication } => publication.validate()?,
             ManagedEventOutcome::Failed { classification } if !bounded(classification) => {
-                return Err(ManagedEventContractError("invalid failure classification"))
+                return Err(ManagedEventContractError("invalid failure classification"));
             }
             _ => {}
         }

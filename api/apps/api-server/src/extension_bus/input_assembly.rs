@@ -308,6 +308,9 @@ fn boot_core_descriptor() -> Result<ModuleDescriptor> {
             runtime_event_required_extension_point()?,
             runtime_event_diagnostic_extension_point()?,
             runtime_event_after_commit_extension_point()?,
+            plugin_framework::communication_commands::communication_command_extension_point(
+                ModuleId::new(BOOT_CORE_MODULE_ID)?,
+            )?,
             interface_operation_extension_point()?,
             interface_authentication_adapter_extension_point()?,
             interface_completion_hook_extension_point()?,
@@ -652,7 +655,9 @@ fn derive_module_descriptor(
     activation: ModuleActivationDeclaration,
 ) -> Result<ModuleDescriptor> {
     if manifest.managed.is_some() {
-        bail!("managed packages require installed workspace authority; deployment declarations alone cannot activate them");
+        bail!(
+            "managed packages require installed workspace authority; deployment declarations alone cannot activate them"
+        );
     }
     Ok(ModuleDescriptor {
         bus_version: ExtensionBusVersion::V1,

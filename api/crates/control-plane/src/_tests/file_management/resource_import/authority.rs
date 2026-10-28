@@ -36,6 +36,30 @@ impl ContributionAuthorityLease for Lease {
     fn installation(&self, id: Uuid) -> Option<&PluginInstallationRecord> {
         (id == self.state.installation.id).then_some(&self.state.installation)
     }
+    fn load_communication_command_context<'a>(
+        &'a mut self,
+        _: &'a ManagedContributionSubject,
+        _: Uuid,
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = anyhow::Result<
+                        Option<
+                            control_plane_contracts::ports::CommunicationCommandValidationContext,
+                        >,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        panic!("unexpected command context read")
+    }
+    fn commit_communication_command_reply(
+        self: Box<Self>,
+        _: control_plane_contracts::ports::CompleteManagedCommunicationCommand,
+    ) -> TestFuture<control_plane_contracts::ports::CommunicationCommandRecord> {
+        panic!("unexpected command commit")
+    }
     fn commit_owned_event_effect(
         self: Box<Self>,
         _: ManagedContributionSubject,

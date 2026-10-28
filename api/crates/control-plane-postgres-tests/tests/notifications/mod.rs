@@ -6,6 +6,8 @@ mod support;
 #[path = "_tests/channels.rs"]
 mod channels;
 
+#[path = "_tests/communication_sessions.rs"]
+mod communication_sessions;
 #[path = "_tests/communications.rs"]
 mod communications;
 
@@ -17,3 +19,6 @@ mod version_switch;
 
 #[path = "_tests/log_mapping.rs"]
 mod log_mapping;
+
+#[path = "_tests/communication_commands.rs"]
+mod communication_commands;

@@ -225,6 +225,18 @@ impl MultiplexProviderWorker {
         context: Option<StreamingCallContext>,
         lease: Option<Box<dyn Send + Sync>>,
     ) -> FrameworkResult<(Value, Vec<ProviderStreamEvent>)> {
+        self.call_cancellable(request, limits, context, lease, None)
+            .await
+    }
+
+    pub(crate) async fn call_cancellable(
+        &self,
+        request: &ProviderStdioRequest,
+        limits: &PluginRuntimeLimits,
+        context: Option<StreamingCallContext>,
+        lease: Option<Box<dyn Send + Sync>>,
+        cancel: Option<tokio::sync::watch::Receiver<bool>>,
+    ) -> FrameworkResult<(Value, Vec<ProviderStreamEvent>)> {
         if self.is_failed() {
             return Err(worker_exited_error());
         }
@@ -236,7 +248,8 @@ impl MultiplexProviderWorker {
         let request = serde_json::from_slice(&request_bytes)
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
         drop(request_bytes);
-        self.call_json(request, limits, context, lease).await
+        self.call_json_duplex(request, limits, context, lease, None, cancel)
+            .await
     }
 
     pub(crate) async fn call_json(
@@ -265,31 +278,43 @@ impl MultiplexProviderWorker {
         let request_bytes = serde_json::to_vec(&request)
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
         drop(request);
-        let permit = self
-            .writer_budget
-            .clone()
-            .acquire_many_owned(request_bytes.len().saturating_add(256).min(WRITER_BYTES) as u32)
-            .await
-            .map_err(|_| transport_error("multiplex writer budget closed"))?;
-        let request = serde_json::from_slice(&request_bytes)
-            .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
-        drop(request_bytes);
-        let (events, mut receiver) = mpsc::unbounded_channel();
-        let (registered, registration) = oneshot::channel();
-        self.commands
-            .send(CommandMessage::Call {
-                request,
-                events,
-                host_calls: context
-                    .as_ref()
-                    .and_then(|context| context.host_calls.clone())
-                    .map(Box::new),
-                registered,
-                permit,
-                lease,
-            })
-            .await
-            .map_err(|_| transport_error("multiplex command queue is full or closed"))?;
+        let admission = async {
+            let permit =
+                self.writer_budget
+                    .clone()
+                    .acquire_many_owned(
+                        request_bytes.len().saturating_add(256).min(WRITER_BYTES) as u32
+                    )
+                    .await
+                    .map_err(|_| transport_error("multiplex writer budget closed"))?;
+            let request = serde_json::from_slice(&request_bytes)
+                .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
+            drop(request_bytes);
+            let (events, receiver) = mpsc::unbounded_channel();
+            let (registered, registration) = oneshot::channel();
+            self.commands
+                .send(CommandMessage::Call {
+                    request,
+                    events,
+                    host_calls: context
+                        .as_ref()
+                        .and_then(|context| context.host_calls.clone())
+                        .map(Box::new),
+                    registered,
+                    permit,
+                    lease,
+                })
+                .await
+                .map_err(|_| transport_error("multiplex command queue is full or closed"))?;
+            Ok::<_, PluginFrameworkError>((receiver, registration))
+        };
+        let (mut receiver, registration) = tokio::select! {
+            biased;
+            _ = wait_explicit_cancel(&mut cancel) => return Err(ProviderCallCancellation::error()),
+            result = admission => result?,
+        };
+        // After enqueue, always obtain the actor's call id before observing cancellation;
+        // dropping an already delivered registration would otherwise lose its cancel owner.
         let id = registration
             .await
             .map_err(|_| transport_error("multiplex call registration failed"))?;
@@ -467,7 +492,7 @@ impl MultiplexProviderWorker {
                             let _ = observer.send(());
                         }
                         let (remaining, kind, timeout_ms) = timeout.next_read_timeout(limits);
-                        tokio::time::timeout(
+                        let forwarding = tokio::time::timeout(
                             remaining,
                             forward_provider_live_event(
                                 context.required_live_events.as_ref(),
@@ -475,15 +500,24 @@ impl MultiplexProviderWorker {
                                 context.protocol_observation.as_deref(),
                                 event.clone(),
                             ),
-                        )
-                        .await
-                        .map_err(|_| {
-                            prefer_first_error(
-                                &first_error,
-                                provider_timeout_error(kind, timeout_ms),
-                            )
-                        })?
-                        .map_err(|error| prefer_first_error(&first_error, error))?;
+                        );
+                        let forwarded = tokio::select! {
+                            biased;
+                            _ = wait_explicit_cancel(&mut cancel) => {
+                                cancel = None;
+                                let _ = self.commands.send(CommandMessage::Cancel { id: guard.id.clone() }).await;
+                                continue;
+                            }
+                            result = forwarding => result,
+                        };
+                        forwarded
+                            .map_err(|_| {
+                                prefer_first_error(
+                                    &first_error,
+                                    provider_timeout_error(kind, timeout_ms),
+                                )
+                            })?
+                            .map_err(|error| prefer_first_error(&first_error, error))?;
                     }
                     output_events.push(event);
                 }
@@ -1058,3 +1092,16 @@ fn exchange_service_response<T: serde::Serialize>(
 #[cfg(all(test, unix))]
 #[path = "../_tests/multiplex_payloads.rs"]
 mod multiplex_payloads;
+
+async fn wait_explicit_cancel(cancel: &mut Option<tokio::sync::watch::Receiver<bool>>) {
+    match cancel {
+        Some(signal) => {
+            while !*signal.borrow_and_update() {
+                if signal.changed().await.is_err() {
+                    return;
+                }
+            }
+        }
+        None => std::future::pending().await,
+    }
+}

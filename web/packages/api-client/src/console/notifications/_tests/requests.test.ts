@@ -189,6 +189,19 @@ test('communication binding and cursor history preserve canonical DTO fields and
     expect.stringContaining('/communications/options?application_id=app%2F1'),
     expect.anything()
   );
+  const controller = new AbortController();
+  await getCommunicationOptions('app/2', controller.signal, 'channel/1');
+  expect(fetch).toHaveBeenLastCalledWith(
+    expect.stringContaining(
+      '/communications/options?application_id=app%2F2&instance_id=channel%2F1'
+    ),
+    expect.objectContaining({ signal: controller.signal })
+  );
+  await getCommunicationOptions(undefined, controller.signal, 'channel/2');
+  expect(fetch).toHaveBeenLastCalledWith(
+    expect.stringContaining('/communications/options?instance_id=channel%2F2'),
+    expect.objectContaining({ signal: controller.signal })
+  );
   await getCommunicationBinding('channel/1');
   expect(fetch).toHaveBeenLastCalledWith(
     expect.stringContaining('/communications/instances/channel%2F1/binding'),
@@ -200,7 +213,11 @@ test('communication binding and cursor history preserve canonical DTO fields and
     reasoning_effort: null,
     file_table_id: null,
     mcp_instance_ids: ['plugin', 'extra'],
-    system_prompt: 'Edited prompt'
+    system_prompt: 'Edited prompt',
+    command_settings: [
+      { command_id: 'host/help', enabled: false },
+      { command_id: 'acme/tools/status', enabled: true }
+    ]
   };
   await putCommunicationBinding('channel/1', body, 'csrf');
   expect(fetch).toHaveBeenLastCalledWith(

@@ -71,5 +71,7 @@ pub use control_plane_contracts::ports::{
     PortableTemplateTransactionGuard, PortableTemplateTransactionRepository,
 };
 
-pub use control_plane_contracts::ports::notifications::*;
 pub use control_plane_contracts::ports::communications::*;
+pub use control_plane_contracts::ports::notifications::*;
+
+pub use control_plane_contracts::ports::communication_commands::*;

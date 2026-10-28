@@ -48,7 +48,7 @@ use extension_package_runtime::provider_contract::ProviderCountTokensMethod;
 
 use crate::package_loader::{LoadedProviderPackage, PackageLoader};
 use crate::stdio_runtime::{
-    call_executable, call_executable_streaming, ProviderHostCallContext,
+    call_executable, call_executable_streaming, ProviderCallCancellation, ProviderHostCallContext,
     ProviderWorkerCleanupReason, ProviderWorkerCleanupReceipt, ProviderWorkerLifecycleState,
     StreamingCallContext, DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS,
 };
@@ -301,6 +301,7 @@ struct PreparedProviderStreamInvocation {
         Option<Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>>,
     host_calls: Option<ProviderHostCallContext>,
     execution_deadline: Option<tokio::time::Instant>,
+    cancellation: Option<ProviderCallCancellation>,
 }
 
 impl Drop for ActiveProviderInvocationLease {
@@ -571,7 +572,7 @@ impl ProviderHost {
             required_live_events,
             diagnostic_live_events,
             None,
-            (None, None),
+            (None, None, None),
         )
     }
 
@@ -587,12 +588,13 @@ impl ProviderHost {
         host_call_inputs: (
             Option<runtime_core::runtime_backend::RuntimeExecutionPrincipal>,
             Option<Arc<dyn PluginDataPort>>,
+            Option<ProviderCallCancellation>,
         ),
     ) -> FrameworkResult<
         impl std::future::Future<Output = FrameworkResult<ProviderInvokeStreamOutput>> + Send + 'static,
     > {
         let loaded = self.loaded_package(plugin_id)?.clone();
-        let (principal, plugin_data) = host_call_inputs;
+        let (principal, plugin_data, cancellation) = host_call_inputs;
         let execution_deadline = principal.as_ref().and_then(|principal| {
             let now_ms =
                 i64::try_from(OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000)
@@ -630,6 +632,7 @@ impl ProviderHost {
                 protocol_observation,
                 host_calls,
                 execution_deadline,
+                cancellation,
             })
             .await
         })
@@ -767,6 +770,7 @@ impl ProviderHost {
             protocol_observation,
             host_calls,
             execution_deadline,
+            cancellation,
         } = invocation;
 
         let queue_started = std::time::Instant::now();
@@ -781,35 +785,40 @@ impl ProviderHost {
                     .timeout_ms
                     .unwrap_or(DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS),
             );
-        let _lease = tokio::time::timeout_at(
-            deadline,
-            Self::acquire_active_invocation_lease(
-                &active_invocation_leases,
-                &plugin_id,
-                &input,
-                loaded.package.manifest.runtime.protocol
-                    == extension_contracts::STDIO_JSON_MULTIPLEX_V1,
-            ),
-        )
-        .await
-        .map_err(|_| session_workers::admission_timeout())??;
-        let selected_worker = if loaded.package.manifest.execution_mode
-            == PluginExecutionMode::StatefulProviderWorker
-        {
-            Some(
-                session_workers::select_worker(
-                    &provider_workers,
-                    &plugin_id,
-                    &loaded,
-                    &mut input,
+        let (lease, selected_worker) =
+            ProviderCallCancellation::run(cancellation.as_ref(), async {
+                let lease = tokio::time::timeout_at(
                     deadline,
-                    package_epoch,
+                    Self::acquire_active_invocation_lease(
+                        &active_invocation_leases,
+                        &plugin_id,
+                        &input,
+                        loaded.package.manifest.runtime.protocol
+                            == extension_contracts::STDIO_JSON_MULTIPLEX_V1,
+                    ),
                 )
-                .await?,
-            )
-        } else {
-            None
-        };
+                .await
+                .map_err(|_| session_workers::admission_timeout())??;
+                let selected_worker = if loaded.package.manifest.execution_mode
+                    == PluginExecutionMode::StatefulProviderWorker
+                {
+                    Some(
+                        session_workers::select_worker(
+                            &provider_workers,
+                            &plugin_id,
+                            &loaded,
+                            &mut input,
+                            deadline,
+                            package_epoch,
+                        )
+                        .await?,
+                    )
+                } else {
+                    None
+                };
+                Ok((lease, selected_worker))
+            })
+            .await?;
         let queue_ms = bounded_stage_millis(queue_started.elapsed());
         let mapping_started = std::time::Instant::now();
         let prepared_wire = current_provider_wire_input(&loaded, &input)?;
@@ -848,10 +857,14 @@ impl ProviderHost {
                         &loaded.runtime_executable,
                         &request,
                         &invocation_limits,
-                        required_live_events,
-                        diagnostic_live_events,
-                        protocol_observation,
-                        event_observer,
+                        StreamingCallContext {
+                            required_live_events,
+                            diagnostic_live_events,
+                            protocol_observation,
+                            event_observer,
+                            host_calls: None,
+                        },
+                        cancellation.clone(),
                     )
                     .await
                 }
@@ -867,21 +880,25 @@ impl ProviderHost {
                     host_calls,
                 };
                 if worker.is_multiplex() {
-                    match session_workers::acquire_shared_invocation(
-                        &provider_workers,
-                        &worker,
-                        &request,
-                        deadline,
+                    match ProviderCallCancellation::run(
+                        cancellation.as_ref(),
+                        session_workers::acquire_shared_invocation(
+                            &provider_workers,
+                            &worker,
+                            &request,
+                            deadline,
+                        ),
                     )
                     .await
                     {
                         Ok(permit) => {
                             worker
-                                .call_streaming_admitted(
+                                .call_streaming_cancellable(
                                     &request,
                                     &invocation_limits,
                                     context,
-                                    Box::new((permit, reserved, _lease, active_stream_lease)),
+                                    Box::new((permit, reserved, lease, active_stream_lease)),
+                                    cancellation.clone(),
                                 )
                                 .await
                         }
@@ -889,11 +906,12 @@ impl ProviderHost {
                     }
                 } else {
                     worker
-                        .call_streaming_admitted(
+                        .call_streaming_cancellable(
                             &request,
                             &invocation_limits,
                             context,
-                            Box::new((reserved, _lease, active_stream_lease)),
+                            Box::new((reserved, lease, active_stream_lease)),
+                            cancellation.clone(),
                         )
                         .await
                 }

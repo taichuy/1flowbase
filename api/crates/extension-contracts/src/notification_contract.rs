@@ -19,6 +19,8 @@ mod i18n;
 pub use i18n::*;
 mod receive;
 pub use receive::*;
+mod commands;
+pub use commands::*;
 mod log;
 pub use log::*;
 mod managed;

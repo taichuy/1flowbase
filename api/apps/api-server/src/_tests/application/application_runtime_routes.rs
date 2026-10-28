@@ -1035,3 +1035,14 @@ pub(crate) async fn create_communication_provider_instance(
     let response = format!("{mode}:{foreign_conversation}");
     create_provider_instance(app, cookie, csrf, None, Some(&response)).await
 }
+
+/// Records real provider invocations and blocks only explicitly selected final rounds.
+pub(crate) async fn create_turn_communication_provider_instance(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    control_root: &Path,
+) -> String {
+    let response = format!("__communication_turn__:{}", control_root.display());
+    create_provider_instance(app, cookie, csrf, None, Some(&response)).await
+}

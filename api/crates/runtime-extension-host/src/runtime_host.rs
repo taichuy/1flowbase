@@ -62,10 +62,7 @@ impl PluginDataPort for MissingPluginDataPort {
 }
 use runtime_profile::{RuntimeProfile, RuntimeProfileCollector, RuntimeSampleSource};
 use time::OffsetDateTime;
-use tokio::{
-    sync::{mpsc, Mutex, RwLock},
-    task::AbortHandle,
-};
+use tokio::sync::{mpsc, Mutex, RwLock};
 
 use crate::{
     capability_host::CapabilityHost, data_source_host::DataSourceHost,
@@ -83,7 +80,7 @@ pub struct RuntimeExtensionHost {
     provider_distribution_host: Arc<RwLock<ProviderDistributionHost>>,
     profile: Arc<RuntimeProfileCollector>,
     lifecycle: Arc<StdRwLock<RuntimeBackendLifecycle>>,
-    active_requests: Arc<Mutex<HashMap<RuntimeRequestId, AbortHandle>>>,
+    active_requests: Arc<Mutex<HashMap<RuntimeRequestId, Arc<execution::ActiveRuntimeRequest>>>>,
     artifact_resolver: Arc<dyn RuntimeArtifactResolver>,
     plugin_data: Arc<dyn PluginDataPort>,
     pub(crate) file_read: Option<Arc<dyn runtime_core::runtime_backend::FileReadPort>>,
@@ -314,17 +311,24 @@ impl RuntimeExtensionHost {
             .active_requests
             .lock()
             .await
-            .drain()
-            .map(|(_, handle)| handle)
+            .iter()
+            .map(|(id, owner)| (id.clone(), owner.clone()))
             .collect::<Vec<_>>();
-        for handle in handles {
-            handle.abort();
+        for (_, owner) in &handles {
+            owner.cancel();
+        }
+        for (id, owner) in handles {
+            owner.join(&id).await?;
         }
         Ok(())
     }
 
     pub async fn stop(&self) -> Result<(), RuntimeBackendError> {
-        self.drain().await?;
+        // Per-call cancellation must preserve shared peers. Global stop owns all peers
+        // and must still reach their quiesce owners when graceful draining cannot join.
+        if let Err(error) = self.drain().await {
+            tracing::warn!(%error, "runtime graceful drain incomplete; continuing global cleanup");
+        }
         let budget = std::time::Duration::from_secs(5);
         let _hashes = tokio::time::timeout(
             budget,
@@ -365,6 +369,34 @@ impl RuntimeExtensionHost {
         }
         if let Err(error) = self.network_egress_host.write().await.stop_all().await {
             first_error.get_or_insert_with(|| RuntimeBackendError::from(error));
+        }
+        // Registry shutdown releases busy carriers. Confirm their request/forwarder
+        // owners too; a successful global stop must not leave a detached producer.
+        let requests = self
+            .active_requests
+            .lock()
+            .await
+            .iter()
+            .map(|(id, owner)| (id.clone(), owner.clone()))
+            .collect::<Vec<_>>();
+        let mut joins = tokio::task::JoinSet::new();
+        for (id, owner) in requests {
+            joins.spawn(async move { owner.join(&id).await });
+        }
+        while let Some(joined) = joins.join_next().await {
+            match joined {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    first_error.get_or_insert(error);
+                }
+                Err(error) => {
+                    first_error.get_or_insert_with(|| {
+                        RuntimeBackendError::InvalidRequest(format!(
+                            "runtime stop join owner failed: {error}"
+                        ))
+                    });
+                }
+            }
         }
         let mut lifecycle = self.lifecycle.write().map_err(|_| {
             RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".to_string())
@@ -842,99 +874,18 @@ impl RuntimeExecutionPort for RuntimeExtensionHost {
         request: RuntimeExecutionRequest,
         sinks: RuntimeStreamSinks,
     ) -> Result<RuntimeExecutionOutcome, RuntimeBackendError> {
-        let request_id = request.request_id.clone();
-        let target_id = request.target.as_str().to_string();
-        let provider_host = Arc::clone(&self.provider_host);
-        let plugin_data = Arc::clone(&self.plugin_data);
-
-        let mut active = self.active_requests.lock().await;
-        // Admission and registration share the same critical section that drain() acquires after
-        // transitioning the lifecycle. A request is therefore either registered for drain to
-        // cancel, or observes Draining and is rejected; it cannot slip between those outcomes.
-        self.ensure_accepting()?;
-        if active.contains_key(&request_id) {
-            return Err(RuntimeBackendError::DuplicateRequest(request_id));
-        }
-
-        let task = tokio::spawn(async move {
-            let input = request.input;
-            let (required_sender, required_forwarder) = match sinks.required {
-                Some(sink) => {
-                    let (sender, receiver) = mpsc::channel(64);
-                    (
-                        Some(sender),
-                        Some(tokio::spawn(forward_events(receiver, sink))),
-                    )
-                }
-                None => (None, None),
-            };
-            let (diagnostic_sender, diagnostic_forwarder) = match sinks.diagnostic {
-                Some(sink) => {
-                    let (sender, receiver) = mpsc::channel(64);
-                    (
-                        Some(sender),
-                        Some(tokio::spawn(forward_events(receiver, sink))),
-                    )
-                }
-                None => (None, None),
-            };
-            let operation = {
-                let host = provider_host.read().await;
-                host.invoke_stream_with_host_calls_operation(
-                    &target_id,
-                    input,
-                    required_sender,
-                    diagnostic_sender,
-                    sinks.protocol_observation,
-                    (request.principal, Some(plugin_data)),
-                )
-                .map_err(RuntimeBackendError::from)?
-            };
-            let output = operation.await.map_err(RuntimeBackendError::from)?;
-            if let Some(forwarder) = required_forwarder {
-                forwarder
-                    .await
-                    .map_err(|error| RuntimeBackendError::Execution {
-                        target_id: target_id.clone(),
-                        message: error.to_string(),
-                    })??;
-            }
-            if let Some(forwarder) = diagnostic_forwarder {
-                forwarder
-                    .await
-                    .map_err(|error| RuntimeBackendError::Execution {
-                        target_id: target_id.clone(),
-                        message: error.to_string(),
-                    })??;
-            }
-            Ok(RuntimeExecutionOutcome {
-                events: output.events,
-                result: output.result,
-            })
-        });
-
-        active.insert(request_id.clone(), task.abort_handle());
-        drop(active);
-        let result = task.await;
-        self.active_requests.lock().await.remove(&request_id);
-        match result {
-            Ok(result) => result,
-            Err(error) if error.is_cancelled() => Err(RuntimeBackendError::Cancelled(request_id)),
-            Err(error) => Err(RuntimeBackendError::Execution {
-                target_id: request.target.as_str().to_string(),
-                message: error.to_string(),
-            }),
-        }
+        self.execute_owned(request, sinks).await
     }
 
     async fn cancel(
         &self,
         request_id: &RuntimeRequestId,
     ) -> Result<RuntimeCancelOutcome, RuntimeBackendError> {
-        let Some(handle) = self.active_requests.lock().await.remove(request_id) else {
+        let Some(owner) = self.active_requests.lock().await.get(request_id).cloned() else {
             return Ok(RuntimeCancelOutcome::NotFound);
         };
-        handle.abort();
+        owner.cancel();
+        owner.join(request_id).await?;
         Ok(RuntimeCancelOutcome::Cancelled)
     }
 }
@@ -978,6 +929,7 @@ mod managed_hash_budget_tests;
 mod shared_profile_source_tests;
 
 mod data_source;
+mod execution;
 
 #[path = "runtime_host/capability_port.rs"]
 mod capability_port;

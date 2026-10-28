@@ -16,7 +16,7 @@ use std::sync::{
 };
 
 #[derive(Clone)]
-pub(super) struct PausedProvider {
+pub(in super::super) struct PausedProvider {
     pub entered: Arc<tokio::sync::Semaphore>,
     pub release: Arc<tokio::sync::Semaphore>,
     pub inputs: Arc<Mutex<Vec<ProviderInvocationInput>>>,
@@ -121,14 +121,14 @@ impl CapabilityPluginRuntimePort for PausedProvider {
     }
 }
 
-pub(super) struct ProviderPackage(std::path::PathBuf);
+pub(in super::super) struct ProviderPackage(pub(in super::super) std::path::PathBuf);
 impl Drop for ProviderPackage {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 
-pub(super) async fn seed_runtime_consumer(
+pub(in super::super) async fn seed_runtime_consumer(
     store: &PgControlPlaneStore,
     seeded: &RuntimeSeedState,
     compiled: &domain::CompiledPlanRecord,

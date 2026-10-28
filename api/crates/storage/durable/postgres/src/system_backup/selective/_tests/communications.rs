@@ -62,6 +62,22 @@ async fn communication_backup_rekeys_cursor_and_attachment_after_fk_deferred_res
         json!({"workspace_id":workspace.id,"instance_id":instance});
     sqlx::query("INSERT INTO communication_messages(id,scope_id,input_id,provider_attachment_id,file_name,media_type,encrypted_reference,status,file_table_id,file_record_id,instance_id,conversation_id,external_identity,type,direction,occurred_at_ms) VALUES($1,$6,$2,'provider-attachment','file.png','image/png',$3,'ready',$4,$5,$7,$8,'alice','file','inbound',42)")
         .bind(attachment).bind(message).bind(encrypted_reference).bind(file_table).bind(file_record).bind(workspace.id).bind(instance).bind(conversation).execute(&db).await.unwrap();
+    let session = Uuid::now_v7();
+    let turn = Uuid::now_v7();
+    let run = Uuid::now_v7();
+    sqlx::query("UPDATE communication_conversations SET session_epoch=1,selected_model='chat-model' WHERE id=$1").bind(conversation).execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO communication_sessions(id,scope_id,instance_id,external_identity,conversation_id,epoch) VALUES($1,$2,$3,'alice',$4,1)").bind(session).bind(workspace.id).bind(instance).bind(conversation).execute(&db).await.unwrap();
+    let checkpoint =
+        json!({"completed_tool":{"id":"kept-side-effect"},"transcript":["kept result"]});
+    sqlx::query("INSERT INTO communication_reply_turns(id,scope_id,instance_id,external_identity,conversation_id,session_id,session_epoch,anchor_input_id,state,run_id,received_watermark,consumed_watermark,checkpoint_revision,checkpoint_json,processing_status,send_status) VALUES($1,$2,$3,'alice',$4,$5,1,$6,'sealed',$7,1,1,1,$8,'succeeded','unknown')")
+        .bind(turn).bind(workspace.id).bind(instance).bind(conversation).bind(session).bind(message).bind(run).bind(&checkpoint).execute(&db).await.unwrap();
+    sqlx::query("UPDATE communication_inputs SET admission_status='admitted',turn_id=$2,turn_sequence=1,run_id=$3,processing_status='succeeded',send_status='unknown' WHERE id=$1").bind(message).bind(turn).bind(run).execute(&db).await.unwrap();
+    let receipt = json!({"session":{"id":session,"conversation_id":conversation,"epoch":1,"active":true,"selected_model":"chat-model"},"invalidated_session_id":null,"cancel_run_ids":[],"replayed":false});
+    sqlx::query("INSERT INTO communication_session_rotations(scope_id,instance_id,external_identity,conversation_id,receipt_key,result_json) VALUES($1,$2,'alice',$3,'restored-command',$4)").bind(workspace.id).bind(instance).bind(conversation).bind(&receipt).execute(&db).await.unwrap();
+    let command = Uuid::now_v7();
+    let command_request = json!({"command_id":"host/help","arguments":"","channel_id":instance,"conversation_id":conversation,"session_id":session,"input_id":command});
+    sqlx::query("INSERT INTO communication_command_events(event_id,input_id,scope_id,instance_id,external_identity,conversation_id,session_id,request_json,reply_json,response_session_id,send_status) VALUES($1,$1,$2,$3,'alice',$4,$5,$6,'{\"text\":\"restored command reply\"}',$5,'unknown')")
+        .bind(command).bind(workspace.id).bind(instance).bind(conversation).bind(session).bind(&command_request).execute(&db).await.unwrap();
     let repository = PgSelectiveBackupRepository::new(db.clone());
     let config = capture(&repository, select("notifications", true, false)).await;
     let full = capture(&repository, select("notifications", true, true)).await;
@@ -76,6 +92,34 @@ async fn communication_backup_rekeys_cursor_and_attachment_after_fk_deferred_res
     assert!(!preview
         .selected_tables
         .contains(&"communication_messages".into()));
+    for table in [
+        "communication_sessions",
+        "communication_reply_turns",
+        "communication_session_rotations",
+        "communication_command_events",
+    ] {
+        assert!(!preview.selected_tables.contains(&table.into()));
+    }
+    let data_preview = repository
+        .preflight(reader(full.clone()), "source", "target")
+        .await
+        .unwrap();
+    assert!(
+        data_preview.failures.is_empty(),
+        "{:?}",
+        data_preview.failures
+    );
+    for table in [
+        "communication_sessions",
+        "communication_reply_turns",
+        "communication_session_rotations",
+        "communication_command_events",
+    ] {
+        assert!(
+            data_preview.selected_tables.contains(&table.into()),
+            "missing durable table {table}"
+        );
+    }
     for malformed in [
         rewrite_scope(&full, None),
         rewrite_scope(
@@ -92,6 +136,11 @@ async fn communication_backup_rekeys_cursor_and_attachment_after_fk_deferred_res
             "attachment envelope scope must authenticate its ciphertext"
         );
     }
+    sqlx::query("DELETE FROM communication_command_events WHERE event_id=$1")
+        .bind(command)
+        .execute(&db)
+        .await
+        .unwrap();
     // Remove parent rows so attachments (alphabetically first in the archive) must be deferred.
     sqlx::query("DELETE FROM communication_messages WHERE id=$1")
         .bind(attachment)
@@ -99,6 +148,26 @@ async fn communication_backup_rekeys_cursor_and_attachment_after_fk_deferred_res
         .await
         .unwrap();
     sqlx::query("DELETE FROM communication_messages WHERE id=$1")
+        .bind(message)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM communication_reply_turns WHERE id=$1")
+        .bind(turn)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM communication_sessions WHERE id=$1")
+        .bind(session)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM communication_session_rotations WHERE conversation_id=$1")
+        .bind(conversation)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM communication_inputs WHERE id=$1")
         .bind(message)
         .execute(&db)
         .await
@@ -156,6 +225,39 @@ async fn communication_backup_rekeys_cursor_and_attachment_after_fk_deferred_res
             .await
             .unwrap();
     assert_eq!(content, "retained input");
+    let restored: (Uuid, Uuid, i64, i64, Value, String) = sqlx::query_as("SELECT scope_id,session_id,received_watermark,consumed_watermark,checkpoint_json,send_status FROM communication_reply_turns WHERE id=$1").bind(turn).fetch_one(&db).await.unwrap();
+    assert_eq!(
+        restored,
+        (workspace.id, session, 1, 1, checkpoint, "unknown".into())
+    );
+    let membership: (Uuid, Uuid, i64, Uuid) = sqlx::query_as(
+        "SELECT scope_id,turn_id,turn_sequence,run_id FROM communication_inputs WHERE id=$1",
+    )
+    .bind(message)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(membership, (workspace.id, turn, 1, run));
+    let model: String = sqlx::query_scalar(
+        "SELECT selected_model FROM communication_conversations WHERE scope_id=$1 AND id=$2",
+    )
+    .bind(workspace.id)
+    .bind(conversation)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(model, "chat-model");
+    let restored_receipt: Value = sqlx::query_scalar("SELECT result_json FROM communication_session_rotations WHERE scope_id=$1 AND instance_id=$2 AND external_identity='alice' AND conversation_id=$3 AND receipt_key='restored-command'").bind(workspace.id).bind(instance).bind(conversation).fetch_one(&db).await.unwrap();
+    assert_eq!(restored_receipt, receipt);
+    let restored_command: (Value,Value,String) = sqlx::query_as("SELECT request_json,reply_json,send_status FROM communication_command_events WHERE event_id=$1").bind(command).fetch_one(&db).await.unwrap();
+    assert_eq!(
+        restored_command,
+        (
+            command_request,
+            json!({"text":"restored command reply"}),
+            "unknown".into()
+        )
+    );
 }
 
 #[test]

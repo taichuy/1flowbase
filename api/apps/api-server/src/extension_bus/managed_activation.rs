@@ -1,5 +1,7 @@
 //! Workspace-scoped immutable managed graph assembly and fresh execution admission.
 mod candidate_switch;
+mod communication_commands;
+pub(crate) use communication_commands::ManagedCommunicationCommandProvider;
 mod governance;
 mod lifetime;
 mod publication;
@@ -468,6 +470,10 @@ impl ManagedExtensionComposition {
             .bindings();
         for binding in event_bindings {
             let (contract_id, contract_version) = match binding.descriptor.point_id.as_str() {
+                extension_contracts::COMMUNICATION_COMMAND_POINT => (
+                    extension_contracts::COMMUNICATION_COMMAND_POINT,
+                    extension_contracts::COMMUNICATION_COMMAND_CONTRACT_VERSION,
+                ),
                 extension_contracts::MANAGED_CREATE_EVENT_POINT => {
                     (extension_contracts::MANAGED_CREATE_EVENT_ID, "v1")
                 }
@@ -613,11 +619,18 @@ impl ManagedExtensionComposition {
         if &frozen.subject != binding.handle.identity().subject() {
             bail!("managed event authority subject mismatch");
         }
-        let lease = self
+        let mut lease = self
             .store
             .lock_contribution_authority(binding.handle.identity().subject())
             .await?;
         self.validate_event_current_binding(binding, workspace_id, lease.as_ref())?;
+        if self
+            .validate_command_delivery(snapshot, binding, record, lease.as_mut())
+            .await?
+        {
+            lease.release().await?;
+            return Ok(true);
+        }
         let admitted = self
             .backend
             .admit_managed_event(runtime_core::runtime_backend::RuntimeManagedEventRequest {
@@ -639,7 +652,16 @@ impl ManagedExtensionComposition {
                 } else { error.into() }
             })?;
         lease.release().await?;
-        match admitted.await? {
+        let outcome = admitted.await?;
+        if record.contract_id == extension_contracts::COMMUNICATION_COMMAND_POINT {
+            self.commit_command_outcome(binding, record, outcome)
+                .await?;
+            return Ok(true);
+        }
+        match outcome {
+            extension_contracts::ManagedEventOutcome::CommandReply { .. } => {
+                bail!("command reply returned for non-command event")
+            }
             extension_contracts::ManagedEventOutcome::Acknowledged => {
                 if binding
                     .descriptor
@@ -727,6 +749,10 @@ impl ManagedWorkspaceSnapshot {
         contract_id: &str,
         contract_version: &str,
     ) -> Option<control_plane_contracts::ports::LifecyclePublicationPlan> {
+        // Commands require a selected declaration; generic event publication cannot broadcast them.
+        if contract_id == extension_contracts::COMMUNICATION_COMMAND_POINT {
+            return None;
+        }
         let plan = self.lifecycle_plan.as_ref()?;
         let subscribers = plan
             .subscribers()
@@ -757,6 +783,29 @@ fn decode_event_delivery(
     record: &control_plane_contracts::ports::LifecycleOutboxRecord,
 ) -> Result<extension_contracts::ManagedEventDelivery> {
     use extension_contracts::*;
+    if record.contract_id == COMMUNICATION_COMMAND_POINT {
+        let delivery: ManagedEventDelivery = serde_json::from_slice(&record.canonical_payload)?;
+        let schema = snapshot
+            .graph
+            .points()
+            .iter()
+            .find(|point| point.descriptor().point_id.as_str() == COMMUNICATION_COMMAND_POINT)
+            .context("command point unavailable in frozen graph")?;
+        anyhow::ensure!(
+            delivery.event_id == record.event_id.to_string()
+                && delivery.contract_id == record.contract_id
+                && delivery.contract_version == record.contract_version
+                && delivery.point_id == COMMUNICATION_COMMAND_POINT
+                && delivery.schema
+                    == ManagedEventSchema::from_descriptor(&schema.descriptor().contract)?,
+            "command event identity mismatch"
+        );
+        delivery.validate()?;
+        let request: CommunicationCommandRequest =
+            serde_json::from_value(delivery.payload.clone())?;
+        request.validate()?;
+        return Ok(delivery);
+    }
     let (point_id, point_contract_version, schema) = if record.contract_id
         == MANAGED_CREATE_EVENT_ID
         && record.contract_version == "v1"

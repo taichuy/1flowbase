@@ -15,7 +15,8 @@ mod runtime_model_routes;
 pub(crate) use application_runtime_routes::{
     create_communication_provider_instance, create_gated_provider_instance,
     create_marker_output_provider_instance, create_ready_provider_instance,
-    seed_agent_flow_application, seed_human_input_application, ProviderInvocationGate,
+    create_turn_communication_provider_instance, seed_agent_flow_application,
+    seed_human_input_application, ProviderInvocationGate,
 };
 
 mod application_archive_batch_routes;

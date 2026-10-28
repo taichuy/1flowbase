@@ -18,6 +18,12 @@
 - PluginData binding 的 publisher/plugin/version 来自已加载 manifest，workspace/actor/deadline 来自内部 execution principal；worker 不得声明这些字段。
 - Provider Distribution worker 只返回 typed decision；Host 必须拒绝不在 frozen eligible snapshot 内的 target，且该私有 Host 不得提升为公共 Registry/Facade。
 
+## Explicit Provider Cancellation
+
+- `RuntimeExecutionPort::cancel(request_id)` 的成功以该调用的实际 carrier / cleanup owner 完成为证；普通 caller drop 或协议断连不等于业务取消。
+- `process_per_call` 取消必须 kill/reap；multiplex 仅取消对应 call 并等 delimiter / 资源回收，保留其他 call。
+- 无逐调用 cancel 协议的共享 serial carrier 保留原 result/deadline owner；超过宿主既有关闭预算返回 join failure，不误杀其他会话，也不宣称已取消。
+
 ## Resources And Stop
 
 - 宿主可依赖 `extension-contracts`、`extension-package-runtime`、`runtime-core` 与 `runtime-profile`，不得依赖完整 `plugin-framework`，也不吸收 package 管理或控制面状态决策。

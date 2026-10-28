@@ -20,6 +20,10 @@ use std::{collections::BTreeSet, sync::Arc};
 use uuid::Uuid;
 
 mod authorization;
+mod command_catalog;
+mod command_events;
+pub use command_catalog::*;
+pub use command_events::{decode_builtin_command, terminate_communication_command_delivery};
 mod logging;
 mod managed_send;
 mod migration;
@@ -106,6 +110,7 @@ pub struct NotificationService<R> {
     repository: R,
     master_key: String,
     provider: Option<Arc<dyn NotificationProviderPort>>,
+    commands: Option<Arc<dyn CommunicationCommandProviderPort>>,
     events: Option<Arc<dyn NotificationEventPublisher>>,
 }
 impl<R> NotificationService<R> {
@@ -114,8 +119,16 @@ impl<R> NotificationService<R> {
             repository,
             master_key,
             provider: None,
+            commands: None,
             events: None,
         }
+    }
+    pub fn with_command_provider(
+        mut self,
+        provider: Arc<dyn CommunicationCommandProviderPort>,
+    ) -> Self {
+        self.commands = Some(provider);
+        self
     }
     pub fn with_provider(mut self, provider: Arc<dyn NotificationProviderPort>) -> Self {
         self.provider = Some(provider);
@@ -901,4 +914,5 @@ fn contains_secret(value: &Value, secret: &str) -> bool {
     }
 }
 
+mod communication_sessions;
 mod communications;

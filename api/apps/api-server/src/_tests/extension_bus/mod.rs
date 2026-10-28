@@ -33,3 +33,6 @@ mod generic_event_history_tests;
 #[path = "events/generic_event_tests.rs"]
 mod generic_event_tests;
 mod notifications;
+
+#[path = "events/communication_command_tests.rs"]
+mod communication_command_tests;

@@ -1025,6 +1025,7 @@ dependencies = [
  "domain",
  "extension-contracts",
  "interface-runtime",
+ "orchestration-runtime",
  "plugin-framework",
  "postgres-test-support",
  "runtime-core",

@@ -90,6 +90,57 @@ impl<'a, R, H> PersistedNodeLifecycle<'a, R, H> {
     }
 }
 
+impl<R, H> PersistedNodeLifecycle<'_, R, H>
+where
+    R: OrchestrationRuntimeRepository,
+{
+    pub(in crate::orchestration_runtime) async fn restore_communication_nodes(
+        &self,
+        application_id: uuid::Uuid,
+        waiting_node_id: &str,
+        context: &orchestration_runtime::execution_engine::ExecutionRuntimeContext,
+    ) -> Result<()> {
+        let Some(execution) = context.communication_execution() else {
+            return Ok(());
+        };
+        let receipts = execution.retained_node_receipts().await?;
+        if receipts.is_empty() {
+            return Ok(());
+        }
+        let detail = self
+            .service
+            .repository
+            .get_application_run_detail(application_id, self.flow_run_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("communication_retained_run_missing"))?;
+        let mut retained = Vec::new();
+        for (node_id, id) in receipts {
+            // The existing callback resume owner reactivates its own waiting node.
+            if node_id == waiting_node_id {
+                continue;
+            }
+            let record = detail
+                .node_runs
+                .iter()
+                .find(|record| {
+                    record.id == id && record.node_id == node_id && record.node_type == "llm"
+                })
+                .ok_or_else(|| anyhow::anyhow!("communication_retained_node_scope_invalid"))?;
+            if record.status != domain::NodeRunStatus::Running {
+                return Err(anyhow::anyhow!(
+                    "communication_retained_node_already_completed"
+                ));
+            }
+            retained.push((node_id, record.clone()));
+        }
+        self.prepared_node_runs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("prepared node run lock is poisoned"))?
+            .extend(retained);
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl<R, H> orchestration_runtime::execution_engine::ExecutionLifecycle
     for PersistedNodeLifecycle<'_, R, H>
@@ -219,6 +270,53 @@ where
         )
         .await;
         Ok(())
+    }
+
+    async fn activate_retained_communication_node(
+        &self,
+        node: &orchestration_runtime::compiled_plan::CompiledNode,
+    ) -> Result<()> {
+        if let Some(owner) = &self.resume_claim_owner {
+            if !self.service.repository.renew_resume_claim(owner).await? {
+                return Err(anyhow::anyhow!(
+                    "communication resume claim is no longer owned"
+                ));
+            }
+        }
+        let node_run = self
+            .prepared_node_runs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("prepared node run lock is poisoned"))?
+            .get(&node.node_id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("communication retained node was not started"))?;
+        if node.node_type != "llm" || node_run.status != domain::NodeRunStatus::Running {
+            return Err(anyhow::anyhow!(
+                "communication continuation cannot revive a completed node"
+            ));
+        }
+        *self
+            .flow_execution_context
+            .active_node
+            .lock()
+            .map_err(|_| anyhow::anyhow!("active runtime node lock is poisoned"))? =
+            Some(RuntimeActiveNode {
+                node_id: node.node_id.clone(),
+                node_run_id: node_run.id,
+            });
+        Ok(())
+    }
+
+    async fn communication_node_receipt(
+        &self,
+        node: &orchestration_runtime::compiled_plan::CompiledNode,
+    ) -> Result<Option<uuid::Uuid>> {
+        Ok(self
+            .prepared_node_runs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("prepared node run lock is poisoned"))?
+            .get(&node.node_id)
+            .map(|record| record.id))
     }
 
     async fn runtime_internal_tool_finished(

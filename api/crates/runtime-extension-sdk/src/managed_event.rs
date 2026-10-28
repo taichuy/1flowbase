@@ -42,3 +42,31 @@ pub fn serve_managed_event<R: Read, W: Write>(
     writer.flush()?;
     Ok(())
 }
+
+/// A finite typed command worker. Destination/actor authority stays in the Host request receipt.
+pub fn serve_communication_command<R: Read, W: Write>(
+    reader: R,
+    writer: W,
+    command: impl FnOnce(
+        &extension_contracts::CommunicationCommandRequest,
+    ) -> extension_contracts::CommunicationCommandReply,
+) -> Result<(), RuntimeExtensionSdkError> {
+    serve_managed_event(reader, writer, |frame| {
+        let parsed = serde_json::from_value::<extension_contracts::CommunicationCommandRequest>(
+            frame.delivery.payload.clone(),
+        );
+        match parsed {
+            Ok(request)
+                if frame.delivery.point_id == extension_contracts::COMMUNICATION_COMMAND_POINT
+                    && request.validate().is_ok() =>
+            {
+                ManagedEventOutcome::CommandReply {
+                    reply: command(&request),
+                }
+            }
+            _ => ManagedEventOutcome::Failed {
+                classification: "invalid_command_request".into(),
+            },
+        }
+    })
+}

@@ -24,6 +24,7 @@ pub(super) async fn persist_flow_debug_node_traces<R>(
     flow_span_id: Option<Uuid>,
     outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
     prepared_node_runs: Option<&PreparedNodeRuns>,
+    communication_reply: bool,
     base_started_at: OffsetDateTime,
 ) -> Result<PersistedNodeTraces>
 where
@@ -69,6 +70,41 @@ where
                 })
                 .await?
         };
+        // Only the optional communication hook leaves an otherwise successful live LLM
+        // Running. Preserve that receipt across a subsequent wait; its final trace is
+        // restored from the turn checkpoint and persisted once when the reply seals.
+        let deferred_reply = communication_reply
+            && prepared_node_runs.is_some()
+            && node_run.status == domain::NodeRunStatus::Running
+            && trace.node_type == "llm"
+            && trace.error_payload.is_none()
+            && matches!(
+                outcome.stop_reason,
+                orchestration_runtime::execution_state::ExecutionStopReason::WaitingHuman(_)
+                    | orchestration_runtime::execution_state::ExecutionStopReason::WaitingCallback(
+                        _
+                    )
+            )
+            && waiting_node_id.is_some_and(|(id, _)| id != trace.node_id);
+        if deferred_reply {
+            repository
+                .update_node_run(&UpdateNodeRunInput {
+                    node_run_id: node_run.id,
+                    status: domain::NodeRunStatus::Running,
+                    output_payload: persisted_node_output_payload(
+                        &trace.output_payload,
+                        &trace.metrics_payload,
+                        None,
+                        &trace.debug_payload,
+                    ),
+                    error_payload: None,
+                    metrics_payload: trace.metrics_payload.clone(),
+                    debug_payload: trace.debug_payload.clone(),
+                    finished_at: None,
+                })
+                .await?;
+            continue;
+        }
         // A resumed LLM keeps its node row, while each generation owns its attempt interval.
         let started_at = trace_started_at(trace).unwrap_or(node_run.started_at);
         let span_kind = if trace.node_type == "llm" {

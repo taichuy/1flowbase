@@ -151,6 +151,9 @@ where
         let Some(node) = plan.nodes.get(node_id) else {
             continue;
         };
+        if let Some(communication) = &runtime_context.communication {
+            communication.check_active().await?;
+        }
         if let Some(panel_execution) = execute_bounded_parallel_panel(
             BoundedParallelPanelContext {
                 plan,

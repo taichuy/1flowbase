@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub(super) const KEY: &str = "communications-fixture-master-key";
 pub(super) fn config() -> CommunicationBindingInput {
     CommunicationBindingInput {
+        command_settings: vec![],
         application_id: Uuid::now_v7(),
         model: None,
         reasoning_effort: None,
@@ -878,7 +879,9 @@ async fn communication_physical_scope_enforces_owner_chain_and_public_workspace_
                 .unwrap(),
             w.id
         );
-        let sql = format!("UPDATE {table} SET updated_at='1970-01-01' WHERE {id_column}=$1 RETURNING updated_at>=created_at");
+        let sql = format!(
+            "UPDATE {table} SET updated_at='1970-01-01' WHERE {id_column}=$1 RETURNING updated_at>=created_at"
+        );
         assert!(
             sqlx::query_scalar::<_, bool>(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(id)

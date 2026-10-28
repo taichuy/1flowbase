@@ -1,3 +1,69 @@
+    if (typeof configuredText === 'string' && configuredText.startsWith('__communication_turn__:')) {
+      const path = require('node:path');
+      const root = configuredText.slice('__communication_turn__:'.length);
+      const messages = request.input?.messages ?? [];
+      const session = messages.filter(m => m.role === 'system').map(m => {
+        try { return JSON.parse(m.content); } catch { return null; }
+      }).find(m => m && m.channel_id && m.conversation_id);
+      if (!session || !/^[0-9a-f-]{36}$/.test(session.session_id)) throw Error('missing logical session UUID');
+      const results = messages.filter(m => m.role === 'tool');
+      const byId = id => results.find(m => m.tool_call_id === id);
+      const meta = suffix => {
+        const tool = (request.input.tools ?? []).find(t => t.function?.name?.endsWith(suffix));
+        if (!tool) throw Error('missing progressive tool ' + suffix);
+        return tool.function.name;
+      };
+      let call;
+      if (!byId('turn_list')) {
+        call = {id:'turn_list',name:meta('mcp_list'),arguments:{depth:8,limit:20}};
+      } else if (!byId('turn_get')) {
+        if (!byId('turn_list').content.includes('_messages')) throw Error('channel history not discovered');
+        call = {id:'turn_get',name:meta('mcp_get'),arguments:{tool_id:'communication_' + session.channel_id + '_messages'}};
+      } else if (!byId('turn_call')) {
+        const get = JSON.parse(byId('turn_get').content);
+        const description = get.structuredContent ?? get;
+        if (!description.des_id) throw Error('description token missing');
+        call = {id:'turn_call',name:meta('mcp_call'),arguments:{
+          tool_id:description.tool_id,des_id:description.des_id,arguments:{conversation_id:session.conversation_id}
+        }};
+      } else {
+        const history = byId('turn_call');
+        if (history.is_error || !history.content.includes('Alice private input') || history.content.includes('Bob private input')) {
+          throw Error('real scoped history tool result missing or cross-sender');
+        }
+      }
+      const logPath = path.join(root, 'invocations.jsonl');
+      const previous = fs.existsSync(logPath)
+        ? fs.readFileSync(logPath, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+      const finalRound = call ? null : previous.filter(item => item.stage === 'final').length + 1;
+      const captured = {
+        invocation:previous.length + 1,stage:call?.id ?? 'final',final_round:finalRound,pid:process.pid,
+        session,user_messages:messages.filter(m => m.role === 'user').map(m => m.content),
+        tool_results:results.map(m => ({tool_call_id:m.tool_call_id,content:m.content,is_error:m.is_error ?? false}))
+      };
+      fs.appendFileSync(logPath, JSON.stringify(captured) + '\n');
+      if (!call) {
+        const ready = path.join(root, `final-${finalRound}.ready.json`);
+        fs.writeFileSync(ready + '.tmp', JSON.stringify(captured));
+        fs.renameSync(ready + '.tmp', ready);
+        if (fs.existsSync(path.join(root, `block-final-${finalRound}`))) {
+          process.stdout.write(JSON.stringify({type:'text_delta',delta:'provisional blocked generation'}) + '\n');
+          const deadline = Date.now() + 60_000;
+          while (!fs.existsSync(path.join(root, `release-final-${finalRound}`)) && !fs.existsSync(path.join(root, 'release-all'))) {
+            if (Date.now() >= deadline) throw Error('communication turn provider barrier timed out');
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+          }
+        }
+        fs.writeFileSync(path.join(root, `final-${finalRound}.completed`), 'completed');
+      }
+      process.stdout.write(JSON.stringify({type:'result',result:{
+        final_content:call ? 'provisional tool text must never be sent' : 'Final for ' + session.user_id,
+        finish_reason:call ? 'tool_call' : 'stop',...(call ? {tool_calls:[call]} : {}),
+        usage:{input_tokens:5,output_tokens:7,total_tokens:12}
+      }}) + '\n');
+      streamed = true;
+      break;
+    }
     if (typeof configuredText === 'string' && configuredText.startsWith('__communication_')) {
       const messages = request.input?.messages ?? [];
       const session = messages.filter(m => m.role === 'system').map(m => {

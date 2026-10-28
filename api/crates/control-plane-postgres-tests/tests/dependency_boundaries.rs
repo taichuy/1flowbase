@@ -348,7 +348,7 @@ fn d_004_plugin_runner_is_absent_from_the_workspace_and_production_dependencies(
 }
 
 #[test]
-fn runtime_consumer_fixture_uses_runtime_core_only_as_a_dev_dependency() {
+fn runtime_consumer_fixture_uses_runtime_crates_only_as_dev_dependencies() {
     let api = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let metadata = cargo_metadata(&api);
     let package = metadata["packages"]
@@ -357,12 +357,14 @@ fn runtime_consumer_fixture_uses_runtime_core_only_as_a_dev_dependency() {
         .iter()
         .find(|package| package["name"] == "control-plane-postgres-tests")
         .unwrap();
-    let dependencies: Vec<_> = package["dependencies"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|dependency| dependency["name"] == "runtime-core")
-        .collect();
-    assert_eq!(dependencies.len(), 1);
-    assert_eq!(dependencies[0]["kind"], "dev");
+    for name in ["runtime-core", "orchestration-runtime"] {
+        let dependencies: Vec<_> = package["dependencies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|dependency| dependency["name"] == name)
+            .collect();
+        assert_eq!(dependencies.len(), 1, "one direct dependency on {name}");
+        assert_eq!(dependencies[0]["kind"], "dev", "{name} is test-only");
+    }
 }

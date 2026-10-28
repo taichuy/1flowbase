@@ -52,7 +52,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     serve_managed_event(raw.as_slice(), std::io::stdout().lock(), |frame| {
         use extension_contracts::{PluginDataOperation, PluginDataTarget, PluginDataValue};
         let payload = &frame.delivery.payload;
-        if frame.handler == "publish" {
+        if frame.handler == "communication_command" {
+            let request: extension_contracts::CommunicationCommandRequest =
+                serde_json::from_value(payload.clone()).expect("validated command schema");
+            if request.arguments == "fixture-fail" {
+                return ManagedEventOutcome::Failed {
+                    classification: "fixture_command_failed".into(),
+                };
+            }
+            ManagedEventOutcome::CommandReply {
+                reply: extension_contracts::CommunicationCommandReply {
+                    text: format!("{}: {}", request.command_id, request.arguments),
+                },
+            }
+        } else if frame.handler == "publish" {
             ManagedEventOutcome::Publish {
                 publication: ManagedEventPublication {
                     contract_id: extension_contracts::MANAGED_PROCESSED_EVENT_ID.into(),

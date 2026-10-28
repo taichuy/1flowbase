@@ -47,6 +47,11 @@ pub(crate) use answer_presentation::is_canonical_answer_presentation_output;
 pub mod callback_completion;
 mod canonical_stream;
 mod communication_dispatch;
+mod communication_execution;
+pub use communication_execution::{
+    CommunicationExecutionBinding, CommunicationExecutionResolver, CommunicationInputPreparer,
+    CommunicationReservedReply, CommunicationTurnExecutionBridge,
+};
 pub(crate) mod compile_context;
 mod data_model_runtime;
 #[path = "orchestration_runtime/debug/debug_artifacts.rs"]
@@ -355,6 +360,11 @@ struct ResumeExecutionSegmentInput<'a> {
 }
 
 struct ResumeExecutionSegmentOutput {
+    _communication_lease: Option<
+        Box<
+            dyn orchestration_runtime::execution_engine::communication::CommunicationExecutionLease,
+        >,
+    >,
     outcome: orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
     prepared_node_runs: PreparedNodeRuns,
     answer_presentation:
@@ -363,6 +373,11 @@ struct ResumeExecutionSegmentOutput {
 }
 
 pub struct OrchestrationRuntimeService<R, H> {
+    communication_execution_resolver: Option<Arc<dyn CommunicationExecutionResolver>>,
+    communication_execution: Option<(
+        Uuid,
+        Arc<orchestration_runtime::execution_engine::communication::CommunicationExecution>,
+    )>,
     notification_sender: Option<Arc<dyn crate::notifications::NotificationSenderPort>>,
     repository: R,
     runtime: H,
@@ -413,6 +428,8 @@ where
     ) -> Self {
         Self {
             repository,
+            communication_execution: None,
+            communication_execution_resolver: None,
             runtime,
             runtime_engine,
             notification_sender: None,
@@ -730,19 +747,48 @@ where
                 runtime_context.with_http_response_file_persister(Arc::new(http_file_persister));
         }
 
-        let outcome = orchestration_runtime::execution_engine::resume_flow_debug_run_with_runtime_context_and_lifecycle(
+        runtime_context = self
+            .attach_communication_execution(input.flow_run, runtime_context)
+            .await?;
+        let communication_lease = match runtime_context.communication_execution() {
+            Some(execution) => Some(execution.enter_execution().await?),
+            None => None,
+        };
+        let execution = Box::pin(async {
+            lifecycle
+                .restore_communication_nodes(
+                    input.application.id,
+                    input.waiting_node_id,
+                    &runtime_context,
+                )
+                .await?;
+            let outcome = orchestration_runtime::execution_engine::resume_flow_debug_run_with_runtime_context_and_lifecycle(
             input.compiled_plan,
             input.snapshot,
             input.waiting_node_id,
             input.resume_payload,
-            runtime_context,
+            runtime_context.clone(),
             &invoker,
             &lifecycle,
         )
         .await?;
+            communication_execution::finish_communication_execution(
+                input.compiled_plan,
+                outcome,
+                &runtime_context,
+                &invoker,
+                &lifecycle,
+            )
+            .await
+        });
+        let outcome = match runtime_context.communication_execution() {
+            Some(communication) => communication.run_until_cancelled(execution).await?,
+            None => execution.await?,
+        };
         let tool_delivery_events = flow_execution_context.take_tool_delivery_events()?;
 
         Ok(ResumeExecutionSegmentOutput {
+            _communication_lease: communication_lease,
             outcome,
             prepared_node_runs: lifecycle.prepared_node_runs()?,
             answer_presentation,

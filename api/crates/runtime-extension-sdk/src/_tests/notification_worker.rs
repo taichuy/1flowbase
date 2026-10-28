@@ -13,11 +13,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ))?;
     let mut descriptor: NotificationTypeDescriptor =
         serde_json::from_value(manifest["notification_types"][0].clone())?;
+    // Only explicit host test fixtures enable exact per-receipt send expectations.
+    // The installed fixture manifest opts into the same optional config field.
+    descriptor.config_schema["properties"]["fixture_expected_sends"] = json!({"type":"array"});
     if request.input["input_payload"].get("operation").is_some() {
         descriptor.receive = Some(serde_json::from_str(include_str!(
             "../../../../plugins/fixtures/acme.notification/receive.json"
         ))?);
-        let response = execute_communication(request, &descriptor, |_config, input| async move {
+        let response = execute_communication(request, &descriptor, |config, input| async move {
             let value = match input.operation {
                 NotificationOperation::Receive { cursor, .. } => json!({
                     "type":"receive", "outcome":{"status":"succeeded","batch":{
@@ -29,11 +32,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }),
                 NotificationOperation::Send { input_payload, target } => {
                     let target = target.ok_or("target required")?;
-                    let expected_message = match target.sender_id.as_str() {
-                        "alice" => "alice-input", "bob" => "bob-input", _ => return Err("unknown sender")
+                    let allowed = match config.get("fixture_expected_sends") {
+                        Some(expected) => expected.as_array().ok_or("expected sends must be an array")?.iter().any(|entry| {
+                            entry["sender_id"] == target.sender_id
+                                && entry["conversation_id"] == target.conversation_id
+                                && entry["provider_message_id"] == target.provider_message_id
+                                && entry["text"] == input_payload["text"]
+                        }),
+                        None => {
+                            let expected_message = match target.sender_id.as_str() {
+                                "alice" => "alice-input", "bob" => "bob-input", _ => return Err("unknown sender")
+                            };
+                            target.conversation_id == "external-room"
+                                && target.provider_message_id == expected_message
+                                && input_payload["text"] == format!("Final for {}", target.sender_id)
+                        }
                     };
-                    if target.conversation_id != "external-room" || target.provider_message_id != expected_message
-                        || input_payload["text"] != format!("Final for {}", target.sender_id) {
+                    if !allowed {
                         return Err("send must use exact durable target and final answer");
                     }
                     json!({"type":"send","outcome":{"status":"succeeded","result":{

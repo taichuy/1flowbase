@@ -658,9 +658,13 @@ async fn notification_backup_keeps_channel_configuration_separate_from_inbox_his
     assert_eq!(
         notification.data_tables,
         vec![
+            "communication_command_events".to_owned(),
             "communication_conversations".to_owned(),
             "communication_inputs".to_owned(),
             "communication_messages".to_owned(),
+            "communication_reply_turns".to_owned(),
+            "communication_session_rotations".to_owned(),
+            "communication_sessions".to_owned(),
             "notification_send_logs".to_owned(),
             "system_notifications".to_owned()
         ]

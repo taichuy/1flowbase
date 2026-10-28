@@ -11,12 +11,12 @@ use api_server::{
     provider_runtime::{ApiDataSourceRuntimeRecordBackend, ApiProviderRuntime, ApiRuntimeServices},
     runtime_profile_client::{HostApiRuntimeProfileCollector, RuntimeHostSystemPort},
 };
-use argon2::{password_hash::PasswordHasher, Argon2};
+use argon2::{Argon2, password_hash::PasswordHasher};
 use async_trait::async_trait;
 use axum::{
-    body::{to_bytes, Body},
-    http::{HeaderValue, Request, StatusCode},
     Router,
+    body::{Body, to_bytes},
+    http::{HeaderValue, Request, StatusCode},
 };
 use control_plane::bootstrap::{BootstrapConfig, BootstrapService};
 use control_plane::ports::{
@@ -237,7 +237,8 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             runtime_engine,
             provider_runtime: provider_runtime.clone(),
             process_started_at,
-            runtime_activity: std::sync::Arc::new(
+            communication_activity: Default::default(),
+        runtime_activity: std::sync::Arc::new(
                 api_server::runtime_activity::ApplicationRuntimeActivityTracker::default(),
             ),
             notification_service,

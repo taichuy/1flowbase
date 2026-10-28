@@ -95,6 +95,47 @@ where
         }
     };
     let required_capabilities = routing_probe.input.required_capabilities.clone();
+    let communication_pool = if let Some(communication) = &runtime_context.communication {
+        if communication.is_main(node).await {
+            let transcript = llm_tool_prompt_transcript(
+                node,
+                variable_pool,
+                &routing_probe.input,
+                runtime_context,
+            );
+            Some(
+                communication
+                    .prepare_round(node, variable_pool, &transcript)
+                    .await?,
+            )
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let variable_pool = communication_pool.as_ref().unwrap_or(variable_pool);
+    let routing_probe = if communication_pool.is_some() {
+        build_provider_invocation(
+            plan,
+            node,
+            runtime,
+            resolved_inputs,
+            rendered_templates,
+            variable_pool,
+            runtime_context,
+            invoker,
+        )
+        .await
+        .map_err(|_| anyhow!("communication_prompt_invalid"))?
+    } else {
+        routing_probe
+    };
+    let required_capabilities = if communication_pool.is_some() {
+        routing_probe.input.required_capabilities.clone()
+    } else {
+        required_capabilities
+    };
     let recovery_deadline =
         recovery_absolute_deadline(&routing_probe.input, OffsetDateTime::now_utc());
     let configured_request_count = llm_request_count(node);
@@ -406,6 +447,9 @@ where
             .run_context
             .entry("task_deadline_unix_ms".to_string())
             .or_insert_with(|| Value::from(recovery_ledger.absolute_deadline_unix_ms()));
+        if let Some(communication) = &runtime_context.communication {
+            communication.check_active().await?;
+        }
         let mut output = match invoker
             .invoke_resolved_llm(attempt_runtime, resolved_route, invocation.input)
             .await
@@ -868,6 +912,20 @@ where
             &execution.output_payload,
             &tool_prompt_transcript,
         )?;
+        // A pure-text result also needs a durable transcript: later inputs may arrive
+        // between this result and the host's final send reservation.
+        if let Some(communication) = &runtime_context.communication {
+            if communication.is_main(node).await {
+                communication
+                    .retain_response(
+                        node,
+                        variable_pool,
+                        &tool_prompt_transcript,
+                        &execution.output_payload,
+                    )
+                    .await?;
+            }
+        }
         return Ok(execution);
     }
 

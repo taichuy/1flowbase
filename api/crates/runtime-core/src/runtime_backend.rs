@@ -223,6 +223,10 @@ pub trait RuntimeExecutionPort: Send + Sync {
         sinks: RuntimeStreamSinks,
     ) -> Result<RuntimeExecutionOutcome, RuntimeBackendError>;
 
+    /// Explicit business cancellation, separate from dropping an execution waiter.
+    /// Cancelled confirms the request's execution/carrier ownership has joined. A backend
+    /// unable to confirm bounded cleanup returns an error, retaining the active owner;
+    /// it must not report success by only aborting an outer future or killing other calls.
     async fn cancel(
         &self,
         request_id: &RuntimeRequestId,

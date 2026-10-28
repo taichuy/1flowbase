@@ -25,6 +25,10 @@ use crate::stdio_runtime::ProviderWorkerLifecycleState;
 #[path = "provider_host/deadline.rs"]
 mod deadline;
 
+#[cfg(target_os = "linux")]
+#[path = "provider_host/request_cancellation.rs"]
+mod request_cancellation;
+
 #[test]
 fn invocation_timeout_does_not_derive_from_physical_generation_deadline() {
     let limits = PluginRuntimeLimits {

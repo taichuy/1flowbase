@@ -121,6 +121,7 @@ async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_projects
         runtime_activity: base_state.runtime_activity.clone(),
         assistant_conversation_events: base_state.assistant_conversation_events.clone(),
         notification_service: base_state.notification_service.clone(),
+        communication_activity: base_state.communication_activity.clone(),
         notification_events: base_state.notification_events.clone(),
         assistant_executions: base_state.assistant_executions.clone(),
         assistant_client_sessions: base_state.assistant_client_sessions.clone(),

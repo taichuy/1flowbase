@@ -1,7 +1,7 @@
 //! Host lifecycle for durable communication receive and execution. Provider credentials stay here.
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 use control_plane::ports::{NotificationRepository, WorkspaceRepository};
 use domain::{
     ActorContext, CommunicationBindingRecord, NotificationInstanceRecord,
@@ -16,8 +16,14 @@ use uuid::Uuid;
 
 use crate::{app_state::ApiState, notification_runtime::ManagedNotificationProvider};
 
+mod activity;
 mod attachments;
+pub use activity::CommunicationActivity;
+pub(crate) mod command_capabilities;
+mod commands;
 mod execution;
+mod turn_inputs;
+mod turns;
 pub(crate) use execution::validate_binding;
 mod receive;
 mod request;
@@ -74,7 +80,12 @@ async fn supervise(state: Arc<ApiState>, mut stop: watch::Receiver<bool>) {
                         workers.insert(key, signal);
                         let state = state.clone();
                         tasks.spawn(async move {
-                            tokio::join!(receive::run(state.clone(), key, receiver.clone()), execution::run(state, key, receiver));
+                            tokio::join!(
+                                receive::run(state.clone(), key, receiver.clone()),
+                                commands::run(state.clone(), key, receiver.clone()),
+                                turns::run(state.clone(), key, receiver.clone()),
+                                execution::run(state, key, receiver),
+                            );
                             key
                         });
                     }

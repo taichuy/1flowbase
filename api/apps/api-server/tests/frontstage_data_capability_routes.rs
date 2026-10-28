@@ -12,12 +12,12 @@ use api_server::{
     provider_runtime::{ApiDataSourceRuntimeRecordBackend, ApiProviderRuntime, ApiRuntimeServices},
     runtime_profile_client::{HostApiRuntimeProfileCollector, RuntimeHostSystemPort},
 };
-use argon2::{password_hash::PasswordHasher, Argon2};
+use argon2::{Argon2, password_hash::PasswordHasher};
 use async_trait::async_trait;
 use axum::{
-    body::{to_bytes, Body},
-    http::{Request, StatusCode},
     Router,
+    body::{Body, to_bytes},
+    http::{Request, StatusCode},
 };
 use control_plane::{
     bootstrap::{BootstrapConfig, BootstrapService},
@@ -26,7 +26,7 @@ use control_plane::{
         OfficialPluginSourcePort,
     },
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use time::OffsetDateTime;
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -239,6 +239,7 @@ async fn fixture_state() -> (
         runtime_engine,
         provider_runtime: provider_runtime.clone(),
         process_started_at,
+        communication_activity: Default::default(),
         runtime_activity: Arc::new(
             api_server::runtime_activity::ApplicationRuntimeActivityTracker::default(),
         ),
@@ -637,19 +638,23 @@ async fn capability_catalog_pages_lightweight_path_matches_and_loads_one_detail(
     assert_eq!(page["limit"], 1);
     assert_eq!(page["has_more"], true);
     assert_eq!(page["next_offset"], 1);
-    assert!(page["adapter_ids"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("runtime_data_model")));
+    assert!(
+        page["adapter_ids"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("runtime_data_model"))
+    );
     assert!(page["methods"].as_array().unwrap().contains(&json!("GET")));
 
     let summary = &page["items"][0];
     assert_eq!(summary["method"], "GET");
     assert_eq!(summary["adapter_id"], "runtime_data_model");
-    assert!(summary["path"]
-        .as_str()
-        .unwrap()
-        .contains("/application_conversations/"));
+    assert!(
+        summary["path"]
+            .as_str()
+            .unwrap()
+            .contains("/application_conversations/")
+    );
     assert!(summary.get("parameter_schema").is_none());
     assert!(summary.get("result_schema").is_none());
     assert!(summary.get("name").is_none());
