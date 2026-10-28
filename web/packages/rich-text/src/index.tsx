@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type Vditor from 'vditor';
 import { VditorFrame } from './frame';
+import { preserveCodeSelection } from './code-selection';
 export { VditorPreview } from './preview';
 
 import {
@@ -101,6 +102,7 @@ export function VditorEditor({
     if (!frameDocument) return undefined;
     const mount = frameDocument.createElement('div');
     frameDocument.body.appendChild(mount);
+    const releaseCodeSelection = preserveCodeSelection(mount);
 
     const frame = frameDocument.defaultView?.frameElement;
     const outerDocument = frame?.ownerDocument;
@@ -248,6 +250,7 @@ export function VditorEditor({
       editorRef.current = null;
       if (editor) disposeEditor(editor);
       outerDocument?.removeEventListener('fullscreenchange', exitFullscreen);
+      releaseCodeSelection();
       mount.remove();
     };
   }, [
