@@ -1,20 +1,20 @@
 use std::sync::Arc;
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use orchestration_runtime::compiler::FlowCompiler;
 use serde_json::json;
 use uuid::Uuid;
 
 use super::mapping::{
-    ApplicationApiMappingConfig, ApplicationApiMappingOutput,
     ensure_extension_registration_unchanged, validate_application_api_mapping,
+    ApplicationApiMappingConfig, ApplicationApiMappingOutput,
 };
 use super::published_workflow_operation::{
     validate_published_workflow_contract, workflow_route_shapes_conflict,
 };
 use crate::{
     application::{
-        ApplicationNonCrudConsoleOperation, ensure_existing_application_non_crud_console_operation,
+        ensure_existing_application_non_crud_console_operation, ApplicationNonCrudConsoleOperation,
     },
     errors::ControlPlaneError,
     flow::FlowService,

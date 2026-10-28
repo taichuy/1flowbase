@@ -1,5 +1,5 @@
 //! Process-local cancellation/join owner; durable claims and session epochs remain authoritative.
-use anyhow::{Result, ensure};
+use anyhow::{ensure, Result};
 use control_plane::orchestration_runtime::{
     CommunicationExecutionBinding, CommunicationExecutionResolver,
 };
@@ -12,6 +12,16 @@ use std::{
 };
 use tokio::sync::watch;
 use uuid::Uuid;
+
+// Worker unwinding must not prevent remaining leases from releasing or cancellation
+// from joining. These locks protect only counters and owned registrations; recover their
+// existing state rather than panic again in a lease's Drop implementation.
+fn lock<T>(state: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    match state.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
 
 #[derive(Default)]
 pub struct CommunicationActivity {
@@ -31,14 +41,14 @@ struct SessionState {
 pub(crate) struct SessionLease(Arc<SessionActivity>);
 impl Drop for SessionLease {
     fn drop(&mut self) {
-        let mut state = self.0.state.lock().unwrap();
+        let mut state = lock(&self.0.state);
         state.leases -= 1;
         self.0.changed.send_replace(state.leases);
     }
 }
 impl SessionActivity {
     pub(crate) fn enter(self: &Arc<Self>) -> Result<SessionLease> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = lock(&self.state);
         ensure!(!state.cancelled, "communication_session_cancelled");
         state.leases += 1;
         Ok(SessionLease(self.clone()))
@@ -46,7 +56,7 @@ impl SessionActivity {
     pub(crate) async fn cancelled(&self) {
         let mut changed = self.changed.subscribe();
         loop {
-            if self.state.lock().unwrap().cancelled {
+            if lock(&self.state).cancelled {
                 return;
             }
             if changed.changed().await.is_err() {
@@ -57,12 +67,12 @@ impl SessionActivity {
     async fn cancel_and_join(&self) {
         let mut changed = self.changed.subscribe();
         {
-            let mut state = self.state.lock().unwrap();
+            let mut state = lock(&self.state);
             state.cancelled = true;
             self.changed.send_replace(state.leases);
         }
         loop {
-            if self.state.lock().unwrap().leases == 0 {
+            if lock(&self.state).leases == 0 {
                 return;
             }
             if changed.changed().await.is_err() {
@@ -73,7 +83,7 @@ impl SessionActivity {
 }
 impl CommunicationActivity {
     pub(crate) fn session(&self, id: Uuid, epoch: i64) -> Result<Arc<SessionActivity>> {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = lock(&self.sessions);
         sessions.retain(|_, entry| entry.strong_count() > 0);
         if let Some(session) = sessions.get(&id).and_then(Weak::upgrade) {
             ensure!(
@@ -81,7 +91,7 @@ impl CommunicationActivity {
                 "communication_session_epoch_changed"
             );
             ensure!(
-                !session.state.lock().unwrap().cancelled,
+                !lock(&session.state).cancelled,
                 "communication_session_cancelled"
             );
             return Ok(session);
@@ -99,12 +109,7 @@ impl CommunicationActivity {
         Ok(session)
     }
     pub(crate) async fn cancel_session(&self, id: Uuid) {
-        let session = self
-            .sessions
-            .lock()
-            .unwrap()
-            .get(&id)
-            .and_then(Weak::upgrade);
+        let session = lock(&self.sessions).get(&id).and_then(Weak::upgrade);
         if let Some(session) = session {
             session.cancel_and_join().await;
         }
@@ -114,7 +119,7 @@ impl CommunicationActivity {
         run_id: Uuid,
         binding: CommunicationExecutionBinding,
     ) -> Result<RunRegistration> {
-        let mut executions = self.executions.lock().unwrap();
+        let mut executions = lock(&self.executions);
         ensure!(
             !executions.contains_key(&run_id),
             "communication_run_already_owned"
@@ -132,11 +137,7 @@ pub(crate) struct RunRegistration {
 }
 impl Drop for RunRegistration {
     fn drop(&mut self) {
-        self.activity
-            .executions
-            .lock()
-            .unwrap()
-            .remove(&self.run_id);
+        lock(&self.activity.executions).remove(&self.run_id);
     }
 }
 
@@ -147,10 +148,7 @@ impl CommunicationExecutionActivity for CommunicationActivity {
         session_id: Uuid,
         session_epoch: i64,
     ) -> Result<Box<dyn CommunicationExecutionLease>> {
-        let session = self
-            .sessions
-            .lock()
-            .unwrap()
+        let session = lock(&self.sessions)
             .get(&session_id)
             .and_then(Weak::upgrade)
             .ok_or_else(|| anyhow::anyhow!("communication_session_owner_missing"))?;
@@ -161,10 +159,7 @@ impl CommunicationExecutionActivity for CommunicationActivity {
         Ok(Box::new(session.enter()?))
     }
     async fn cancelled(&self, session_id: Uuid, session_epoch: i64) {
-        let session = self
-            .sessions
-            .lock()
-            .unwrap()
+        let session = lock(&self.sessions)
             .get(&session_id)
             .and_then(Weak::upgrade);
         if let Some(session) = session.filter(|s| s.epoch == session_epoch) {
@@ -181,7 +176,7 @@ impl CommunicationExecutionResolver for CommunicationActivity {
         if run.compatibility_mode.as_deref() != Some("communication") {
             return Ok(None);
         }
-        if let Some(binding) = self.executions.lock().unwrap().get(&run.id).cloned() {
+        if let Some(binding) = lock(&self.executions).get(&run.id).cloned() {
             return Ok(Some(binding));
         }
         // Pre-upgrade runs had no host-sealed AI session. Keep their existing observation path.

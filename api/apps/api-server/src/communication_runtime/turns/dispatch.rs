@@ -40,7 +40,8 @@ pub(super) async fn create(
             page_references: vec![],
             request,
         })
-        .await?;
+        .await
+        .map_err(|_| anyhow::anyhow!("communication_run_invalid"))?;
     // Linking checks every admitted attachment. A member arriving while the request was
     // created is imported before retrying the same linkage, never by creating another run.
     while !state
