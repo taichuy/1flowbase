@@ -39,6 +39,8 @@ The channel binding form lists commands, sources, descriptions, switches, and av
 
 `/new` uses an independent control lane. The host durably invalidates the old session, cancels and joins its execution, then replies: `The previous conversation has stopped generating. A new conversation has started.` Completed external effects and messages already submitted to a provider cannot be recalled. The chat's model choice survives `/new`; it changes neither the channel default nor a running turn.
 
+Cancellation targets the individual runtime request. A success reply requires that request and its host resources to finish cleanup. For a shared serial driver without per-call cancellation, the host waits for completion or reports a cancellation failure; it does not terminate a shared process and interrupt other conversations.
+
 Unknown, disabled, unavailable, or invalid commands receive explicit responses and never become Agent-flow prompts. Their original text remains in history. Custom workflow-bound commands are not available yet.
 
 Plugins declare commands globally in `PluginManifestV1.communication_commands`, independently of receive/send capabilities. Each declaration binds one `1flowbase.communication.command.requested` event subscriber contribution and uses a `publisher/plugin/local` command ID. The host reserves `new`, `model`, `help`, and `model-user-*` names.

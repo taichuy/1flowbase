@@ -39,6 +39,8 @@
 
 `/new` 经独立控制通道处理。宿主先持久化旧 session 失效，再取消并等待旧执行退出，随后回复 `The previous conversation has stopped generating. A new conversation has started.`。已经完成的外部动作和已经提交供应商的消息不能撤回。聊天模型选择在 `/new` 后保留，不改变渠道默认模型或正在执行的轮次。
 
+取消按单次运行时请求传播，成功提示需要等待该请求及其宿主资源清理结束。共享串行驱动若没有单次调用取消协议，宿主等待调用结束或明确报告取消失败，不通过终止共享进程中断其他会话。
+
 未知、禁用、不可用和参数无效的指令都有明确回复，原文不会进入绑定 Agent-flow。命令原始消息仍保留在历史中。自定义工作流指令尚未开放。
 
 插件通过全局 `PluginManifestV1.communication_commands` 声明指令，与接收或发送能力独立。每个声明绑定一个 `1flowbase.communication.command.requested` 事件订阅贡献；指令 ID 使用 `publisher/plugin/local`。底座保留 `new`、`model`、`help` 和 `model-user-*` 名称。
