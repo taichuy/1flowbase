@@ -204,6 +204,7 @@ fn map_frontstage_page_row(row: &sqlx::postgres::PgRow) -> Result<domain::Fronts
         icon: row.get("icon"),
         tooltip: row.get("tooltip"),
         is_hidden: row.get("is_hidden"),
+        show_title: row.get("show_title"),
         placement,
         content_presentation,
         slug: row.get("slug"),
@@ -316,6 +317,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 icon,
                 tooltip,
                 is_hidden,
+                show_title,
                 placement,
                 content_presentation,
                 slug,
@@ -476,6 +478,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 icon,
                 tooltip,
                 is_hidden,
+                show_title,
                 placement,
                 content_presentation,
                 slug,
@@ -527,7 +530,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         let row = sqlx::query(
             r#"
             select p.id, p.workspace_id, p.parent_id, p.kind, p.title, p.icon, p.tooltip,
-                   p.is_hidden, p.placement, p.content_presentation, p.slug, p.rank,
+                   p.is_hidden, p.show_title, p.placement, p.content_presentation, p.slug, p.rank,
                    p.created_at, p.updated_at,
                    t.id as tab_id, t.workspace_id as tab_workspace_id, t.page_id as tab_page_id,
                    t.title as tab_title, t.rank as tab_rank, t.is_default as tab_is_default,
@@ -600,6 +603,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 icon,
                 tooltip,
                 is_hidden,
+                show_title,
                 placement,
                 content_presentation,
                 slug,
@@ -790,6 +794,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 placement = case when $11 then $12 else placement end,
                 content_presentation = case when $13 then $14 else content_presentation end,
                 slug = case when $15 then $16 else slug end,
+                show_title = coalesce($17, show_title),
                 updated_at = now()
             where workspace_id = $1 and id = $2
             returning
@@ -801,6 +806,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 icon,
                 tooltip,
                 is_hidden,
+                show_title,
                 placement,
                 content_presentation,
                 slug,
@@ -825,6 +831,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(content_presentation_value)
         .bind(slug_present)
         .bind(&slug_value)
+        .bind(input.show_title)
         .fetch_optional(&mut *tx)
         .await
         .map_err(map_frontstage_placement_error)?;
@@ -954,6 +961,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 icon,
                 tooltip,
                 is_hidden,
+                show_title,
                 placement,
                 content_presentation,
                 slug,
@@ -1106,6 +1114,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                     icon,
                     tooltip,
                     is_hidden,
+                show_title,
                     placement,
                     content_presentation,
                     slug,

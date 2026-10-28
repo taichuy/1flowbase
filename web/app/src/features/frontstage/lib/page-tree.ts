@@ -8,6 +8,7 @@ export type FrontStageTreeNode = {
   tooltip?: string | null;
   is_hidden?: boolean;
   content_presentation?: 'single' | 'tabs';
+  show_title?: boolean;
   kind: 'group' | 'page';
   placement?: ConsoleFrontstageNavigationPlacement;
   children?: FrontStageTreeNode[];

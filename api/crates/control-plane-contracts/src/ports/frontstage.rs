@@ -39,6 +39,7 @@ pub struct UpdateFrontstagePageMetadataInput {
     pub icon: Option<Option<String>>,
     pub tooltip: Option<Option<String>>,
     pub is_hidden: Option<bool>,
+    pub show_title: Option<bool>,
     pub placement: Option<domain::frontstage::FrontstageNavigationPlacement>,
     pub content_presentation: Option<domain::frontstage::FrontstagePageContentPresentation>,
     pub slug: Option<Option<String>>,

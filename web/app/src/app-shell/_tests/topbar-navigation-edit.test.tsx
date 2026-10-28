@@ -36,6 +36,7 @@ test('topbar groups expose a move action for the whole group', async () => {
     kind: 'group' as const,
     placement: 'topbar' as const,
     content_presentation: 'single' as const,
+    show_title: true,
     slug: 'whole-group',
     children: []
   };
@@ -66,6 +67,7 @@ test.each(['page', 'group'] as const)(
       kind,
       placement: 'topbar' as const,
       content_presentation: 'single' as const,
+      show_title: true,
       slug: 'route',
       icon: 'FileTextOutlined',
       tooltip: '原描述',

@@ -133,6 +133,7 @@ beforeAll(async () => {
 });
 
 type TestFrontStageTreeNode = {
+  show_title?: boolean;
   id: string;
   title: string | null;
   icon?: string | null;
@@ -177,6 +178,7 @@ function authenticate(permissions: string[]) {
 
 function createBackendPage(pageId: string): TestFrontStageTreeNode {
   return {
+    show_title: true,
     id: pageId,
     title: `页面 ${pageId}`,
     kind: 'page'

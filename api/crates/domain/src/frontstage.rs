@@ -110,6 +110,7 @@ pub struct FrontstagePageRecord {
     pub icon: Option<String>,
     pub tooltip: Option<String>,
     pub is_hidden: bool,
+    pub show_title: bool,
     pub placement: FrontstageNavigationPlacement,
     pub content_presentation: FrontstagePageContentPresentation,
     pub slug: Option<String>,

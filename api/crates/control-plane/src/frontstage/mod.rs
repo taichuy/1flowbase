@@ -54,6 +54,7 @@ pub struct UpdateFrontstagePageMetadataCommand {
     pub icon: Option<Option<String>>,
     pub tooltip: Option<Option<String>>,
     pub is_hidden: Option<bool>,
+    pub show_title: Option<bool>,
     pub placement: Option<domain::frontstage::FrontstageNavigationPlacement>,
     pub content_presentation: Option<domain::frontstage::FrontstagePageContentPresentation>,
     pub slug: Option<Option<String>>,
@@ -399,6 +400,7 @@ where
         ensure_design_permission(&actor)?;
 
         let existing = if command.placement.is_some()
+            || command.show_title.is_some()
             || command.content_presentation.is_some()
             || command.slug.is_some()
         {
@@ -478,6 +480,7 @@ where
                 is_hidden: command.is_hidden,
                 placement: command.placement,
                 content_presentation: command.content_presentation,
+                show_title: command.show_title,
                 slug: match command.slug {
                     Some(value) => {
                         let existing = existing
@@ -797,6 +800,7 @@ mod tests {
         rank: &str,
     ) -> domain::FrontstagePageRecord {
         domain::FrontstagePageRecord {
+            show_title: true,
             id: test_uuid(id),
             workspace_id: test_uuid(0x100),
             parent_id,

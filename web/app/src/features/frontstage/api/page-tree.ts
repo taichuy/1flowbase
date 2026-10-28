@@ -35,6 +35,7 @@ export interface RenameFrontstageNodeInput {
   icon?: string | null;
   tooltip?: string | null;
   contentPresentation?: 'single' | 'tabs';
+  show_title?: boolean;
   slug?: string | null;
 }
 
@@ -127,6 +128,7 @@ export function renameFrontstagePageNode(
     icon?: string | null;
     tooltip?: string | null;
     content_presentation?: 'single' | 'tabs';
+    show_title?: boolean;
     slug?: string | null;
   } = { title: input.title };
   if (Object.prototype.hasOwnProperty.call(input, 'icon')) {
@@ -137,6 +139,9 @@ export function renameFrontstagePageNode(
   }
   if (Object.prototype.hasOwnProperty.call(input, 'contentPresentation')) {
     body.content_presentation = input.contentPresentation;
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'show_title')) {
+    body.show_title = input.show_title;
   }
   if (Object.prototype.hasOwnProperty.call(input, 'slug')) {
     body.slug = input.slug;

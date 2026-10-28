@@ -215,6 +215,7 @@ async fn ui_management_controls_menu_operations_and_design_visibility() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{payload}");
+    assert_eq!(payload["data"]["page"]["show_title"], false);
     let page_id = payload["data"]["page"]["id"].as_str().unwrap();
     let tab_id = payload["data"]["default_tab"]["id"].as_str().unwrap();
     let page_path = format!("{pages_path}/{page_id}");
@@ -225,7 +226,7 @@ async fn ui_management_controls_menu_operations_and_design_visibility() {
             &page_path,
             &cookie,
             &csrf,
-            json!({ "title": "Updated", "content_presentation": "tabs" })
+            json!({ "title": "Updated", "content_presentation": "tabs", "show_title": true })
         )
         .await
         .0,

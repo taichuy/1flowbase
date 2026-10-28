@@ -23,6 +23,7 @@ const topbar = ['模型日志', '报表', '设置'].map((title, index) => ({
   kind: 'group' as const,
   placement: 'topbar' as const,
   content_presentation: 'single' as const,
+  show_title: true,
   children: []
 })) as FrontstagePageTreeNode[];
 const initialTree: FrontStageTreeNode[] = [

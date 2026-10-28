@@ -15,6 +15,7 @@ type RenamePageTreeNodeInput = {
   icon?: string | null;
   tooltip?: string | null;
   contentPresentation?: 'single' | 'tabs';
+  show_title?: boolean;
 };
 
 type UpdatePageTreeNodeMetadataInput = {
@@ -188,7 +189,12 @@ function updatePageTreeNode(
   patch: Partial<
     Pick<
       FrontStageTreeNode,
-      'title' | 'icon' | 'tooltip' | 'is_hidden' | 'content_presentation'
+      | 'title'
+      | 'icon'
+      | 'tooltip'
+      | 'is_hidden'
+      | 'content_presentation'
+      | 'show_title'
     >
   >
 ): FrontStageTreeNode[] {

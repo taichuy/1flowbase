@@ -19,6 +19,8 @@ test('AC-009 defaults the page layout selector to automatic and emits free selec
   render(
     <AppProviders>
       <PageWorkspaceActionMenu
+        show_title={true}
+        onTitleChange={vi.fn()}
         tabsEnabled={false}
         layoutMode="auto"
         disabled={false}
@@ -48,6 +50,8 @@ test('#1975 AC-001 exposes refresh current page from the page settings menu', as
   render(
     <AppProviders>
       <PageWorkspaceActionMenu
+        show_title={true}
+        onTitleChange={vi.fn()}
         tabsEnabled={false}
         layoutMode="auto"
         disabled={false}
@@ -67,4 +71,28 @@ test('#1975 AC-001 exposes refresh current page from the page settings menu', as
   );
 
   expect(onRefresh).toHaveBeenCalledTimes(1);
+});
+
+test('page title switch reflects saved state and requests visibility changes', async () => {
+  const onTitleChange = vi.fn();
+  render(
+    <AppProviders>
+      <PageWorkspaceActionMenu
+        show_title={false}
+        onTitleChange={onTitleChange}
+        tabsEnabled={false}
+        layoutMode="auto"
+        disabled={false}
+        onEdit={vi.fn()}
+        onRefresh={vi.fn()}
+        onTabsEnabledChange={vi.fn()}
+        onLayoutModeChange={vi.fn()}
+      />
+    </AppProviders>
+  );
+  fireEvent.click(screen.getByRole('button', { name: '配置页面' }));
+  const toggle = await screen.findByRole('switch', { name: '页面标题' });
+  expect(toggle).not.toBeChecked();
+  fireEvent.click(toggle);
+  expect(onTitleChange).toHaveBeenCalledWith(true);
 });

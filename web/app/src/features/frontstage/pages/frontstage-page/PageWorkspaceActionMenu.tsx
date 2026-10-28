@@ -13,6 +13,8 @@ import type { FrontstagePageLayoutMode } from '../../lib/page-document';
 
 type PageWorkspaceActionMenuProps = {
   tabsEnabled: boolean;
+  show_title?: boolean;
+  onTitleChange: (show_title: boolean) => void;
   layoutMode: FrontstagePageLayoutMode;
   disabled: boolean;
   refreshing?: boolean;
@@ -24,6 +26,8 @@ type PageWorkspaceActionMenuProps = {
 
 const PageWorkspaceActionMenu: FC<PageWorkspaceActionMenuProps> = ({
   tabsEnabled,
+  show_title,
+  onTitleChange,
   layoutMode,
   disabled,
   refreshing = false,
@@ -83,6 +87,26 @@ const PageWorkspaceActionMenu: FC<PageWorkspaceActionMenuProps> = ({
               }
             ]}
             onChange={(value) => onLayoutModeChange(value)}
+          />
+        </div>
+      )
+    },
+    {
+      key: 'page-title',
+      icon: <LayoutOutlined />,
+      disabled: actionDisabled,
+      label: (
+        <div className="frontstage-page-workspace__tabs-action">
+          <span>{i18nText('frontstage', 'design.page_title')}</span>
+          <Switch
+            aria-label={i18nText('frontstage', 'design.page_title')}
+            checked={show_title}
+            disabled={actionDisabled}
+            size="small"
+            onChange={(checked, event) => {
+              event.stopPropagation();
+              onTitleChange(checked);
+            }}
           />
         </div>
       )

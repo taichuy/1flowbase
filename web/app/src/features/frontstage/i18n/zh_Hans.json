@@ -214,6 +214,7 @@
     "configure_tab": "配置标签页",
     "delete_tab_confirm": "确定删除该标签页？",
     "drag_handle": "拖拽排序",
+    "page_title": "页面标题",
     "enable_tabs": "开启 Tabs",
     "last_tab_hint": "页面至少保留一个标签页，最后一个标签页不可删除。",
     "layout_mode": "布局方式",
