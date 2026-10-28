@@ -10,9 +10,9 @@ on:
         required: true
         type: string
       test_scope:
-        description: Full acceptance or the four groups previously blocked by test compilation
+        description: Full acceptance or a focused host boundary
         type: choice
-        options: [full, mcp-runtime]
+        options: [full, mcp-runtime, extension-install]
         default: full
 
 permissions:
@@ -88,17 +88,25 @@ jobs:
               failures=$((failures + 1))
             fi
           }
-          if [ "$TEST_SCOPE" = full ]; then
-            run_test contract -p extension-contracts managed_service_contract_tests
-            run_test manifest -p extension-package-runtime managed_service_tests
-            run_test sdk -p runtime-extension-sdk managed_service_context
-            run_test worker -p runtime-extension-host managed_capability_multiplex
-            run_test postgres -p control-plane-postgres-tests --test mcp_management_integration
+          if [ "$TEST_SCOPE" = extension-install ]; then
+            cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example notification_worker
+            export NOTIFICATION_WORKER_FIXTURE="$GITHUB_WORKSPACE/api/target/debug/examples/notification_worker"
+            run_test catalog-types -p control-plane --lib _tests::plugin_management::package_router::
+            run_test official-install -p control-plane --lib _tests::plugin_management::install::
+            run_test extension-install-http -p api-server --lib _tests::plugin_routes::extension_center
+          else
+            if [ "$TEST_SCOPE" = full ]; then
+              run_test contract -p extension-contracts managed_service_contract_tests
+              run_test manifest -p extension-package-runtime managed_service_tests
+              run_test sdk -p runtime-extension-sdk managed_service_context
+              run_test worker -p runtime-extension-host managed_capability_multiplex
+              run_test postgres -p control-plane-postgres-tests --test mcp_management_integration
+            fi
+            run_test mcp-http -p api-server --lib managed_service_mcp
+            run_test mcp-media -p api-server --lib result_delivery::media::tests
+            run_test mcp-errors -p api-server --lib target_error_diagnostics
+            run_test lifecycle -p api-server --lib managed_services::
           fi
-          run_test mcp-http -p api-server --lib managed_service_mcp
-          run_test mcp-media -p api-server --lib result_delivery::media::tests
-          run_test mcp-errors -p api-server --lib target_error_diagnostics
-          run_test lifecycle -p api-server --lib managed_services::
           test "$failures" -eq 0
       - name: Build exact runtime for local integration evidence
         if: always() && (github.event_name != 'workflow_dispatch' || inputs.test_scope == 'full')

@@ -85,7 +85,7 @@ pub use catalog_projection::*;
 pub use extension_installation::*;
 pub use family::*;
 pub use install::*;
-pub use package_router::{route_plugin_package, RoutedPluginPackageKind};
+pub use package_router::{catalog_plugin_type, route_plugin_package, RoutedPluginPackageKind};
 
 pub struct PluginManagementService<R, H> {
     repository: R,

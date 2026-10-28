@@ -200,7 +200,7 @@ where
         let risk_override =
             validate_plugin_risk_override(&risk_warnings, command.risk_override.as_ref())?;
         let package_kind = route_plugin_package(&intake.manifest)?;
-        if package_kind.as_plugin_type() != entry.plugin_type {
+        if catalog_plugin_type(&intake.manifest)? != entry.plugin_type {
             return Err(ControlPlaneError::Conflict("extension_catalog_package_mismatch").into());
         }
         self.ensure_console_package_kind(package_kind)?;
@@ -286,7 +286,7 @@ where
         let risk_override =
             validate_plugin_risk_override(&risk_warnings, command.risk_override.as_ref())?;
         let package_kind = route_plugin_package(&intake.manifest)?;
-        if package_kind.as_plugin_type() != command.plugin_type {
+        if catalog_plugin_type(&intake.manifest)? != command.plugin_type {
             return Err(ControlPlaneError::Conflict("extension_catalog_package_mismatch").into());
         }
         self.ensure_console_package_kind(package_kind)?;

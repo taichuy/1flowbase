@@ -1,4 +1,6 @@
-use control_plane::plugin_management::{route_plugin_package, RoutedPluginPackageKind};
+use control_plane::plugin_management::{
+    catalog_plugin_type, route_plugin_package, RoutedPluginPackageKind,
+};
 use plugin_framework::parse_plugin_manifest;
 
 fn manifest_with_slot(slot: &str, contract_version: &str) -> String {
@@ -152,4 +154,78 @@ fn root_2007_ac_001_002_manifest_routes() {
         route_plugin_package(&legacy).expect("legacy route"),
         RoutedPluginPackageKind::ModelProviderRuntime
     );
+}
+
+#[test]
+fn catalog_types_preserve_managed_consumption_without_changing_install_routes() {
+    let runtime = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../extension-package-runtime/src/_tests/managed_manifest.yaml"
+    ));
+    for (raw, expected) in [
+        (runtime.to_owned(), "runtime_extension"),
+        (
+            runtime
+                .replace(
+                    "consumption_kind: runtime_extension",
+                    "consumption_kind: capability_plugin",
+                )
+                .replace("module_kind: runtime", "module_kind: capability"),
+            "capability_plugin",
+        ),
+    ] {
+        let manifest = parse_plugin_manifest(&raw).unwrap();
+        assert_eq!(catalog_plugin_type(&manifest).unwrap(), expected);
+        assert_eq!(
+            route_plugin_package(&manifest).unwrap(),
+            RoutedPluginPackageKind::ManagedContributions
+        );
+        assert_eq!(
+            route_plugin_package(&manifest).unwrap().as_plugin_type(),
+            "managed_contributions"
+        );
+    }
+    let host = parse_plugin_manifest(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../plugins/host-extensions/official.identity-host/manifest.yaml"
+    )))
+    .unwrap();
+    assert_eq!(catalog_plugin_type(&host).unwrap(), "host_extension");
+    assert_eq!(
+        route_plugin_package(&host).unwrap(),
+        RoutedPluginPackageKind::HostExtension
+    );
+}
+
+#[test]
+fn catalog_types_preserve_legacy_slots_and_reject_invalid_routes() {
+    for (slot, contract, expected) in [
+        ("model_provider", "1flowbase.provider/v2", "model_provider"),
+        ("data_source", "1flowbase.data_source/v1", "data_source"),
+    ] {
+        let mut manifest = parse_plugin_manifest(&manifest_with_slot(slot, contract)).unwrap();
+        assert_eq!(catalog_plugin_type(&manifest).unwrap(), expected);
+        manifest
+            .slot_codes
+            .push("provider_distribution_rule".into());
+        assert!(catalog_plugin_type(&manifest)
+            .unwrap_err()
+            .to_string()
+            .contains("runtime_slot"));
+    }
+    let distribution = parse_plugin_manifest(provider_distribution_manifest()).unwrap();
+    assert_eq!(
+        catalog_plugin_type(&distribution).unwrap(),
+        "provider_distribution_rule"
+    );
+    let mut managed = parse_plugin_manifest(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../extension-package-runtime/src/_tests/managed_manifest.yaml"
+    )))
+    .unwrap();
+    managed.managed = None;
+    assert!(catalog_plugin_type(&managed)
+        .unwrap_err()
+        .to_string()
+        .contains("managed_manifest"));
 }

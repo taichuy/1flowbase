@@ -597,7 +597,7 @@ struct NodePluginInspection {
     organization: String,
     artifact_id: String,
     plugin_id: String,
-    plugin_type: &'static str,
+    catalog_plugin_type: &'static str,
     version: String,
     minimum_host_version: String,
     signature_status: domain::ExtensionSignatureStatus,
@@ -947,8 +947,7 @@ async fn inspect_node_plugin(
     .await?;
     let manifest = intake.manifest.clone();
     let managed_schema = ManagedSchemaDeclaration::from_manifest(&manifest)?;
-    let plugin_type =
-        control_plane::plugin_management::route_plugin_package(&manifest)?.as_plugin_type();
+    let catalog_plugin_type = control_plane::plugin_management::catalog_plugin_type(&manifest)?;
     let artifact_id = manifest.plugin_code()?.to_string();
     let category = match manifest.consumption_kind {
         PluginConsumptionKind::HostExtension => ExtensionCatalogCategory::HostExtensions,
@@ -960,7 +959,7 @@ async fn inspect_node_plugin(
         organization: manifest.publisher_namespace,
         artifact_id,
         plugin_id: manifest.plugin_id,
-        plugin_type,
+        catalog_plugin_type,
         version: manifest.version,
         minimum_host_version: manifest.minimum_host_version,
         signature_status: signature_status_from_intake(&intake.signature_status),

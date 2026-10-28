@@ -198,7 +198,7 @@ pub(super) async fn install_or_update_official_extension(
             || inspection.organization != located.entry.organization
             || inspection.version != located.entry.version
             || manifest_plugin_id != catalog_plugin_id
-            || inspection.plugin_type != catalog_plugin_type
+            || inspection.catalog_plugin_type != catalog_plugin_type
         {
             return Err(control_plane::errors::ControlPlaneError::InvalidInput(
                 "extension_artifact_identity",

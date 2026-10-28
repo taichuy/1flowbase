@@ -27,6 +27,17 @@ impl RoutedPluginPackageKind {
     }
 }
 
+/// Public catalog classification, separate from the internal installation route.
+/// Managed packages retain their declared consumption kind; legacy providers retain
+/// their existing slot-specific catalog types.
+pub fn catalog_plugin_type(manifest: &PluginManifestV1) -> anyhow::Result<&'static str> {
+    let route = route_plugin_package(manifest)?;
+    Ok(match route {
+        RoutedPluginPackageKind::ManagedContributions => manifest.consumption_kind.as_str(),
+        route => route.as_plugin_type(),
+    })
+}
+
 pub fn route_plugin_package(
     manifest: &PluginManifestV1,
 ) -> anyhow::Result<RoutedPluginPackageKind> {
