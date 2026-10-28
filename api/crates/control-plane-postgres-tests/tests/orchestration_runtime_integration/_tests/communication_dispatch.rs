@@ -163,7 +163,8 @@ fn command(run: &domain::FlowRunRecord) -> StartPublishedFlowRunCommand {
     }
 }
 async fn queued(store: &PgControlPlaneStore) -> (RuntimeSeedState, domain::FlowRunRecord) {
-    let seeded = seed_runtime_base(store).await;
+    let workspace_name = format!("Runtime dispatch {}", Uuid::now_v7());
+    let seeded = seed_runtime_base_with_workspace_name(store, &workspace_name).await;
     let plan = json!({"flow_id":seeded.flow_id,"source_draft_id":seeded.draft_id.to_string(),"schema_version":"1flowbase.flow/v2",
         "topological_order":["node-start","answer"],"edges":[],"compile_issues":[],"nodes":{
         "node-start":{"node_id":"node-start","node_type":"start","alias":"Start","dependency_node_ids":[],"downstream_node_ids":["answer"],"bindings":{},"outputs":[{"key":"query","title":"Query","value_type":"string","selector":[]}],"config":{}},
