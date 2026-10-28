@@ -1,16 +1,26 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::{
-    env, fs,
-    io::Write,
-    path::Path,
-};
+use std::{env, fs, io::Write, path::Path};
 
 #[derive(Serialize, Deserialize)]
 pub(super) struct Settings {
     pub postgres_password: String,
     pub provider_secret_master_key: String,
     pub root_password: String,
+}
+
+// Embed only the public example at build time; portable users need no Docker files.
+pub(super) fn bootstrap_default(key: &str) -> Result<&'static str> {
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../docker/.env.example"
+    ))
+    .lines()
+    .find_map(|line| {
+        let (name, value) = line.trim().split_once('=')?;
+        (name == key && !value.is_empty()).then_some(value)
+    })
+    .with_context(|| format!("Missing {key} in bundled docker/.env.example defaults"))
 }
 
 pub(super) fn private_dir(path: &Path) -> Result<()> {
@@ -72,7 +82,7 @@ impl Settings {
         let value = Self {
             postgres_password: secret(),
             provider_secret_master_key: secret(),
-            root_password: secret(),
+            root_password: bootstrap_default("BOOTSTRAP_ROOT_PASSWORD")?.to_owned(),
         };
         let temporary = data.join(format!("settings-{}.tmp", std::process::id()));
         let mut file = private_file(&temporary)?;
@@ -108,11 +118,17 @@ impl Settings {
                 self.provider_secret_master_key.clone(),
             ),
             ("BOOTSTRAP_ROOT_PASSWORD", self.root_password.clone()),
-            ("BOOTSTRAP_ROOT_ACCOUNT", "root".to_owned()),
-            ("BOOTSTRAP_ROOT_EMAIL", "root@localhost".to_owned()),
-            ("BOOTSTRAP_WORKSPACE_NAME", "1flowbase".to_owned()),
         ] {
             env::set_var(key, value);
+        }
+        for key in [
+            "BOOTSTRAP_ROOT_ACCOUNT",
+            "BOOTSTRAP_ROOT_EMAIL",
+            "BOOTSTRAP_ROOT_NAME",
+            "BOOTSTRAP_ROOT_NICKNAME",
+            "BOOTSTRAP_WORKSPACE_NAME",
+        ] {
+            env::set_var(key, bootstrap_default(key)?);
         }
         for (key, path) in [
             ("API_BUSINESS_FILE_LOCAL_ROOT", data.join("api/storage")),

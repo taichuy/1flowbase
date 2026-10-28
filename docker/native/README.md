@@ -8,7 +8,7 @@ Extract the archive. On Windows, double-click `1flowbase.exe`. On Linux/macOS, r
 
 PostgreSQL listens only on `127.0.0.1:35432`. An occupied port causes an error; the launcher never adopts or stops another database. Platforms such as Windows ARM64 need matching PostgreSQL and plugin artifacts; an archive name does not certify platform support.
 
-The default account is `root`. Its randomly generated initial password is the `root_password` field in `data/settings.json` beside the executable. Startup prints the file location. Keep this file private: it also contains the database password and credential encryption key.
+First initialization uses the defaults from `docker/.env.example` embedded at build time: account `root`, password `root@1flowbase123`, and email `root@1flowbase.com`. The initial password is also stored in the `root_password` field of `data/settings.json` beside the executable. The database password and credential encryption key remain independently randomized; keep the full configuration file private. These defaults create the initial account; restarting does not reset an existing account password.
 
 ## Persistent data
 

@@ -132,6 +132,16 @@ fn secrets_persist_and_missing_or_corrupt_configuration_is_not_replaced() {
         second.provider_secret_master_key
     );
     assert_ne!(first.postgres_password, first.root_password);
+    assert_eq!(first.root_password, "root@1flowbase123");
+    assert_eq!(second.root_password, first.root_password);
+    assert_eq!(
+        super::settings::bootstrap_default("BOOTSTRAP_ROOT_ACCOUNT").unwrap(),
+        "root"
+    );
+    assert_eq!(
+        super::settings::bootstrap_default("BOOTSTRAP_ROOT_EMAIL").unwrap(),
+        "root@1flowbase.com"
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

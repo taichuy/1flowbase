@@ -1,5 +1,10 @@
 use super::*;
 use crate::native_distribution::{postgres::Postgres, settings::private_dir};
+use argon2::{
+    password_hash::{phc::PasswordHash, PasswordVerifier},
+    Argon2,
+};
+use control_plane_contracts::ports::AuthRepository;
 use std::net::TcpListener;
 
 // Run alone: Settings::apply configures the process environment before Tokio starts.
@@ -47,6 +52,26 @@ fn packaged_application_bootstraps_and_reopens() {
                 let (app, host) = api_server::app_and_runtime_host_from_env()
                     .await
                     .expect("packaged application bootstrap must succeed");
+                // Resolve the same local-login identity and verify the same hash
+                // algorithm as password authentication, against the initialized DB.
+                let pool = sqlx::PgPool::connect(&std::env::var("API_DATABASE_URL").unwrap())
+                    .await
+                    .unwrap();
+                let store = storage_durable_postgres::PgControlPlaneStore::new(pool.clone());
+                let user = store
+                    .find_user_for_password_login(domain::PASSWORD_LOCAL_CONNECTION_ID, "root")
+                    .await
+                    .unwrap()
+                    .expect("default root login identity must exist");
+                let hash = PasswordHash::new(&user.password_hash).unwrap();
+                assert!(Argon2::default()
+                    .verify_password(b"root@1flowbase123", &hash)
+                    .is_ok());
+                assert!(Argon2::default()
+                    .verify_password(b"wrong-password", &hash)
+                    .is_err());
+                drop(store);
+                pool.close().await;
                 let app = static_web::mount(app, &root.join("web")).unwrap();
                 for uri in ["/health", "/", "/native-smoke/deep-link"] {
                     let response = app
