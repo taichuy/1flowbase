@@ -40,7 +40,7 @@ const GROUPS: &[(&str, &str, &str)] = &[
     (
         "notifications",
         "notification_instances communication_bindings",
-        "system_notifications notification_send_logs communication_conversations communication_inputs communication_messages",
+        "system_notifications notification_send_logs communication_conversations communication_inputs communication_messages communication_sessions communication_reply_turns communication_session_rotations",
     ),
     (
         "network-center",

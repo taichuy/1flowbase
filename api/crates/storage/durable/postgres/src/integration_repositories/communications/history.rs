@@ -1,8 +1,8 @@
 use super::*;
 
-pub(super) const JOINS: &str = "LEFT JOIN communication_inputs m ON m.id=t.input_id AND m.scope_id=t.scope_id AND m.instance_id=t.instance_id AND m.external_identity=t.external_identity AND m.conversation_id=t.conversation_id LEFT JOIN communication_conversations c ON c.id=t.conversation_id AND c.scope_id=t.scope_id AND c.instance_id=t.instance_id AND c.external_identity=t.external_identity LEFT JOIN notification_instances n ON n.id=t.instance_id AND n.workspace_id=t.scope_id LEFT JOIN flow_runs r ON r.id=m.run_id AND r.scope_id=t.scope_id";
+pub(super) const JOINS: &str = "LEFT JOIN communication_inputs m ON m.id=t.input_id AND m.scope_id=t.scope_id AND m.instance_id=t.instance_id AND m.external_identity=t.external_identity AND m.conversation_id=t.conversation_id LEFT JOIN communication_conversations c ON c.id=t.conversation_id AND c.scope_id=t.scope_id AND c.instance_id=t.instance_id AND c.external_identity=t.external_identity LEFT JOIN notification_instances n ON n.id=t.instance_id AND n.workspace_id=t.scope_id LEFT JOIN communication_reply_turns rt ON rt.id=m.turn_id AND rt.scope_id=m.scope_id AND rt.instance_id=m.instance_id AND rt.external_identity=m.external_identity AND rt.conversation_id=m.conversation_id LEFT JOIN flow_runs r ON r.id=COALESCE(rt.run_id,m.run_id) AND r.scope_id=t.scope_id";
 pub(super) fn columns() -> String {
-    format!("t.*,n.display_name AS instance_display_name,c.sender_display_name,m.run_id,r.application_id,m.processing_status,m.send_status,m.failure_code AS input_failure_code,COALESCE(({RETRY_ELIGIBILITY}),false) AS can_retry")
+    format!("t.*,n.display_name AS instance_display_name,c.sender_display_name,COALESCE(rt.run_id,m.run_id) AS run_id,r.application_id,m.processing_status,m.send_status,m.failure_code AS input_failure_code,COALESCE(({RETRY_ELIGIBILITY}),false) AS can_retry")
 }
 pub(super) fn message(row: PgRow) -> Result<CommunicationMessage> {
     let id: Uuid = row.try_get("id")?;

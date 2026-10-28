@@ -6,6 +6,8 @@ mod support;
 #[path = "_tests/channels.rs"]
 mod channels;
 
+#[path = "_tests/communication_sessions.rs"]
+mod communication_sessions;
 #[path = "_tests/communications.rs"]
 mod communications;
 

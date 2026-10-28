@@ -901,4 +901,5 @@ fn contains_secret(value: &Value, secret: &str) -> bool {
     }
 }
 
+mod communication_sessions;
 mod communications;

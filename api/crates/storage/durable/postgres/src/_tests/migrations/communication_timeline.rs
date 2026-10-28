@@ -157,7 +157,7 @@ async fn communication_timeline_migration_preserves_inputs_files_ciphertext_and_
         format!("{OLD_PROMPT} Custom instruction.")
     );
     let after: Vec<Value> =
-        sqlx::query_scalar("SELECT to_jsonb(m) FROM communication_inputs m ORDER BY id")
+        sqlx::query_scalar("SELECT to_jsonb(m)-'turn_id'-'turn_sequence'-'admission_status' FROM communication_inputs m ORDER BY id")
             .fetch_all(&pool)
             .await
             .unwrap();
