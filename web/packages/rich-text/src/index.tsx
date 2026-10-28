@@ -68,6 +68,7 @@ export function VditorEditor({
 }: VditorEditorProps) {
   const [frameDocument, setFrameDocument] = useState<Document | null>(null);
   const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
   const editorRef = useRef<Vditor | null>(null);
   const readyRef = useRef(false);
   const valueRef = useRef(value);
@@ -114,6 +115,7 @@ export function VditorEditor({
     outerDocument?.addEventListener('fullscreenchange', exitFullscreen);
     let disposed = false;
     setFailed(false);
+    setLoading(true);
     void loadFrameRuntime(frameDocument)
       .then((FrameVditor) => {
         if (disposed) return;
@@ -197,6 +199,7 @@ export function VditorEditor({
               return;
             }
             readyRef.current = true;
+            setLoading(false);
             if (editor.getValue() !== valueRef.current) {
               editor.setValue(valueRef.current, true);
             }
@@ -221,7 +224,10 @@ export function VditorEditor({
         }
       })
       .catch(() => {
-        if (!disposed) setFailed(true);
+        if (!disposed) {
+          setFailed(true);
+          setLoading(false);
+        }
       });
 
     return () => {
@@ -266,6 +272,10 @@ export function VditorEditor({
         </div>
       )}
       <VditorFrame
+        loading={loading}
+        loadingLabel={
+          locale === 'zh_Hans' ? '编辑器加载中…' : 'Loading editor…'
+        }
         title={ariaLabel}
         height={height}
         onDocument={setFrameDocument}

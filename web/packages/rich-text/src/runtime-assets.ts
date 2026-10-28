@@ -21,7 +21,7 @@ function loadScript(document: Document, relative: string, id: string) {
       resolve();
     };
     script.onerror = () =>
-      reject(new Error('Code highlighting could not be loaded.'));
+      reject(new Error(`Vditor resource could not be loaded: ${relative}`));
     document.head.appendChild(script);
   });
 }
@@ -52,6 +52,23 @@ export function loadFrameRuntime(document: Document): Promise<typeof Vditor> {
     style.rel = 'stylesheet';
     style.href = `${VDITOR_ASSET_BASE}/dist/index.css`;
     document.head.appendChild(style);
+    // Start independent resources together; only third-languages depends on highlight.
+    const resources = Promise.all([
+      loadScript(document, 'js/lute/lute.min.js', 'vditorLuteScript'),
+      ensureIconSprite(document),
+      loadScript(
+        document,
+        'js/highlight.js/highlight.min.js',
+        'vditorHljsScript'
+      ).then(() =>
+        loadScript(
+          document,
+          'js/highlight.js/third-languages.js',
+          'vditorHljsThirdScript'
+        )
+      )
+    ]);
+    resources.catch(reject);
     const script = document.createElement('script');
     script.src = `${VDITOR_ASSET_BASE}/dist/index.min.js`;
     script.onload = () => {
@@ -69,19 +86,7 @@ export function loadFrameRuntime(document: Document): Promise<typeof Vditor> {
         return;
       }
       const constructor = view.Vditor;
-      void loadScript(
-        document,
-        'js/highlight.js/highlight.min.js',
-        'vditorHljsScript'
-      )
-        .then(() =>
-          loadScript(
-            document,
-            'js/highlight.js/third-languages.js',
-            'vditorHljsThirdScript'
-          )
-        )
-        .then(() => ensureIconSprite(document))
+      void resources
         .then(() => {
           const languages = view
             .hljs!.listLanguages()

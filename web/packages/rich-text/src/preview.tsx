@@ -21,6 +21,7 @@ export function VditorPreview({
   const [document, setDocument] = useState<Document | null>(null);
   const [height, setHeight] = useState(100);
   const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
   const generation = useRef(0);
   useEffect(() => {
     if (!document) return;
@@ -31,6 +32,7 @@ export function VditorPreview({
     // Each render owns its own detached element until it is current.
     let observer: ResizeObserver | undefined;
     setFailed(false);
+    setLoading(true);
     void loadFrameRuntime(document)
       .then(async (Vditor) => {
         if (disposed) return;
@@ -54,9 +56,13 @@ export function VditorPreview({
         observer = new view.ResizeObserver(resize);
         observer.observe(content);
         resize();
+        setLoading(false);
       })
       .catch(() => {
-        if (!disposed) setFailed(true);
+        if (!disposed) {
+          setFailed(true);
+          setLoading(false);
+        }
       });
     return () => {
       disposed = true;
@@ -77,7 +83,15 @@ export function VditorPreview({
             : 'Could not load the document. Please refresh to retry.'}
         </div>
       )}
-      <VditorFrame title={ariaLabel} height={height} onDocument={setDocument} />
+      <VditorFrame
+        loading={loading}
+        loadingLabel={
+          locale === 'zh_Hans' ? '正文加载中…' : 'Loading document…'
+        }
+        title={ariaLabel}
+        height={height}
+        onDocument={setDocument}
+      />
     </div>
   );
 }

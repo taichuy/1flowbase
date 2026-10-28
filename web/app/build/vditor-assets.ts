@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import type { Plugin } from 'vite';
+import type { Plugin, Connect } from 'vite';
+import { createAssetReader, preferredEncoding } from './vditor-compression';
 
 import {
   VDITOR_ASSET_BASE,
@@ -56,32 +57,47 @@ export function vditorAssetsPlugin(): Plugin {
     }
   };
   visit('dist');
+  const readAsset = createAssetReader();
+  const middleware: Connect.NextHandleFunction = (request, response, next) => {
+    const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+    if (!pathname.startsWith(PREFIX)) return next();
+    if (pathname === `${PREFIX}frame.html`) {
+      response.setHeader('Content-Type', 'text/html; charset=utf-8');
+      response.end(VDITOR_FRAME_DOCUMENT);
+      return;
+    }
+    const file = files.get(pathname.slice(PREFIX.length));
+    if (!file) {
+      response.statusCode = 404;
+      response.end();
+      return;
+    }
+    response.setHeader('Content-Type', MIME[path.extname(file)]);
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    const encoding = /\.(js|css|svg)$/.test(file)
+      ? preferredEncoding(request.headers?.['accept-encoding'])
+      : undefined;
+    const vary = response.getHeader?.('Vary');
+    response.setHeader(
+      'Vary',
+      vary ? `${vary}, Accept-Encoding` : 'Accept-Encoding'
+    );
+    if (encoding) response.setHeader('Content-Encoding', encoding);
+    void readAsset(file, encoding)
+      .then((body) => {
+        response.setHeader('Content-Length', body.length);
+        response.end(request.method === 'HEAD' ? undefined : body);
+      })
+      .catch(next);
+  };
   return {
     name: 'oneflow-vditor-assets',
     configureServer(server) {
-      server.middlewares.use((request, response, next) => {
-        const pathname = new URL(request.url ?? '/', 'http://localhost')
-          .pathname;
-        if (!pathname.startsWith(PREFIX)) return next();
-        if (pathname === `${PREFIX}frame.html`) {
-          response.setHeader('Content-Type', 'text/html; charset=utf-8');
-          response.end(VDITOR_FRAME_DOCUMENT);
-          return;
-        }
-        const file = files.get(pathname.slice(PREFIX.length));
-        if (!file) {
-          response.statusCode = 404;
-          response.end();
-          return;
-        }
-        response.setHeader('Content-Type', MIME[path.extname(file)]);
-        response.setHeader('X-Content-Type-Options', 'nosniff');
-        response.setHeader(
-          'Cache-Control',
-          'public, max-age=31536000, immutable'
-        );
-        response.end(readFileSync(file));
-      });
+      server.middlewares.use(middleware);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(middleware);
     },
     generateBundle() {
       this.emitFile({
