@@ -143,19 +143,40 @@ where
         runtime_context =
             runtime_context.with_http_response_file_persister(Arc::new(http_file_persister));
     }
-    let outcome = if let Some(snapshot) = &recovery_snapshot {
-        let node_id = flow_run
-            .input_payload
-            .pointer("/sys/native_inference_recovery/node_id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anyhow!("native_recovery_grant_invalid"))?;
-        orchestration_runtime::execution_engine::recover_native_inference_with_runtime_context_and_lifecycle(
-            &compiled_plan, snapshot, node_id, runtime_context, &invoker, &lifecycle,
+    runtime_context = service
+        .attach_communication_execution(flow_run, runtime_context)
+        .await?;
+    let _communication_lease = match runtime_context.communication_execution() {
+        Some(execution) => Some(execution.enter_execution().await?),
+        None => None,
+    };
+    let execution = Box::pin(async {
+        let outcome = if let Some(snapshot) = &recovery_snapshot {
+            let node_id = flow_run
+                .input_payload
+                .pointer("/sys/native_inference_recovery/node_id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| anyhow!("native_recovery_grant_invalid"))?;
+            orchestration_runtime::execution_engine::recover_native_inference_with_runtime_context_and_lifecycle(
+            &compiled_plan, snapshot, node_id, runtime_context.clone(), &invoker, &lifecycle,
         ).await?
-    } else {
-        orchestration_runtime::execution_engine::start_flow_debug_run_with_runtime_context_and_lifecycle(
-            &compiled_plan, &Value::Object(variable_pool.into_owned()), runtime_context, &invoker, &lifecycle,
+        } else {
+            orchestration_runtime::execution_engine::start_flow_debug_run_with_runtime_context_and_lifecycle(
+            &compiled_plan, &Value::Object(variable_pool.into_owned()), runtime_context.clone(), &invoker, &lifecycle,
         ).await?
+        };
+        crate::orchestration_runtime::communication_execution::finish_communication_execution(
+            &compiled_plan,
+            outcome,
+            &runtime_context,
+            &invoker,
+            &lifecycle,
+        )
+        .await
+    });
+    let outcome = match runtime_context.communication_execution() {
+        Some(communication) => communication.run_until_cancelled(execution).await?,
+        None => execution.await?,
     };
     let tool_delivery_events = flow_execution_context.take_tool_delivery_events()?;
     let prepared_node_runs = lifecycle.prepared_node_runs()?;

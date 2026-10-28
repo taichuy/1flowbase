@@ -848,7 +848,7 @@ async fn callback_resume_context_keeps_200_large_snapshots_out_of_process_histor
 mod semantic_round_lookup;
 
 #[path = "callback_resume/semantic_runtime.rs"]
-mod semantic_runtime;
+pub(super) mod semantic_runtime;
 
 #[path = "callback_resume/active_lease.rs"]
 mod active_lease;

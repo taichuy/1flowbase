@@ -51,6 +51,7 @@ pub use crate::code_runtime::{
 
 pub mod ai_native_recovery;
 pub mod branching;
+pub mod communication;
 #[path = "execution_engine/llm_operations/compact_operation.rs"]
 mod compact_operation;
 mod http_request;
@@ -398,6 +399,16 @@ pub(crate) fn resolved_native_sql(resolved_inputs: &Map<String, Value>) -> Resul
 #[async_trait]
 pub trait ExecutionLifecycle: Send + Sync {
     async fn begin_node(&self, node: &CompiledNode, input_payload: &Value) -> Result<()>;
+
+    /// The communication owner keeps this LLM running until final seal; this operation
+    /// restores its active execution context without restarting a completed graph node.
+    async fn activate_retained_communication_node(&self, _node: &CompiledNode) -> Result<()> {
+        Ok(())
+    }
+
+    async fn communication_node_receipt(&self, _node: &CompiledNode) -> Result<Option<uuid::Uuid>> {
+        Ok(None)
+    }
 
     async fn runtime_internal_tool_started(
         &self,

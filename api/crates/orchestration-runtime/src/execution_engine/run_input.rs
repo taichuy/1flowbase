@@ -16,6 +16,7 @@ struct FrozenRuntimeInternalToolRegistration {
 
 #[derive(Clone, Default)]
 pub struct ExecutionRuntimeContext {
+    pub(super) communication: Option<Arc<super::communication::CommunicationExecution>>,
     operation: AiNativeOperation,
     pub(super) tools: Vec<Value>,
     frozen_runtime_internal_tools: BTreeMap<String, FrozenRuntimeInternalToolRegistration>,
@@ -55,6 +56,7 @@ impl ExecutionRuntimeContext {
             frozen_runtime_internal_tool_registrations(plan, variable_pool);
         let tools = run_level_provider_tools(plan, variable_pool);
         Ok(Self {
+            communication: None,
             operation: ai_native_operation_from_variable_pool(plan, variable_pool)?,
             tools,
             frozen_runtime_internal_tools,
@@ -82,6 +84,20 @@ impl ExecutionRuntimeContext {
 
     pub fn operation(&self) -> AiNativeOperation {
         self.operation
+    }
+
+    pub fn with_communication_execution(
+        mut self,
+        execution: Arc<super::communication::CommunicationExecution>,
+    ) -> Self {
+        self.communication = Some(execution);
+        self
+    }
+
+    pub fn communication_execution(
+        &self,
+    ) -> Option<&Arc<super::communication::CommunicationExecution>> {
+        self.communication.as_ref()
     }
 
     pub fn with_llm_routing_counter_store(

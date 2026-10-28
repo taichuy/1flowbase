@@ -2,8 +2,8 @@ use super::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct LlmToolPromptTranscript {
-    system: Vec<NativePromptBlock>,
-    messages: Vec<Value>,
+    pub(super) system: Vec<NativePromptBlock>,
+    pub(super) messages: Vec<Value>,
 }
 
 pub(super) fn llm_tool_prompt_transcript(

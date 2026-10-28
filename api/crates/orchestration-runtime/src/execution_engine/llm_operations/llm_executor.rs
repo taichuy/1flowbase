@@ -107,6 +107,83 @@ pub async fn execute_llm_node<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    let Some(communication) = &runtime_context.communication else {
+        return execute_llm_node_tools(
+            plan,
+            node,
+            resolved_inputs,
+            rendered_templates,
+            variable_pool,
+            runtime_context,
+            invoker,
+            lifecycle,
+        )
+        .await;
+    };
+    if !communication.is_main(node).await {
+        return execute_llm_node_tools(
+            plan,
+            node,
+            resolved_inputs,
+            rendered_templates,
+            variable_pool,
+            runtime_context,
+            invoker,
+            lifecycle,
+        )
+        .await;
+    }
+    let mut pool = variable_pool.clone();
+    let mut metrics = LlmRoundMetricsAccumulator::default();
+    let mut tool_events = Vec::new();
+    loop {
+        let mut execution = execute_llm_node_tools(
+            plan,
+            node,
+            resolved_inputs,
+            rendered_templates,
+            &mut pool,
+            runtime_context,
+            invoker,
+            lifecycle,
+        )
+        .await?;
+        metrics.absorb(&execution);
+        if let Some(events) = execution
+            .debug_payload
+            .get("runtime_internal_tool_events")
+            .and_then(Value::as_array)
+        {
+            tool_events.extend(events.iter().cloned());
+        }
+        if execution.error_payload.is_none()
+            && execution.pending_callback.is_none()
+            && communication.has_new_inputs().await?
+        {
+            pool = communication.retained_pool(node, &pool).await?;
+            continue;
+        }
+        metrics.apply(&mut execution);
+        attach_runtime_internal_tool_events(&mut execution, &tool_events);
+        *variable_pool = pool;
+        return Ok(execution);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn execute_llm_node_tools<I>(
+    plan: &CompiledPlan,
+    node: &CompiledNode,
+    resolved_inputs: &Map<String, Value>,
+    rendered_templates: &Map<String, Value>,
+    variable_pool: &mut Map<String, Value>,
+    runtime_context: &ExecutionRuntimeContext,
+    invoker: &I,
+    lifecycle: &dyn ExecutionLifecycle,
+) -> Result<LlmNodeExecution>
+where
+    I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
+{
     let registrations = runtime_context.runtime_internal_tool_registrations(node);
     if registrations.is_empty() {
         return execute_llm_node_with_visible_internal_tools(
@@ -194,6 +271,9 @@ where
             .collect::<Vec<_>>();
         let mut results = Vec::with_capacity(internal_calls.len());
         for (call, registration) in &internal_calls {
+            if let Some(communication) = &runtime_context.communication {
+                communication.check_active().await?;
+            }
             let call_id = tool_call_id(call);
             let arguments = call
                 .get("arguments")
@@ -253,6 +333,11 @@ where
             &results,
             &external_calls,
         )?;
+        if let Some(communication) = &runtime_context.communication {
+            communication
+                .retain_pool(node, &llm_variable_pool, "after_tools")
+                .await?;
+        }
         if !external_calls.is_empty() {
             refresh_llm_tool_callback_wait_from_checkpoint(&mut callback_wait, llm_variable_pool)?;
             if let Some(output) = execution.output_payload.as_object_mut() {

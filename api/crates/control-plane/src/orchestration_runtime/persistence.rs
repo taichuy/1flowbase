@@ -55,6 +55,13 @@ use node_traces::persist_flow_debug_node_traces;
 pub(super) use node_traces::PreparedNodeRuns;
 use provider_observability::{append_provider_stream_events, persist_llm_context_observability};
 
+pub(super) fn communication_final_output(
+    plan: &orchestration_runtime::compiled_plan::CompiledPlan,
+    outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+) -> Result<Value> {
+    canonical_terminal_output_payload(Some(plan), outcome)
+}
+
 pub(super) struct WaitingNodeResumeUpdate {
     pub(super) node_run_id: Uuid,
     pub(super) from_status: domain::NodeRunStatus,
@@ -260,6 +267,7 @@ where
         Some(flow_span.id),
         outcome,
         prepared_node_runs,
+        flow_run.compatibility_mode.as_deref() == Some("communication"),
         base_started_at,
     )
     .await?;

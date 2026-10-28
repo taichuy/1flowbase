@@ -7,6 +7,9 @@ use control_plane::{
 use control_plane_contracts::ports::AuthRepository;
 use plugin_framework::provider_contract::{ProviderInvocationInput, ProviderModelDescriptor};
 
+#[path = "communication_dispatch/retained.rs"]
+mod retained;
+
 // The real service and PostgreSQL adapter execute a start->answer graph.
 // Provider calls are forbidden in this focused initial-ownership fixture.
 #[derive(Clone)]
@@ -83,6 +86,74 @@ fn service(
         )),
         false,
     )
+}
+
+struct CommunicationSealGate {
+    entered: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+    replies: std::sync::Mutex<Vec<String>>,
+}
+
+#[async_trait::async_trait]
+impl orchestration_runtime::execution_engine::communication::CommunicationExecutionPort
+    for CommunicationSealGate
+{
+    async fn inspect(
+        &self,
+    ) -> anyhow::Result<
+        orchestration_runtime::execution_engine::communication::CommunicationExecutionInputs,
+    > {
+        Ok(
+            orchestration_runtime::execution_engine::communication::CommunicationExecutionInputs {
+                received_watermark: 0,
+                consumed_watermark: 0,
+                checkpoint: None,
+                inputs: vec![],
+                pending_admission: false,
+            },
+        )
+    }
+    async fn checkpoint(&self, _: i64, _: Value) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn check_active(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn seal(
+        &self,
+        reply: &str,
+    ) -> anyhow::Result<
+        orchestration_runtime::execution_engine::communication::CommunicationExecutionSeal,
+    > {
+        self.entered.notify_one();
+        self.release.notified().await;
+        self.replies.lock().unwrap().push(reply.into());
+        Ok(orchestration_runtime::execution_engine::communication::CommunicationExecutionSeal::Reserved)
+    }
+}
+
+struct CommunicationResolverFixture {
+    run_id: Uuid,
+    port: Option<Arc<CommunicationSealGate>>,
+}
+
+#[async_trait::async_trait]
+impl control_plane::orchestration_runtime::CommunicationExecutionResolver
+    for CommunicationResolverFixture
+{
+    async fn resolve(
+        &self,
+        run: &domain::FlowRunRecord,
+    ) -> anyhow::Result<Option<control_plane::orchestration_runtime::CommunicationExecutionBinding>>
+    {
+        assert_eq!(run.id, self.run_id);
+        Ok(self.port.as_ref().map(|port| {
+            control_plane::orchestration_runtime::CommunicationExecutionBinding {
+                port: port.clone(),
+                initial_prompt_watermark: 0,
+            }
+        }))
+    }
 }
 fn command(run: &domain::FlowRunRecord) -> StartPublishedFlowRunCommand {
     StartPublishedFlowRunCommand {
@@ -194,6 +265,79 @@ async fn communication_queued_crash_recovery_and_concurrent_dispatch_have_one_en
         .await
         .unwrap();
     assert_eq!(started_events(&store, run.id).await, 1);
+}
+
+#[tokio::test]
+async fn communication_run_success_waits_for_reserved_seal_from_shared_resolver() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let (_, run) = queued(&store).await;
+    let gate = Arc::new(CommunicationSealGate {
+        entered: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+        replies: std::sync::Mutex::new(Vec::new()),
+    });
+    let resolver = Arc::new(CommunicationResolverFixture {
+        run_id: run.id,
+        port: Some(gate.clone()),
+    });
+    // A freshly constructed service resolves the same run owner; no initial service clone
+    // or untracked task-local port is required by the persistence gate.
+    let runtime = service(store.clone()).with_communication_execution_resolver(resolver);
+    let execution = runtime.dispatch_communication_run(command(&run));
+    let observe = async {
+        gate.entered.notified().await;
+        let current = store
+            .get_flow_run(run.application_id, run.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(current.status, FlowRunStatus::Running);
+        assert!(gate.replies.lock().unwrap().is_empty());
+        gate.release.notify_one();
+    };
+    let (detail, ()) = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        tokio::join!(execution, observe)
+    })
+    .await
+    .unwrap();
+    let detail = detail.unwrap();
+    assert_eq!(detail.flow_run.status, FlowRunStatus::Succeeded);
+    assert_eq!(
+        *gate.replies.lock().unwrap(),
+        vec![detail.flow_run.output_payload["answer"]
+            .as_str()
+            .unwrap()
+            .to_owned()]
+    );
+    assert_eq!(started_events(&store, run.id).await, 1);
+}
+
+#[tokio::test]
+async fn communication_configured_resolver_missing_turn_owner_fails_closed() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let (_, run) = queued(&store).await;
+    sqlx::query("UPDATE flow_runs SET input_payload=input_payload||$2::jsonb WHERE id=$1")
+        .bind(run.id)
+        .bind(json!({"sys":{"provider_session_identity":Uuid::now_v7()}}))
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let runtime = service(store.clone()).with_communication_execution_resolver(Arc::new(
+        CommunicationResolverFixture {
+            run_id: run.id,
+            port: None,
+        },
+    ));
+    let detail = runtime
+        .dispatch_communication_run(command(&run))
+        .await
+        .unwrap();
+    assert_eq!(detail.flow_run.status, FlowRunStatus::Failed);
+    assert!(detail.node_runs.is_empty());
 }
 
 #[tokio::test]
@@ -473,6 +617,7 @@ async fn communication_management_links_original_run_application_after_binding_c
         .await
         .unwrap();
     let config = domain::CommunicationBindingInput {
+        command_settings: vec![],
         application_id: run.application_id,
         model: None,
         reasoning_effort: None,
@@ -498,6 +643,7 @@ async fn communication_management_links_original_run_application_after_binding_c
             &actor,
             channel,
             domain::CommunicationBindingInput {
+                command_settings: vec![],
                 application_id: replacement,
                 ..config
             },
