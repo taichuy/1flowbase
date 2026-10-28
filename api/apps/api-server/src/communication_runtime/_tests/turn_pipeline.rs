@@ -486,7 +486,10 @@ async fn communication_turn_merges_before_and_during_generation_without_repeatin
             assert_eq!(event["tool_call_id"], id);
             assert_eq!(event["execution_status"], "succeeded");
         }
-        assert_eq!(detail.events.iter().filter(|event| event.event_type == "assistant_tool_call_finished").count(), 3);
+        // Tool lifecycle facts belong to runtime_events; detail.events projects flow_run_events.
+        let completed_tools: Vec<String> = sqlx::query_scalar("SELECT payload#>>'{tool_call,id}' FROM runtime_events WHERE scope_id=$1 AND flow_run_id=$2 AND node_run_id=$3 AND event_type='assistant_tool_call_finished' ORDER BY sequence")
+            .bind(f.key().0).bind(run_id).bind(llm_receipt).fetch_all(f.fixture.state.store.pool()).await.unwrap();
+        assert_eq!(completed_tools, TOOL_IDS, "each completed tool has exactly one canonical runtime receipt");
         let memberships: Vec<(Uuid, i64, Uuid, String)> = sqlx::query_as("SELECT turn_id,turn_sequence,run_id,processing_status FROM communication_inputs WHERE instance_id=$1 AND external_identity='alice' ORDER BY id")
             .bind(f.key().1).fetch_all(f.fixture.state.store.pool()).await.unwrap();
         assert_eq!(memberships, vec![(turn_id,1,run_id,"succeeded".into()),(turn_id,2,run_id,"succeeded".into()),(turn_id,3,run_id,"succeeded".into())]);
