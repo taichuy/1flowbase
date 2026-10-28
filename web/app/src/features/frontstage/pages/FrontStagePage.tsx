@@ -1075,12 +1075,13 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
           (selectedPageNode.show_title || canEditPageTree) ? (
             <>
               <header
-                className="frontstage-page-workspace__header"
-                style={
-                  !selectedPageNode.show_title
-                    ? { justifyContent: 'flex-end' }
-                    : undefined
-                }
+                className={[
+                  'frontstage-page-workspace__header',
+                  !selectedPageNode.show_title &&
+                    'frontstage-page-workspace__header--compact'
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
               >
                 {selectedPageNode.show_title ? (
                   <Typography.Title
@@ -1111,7 +1112,9 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
                   </div>
                 ) : null}
               </header>
-              <Divider style={{ margin: 0 }} />
+              {selectedPageNode.show_title ? (
+                <Divider style={{ margin: 0 }} />
+              ) : null}
             </>
           ) : null}
           <div

@@ -186,3 +186,11 @@
     padding: 0;
   }
 }
+
+/* Keep the 14px design control reachable without reserving a title row. */
+.frontstage-page-workspace__header.frontstage-page-workspace__header--compact {
+  flex: 0 0 22px;
+  min-height: 22px;
+  height: 22px;
+  padding: 0;
+}
