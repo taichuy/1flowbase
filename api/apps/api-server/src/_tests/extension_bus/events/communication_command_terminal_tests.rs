@@ -546,3 +546,89 @@ async fn communication_command_terminal_receipt_rejects_stale_claim_and_changed_
         .is_empty());
     assert!(fixture.worker_frames().is_empty());
 }
+
+#[tokio::test]
+async fn communication_command_authority_context_reuses_single_connection_and_current_settings() {
+    let fixture = Arc::new(CommandFixture::new().await);
+    let request = fixture.enqueue().await;
+    let subject = ManagedContributionSubject::new(
+        ManagedInstallationId::new(fixture.installation.to_string()).unwrap(),
+        ManagedWorkspaceId::new(fixture.scope.workspace_id.to_string()).unwrap(),
+        ContributionId::new("acme.composition-commands.status").unwrap(),
+    );
+    let mut lease = fixture
+        .base
+        .store
+        .lock_contribution_authority(&subject)
+        .await
+        .unwrap();
+    let context = lease
+        .load_communication_command_context(&subject, request.event_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(context.command.request, request.request);
+    assert!(context.channel_enabled);
+    assert!(context.binding.unwrap().config.command_settings.is_empty());
+    let foreign = ManagedContributionSubject::new(
+        ManagedInstallationId::new(fixture.installation.to_string()).unwrap(),
+        ManagedWorkspaceId::new(Uuid::now_v7().to_string()).unwrap(),
+        subject.contribution_id().clone(),
+    );
+    assert!(
+        lease
+            .load_communication_command_context(&foreign, request.event_id)
+            .await
+            .is_err(),
+        "the connection lease cannot read another workspace"
+    );
+    lease.release().await.unwrap();
+
+    let mut binding = fixture
+        .service
+        .get_binding(&fixture.base.actor, fixture.scope.instance_id)
+        .await
+        .unwrap()
+        .unwrap();
+    binding.config.command_settings = vec![CommunicationCommandSetting {
+        command_id: request.request.command_id.clone(),
+        enabled: false,
+    }];
+    fixture
+        .service
+        .save_binding(
+            &fixture.base.actor,
+            fixture.scope.instance_id,
+            binding.config,
+            "fixture-tools".into(),
+        )
+        .await
+        .unwrap();
+    let mut lease = fixture
+        .base
+        .store
+        .lock_contribution_authority(&subject)
+        .await
+        .unwrap();
+    let context = lease
+        .load_communication_command_context(&subject, request.event_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!context.binding.unwrap().config.command_settings[0].enabled);
+    lease.release().await.unwrap();
+
+    assert_eq!(dispatcher(&fixture).run_once().await.unwrap(), 1);
+    let result = fixture
+        .service
+        .command_for_input(&fixture.scope, fixture.input)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        result.failure_code.as_deref(),
+        Some("command_authorization_revoked"),
+        "a disabled setting must reach current validation instead of timing out on another connection"
+    );
+    assert!(fixture.worker_frames().is_empty());
+}

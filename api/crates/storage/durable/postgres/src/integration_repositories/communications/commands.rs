@@ -36,6 +36,39 @@ fn record(row: &PgRow) -> Result<CommunicationCommandRecord> {
     })
 }
 
+/// This reader never borrows the pool: authority, channel configuration and the eventual
+/// result write all share the lease-owned transaction, including single-connection stores.
+pub(crate) async fn validation_context(
+    db: &mut PgConnection,
+    subject: &extension_contracts::ManagedContributionSubject,
+    event_id: Uuid,
+) -> Result<Option<CommunicationCommandValidationContext>> {
+    let workspace_id = Uuid::parse_str(subject.workspace_id().as_str())?;
+    let installation_id = Uuid::parse_str(subject.installation_id().as_str())?;
+    let row=sqlx::query("SELECT * FROM communication_command_events WHERE scope_id=$1 AND installation_id=$2 AND contribution_id=$3 AND event_id=$4")
+        .bind(workspace_id).bind(installation_id).bind(subject.contribution_id().as_str()).bind(event_id).fetch_optional(&mut *db).await?;
+    let Some(row) = row else { return Ok(None) };
+    let command = record(&row)?;
+    // Match the write owners' channel-then-binding lock order. Disable/configuration changes
+    // cannot pass validation and overtake actual admission or the atomic reply commit.
+    let channel_enabled=sqlx::query_scalar::<_,bool>("SELECT status='enabled' FROM notification_instances WHERE workspace_id=$1 AND id=$2 FOR SHARE")
+        .bind(workspace_id).bind(command.scope.instance_id).fetch_optional(&mut *db).await?.unwrap_or(false);
+    let binding = sqlx::query(
+        "SELECT * FROM communication_bindings WHERE scope_id=$1 AND instance_id=$2 FOR SHARE",
+    )
+    .bind(workspace_id)
+    .bind(command.scope.instance_id)
+    .fetch_optional(db)
+    .await?
+    .map(super::binding)
+    .transpose()?;
+    Ok(Some(CommunicationCommandValidationContext {
+        command,
+        channel_enabled,
+        binding,
+    }))
+}
+
 async fn scoped(
     db: &mut PgConnection,
     scope: &CommunicationConversationScope,

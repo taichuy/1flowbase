@@ -1,8 +1,7 @@
 use super::*;
 use control_plane_contracts::ports::{
-    CommunicationCommandRepository, CommunicationRepository, CompleteManagedCommunicationCommand,
-    FrozenCommunicationCommandTarget, FrozenLifecyclePublication, LifecyclePublicationPlan,
-    LifecycleSubscriberTarget, NotificationRepository,
+    CompleteManagedCommunicationCommand, FrozenCommunicationCommandTarget,
+    FrozenLifecyclePublication, LifecyclePublicationPlan, LifecycleSubscriberTarget,
 };
 use extension_contracts::{
     CommunicationCommandDescriptor, CommunicationCommandReply, ManagedEventOutcome,
@@ -173,16 +172,20 @@ impl ManagedExtensionComposition {
         _frozen: &ManagedWorkspaceSnapshot,
         binding: &ManagedContributionBinding,
         record: &control_plane_contracts::ports::LifecycleOutboxRecord,
+        lease: &mut dyn ContributionAuthorityLease,
     ) -> Result<bool> {
         if record.contract_id != COMMUNICATION_COMMAND_POINT {
             return Ok(false);
         }
         let workspace_id = Uuid::parse_str(binding.handle.identity().workspace_id().as_str())?;
-        let request = self
-            .store
-            .communication_command(workspace_id, record.event_id)
+        let context = lease
+            .load_communication_command_context(
+                binding.handle.identity().subject(),
+                record.event_id,
+            )
             .await?
             .context("command request receipt missing")?;
+        let request = context.command;
         anyhow::ensure!(
             request.installation_id == Some(binding.installation.id)
                 && request.contribution_id.as_deref()
@@ -207,23 +210,13 @@ impl ManagedExtensionComposition {
                 && delivered.correlation_id == request.request.input_id,
             "command event does not match persisted request"
         );
-        let channel = self
-            .store
-            .get_notification_instance(workspace_id, request.scope.instance_id)
-            .await?;
-        if !channel
-            .is_some_and(|channel| channel.status == domain::NotificationInstanceStatus::Enabled)
-        {
+        if !context.channel_enabled {
             return Err(control_plane_contracts::ports::LifecycleDeliveryBlocked(
                 control_plane_contracts::ports::LifecycleDeliveryPauseReason::AuthorityRevoked,
             )
             .into());
         }
-        let saved = self
-            .store
-            .communication_binding(workspace_id, request.scope.instance_id)
-            .await?
-            .context("command binding removed")?;
+        let saved = context.binding.context("command binding removed")?;
         let current = self
             .snapshot(workspace_id)
             .await
@@ -273,7 +266,7 @@ impl ManagedExtensionComposition {
         };
         reply.validate()?;
         let workspace_id = Uuid::parse_str(binding.handle.identity().workspace_id().as_str())?;
-        let lease = self
+        let mut lease = self
             .store
             .lock_contribution_authority(binding.handle.identity().subject())
             .await?;
@@ -283,7 +276,7 @@ impl ManagedExtensionComposition {
             .snapshot(workspace_id)
             .await
             .context("command workspace disabled")?;
-        self.validate_command_delivery(&current, binding, record)
+        self.validate_command_delivery(&current, binding, record, lease.as_mut())
             .await?;
         lease
             .commit_communication_command_reply(CompleteManagedCommunicationCommand {

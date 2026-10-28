@@ -38,6 +38,14 @@ pub struct CommunicationCommandRecord {
     pub response_session_id: Option<Uuid>,
 }
 
+/// Host validation facts read on an already-held contribution-authority transaction.
+/// Channel and binding locks remain owned by that lease through admission or result commit.
+pub struct CommunicationCommandValidationContext {
+    pub command: CommunicationCommandRecord,
+    pub channel_enabled: bool,
+    pub binding: Option<domain::CommunicationBindingRecord>,
+}
+
 /// This receipt is validated against the persisted event, frozen target and current authority.
 pub struct CompleteManagedCommunicationCommand {
     pub subject: ManagedContributionSubject,

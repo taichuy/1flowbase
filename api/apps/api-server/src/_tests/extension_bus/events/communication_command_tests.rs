@@ -23,6 +23,11 @@ struct CommandFixture {
 impl CommandFixture {
     async fn new() -> Self {
         let base = Fixture::new().await;
+        assert_eq!(
+            base.store.pool().options().get_max_connections(),
+            1,
+            "command validation must reuse the authority connection; do not mask reentrant borrowing with a larger pool"
+        );
         let mut raw = manifest("commands");
         raw["communication_commands"] = json!([
             {"command_id":"acme/acme.composition-commands/status","name":"status","description":"Read status","usage":"/status","contribution_id":"acme.composition-commands.status","default_enabled":true},

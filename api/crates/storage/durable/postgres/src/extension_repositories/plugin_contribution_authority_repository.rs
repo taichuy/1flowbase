@@ -126,6 +126,41 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
     fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord> {
         self.installations.get(&installation_id)
     }
+    fn load_communication_command_context<'a>(
+        &'a mut self,
+        subject: &'a ManagedContributionSubject,
+        event_id: Uuid,
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        Option<
+                            control_plane_contracts::ports::CommunicationCommandValidationContext,
+                        >,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let installation_id = Uuid::parse_str(subject.installation_id().as_str())?;
+            let workspace_id = Uuid::parse_str(subject.workspace_id().as_str())?;
+            if !self.installations.contains_key(&installation_id)
+                || !self.snapshots.iter().any(|snapshot| {
+                    snapshot.installation_id == installation_id
+                        && snapshot.workspace_id == workspace_id
+                })
+            {
+                return Err(Error::PermissionDenied("command_context_authority_scope").into());
+            }
+            crate::communications::commands::validation_context(
+                &mut self.transaction,
+                subject,
+                event_id,
+            )
+            .await
+        })
+    }
     fn commit_communication_command_reply(
         mut self: Box<Self>,
         input: control_plane_contracts::ports::CompleteManagedCommunicationCommand,

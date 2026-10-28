@@ -619,13 +619,13 @@ impl ManagedExtensionComposition {
         if &frozen.subject != binding.handle.identity().subject() {
             bail!("managed event authority subject mismatch");
         }
-        let lease = self
+        let mut lease = self
             .store
             .lock_contribution_authority(binding.handle.identity().subject())
             .await?;
         self.validate_event_current_binding(binding, workspace_id, lease.as_ref())?;
         if self
-            .validate_command_delivery(snapshot, binding, record)
+            .validate_command_delivery(snapshot, binding, record, lease.as_mut())
             .await?
         {
             lease.release().await?;
