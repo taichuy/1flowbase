@@ -81,13 +81,14 @@ pub(in super::super) async fn admit(
         return Ok(None);
     }
     let session = ensure_session(&mut tx, s).await?;
-    let mut row = sqlx::query("SELECT * FROM communication_reply_turns WHERE scope_id=$1 AND instance_id=$2 AND external_identity=$3 AND conversation_id=$4 AND session_id=$5 AND session_epoch=$6 AND state='open' FOR UPDATE")
+    let row = sqlx::query("SELECT * FROM communication_reply_turns WHERE scope_id=$1 AND instance_id=$2 AND external_identity=$3 AND conversation_id=$4 AND session_id=$5 AND session_epoch=$6 AND state='open' FOR UPDATE")
         .bind(s.workspace_id).bind(s.instance_id).bind(&s.external_identity).bind(s.conversation_id).bind(session.id).bind(session.epoch).fetch_optional(&mut *tx).await?;
-    if row.is_none() {
-        row = Some(sqlx::query("INSERT INTO communication_reply_turns(id,scope_id,instance_id,external_identity,conversation_id,session_id,session_epoch,anchor_input_id,selected_model) SELECT $1,$2,$3,$4,$5,$6,$7,$8,COALESCE(c.selected_model,b.config_json->>'model') FROM communication_conversations c JOIN communication_bindings b ON b.scope_id=c.scope_id AND b.instance_id=c.instance_id WHERE c.id=$5 AND c.scope_id=$2 AND c.instance_id=$3 AND c.external_identity=$4 RETURNING *")
-            .bind(Uuid::now_v7()).bind(s.workspace_id).bind(s.instance_id).bind(&s.external_identity).bind(s.conversation_id).bind(session.id).bind(session.epoch).bind(input_id).fetch_one(&mut *tx).await?);
-    }
-    let id: Uuid = row.as_ref().unwrap().try_get("id")?;
+    let row = match row {
+        Some(row) => row,
+        None => sqlx::query("INSERT INTO communication_reply_turns(id,scope_id,instance_id,external_identity,conversation_id,session_id,session_epoch,anchor_input_id,selected_model) SELECT $1,$2,$3,$4,$5,$6,$7,$8,COALESCE(c.selected_model,b.config_json->>'model') FROM communication_conversations c JOIN communication_bindings b ON b.scope_id=c.scope_id AND b.instance_id=c.instance_id WHERE c.id=$5 AND c.scope_id=$2 AND c.instance_id=$3 AND c.external_identity=$4 RETURNING *")
+            .bind(Uuid::now_v7()).bind(s.workspace_id).bind(s.instance_id).bind(&s.external_identity).bind(s.conversation_id).bind(session.id).bind(session.epoch).bind(input_id).fetch_one(&mut *tx).await?,
+    };
+    let id: Uuid = row.try_get("id")?;
     let row = sqlx::query("UPDATE communication_reply_turns SET received_watermark=received_watermark+1 WHERE id=$1 RETURNING *")
         .bind(id).fetch_one(&mut *tx).await?;
     let turn = turn(&row)?;

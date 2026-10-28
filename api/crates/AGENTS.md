@@ -38,7 +38,7 @@
 | `storage/object` | 业务文件对象存储 driver | 无 |
 | `control-plane-test-support` | Control Plane 测试 fixture 与 builder | 仅测试使用 |
 | `postgres-test-support` | PostgreSQL 隔离 schema、migration 与数据库 fixture | 仅测试使用 |
-| `control-plane-postgres-tests` | 真实 Control Plane + PostgreSQL 跨层验收 | 仅测试使用，不承载生产实现 |
+| `control-plane-postgres-tests` | 真实 Control Plane + PostgreSQL 跨层验收 | 仅测试使用，不承载生产实现；`runtime-core`、`orchestration-runtime` 仅作 dev-dependency 装配真实执行 consumer |
 
 ## Placement Rules
 
