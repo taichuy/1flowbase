@@ -10,7 +10,7 @@ pub(super) mod processing;
 // always retained by the legacy observation path. Never silently redispatch it as a turn.
 const ADMISSIBLE: &str = "m.admission_status IN ('pending','legacy') AND m.processing_status='pending' AND m.run_id IS NULL AND m.send_status='none' AND (m.claim_id IS NULL OR m.claim_expires_at<=clock_timestamp())";
 
-async fn lock_chat(
+pub(super) async fn lock_chat(
     db: &mut PgConnection,
     s: &CommunicationConversationScope,
     enabled: bool,
@@ -70,7 +70,7 @@ async fn session_by_id(
     session(&row)
 }
 
-async fn ensure_session(
+pub(super) async fn ensure_session(
     db: &mut PgConnection,
     s: &CommunicationConversationScope,
 ) -> Result<CommunicationSession> {
@@ -90,7 +90,9 @@ async fn pending_ids(
     db: &mut PgConnection,
     s: &CommunicationConversationScope,
 ) -> Result<Vec<Uuid>> {
-    let sql = format!("SELECT m.id FROM communication_inputs m WHERE m.scope_id=$1 AND m.instance_id=$2 AND m.external_identity=$3 AND m.conversation_id=$4 AND ({ADMISSIBLE}) ORDER BY m.id");
+    let sql = format!(
+        "SELECT m.id FROM communication_inputs m WHERE m.scope_id=$1 AND m.instance_id=$2 AND m.external_identity=$3 AND m.conversation_id=$4 AND ({ADMISSIBLE}) ORDER BY m.id"
+    );
     Ok(sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(s.workspace_id)
         .bind(s.instance_id)

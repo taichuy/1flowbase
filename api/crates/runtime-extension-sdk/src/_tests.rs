@@ -117,3 +117,6 @@ fn managed_service_context_reexport_preserves_canonical_contract() {
         serde_json::json!({"actor_id":"actor", "workspace_id":"workspace", "deadline_unix_ms":123})
     );
 }
+
+#[path = "_tests/communication_command_tests.rs"]
+mod communication_command_tests;

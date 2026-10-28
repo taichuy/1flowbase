@@ -254,6 +254,8 @@ fn prepare_installation_commit_blocking(
         installation.metadata_json["managed_service"] = serde_json::to_value(service)?;
         installation.metadata_json["managed_service_permissions"] = serde_json::json!({"secrets": manifest.permissions.secrets, "storage": manifest.permissions.storage});
     }
+    installation.metadata_json["communication_commands"] =
+        serde_json::to_value(&manifest.communication_commands)?;
     if !manifest.notification_types.is_empty() {
         installation.metadata_json["notification_types"] =
             serde_json::to_value(&manifest.notification_types)?;

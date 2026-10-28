@@ -87,11 +87,12 @@ pub use extension_contracts::{
 mod _tests;
 
 mod managed_event;
+pub use extension_contracts::{CommunicationCommandReply, CommunicationCommandRequest};
 pub use extension_contracts::{
     ManagedEventHostFrame, ManagedEventOutcome, ManagedEventPayload, ManagedEventPublication,
     ManagedEventSchema, ManagedEventStatus,
 };
-pub use managed_event::serve_managed_event;
+pub use managed_event::{serve_communication_command, serve_managed_event};
 
 mod plugin_credential;
 pub use extension_contracts::{

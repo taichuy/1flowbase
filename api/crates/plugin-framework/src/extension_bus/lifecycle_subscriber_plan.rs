@@ -60,7 +60,9 @@ pub enum LifecycleSubscriberPlanError {
     InvalidPoint(String),
     #[error("active lifecycle contribution {0} has no typed subscriber binding")]
     MissingBinding(String),
-    #[error("module kind {module_kind:?} cannot contribute lifecycle {lifecycle:?} through {subscription_id}")]
+    #[error(
+        "module kind {module_kind:?} cannot contribute lifecycle {lifecycle:?} through {subscription_id}"
+    )]
     LifecycleEscalation {
         subscription_id: String,
         module_kind: ModuleKind,
@@ -110,10 +112,15 @@ pub fn compile_lifecycle_subscriber_plan(
             let module_kind = contribution.provenance().module_kind();
             let lifecycle = point.descriptor().lifecycle;
             let managed = matches!(module_kind, ModuleKind::Runtime | ModuleKind::Capability);
-            let managed_contract = (binding.point_id.as_str()
-                == extension_contracts::MANAGED_CREATE_EVENT_POINT
-                && binding.fact_contract_id == extension_contracts::MANAGED_CREATE_EVENT_ID
-                && binding.fact_contract_version == "v1")
+            let command_contract = binding.point_id.as_str()
+                == extension_contracts::COMMUNICATION_COMMAND_POINT
+                && binding.fact_contract_id == extension_contracts::COMMUNICATION_COMMAND_POINT
+                && binding.fact_contract_version
+                    == extension_contracts::COMMUNICATION_COMMAND_CONTRACT_VERSION;
+            let managed_contract = command_contract
+                || (binding.point_id.as_str() == extension_contracts::MANAGED_CREATE_EVENT_POINT
+                    && binding.fact_contract_id == extension_contracts::MANAGED_CREATE_EVENT_ID
+                    && binding.fact_contract_version == "v1")
                 || (point
                     .descriptor()
                     .is_managed_composition_event(&point.descriptor().owner_module_id)

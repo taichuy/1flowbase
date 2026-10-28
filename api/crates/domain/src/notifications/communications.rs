@@ -5,6 +5,8 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommunicationBindingInput {
+    #[serde(default)]
+    pub command_settings: Vec<super::CommunicationCommandSetting>,
     pub application_id: Uuid,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,

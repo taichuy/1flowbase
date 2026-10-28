@@ -68,6 +68,10 @@ pub trait ContributionAuthorityLease: Send {
     fn snapshots(&self) -> &[PluginContributionAuthoritySnapshot];
     fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord>;
     /// Commit the typed owned subscriber effect and its receipt under the current authority lock.
+    fn commit_communication_command_reply(
+        self: Box<Self>,
+        input: super::CompleteManagedCommunicationCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<super::CommunicationCommandRecord>> + Send>>;
     fn commit_owned_event_effect(
         self: Box<Self>,
         subject: ManagedContributionSubject,

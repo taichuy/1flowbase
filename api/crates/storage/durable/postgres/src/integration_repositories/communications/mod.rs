@@ -11,6 +11,7 @@ use sqlx::{postgres::PgRow, Row};
 use uuid::Uuid;
 // Shared by history projection and the atomic retry write to prevent UI eligibility drift.
 const RETRY_ELIGIBILITY: &str = "m.admission_status<>'excluded' AND m.send_status<>'unknown' AND (m.processing_status='failed' OR m.send_status='failed') AND (m.claim_id IS NULL OR m.claim_expires_at<=now()) AND EXISTS(SELECT 1 FROM notification_instances n WHERE n.id=m.instance_id AND n.workspace_id=m.scope_id AND n.status='enabled') AND (m.turn_id IS NULL OR EXISTS(SELECT 1 FROM communication_reply_turns rt JOIN communication_sessions rs ON rs.id=rt.session_id AND rs.scope_id=rt.scope_id AND rs.instance_id=rt.instance_id AND rs.external_identity=rt.external_identity AND rs.conversation_id=rt.conversation_id AND rs.epoch=rt.session_epoch AND rs.active WHERE rt.id=m.turn_id AND rt.scope_id=m.scope_id AND rt.instance_id=m.instance_id AND rt.external_identity=m.external_identity AND rt.conversation_id=m.conversation_id AND (rt.claim_id IS NULL OR rt.claim_expires_at<=clock_timestamp()) AND (rt.state='sealed' OR (rt.state='failed' AND NOT EXISTS(SELECT 1 FROM communication_reply_turns other WHERE other.session_id=rt.session_id AND other.state='open')))))";
+pub(crate) mod commands;
 mod history;
 mod management;
 mod processing;

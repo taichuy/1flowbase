@@ -126,6 +126,50 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
     fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord> {
         self.installations.get(&installation_id)
     }
+    fn commit_communication_command_reply(
+        mut self: Box<Self>,
+        input: control_plane_contracts::ports::CompleteManagedCommunicationCommand,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<control_plane_contracts::ports::CommunicationCommandRecord>>
+                + Send,
+        >,
+    > {
+        Box::pin(async move {
+            let installation_id = Uuid::parse_str(input.subject.installation_id().as_str())?;
+            let workspace_id = Uuid::parse_str(input.subject.workspace_id().as_str())?;
+            let installation = self
+                .installations
+                .get(&installation_id)
+                .ok_or(Error::PermissionDenied("command_installation"))?;
+            let authority = self
+                .snapshots
+                .iter()
+                .find(|snapshot| {
+                    snapshot.installation_id == installation_id
+                        && snapshot.workspace_id == workspace_id
+                })
+                .ok_or(Error::PermissionDenied("command_authority"))?;
+            anyhow::ensure!(
+                installation.desired_state == domain::PluginDesiredState::ActiveRequested
+                    && authority.authorizations.iter().any(|grant| {
+                        grant.contribution_id == input.subject.contribution_id().as_str()
+                            && grant.point_id == extension_contracts::COMMUNICATION_COMMAND_POINT
+                            && grant.permission == "event.subscribe"
+                            && grant.permission_contract_id == "managed-event"
+                            && grant.permission_contract_version == "1"
+                            && grant.resource_scope == domain::ContributionResourceScope::Workspace
+                            && grant.status == domain::ContributionAuthorizationStatus::Active
+                    }),
+                "command current subscription authority revoked"
+            );
+            let result =
+                crate::communications::commands::complete_managed(&mut self.transaction, input)
+                    .await?;
+            self.transaction.commit().await?;
+            Ok(result)
+        })
+    }
     fn commit_owned_event_effect(
         mut self: Box<Self>,
         subject: ManagedContributionSubject,
@@ -541,7 +585,7 @@ async fn snapshot(
                     "active" => ContributionAuthorizationStatus::Active,
                     "revoked" => ContributionAuthorizationStatus::Revoked,
                     _ => {
-                        return Err(Error::InvalidInput("contribution_authorization_status").into())
+                        return Err(Error::InvalidInput("contribution_authorization_status").into());
                     }
                 },
                 granted_by: row.try_get("granted_by")?,

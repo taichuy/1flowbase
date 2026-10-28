@@ -107,3 +107,7 @@ pub use notification_publication::*;
 #[path = "integration_ports/communications.rs"]
 pub mod communications;
 pub use communications::*;
+
+#[path = "integration_ports/communication_commands.rs"]
+pub mod communication_commands;
+pub use communication_commands::*;

@@ -32,3 +32,6 @@ mod file_import_contract_tests;
 mod managed_service_contract_tests;
 #[path = "notification/receive_tests.rs"]
 mod notification_receive_tests;
+
+#[path = "notification/command_event_tests.rs"]
+mod communication_command_event_tests;
