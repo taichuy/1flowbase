@@ -69,11 +69,22 @@ jobs:
           key: native-${{ matrix.target }}
           cache-on-failure: true
           cache-workspace-crates: true
+      - name: Fetch pinned PostgreSQL
+        env:
+          NATIVE_TARGET: ${{ matrix.target }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { fetchPostgres } = require('./scripts/node/native-release/fetch-postgres.js');
+          const root = fetchPostgres(process.env.NATIVE_TARGET, 'tmp/native-postgres');
+          fs.appendFileSync(process.env.GITHUB_ENV, `FLOWBASE_TEST_POSTGRES_ROOT=${root}\n`);
+          NODE
       - name: Test native behavior and build backend
         run: |
           mkdir -p tmp/test-governance/native-release
           node --test scripts/node/native-release/_tests/package.test.js
           cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution
+          cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution::tests::bundled_postgres_uses_tcp_only -- --ignored --exact
           cargo build --manifest-path api/Cargo.toml --locked --release -p api-server --bin api-server --bin system_recovery
       - name: Preserve native backend artifacts
         uses: actions/upload-artifact@v4
@@ -92,20 +103,18 @@ jobs:
         with:
           name: native-bootstrap-resources
           path: tmp/native-resources
-      - name: Fetch pinned PostgreSQL and package
+      - name: Package native distribution
         env:
           NATIVE_TARGET: ${{ matrix.target }}
           NATIVE_PLATFORM: ${{ matrix.platform }}
           NATIVE_ARCH: ${{ matrix.arch }}
           NATIVE_SUFFIX: ${{ matrix.suffix }}
         run: |
-          node scripts/node/native-release/fetch-postgres.js "$NATIVE_TARGET" tmp/native-postgres > tmp/native-postgres-path.txt
-          pg_root=$(tail -n 1 tmp/native-postgres-path.txt)
           node scripts/node/native-release/package.js \
             --platform "$NATIVE_PLATFORM" --arch "$NATIVE_ARCH" \
             --api-binary "api/target/release/api-server$NATIVE_SUFFIX" \
             --recovery-binary "api/target/release/system_recovery$NATIVE_SUFFIX" \
-            --web-dir web/app/dist --postgres-dir "$pg_root" --resources-dir tmp/native-resources --out tmp/native-release
+            --web-dir web/app/dist --postgres-dir "$FLOWBASE_TEST_POSTGRES_ROOT" --resources-dir tmp/native-resources --out tmp/native-release
       - name: Verify startup, restart and shutdown
         if: runner.os != 'Windows'
         env:

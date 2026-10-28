@@ -204,3 +204,55 @@ fn native_file_storage_uses_explicit_persistent_directory() {
         "/persistent-data/api/storage"
     );
 }
+
+#[test]
+#[ignore = "requires FLOWBASE_TEST_POSTGRES_ROOT pointing to a PostgreSQL 18 bundle"]
+fn bundled_postgres_uses_tcp_only() {
+    use super::{postgres::Postgres, settings::private_dir};
+    use std::{net::TcpListener, process::Command};
+
+    let root = PathBuf::from(
+        std::env::var_os("FLOWBASE_TEST_POSTGRES_ROOT")
+            .expect("FLOWBASE_TEST_POSTGRES_ROOT is required for the real PostgreSQL test"),
+    );
+    let directory = Directory::new();
+    let data = directory.0.join("database with spaces");
+    private_dir(&data).unwrap();
+    let settings = Settings::load_or_create(&data).unwrap();
+    let reservation = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = reservation.local_addr().unwrap().port();
+    drop(reservation);
+
+    // Cover both a fresh cluster and the already initialized cluster users retain
+    // after an earlier startup failure. No application/developer database is used.
+    for _ in 0..2 {
+        let mut postgres = Postgres::new(&root, &data);
+        postgres.validate().unwrap();
+        postgres
+            .start(port, &settings.postgres_password)
+            .unwrap_or_else(|error| {
+                panic!(
+                    "{error:#}\n{}",
+                    fs::read_to_string(data.join("postgres.log")).unwrap_or_default()
+                )
+            });
+        let result = Command::new(root.join("bin").join(format!("psql{}", std::env::consts::EXE_SUFFIX)))
+            .args(["-X", "-w", "-h", "127.0.0.1", "-p", &port.to_string(), "-U", "postgres", "-d", "1flowbase", "-Atc"])
+            .arg(format!("SELECT current_setting('unix_socket_directories') = '', current_setting('listen_addresses') = '127.0.0.1', current_setting('port') = '{port}'"))
+            .env("PGPASSWORD", &settings.postgres_password)
+            .env_remove("PGSERVICE")
+            .env_remove("PGOPTIONS")
+            .output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "t|t|t");
+        drop(postgres);
+        assert!(
+            !data.join("postgres/postmaster.pid").exists(),
+            "owned PostgreSQL must stop"
+        );
+    }
+}

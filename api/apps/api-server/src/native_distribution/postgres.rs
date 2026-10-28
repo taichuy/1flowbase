@@ -127,8 +127,11 @@ impl Postgres {
             .arg("-l")
             .arg(&log)
             .arg("-o")
+            // pg_ctl reparses this option string through the platform shell.
+            // An empty assignment works on both cmd.exe and POSIX shells;
+            // single quotes become literal directory-name bytes on Windows.
             .arg(format!(
-                "-p {port} -h 127.0.0.1 -c unix_socket_directories=''"
+                "-p {port} -h 127.0.0.1 -c unix_socket_directories="
             ))
             .status()?;
         anyhow::ensure!(
