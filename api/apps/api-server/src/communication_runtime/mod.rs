@@ -1,7 +1,7 @@
 //! Host lifecycle for durable communication receive and execution. Provider credentials stay here.
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 use control_plane::ports::{NotificationRepository, WorkspaceRepository};
 use domain::{
     ActorContext, CommunicationBindingRecord, NotificationInstanceRecord,
@@ -17,6 +17,7 @@ use uuid::Uuid;
 use crate::{app_state::ApiState, notification_runtime::ManagedNotificationProvider};
 
 mod attachments;
+pub(crate) mod command_capabilities;
 mod execution;
 pub(crate) use execution::validate_binding;
 mod receive;

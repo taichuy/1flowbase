@@ -5,13 +5,13 @@ use crate::{
     response::ApiSuccess,
     routes::{
         console_interface,
-        console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+        console_route_assembly::{ConsoleRouteAssembly, console_get, console_post},
     },
 };
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::HeaderMap,
-    Json,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -30,6 +30,7 @@ pub(crate) struct PageQuery {
 #[derive(Default, Deserialize)]
 pub(crate) struct OptionsQuery {
     pub application_id: Option<Uuid>,
+    pub instance_id: Option<Uuid>,
 }
 #[derive(Default, Deserialize)]
 pub(crate) struct FileQuery {
@@ -128,7 +129,7 @@ async fn invoke(
     .await?;
     Ok(Json(ApiSuccess::new(value)))
 }
-#[utoipa::path(get,path="/api/console/communications/options",tag="Communications",operation_id="communications_options",params(("application_id"=Option<Uuid>,Query,description="application id")),responses((status=200,body=Value))) ]
+#[utoipa::path(get,path="/api/console/communications/options",tag="Communications",operation_id="communications_options",params(("application_id"=Option<Uuid>,Query,description="application id"),("instance_id"=Option<Uuid>,Query,description="channel whose saved command settings are projected")),responses((status=200,body=Value))) ]
 pub(crate) async fn options(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -138,7 +139,7 @@ pub(crate) async fn options(
         state,
         headers,
         "communications.options.get",
-        Input::Options(q.application_id),
+        Input::Options(q.application_id, q.instance_id),
         false,
     )
     .await

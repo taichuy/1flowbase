@@ -384,7 +384,8 @@ pub(super) async fn app_and_runtime_host_from_config(
     let notification_service = Arc::new(control_plane::notifications::NotificationService::new(
         store.clone(), config.provider_secret_master_key.clone(),
     ).with_events(notification_events.clone())
-        .with_provider(Arc::new(notification_runtime::ManagedNotificationProvider::new(managed_composition.clone()))));
+        .with_provider(Arc::new(notification_runtime::ManagedNotificationProvider::new(managed_composition.clone())))
+        .with_command_provider(Arc::new(crate::extension_bus::ManagedCommunicationCommandProvider::new(managed_composition.clone()))));
     notification_service.bootstrap().await?;
     let system_maintenance = Arc::new(control_plane::system_recovery::SystemMaintenance::default());
     let system_backup = resolve_system_backup_startup(
@@ -603,7 +604,9 @@ pub(super) fn api_workspace_root() -> Result<PathBuf> {
     if let Some(root) = std::env::var_os("API_WORKSPACE_ROOT") {
         let root = PathBuf::from(root);
         if !root.join("plugins/host-extensions").is_dir() {
-            return Err(anyhow!("API_WORKSPACE_ROOT must contain plugins/host-extensions"));
+            return Err(anyhow!(
+                "API_WORKSPACE_ROOT must contain plugins/host-extensions"
+            ));
         }
         return Ok(root);
     }

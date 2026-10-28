@@ -1,4 +1,4 @@
-use super::{provisioning, scope, FileQuery, PageQuery};
+use super::{FileQuery, PageQuery, provisioning, scope};
 use crate::{
     app_state::{ApiNotificationService, ApiState},
     error_response::ApiError,
@@ -10,10 +10,10 @@ use crate::{
         mcp_management::interface_catalog::McpInterfaceCatalogDependencies,
     },
 };
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::FutureExt;
 use interface_runtime::{InterfaceContract, UserPrincipal};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
@@ -49,7 +49,7 @@ pub(crate) enum Input {
     ManagementHistory(Uuid, PageQuery),
     ManagementMessages(domain::CommunicationManagementQuery),
     ManagementMessage(Uuid),
-    Options(Option<Uuid>),
+    Options(Option<Uuid>, Option<Uuid>),
     Binding(Uuid),
     SaveBinding(Uuid, domain::CommunicationBindingInput),
     Conversations(Uuid, PageQuery),
@@ -81,7 +81,7 @@ impl InterfaceContract for Input {
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
-            json!({"operation":match self{Self::ManagementConversations(_)=>"management_conversations",Self::ManagementHistory(..)=>"management_history",Self::ManagementMessages(_)=>"management_messages",Self::ManagementMessage(_)=>"management_message",Self::Options(_)=>"options",Self::Binding(_)=>"binding",Self::SaveBinding(..)=>"save_binding",Self::Conversations(..)=>"conversations",Self::Messages(..)=>"messages",Self::Files(..)=>"files",Self::File(..)=>"file",Self::Retry(..)=>"retry"}}),
+            json!({"operation":match self{Self::ManagementConversations(_)=>"management_conversations",Self::ManagementHistory(..)=>"management_history",Self::ManagementMessages(_)=>"management_messages",Self::ManagementMessage(_)=>"management_message",Self::Options(..)=>"options",Self::Binding(_)=>"binding",Self::SaveBinding(..)=>"save_binding",Self::Conversations(..)=>"conversations",Self::Messages(..)=>"messages",Self::Files(..)=>"files",Self::File(..)=>"file",Self::Retry(..)=>"retry"}}),
         )
     }
 }
@@ -122,17 +122,24 @@ impl Dependencies {
             Input::ManagementMessage(id) => Box::pin(async move {
                 Ok(Output(serde_json::to_value(self.service.management_message(actor, id).await?)?))
             }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
-            Input::Options(application_id) => Box::pin(async move {
+            Input::Options(application_id, instance_id) => Box::pin(async move {
                 let result = {
                 let (published_agent_flows, enabled_mcp_instances) =
                     crate::routes::assistant::available_targets(&self.store, actor).await?;
-                let run_capabilities = crate::routes::assistant::assistant_run_capabilities(
+                let (run_capabilities, model_unavailable_reason) = crate::communication_runtime::command_capabilities::load(
                     &self.store,
                     actor,
                     application_id,
                 )
                 .await?;
-                json!({"published_agent_flows":published_agent_flows,"enabled_mcp_instances":enabled_mcp_instances,"run_capabilities":run_capabilities})
+                let binding = match instance_id {
+                    Some(id) => self.service.get_binding(actor, id).await?,
+                    None => None,
+                };
+                let settings = binding.as_ref().map(|b| b.config.command_settings.as_slice()).unwrap_or_default();
+                let mut commands = self.service.command_catalog(actor, settings).await?;
+                control_plane::notifications::apply_communication_model_availability(&mut commands, model_unavailable_reason);
+                json!({"published_agent_flows":published_agent_flows,"enabled_mcp_instances":enabled_mcp_instances,"run_capabilities":run_capabilities,"commands":commands})
             };
                 Ok(Output(result))
             }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
@@ -152,7 +159,13 @@ impl Dependencies {
                 let binding = self.service.get_binding(actor, id).await?;
                 let plugin_mcp_instance_id =
                     descriptor.as_ref().map(|_| provisioning::instance_id(id));
-                json!({"binding":binding,"plugin_mcp_instance_id":plugin_mcp_instance_id,"default_system_prompt":descriptor.map(|d|d.default_system_prompt)})
+                let settings = binding.as_ref().map(|b| b.config.command_settings.as_slice()).unwrap_or_default();
+                let mut commands = self.service.command_catalog(actor, settings).await?;
+                let (_, reason) = crate::communication_runtime::command_capabilities::load(
+                    &self.store, actor, binding.as_ref().map(|b| b.config.application_id),
+                ).await?;
+                control_plane::notifications::apply_communication_model_availability(&mut commands, reason);
+                json!({"binding":binding,"plugin_mcp_instance_id":plugin_mcp_instance_id,"default_system_prompt":descriptor.map(|d|d.default_system_prompt),"commands":commands})
             };
                 Ok(Output(result))
             }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
@@ -347,19 +360,91 @@ pub(crate) fn compile_registry(
         Arc::new(dependencies),
     )
 }
-pub(crate) const DECLARATIONS:&[ConsoleInterfaceDeclaration]=&[
-    ConsoleInterfaceDeclaration{interface_id:"communications.management.conversations.messages.list",binding_id:"http.console.communications.management.conversations.messages.list.v1",method:"GET",path:"/api/console/communications/conversations/:conversation_id/messages",mutating:false},
-    ConsoleInterfaceDeclaration{interface_id:"communications.management.conversations.list",binding_id:"http.console.communications.management.conversations.list.v1",method:"GET",path:"/api/console/communications/conversations",mutating:false},
-    ConsoleInterfaceDeclaration{interface_id:"communications.management.messages.list",binding_id:"http.console.communications.management.messages.list.v1",method:"GET",path:"/api/console/communications/messages",mutating:false},
-    ConsoleInterfaceDeclaration{interface_id:"communications.management.messages.get",binding_id:"http.console.communications.management.messages.get.v1",method:"GET",path:"/api/console/communications/messages/:message_id",mutating:false},
-    ConsoleInterfaceDeclaration{interface_id:"communications.options.get",binding_id:"http.console.communications.options.get.v1",method:"GET",path:"/api/console/communications/options",mutating:false},
-    ConsoleInterfaceDeclaration{interface_id:"communications.binding.get",binding_id:"http.console.communications.binding.get.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/binding",mutating:false},
-    ConsoleInterfaceDeclaration{interface_id:"communications.binding.update",binding_id:"http.console.communications.binding.update.v1",method:"PUT",path:"/api/console/communications/instances/:instance_id/binding",mutating:true},
-    ConsoleInterfaceDeclaration{interface_id:"communications.conversations.list",binding_id:"http.console.communications.conversations.list.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/conversations",mutating:false},
-    ConsoleInterfaceDeclaration{interface_id:"communications.messages.list",binding_id:"http.console.communications.messages.list.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/conversations/:conversation_id/messages",mutating:false},
-    ConsoleInterfaceDeclaration{interface_id:"communications.files.list",binding_id:"http.console.communications.files.list.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/conversations/:conversation_id/files",mutating:false},
-    ConsoleInterfaceDeclaration{interface_id:"communications.files.get",binding_id:"http.console.communications.files.get.v1",method:"GET",path:"/api/console/communications/instances/:instance_id/files/:message_id",mutating:false},
-    ConsoleInterfaceDeclaration{interface_id:"communications.messages.retry",binding_id:"http.console.communications.messages.retry.v1",method:"POST",path:"/api/console/communications/instances/:instance_id/messages/:message_id/retry",mutating:true},
+pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.management.conversations.messages.list",
+        binding_id: "http.console.communications.management.conversations.messages.list.v1",
+        method: "GET",
+        path: "/api/console/communications/conversations/:conversation_id/messages",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.management.conversations.list",
+        binding_id: "http.console.communications.management.conversations.list.v1",
+        method: "GET",
+        path: "/api/console/communications/conversations",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.management.messages.list",
+        binding_id: "http.console.communications.management.messages.list.v1",
+        method: "GET",
+        path: "/api/console/communications/messages",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.management.messages.get",
+        binding_id: "http.console.communications.management.messages.get.v1",
+        method: "GET",
+        path: "/api/console/communications/messages/:message_id",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.options.get",
+        binding_id: "http.console.communications.options.get.v1",
+        method: "GET",
+        path: "/api/console/communications/options",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.binding.get",
+        binding_id: "http.console.communications.binding.get.v1",
+        method: "GET",
+        path: "/api/console/communications/instances/:instance_id/binding",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.binding.update",
+        binding_id: "http.console.communications.binding.update.v1",
+        method: "PUT",
+        path: "/api/console/communications/instances/:instance_id/binding",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.conversations.list",
+        binding_id: "http.console.communications.conversations.list.v1",
+        method: "GET",
+        path: "/api/console/communications/instances/:instance_id/conversations",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.messages.list",
+        binding_id: "http.console.communications.messages.list.v1",
+        method: "GET",
+        path: "/api/console/communications/instances/:instance_id/conversations/:conversation_id/messages",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.files.list",
+        binding_id: "http.console.communications.files.list.v1",
+        method: "GET",
+        path: "/api/console/communications/instances/:instance_id/conversations/:conversation_id/files",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.files.get",
+        binding_id: "http.console.communications.files.get.v1",
+        method: "GET",
+        path: "/api/console/communications/instances/:instance_id/files/:message_id",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.messages.retry",
+        binding_id: "http.console.communications.messages.retry.v1",
+        method: "POST",
+        path: "/api/console/communications/instances/:instance_id/messages/:message_id/retry",
+        mutating: true,
+    },
 ];
 
 #[cfg(test)]
