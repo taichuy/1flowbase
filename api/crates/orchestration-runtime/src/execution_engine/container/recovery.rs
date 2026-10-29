@@ -316,6 +316,18 @@ where
     }
     let round = frame.rounds.get_mut(&round_index).expect("selected round");
     let expired = round.deadline_unix_ms <= unix_ms();
+    if expired {
+        return recover_callback_deadline(
+            plan,
+            checkpoint,
+            &identity,
+            round.deadline_owner_execution_id,
+            &runtime_context,
+            invoker,
+            lifecycle,
+        )
+        .await;
+    }
     let node = plan
         .nodes
         .get(&identity.node_id)
@@ -385,7 +397,7 @@ where
         }
     }
     state.waiting_execution_id = None;
-    emit(
+    let admitted = emit(
         lifecycle,
         &state,
         if terminal.is_some() {
@@ -398,7 +410,22 @@ where
         terminal.as_ref(),
         Some(&json!({"expired": expired})),
     )
-    .await?;
+    .await;
+    if let Err(error) = admitted {
+        if let Some(expired) = error.downcast_ref::<DeadlineExpired>() {
+            return recover_callback_deadline(
+                plan,
+                checkpoint,
+                &identity,
+                expired.0,
+                &runtime_context,
+                invoker,
+                lifecycle,
+            )
+            .await;
+        }
+        return Err(error);
+    }
     let index = state.root_next_node_index;
     let pool = state.root_variable_pool.clone();
     let active = state.root_active_node_ids.iter().cloned().collect();
@@ -623,4 +650,62 @@ pub(crate) fn snapshot_from_state(state: &ContainerCheckpoint) -> CheckpointSnap
         variable_pool: state.root_variable_pool.clone(),
         active_node_ids: state.root_active_node_ids.clone(),
     }
+}
+
+/// A callback rejected at admission has not changed durable truth. Resume from
+/// the original checkpoint and route a pending timeout to its actual owner;
+/// do not renew any deadline, consume another round, or admit the rejected data.
+async fn recover_callback_deadline<I>(
+    plan: &CompiledPlan,
+    checkpoint: &CheckpointSnapshot,
+    waiting_identity: &ScopedExecutionIdentity,
+    owner: uuid::Uuid,
+    runtime: &ExecutionRuntimeContext,
+    invoker: &I,
+    lifecycle: &dyn ExecutionLifecycle,
+) -> Result<FlowDebugExecutionOutcome>
+where
+    I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
+{
+    let mut state = checkpoint
+        .container_state
+        .clone()
+        .ok_or_else(|| anyhow!("container checkpoint missing"))?;
+    let owner_position = waiting_identity
+        .round_path
+        .iter()
+        .position(|path| path.container_execution_id == owner)
+        .ok_or_else(|| anyhow!("callback deadline owner is outside its scope"))?;
+    for path in waiting_identity.round_path.iter().take(owner_position + 1) {
+        let round = state
+            .frames
+            .get_mut(&path.container_execution_id)
+            .and_then(|frame| frame.rounds.get_mut(&path.round_index))
+            .ok_or_else(|| anyhow!("callback deadline round missing"))?;
+        round.status = ContainerRoundStatus::Running;
+        round.waiting = None;
+        if path.container_execution_id == owner {
+            round.error_payload = Some(
+                json!({"error_code":"container_round_timeout","deadline_owner_execution_id":owner,"message":"Callback was not admitted before the frozen round deadline"}),
+            );
+        }
+    }
+    state.waiting_execution_id = None;
+    let (index, pool, active) = (
+        state.root_next_node_index,
+        state.root_variable_pool.clone(),
+        state.root_active_node_ids.iter().cloned().collect(),
+    );
+    let session = Session::new(state, true)?;
+    Box::pin(execute_root(
+        plan,
+        index,
+        pool,
+        Some(active),
+        runtime,
+        invoker,
+        lifecycle,
+        Some(session),
+    ))
+    .await
 }
