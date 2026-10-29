@@ -94,7 +94,7 @@ test('routes real native transport and replay owners without widening the AI fas
     'api/apps/api-server/src/provider_runtime/transport_session_lifecycle.rs',
     'api/apps/api-server/src/provider_runtime/_tests/transport_session_lifecycle/dispatch_settlement.rs',
     'api/apps/api-server/src/_tests/runtime_event_stream/recoverable.rs',
-    'api/crates/control-plane/src/orchestration_runtime/runtime_event_persister.rs',
+    'api/crates/control-plane/src/orchestration_runtime/persistence/runtime_event_persister.rs',
     'api/crates/control-plane/src/_tests/orchestration_runtime/runtime_event_persister.rs',
     'api/crates/control-plane/src/orchestration_runtime/callback_completion.rs',
     'api/crates/orchestration-runtime/src/transport_session/registry.rs',
