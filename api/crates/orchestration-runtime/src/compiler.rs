@@ -16,6 +16,7 @@ use crate::output_schema::{history_messages_schema, output_schema_is_llm_context
 use crate::payload_builder::PublicOutputContract;
 
 mod code_runtime_config;
+mod containers;
 mod diagnostics;
 mod node_compilation;
 mod selector_paths;
@@ -27,6 +28,7 @@ pub use node_compilation::js_dependency_lookup_key;
 pub use topology::FlowCompiler;
 
 pub fn ensure_plan_execution_contract(plan: &CompiledPlan) -> Result<()> {
+    containers::validate_containers(&plan.nodes, &plan.edges)?;
     if let Some(issue) = topology::validate_variable_scope_contracts(&plan.nodes)
         .into_iter()
         .next()
