@@ -55,6 +55,8 @@ This version introduces the online launcher; older scripts do not acquire this b
 
 ## Build and verification boundaries
 
-The `Native portable distribution` workflow verifies actual archives, initialization, editable configuration, direct updates without backups, failed-update retries and launcher path resolution. Single-layer Release archives are published only after all platforms pass.
+Official releases follow `container images`. Use `node scripts/node/cli/bump-version.js` to synchronize versions, then merge into `latest` through the existing release process. Docker images and all five native targets build automatically. `VERSION`, frontend and backend versions must match. After both distribution types pass their build/validation jobs, a single stable GitHub Release contains the Docker instructions and native downloads at the same version.
+
+`native-build.yml` is the shared builder and retains actual-archive, initialization, editable-configuration, no-backup update, retry and launcher checks. `Native portable distribution` remains available for manual validation and independent prereleases. Ordinary source changes without a version change do not create another release. Re-running an already complete release at the same source commit skips publication rather than replacing public assets.
 
 `system_recovery` remains a separate business backup/recovery tool and is not invoked by the updater. Signing/notarization, system services and unattended background updates are outside this feature's scope. Existing Windows network-egress descendant-process cleanup limitations still apply.

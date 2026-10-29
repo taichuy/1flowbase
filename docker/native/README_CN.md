@@ -55,6 +55,8 @@ Linux/macOS 使用 `1flowbase`、`start.sh` 和 `upgrade.sh`。包名只含产�
 
 ## 构建与验证边界
 
-`Native portable distribution` 工作流验证实际归档、初始化、可编辑配置、直接更新不备份、失败重试及路径定位；全部平台通过后发布单层归档。
+正式发版跟随 `container images`：使用 `node scripts/node/cli/bump-version.js` 同步版本并按现有流程合入 `latest` 后，自动构建 Docker 镜像和五个平台原生包。`VERSION`、前端和后端版本必须一致；两种发行的构建/验证都通过后，发布同一个正式 GitHub Release，原生包版本与 Docker 相同。
+
+`native-build.yml` 是共用构建流程，继续验证实际归档、初始化、可编辑配置、直接更新不备份、失败重试及路径定位。`Native portable distribution` 保留手动验证/独立预发布入口；它不替代正式 Docker 发版流程。普通不改版本的提交不会自动生成新发行。已经完整发布且源码一致的 Release 重跑会跳过，不覆盖公开资产。
 
 `system_recovery` 是独立的业务备份恢复工具，一键升级不会调用它。签名/公证、系统服务和静默后台自动更新不在本发行功能范围。Windows 网络出口插件的后代进程清理保留现有能力边界。
