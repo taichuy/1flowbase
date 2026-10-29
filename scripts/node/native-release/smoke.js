@@ -9,6 +9,7 @@ const { spawn, spawnSync } = require('node:child_process');
 const { once } = require('node:events');
 const { setTimeout: delay } = require('node:timers/promises');
 const { openTemporaryOwnerSession } = require('../page-debug/auth.js');
+const { readEnv, writeEnv } = require('./test-env.js');
 
 async function freePort() {
   const server = net.createServer();
@@ -28,7 +29,8 @@ async function smoke(stage, evidence) {
   const httpPort = await freePort();
   let pgPort = await freePort();
   while (pgPort === httpPort) pgPort = await freePort();
-  const env = { ...process.env, FLOWBASE_DATA_DIR: data, FLOWBASE_PORT: String(httpPort), FLOWBASE_POSTGRES_PORT: String(pgPort), FLOWBASE_OPEN_BROWSER: 'false' };
+  const env = { ...process.env };
+  writeEnv(stage, { FLOWBASE_DATA_DIR: data, API_SERVER_ADDR: `127.0.0.1:${httpPort}`, API_DATABASE_URL: `postgres://postgres:__GENERATE__@127.0.0.1:${pgPort}/1flowbase`, API_PROVIDER_SECRET_MASTER_KEY: '__GENERATE__', API_AUTH_PUBLIC_ORIGIN: `http://127.0.0.1:${httpPort}`, API_ALLOWED_ORIGINS: `http://127.0.0.1:${httpPort}`, FLOWBASE_OPEN_BROWSER: 'false', API_BUSINESS_FILE_LOCAL_ROOT: path.join(data, 'api/storage'), API_PROVIDER_INSTALL_ROOT: path.join(data, 'api/plugins'), API_HOST_EXTENSION_DROPIN_ROOT: path.join(data, 'api/plugins/host-extension/dropins'), API_MCP_TEMPLATE_LIBRARY_ROOT: path.join(data, 'api/storage/extension-center/mcp'), API_SYSTEM_BACKUP_REPOSITORY_ROOT: path.join(data, 'backups') });
   const executable = path.join(stage, '1flowbase');
   const origin = `http://127.0.0.1:${httpPort}`;
   let child;
@@ -71,10 +73,11 @@ async function smoke(stage, evidence) {
       const deep = await fetch(origin + '/native-smoke/deep-link', { headers: { accept: 'text/html' } });
       assert.equal(deep.status, 200);
       assert.equal((await fetch(origin + '/api/native-smoke-missing', { headers: { accept: 'text/html' } })).status, 404);
-      const current = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+      const values = readEnv(stage);
+      const current = { postgres_password: decodeURIComponent(new URL(values.API_DATABASE_URL).password), root_password: values.BOOTSTRAP_ROOT_PASSWORD, root_account: values.BOOTSTRAP_ROOT_ACCOUNT, master_key: values.API_PROVIDER_SECRET_MASTER_KEY };
       if (iteration === 0) {
         settings = current;
-        const session = await openTemporaryOwnerSession({ apiBaseUrl: origin, account: 'root', password: settings.root_password });
+        const session = await openTemporaryOwnerSession({ apiBaseUrl: origin, account: settings.root_account, password: settings.root_password });
         try {
           const me = await fetch(origin + '/api/console/me', { headers: { cookie: session.cookie }, signal: AbortSignal.timeout(10000) });
           assert.equal(me.status, 200, 'Authenticated console route must remain reachable');
@@ -94,7 +97,10 @@ async function smoke(stage, evidence) {
         const duplicate = spawnSync(executable, [], { env, cwd: stage, encoding: 'utf8', timeout: 15000 });
         assert.notEqual(duplicate.status, 0);
         assert.match(duplicate.stderr, /already running/);
-        const conflict = spawnSync(executable, [], { env: { ...env, FLOWBASE_DATA_DIR: path.join(evidence, 'conflict'), FLOWBASE_PORT: String(await freePort()) }, cwd: stage, encoding: 'utf8', timeout: 15000 });
+        const savedEnv = fs.readFileSync(path.join(stage, '.env'));
+        writeEnv(stage, { FLOWBASE_DATA_DIR: path.join(evidence, 'conflict'), API_SERVER_ADDR: `127.0.0.1:${await freePort()}` });
+        const conflict = spawnSync(executable, [], { env, cwd: stage, encoding: 'utf8', timeout: 15000 });
+        fs.writeFileSync(path.join(stage, '.env'), savedEnv);
         assert.notEqual(conflict.status, 0);
         assert.match(conflict.stderr, /PostgreSQL port .* occupied/);
         assert.ok(!fs.existsSync(path.join(evidence, 'conflict/postgres')));
