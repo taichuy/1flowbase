@@ -1,5 +1,8 @@
 use super::*;
-use crate::ports::{CommitContainerTransitionInput, ContainerNodeFact, ContainerRoundFact};
+use crate::ports::{
+    CommitContainerTransitionInput, ContainerCommitAdmission, ContainerCommitDeadline,
+    ContainerNodeFact, ContainerRoundFact,
+};
 use orchestration_runtime::execution_engine::container::{
     ContainerRoundStatus, ContainerTransition, ContainerTransitionKind, ContainerWait,
 };
@@ -170,18 +173,60 @@ where
                 })
             })
             .collect();
-        let deadline_owner = rounds
-            .iter()
-            .min_by_key(|round| round.deadline_unix_ms)
-            .and_then(|round| {
-                transition
-                    .checkpoint
-                    .frames
-                    .get(&round.container_execution_id)?
-                    .rounds
-                    .get(&round.round_index)
+        // Admission uses only the active transition's scope. Completed historical
+        // rounds in a checkpoint are facts, not deadlines for new work.
+        let admits_round = transition.kind == ContainerTransitionKind::RoundStarted
+            || (transition.kind == ContainerTransitionKind::RoundCommitted
+                && selected_round
+                    .is_some_and(|round| round.status == ContainerRoundStatus::Succeeded));
+        let admits_node = matches!(
+            node,
+            Some(ContainerNodeFact::Started { .. })
+                | Some(ContainerNodeFact::Updated {
+                    status: domain::NodeRunStatus::Succeeded,
+                    ..
+                })
+        ) || matches!(
+            transition.kind,
+            ContainerTransitionKind::Resumed | ContainerTransitionKind::InternalToolStarted
+        );
+        let effective_deadline = if admits_round {
+            let round = selected_round
+                .ok_or_else(|| anyhow::anyhow!("container round admission missing round"))?;
+            Some(ContainerCommitDeadline {
+                deadline_unix_ms: round.deadline_unix_ms,
+                owner_execution_id: round.deadline_owner_execution_id,
             })
-            .map(|round| round.deadline_owner_execution_id);
+        } else if admits_node {
+            logical_identity
+                .round_path
+                .iter()
+                .map(|path| {
+                    let round = transition
+                        .checkpoint
+                        .frames
+                        .get(&path.container_execution_id)
+                        .and_then(|frame| frame.rounds.get(&path.round_index))
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("container work admission missing ancestor round")
+                        })?;
+                    Ok(ContainerCommitDeadline {
+                        deadline_unix_ms: round.deadline_unix_ms,
+                        owner_execution_id: round.deadline_owner_execution_id,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
+                .min_by_key(|deadline| deadline.deadline_unix_ms)
+        } else {
+            None
+        };
+        let admission = if admits_round || admits_node {
+            ContainerCommitAdmission::AdmitWork { effective_deadline }
+        } else {
+            ContainerCommitAdmission::ClosureOrObservation
+        };
+        let deadline_owner = effective_deadline.map(|deadline| deadline.owner_execution_id);
         let observation = if transition.trace.is_some()
             && (transition.kind != ContainerTransitionKind::ScopeSuspended
                 || suspended_node.is_some())
@@ -204,6 +249,7 @@ where
                 resume_claim_owner: self.resume_claim_owner.clone(),
                 execution_identity: identity,
                 checkpoint: serde_json::to_value(transition.checkpoint)?,
+                admission,
                 node,
                 rounds,
                 observation,

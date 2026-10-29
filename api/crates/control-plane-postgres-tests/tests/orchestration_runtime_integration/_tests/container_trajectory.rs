@@ -1,7 +1,8 @@
 use super::*;
 use control_plane_contracts::ports::{
-    CommitContainerTransitionInput, ContainerControlFailureFact, ContainerNodeFact,
-    ContainerRoundFact, ProviderTrajectoryRepository, WorkflowTrajectoryQuery,
+    CommitContainerTransitionInput, ContainerCommitAdmission, ContainerCommitDeadline,
+    ContainerControlFailureFact, ContainerNodeFact, ContainerRoundFact,
+    ProviderTrajectoryRepository, WorkflowTrajectoryQuery,
 };
 
 #[tokio::test]
@@ -17,6 +18,10 @@ async fn container_trajectory_preserves_round_facts_identity_and_application_sco
         flow_run_id: run.id,
         resume_claim_owner: None,
         control_failure: None,
+        observation: None,
+        admission: ContainerCommitAdmission::AdmitWork {
+            effective_deadline: None,
+        },
         execution_identity: domain::NodeExecutionIdentity {
             execution_id: frame,
             node_id: "loop".into(),
@@ -42,6 +47,13 @@ async fn container_trajectory_preserves_round_facts_identity_and_application_sco
         flow_run_id: run.id,
         resume_claim_owner: None,
         control_failure: None,
+        observation: None,
+        admission: ContainerCommitAdmission::AdmitWork {
+            effective_deadline: Some(ContainerCommitDeadline {
+                deadline_unix_ms: 2000000000000,
+                owner_execution_id: frame,
+            }),
+        },
         execution_identity: domain::NodeExecutionIdentity {
             execution_id: child_id,
             node_id: "leaf".into(),

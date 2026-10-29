@@ -1,6 +1,7 @@
 use super::*;
 use control_plane_contracts::ports::{
-    CommitContainerTransitionInput, ContainerNodeFact, ContainerRoundFact,
+    CommitContainerTransitionInput, ContainerCommitAdmission, ContainerCommitDeadline,
+    ContainerNodeFact, ContainerRoundFact,
 };
 
 pub(super) fn start(
@@ -13,6 +14,12 @@ pub(super) fn start(
         resume_claim_owner: None,
         control_failure: None,
         observation: None,
+        admission: ContainerCommitAdmission::AdmitWork {
+            effective_deadline: Some(ContainerCommitDeadline {
+                deadline_unix_ms: 2000000000000,
+                owner_execution_id: frame_id,
+            }),
+        },
         execution_identity: domain::NodeExecutionIdentity {
             execution_id: Uuid::now_v7(),
             node_id: "same-node".into(),
@@ -121,6 +128,12 @@ async fn container_commit_keeps_repeated_node_ids_and_rolls_back_node_round_and_
         .unwrap();
     let mut expired = terminal.clone();
     expired.rounds[0].deadline_unix_ms = 1;
+    expired.admission = ContainerCommitAdmission::AdmitWork {
+        effective_deadline: Some(ContainerCommitDeadline {
+            deadline_unix_ms: 1,
+            owner_execution_id: frame_id,
+        }),
+    };
     let error = store
         .commit_container_transition(&expired)
         .await
@@ -267,6 +280,7 @@ async fn container_round_stop_closes_inflight_but_preserves_committed_siblings()
     store.commit_container_transition(&sibling).await.unwrap();
     let mut stop = first.clone();
     stop.node = None;
+    stop.admission = ContainerCommitAdmission::ClosureOrObservation;
     stop.rounds[0].status = "cancelled".into();
     stop.rounds[0].error_payload = Some(json!({"code":"cancelled"}));
     store.commit_container_transition(&stop).await.unwrap();
@@ -328,9 +342,11 @@ async fn native_container_successor_maps_receipts_without_changing_logical_paren
         terminal: true,
     });
     child.rounds[0].status = "failed".into();
+    child.admission = ContainerCommitAdmission::ClosureOrObservation;
     store.commit_container_transition(&child).await.unwrap();
     frame.checkpoint = child.checkpoint.clone();
     frame.node = child.node.clone();
+    frame.admission = ContainerCommitAdmission::ClosureOrObservation;
     store.commit_container_transition(&frame).await.unwrap();
     sqlx::query("update flow_runs set status='failed' where id=$1")
         .bind(source.id)
@@ -383,6 +399,7 @@ async fn native_container_successor_maps_receipts_without_changing_logical_paren
         .unwrap());
     child.flow_run_id = target.id;
     child.rounds[0].status = "running".into();
+    child.admission = initial_admission(&child);
     child.node = Some(ContainerNodeFact::Updated {
         status: NodeRunStatus::Running,
         output_payload: json!({}),
@@ -405,4 +422,13 @@ async fn native_container_successor_maps_receipts_without_changing_logical_paren
         store.load_container_checkpoint(target.id).await.unwrap(),
         Some(child.checkpoint)
     );
+}
+
+fn initial_admission(input: &CommitContainerTransitionInput) -> ContainerCommitAdmission {
+    ContainerCommitAdmission::AdmitWork {
+        effective_deadline: Some(ContainerCommitDeadline {
+            deadline_unix_ms: input.rounds[0].deadline_unix_ms,
+            owner_execution_id: input.rounds[0].container_execution_id,
+        }),
+    }
 }

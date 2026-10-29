@@ -1,5 +1,7 @@
 use super::*;
-use control_plane_contracts::ports::{CommitContainerTransitionInput, ContainerNodeFact};
+use control_plane_contracts::ports::{
+    CommitContainerTransitionInput, ContainerCommitAdmission, ContainerNodeFact,
+};
 
 impl PgControlPlaneStore {
     pub(super) async fn container_native_recovery_started(
@@ -176,30 +178,6 @@ impl PgControlPlaneStore {
                 .bind(Uuid::now_v7()).bind(input.flow_run_id).bind(identity.execution_id).bind(&observation.observation_key)
                 .bind(lossless_json_parameter(&observation.trace_payload)).execute(&mut *tx).await?;
         }
-        // Test deadlines after obtaining the write owner and doing the work;
-        // queued writes cannot turn a result received before expiry into a late
-        // durable success. Failed/cancelled closure must remain writable.
-        let admits_work = matches!(
-            &input.node,
-            Some(ContainerNodeFact::Started { .. })
-                | Some(ContainerNodeFact::Updated {
-                    status: domain::NodeRunStatus::Succeeded,
-                    ..
-                })
-        );
-        if admits_work {
-            let now_ms: i64 = sqlx::query_scalar(
-                "select floor(extract(epoch from clock_timestamp())*1000)::bigint",
-            )
-            .fetch_one(&mut *tx)
-            .await?;
-            if input.rounds.iter().any(|round| {
-                matches!(round.status.as_str(), "running" | "waiting" | "succeeded")
-                    && now_ms >= round.deadline_unix_ms
-            }) {
-                return Err(ControlPlaneError::Conflict("container_deadline_expired").into());
-            }
-        }
         if let Some(owner) = &input.resume_claim_owner {
             let live: bool = sqlx::query_scalar(
                 "select lease_expires_at>clock_timestamp() from flow_run_resume_claims where id=$1",
@@ -215,6 +193,22 @@ impl PgControlPlaneStore {
             .bind(input.flow_run_id).bind(lossless_json_parameter(&input.checkpoint)).bind(identity.execution_id).execute(&mut *tx).await?;
         let row = sqlx::query("select n.id,n.flow_run_id,n.node_id,n.node_type,n.node_alias,n.status,n.started_at,n.finished_at,(select jsonb_build_object('execution_id',e.execution_id,'node_id',e.node_id,'parent_execution_id',e.parent_execution_id,'round_path',e.round_path) from flow_container_executions e where e.node_run_id=n.id) as execution_identity,runtime_original_json(n.input_payload,n.raw_json_payloads,'input_payload') as input_payload,runtime_original_json(n.output_payload,n.raw_json_payloads,'output_payload') as output_payload,runtime_original_json(n.error_payload,n.raw_json_payloads,'error_payload') as error_payload,runtime_original_json(n.metrics_payload,n.raw_json_payloads,'metrics_payload') as metrics_payload,runtime_original_json(n.debug_payload,n.raw_json_payloads,'debug_payload') as debug_payload from node_run_records n join flow_container_executions e on e.node_run_id=n.id where e.flow_run_id=$1 and e.execution_id=$2")
             .bind(input.flow_run_id).bind(identity.execution_id).fetch_optional(&mut *tx).await?;
+        // Serialized admission point: use the DB wall clock after ALL writes,
+        // including the recovery head, while the flow/claim locks remain held.
+        // Closure and observation reconciliation remain valid after expiry.
+        if let ContainerCommitAdmission::AdmitWork {
+            effective_deadline: Some(deadline),
+        } = input.admission
+        {
+            let now_ms: i64 = sqlx::query_scalar(
+                "select floor(extract(epoch from clock_timestamp())*1000)::bigint",
+            )
+            .fetch_one(&mut *tx)
+            .await?;
+            if now_ms >= deadline.deadline_unix_ms {
+                return Err(ControlPlaneError::Conflict("container_deadline_expired").into());
+            }
+        }
         tx.commit().await?;
         row.map(map_node_run_record).transpose()
     }

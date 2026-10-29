@@ -8,10 +8,27 @@ pub struct CommitContainerTransitionInput {
     pub resume_claim_owner: Option<RenewResumeClaimInput>,
     pub execution_identity: domain::NodeExecutionIdentity,
     pub checkpoint: serde_json::Value,
+    pub admission: ContainerCommitAdmission,
     pub node: Option<ContainerNodeFact>,
     pub rounds: Vec<ContainerRoundFact>,
     pub control_failure: Option<ContainerControlFailureFact>,
     pub observation: Option<ContainerObservationInput>,
+}
+
+/// Business owner selects the deadline for this transition, not every round
+/// carried in its recovery projection. Root work outside a round has no deadline.
+#[derive(Debug, Clone, Copy)]
+pub enum ContainerCommitAdmission {
+    AdmitWork {
+        effective_deadline: Option<ContainerCommitDeadline>,
+    },
+    ClosureOrObservation,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ContainerCommitDeadline {
+    pub deadline_unix_ms: i64,
+    pub owner_execution_id: Uuid,
 }
 
 #[derive(Debug, Clone)]
