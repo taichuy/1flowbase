@@ -31,7 +31,7 @@ pub async fn terminate_communication_command_delivery<R: CommunicationCommandRep
     repository
         .terminate_communication_command_delivery(
             delivery,
-            CommunicationCommandReply { text: text.into() },
+            CommunicationCommandReply::from_content(text)?,
             code,
         )
         .await?;

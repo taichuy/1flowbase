@@ -142,5 +142,8 @@ pub(super) fn final_reply(item: &domain::ApplicationRunConversationMessageItem) 
         })
         .map(|segment| segment.text)
         .collect::<String>();
-    (!reply.trim().is_empty()).then_some(reply)
+    // The model has already authored Markdown. Select that explicit content kind so it
+    // remains byte-for-byte intact and does not inherit the command reply size budget.
+    (!reply.trim().is_empty())
+        .then(|| extension_contracts::CommunicationMessageContent::markdown(reply).into_markdown())
 }

@@ -87,7 +87,11 @@ pub use extension_contracts::{
 mod _tests;
 
 mod managed_event;
-pub use extension_contracts::{CommunicationCommandReply, CommunicationCommandRequest};
+pub use extension_contracts::{
+    CommunicationCommandReply, CommunicationCommandReplyContentError, CommunicationCommandRequest,
+    CommunicationMessageBlock, CommunicationMessageContent, CommunicationMessageInline,
+    COMMUNICATION_COMMAND_REPLY_MAX_BYTES,
+};
 pub use extension_contracts::{
     ManagedEventHostFrame, ManagedEventOutcome, ManagedEventPayload, ManagedEventPublication,
     ManagedEventSchema, ManagedEventStatus,
