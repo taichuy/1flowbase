@@ -13,14 +13,18 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 fn main() -> anyhow::Result<()> {
     let arguments = std::env::args().skip(1).collect::<Vec<_>>();
-    if native_distribution::upgrade::handle_cli(&arguments, |values| {
-        let entries = values
-            .iter()
-            .map(|(key, value)| (key.as_str(), value.as_str()))
-            .collect::<Vec<_>>();
-        api_server::config::ApiConfig::from_env_map(&entries)?;
-        Ok(())
-    })? {
+    if native_distribution::upgrade::handle_cli(
+        &arguments,
+        |values| {
+            let entries = values
+                .iter()
+                .map(|(key, value)| (key.as_str(), value.as_str()))
+                .collect::<Vec<_>>();
+            api_server::config::ApiConfig::from_env_map(&entries)?;
+            Ok(())
+        },
+        api_server::network_egress_client::native_release_client,
+    )? {
         return Ok(());
     }
     let check_startup = arguments.first().map(String::as_str) == Some("--check-startup");

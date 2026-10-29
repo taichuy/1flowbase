@@ -458,3 +458,32 @@ impl Drop for NetworkEgressExecutionScope {
 #[cfg(test)]
 #[path = "_tests/exchange_network_egress.rs"]
 mod exchange_network_egress;
+
+/// Host-owned maintenance client: available before the application/database runtime starts.
+/// Its only consumer is native release metadata and archive download from GitHub.
+pub fn native_release_client() -> Result<Client> {
+    Client::builder()
+        .user_agent("1flowbase-native-updater")
+        .https_only(true)
+        .connect_timeout(std::time::Duration::from_secs(20))
+        .timeout(std::time::Duration::from_secs(600))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            let host = attempt.url().host_str().unwrap_or_default();
+            if attempt.previous().len() >= 8
+                || attempt.url().scheme() != "https"
+                || !matches!(
+                    host,
+                    "github.com"
+                        | "api.github.com"
+                        | "release-assets.githubusercontent.com"
+                        | "objects.githubusercontent.com"
+                )
+            {
+                attempt.error("Unexpected native release redirect")
+            } else {
+                attempt.follow()
+            }
+        }))
+        .build()
+        .context("Cannot construct native release download client")
+}
