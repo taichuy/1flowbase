@@ -6,6 +6,9 @@ on:
       - latest
     paths:
       - ".github/workflows/container-images.yml"
+      - ".github/workflows/native-build.yml"
+      - "scripts/node/native-release/**"
+      - "VERSION"
       - "docker/api-server.Dockerfile"
       - "docker/web.Dockerfile"
       - "api/Cargo.lock"
@@ -46,7 +49,8 @@ env:
 
 concurrency:
   group: container-images-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.component || github.ref }}
-  cancel-in-progress: true
+  # Finish the active release instead of cancelling native validation or uploads on the next push.
+  cancel-in-progress: false
 
 jobs:
   select-web:
@@ -153,8 +157,41 @@ jobs:
             echo "old_tag=$old_tag"
           } >> "$GITHUB_OUTPUT"
 
+  select-release:
+    needs: [select-web, select-api-server]
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.release.outputs.enabled }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.22.1'
+      - name: Verify release orchestration
+        run: node --test scripts/node/native-release/_tests/plan.test.js scripts/node/native-release/_tests/release.test.js
+      - id: release
+        name: Select the shared Docker and native version
+        env:
+          RELEASE_EVENT: ${{ github.event_name }}
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_WEB_ENABLED: ${{ needs.select-web.outputs.enabled }}
+          RELEASE_API_ENABLED: ${{ needs.select-api-server.outputs.enabled }}
+          RELEASE_WEB_TAG: ${{ needs.select-web.outputs.image_tag }}
+          RELEASE_API_TAG: ${{ needs.select-api-server.outputs.image_tag }}
+        run: node scripts/node/native-release/plan.js
+
+  build-native:
+    needs: select-release
+    if: needs.select-release.outputs.enabled == 'true'
+    uses: ./.github/workflows/native-build.yml
+    with:
+      target: all
+      release_tag: ${{ needs.select-release.outputs.tag }}
+
   build-web-dist:
     needs:
+      - select-release
       - select-web
     if: needs.select-web.outputs.enabled == 'true'
     permissions:
@@ -359,6 +396,7 @@ jobs:
 
   build-api-server-binary:
     needs:
+      - select-release
       - select-api-server
     if: needs.select-api-server.outputs.enabled == 'true'
     permissions:
@@ -703,78 +741,40 @@ jobs:
             "${{ steps.image_refs.outputs.scan_image_ref }}"
 
   publish-release:
-    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/latest' && needs.select-web.result == 'success' && needs.select-api-server.result == 'success' && (needs.publish-web.result == 'success' || needs.publish-web.result == 'skipped') && (needs.publish-api-server.result == 'success' || needs.publish-api-server.result == 'skipped') }}
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/latest' && needs.select-release.result == 'success' && needs.select-release.outputs.enabled == 'true' && needs.build-native.result == 'success' && (needs.publish-web.result == 'success' || (needs.select-web.outputs.enabled != 'true' && needs.publish-web.result == 'skipped')) && (needs.publish-api-server.result == 'success' || (needs.select-api-server.outputs.enabled != 'true' && needs.publish-api-server.result == 'skipped')) }}
     needs:
       - select-web
       - select-api-server
+      - select-release
       - publish-web
       - publish-api-server
+      - build-native
     runs-on: ubuntu-latest
+    concurrency:
+      group: release-${{ github.repository }}-${{ needs.select-release.outputs.tag }}
+      cancel-in-progress: false
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          fetch-depth: 0
-
-      - name: Publish GitHub release for latest API version
+          node-version: '24.22.1'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 1flowbase-*
+          merge-multiple: true
+          path: native-assets
+      - name: Publish Docker and native assets in one official Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.select-api-server.outputs.image_tag }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG already exists."
-            exit 0
-          fi
-
-          short_sha="${GITHUB_SHA::7}"
-          commit_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
-          workflow_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
-          cat > release-notes.md <<EOF
-          ## Installation or Upgrade
-
-          Linux/macOS:
-
-          \`\`\`bash
-          curl -fsSL https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/shell/docker-deploy.sh | sh
-          \`\`\`
-
-          Windows PowerShell:
-
-          \`\`\`powershell
-          irm https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/powershell/docker-deploy.ps1 | iex
-          \`\`\`
-
-          Windows CMD:
-
-          \`\`\`cmd
-          powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/powershell/docker-deploy.ps1 | iex"
-          \`\`\`
-
-          ## Docker Images
-
-          - \`ghcr.io/${{ github.repository_owner }}/1flowbase-web:$RELEASE_TAG\`
-          - \`ghcr.io/${{ github.repository_owner }}/1flowbase-api-server:$RELEASE_TAG\`
-          - \`ghcr.io/${{ github.repository_owner }}/1flowbase-*:latest\`
-
-          ## Traceability
-
-          - Target commit: [\`$short_sha\`]($commit_url)
-          - Workflow run: [container images #${GITHUB_RUN_ID}]($workflow_url)
-          - Source branch: \`latest\`
-
-          Pull requests, linked issues, commits, and contributors are generated below by GitHub when available.
-          EOF
-
-          gh release create "$RELEASE_TAG" \
-            --target "${{ github.sha }}" \
-            --title "$RELEASE_TAG" \
-            --notes-file release-notes.md \
-            --generate-notes
+          GH_REPO: ${{ github.repository }}
+          NATIVE_TAG: ${{ needs.select-release.outputs.tag }}
+          NATIVE_SHA: ${{ github.sha }}
+          NATIVE_PUBLISH: 'true'
+          NATIVE_RELEASE_KIND: combined
+        run: node scripts/node/native-release/release.js
 
   report:
     if: ${{ always() }}
