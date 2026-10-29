@@ -112,7 +112,7 @@ async fn communication_command_markdown_reaches_the_real_host_supplier_boundary_
         ).bind(input).fetch_all(fixture.state.store.pool()).await.unwrap();
             assert_eq!(history, vec![expected.to_string()]);
             let logs = service
-                .list_logs(
+                .logs(
                     &fixture.actor,
                     NotificationLogListInput {
                         instance_id: Some(key.1),
