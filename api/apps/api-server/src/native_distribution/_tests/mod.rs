@@ -1,4 +1,4 @@
-use super::{settings::Settings, static_web};
+use super::static_web;
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -120,52 +120,6 @@ async fn symlinks_cannot_expose_secrets_outside_web() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
-#[test]
-fn secrets_persist_and_missing_or_corrupt_configuration_is_not_replaced() {
-    let directory = Directory::new();
-    let first = Settings::load_or_create(&directory.0).unwrap();
-    let original = fs::read(directory.0.join("settings.json")).unwrap();
-    let second = Settings::load_or_create(&directory.0).unwrap();
-    assert_eq!(first.postgres_password, second.postgres_password);
-    assert_eq!(
-        first.provider_secret_master_key,
-        second.provider_secret_master_key
-    );
-    assert_ne!(first.postgres_password, first.root_password);
-    assert_eq!(first.root_password, "root@1flowbase123");
-    assert_eq!(second.root_password, first.root_password);
-    assert_eq!(
-        super::settings::bootstrap_default("BOOTSTRAP_ROOT_ACCOUNT").unwrap(),
-        "root"
-    );
-    assert_eq!(
-        super::settings::bootstrap_default("BOOTSTRAP_ROOT_EMAIL").unwrap(),
-        "root@1flowbase.com"
-    );
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        assert_eq!(
-            fs::metadata(directory.0.join("settings.json"))
-                .unwrap()
-                .permissions()
-                .mode()
-                & 0o777,
-            0o600
-        );
-    }
-    fs::write(directory.0.join("settings.json"), "broken").unwrap();
-    assert!(Settings::load_or_create(&directory.0).is_err());
-    assert_eq!(
-        fs::read_to_string(directory.0.join("settings.json")).unwrap(),
-        "broken"
-    );
-    fs::remove_file(directory.0.join("settings.json")).unwrap();
-    fs::create_dir(directory.0.join("postgres")).unwrap();
-    assert!(Settings::load_or_create(&directory.0).is_err());
-    assert!(!original.is_empty());
-}
-
 #[tokio::test]
 async fn preserves_canonical_dispatch_fallback_and_backend_error_body() {
     let directory = Directory::new();
@@ -230,7 +184,7 @@ fn bundled_postgres_uses_tcp_only() {
     let directory = Directory::new();
     let data = directory.0.join("database with spaces");
     private_dir(&data).unwrap();
-    let settings = Settings::load_or_create(&data).unwrap();
+    let postgres_password = uuid::Uuid::now_v7().to_string();
     let reservation = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = reservation.local_addr().unwrap().port();
     drop(reservation);
@@ -241,7 +195,7 @@ fn bundled_postgres_uses_tcp_only() {
         let mut postgres = Postgres::new(&root, &data);
         postgres.validate().unwrap();
         postgres
-            .start(port, &settings.postgres_password)
+            .start(port, &postgres_password)
             .unwrap_or_else(|error| {
                 panic!(
                     "{error:#}\n{}",
@@ -251,7 +205,7 @@ fn bundled_postgres_uses_tcp_only() {
         let result = Command::new(root.join("bin").join(format!("psql{}", std::env::consts::EXE_SUFFIX)))
             .args(["-X", "-w", "-h", "127.0.0.1", "-p", &port.to_string(), "-U", "postgres", "-d", "1flowbase", "-Atc"])
             .arg(format!("SELECT current_setting('unix_socket_directories') = '', current_setting('listen_addresses') = '127.0.0.1', current_setting('port') = '{port}'"))
-            .env("PGPASSWORD", &settings.postgres_password)
+            .env("PGPASSWORD", &postgres_password)
             .env_remove("PGSERVICE")
             .env_remove("PGOPTIONS")
             .output().unwrap();

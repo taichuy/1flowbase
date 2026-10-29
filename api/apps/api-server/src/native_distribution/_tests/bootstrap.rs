@@ -1,5 +1,9 @@
 use super::*;
-use crate::native_distribution::{postgres::Postgres, settings::private_dir};
+use crate::native_distribution::{
+    env_file,
+    postgres::Postgres,
+    settings::{private_dir, Settings},
+};
 use argon2::{
     password_hash::{phc::PasswordHash, PasswordVerifier},
     Argon2,
@@ -16,8 +20,7 @@ fn packaged_application_bootstraps_and_reopens() {
         std::env::var_os("FLOWBASE_TEST_PACKAGE_ROOT")
             .expect("FLOWBASE_TEST_PACKAGE_ROOT must point to the staged distribution"),
     );
-    std::env::remove_var("FLOWBASE_DATA_DIR");
-    let data = crate::native_distribution::paths::data_root(&root).unwrap();
+    let data = root.join("data");
     assert_eq!(data, root.join("data"));
     assert!(
         !data.exists(),
@@ -25,13 +28,33 @@ fn packaged_application_bootstraps_and_reopens() {
     );
     let _directory = Directory(data.clone());
     private_dir(&data).unwrap();
-    let settings = Settings::load_or_create(&data).unwrap();
     let http = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let pg = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let http_port = http.local_addr().unwrap().port();
     let pg_port = pg.local_addr().unwrap().port();
     drop((http, pg));
-    settings.apply(&root, &data, http_port, pg_port).unwrap();
+    let mut overrides = env_file::Values::new();
+    overrides.insert("API_SERVER_ADDR".into(), format!("127.0.0.1:{http_port}"));
+    overrides.insert(
+        "API_DATABASE_URL".into(),
+        format!("postgres://postgres:__GENERATE__@127.0.0.1:{pg_port}/1flowbase"),
+    );
+    overrides.insert("FLOWBASE_OPEN_BROWSER".into(), "false".into());
+    overrides.insert(
+        "BOOTSTRAP_ROOT_ACCOUNT".into(),
+        "native-config-probe".into(),
+    );
+    overrides.insert(
+        "BOOTSTRAP_ROOT_EMAIL".into(),
+        "native-config-probe@example.com".into(),
+    );
+    overrides.insert(
+        "BOOTSTRAP_ROOT_PASSWORD".into(),
+        "Native-env-probe123".into(),
+    );
+    env_file::persist_generated(&root, &overrides).unwrap();
+    let settings = Settings::load(&root).unwrap();
+    settings.apply(&root).unwrap();
     let previous_directory = std::env::current_dir().unwrap();
     std::env::set_current_dir(&data).unwrap();
 
@@ -59,13 +82,16 @@ fn packaged_application_bootstraps_and_reopens() {
                     .unwrap();
                 let store = storage_durable_postgres::PgControlPlaneStore::new(pool.clone());
                 let user = store
-                    .find_user_for_password_login(domain::PASSWORD_LOCAL_CONNECTION_ID, "root")
+                    .find_user_for_password_login(
+                        domain::PASSWORD_LOCAL_CONNECTION_ID,
+                        "native-config-probe",
+                    )
                     .await
                     .unwrap()
                     .expect("default root login identity must exist");
                 let hash = PasswordHash::new(&user.password_hash).unwrap();
                 assert!(Argon2::default()
-                    .verify_password(b"root@1flowbase123", &hash)
+                    .verify_password(b"Native-env-probe123", &hash)
                     .is_ok());
                 assert!(Argon2::default()
                     .verify_password(b"wrong-password", &hash)

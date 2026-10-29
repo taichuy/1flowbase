@@ -1,76 +1,93 @@
-# 1flowbase native portable distribution (experimental)
+# 1flowbase native portable distribution
 
-The Rust backend serves both the web UI and API and manages bundled PostgreSQL 18. Users do not need to install Docker, Nginx, Node.js or PostgreSQL. Third-party plugins still require artifacts for the target platform.
+The package includes the Rust API/static-web host, PostgreSQL 18 and offline maintenance tools. Running or upgrading it requires no Docker, Nginx, Node.js or Python installation.
 
-## Run
+## First launch and configuration
 
-Extract the archive. On Windows, double-click `1flowbase.exe`. On Linux/macOS, run `./start.sh` as a regular user, without sudo. The browser opens `http://127.0.0.1:7800`; open this URL manually on a headless system. Keep the terminal open and press Ctrl+C to stop. This experimental version does not install a system service; closing the window or forcibly terminating the process is not a substitute for a graceful stop.
+Download the archive for your OS/architecture from GitHub Releases and extract it once into a writable directory. On Windows, launch `1flowbase.exe`; on Linux/macOS, run `./start.sh` as a regular user. The default browser opens `http://127.0.0.1:7800`. Keep the terminal open; use Ctrl+C and wait for PostgreSQL to stop normally.
 
-PostgreSQL listens only on `127.0.0.1:35432`. An occupied port causes an error; the launcher never adopts or stops another database. Platforms such as Windows ARM64 need matching PostgreSQL and plugin artifacts; an archive name does not certify platform support.
-
-First initialization uses the defaults from `docker/.env.example` embedded at build time: account `root`, password `root@1flowbase123`, and email `root@1flowbase.com`. The initial password is also stored in the `root_password` field of `data/settings.json` beside the executable. The database password and credential encryption key remain independently randomized; keep the full configuration file private. These defaults create the initial account; restarting does not reset an existing account password.
-
-## Persistent data
-
-All platforms default to **`data/` beside the executable**, regardless of the working directory used to launch it. Extract the package to a writable directory; there is no automatic fallback to a user profile directory.
+The root `.env` is the runtime configuration. It is generated from `api/apps/api-server/.env.example` with native production-mode, localhost and resource-path adjustments. Defaults are account `root` and initial password `root@1flowbase123`; edit `BOOTSTRAP_ROOT_*` before first launch if desired. Restarting does not reset existing accounts.
 
 ```text
 1flowbase-windows-x64/
 ├── 1flowbase.exe
-├── postgres/             # Bundled database binaries
-└── data/                 # Created on first launch; preserve during upgrades
-    ├── settings.json     # root_password, database password, encryption key
-    ├── postgres/         # Database cluster
+├── .env                      # User configuration, preserved during upgrades
+├── .env.example              # This release's defaults, for comparison
+├── upgrade.cmd               # Windows upgrade/restore entry point
+├── native-distribution.json  # Version, platform, PG major and file checksums
+├── api/  web/  postgres/     # Managed program files and resources
+└── data/                     # Created on first launch; preserved during upgrades
+    ├── postgres/
     ├── postgres.log
-    ├── api/              # Business files, installed plugins, etc.
+    ├── api/                  # Business files and installed plugins
     └── backups/
 ```
 
-Linux/macOS use the executable name `1flowbase` with the same data layout. Distribution archives never include existing `data/` or user passwords.
+Linux/macOS use `1flowbase`, `upgrade.sh` and `start.sh`. Archive names contain the product, OS and architecture; version and checksum information belongs to the Release/manifest.
 
-| Environment variable | Default | Purpose |
-| --- | --- | --- |
-| `FLOWBASE_DATA_DIR` | `<executable-directory>/data` | Explicit alternative data location; relative values resolve against the launch working directory |
-| `FLOWBASE_PORT` | `7800` | Local web/API port |
-| `FLOWBASE_POSTGRES_PORT` | `35432` | Private database port |
-| `FLOWBASE_OPEN_BROWSER` | Enabled | Set to `false` to disable browser opening |
+Configuration rules:
 
-Example on Linux/macOS: `FLOWBASE_PORT=17800 FLOWBASE_POSTGRES_PORT=45432 ./start.sh`. On Windows PowerShell, set `$env:FLOWBASE_PORT='17800'`, then run `.\1flowbase.exe`.
+- The launcher reads `.env` beside its executable regardless of the terminal's working directory. Relative paths use that same base.
+- Entries in `.env` override inherited environment variables with the same names. The launcher no longer reads `settings.json` or embedded Docker defaults.
+- Use UTF-8. Supported syntax includes `KEY=value`, single-quoted literals, JSON-style double-quoted escapes, and comments. There is no shell execution or variable expansion. Duplicate keys and malformed values are errors.
+- `__GENERATE__` placeholders for the database password and encryption key are generated once and saved back to `.env`. Preserve this file with the complete data directory. Secrets are never regenerated for an existing cluster.
+- Restart after editing configuration. A database password must match the existing PostgreSQL credential; retain the encryption key used by your data.
 
-Only one instance may use a data directory. Do not delete `settings.json` or copy/move live database files. Before upgrading, stop normally and create a restorable backup, then extract the new program archive while preserving the complete `data/` directory and configuration. When upgrading into another program directory, copy the complete `data/` there before launching. Automatic PostgreSQL major upgrades are not supported; schema migrations may prevent running an older application binary against the updated database. After an abnormal exit, if PostgreSQL is still running, verify the instance and stop it with the bundled `postgres/bin/pg_ctl -D <data-directory>/postgres stop -m fast -w` before restarting. Do not remove PID files manually.
+| Setting | Native default / purpose |
+| --- | --- |
+| `API_SERVER_ADDR` | `127.0.0.1:7800`, web/API address |
+| `API_DATABASE_URL` | Authoritative private PG connection settings; port `35432` |
+| `API_AUTH_PUBLIC_ORIGIN` / `API_ALLOWED_ORIGINS` | Default to the 7800 origin; update together with your access address |
+| `FLOWBASE_DATA_DIR` | `data`, database and instance data |
+| `API_BUSINESS_FILE_LOCAL_ROOT` and other storage paths | Under `data/` by default; update dependent paths when relocating data |
+| `FLOWBASE_OPEN_BROWSER` | `true`; set `false` to disable automatic browser opening |
 
-## Migrating from earlier experimental packages
+This entry point manages the local `postgres` user and `1flowbase` database only. It does not adopt external databases or stop other instances. Port conflicts are reported explicitly.
 
-Earlier defaults were `%LOCALAPPDATA%\1flowbase` on Windows, `${XDG_DATA_HOME:-$HOME/.local/share}/1flowbase` on Linux, and `~/Library/Application Support/1flowbase` on macOS.
+## Offline upgrade
 
-If the new local data directory has no configuration or database but the old location does, startup stops with both paths. It does not create an empty replacement database or move files automatically.
+This layout establishes the supported upgrade baseline. Earlier experimental packages without a root `.env` or versioned manifest are not supported upgrade sources; no experimental password/directory migration is included.
 
-1. Stop the old application normally with Ctrl+C and confirm its PostgreSQL instance has stopped.
-2. Copy the **entire contents** of the old directory into `data/` beside the new executable, including `settings.json`, `postgres/`, business files and plugins. Do not copy only the password file or merge two existing databases.
-3. Launch the new package and confirm the original account and data work before deciding what to do with the retained old backup.
+1. Stop the old application normally with Ctrl+C and wait for PostgreSQL to stop.
+2. Extract the new archive **outside** the existing installation. Do not overwrite it manually.
+3. Run the upgrade entry point from the new package and select the existing installation. Double-clicking `upgrade.cmd` prompts for the directory, or use:
 
-To intentionally keep using the old location, set `FLOWBASE_DATA_DIR` explicitly. Existing local data takes precedence; the launcher never merges or overwrites the old directory.
-
-## Build and validation scope
-
-Build `api-server` and `system_recovery` for each platform, build the web assets, and supply a complete relocatable PostgreSQL 18 distribution for that platform, including libraries, share files, licenses and the postgres, pg_ctl, initdb, psql, createdb, pg_dump and pg_restore tools. Node.js is needed only on the build machine.
-
-```sh
-cargo build --manifest-path api/Cargo.toml --release -p api-server --bin api-server --bin system_recovery
-pnpm --dir web build
-node scripts/node/native-release/resources.js tmp/native-resources
-node scripts/node/native-release/fetch-postgres.js linux-x64 tmp/native-postgres
-# Use the PostgreSQL directory printed by the command above.
-node scripts/node/native-release/package.js \
-  --platform linux --arch x64 \
-  --api-binary api/target/release/api-server \
-  --recovery-binary api/target/release/system_recovery \
-  --web-dir web/app/dist --postgres-dir /path/to/postgresql \
-  --resources-dir tmp/native-resources --out tmp/native-release
+```powershell
+.\upgrade.cmd "E:\Apps\1flowbase"
 ```
 
-Platforms: `linux`, `macos`, `windows`. Architectures: `x64`, `arm64`. Example archive: `1flowbase-windows-x64.zip`. Version information belongs in the Release and `native-distribution.json`, never a hash suffix in the filename. Existing staging directories and archives are not overwritten.
+Linux/macOS:
 
-Production releases should bundle existing model-pricing and application-template resources using `--resources-dir`, preserve PostgreSQL and bundled library license notices, and validate dependencies, functionality, backup/restore and signing/notarization on clean target systems. This experiment does not certify every plugin on all platforms and does not include automatic updates or system services.
+```sh
+./upgrade.sh /path/to/existing/1flowbase
+```
 
-On Windows, network-egress plugin cleanup currently terminates the direct child and reports descendant-tree cleanup as unverified. Do not rely on this capability for guaranteed descendant cleanup until Windows Job Object support is implemented.
+The updater verifies checksums, OS/architecture, versions, PG major, configuration, free space and stopped processes. It creates a complete cold snapshot, replaces managed program files, preserves `.env` and user data, then runs application initialization, migrations, health checks and shutdown validation. Validation does not expose business HTTP traffic or open a browser. After success, start the application normally from the **original installation directory**.
+
+Snapshots are stored next to that directory in `.<directory-name>-upgrade-backups/<backup-id>/`, containing the old program, `.env`, complete data, checksummed receipt and validation log. They are never deleted automatically. `.env.example` is updated; user `.env` is never merged or overwritten. Missing required configuration is reported before replacement so you can compare and amend it.
+
+Only upgrades on the same OS, architecture and PostgreSQL major version are supported. PG major upgrades require a separate migration. Data must be in `data/` or a separate external directory; business-file, plugin and backup paths must all reside within the configured data directory. Symlinks and external tablespaces are outside this cold-snapshot contract and cause a refusal.
+
+## Failure and restoration
+
+Validation or snapshot failure before replacement leaves the existing program and data unchanged. Once replacement begins, `.upgrade-state.json` records the snapshot and phase. Failure or interruption blocks normal launch and retains recovery information.
+
+After confirming all related processes and PostgreSQL have stopped, run the explicit restore command from the **new package**:
+
+```powershell
+.\upgrade.cmd --restore "E:\Apps\1flowbase" "E:\Apps\.1flowbase-upgrade-backups\backup-id"
+```
+
+```sh
+./upgrade.sh --restore /path/to/existing/1flowbase /path/to/.1flowbase-upgrade-backups/backup-id
+```
+
+Restore verifies snapshot ownership and checksums, then restores the matching **program, configuration and complete data**. Repeat the same command to resume an interrupted restore. It discards changes made after the snapshot; replacing only the executable is not a valid rollback after database migrations. Corrupt backups, mismatched targets and active processes are rejected before restoration.
+
+See `startup-validation.log` inside the snapshot directory. Do not delete PostgreSQL's `postmaster.pid`. If an abnormal exit leaves the owned PG instance running, verify it and stop it with the bundled `postgres/bin/pg_ctl -D <data-directory>/postgres stop -m fast -w`.
+
+## Build and evidence boundaries
+
+The `Native portable distribution` workflow builds all native artifacts and exercises configuration/upgrade negative cases, real PostgreSQL lifecycle and real-package upgrade/restoration. With `release_tag` and target `all`, single-layer archives are uploaded to GitHub Releases only after every platform succeeds.
+
+`system_recovery` remains the system-backup recovery utility; it is not this program updater. Plugin platform availability, signing/notarization, system services and online automatic updates are outside this offline-upgrade feature. Windows network-egress descendant-process cleanup retains its existing support boundary.
