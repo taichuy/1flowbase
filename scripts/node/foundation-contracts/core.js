@@ -37,6 +37,7 @@ const FOUNDATION_DEFINITIONS = {
         || /^api\/crates\/control-plane\/src\/(?:application_public_api|client_trajectory)(?:\/|\.rs$)/u.test(filePath)
         || /^api\/crates\/control-plane\/src\/orchestration_runtime\/provider_invoker(?:\/|\.rs$)/u.test(filePath)
         || /^api\/crates\/control-plane\/src\/(?:_tests\/)?orchestration_runtime\/(?:runtime_event_persister|callback_completion)(?:\/.*\.rs|\.rs)$/u.test(filePath)
+        || /^api\/crates\/control-plane\/src\/orchestration_runtime\/persistence\/(?:runtime_event_persister|stream_terminal_recovery)\.rs$/u.test(filePath)
         || /^api\/crates\/orchestration-runtime\/src\/transport_session\/.*\.rs$/u.test(filePath)
         || /^\.github\/workflows\/ai-gateway-concurrency\.yml$/u.test(filePath);
     },
