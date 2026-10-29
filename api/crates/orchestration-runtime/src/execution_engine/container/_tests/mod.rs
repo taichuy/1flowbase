@@ -87,6 +87,7 @@ struct Ledger {
     latest: Mutex<Option<ContainerCheckpoint>>,
     started: Mutex<Vec<ScopedExecutionIdentity>>,
     completed: Mutex<Vec<ScopedExecutionIdentity>>,
+    control_failures: Mutex<Vec<ContainerControlFailure>>,
     fail_after: Mutex<Option<ContainerTransitionKind>>,
     fail_node: Mutex<Option<String>>,
 }
@@ -117,6 +118,12 @@ impl ExecutionLifecycle for Ledger {
                 .lock()
                 .unwrap()
                 .push(transition.identity.clone());
+        }
+        if transition.kind == ContainerTransitionKind::ControlFailed {
+            self.control_failures
+                .lock()
+                .unwrap()
+                .push(serde_json::from_value(transition.detail.unwrap().clone()).unwrap());
         }
         let mut failure = self.fail_after.lock().unwrap();
         if failure.as_ref() == Some(&transition.kind)
@@ -529,3 +536,5 @@ mod reference;
 mod root;
 
 mod communication;
+
+mod control;

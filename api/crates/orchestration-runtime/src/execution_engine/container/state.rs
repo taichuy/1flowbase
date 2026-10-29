@@ -48,6 +48,16 @@ pub struct ContainerFrame {
     pub results: BTreeMap<u64, Value>,
     pub closed: bool,
     pub global_failure: Option<Value>,
+    #[serde(default)]
+    pub final_condition_checked: bool,
+    #[serde(default)]
+    pub control_failures: Vec<ContainerControlFailure>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContainerControlFailure {
+    pub after_round_index: u64,
+    pub error_payload: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -111,6 +121,7 @@ pub enum ContainerTransitionKind {
     ScopeSuspended,
     RoundCommitted,
     FrameClosed,
+    ControlFailed,
     Resumed,
     InternalToolStarted,
     InternalToolFinished,
