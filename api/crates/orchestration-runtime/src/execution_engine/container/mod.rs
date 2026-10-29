@@ -10,8 +10,10 @@ pub use recovery::{
     recover_container_with_runtime_context_and_lifecycle,
     resume_scoped_container_with_runtime_context_and_lifecycle,
 };
-pub(crate) use runtime::*;
 pub use runtime::scoped_execution_identity;
+pub(crate) use runtime::*;
+mod root;
+pub(crate) use root::*;
 mod condition;
 use condition::strict_condition;
 #[cfg(test)]

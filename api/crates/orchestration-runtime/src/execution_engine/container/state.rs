@@ -29,6 +29,10 @@ pub struct ContainerCheckpoint {
     pub root_next_node_index: usize,
     pub root_variable_pool: Map<String, Value>,
     pub root_active_node_ids: Vec<String>,
+    #[serde(default)]
+    pub root_nodes: BTreeMap<String, ScopedNodeState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_waiting: Option<ContainerWait>,
     pub frames: BTreeMap<Uuid, ContainerFrame>,
     pub execution_budget: usize,
 }

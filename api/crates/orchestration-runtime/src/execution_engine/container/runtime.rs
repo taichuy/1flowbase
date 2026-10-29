@@ -78,6 +78,14 @@ impl Session {
             bail!("invalid container checkpoint version or execution budget");
         }
         let mut recovered_nodes = BTreeSet::new();
+        if recovering {
+            recovered_nodes.extend(
+                state
+                    .root_nodes
+                    .values()
+                    .map(|node| node.identity.execution_id),
+            );
+        }
         for frame in state.frames.values() {
             if frame.started_rounds > frame.frozen_limit
                 || frame.rounds.len() as u64 > frame.started_rounds
@@ -292,36 +300,15 @@ impl ExecutionLifecycle for ScopedLifecycle<'_> {
     }
 
     async fn complete_node(&self, trace: &NodeExecutionTrace) -> Result<()> {
-        let mut state = self.scope.session.state.lock().await;
-        let round = &state.frames[&self.scope.frame_id].rounds[&self.scope.round_index];
-        if self.scope.expired() {
-            return Err(DeadlineExpired(round.deadline_owner_execution_id).into());
-        }
-        let node = state
-            .frames
-            .get_mut(&self.scope.frame_id)
-            .and_then(|frame| frame.rounds.get_mut(&self.scope.round_index))
-            .and_then(|round| round.nodes.get_mut(&trace.node_id))
-            .ok_or_else(|| anyhow!("scoped terminal without start"))?;
-        if node.terminal_trace.is_some() {
-            return Ok(());
-        }
-        let identity = node.identity.clone();
-        let mut trace = trace.clone();
-        trace.execution_identity = Some(identity.clone());
-        node.terminal_trace = Some(trace.clone());
-        emit(
-            self.owner,
-            &state,
-            ContainerTransitionKind::NodeCompleted,
-            &identity,
-            None,
-            Some(&trace),
-            None,
-        )
-        .await
+        self.commit_trace(trace, None).await
     }
-
+    async fn complete_node_with_state(
+        &self,
+        trace: &NodeExecutionTrace,
+        pool: &Map<String, Value>,
+    ) -> Result<()> {
+        self.commit_trace(trace, Some(pool)).await
+    }
     async fn scoped_node_receipt(
         &self,
         identity: &ScopedExecutionIdentity,
@@ -337,6 +324,11 @@ impl ExecutionLifecycle for ScopedLifecycle<'_> {
 
     async fn activate_retained_communication_node(&self, node: &CompiledNode) -> Result<()> {
         let identity = self.identity(&node.node_id).await?;
+        *self
+            .scope
+            .current_identity
+            .lock()
+            .map_err(|_| anyhow!("execution identity lock poisoned"))? = Some(identity.clone());
         let state = self.scope.session.state.lock().await;
         emit(
             self.owner,
@@ -401,11 +393,59 @@ pub(crate) fn unix_ms() -> i64 {
         .unwrap_or(i64::MAX)
 }
 
+impl ScopedLifecycle<'_> {
+    async fn commit_trace(
+        &self,
+        trace: &NodeExecutionTrace,
+        variable_pool: Option<&Map<String, Value>>,
+    ) -> Result<()> {
+        let mut state = self.scope.session.state.lock().await;
+        let round = &state.frames[&self.scope.frame_id].rounds[&self.scope.round_index];
+        if self.scope.expired() {
+            return Err(DeadlineExpired(round.deadline_owner_execution_id).into());
+        }
+        if let Some(pool) = variable_pool {
+            state
+                .frames
+                .get_mut(&self.scope.frame_id)
+                .expect("scope frame")
+                .rounds
+                .get_mut(&self.scope.round_index)
+                .expect("scope round")
+                .variable_pool
+                .clone_from(pool);
+        }
+        let node = state
+            .frames
+            .get_mut(&self.scope.frame_id)
+            .and_then(|frame| frame.rounds.get_mut(&self.scope.round_index))
+            .and_then(|round| round.nodes.get_mut(&trace.node_id))
+            .ok_or_else(|| anyhow!("scoped terminal without start"))?;
+        if node.terminal_trace.is_some() {
+            return Ok(());
+        }
+        let identity = node.identity.clone();
+        let mut trace = trace.clone();
+        trace.execution_identity = Some(identity.clone());
+        node.terminal_trace = Some(trace.clone());
+        emit(
+            self.owner,
+            &state,
+            ContainerTransitionKind::NodeCompleted,
+            &identity,
+            None,
+            Some(&trace),
+            None,
+        )
+        .await
+    }
+}
+
 pub(crate) type CurrentIdentity = Arc<std::sync::Mutex<Option<ScopedExecutionIdentity>>>;
 tokio::task_local! { pub(crate) static CURRENT_EXECUTION: CurrentIdentity; }
 
-/// Logical identity of the currently polled node. Invokers must capture it before
-/// spawning tasks; Tokio deliberately does not inherit task locals into spawn.
+/// Invokers use this logical identity to resolve the durable node receipt.
+/// Each independently polled round has its own slot; no run-global active node.
 pub fn scoped_execution_identity() -> Option<ScopedExecutionIdentity> {
     CURRENT_EXECUTION
         .try_with(|slot| slot.lock().ok().and_then(|identity| identity.clone()))

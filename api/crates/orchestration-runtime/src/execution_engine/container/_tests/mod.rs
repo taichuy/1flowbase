@@ -87,6 +87,7 @@ struct Ledger {
     latest: Mutex<Option<ContainerCheckpoint>>,
     started: Mutex<Vec<ScopedExecutionIdentity>>,
     fail_after: Mutex<Option<ContainerTransitionKind>>,
+    fail_node: Mutex<Option<String>>,
 }
 #[async_trait]
 impl ExecutionLifecycle for Ledger {
@@ -105,7 +106,14 @@ impl ExecutionLifecycle for Ledger {
                 .push(transition.identity.clone());
         }
         let mut failure = self.fail_after.lock().unwrap();
-        if failure.as_ref() == Some(&transition.kind) {
+        if failure.as_ref() == Some(&transition.kind)
+            && self
+                .fail_node
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_none_or(|node_id| node_id == &transition.identity.node_id)
+        {
             *failure = None;
             bail!("simulated crash after durable commit");
         }
@@ -504,3 +512,5 @@ async fn expired_wait_is_failed_before_callback_payload_is_admitted() {
     assert_eq!(done.stop_reason, ExecutionStopReason::Completed);
 }
 mod reference;
+
+mod root;

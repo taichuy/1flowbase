@@ -74,11 +74,21 @@ where
             }
         }
 
-        if let Some(scope) = scope {
-            scope
-                .advance(index, &variable_pool, &active_node_ids, lifecycle)
-                .await?;
-            if let Some(trace) = scope.cached_trace(node_id).await {
+        if scope.is_some() || session.is_some() {
+            let cached = if let Some(scope) = scope {
+                scope
+                    .advance(index, &variable_pool, &active_node_ids, lifecycle)
+                    .await?;
+                scope.cached_trace(node_id).await
+            } else if let Some(session) = session {
+                session
+                    .advance_root(index, &variable_pool, &active_node_ids, lifecycle)
+                    .await?;
+                session.cached_root_trace(node_id).await
+            } else {
+                None
+            };
+            if let Some(trace) = cached {
                 let selected = trace
                     .debug_payload
                     .get("selected_source_handle")
@@ -107,10 +117,15 @@ where
                         });
                     }
                 } else {
-                    variable_pool.insert(
-                        node_id.clone(),
-                        project_node_variable_payload(node, &trace.output_payload)?,
-                    );
+                    if !matches!(
+                        node.node_type.as_str(),
+                        "start" | "workflow_start" | "container_start" | "if_else"
+                    ) {
+                        variable_pool.insert(
+                            node_id.clone(),
+                            project_node_variable_payload(node, &trace.output_payload)?,
+                        );
+                    }
                     activate_indexed_downstream_nodes(
                         &edge_index,
                         &mut active_node_ids,
@@ -121,9 +136,14 @@ where
                 }
                 continue;
             }
-            if scope.uncertain(node_id).await
-                && !crate::container_contract::is_container_type(&node.node_type)
-            {
+            let uncertain = if let Some(scope) = scope {
+                scope.uncertain(node_id).await
+            } else if let Some(session) = session {
+                session.uncertain_root(node_id).await
+            } else {
+                false
+            };
+            if uncertain && !crate::container_contract::is_container_type(&node.node_type) {
                 let error_payload = json!({"error_code": "container_execution_outcome_uncertain", "message": "The previous attempt started without a durable result; automatic replay is forbidden"});
                 let trace = NodeExecutionTrace {
                     execution_identity: None,
@@ -231,7 +251,7 @@ where
                         debug_payload: json!({}),
                         provider_events: Vec::new(),
                     });
-                    complete_latest_node_trace(lifecycle, &node_traces).await?;
+                    complete_latest_node_trace(lifecycle, &node_traces, &variable_pool).await?;
                     return Ok(FlowDebugExecutionOutcome {
                         stop_reason: ExecutionStopReason::Failed(NodeExecutionFailure {
                             node_id: node.node_id.clone(),
@@ -354,7 +374,7 @@ where
                 node_traces.push(trace);
 
                 if let Some(error_payload) = execution.error_payload {
-                    complete_latest_node_trace(lifecycle, &node_traces).await?;
+                    complete_latest_node_trace(lifecycle, &node_traces, &variable_pool).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         edge_index: &edge_index,
@@ -431,7 +451,7 @@ where
                 node_traces.push(trace);
 
                 if let Some(error_payload) = execution.error_payload {
-                    complete_latest_node_trace(lifecycle, &node_traces).await?;
+                    complete_latest_node_trace(lifecycle, &node_traces, &variable_pool).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         edge_index: &edge_index,
@@ -477,7 +497,7 @@ where
                     provider_events: Vec::new(),
                 });
                 if let Some(error_payload) = execution.error_payload {
-                    complete_latest_node_trace(lifecycle, &node_traces).await?;
+                    complete_latest_node_trace(lifecycle, &node_traces, &variable_pool).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         edge_index: &edge_index,
@@ -522,7 +542,7 @@ where
                     provider_events: Vec::new(),
                 });
                 if let Some(error_payload) = execution.error_payload {
-                    complete_latest_node_trace(lifecycle, &node_traces).await?;
+                    complete_latest_node_trace(lifecycle, &node_traces, &variable_pool).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         edge_index: &edge_index,
@@ -569,7 +589,7 @@ where
                 });
 
                 if let Some(error_payload) = execution.error_payload {
-                    complete_latest_node_trace(lifecycle, &node_traces).await?;
+                    complete_latest_node_trace(lifecycle, &node_traces, &variable_pool).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         edge_index: &edge_index,
@@ -660,7 +680,7 @@ where
                 });
 
                 if let Some(error_payload) = execution.error_payload {
-                    complete_latest_node_trace(lifecycle, &node_traces).await?;
+                    complete_latest_node_trace(lifecycle, &node_traces, &variable_pool).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         edge_index: &edge_index,
@@ -826,7 +846,7 @@ where
                 });
 
                 if let Some(error_payload) = execution.error_payload {
-                    complete_latest_node_trace(lifecycle, &node_traces).await?;
+                    complete_latest_node_trace(lifecycle, &node_traces, &variable_pool).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         edge_index: &edge_index,
@@ -888,7 +908,7 @@ where
                 });
 
                 if let Some(error_payload) = execution.error_payload {
-                    complete_latest_node_trace(lifecycle, &node_traces).await?;
+                    complete_latest_node_trace(lifecycle, &node_traces, &variable_pool).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         edge_index: &edge_index,
@@ -931,7 +951,7 @@ where
                     debug_payload: json!({}),
                     provider_events: Vec::new(),
                 });
-                complete_latest_node_trace(lifecycle, &node_traces).await?;
+                complete_latest_node_trace(lifecycle, &node_traces, &variable_pool).await?;
                 return Ok(FlowDebugExecutionOutcome {
                     stop_reason: ExecutionStopReason::Failed(NodeExecutionFailure {
                         node_id: node.node_id.clone(),
@@ -948,7 +968,7 @@ where
         // A communication LLM remains running across final-candidate continuation.
         // The persistence owner commits its one terminal node fact after send seal.
         if runtime_context.communication.is_none() || node.node_type != "llm" {
-            complete_latest_node_trace(lifecycle, &node_traces).await?;
+            complete_latest_node_trace(lifecycle, &node_traces, &variable_pool).await?;
         }
         // CountTokens and Compact terminate at the LLM node selected by the
         // workflow. Generate-only downstream nodes (for example Answer) must
@@ -1014,18 +1034,22 @@ where
         .values()
         .any(|node| crate::container_contract::is_container_type(&node.node_type));
     if !has_containers {
-        return execute_from_scoped(
-            plan,
-            next_node_index,
-            variable_pool,
-            active_node_ids,
-            runtime_context,
-            invoker,
-            lifecycle,
-            None,
-            None,
-        )
-        .await;
+        return container::CURRENT_EXECUTION
+            .scope(
+                Arc::default(),
+                execute_from_scoped(
+                    plan,
+                    next_node_index,
+                    variable_pool,
+                    active_node_ids,
+                    runtime_context,
+                    invoker,
+                    lifecycle,
+                    None,
+                    None,
+                ),
+            )
+            .await;
     }
     container::execute_root(
         plan,

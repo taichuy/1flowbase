@@ -412,6 +412,10 @@ pub trait ExecutionLifecycle: Send + Sync {
 
     async fn scoped_node_receipt(&self, _identity: &container::ScopedExecutionIdentity) -> Result<Option<uuid::Uuid>> { Ok(None) }
 
+    async fn complete_node_with_state(&self, trace: &NodeExecutionTrace, _variable_pool: &Map<String, Value>) -> Result<()> {
+        self.complete_node(trace).await
+    }
+
     async fn begin_node(&self, node: &CompiledNode, input_payload: &Value) -> Result<()>;
 
     /// The communication owner keeps this LLM running until final seal; this operation
@@ -461,11 +465,12 @@ impl ExecutionLifecycle for NoopExecutionLifecycle {
 async fn complete_latest_node_trace(
     lifecycle: &dyn ExecutionLifecycle,
     node_traces: &[NodeExecutionTrace],
+    variable_pool: &Map<String, Value>,
 ) -> Result<()> {
     let trace = node_traces
         .last()
         .ok_or_else(|| anyhow!("node execution completed without a trace"))?;
-    lifecycle.complete_node(trace).await
+    lifecycle.complete_node_with_state(trace, variable_pool).await
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

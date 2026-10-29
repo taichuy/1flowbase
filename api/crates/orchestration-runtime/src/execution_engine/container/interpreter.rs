@@ -49,6 +49,8 @@ where
                     root_next_node_index: index,
                     root_variable_pool: pool.clone(),
                     root_active_node_ids: active.iter().cloned().collect(),
+                    root_nodes: BTreeMap::new(),
+                    root_waiting: None,
                     frames: BTreeMap::new(),
                     execution_budget: budget,
                 },
@@ -230,17 +232,18 @@ where
             let Some(round_index) = round_index else {
                 break;
             };
+            let round_scope = Scope::new(
+                session.clone(),
+                frame_id,
+                round_index,
+                parent.map(|scope| scope.expires_at),
+            )
+            .await?;
             futures.push(Box::pin(execute_round(
                 plan,
                 node,
                 &config,
-                Scope::new(
-                    session.clone(),
-                    frame_id,
-                    round_index,
-                    parent.map(|scope| scope.expires_at),
-                )
-                .await?,
+                round_scope,
                 runtime,
                 invoker,
                 lifecycle,

@@ -87,6 +87,8 @@ where
                     root_next_node_index: index,
                     root_variable_pool: pool.clone(),
                     root_active_node_ids: active.iter().cloned().collect(),
+                    root_nodes: BTreeMap::new(),
+                    root_waiting: None,
                     frames: BTreeMap::new(),
                     execution_budget: budget,
                 },
@@ -94,20 +96,92 @@ where
             )?
         }
     };
-    let outcome = Box::pin(super::super::scheduler::execute_from_scoped(
-        plan,
-        index,
-        pool,
-        Some(active),
-        runtime,
-        invoker,
-        lifecycle,
-        None,
-        Some(&session),
-    ))
-    .await;
+    {
+        let state = session.state.lock().await;
+        if let Some(wait) = &state.root_waiting {
+            return Ok(FlowDebugExecutionOutcome {
+                stop_reason: wait.clone().stop_reason(),
+                variable_pool: state.root_variable_pool.clone(),
+                checkpoint_snapshot: Some(snapshot_from_state(&state)),
+                operation_terminal: None,
+                node_traces: Vec::new(),
+            });
+        }
+    }
+    let root_lifecycle = RootLifecycle {
+        session: session.clone(),
+        owner: lifecycle,
+        current_identity: Arc::default(),
+    };
+    let outcome = CURRENT_EXECUTION
+        .scope(
+            root_lifecycle.current_identity.clone(),
+            Box::pin(super::super::scheduler::execute_from_scoped(
+                plan,
+                index,
+                pool,
+                Some(active),
+                runtime,
+                invoker,
+                &root_lifecycle,
+                None,
+                Some(&session),
+            )),
+        )
+        .await;
     match outcome {
-        Ok(outcome) => Ok(outcome),
+        Ok(mut outcome) => {
+            let mut state = session.state.lock().await;
+            for trace in &mut outcome.node_traces {
+                if trace.execution_identity.is_none() {
+                    trace.execution_identity = state
+                        .root_nodes
+                        .get(&trace.node_id)
+                        .map(|node| node.identity.clone());
+                }
+            }
+            if let Some(wait) = ContainerWait::from_stop_reason(outcome.stop_reason.clone()) {
+                if let Some(identity) = state
+                    .root_nodes
+                    .get(wait.node_id())
+                    .map(|node| node.identity.clone())
+                {
+                    let checkpoint = outcome
+                        .checkpoint_snapshot
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("root wait checkpoint missing"))?;
+                    state.root_next_node_index = checkpoint.next_node_index;
+                    state
+                        .root_variable_pool
+                        .clone_from(&checkpoint.variable_pool);
+                    state
+                        .root_active_node_ids
+                        .clone_from(&checkpoint.active_node_ids);
+                    state.root_waiting = Some(wait);
+                    state.waiting_execution_id = Some(identity.execution_id);
+                    let trace = outcome
+                        .node_traces
+                        .iter()
+                        .find(|trace| trace.node_id == identity.node_id);
+                    emit(
+                        lifecycle,
+                        &state,
+                        ContainerTransitionKind::ScopeSuspended,
+                        &identity,
+                        None,
+                        trace,
+                        Some(&json!({"root":true})),
+                    )
+                    .await?;
+                    outcome.checkpoint_snapshot = Some(snapshot_from_state(&state));
+                }
+            } else if matches!(outcome.stop_reason, ExecutionStopReason::Failed(_))
+                && outcome.checkpoint_snapshot.is_none()
+            {
+                outcome.checkpoint_snapshot = Some(snapshot_from_state(&state));
+            }
+            Ok(outcome)
+        }
         Err(error) if error.is::<GlobalFailure>() => {
             let state = session.state.lock().await;
             let failure = error
@@ -147,6 +221,17 @@ pub(crate) fn waiting_execution_id(
         .container_state
         .as_ref()
         .ok_or_else(|| anyhow!("container checkpoint missing"))?;
+    if state
+        .root_waiting
+        .as_ref()
+        .is_some_and(|wait| wait.node_id() == waiting_node_id)
+    {
+        return state
+            .root_nodes
+            .get(waiting_node_id)
+            .map(|node| node.identity.execution_id)
+            .ok_or_else(|| anyhow!("root waiting execution missing"));
+    }
     let ids: Vec<_> = state
         .frames
         .values()
@@ -195,6 +280,23 @@ where
         .container_state
         .clone()
         .ok_or_else(|| anyhow!("container checkpoint missing"))?;
+    if state
+        .root_waiting
+        .as_ref()
+        .and_then(|wait| state.root_nodes.get(wait.node_id()))
+        .is_some_and(|node| node.identity.execution_id == execution_id)
+    {
+        return resume_root_wait(
+            plan,
+            state,
+            execution_id,
+            resume_payload,
+            &runtime_context,
+            invoker,
+            lifecycle,
+        )
+        .await;
+    }
     let selected = state
         .frames
         .iter()
@@ -330,6 +432,22 @@ where
         .container_state
         .clone()
         .ok_or_else(|| anyhow!("container checkpoint missing"))?;
+    if state.root_nodes.get(node_id).is_some_and(|node| {
+        node.terminal_trace
+            .as_ref()
+            .is_some_and(|trace| trace.error_payload.is_some())
+    }) {
+        return recover_root_native(
+            plan,
+            checkpoint,
+            state,
+            node_id,
+            runtime_context,
+            invoker,
+            lifecycle,
+        )
+        .await;
+    }
     let candidates: Vec<_> = state
         .frames
         .iter()
@@ -467,4 +585,13 @@ where
         Some(session),
     )
     .await
+}
+
+pub(crate) fn snapshot_from_state(state: &ContainerCheckpoint) -> CheckpointSnapshot {
+    CheckpointSnapshot {
+        container_state: Some(state.clone()),
+        next_node_index: state.root_next_node_index,
+        variable_pool: state.root_variable_pool.clone(),
+        active_node_ids: state.root_active_node_ids.clone(),
+    }
 }
