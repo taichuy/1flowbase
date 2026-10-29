@@ -1,6 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
-use super::topology::variable_aggregator_output_for_selector;
+use super::topology::output_for_selector;
 use super::{FlowCompileContext, FlowValidationError};
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value;
@@ -187,6 +187,7 @@ pub(super) fn validate_variable_aggregator_topology(
     context: &FlowCompileContext,
     nodes: &BTreeMap<String, CompiledNode>,
 ) -> Result<()> {
+    let mut declarations = None;
     for node in nodes
         .values()
         .filter(|node| node.node_type == "variable_aggregator")
@@ -201,7 +202,10 @@ pub(super) fn validate_variable_aggregator_topology(
             for (candidate_index, selector) in group.candidates.into_iter().enumerate() {
                 let path =
                     format!("/bindings/groups/value/{group_index}/candidates/{candidate_index}");
-                let output = variable_aggregator_output_for_selector(document, context, nodes, &selector)
+                let output = variable_aggregator_output_for_selector(
+                    declarations.get_or_insert_with(|| DeclarationIndex::new(document, context)),
+                    nodes, &selector,
+                )
                     .with_context(|| format!(
                         "node {} variable_aggregator group {} selector {} has no valid declared type",
                         node.node_id, group.key, selector.join("."),
@@ -226,4 +230,125 @@ pub(super) fn validate_variable_aggregator_topology(
         }
     }
     Ok(())
+}
+
+// Borrow the first declaration and retain ambiguity without validating unused entries.
+struct DeclarationIndex<'a> {
+    run_level: HashMap<&'a [String], (&'a str, bool)>,
+    conversation: HashMap<&'a str, (&'a Value, bool)>,
+}
+
+impl<'a> DeclarationIndex<'a> {
+    fn new(document: &'a Value, context: &'a FlowCompileContext) -> Self {
+        let mut run_level = HashMap::new();
+        for declaration in &context.run_level_variables {
+            run_level
+                .entry(declaration.selector.as_slice())
+                .and_modify(|(_, duplicate)| *duplicate = true)
+                .or_insert((declaration.value_type.as_str(), false));
+        }
+        let mut conversation = HashMap::new();
+        if let Some(variables) = document
+            .get("variables")
+            .and_then(|variables| variables.get("conversation"))
+            .and_then(Value::as_array)
+        {
+            for variable in variables {
+                if let Some(name) = variable.get("name").and_then(Value::as_str) {
+                    conversation
+                        .entry(name)
+                        .and_modify(|(_, duplicate)| *duplicate = true)
+                        .or_insert((variable, false));
+                }
+            }
+        }
+        Self {
+            run_level,
+            conversation,
+        }
+    }
+}
+
+fn variable_aggregator_output_for_selector(
+    declarations: &DeclarationIndex<'_>,
+    nodes: &BTreeMap<String, CompiledNode>,
+    selector: &[String],
+) -> Result<CompiledOutput> {
+    let namespace = selector.first().map(String::as_str).unwrap_or_default();
+    if matches!(namespace, "sys" | "env" | "trigger") {
+        let (value_type, duplicate) = declarations.run_level.get(selector).ok_or_else(|| {
+            anyhow!(
+                "run-level selector {} is not declared by the backend compile context",
+                selector.join(".")
+            )
+        })?;
+        if *duplicate {
+            bail!(
+                "run-level selector {} has duplicate backend type declarations",
+                selector.join(".")
+            );
+        }
+        return Ok(compiled_run_level_output(selector, value_type));
+    }
+    if namespace == "conversation" {
+        return conversation_output_for_selector(declarations, selector);
+    }
+
+    output_for_selector(nodes, selector).ok_or_else(|| {
+        anyhow!(
+            "selector {} is not a declared upstream node output",
+            selector.join(".")
+        )
+    })
+}
+
+fn conversation_output_for_selector(
+    declarations: &DeclarationIndex<'_>,
+    selector: &[String],
+) -> Result<CompiledOutput> {
+    let name = selector
+        .get(1)
+        .ok_or_else(|| anyhow!("conversation selector must contain a declared variable name"))?;
+    if selector.len() != 2 {
+        bail!(
+            "conversation selector {} must reference one declared variable",
+            selector.join(".")
+        );
+    }
+    let (variable, duplicate) = declarations
+        .conversation
+        .get(name.as_str())
+        .ok_or_else(|| {
+            anyhow!(
+                "conversation selector {} is not declared",
+                selector.join(".")
+            )
+        })?;
+    if *duplicate {
+        bail!(
+            "conversation selector {} has duplicate type declarations",
+            selector.join(".")
+        );
+    }
+    let value_type = variable
+        .get("valueType")
+        .and_then(Value::as_str)
+        .filter(|value_type| !value_type.trim().is_empty())
+        .ok_or_else(|| {
+            anyhow!(
+                "conversation selector {} is missing its declared valueType",
+                selector.join(".")
+            )
+        })?;
+    Ok(compiled_run_level_output(selector, value_type))
+}
+
+fn compiled_run_level_output(selector: &[String], value_type: &str) -> CompiledOutput {
+    CompiledOutput {
+        key: selector.last().cloned().unwrap_or_default(),
+        title: selector.join("."),
+        value_type: value_type.to_string(),
+        selector: selector.to_vec(),
+        json_schema: None,
+    }
 }

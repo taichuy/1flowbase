@@ -382,105 +382,6 @@ pub(super) fn build_nodes_and_topology(
     Ok((nodes, compiled_edges, topological_order, compile_issues))
 }
 
-pub(super) fn variable_aggregator_output_for_selector(
-    document: &Value,
-    context: &FlowCompileContext,
-    nodes: &BTreeMap<String, CompiledNode>,
-    selector: &[String],
-) -> Result<CompiledOutput> {
-    let namespace = selector.first().map(String::as_str).unwrap_or_default();
-    if matches!(namespace, "sys" | "env" | "trigger") {
-        let mut declarations = context
-            .run_level_variables
-            .iter()
-            .filter(|declaration| declaration.selector.as_slice() == selector);
-        let declaration = declarations.next().ok_or_else(|| {
-            anyhow!(
-                "run-level selector {} is not declared by the backend compile context",
-                selector.join(".")
-            )
-        })?;
-        if declarations.next().is_some() {
-            bail!(
-                "run-level selector {} has duplicate backend type declarations",
-                selector.join(".")
-            );
-        }
-        return Ok(compiled_run_level_output(selector, &declaration.value_type));
-    }
-    if namespace == "conversation" {
-        return conversation_output_for_selector(document, selector);
-    }
-
-    output_for_selector(nodes, selector).ok_or_else(|| {
-        anyhow!(
-            "selector {} is not a declared upstream node output",
-            selector.join(".")
-        )
-    })
-}
-
-fn conversation_output_for_selector(
-    document: &Value,
-    selector: &[String],
-) -> Result<CompiledOutput> {
-    let name = selector
-        .get(1)
-        .ok_or_else(|| anyhow!("conversation selector must contain a declared variable name"))?;
-    if selector.len() != 2 {
-        bail!(
-            "conversation selector {} must reference one declared variable",
-            selector.join(".")
-        );
-    }
-    let variables = document
-        .get("variables")
-        .and_then(|variables| variables.get("conversation"))
-        .and_then(Value::as_array)
-        .ok_or_else(|| {
-            anyhow!(
-                "conversation selector {} is not declared",
-                selector.join(".")
-            )
-        })?;
-    let mut matches = variables
-        .iter()
-        .filter(|variable| variable.get("name").and_then(Value::as_str) == Some(name.as_str()));
-    let variable = matches.next().ok_or_else(|| {
-        anyhow!(
-            "conversation selector {} is not declared",
-            selector.join(".")
-        )
-    })?;
-    if matches.next().is_some() {
-        bail!(
-            "conversation selector {} has duplicate type declarations",
-            selector.join(".")
-        );
-    }
-    let value_type = variable
-        .get("valueType")
-        .and_then(Value::as_str)
-        .filter(|value_type| !value_type.trim().is_empty())
-        .ok_or_else(|| {
-            anyhow!(
-                "conversation selector {} is missing its declared valueType",
-                selector.join(".")
-            )
-        })?;
-    Ok(compiled_run_level_output(selector, value_type))
-}
-
-fn compiled_run_level_output(selector: &[String], value_type: &str) -> CompiledOutput {
-    CompiledOutput {
-        key: selector.last().cloned().unwrap_or_default(),
-        title: selector.join("."),
-        value_type: value_type.to_string(),
-        selector: selector.to_vec(),
-        json_schema: None,
-    }
-}
-
 pub(super) fn validate_variable_scope_contracts(
     nodes: &BTreeMap<String, CompiledNode>,
 ) -> Vec<CompileIssue> {
@@ -956,7 +857,7 @@ fn context_policy_selector(node: &CompiledNode) -> Option<Vec<String>> {
 }
 
 mod output_selectors;
-use output_selectors::output_for_selector;
+pub(super) use output_selectors::output_for_selector;
 
 #[path = "topology/internal_llm_tools.rs"]
 mod internal_llm_tools;
