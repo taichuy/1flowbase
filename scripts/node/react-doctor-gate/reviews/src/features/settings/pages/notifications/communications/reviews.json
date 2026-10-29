@@ -1,0 +1,105 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/settings/pages/notifications/communications/CommunicationBindingForm.tsx",
+      "rule": "react-doctor/no-chain-state-updates",
+      "sourceSha256": "35c8898ad38157238bbc55a872e421a86fd7535d6e1368771bd30bb4effd3529",
+      "reason": "The one binding effect initializes an editable draft from async backend binding/default/plugin-tool data only while dirty is false. User edits set dirty and the draft together; once dirty, refreshed catalogue/binding data cannot overwrite unsaved settings. There is no chain of effects depending on each other setters. Binding tests cover reopened persisted values, application changes retaining toggles, missing declarations and rejected save draft retention.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx",
+          "sha256": "8e4d13ddd509072e526a3f84ce87e68e7eccd838bd0c5f3ef403dc6114642f85"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/settings/pages/notifications/communications/CommunicationBindingForm.tsx",
+      "rule": "react-doctor/no-react19-deprecated-apis",
+      "sourceSha256": "35c8898ad38157238bbc55a872e421a86fd7535d6e1368771bd30bb4effd3529",
+      "reason": "React 19 still supports forwardRef; this typed form exposes validate/save via useImperativeHandle to the parent channel drawer, which persists the instance before saving its binding. Replacing forwardRef with a ref prop is an optional representation change, not a repair to the imperative protocol. The parent validates and awaits the same handle, and binding tests cover its canonical saved fields.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx",
+          "sha256": "8e4d13ddd509072e526a3f84ce87e68e7eccd838bd0c5f3ef403dc6114642f85"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
+          "sha256": "4223c595138d26face4414db0c792452fb7e4b16deb08268d896c89bc59d222a"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/settings/pages/notifications/communications/CommunicationHistory.tsx",
+      "rule": "react-doctor/prefer-module-scope-static-value",
+      "sourceSha256": "8415f5437f50cae62d4979b0723d55d5e09dfb4b81d920c27d003f4cef20303f",
+      "reason": "resetSelection is a tiny page/conversation reset patch spread into navigateCommunication calls in event handlers. Its object identity is never passed to a memoized child, dependency array, query key or external subscription. Moving it to module scope cannot remove the claimed child redraw; URL restoration and page/filter preservation tests cover the resulting navigation.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/communication-management.test.tsx",
+          "sha256": "51c7d7d1105d02df6ec5c8c4a83e7b2c3df0a4a35696168d55fa71c32066a1af"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/settings/pages/notifications/communications/CommunicationHistory.tsx",
+      "rule": "react-doctor/jsx-no-jsx-as-prop",
+      "sourceSha256": "8415f5437f50cae62d4979b0723d55d5e09dfb4b81d920c27d003f4cef20303f",
+      "reason": "DataTable emptyText is a ReactNode slot for the localized Ant Design Empty element, rendered directly by the shared table. This is not an inline component-type prop; stable Empty types reconcile normally and translated content must refresh when t changes. Communication management tests assert the table and deep-link/filter/page contracts.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/communication-management.test.tsx",
+          "sha256": "51c7d7d1105d02df6ec5c8c4a83e7b2c3df0a4a35696168d55fa71c32066a1af"
+        },
+        {
+          "file": "web/app/src/shared/ui/data-table/DataTable.tsx",
+          "sha256": "c7fdd19a87c446ec0bcbeaa780a43f187d8e1e519407a85266eb795f97507f9a"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/settings/pages/notifications/communications/CommunicationMessagesTable.tsx",
+      "rule": "react-doctor/jsx-no-jsx-as-prop",
+      "sourceSha256": "48ab053cffea160de9e10059532f3665045f304135f99567610a0723d79ab400",
+      "reason": "DataTable emptyText is a ReactNode slot for the localized Ant Design Empty element, rendered directly by the shared table. This is not an inline component-type prop; stable Empty types reconcile normally and translated content must refresh when t changes. Communication management tests assert the table and deep-link/filter/page contracts.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/communication-management.test.tsx",
+          "sha256": "51c7d7d1105d02df6ec5c8c4a83e7b2c3df0a4a35696168d55fa71c32066a1af"
+        },
+        {
+          "file": "web/app/src/shared/ui/data-table/DataTable.tsx",
+          "sha256": "c7fdd19a87c446ec0bcbeaa780a43f187d8e1e519407a85266eb795f97507f9a"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/settings/pages/notifications/communications/communication-presentation.tsx",
+      "rule": "react-doctor/design-no-em-dash-in-jsx-text",
+      "sourceSha256": "bcf94ce6082039a20986f3a3eb01485d341a077c437de54ecfb3676ea16603f6",
+      "reason": "ProcessingStatus/DeliveryStatus use the standalone em dash for a null backend status, matching the existing empty-value UI convention. It is not sentence punctuation; non-null statuses remain separately translated and failure reasons are tested without exposing provider diagnostic codes.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/communication-history.test.tsx",
+          "sha256": "8f7d421241d1660316860b9e67827ad2c98c910d5fe7f0514098735342bf255e"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/settings/pages/notifications/communications/communication-presentation.tsx",
+      "rule": "react-doctor/query-mutation-missing-invalidation",
+      "sourceSha256": "bcf94ce6082039a20986f3a3eb01485d341a077c437de54ecfb3676ea16603f6",
+      "reason": "CommunicationFile uses useMutation as an explicitly clicked access-link request: getCommunicationFile is a GET returning a temporary download URL, not a write to a cached entity. The result is consumed from link.data and errors are rendered locally. Invalidating message/conversation lists would not update a modified record because this request modifies none.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/notifications/api/communications.ts",
+          "sha256": "c4af9b3d3c0cad1d580b4625258e69a477bd814844cd4a661f2fb1c5292b6db0"
+        },
+        {
+          "file": "web/packages/api-client/src/console/notifications/communications.ts",
+          "sha256": "c0479944d6ace16157ec21029587825fef5f10bbd8b5eadedfae00b6f3e9dbcf"
+        }
+      ]
+    }
+  ]
+}

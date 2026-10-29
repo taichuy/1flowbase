@@ -5,92 +5,413 @@
       "file": "web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx",
       "rule": "react-doctor/async-defer-await",
       "sourceSha256": "bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5",
-      "reason": "The awaited command result is consumed before success UI/callback state is committed (upload result or notification authorization). Moving the await later would use a result before completion or report success before the command settles.",
-      "evidence": [{"file":"web/app/src/features/notifications/_tests/notification-ui.test.tsx","sha256":"582d53e351d2a6366d3375a7251be1f3e1aa2209e6ba0ff9122b76e7419f9a25"}, {"file":"web/app/src/features/notifications/api/queries.ts","sha256":"67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx","sha256":"bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationDeliveryWindow.tsx","sha256":"013f3bbba42eae50aee828125d750243baa2c3ed61ba06c6539a8b47bc17c382"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx","sha256":"4ea9c686f5d530f25229728d77297321fcd997ac476c107ff6d74cb2b79c168f"}, {"file":"web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx","sha256":"768eeda486c316d4f7e3592bbe0212d224a5b2454edff454be0eedace2a4ba97"}, {"file":"web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx","sha256":"c34b9d89f113b19cb09bf7c977367f940398f35317ee29446fcdda6aae15ffc1"}, {"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
+      "reason": "The awaited command result is consumed before success UI/callback state is committed (upload result or notification authorization). Moving the await later would use a result before completion or report success before the command settles. Reassessed 2026-10-29: The delta follows the communications endpoint and Channel type labels; existing locale draft preservation, authorization/polling and inbox assertions remain. The delta adds the receive-binding form and persists a newly created channel identity before its second binding write so retry cannot create a duplicate channel. savedInstance remains local retained identity; type-option filtering and localization are unchanged. Binding tests cover canonical draft retention on rejected saves. The delta renders complete stored title/content and structured extra as escaped React text, with nested object/array rendering. Log tests assert plain text, both locales, exact body preservation and no inferred provider fields; existing table slots remain ReactNode slots.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/notifications/_tests/notification-ui.test.tsx",
+          "sha256": "b3dbe344cb2a8ddee651c3c876185f72fc7c480f5f779ffcdddbbaeecd74d66e"
+        },
+        {
+          "file": "web/app/src/features/notifications/api/queries.ts",
+          "sha256": "67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx",
+          "sha256": "bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationDeliveryWindow.tsx",
+          "sha256": "013f3bbba42eae50aee828125d750243baa2c3ed61ba06c6539a8b47bc17c382"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
+          "sha256": "4223c595138d26face4414db0c792452fb7e4b16deb08268d896c89bc59d222a"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx",
+          "sha256": "d2dd580dcb83f874575cbe184081ea3c7d346c11a2650c68145c2f80615b5a0c"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx",
+          "sha256": "3acad05072799d05f1239bf2267108850505d7f4e5e75d86917fb5e95de4aa3c"
+        },
+        {
+          "file": "web/app/src/state/auth-store.ts",
+          "sha256": "007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
       "sourceSha256": "bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5",
-      "reason": "authorization initializes an editable authorization command/poll result, while prop replacement aborts the previous request and resets busy/failure state. The component also commits command responses to view. This is a cancellable external-resource state machine, not a pure copy used only for rendering.",
-      "evidence": [{"file":"web/app/src/features/notifications/_tests/notification-ui.test.tsx","sha256":"582d53e351d2a6366d3375a7251be1f3e1aa2209e6ba0ff9122b76e7419f9a25"}, {"file":"web/app/src/features/notifications/api/queries.ts","sha256":"67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx","sha256":"bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationDeliveryWindow.tsx","sha256":"013f3bbba42eae50aee828125d750243baa2c3ed61ba06c6539a8b47bc17c382"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx","sha256":"4ea9c686f5d530f25229728d77297321fcd997ac476c107ff6d74cb2b79c168f"}, {"file":"web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx","sha256":"768eeda486c316d4f7e3592bbe0212d224a5b2454edff454be0eedace2a4ba97"}, {"file":"web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx","sha256":"c34b9d89f113b19cb09bf7c977367f940398f35317ee29446fcdda6aae15ffc1"}, {"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
+      "reason": "authorization initializes an editable authorization command/poll result, while prop replacement aborts the previous request and resets busy/failure state. The component also commits command responses to view. This is a cancellable external-resource state machine, not a pure copy used only for rendering. Reassessed 2026-10-29: The delta follows the communications endpoint and Channel type labels; existing locale draft preservation, authorization/polling and inbox assertions remain. The delta adds the receive-binding form and persists a newly created channel identity before its second binding write so retry cannot create a duplicate channel. savedInstance remains local retained identity; type-option filtering and localization are unchanged. Binding tests cover canonical draft retention on rejected saves. The delta renders complete stored title/content and structured extra as escaped React text, with nested object/array rendering. Log tests assert plain text, both locales, exact body preservation and no inferred provider fields; existing table slots remain ReactNode slots.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/notifications/_tests/notification-ui.test.tsx",
+          "sha256": "b3dbe344cb2a8ddee651c3c876185f72fc7c480f5f779ffcdddbbaeecd74d66e"
+        },
+        {
+          "file": "web/app/src/features/notifications/api/queries.ts",
+          "sha256": "67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx",
+          "sha256": "bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationDeliveryWindow.tsx",
+          "sha256": "013f3bbba42eae50aee828125d750243baa2c3ed61ba06c6539a8b47bc17c382"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
+          "sha256": "4223c595138d26face4414db0c792452fb7e4b16deb08268d896c89bc59d222a"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx",
+          "sha256": "d2dd580dcb83f874575cbe184081ea3c7d346c11a2650c68145c2f80615b5a0c"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx",
+          "sha256": "3acad05072799d05f1239bf2267108850505d7f4e5e75d86917fb5e95de4aa3c"
+        },
+        {
+          "file": "web/app/src/state/auth-store.ts",
+          "sha256": "007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx",
       "rule": "react-doctor/no-cascading-set-state",
       "sourceSha256": "bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5",
-      "reason": "authorization initializes an editable authorization command/poll result, while prop replacement aborts the previous request and resets busy/failure state. The component also commits command responses to view. This is a cancellable external-resource state machine, not a pure copy used only for rendering.",
-      "evidence": [{"file":"web/app/src/features/notifications/_tests/notification-ui.test.tsx","sha256":"582d53e351d2a6366d3375a7251be1f3e1aa2209e6ba0ff9122b76e7419f9a25"}, {"file":"web/app/src/features/notifications/api/queries.ts","sha256":"67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx","sha256":"bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationDeliveryWindow.tsx","sha256":"013f3bbba42eae50aee828125d750243baa2c3ed61ba06c6539a8b47bc17c382"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx","sha256":"4ea9c686f5d530f25229728d77297321fcd997ac476c107ff6d74cb2b79c168f"}, {"file":"web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx","sha256":"768eeda486c316d4f7e3592bbe0212d224a5b2454edff454be0eedace2a4ba97"}, {"file":"web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx","sha256":"c34b9d89f113b19cb09bf7c977367f940398f35317ee29446fcdda6aae15ffc1"}, {"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
+      "reason": "authorization initializes an editable authorization command/poll result, while prop replacement aborts the previous request and resets busy/failure state. The component also commits command responses to view. This is a cancellable external-resource state machine, not a pure copy used only for rendering. Reassessed 2026-10-29: The delta follows the communications endpoint and Channel type labels; existing locale draft preservation, authorization/polling and inbox assertions remain. The delta adds the receive-binding form and persists a newly created channel identity before its second binding write so retry cannot create a duplicate channel. savedInstance remains local retained identity; type-option filtering and localization are unchanged. Binding tests cover canonical draft retention on rejected saves. The delta renders complete stored title/content and structured extra as escaped React text, with nested object/array rendering. Log tests assert plain text, both locales, exact body preservation and no inferred provider fields; existing table slots remain ReactNode slots.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/notifications/_tests/notification-ui.test.tsx",
+          "sha256": "b3dbe344cb2a8ddee651c3c876185f72fc7c480f5f779ffcdddbbaeecd74d66e"
+        },
+        {
+          "file": "web/app/src/features/notifications/api/queries.ts",
+          "sha256": "67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx",
+          "sha256": "bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationDeliveryWindow.tsx",
+          "sha256": "013f3bbba42eae50aee828125d750243baa2c3ed61ba06c6539a8b47bc17c382"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
+          "sha256": "4223c595138d26face4414db0c792452fb7e4b16deb08268d896c89bc59d222a"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx",
+          "sha256": "d2dd580dcb83f874575cbe184081ea3c7d346c11a2650c68145c2f80615b5a0c"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx",
+          "sha256": "3acad05072799d05f1239bf2267108850505d7f4e5e75d86917fb5e95de4aa3c"
+        },
+        {
+          "file": "web/app/src/state/auth-store.ts",
+          "sha256": "007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx",
       "rule": "react-doctor/no-derived-state",
       "sourceSha256": "bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5",
-      "reason": "authorization initializes an editable authorization command/poll result, while prop replacement aborts the previous request and resets busy/failure state. The component also commits command responses to view. This is a cancellable external-resource state machine, not a pure copy used only for rendering.",
-      "evidence": [{"file":"web/app/src/features/notifications/_tests/notification-ui.test.tsx","sha256":"582d53e351d2a6366d3375a7251be1f3e1aa2209e6ba0ff9122b76e7419f9a25"}, {"file":"web/app/src/features/notifications/api/queries.ts","sha256":"67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx","sha256":"bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationDeliveryWindow.tsx","sha256":"013f3bbba42eae50aee828125d750243baa2c3ed61ba06c6539a8b47bc17c382"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx","sha256":"4ea9c686f5d530f25229728d77297321fcd997ac476c107ff6d74cb2b79c168f"}, {"file":"web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx","sha256":"768eeda486c316d4f7e3592bbe0212d224a5b2454edff454be0eedace2a4ba97"}, {"file":"web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx","sha256":"c34b9d89f113b19cb09bf7c977367f940398f35317ee29446fcdda6aae15ffc1"}, {"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
+      "reason": "authorization initializes an editable authorization command/poll result, while prop replacement aborts the previous request and resets busy/failure state. The component also commits command responses to view. This is a cancellable external-resource state machine, not a pure copy used only for rendering. Reassessed 2026-10-29: The delta follows the communications endpoint and Channel type labels; existing locale draft preservation, authorization/polling and inbox assertions remain. The delta adds the receive-binding form and persists a newly created channel identity before its second binding write so retry cannot create a duplicate channel. savedInstance remains local retained identity; type-option filtering and localization are unchanged. Binding tests cover canonical draft retention on rejected saves. The delta renders complete stored title/content and structured extra as escaped React text, with nested object/array rendering. Log tests assert plain text, both locales, exact body preservation and no inferred provider fields; existing table slots remain ReactNode slots.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/notifications/_tests/notification-ui.test.tsx",
+          "sha256": "b3dbe344cb2a8ddee651c3c876185f72fc7c480f5f779ffcdddbbaeecd74d66e"
+        },
+        {
+          "file": "web/app/src/features/notifications/api/queries.ts",
+          "sha256": "67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx",
+          "sha256": "bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationDeliveryWindow.tsx",
+          "sha256": "013f3bbba42eae50aee828125d750243baa2c3ed61ba06c6539a8b47bc17c382"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
+          "sha256": "4223c595138d26face4414db0c792452fb7e4b16deb08268d896c89bc59d222a"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx",
+          "sha256": "d2dd580dcb83f874575cbe184081ea3c7d346c11a2650c68145c2f80615b5a0c"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx",
+          "sha256": "3acad05072799d05f1239bf2267108850505d7f4e5e75d86917fb5e95de4aa3c"
+        },
+        {
+          "file": "web/app/src/state/auth-store.ts",
+          "sha256": "007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx",
       "rule": "react-doctor/no-derived-useState",
       "sourceSha256": "bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5",
-      "reason": "authorization initializes an editable authorization command/poll result, while prop replacement aborts the previous request and resets busy/failure state. The component also commits command responses to view. This is a cancellable external-resource state machine, not a pure copy used only for rendering.",
-      "evidence": [{"file":"web/app/src/features/notifications/_tests/notification-ui.test.tsx","sha256":"582d53e351d2a6366d3375a7251be1f3e1aa2209e6ba0ff9122b76e7419f9a25"}, {"file":"web/app/src/features/notifications/api/queries.ts","sha256":"67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx","sha256":"bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationDeliveryWindow.tsx","sha256":"013f3bbba42eae50aee828125d750243baa2c3ed61ba06c6539a8b47bc17c382"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx","sha256":"4ea9c686f5d530f25229728d77297321fcd997ac476c107ff6d74cb2b79c168f"}, {"file":"web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx","sha256":"768eeda486c316d4f7e3592bbe0212d224a5b2454edff454be0eedace2a4ba97"}, {"file":"web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx","sha256":"c34b9d89f113b19cb09bf7c977367f940398f35317ee29446fcdda6aae15ffc1"}, {"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
+      "reason": "authorization initializes an editable authorization command/poll result, while prop replacement aborts the previous request and resets busy/failure state. The component also commits command responses to view. This is a cancellable external-resource state machine, not a pure copy used only for rendering. Reassessed 2026-10-29: The delta follows the communications endpoint and Channel type labels; existing locale draft preservation, authorization/polling and inbox assertions remain. The delta adds the receive-binding form and persists a newly created channel identity before its second binding write so retry cannot create a duplicate channel. savedInstance remains local retained identity; type-option filtering and localization are unchanged. Binding tests cover canonical draft retention on rejected saves. The delta renders complete stored title/content and structured extra as escaped React text, with nested object/array rendering. Log tests assert plain text, both locales, exact body preservation and no inferred provider fields; existing table slots remain ReactNode slots.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/notifications/_tests/notification-ui.test.tsx",
+          "sha256": "b3dbe344cb2a8ddee651c3c876185f72fc7c480f5f779ffcdddbbaeecd74d66e"
+        },
+        {
+          "file": "web/app/src/features/notifications/api/queries.ts",
+          "sha256": "67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx",
+          "sha256": "bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationDeliveryWindow.tsx",
+          "sha256": "013f3bbba42eae50aee828125d750243baa2c3ed61ba06c6539a8b47bc17c382"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
+          "sha256": "4223c595138d26face4414db0c792452fb7e4b16deb08268d896c89bc59d222a"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx",
+          "sha256": "d2dd580dcb83f874575cbe184081ea3c7d346c11a2650c68145c2f80615b5a0c"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx",
+          "sha256": "3acad05072799d05f1239bf2267108850505d7f4e5e75d86917fb5e95de4aa3c"
+        },
+        {
+          "file": "web/app/src/state/auth-store.ts",
+          "sha256": "007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx",
       "rule": "react-doctor/no-reset-all-state-on-prop-change",
       "sourceSha256": "bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5",
-      "reason": "authorization initializes an editable authorization command/poll result, while prop replacement aborts the previous request and resets busy/failure state. The component also commits command responses to view. This is a cancellable external-resource state machine, not a pure copy used only for rendering.",
-      "evidence": [{"file":"web/app/src/features/notifications/_tests/notification-ui.test.tsx","sha256":"582d53e351d2a6366d3375a7251be1f3e1aa2209e6ba0ff9122b76e7419f9a25"}, {"file":"web/app/src/features/notifications/api/queries.ts","sha256":"67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx","sha256":"bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationDeliveryWindow.tsx","sha256":"013f3bbba42eae50aee828125d750243baa2c3ed61ba06c6539a8b47bc17c382"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx","sha256":"4ea9c686f5d530f25229728d77297321fcd997ac476c107ff6d74cb2b79c168f"}, {"file":"web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx","sha256":"768eeda486c316d4f7e3592bbe0212d224a5b2454edff454be0eedace2a4ba97"}, {"file":"web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx","sha256":"c34b9d89f113b19cb09bf7c977367f940398f35317ee29446fcdda6aae15ffc1"}, {"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
+      "reason": "authorization initializes an editable authorization command/poll result, while prop replacement aborts the previous request and resets busy/failure state. The component also commits command responses to view. This is a cancellable external-resource state machine, not a pure copy used only for rendering. Reassessed 2026-10-29: The delta follows the communications endpoint and Channel type labels; existing locale draft preservation, authorization/polling and inbox assertions remain. The delta adds the receive-binding form and persists a newly created channel identity before its second binding write so retry cannot create a duplicate channel. savedInstance remains local retained identity; type-option filtering and localization are unchanged. Binding tests cover canonical draft retention on rejected saves. The delta renders complete stored title/content and structured extra as escaped React text, with nested object/array rendering. Log tests assert plain text, both locales, exact body preservation and no inferred provider fields; existing table slots remain ReactNode slots.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/notifications/_tests/notification-ui.test.tsx",
+          "sha256": "b3dbe344cb2a8ddee651c3c876185f72fc7c480f5f779ffcdddbbaeecd74d66e"
+        },
+        {
+          "file": "web/app/src/features/notifications/api/queries.ts",
+          "sha256": "67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationAuthorization.tsx",
+          "sha256": "bcfa0c54e6025ecab218b595bc79754abb3b8e08fd4394b39744a6e0c49b70e5"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationDeliveryWindow.tsx",
+          "sha256": "013f3bbba42eae50aee828125d750243baa2c3ed61ba06c6539a8b47bc17c382"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
+          "sha256": "4223c595138d26face4414db0c792452fb7e4b16deb08268d896c89bc59d222a"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx",
+          "sha256": "d2dd580dcb83f874575cbe184081ea3c7d346c11a2650c68145c2f80615b5a0c"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx",
+          "sha256": "3acad05072799d05f1239bf2267108850505d7f4e5e75d86917fb5e95de4aa3c"
+        },
+        {
+          "file": "web/app/src/state/auth-store.ts",
+          "sha256": "007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
       "rule": "react-doctor/js-combine-iterations",
-      "sourceSha256": "4ea9c686f5d530f25229728d77297321fcd997ac476c107ff6d74cb2b79c168f",
-      "reason": "Notification type options first exclude unavailable backend types and then localize display labels while preserving the [type_code,installation_id] identity value. The filter limits the localizeType calls to selectable records; this is linear and does not duplicate localization for rejected types.",
-      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx","sha256":"768eeda486c316d4f7e3592bbe0212d224a5b2454edff454be0eedace2a4ba97"}]
+      "sourceSha256": "4223c595138d26face4414db0c792452fb7e4b16deb08268d896c89bc59d222a",
+      "reason": "Notification type options first exclude unavailable backend types and then localize display labels while preserving the [type_code,installation_id] identity value. The filter limits the localizeType calls to selectable records; this is linear and does not duplicate localization for rejected types. Reassessed 2026-10-29: The delta adds the receive-binding form and persists a newly created channel identity before its second binding write so retry cannot create a duplicate channel. savedInstance remains local retained identity; type-option filtering and localization are unchanged. Binding tests cover canonical draft retention on rejected saves. The delta follows the communications endpoint and Channel type labels; existing locale draft preservation, authorization/polling and inbox assertions remain.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx",
+          "sha256": "d2dd580dcb83f874575cbe184081ea3c7d346c11a2650c68145c2f80615b5a0c"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
       "rule": "react-doctor/no-derived-useState",
-      "sourceSha256": "4ea9c686f5d530f25229728d77297321fcd997ac476c107ff6d74cb2b79c168f",
-      "reason": "The incoming value initializes a locally navigable/editable view rather than a continuously controlled value. NotificationInstanceDrawer retains savedInstance after creating a notification while the drawer remains open, so it cannot be derived solely from initial instance. NotificationsPage keys the drawer by editing.instance.id or new. Type options filter backend available types before localizing their display name; type_code/installation_id remain the value.",
-      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx","sha256":"768eeda486c316d4f7e3592bbe0212d224a5b2454edff454be0eedace2a4ba97"}]
+      "sourceSha256": "4223c595138d26face4414db0c792452fb7e4b16deb08268d896c89bc59d222a",
+      "reason": "The incoming value initializes a locally navigable/editable view rather than a continuously controlled value. NotificationInstanceDrawer retains savedInstance after creating a notification while the drawer remains open, so it cannot be derived solely from initial instance. NotificationsPage keys the drawer by editing.instance.id or new. Type options filter backend available types before localizing their display name; type_code/installation_id remain the value. Reassessed 2026-10-29: The delta adds the receive-binding form and persists a newly created channel identity before its second binding write so retry cannot create a duplicate channel. savedInstance remains local retained identity; type-option filtering and localization are unchanged. Binding tests cover canonical draft retention on rejected saves. The delta follows the communications endpoint and Channel type labels; existing locale draft preservation, authorization/polling and inbox assertions remain.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx",
+          "sha256": "d2dd580dcb83f874575cbe184081ea3c7d346c11a2650c68145c2f80615b5a0c"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
       "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "4ea9c686f5d530f25229728d77297321fcd997ac476c107ff6d74cb2b79c168f",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. NotificationInstanceDrawer retains savedInstance after creating a notification while the drawer remains open, so it cannot be derived solely from initial instance. NotificationsPage keys the drawer by editing.instance.id or new. Type options filter backend available types before localizing their display name; type_code/installation_id remain the value.",
-      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx","sha256":"768eeda486c316d4f7e3592bbe0212d224a5b2454edff454be0eedace2a4ba97"}]
+      "sourceSha256": "4223c595138d26face4414db0c792452fb7e4b16deb08268d896c89bc59d222a",
+      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. NotificationInstanceDrawer retains savedInstance after creating a notification while the drawer remains open, so it cannot be derived solely from initial instance. NotificationsPage keys the drawer by editing.instance.id or new. Type options filter backend available types before localizing their display name; type_code/installation_id remain the value. Reassessed 2026-10-29: The delta adds the receive-binding form and persists a newly created channel identity before its second binding write so retry cannot create a duplicate channel. savedInstance remains local retained identity; type-option filtering and localization are unchanged. Binding tests cover canonical draft retention on rejected saves. The delta follows the communications endpoint and Channel type labels; existing locale draft preservation, authorization/polling and inbox assertions remain.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx",
+          "sha256": "d2dd580dcb83f874575cbe184081ea3c7d346c11a2650c68145c2f80615b5a0c"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/NotificationLogs.tsx",
       "rule": "react-doctor/jsx-no-jsx-as-prop",
-      "sourceSha256": "deefb1a6b7725dab80583777d74d7ce2b25b400dedc0c54edd7955b46299de8a",
-      "reason": "web/app/src/features/settings/pages/notifications/NotificationLogs.tsx:192（react-doctor/jsx-no-jsx-as-prop）：JSX 作为 antd/共享布局的 title/toolbar/emptyText/indicator slot 是该组件的公开 ReactNode 合同。节点被 React 正常按 type/key 对账，创建 element 不等于重挂载或完整子树重算；调用方本次状态改变本来也要更新 slot 内容，不能无依赖地 hoist 活数据。",
-      "evidence": [{"file":"web/app/src/features/notifications/_tests/notification-ui.test.tsx","sha256":"582d53e351d2a6366d3375a7251be1f3e1aa2209e6ba0ff9122b76e7419f9a25"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationLogs.tsx","sha256":"deefb1a6b7725dab80583777d74d7ce2b25b400dedc0c54edd7955b46299de8a"}, {"file":"web/app/src/features/settings/pages/notifications/NotificationsPage.tsx","sha256":"927628e1b39b92bd62075a55b47b27f7aa697047a93c936aa762992f6f38b7c8"}, {"file":"web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx","sha256":"c34b9d89f113b19cb09bf7c977367f940398f35317ee29446fcdda6aae15ffc1"}, {"file":"web/app/src/style-boundary/scene-fixtures/notifications.tsx","sha256":"9e66420c5ba1e0fa5d0b7b849ce96c0486078f2129541b7f06c915f22398e79e"}]
+      "sourceSha256": "ba9efeaaf80bbf3b2fd692e4771babf6db0d06e72c03bea1dd557e67597c6b9a",
+      "reason": "web/app/src/features/settings/pages/notifications/NotificationLogs.tsx:192（react-doctor/jsx-no-jsx-as-prop）：JSX 作为 antd/共享布局的 title/toolbar/emptyText/indicator slot 是该组件的公开 ReactNode 合同。节点被 React 正常按 type/key 对账，创建 element 不等于重挂载或完整子树重算；调用方本次状态改变本来也要更新 slot 内容，不能无依赖地 hoist 活数据。 Reassessed 2026-10-29: The delta renders complete stored title/content and structured extra as escaped React text, with nested object/array rendering. Log tests assert plain text, both locales, exact body preservation and no inferred provider fields; existing table slots remain ReactNode slots. The delta follows the communications endpoint and Channel type labels; existing locale draft preservation, authorization/polling and inbox assertions remain. The delta introduces URL-backed conversation/received/sent tabs. Existing channel query invalidation and scope replacement reset remain in NotificationChannelsPage; nested tab children and emptyText are documented ReactNode slots.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/notifications/_tests/notification-ui.test.tsx",
+          "sha256": "b3dbe344cb2a8ddee651c3c876185f72fc7c480f5f779ffcdddbbaeecd74d66e"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationLogs.tsx",
+          "sha256": "ba9efeaaf80bbf3b2fd692e4771babf6db0d06e72c03bea1dd557e67597c6b9a"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/NotificationsPage.tsx",
+          "sha256": "c54bb019843755cc39c80c93956f5d20c0ce034daaa6684f50b20d33f59c792c"
+        },
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx",
+          "sha256": "3acad05072799d05f1239bf2267108850505d7f4e5e75d86917fb5e95de4aa3c"
+        },
+        {
+          "file": "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
+          "sha256": "9e66420c5ba1e0fa5d0b7b849ce96c0486078f2129541b7f06c915f22398e79e"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/NotificationsPage.tsx",
       "rule": "react-doctor/jsx-no-jsx-as-prop",
-      "sourceSha256": "927628e1b39b92bd62075a55b47b27f7aa697047a93c936aa762992f6f38b7c8",
-      "reason": "emptyText is a ReactNode presentation slot and receives the intended localized Empty/empty-content JSX. The receiving table API renders this slot; JSX is the required content contract rather than a component identity prop.",
-      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx","sha256":"768eeda486c316d4f7e3592bbe0212d224a5b2454edff454be0eedace2a4ba97"}, {"file":"web/app/src/features/notifications/api/queries.ts","sha256":"67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"}, {"file":"web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx","sha256":"f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"}]
+      "sourceSha256": "c54bb019843755cc39c80c93956f5d20c0ce034daaa6684f50b20d33f59c792c",
+      "reason": "emptyText is a ReactNode presentation slot and receives the intended localized Empty/empty-content JSX. The receiving table API renders this slot; JSX is the required content contract rather than a component identity prop. Reassessed 2026-10-29: The delta introduces URL-backed conversation/received/sent tabs. Existing channel query invalidation and scope replacement reset remain in NotificationChannelsPage; nested tab children and emptyText are documented ReactNode slots. The delta follows the communications endpoint and Channel type labels; existing locale draft preservation, authorization/polling and inbox assertions remain.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx",
+          "sha256": "d2dd580dcb83f874575cbe184081ea3c7d346c11a2650c68145c2f80615b5a0c"
+        },
+        {
+          "file": "web/app/src/features/notifications/api/queries.ts",
+          "sha256": "67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"
+        },
+        {
+          "file": "web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx",
+          "sha256": "f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/NotificationsPage.tsx",
       "rule": "react-doctor/no-cascading-set-state",
-      "sourceSha256": "927628e1b39b92bd62075a55b47b27f7aa697047a93c936aa762992f6f38b7c8",
-      "reason": "Notification settings clears editing/filter/page state on notification scope replacement. This prevents a previous auth scope edit or page selection leaking into the next session; scope changes are not local table events.",
-      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx","sha256":"768eeda486c316d4f7e3592bbe0212d224a5b2454edff454be0eedace2a4ba97"}, {"file":"web/app/src/features/notifications/api/queries.ts","sha256":"67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"}, {"file":"web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx","sha256":"f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"}]
+      "sourceSha256": "c54bb019843755cc39c80c93956f5d20c0ce034daaa6684f50b20d33f59c792c",
+      "reason": "Notification settings clears editing/filter/page state on notification scope replacement. This prevents a previous auth scope edit or page selection leaking into the next session; scope changes are not local table events. Reassessed 2026-10-29: The delta introduces URL-backed conversation/received/sent tabs. Existing channel query invalidation and scope replacement reset remain in NotificationChannelsPage; nested tab children and emptyText are documented ReactNode slots. The delta follows the communications endpoint and Channel type labels; existing locale draft preservation, authorization/polling and inbox assertions remain.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx",
+          "sha256": "d2dd580dcb83f874575cbe184081ea3c7d346c11a2650c68145c2f80615b5a0c"
+        },
+        {
+          "file": "web/app/src/features/notifications/api/queries.ts",
+          "sha256": "67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"
+        },
+        {
+          "file": "web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx",
+          "sha256": "f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/NotificationsPage.tsx",
       "rule": "react-doctor/query-mutation-missing-invalidation",
-      "sourceSha256": "927628e1b39b92bd62075a55b47b27f7aa697047a93c936aa762992f6f38b7c8",
-      "reason": "The mutation onSuccess delegates to a local callback/helper: refresh invalidates notificationQueryKey(scope). The query client invalidation call is outside the useMutation object but the success path reaches it.",
-      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx","sha256":"768eeda486c316d4f7e3592bbe0212d224a5b2454edff454be0eedace2a4ba97"}, {"file":"web/app/src/features/notifications/api/queries.ts","sha256":"67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"}, {"file":"web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx","sha256":"f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"}]
+      "sourceSha256": "c54bb019843755cc39c80c93956f5d20c0ce034daaa6684f50b20d33f59c792c",
+      "reason": "The mutation onSuccess delegates to a local callback/helper: refresh invalidates notificationQueryKey(scope). The query client invalidation call is outside the useMutation object but the success path reaches it. Reassessed 2026-10-29: The delta introduces URL-backed conversation/received/sent tabs. Existing channel query invalidation and scope replacement reset remain in NotificationChannelsPage; nested tab children and emptyText are documented ReactNode slots. The delta follows the communications endpoint and Channel type labels; existing locale draft preservation, authorization/polling and inbox assertions remain.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx",
+          "sha256": "d2dd580dcb83f874575cbe184081ea3c7d346c11a2650c68145c2f80615b5a0c"
+        },
+        {
+          "file": "web/app/src/features/notifications/api/queries.ts",
+          "sha256": "67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"
+        },
+        {
+          "file": "web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx",
+          "sha256": "f2c7d7cd5c1f1b82c5639baf4a7c69e2502129ec2121991ec9c683ecfbb0e9eb"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/settings/pages/notifications/NotificationLogs.tsx",
+      "rule": "react-doctor/no-array-index-key",
+      "sourceSha256": "ba9efeaaf80bbf3b2fd692e4771babf6db0d06e72c03bea1dd557e67597c6b9a",
+      "reason": "NotificationLogValue renders backend extra arrays as stateless recursive text/list/definition-list nodes. It has no per-entry input, hooks, effect, uncontrolled DOM or editing callbacks; JSON array entries may repeat and have no record ID. On detail replacement React reconciles current text at each position, so index identity cannot retain a prior row draft or submit incorrect data. Structured-extra tests cover nested arrays/objects and escaped markup.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx",
+          "sha256": "3acad05072799d05f1239bf2267108850505d7f4e5e75d86917fb5e95de4aa3c"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/settings/pages/notifications/NotificationLogs.tsx",
+      "rule": "react-doctor/no-array-index-as-key",
+      "sourceSha256": "ba9efeaaf80bbf3b2fd692e4771babf6db0d06e72c03bea1dd557e67597c6b9a",
+      "reason": "NotificationLogValue renders backend extra arrays as stateless recursive text/list/definition-list nodes. It has no per-entry input, hooks, effect, uncontrolled DOM or editing callbacks; JSON array entries may repeat and have no record ID. On detail replacement React reconciles current text at each position, so index identity cannot retain a prior row draft or submit incorrect data. Structured-extra tests cover nested arrays/objects and escaped markup.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx",
+          "sha256": "3acad05072799d05f1239bf2267108850505d7f4e5e75d86917fb5e95de4aa3c"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/settings/pages/notifications/NotificationLogs.tsx",
+      "rule": "react-doctor/design-no-em-dash-in-jsx-text",
+      "sourceSha256": "ba9efeaaf80bbf3b2fd692e4771babf6db0d06e72c03bea1dd557e67597c6b9a",
+      "reason": "The standalone em dash is the existing empty-value presentation for empty arrays/objects and null values, not sentence punctuation. Tests explicitly assert three empty markers and legacy missing-title/body markers in the structured log contract; changing this approved presentation solely to satisfy an AI-style heuristic would change user-visible output.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx",
+          "sha256": "3acad05072799d05f1239bf2267108850505d7f4e5e75d86917fb5e95de4aa3c"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/settings/pages/notifications/NotificationLogs.tsx",
+      "rule": "react-doctor/prefer-tag-over-role",
+      "sourceSha256": "ba9efeaaf80bbf3b2fd692e4771babf6db0d06e72c03bea1dd557e67597c6b9a",
+      "reason": "The flagged groups contain stored message title, body and extra values, each with an aria-label used by detail consumers. These are not contact information; replacing role=group with address would assert incorrect HTML semantics. Current tests query the named groups and verify complete escaped backend text.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx",
+          "sha256": "3acad05072799d05f1239bf2267108850505d7f4e5e75d86917fb5e95de4aa3c"
+        }
+      ]
     }
   ]
 }
