@@ -290,6 +290,7 @@ async fn real_engine_recovers_one_of_four_llms_and_inherits_budget_without_recon
     let deadline =
         (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64 + 60_000;
     let checkpoint = CheckpointSnapshot {
+        container_state: None,
         next_node_index: 3,
         active_node_ids: vec!["start".into(), "router".into(), "llm-b".into()],
         variable_pool: serde_json::from_value(json!({"start":{"query":"frozen original question"},

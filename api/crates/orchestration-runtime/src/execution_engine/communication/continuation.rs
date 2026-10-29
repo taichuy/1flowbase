@@ -140,6 +140,7 @@ where
             request_payload: wait.request_payload,
         });
         outcome.checkpoint_snapshot = Some(CheckpointSnapshot {
+            container_state: None,
             next_node_index: index,
             variable_pool: wait.checkpoint_variable_pool,
             active_node_ids,

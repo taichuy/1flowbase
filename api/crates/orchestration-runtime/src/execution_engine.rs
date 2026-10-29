@@ -52,6 +52,7 @@ pub use crate::code_runtime::{
 pub mod ai_native_recovery;
 pub mod branching;
 pub mod communication;
+pub mod container;
 #[path = "execution_engine/llm_operations/compact_operation.rs"]
 mod compact_operation;
 mod http_request;
@@ -403,6 +404,12 @@ pub(crate) fn resolved_native_sql(resolved_inputs: &Map<String, Value>) -> Resul
 
 #[async_trait]
 pub trait ExecutionLifecycle: Send + Sync {
+    /// Atomic scoped state transition; ordinary flows retain their existing hooks.
+    async fn commit_container_transition(
+        &self,
+        _transition: &container::ContainerTransition<'_>,
+    ) -> Result<()> { Ok(()) }
+
     async fn begin_node(&self, node: &CompiledNode, input_payload: &Value) -> Result<()>;
 
     /// The communication owner keeps this LLM running until final seal; this operation
@@ -792,6 +799,7 @@ where
                         }),
                         variable_pool: checkpoint_variable_pool.clone(),
                         checkpoint_snapshot: Some(CheckpointSnapshot {
+                            container_state: None,
                             next_node_index: checkpoint.next_node_index,
                             variable_pool: checkpoint_variable_pool,
                             active_node_ids: checkpoint.active_node_ids.clone(),

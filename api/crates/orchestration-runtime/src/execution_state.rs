@@ -6,6 +6,7 @@ use extension_contracts::{
     provider_contract::ProviderStreamEvent,
     semantic_terminal::{COMPACT_OPERATION_TERMINAL_KIND, COUNT_TOKENS_TERMINAL_KIND},
 };
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,14 +38,16 @@ pub enum ExecutionIncompleteReason {
     OutputLimit,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CheckpointSnapshot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container_state: Option<crate::execution_engine::container::ContainerCheckpoint>,
     pub next_node_index: usize,
     pub variable_pool: Map<String, Value>,
     pub active_node_ids: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NodeExecutionTrace {
     pub node_id: String,
     pub node_type: String,

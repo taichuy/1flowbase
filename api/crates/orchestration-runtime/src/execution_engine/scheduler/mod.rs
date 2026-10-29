@@ -240,6 +240,7 @@ where
                         }),
                         variable_pool,
                         checkpoint_snapshot: Some(CheckpointSnapshot {
+                            container_state: None,
                             next_node_index: index,
                             variable_pool: wait.checkpoint_variable_pool,
                             active_node_ids: checkpoint_active_node_ids(&active_node_ids),
@@ -448,6 +449,7 @@ where
                         }),
                         variable_pool: variable_pool.clone(),
                         checkpoint_snapshot: Some(CheckpointSnapshot {
+                            container_state: None,
                             next_node_index: index + 1,
                             variable_pool,
                             active_node_ids: checkpoint_active_node_ids(&active_node_ids),
@@ -596,6 +598,7 @@ where
                     }),
                     variable_pool: variable_pool.clone(),
                     checkpoint_snapshot: Some(CheckpointSnapshot {
+                        container_state: None,
                         next_node_index: index + 1,
                         variable_pool,
                         active_node_ids: checkpoint_active_node_ids(&active_node_ids),
@@ -626,6 +629,7 @@ where
                     }),
                     variable_pool: variable_pool.clone(),
                     checkpoint_snapshot: Some(CheckpointSnapshot {
+                        container_state: None,
                         next_node_index: index + 1,
                         variable_pool,
                         active_node_ids: checkpoint_active_node_ids(&active_node_ids),
