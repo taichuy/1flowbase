@@ -318,6 +318,15 @@ async fn authenticated_native_cold_attach_without_responses_identity_keeps_text_
 
 #[tokio::test]
 async fn responses_open_empty_refreshes_atomic_tools_when_only_terminal_is_notified() {
+    assert_open_empty_terminal_only(2).await;
+}
+
+#[tokio::test]
+async fn responses_open_empty_terminal_only_projects_385_exact_tools_in_four_batches() {
+    assert_open_empty_terminal_only(385).await;
+}
+
+async fn assert_open_empty_terminal_only(count: usize) {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let mut run = native_run();
     seed_flow_run_for_compat_sse_test(&state, &run).await;
@@ -328,20 +337,33 @@ async fn responses_open_empty_refreshes_atomic_tools_when_only_terminal_is_notif
     run.metadata["response_round_id"] = json!(callback);
     let (tx, live) = mpsc::unbounded_channel();
     let (sender, mut receiver) = mpsc::channel(8);
-    let task = spawn_scoped_typed_stream(
-        &state,
-        &run,
-        RuntimeEventDeliveryScope::Resume {
-            callback_task_id: callback,
+    let samples = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut dependencies = super::delivery_proof::terminal_dependencies(&state);
+    dependencies.delivery_read_samples = Some(samples.clone());
+    let (_closure_sender, closure) = tokio::sync::watch::channel(None);
+    let task = tokio::spawn(send_subscribed_compatible_typed_event_stream(
+        SubscribedCompatibleTypedEventStream {
+            terminal_dependencies: dependencies,
+            initial_run: run.clone(),
+            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
+            delivery_scope: RuntimeEventDeliveryScope::Resume {
+                callback_task_id: callback,
+            },
+            from_sequence: Some(50000),
+            durable_round_replay: Vec::new(),
+            ignored_waiting_callback_task_id: Some(callback),
+            subscription: control_plane::ports::RuntimeEventSubscription {
+                terminal_writer: Arc::new(UnusedTerminalWriter),
+                replay: Vec::new(),
+                live_events: control_plane::ports::RuntimeEventReceiver::from_unbounded(live),
+                closure,
+            },
+            sender,
         },
-        Vec::new(),
-        Vec::new(),
-        live,
-        sender,
-    );
+    ));
     tx.send(RuntimeEventEnvelope::new(
         run.id,
-        1,
+        60000,
         debug_stream_events::flow_started(run.id),
     ))
     .unwrap();
@@ -350,13 +372,13 @@ async fn responses_open_empty_refreshes_atomic_tools_when_only_terminal_is_notif
         "flow_started",
         "initial successful Open-empty query barrier"
     );
-    let mut payloads = vec![
-        committed_delivery_payload("own-1"),
-        committed_delivery_payload("own-2"),
-    ];
-    for (index, payload) in payloads.iter_mut().enumerate() {
-        payload["output_index"] = json!(index);
-    }
+    let payloads = (0..count)
+        .map(|index| {
+            let mut payload = super::delivery_proof::exact_payload(index);
+            payload["output_index"] = json!((count - index) % 3);
+            payload
+        })
+        .collect::<Vec<_>>();
     let own = super::delivery_proof::commit_wait(&state, &run, &payloads).await;
     let future =
         super::delivery_proof::commit_wait(&state, &run, &[committed_delivery_payload("future")])
@@ -367,25 +389,27 @@ async fn responses_open_empty_refreshes_atomic_tools_when_only_terminal_is_notif
     drop(tx); // No owned tool notifications.
     let (events, claims) = super::delivery_proof::collect_projection(receiver).await;
     task.await.unwrap();
-    assert_eq!(claims, 2);
-    let items = payloads
-        .iter()
-        .map(|p| p["item"].clone())
-        .collect::<Vec<_>>();
+    assert_eq!(claims, count);
+    super::delivery_proof::assert_exact_response(&events, &payloads, callback);
+    let reads = samples.lock().expect("proof observations").clone();
+    eprintln!("Open-empty terminal-only proof/claim/bytes observations: {reads:?}");
+    let mut expected = vec![(false, 0, 0)];
+    expected.extend((0..count).step_by(128).map(|offset| {
+        (
+            true,
+            if offset == 0 { count } else { 0 },
+            (count - offset).min(128),
+        )
+    }));
     assert_eq!(
-        events
-            .iter()
-            .filter(|e| e["type"] == "response.output_item.done")
-            .map(|e| e["item"].clone())
-            .collect::<Vec<_>>(),
-        items
+        reads.iter().map(|r| (r.0, r.1, r.2)).collect::<Vec<_>>(),
+        expected
     );
-    let done = events
+    assert!(reads[1].3 > 0);
+    assert!(reads
         .iter()
-        .find(|e| e["type"] == "response.completed")
-        .unwrap();
-    assert_eq!(done["response"]["output"], json!(items));
-    assert_eq!(done["response"]["id"], format!("resp_{callback}"));
+        .enumerate()
+        .all(|(index, r)| index == 1 || r.3 == 0));
     assert_eq!(
         delivery_statuses(
             &state,

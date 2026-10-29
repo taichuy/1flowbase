@@ -1,4 +1,5 @@
 use super::*;
+use crate::routes::application_public_api::stream_terminal_fallback::durable_record_to_runtime_event_envelope;
 use control_plane::ports::{
     AckRuntimeEventDeliveryInput, AppendRuntimeEventInput, ClaimRuntimeEventDeliveriesInput,
     MarkRuntimeEventDeliveryUncertainInput, PersistWaitingCallbackTaskInput, PersistWaitingKind,
@@ -93,7 +94,7 @@ pub(super) async fn commit_wait(
         .unwrap()
 }
 
-fn exact_payload(index: usize) -> Value {
+pub(super) fn exact_payload(index: usize) -> Value {
     let mut item = if index % 2 == 0 {
         json!({"id":format!("ctc-{index}"),"type":"custom_tool_call", "call_id":format!("call-{index}"),
             "name":"exec","input":"  exact\nbytes\r\n\"quoted\"  "})
@@ -105,7 +106,7 @@ fn exact_payload(index: usize) -> Value {
     json!({"output_index":index,"committed_delivery":true,"item":item})
 }
 
-fn terminal_dependencies(state: &ApiState) -> NativeRunTerminalDependencies {
+pub(super) fn terminal_dependencies(state: &ApiState) -> NativeRunTerminalDependencies {
     NativeRunTerminalDependencies::new(
         state.store.clone(),
         state.runtime_engine.clone(),
@@ -130,8 +131,16 @@ fn empty_subscription() -> RuntimeEventSubscription {
 }
 
 pub(super) async fn collect_projection(
+    receiver: mpsc::Receiver<CompatibleProjectionInput>,
+) -> (Vec<Value>, usize) {
+    collect_projection_with_prefix(Vec::new(), receiver).await
+}
+
+async fn collect_projection_with_prefix(
+    prefix: Vec<CompatibleProjectionInput>,
     mut receiver: mpsc::Receiver<CompatibleProjectionInput>,
 ) -> (Vec<Value>, usize) {
+    let mut prefix = prefix.into_iter();
     let mut mapper = OpenAiResponseStreamMapper::with_mode(
         "fixture".into(),
         None,
@@ -139,10 +148,12 @@ pub(super) async fn collect_projection(
     );
     let mut frames = Vec::new();
     let mut claims = 0;
-    while let Some(input) = tokio::time::timeout(Duration::from_secs(10), receiver.recv())
-        .await
-        .expect("forwarder must terminate")
-    {
+    while let Some(input) = match prefix.next() {
+        Some(input) => Some(input),
+        None => tokio::time::timeout(Duration::from_secs(10), receiver.recv())
+            .await
+            .expect("forwarder must terminate"),
+    } {
         let (run, event, receipt) = input.into_parts();
         frames.extend(mapper.runtime_event_to_sse(&run, event));
         if let Some(receipt) = receipt {
@@ -165,7 +176,7 @@ pub(super) async fn collect_projection(
     )
 }
 
-fn assert_exact_response(events: &[Value], expected: &[Value], round: Uuid) {
+pub(super) fn assert_exact_response(events: &[Value], expected: &[Value], round: Uuid) {
     let done = events
         .iter()
         .filter(|event| event["type"] == "response.output_item.done")
@@ -178,6 +189,18 @@ fn assert_exact_response(events: &[Value], expected: &[Value], round: Uuid) {
     assert_eq!(
         done, items,
         "all exact facts once, including unknown fields/namespace/argument bytes"
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event["type"] == "response.output_item.done")
+            .map(|event| event["output_index"].clone())
+            .collect::<Vec<_>>(),
+        expected
+            .iter()
+            .map(|payload| payload["output_index"].clone())
+            .collect::<Vec<_>>(),
+        "provider-local output indices are preserved, never used as durable ordering"
     );
     assert!(!events
         .iter()
@@ -276,6 +299,468 @@ async fn closed_proof_reads_385_facts_once_across_four_real_pg_forwarder_batches
     .await
     .unwrap();
     assert_eq!(generations, vec![0, 0]);
+}
+
+// Provider output_index deliberately repeats and moves backwards. Original
+// durable sequence, rather than that provider-local index, orders all assertions.
+fn terminal_payloads(count: usize) -> Vec<Value> {
+    (0..count)
+        .map(|index| {
+            let mut payload = exact_payload(index);
+            payload["output_index"] = json!((count - index) % 3);
+            payload
+        })
+        .collect()
+}
+
+async fn delivery_snapshot(state: &ApiState, ids: &[Uuid]) -> Vec<Value> {
+    sqlx::query_scalar(
+        "select jsonb_build_object('id',id,'status',delivery_status,'token',delivery_claim_token,\
+         'generation',delivery_generation,'lease',delivery_lease_expires_at) \
+         from runtime_events where id=any($1) order by sequence,id",
+    )
+    .bind(ids)
+    .fetch_all(state.store.pool())
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn text_only_open_scope_preserves_durable_final_terminal() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let mut run = native_run();
+    run.status = NativeRunStatus::Succeeded;
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    state
+        .store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: domain::FlowRunStatus::Succeeded,
+            output_payload: json!({"answer":"done"}),
+            error_payload: None,
+            finished_at: Some(time::OffsetDateTime::now_utc()),
+        })
+        .await
+        .unwrap();
+    let mut subscription = empty_subscription();
+    subscription.replay.push(RuntimeEventEnvelope::new(
+        run.id,
+        1,
+        debug_stream_events::flow_finished(run.id, json!({"answer":"done"})),
+    ));
+    let (sender, receiver) = mpsc::channel(8);
+    let task = tokio::spawn(send_subscribed_compatible_typed_event_stream(
+        SubscribedCompatibleTypedEventStream {
+            terminal_dependencies: terminal_dependencies(&state),
+            initial_run: run,
+            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
+            delivery_scope: RuntimeEventDeliveryScope::Start,
+            from_sequence: None,
+            durable_round_replay: Vec::new(),
+            ignored_waiting_callback_task_id: None,
+            subscription,
+            sender,
+        },
+    ));
+    let (events, claims) = collect_projection(receiver).await;
+    task.await.unwrap();
+    assert_eq!(claims, 0);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event["type"] == "response.completed")
+            .count(),
+        1
+    );
+    assert!(!events
+        .iter()
+        .any(|event| event["type"] == "response.failed"));
+}
+
+#[tokio::test]
+async fn closed_terminal_only_385_completes_durable_subscription_and_live_lanes() {
+    for lane in ["durable", "subscription", "live"] {
+        let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+        let mut run = native_run();
+        seed_flow_run_for_compat_sse_test(&state, &run).await;
+        let old = commit_wait(&state, &run, &[committed_delivery_payload("old")]).await;
+        let callback = old.callback_task.as_ref().unwrap().id;
+        run.metadata["response_round_id"] = json!(callback);
+        let payloads = terminal_payloads(385);
+        let own = commit_wait(&state, &run, &payloads).await;
+        let future = commit_wait(&state, &run, &[committed_delivery_payload("future")]).await;
+        let foreign_ids = [
+            old.tool_delivery_events[0].id,
+            future.tool_delivery_events[0].id,
+        ];
+        let before = delivery_snapshot(&state, &foreign_ids).await;
+        let samples = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut dependencies = terminal_dependencies(&state);
+        dependencies.delivery_read_samples = Some(samples.clone());
+        let mut terminal = durable_record_to_runtime_event_envelope(own.waiting_event);
+        terminal.sequence = 90000;
+        let (tx, live) = mpsc::unbounded_channel();
+        let mut subscription = empty_subscription();
+        subscription.live_events = control_plane::ports::RuntimeEventReceiver::from_unbounded(live);
+        let selection = RuntimeEventEnvelope::new(
+            run.id,
+            60000,
+            control_plane::ports::LlmInputSelection {
+                node_id: "llm".into(),
+                node_run_id: Uuid::now_v7(),
+                representation: control_plane::ports::LlmInputRepresentation::NativeOpaque,
+            }
+            .runtime_event(),
+        );
+        // Selection is replayed before the provider inbox is drained. The live
+        // terminal case has selection in subscription replay, as a reconnect does.
+        subscription.replay.push(selection);
+        let mut durable = Vec::new();
+        match lane {
+            "durable" => {
+                durable.append(&mut subscription.replay);
+                durable.push(terminal);
+            }
+            "subscription" => subscription.replay.push(terminal),
+            "live" => tx.send(terminal).unwrap(),
+            _ => unreachable!(),
+        }
+        drop(tx);
+        let (sender, mut receiver) = mpsc::channel(8);
+        let task = tokio::spawn(send_subscribed_compatible_typed_event_stream(
+            SubscribedCompatibleTypedEventStream {
+                terminal_dependencies: dependencies,
+                initial_run: run.clone(),
+                delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
+                delivery_scope: RuntimeEventDeliveryScope::Resume {
+                    callback_task_id: callback,
+                },
+                from_sequence: Some(50000),
+                durable_round_replay: durable,
+                ignored_waiting_callback_task_id: Some(callback),
+                subscription,
+                sender,
+            },
+        ));
+        let selection = tokio::time::timeout(Duration::from_secs(10), receiver.recv())
+            .await
+            .expect("selection before tools")
+            .expect("host selection input");
+        assert_eq!(
+            selection.envelope.event_type,
+            control_plane::ports::LlmInputSelection::EVENT_TYPE
+        );
+        assert!(selection.delivery.is_none());
+        let (events, claims) = collect_projection(receiver).await;
+        task.await.unwrap();
+        assert_exact_response(&events, &payloads, callback);
+        assert_eq!(claims, 385, "{lane}");
+        let reads = samples.lock().expect("proof observations").clone();
+        eprintln!("Closed terminal-only {lane} proof/claim/bytes observations: {reads:?}");
+        assert_eq!(
+            reads.iter().map(|r| (r.0, r.1, r.2)).collect::<Vec<_>>(),
+            vec![
+                (true, 385, 128),
+                (true, 0, 128),
+                (true, 0, 128),
+                (true, 0, 1)
+            ]
+        );
+        assert!(reads[0].3 > 0);
+        assert!(reads[1..].iter().all(|r| r.3 == 0));
+        assert_eq!(delivery_snapshot(&state, &foreign_ids).await, before);
+    }
+}
+
+#[tokio::test]
+async fn closed_mixed_status_prefix_preserves_peer_authority_and_exact_terminal() {
+    use control_plane::ports::ReleaseRuntimeEventDeliveryInput;
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let mut run = native_run();
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let old = commit_wait(&state, &run, &[committed_delivery_payload("old")]).await;
+    let callback = old.callback_task.as_ref().unwrap().id;
+    run.metadata["response_round_id"] = json!(callback);
+    let payloads = terminal_payloads(5);
+    let own = commit_wait(&state, &run, &payloads).await;
+    let future = commit_wait(&state, &run, &[committed_delivery_payload("future")]).await;
+    let peer = state
+        .store
+        .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run.id,
+            scope: RuntimeEventDeliveryScope::Resume {
+                callback_task_id: callback,
+            },
+            include_membership: true,
+            limit: 128,
+            lease_seconds: 30,
+        })
+        .await
+        .unwrap();
+    assert_eq!(peer.claims.len(), 5);
+    let claim = &peer.claims[1];
+    assert_eq!(
+        state
+            .store
+            .ack_runtime_event_delivery(&AckRuntimeEventDeliveryInput {
+                event_id: claim.event.id,
+                claim_token: claim.claim_token,
+                expected_generation: claim.generation,
+                acknowledged_at: time::OffsetDateTime::now_utc(),
+            })
+            .await
+            .unwrap()
+            .id,
+        claim.event.id
+    );
+    let claim = &peer.claims[2];
+    assert_eq!(
+        state
+            .store
+            .mark_runtime_event_delivery_uncertain(&MarkRuntimeEventDeliveryUncertainInput {
+                event_id: claim.event.id,
+                claim_token: claim.claim_token,
+                expected_generation: claim.generation,
+                marked_at: time::OffsetDateTime::now_utc(),
+            })
+            .await
+            .unwrap()
+            .id,
+        claim.event.id
+    );
+    let claim = &peer.claims[3];
+    assert_eq!(
+        state
+            .store
+            .release_runtime_event_delivery(&ReleaseRuntimeEventDeliveryInput {
+                event_id: claim.event.id,
+                claim_token: claim.claim_token,
+                expected_generation: claim.generation,
+            })
+            .await
+            .unwrap()
+            .id,
+        claim.event.id
+    );
+    let mut nonowned = vec![
+        old.tool_delivery_events[0].id,
+        future.tool_delivery_events[0].id,
+    ];
+    nonowned.extend([0, 1, 2, 4].map(|index| own.tool_delivery_events[index].id));
+    let before = delivery_snapshot(&state, &nonowned).await;
+    let (tx, live) = mpsc::unbounded_channel();
+    let (sender, mut receiver) = mpsc::channel(1);
+    let task = spawn_scoped_typed_stream(
+        &state,
+        &run,
+        RuntimeEventDeliveryScope::Resume {
+            callback_task_id: callback,
+        },
+        Vec::new(),
+        Vec::new(),
+        live,
+        sender,
+    );
+    // Observe the actual first Closed batch BEFORE any terminal. Its one local
+    // claim is index3; indices0..2 must be exact receipt-less prefix replays.
+    let mut prefix = Vec::new();
+    for (index, payload) in payloads[..4].iter().enumerate() {
+        let input = tokio::time::timeout(Duration::from_secs(10), receiver.recv())
+            .await
+            .expect("Closed prefix must progress")
+            .expect("prefix input");
+        assert_eq!(input.envelope.payload, *payload);
+        assert_eq!(input.delivery.is_some(), index == 3);
+        prefix.push(input);
+    }
+    let mut terminal = durable_record_to_runtime_event_envelope(own.waiting_event);
+    terminal.sequence = 90000;
+    tx.send(terminal).unwrap();
+    drop(tx);
+    let (events, claims) = collect_projection_with_prefix(prefix, receiver).await;
+    task.await.unwrap();
+    assert_exact_response(&events, &payloads, callback);
+    assert_eq!(claims, 1, "no receipt for acked/uncertain/peer-held facts");
+    assert_eq!(delivery_snapshot(&state, &nonowned).await, before);
+    assert_eq!(
+        delivery_statuses(&state, &[own.tool_delivery_events[3].id]).await,
+        vec!["acked"]
+    );
+}
+
+#[tokio::test]
+async fn closed_claim_read_fault_finishes_exact_remainder_without_receipts() {
+    assert_closed_no_progress(true).await;
+}
+
+#[tokio::test]
+async fn closed_reclaimed_seen_prefix_finishes_without_ack_or_lease_progress() {
+    assert_closed_no_progress(false).await;
+}
+
+async fn assert_closed_no_progress(read_fault: bool) {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let mut run = native_run();
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let old = commit_wait(&state, &run, &[committed_delivery_payload("old")]).await;
+    let callback = old.callback_task.as_ref().unwrap().id;
+    run.metadata["response_round_id"] = json!(callback);
+    let payloads = terminal_payloads(385);
+    let own = commit_wait(&state, &run, &payloads).await;
+    let future = commit_wait(&state, &run, &[committed_delivery_payload("future")]).await;
+    let foreign_ids = [
+        old.tool_delivery_events[0].id,
+        future.tool_delivery_events[0].id,
+    ];
+    let before = delivery_snapshot(&state, &foreign_ids).await;
+    let samples = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut dependencies = terminal_dependencies(&state);
+    dependencies.delivery_read_samples = Some(samples.clone());
+    dependencies.delivery_read_attempts = Some(attempts.clone());
+    let (tx, live) = mpsc::unbounded_channel();
+    let (sender, mut receiver) = mpsc::channel(1);
+    let mut subscription = empty_subscription();
+    subscription.live_events = control_plane::ports::RuntimeEventReceiver::from_unbounded(live);
+    let task = tokio::spawn(send_subscribed_compatible_typed_event_stream(
+        SubscribedCompatibleTypedEventStream {
+            terminal_dependencies: dependencies,
+            initial_run: run.clone(),
+            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
+            delivery_scope: RuntimeEventDeliveryScope::Resume {
+                callback_task_id: callback,
+            },
+            from_sequence: Some(50000),
+            durable_round_replay: Vec::new(),
+            ignored_waiting_callback_task_id: Some(callback),
+            subscription,
+            sender,
+        },
+    ));
+    let mut prefix = Vec::new();
+    for payload in &payloads[..128] {
+        let input = tokio::time::timeout(Duration::from_secs(10), receiver.recv())
+            .await
+            .expect("initial batch must progress")
+            .expect("initial claimed input");
+        assert_eq!(input.envelope.payload, *payload);
+        assert!(input.delivery.is_some());
+        prefix.push(input); // Deliberately hold receipts; no ACK is needed for termination.
+    }
+    if read_fault {
+        sqlx::query("alter table flow_run_recovery_history rename to fixture_unavailable_recovery")
+            .execute(state.store.pool())
+            .await
+            .unwrap();
+    } else {
+        let ids = own.tool_delivery_events[..128]
+            .iter()
+            .map(|event| event.id)
+            .collect::<Vec<_>>();
+        let claims: Vec<(Uuid,Uuid,i64)> = sqlx::query_as(
+            "select id,delivery_claim_token,delivery_generation from runtime_events where id=any($1) order by sequence",
+        ).bind(&ids).fetch_all(state.store.pool()).await.unwrap();
+        let tokens = claims.iter().map(|row| row.1).collect::<Vec<_>>();
+        let generations = claims.iter().map(|row| row.2).collect::<Vec<_>>();
+        let expired = sqlx::query(
+            "update runtime_events e set delivery_lease_expires_at=now()-interval '1 second' \
+             from unnest($1::uuid[],$2::uuid[],$3::bigint[]) c(id,token,generation) \
+             where e.id=c.id and e.delivery_status='claimed' and e.delivery_claim_token=c.token \
+             and e.delivery_generation=c.generation",
+        )
+        .bind(&ids)
+        .bind(tokens)
+        .bind(generations)
+        .execute(state.store.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            expired.rows_affected(),
+            128,
+            "fixture expires only exact owned claims"
+        );
+    }
+    let mut terminal = durable_record_to_runtime_event_envelope(own.waiting_event);
+    terminal.sequence = 90000;
+    tx.send(terminal).unwrap();
+    drop(tx);
+    // A real receipt-less remainder input is the query/no-progress barrier.
+    // Do not settle held prefix receipts before the reclaim query executes.
+    let next = tokio::time::timeout(Duration::from_secs(10), receiver.recv())
+        .await
+        .expect("finite exact replay after failed/no-progress claim")
+        .expect("first remainder input");
+    assert_eq!(next.envelope.payload, payloads[128]);
+    assert!(next.delivery.is_none());
+    prefix.push(next);
+    let (events, claims) = collect_projection_with_prefix(prefix, receiver).await;
+    task.await.unwrap();
+    if read_fault {
+        sqlx::query("alter table fixture_unavailable_recovery rename to flow_run_recovery_history")
+            .execute(state.store.pool())
+            .await
+            .unwrap();
+    }
+    assert_exact_response(&events, &payloads, callback);
+    assert_eq!(
+        claims, 128,
+        "remaining257 are exact replay without fabricated receipts"
+    );
+    assert_eq!(
+        attempts.load(std::sync::atomic::Ordering::SeqCst),
+        2,
+        "finite: first batch plus one no-progress/fault query"
+    );
+    let reads = samples.lock().expect("proof observations").clone();
+    eprintln!("Closed no-progress read_fault={read_fault} observations: {reads:?}");
+    let expected = if read_fault {
+        vec![(true, 385, 128)]
+    } else {
+        vec![(true, 385, 128), (true, 0, 128)]
+    };
+    assert_eq!(
+        reads.iter().map(|r| (r.0, r.1, r.2)).collect::<Vec<_>>(),
+        expected
+    );
+    assert!(reads[0].3 > 0);
+    assert!(reads[1..].iter().all(|r| r.3 == 0));
+    let prefix_ids = own.tool_delivery_events[..128]
+        .iter()
+        .map(|event| event.id)
+        .collect::<Vec<_>>();
+    let prefix_generations: Vec<i64> = sqlx::query_scalar(
+        "select delivery_generation from runtime_events where id=any($1) order by sequence",
+    )
+    .bind(&prefix_ids)
+    .fetch_all(state.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        prefix_generations,
+        vec![if read_fault { 1 } else { 2 }; 128]
+    );
+    assert_eq!(
+        delivery_statuses(&state, &prefix_ids).await,
+        vec![if read_fault { "acked" } else { "pending" }; 128],
+        "stale original receipts cannot settle newly reclaimed generations"
+    );
+    assert_eq!(delivery_snapshot(&state, &foreign_ids).await, before);
+    let remainder_ids = own.tool_delivery_events[128..]
+        .iter()
+        .map(|event| event.id)
+        .collect::<Vec<_>>();
+    let generations: Vec<i64> = sqlx::query_scalar(
+        "select delivery_generation from runtime_events where id=any($1) order by sequence",
+    )
+    .bind(&remainder_ids)
+    .fetch_all(state.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(generations, vec![0; 257]);
+    assert_eq!(
+        delivery_statuses(&state, &remainder_ids).await,
+        vec!["pending"; 257]
+    );
 }
 
 #[tokio::test]

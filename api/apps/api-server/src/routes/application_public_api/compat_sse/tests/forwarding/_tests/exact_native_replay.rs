@@ -42,10 +42,10 @@ async fn assert_exact_native_tool_replay(acked: bool) {
             })
         })
         .collect::<Vec<_>>();
-    let mut records = Vec::new();
-    for payload in &payloads {
-        records.push(seed_pending_committed_delivery(&state, &run, payload.clone()).await);
-    }
+    // Use the original atomic tool+waiting+recovery transaction, so exact
+    // replay has the same complete scope evidence as a production callback.
+    let waiting = super::delivery_proof::commit_wait(&state, &run, &payloads).await;
+    let records = waiting.tool_delivery_events;
     // Establish the status through the real receipt owner, as after a completed
     // write or a disconnected writer. No callback is submitted by this replay.
     let (live_sender, live_events) = mpsc::unbounded_channel();
@@ -99,27 +99,9 @@ async fn assert_exact_native_tool_replay(acked: bool) {
         for event in envelopes(3).into_iter().chain(envelopes(5)) {
             live_sender.send(event).unwrap();
         }
-        live_sender
-            .send(RuntimeEventEnvelope::new(
-                run.id,
-                7,
-                RuntimeEventPayload {
-                    event_type: "waiting_callback".into(),
-                    source: RuntimeEventSource::Runtime,
-                    durability: RuntimeEventDurability::DurableRequired,
-                    persist_required: true,
-                    trace_visible: true,
-                    payload: json!({
-                        "callback_task_id": Uuid::now_v7(),
-                        "callback_kind": "llm_tool_calls",
-                        "tool_calls": [{
-                            "id": "native_function_call", "name": "send_message",
-                            "arguments": arguments
-                        }]
-                    }),
-                },
-            ))
-            .unwrap();
+        let mut terminal = crate::routes::application_public_api::stream_terminal_fallback::durable_record_to_runtime_event_envelope(waiting.waiting_event.clone());
+        terminal.sequence = 7;
+        live_sender.send(terminal).unwrap();
         drop(live_sender);
         let (sender, mut receiver) = mpsc::channel(8);
         let forwarding =
