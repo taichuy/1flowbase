@@ -49,6 +49,8 @@ pub struct CheckpointSnapshot {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NodeExecutionTrace {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_identity: Option<crate::execution_engine::container::ScopedExecutionIdentity>,
     pub node_id: String,
     pub node_type: String,
     pub node_alias: String,

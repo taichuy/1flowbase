@@ -24,6 +24,8 @@ pub struct ContainerRoundPath {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContainerCheckpoint {
     pub version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting_execution_id: Option<Uuid>,
     pub root_next_node_index: usize,
     pub root_variable_pool: Map<String, Value>,
     pub root_active_node_ids: Vec<String>,

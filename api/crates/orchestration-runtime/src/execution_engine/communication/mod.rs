@@ -98,6 +98,7 @@ struct RetainedLlm {
 impl RetainedLlm {
     fn trace(&self) -> NodeExecutionTrace {
         NodeExecutionTrace {
+            execution_identity: None,
             node_id: self.node_id.clone(),
             node_type: "llm".into(),
             node_alias: self.node_alias.clone(),

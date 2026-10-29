@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) async fn execute_from<I>(
+pub(super) async fn execute_from_scoped<I>(
     plan: &CompiledPlan,
     next_node_index: usize,
     mut variable_pool: Map<String, Value>,
@@ -8,12 +8,16 @@ pub(super) async fn execute_from<I>(
     runtime_context: &ExecutionRuntimeContext,
     invoker: &I,
     lifecycle: &dyn ExecutionLifecycle,
+    scope: Option<&container::Scope>,
+    session: Option<&container::Session>,
 ) -> Result<FlowDebugExecutionOutcome>
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
-    normalize_plan_variable_pool(plan, &mut variable_pool);
-    synchronize_runtime_global_variables(plan, &mut variable_pool, runtime_context);
+    if scope.is_none() {
+        normalize_plan_variable_pool(plan, &mut variable_pool);
+        synchronize_runtime_global_variables(plan, &mut variable_pool, runtime_context);
+    }
     let mut runtime_context = runtime_context.clone();
     runtime_context.refresh_frozen_run_tools(plan, &variable_pool);
     let edge_index = CompiledEdgeIndex::new(&plan.edges);
@@ -33,6 +37,20 @@ where
             .get(node_id)
             .ok_or_else(|| anyhow!("compiled node missing: {node_id}"))?;
 
+        let scope_container_id = if let Some(scope) = scope {
+            Some(
+                scope.session.state.lock().await.frames[&scope.frame_id]
+                    .identity
+                    .node_id
+                    .clone(),
+            )
+        } else {
+            None
+        };
+        if node.container_id != scope_container_id {
+            continue;
+        }
+
         if !active_node_ids.contains(node_id) {
             continue;
         }
@@ -45,11 +63,144 @@ where
             continue;
         }
         if let Some(communication) = &runtime_context.communication {
-            communication.check_active().await?;
+            if let Err(error) = communication.check_active().await {
+                if scope.is_some() {
+                    return Err(container::GlobalFailure(json!({"error_code": "container_execution_cancelled", "message": error.to_string()})).into());
+                }
+                return Err(error);
+            }
             if node.node_type == "llm" {
                 communication.activate_node(node).await?;
             }
         }
+
+        if let Some(scope) = scope {
+            scope
+                .advance(index, &variable_pool, &active_node_ids, lifecycle)
+                .await?;
+            if let Some(trace) = scope.cached_trace(node_id).await {
+                let selected = trace
+                    .debug_payload
+                    .get("selected_source_handle")
+                    .and_then(Value::as_str);
+                if let Some(error_payload) = trace.error_payload.clone() {
+                    let failure = apply_node_error_policy(NodeErrorPolicyApplication {
+                        plan,
+                        edge_index: &edge_index,
+                        failed_node_index: index,
+                        active_node_ids: &mut active_node_ids,
+                        variable_pool: &mut variable_pool,
+                        pending_failure: &mut pending_failure,
+                        node,
+                        output_payload: &trace.output_payload,
+                        error_payload,
+                        failure_projection: LlmFailureProjection::NoNodeOutput,
+                    })?;
+                    node_traces.push(trace);
+                    if let Some(failure) = failure {
+                        return Ok(FlowDebugExecutionOutcome {
+                            stop_reason: ExecutionStopReason::Failed(failure),
+                            variable_pool,
+                            checkpoint_snapshot: None,
+                            operation_terminal: None,
+                            node_traces,
+                        });
+                    }
+                } else {
+                    variable_pool.insert(
+                        node_id.clone(),
+                        project_node_variable_payload(node, &trace.output_payload)?,
+                    );
+                    activate_indexed_downstream_nodes(
+                        &edge_index,
+                        &mut active_node_ids,
+                        node,
+                        selected,
+                    );
+                    node_traces.push(trace);
+                }
+                continue;
+            }
+            if scope.uncertain(node_id).await
+                && !crate::container_contract::is_container_type(&node.node_type)
+            {
+                let error_payload = json!({"error_code": "container_execution_outcome_uncertain", "message": "The previous attempt started without a durable result; automatic replay is forbidden"});
+                let trace = NodeExecutionTrace {
+                    execution_identity: None,
+                    node_id: node.node_id.clone(),
+                    node_type: node.node_type.clone(),
+                    node_alias: node.alias.clone(),
+                    input_payload: json!({}),
+                    output_payload: json!({}),
+                    error_payload: Some(error_payload.clone()),
+                    metrics_payload: json!({}),
+                    debug_payload: json!({}),
+                    provider_events: Vec::new(),
+                };
+                lifecycle.complete_node(&trace).await?;
+                let failure = apply_node_error_policy(NodeErrorPolicyApplication {
+                    plan,
+                    edge_index: &edge_index,
+                    failed_node_index: index,
+                    active_node_ids: &mut active_node_ids,
+                    variable_pool: &mut variable_pool,
+                    pending_failure: &mut pending_failure,
+                    node,
+                    output_payload: &trace.output_payload,
+                    error_payload,
+                    failure_projection: LlmFailureProjection::NoNodeOutput,
+                })?;
+                node_traces.push(trace);
+                if let Some(failure) = failure {
+                    return Ok(FlowDebugExecutionOutcome {
+                        stop_reason: ExecutionStopReason::Failed(failure),
+                        variable_pool,
+                        checkpoint_snapshot: None,
+                        operation_terminal: None,
+                        node_traces,
+                    });
+                }
+                continue;
+            }
+        }
+        if crate::container_contract::is_container_type(&node.node_type) {
+            let execution = Box::pin(container::execute_container(
+                plan,
+                node,
+                &variable_pool,
+                index,
+                &active_node_ids,
+                scope,
+                session,
+                &runtime_context,
+                invoker,
+                lifecycle,
+            ))
+            .await?;
+            node_traces.extend(execution.traces);
+            if let Some(waiting) = execution.waiting {
+                let mut waiting = *waiting;
+                waiting.node_traces = node_traces;
+                return Ok(waiting);
+            }
+            variable_pool.insert(node_id.clone(), execution.output);
+            activate_indexed_downstream_nodes(&edge_index, &mut active_node_ids, node, None);
+            continue;
+        }
+        // Waiting parent frames never hold a leaf permit. Nested containers share
+        // the same run budget, so waiting for children cannot exhaust all workers.
+        let _leaf_permit = if let Some(scope) = scope {
+            Some(
+                scope
+                    .session
+                    .permits
+                    .acquire()
+                    .await
+                    .map_err(|_| anyhow!("container execution budget closed"))?,
+            )
+        } else {
+            None
+        };
 
         let (resolved_inputs, answer_binding_error_payload) =
             match if node.node_type == "variable_aggregator" {
@@ -69,6 +220,7 @@ where
                     lifecycle.begin_node(node, &json!({})).await?;
                     let error_payload = build_binding_resolution_error_payload(&error);
                     node_traces.push(NodeExecutionTrace {
+                        execution_identity: None,
                         node_id: node.node_id.clone(),
                         node_type: node.node_type.clone(),
                         node_alias: node.alias.clone(),
@@ -122,8 +274,9 @@ where
         let mut selected_source_handle: Option<String> = None;
 
         match node.node_type.as_str() {
-            "start" | "workflow_start" => {
+            "start" | "workflow_start" | "container_start" => {
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -140,6 +293,7 @@ where
                     project_node_variable_payload(node, &Value::Object(resolved_inputs.clone()))?;
                 variable_pool.insert(node.node_id.clone(), output_payload.clone());
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -154,6 +308,7 @@ where
             "if_else" => {
                 selected_source_handle = select_if_else_source_handle(node, &variable_pool)?;
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -185,6 +340,7 @@ where
                 ))
                 .await?;
                 let trace = NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -261,6 +417,7 @@ where
                 )
                 .await?;
                 let trace = NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -308,6 +465,7 @@ where
                     .invoke_notification_node(node, &resolved_inputs)
                     .await?;
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -352,6 +510,7 @@ where
                     .invoke_native_sql_node(node, resolved_native_sql(&resolved_inputs)?)
                     .await?;
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -397,6 +556,7 @@ where
                     .invoke_data_model_node(node, &resolved_inputs)
                     .await?;
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -472,6 +632,7 @@ where
                     project_node_variable_payload(node, &output_payload)?,
                 );
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -486,6 +647,7 @@ where
             "variable_aggregator" => {
                 let execution = execute_variable_aggregator_node(node, &variable_pool)?;
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -552,6 +714,7 @@ where
                     project_node_variable_payload(node, &output_payload)?,
                 );
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -579,6 +742,7 @@ where
                     .unwrap_or("请提供人工输入")
                     .to_string();
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -609,6 +773,7 @@ where
             }
             "tool" => {
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -648,6 +813,7 @@ where
                 )
                 .await?;
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -690,8 +856,26 @@ where
                 );
             }
             "code" => {
-                let execution = execute_code_node(plan, node, &resolved_inputs, invoker).await?;
+                let mut bounded_node;
+                let execution_node = if let Some(scope) = scope {
+                    let (_, owner) = scope.deadline().await;
+                    let remaining = scope.remaining_ms();
+                    if remaining == 0 {
+                        return Err(container::DeadlineExpired(owner).into());
+                    }
+                    bounded_node = node.clone();
+                    if let Some(runtime) = bounded_node.code_runtime.as_mut() {
+                        runtime.isolation_profile.timeout_ms =
+                            runtime.isolation_profile.timeout_ms.min(remaining);
+                    }
+                    &bounded_node
+                } else {
+                    node
+                };
+                let execution =
+                    execute_code_node(plan, execution_node, &resolved_inputs, invoker).await?;
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -736,6 +920,7 @@ where
             other => {
                 let error_payload = build_node_type_not_implemented_error_payload(other, "preview");
                 node_traces.push(NodeExecutionTrace {
+                    execution_identity: None,
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
@@ -810,4 +995,47 @@ where
         operation_terminal,
         node_traces,
     })
+}
+
+pub(super) async fn execute_from<I>(
+    plan: &CompiledPlan,
+    next_node_index: usize,
+    variable_pool: Map<String, Value>,
+    active_node_ids: Option<BTreeSet<String>>,
+    runtime_context: &ExecutionRuntimeContext,
+    invoker: &I,
+    lifecycle: &dyn ExecutionLifecycle,
+) -> Result<FlowDebugExecutionOutcome>
+where
+    I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
+{
+    let has_containers = plan
+        .nodes
+        .values()
+        .any(|node| crate::container_contract::is_container_type(&node.node_type));
+    if !has_containers {
+        return execute_from_scoped(
+            plan,
+            next_node_index,
+            variable_pool,
+            active_node_ids,
+            runtime_context,
+            invoker,
+            lifecycle,
+            None,
+            None,
+        )
+        .await;
+    }
+    container::execute_root(
+        plan,
+        next_node_index,
+        variable_pool,
+        active_node_ids,
+        runtime_context,
+        invoker,
+        lifecycle,
+        None,
+    )
+    .await
 }

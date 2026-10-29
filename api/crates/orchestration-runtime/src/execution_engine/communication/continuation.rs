@@ -106,6 +106,7 @@ where
         }
     }
     outcome.node_traces[trace_index] = NodeExecutionTrace {
+        execution_identity: None,
         node_id: node.node_id.clone(),
         node_type: node.node_type.clone(),
         node_alias: node.alias.clone(),

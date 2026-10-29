@@ -757,6 +757,10 @@ pub async fn resume_flow_debug_run_with_runtime_context_and_lifecycle<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    if checkpoint.container_state.is_some() {
+        let execution_id = container::waiting_execution_id(checkpoint, waiting_node_id)?;
+        return container::resume_scoped_container_with_runtime_context_and_lifecycle(plan, checkpoint, execution_id, resume_payload, runtime_context, invoker, lifecycle).await;
+    }
     let waiting_node = plan
         .nodes
         .get(waiting_node_id)
