@@ -49,6 +49,8 @@ Commands first commit structured durable events, freezing one execution target a
 
 ## MCP and replies
 
+Communication contributions share the SDK message-output contract: literal text preserves explicit line breaks, structured help/model catalogs become Markdown lists, and authored AI Markdown keeps its original bytes. `extension-contracts` owns the canonical types and renderer, re-exported by the SDK and consumed directly by the Host. See the [content contract and parameterized examples](../../../api/crates/runtime-extension-sdk/docs/communication-messages.en.md). The wire still carries rendered `{ text }`; persistence and delivery do not format it again, and attachments retain the existing file protocol.
+
 Plugin declarations create real MCP instances, tools, and bindings under the existing discovery policy. The host binds workspace, channel, and external identity to each communication invocation. Model arguments can select conversations and files within that scope, never expand it.
 
 Reply destinations come from the committed inbound sender and conversation. Later messages cannot change them. Successful execution uses the canonical business-conversation final-answer projection. Reasoning, tool output, callback waits, failures, and timeout placeholders are not sent as replies.

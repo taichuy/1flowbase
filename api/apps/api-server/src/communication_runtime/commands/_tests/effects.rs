@@ -444,8 +444,12 @@ async fn communication_command_model_allowed_choice_is_atomic_and_current_turn_s
         .reply
         .unwrap()
         .text;
-    assert!(listed.contains("Current model: user/opaque:model-b"));
-    assert!(listed.contains("/model-user-user/opaque:model-b"));
+    assert!(listed.starts_with("Current model: `user/opaque:model-b`\n\nAllowed models:\n\n- "));
+    assert!(listed.contains("`/model-user-user/opaque:model-b`"));
+    assert_eq!(
+        listed.lines().filter(|line| line.starts_with("- ")).count(),
+        capabilities().models.len()
+    );
     let (_, invalid) = fixture
         .receive("alice", "invalid", "/model foreign/model")
         .await;
@@ -523,6 +527,10 @@ async fn communication_command_help_uses_effective_availability_and_rechecks_dis
         .text;
     assert!(text.contains("/new"));
     assert!(text.contains("/help"));
+    assert_eq!(
+        text,
+        "- `/new` — Start a new AI session\n- `/help` — Show enabled commands"
+    );
     assert!(
         !text.contains("/model"),
         "unavailable application cannot advertise model selection"

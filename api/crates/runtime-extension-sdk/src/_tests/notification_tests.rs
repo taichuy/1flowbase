@@ -81,6 +81,42 @@ fn managed_request(operation: Value) -> CapabilityStdioRequest {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn notification_sdk_send_preserves_completed_markdown_for_the_supplier() {
+    use crate::{
+        CommunicationCommandReply, CommunicationMessageBlock as Block,
+        CommunicationMessageContent as Content, CommunicationMessageInline as Inline,
+    };
+    let generated = CommunicationCommandReply::from_content(Content::Blocks(vec![
+        Block::BulletList(vec![vec![
+            Inline::Code("/help".into()),
+            Inline::Text(" — first\nsecond".into()),
+        ]]),
+    ]))
+    .unwrap()
+    .text;
+    for expected in [
+        generated,
+        "**Answer**\n\n- one\n- two\n\n```text\n*literal*\n```".into(),
+    ] {
+        let response = crate::execute_communication(
+            managed_request(json!({"type":"send","input_payload":{"text":expected}})),
+            &managed_descriptor(),
+            |_, input| async move {
+                let crate::NotificationOperation::Send { input_payload, .. } = input.operation else {
+                    panic!("supplier must receive a send");
+                };
+                assert_eq!(input_payload["text"], expected, "the supplier boundary must not render again");
+                Ok::<_, String>(serde_json::from_value::<crate::NotificationRuntimeResult>(json!({
+                    "type":"send","outcome":{"status":"succeeded","result":{"accepted":true,"delivery_id":"markdown-fixture"}}
+                })).unwrap())
+            },
+        ).await;
+        assert!(response.ok);
+        assert_eq!(response.result["outcome"]["status"], "succeeded");
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn authorizable_sdk_round_trips_public_qr_and_host_only_patch_on_existing_execute() {
     let descriptor = managed_descriptor();
     let response = crate::execute_authorizable_notification(
