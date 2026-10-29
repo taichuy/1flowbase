@@ -27,7 +27,7 @@ async fn http_request_explicit_direct_bypasses_workspace_resolver() {
 async fn http_request_explicit_proxy_without_resolver_never_contacts_origin() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let plan = http_request_plan(
-        json!({"url":format!("http://{}/", listener.local_addr().unwrap()), "network_egress":{"mode":"proxy","pool_member_id":Uuid::now_v7()}}),
+        json!({"url":format!("http://{}/", listener.local_addr().unwrap()), "timeout_ms":200, "network_egress":{"mode":"proxy","pool_member_id":Uuid::now_v7()}}),
         BTreeMap::new(),
     );
     let result = crate::execution_engine::execute_http_request_node(

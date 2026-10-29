@@ -31,6 +31,8 @@ pub struct HttpNodeProxyOptionResponse {
 #[utoipa::path(
     get,
     path = "/api/console/network-center/http-node-proxy-options",
+    summary = "List HTTP node proxy choices",
+    description = "Returns credential-free proxy references and their current availability for workflow authors.",
     responses((status = 200, body = [HttpNodeProxyOptionResponse]), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_http_node_proxy_options(
