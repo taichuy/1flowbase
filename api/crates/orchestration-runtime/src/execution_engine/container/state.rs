@@ -4,22 +4,9 @@ use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-/// Logical execution identity survives recovery. The persistence owner supplies
-/// and validates its resume claim/generation independently of this logical key.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ScopedExecutionIdentity {
-    pub execution_id: Uuid,
-    pub node_id: String,
-    pub parent_execution_id: Option<Uuid>,
-    pub round_path: Vec<ContainerRoundPath>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ContainerRoundPath {
-    pub container_execution_id: Uuid,
-    pub container_node_id: String,
-    pub round_index: u64,
-}
+// Runtime and durable consumers use the same domain identity. Recovery owner
+// generations remain separate from this stable logical execution key.
+pub use domain::{ContainerRoundPath, NodeExecutionIdentity as ScopedExecutionIdentity};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContainerCheckpoint {

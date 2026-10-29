@@ -80,11 +80,12 @@ function assertRun(detail, loopId) {
   const leaves = detail.node_runs.filter((run) => run.node_id === ids.leaf);
   assert.equal(leaves.length, 6, 'each leaf execution must have its own persisted node_run');
   assert.equal(new Set(leaves.map((run) => run.id)).size, 6);
+  assert.equal(new Set(leaves.map((run) => run.execution_identity?.execution_id)).size, 6);
   const paths = leaves.map((run) => {
     assert.equal(run.status, 'succeeded');
     const identity = run.execution_identity;
     assert.ok(identity, 'typed execution_identity is required; debug text is not an identity source');
-    assert.equal(identity.execution_id, run.id);
+    assert.ok(identity.execution_id, 'logical execution identity is distinct from its run-scoped node receipt');
     assert.equal(identity.node_id, ids.leaf);
     assert.ok(identity.parent_execution_id);
     assert.equal(identity.round_path.length, 2);
@@ -100,6 +101,6 @@ function assertRun(detail, loopId) {
   assert.equal(after.length, 1);
   assert.equal(after[0].status, 'succeeded');
   assert.equal(after[0].output_payload.text, 'done');
-  return { status: detail.flow_run.status, output: detail.flow_run.output_payload, leaf_count: leaves.length, leaf_paths: paths, leaf_execution_ids: leaves.map((run) => run.id), successor_id: after[0].id };
+  return { status: detail.flow_run.status, output: detail.flow_run.output_payload, leaf_count: leaves.length, leaf_paths: paths, leaf_execution_ids: leaves.map((run) => run.execution_identity.execution_id), leaf_node_run_ids: leaves.map((run) => run.id), successor_id: after[0].id };
 }
 module.exports = { ids, initialDocument, nestedDocument, assertRun };

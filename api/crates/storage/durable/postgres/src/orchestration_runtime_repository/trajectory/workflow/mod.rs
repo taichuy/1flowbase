@@ -448,6 +448,14 @@ impl PgControlPlaneStore {
                         value,
                     });
                 }
+                let failures = sqlx::query("select f.after_round_index,runtime_original_json(f.error_payload,f.raw_json_payloads,'error_payload') error_payload from flow_container_control_failures f join flow_container_executions e on e.flow_run_id=f.flow_run_id and e.execution_id=f.execution_id where e.flow_run_id=$1 and e.node_run_id=$2 order by f.after_round_index")
+                    .bind(source_run).bind(source_id).fetch_all(self.pool()).await?;
+                for failure in failures {
+                    sections.push(WorkflowEventSection {
+                        kind: "error".into(),
+                        value: serde_json::json!({"phase":"break_condition","after_round_index":failure.get::<i64,_>("after_round_index"),"error_payload":failure.get::<Value,_>("error_payload")}),
+                    });
+                }
             }
             sections
         };

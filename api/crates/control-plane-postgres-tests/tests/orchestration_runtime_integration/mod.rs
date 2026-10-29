@@ -401,3 +401,6 @@ mod communication_dispatch;
 
 #[path = "_tests/container_commits.rs"]
 mod container_commits;
+
+#[path = "_tests/container_trajectory.rs"]
+mod container_trajectory;
