@@ -83,7 +83,7 @@ async fn network_proxy_authoring_api_permissions_and_selected_socks_execution() 
     let (denied, _) = request(&app, "GET", path, &author_cookie, "", Value::Null).await;
     assert_eq!(denied, StatusCode::FORBIDDEN);
     let (policy_status, policy) = request(&app, "PUT", "/api/console/settings/roles/proxy-author/console-policy", &cookie, &csrf,
-        json!({"groups":[{"kind":"other","group_id":"other.agent-flow","enabled":true,"strategy":"custom","operations":["agent_flow.http_node_proxy_options.list"]}]})).await;
+        json!({"groups":[{"kind":"other","group_id":"other.agent-flow","enabled":true,"strategy":"custom","operations":[{"kind":"simple","operation_id":"agent_flow.http_node_proxy_options.list","enabled":true}]}]})).await;
     assert_eq!(policy_status, StatusCode::NO_CONTENT, "{policy}");
     let (allowed, options) = request(&app, "GET", path, &author_cookie, "", Value::Null).await;
     assert_eq!(allowed, StatusCode::OK, "{options}");
