@@ -649,6 +649,9 @@ where
     let outcome = match result {
         Ok(outcome) => outcome,
         Err(error) => {
+            if error.is::<communication::CommunicationCancelled>() {
+                return Err(GlobalFailure(json!({"error_code":"container_execution_cancelled","message":error.to_string()})).into());
+            }
             if error.is::<CommitFailure>()
                 || error.is::<GlobalFailure>()
                 || error

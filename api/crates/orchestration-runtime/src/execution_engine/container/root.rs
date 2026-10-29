@@ -110,7 +110,9 @@ impl RootLifecycle<'_> {
             Some(&trace),
             None,
         )
-        .await
+        .await?;
+        leave_identity(&self.current_identity, &identity)?;
+        Ok(())
     }
 }
 
@@ -146,10 +148,7 @@ impl ExecutionLifecycle for RootLifecycle<'_> {
             })
             .identity
             .clone();
-        *self
-            .current_identity
-            .lock()
-            .map_err(|_| anyhow!("execution identity lock poisoned"))? = Some(identity.clone());
+        enter_identity(&self.current_identity, &identity)?;
         emit(
             self.owner,
             &state,
@@ -182,10 +181,7 @@ impl ExecutionLifecycle for RootLifecycle<'_> {
     }
     async fn activate_retained_communication_node(&self, node: &CompiledNode) -> Result<()> {
         let identity = self.identity(&node.node_id).await?;
-        *self
-            .current_identity
-            .lock()
-            .map_err(|_| anyhow!("execution identity lock poisoned"))? = Some(identity.clone());
+        enter_identity(&self.current_identity, &identity)?;
         let state = self.session.state.lock().await;
         emit(
             self.owner,

@@ -52,9 +52,9 @@ pub use crate::code_runtime::{
 pub mod ai_native_recovery;
 pub mod branching;
 pub mod communication;
-pub mod container;
 #[path = "execution_engine/llm_operations/compact_operation.rs"]
 mod compact_operation;
+pub mod container;
 mod http_request;
 pub mod internal_compaction;
 #[path = "execution_engine/llm_operations/llm_callbacks.rs"]
@@ -408,11 +408,22 @@ pub trait ExecutionLifecycle: Send + Sync {
     async fn commit_container_transition(
         &self,
         _transition: &container::ContainerTransition<'_>,
-    ) -> Result<()> { Ok(()) }
+    ) -> Result<()> {
+        Ok(())
+    }
 
-    async fn scoped_node_receipt(&self, _identity: &container::ScopedExecutionIdentity) -> Result<Option<uuid::Uuid>> { Ok(None) }
+    async fn scoped_node_receipt(
+        &self,
+        _identity: &container::ScopedExecutionIdentity,
+    ) -> Result<Option<uuid::Uuid>> {
+        Ok(None)
+    }
 
-    async fn complete_node_with_state(&self, trace: &NodeExecutionTrace, _variable_pool: &Map<String, Value>) -> Result<()> {
+    async fn complete_node_with_state(
+        &self,
+        trace: &NodeExecutionTrace,
+        _variable_pool: &Map<String, Value>,
+    ) -> Result<()> {
         self.complete_node(trace).await
     }
 
@@ -470,7 +481,9 @@ async fn complete_latest_node_trace(
     let trace = node_traces
         .last()
         .ok_or_else(|| anyhow!("node execution completed without a trace"))?;
-    lifecycle.complete_node_with_state(trace, variable_pool).await
+    lifecycle
+        .complete_node_with_state(trace, variable_pool)
+        .await
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -764,9 +777,46 @@ pub async fn resume_flow_debug_run_with_runtime_context_and_lifecycle<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    container::CURRENT_EXECUTION
+        .scope(
+            Arc::default(),
+            Box::pin(resume_flow_debug_run_inner(
+                plan,
+                checkpoint,
+                waiting_node_id,
+                resume_payload,
+                runtime_context,
+                invoker,
+                lifecycle,
+            )),
+        )
+        .await
+}
+
+async fn resume_flow_debug_run_inner<I>(
+    plan: &CompiledPlan,
+    checkpoint: &CheckpointSnapshot,
+    waiting_node_id: &str,
+    resume_payload: &Value,
+    runtime_context: ExecutionRuntimeContext,
+    invoker: &I,
+    lifecycle: &dyn ExecutionLifecycle,
+) -> Result<FlowDebugExecutionOutcome>
+where
+    I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
+{
     if checkpoint.container_state.is_some() {
         let execution_id = container::waiting_execution_id(checkpoint, waiting_node_id)?;
-        return container::resume_scoped_container_with_runtime_context_and_lifecycle(plan, checkpoint, execution_id, resume_payload, runtime_context, invoker, lifecycle).await;
+        return container::resume_scoped_container_with_runtime_context_and_lifecycle(
+            plan,
+            checkpoint,
+            execution_id,
+            resume_payload,
+            runtime_context,
+            invoker,
+            lifecycle,
+        )
+        .await;
     }
     let waiting_node = plan
         .nodes

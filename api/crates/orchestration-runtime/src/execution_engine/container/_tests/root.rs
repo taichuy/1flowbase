@@ -115,7 +115,7 @@ async fn nested_new_ordinary_flow_does_not_inherit_parent_execution_identity() {
         parent_execution_id: None,
         round_path: Vec::new(),
     };
-    let parent_slot = Arc::new(Mutex::new(Some(fake.clone())));
+    let parent_slot = Arc::new(Mutex::new(vec![fake.clone()]));
     let mut leaf = code("ordinary", "unused");
     leaf.container_id = None;
     let plan = plan(vec![leaf]);

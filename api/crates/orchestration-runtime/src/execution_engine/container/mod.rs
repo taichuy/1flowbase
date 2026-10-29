@@ -10,8 +10,8 @@ pub use recovery::{
     recover_container_with_runtime_context_and_lifecycle,
     resume_scoped_container_with_runtime_context_and_lifecycle,
 };
-pub use runtime::scoped_execution_identity;
 pub(crate) use runtime::*;
+pub use runtime::{deadline_expired, scoped_execution_identity};
 mod root;
 pub(crate) use root::*;
 mod condition;

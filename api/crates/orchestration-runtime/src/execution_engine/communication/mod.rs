@@ -123,6 +123,15 @@ pub struct CommunicationExecution {
     state: Mutex<State>,
 }
 
+#[derive(Debug)]
+pub(super) struct CommunicationCancelled(anyhow::Error);
+impl std::fmt::Display for CommunicationCancelled {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}", self.0)
+    }
+}
+impl std::error::Error for CommunicationCancelled {}
+
 impl CommunicationExecution {
     pub async fn enter_execution(&self) -> Result<Box<dyn CommunicationExecutionLease>> {
         self.port.enter_execution().await
@@ -162,7 +171,10 @@ impl CommunicationExecution {
     }
 
     pub async fn check_active(&self) -> Result<()> {
-        self.port.check_active().await
+        self.port
+            .check_active()
+            .await
+            .map_err(|error| CommunicationCancelled(error).into())
     }
 
     async fn inspect_ready(&self) -> Result<CommunicationExecutionInputs> {
@@ -294,7 +306,9 @@ impl CommunicationExecution {
     }
 
     pub(super) async fn is_main(&self, node: &CompiledNode) -> bool {
-        self.state.lock().await.continuation.main_node_id.as_deref() == Some(node.node_id.as_str())
+        node.container_id.is_none()
+            && self.state.lock().await.continuation.main_node_id.as_deref()
+                == Some(node.node_id.as_str())
     }
 
     async fn persist(&self, state: &State) -> Result<()> {

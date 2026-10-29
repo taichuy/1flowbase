@@ -69,7 +69,7 @@ where
                 }
                 return Err(error);
             }
-            if node.node_type == "llm" {
+            if node.node_type == "llm" && scope.is_none() {
                 communication.activate_node(node).await?;
             }
         }
@@ -284,7 +284,7 @@ where
             Value::Object(resolved_inputs.clone())
         };
         lifecycle.begin_node(node, &node_input_payload).await?;
-        if node.node_type == "llm" {
+        if node.node_type == "llm" && scope.is_none() {
             if let Some(communication) = &runtime_context.communication {
                 communication
                     .record_node_receipt(node, lifecycle.communication_node_receipt(node).await?)
@@ -398,7 +398,11 @@ where
                     continue;
                 }
 
-                if let Some(communication) = &runtime_context.communication {
+                if let Some(communication) = runtime_context
+                    .communication
+                    .as_ref()
+                    .filter(|_| scope.is_none())
+                {
                     communication
                         .retain_trace(node_traces.last().expect("LLM trace just appended"))
                         .await?;
@@ -967,7 +971,7 @@ where
         }
         // A communication LLM remains running across final-candidate continuation.
         // The persistence owner commits its one terminal node fact after send seal.
-        if runtime_context.communication.is_none() || node.node_type != "llm" {
+        if scope.is_some() || runtime_context.communication.is_none() || node.node_type != "llm" {
             complete_latest_node_trace(lifecycle, &node_traces, &variable_pool).await?;
         }
         // CountTokens and Compact terminate at the LLM node selected by the

@@ -66,7 +66,13 @@ pub(crate) async fn emit(
             detail,
         })
         .await
-        .map_err(|error| anyhow::Error::new(CommitFailure(error.to_string())))
+        .map_err(|error| {
+            if error.is::<DeadlineExpired>() || error.is::<GlobalFailure>() {
+                error
+            } else {
+                anyhow::Error::new(CommitFailure(error.to_string()))
+            }
+        })
 }
 
 impl Session {
@@ -278,11 +284,7 @@ impl ExecutionLifecycle for ScopedLifecycle<'_> {
             })
             .identity
             .clone();
-        *self
-            .scope
-            .current_identity
-            .lock()
-            .map_err(|_| anyhow!("execution identity lock poisoned"))? = Some(identity.clone());
+        enter_identity(&self.scope.current_identity, &identity)?;
         emit(
             self.owner,
             &state,
@@ -324,11 +326,7 @@ impl ExecutionLifecycle for ScopedLifecycle<'_> {
 
     async fn activate_retained_communication_node(&self, node: &CompiledNode) -> Result<()> {
         let identity = self.identity(&node.node_id).await?;
-        *self
-            .scope
-            .current_identity
-            .lock()
-            .map_err(|_| anyhow!("execution identity lock poisoned"))? = Some(identity.clone());
+        enter_identity(&self.scope.current_identity, &identity)?;
         let state = self.scope.session.state.lock().await;
         emit(
             self.owner,
@@ -428,7 +426,7 @@ impl ScopedLifecycle<'_> {
         let mut trace = trace.clone();
         trace.execution_identity = Some(identity.clone());
         node.terminal_trace = Some(trace.clone());
-        emit(
+        let committed = emit(
             self.owner,
             &state,
             ContainerTransitionKind::NodeCompleted,
@@ -437,18 +435,69 @@ impl ScopedLifecycle<'_> {
             Some(&trace),
             None,
         )
-        .await
+        .await;
+        if let Err(error) = committed {
+            state
+                .frames
+                .get_mut(&self.scope.frame_id)
+                .expect("scope frame")
+                .rounds
+                .get_mut(&self.scope.round_index)
+                .expect("scope round")
+                .nodes
+                .get_mut(&trace.node_id)
+                .expect("scope node")
+                .terminal_trace = None;
+            return Err(error);
+        }
+        leave_identity(&self.scope.current_identity, &identity)?;
+        Ok(())
     }
 }
 
-pub(crate) type CurrentIdentity = Arc<std::sync::Mutex<Option<ScopedExecutionIdentity>>>;
+pub(crate) type CurrentIdentity = Arc<std::sync::Mutex<Vec<ScopedExecutionIdentity>>>;
 tokio::task_local! { pub(crate) static CURRENT_EXECUTION: CurrentIdentity; }
 
 /// Invokers use this logical identity to resolve the durable node receipt.
 /// Each independently polled round has its own slot; no run-global active node.
 pub fn scoped_execution_identity() -> Option<ScopedExecutionIdentity> {
     CURRENT_EXECUTION
-        .try_with(|slot| slot.lock().ok().and_then(|identity| identity.clone()))
+        .try_with(|slot| {
+            slot.lock()
+                .ok()
+                .and_then(|identities| identities.last().cloned())
+        })
         .ok()
         .flatten()
+}
+
+pub(crate) fn enter_identity(
+    slot: &CurrentIdentity,
+    identity: &ScopedExecutionIdentity,
+) -> Result<()> {
+    let mut stack = slot
+        .lock()
+        .map_err(|_| anyhow!("execution identity lock poisoned"))?;
+    if stack.last().map(|current| current.execution_id) != Some(identity.execution_id) {
+        stack.push(identity.clone());
+    }
+    Ok(())
+}
+pub(crate) fn leave_identity(
+    slot: &CurrentIdentity,
+    identity: &ScopedExecutionIdentity,
+) -> Result<()> {
+    let mut stack = slot
+        .lock()
+        .map_err(|_| anyhow!("execution identity lock poisoned"))?;
+    if stack.last().map(|current| current.execution_id) == Some(identity.execution_id) {
+        stack.pop();
+    }
+    Ok(())
+}
+
+/// Preserve a deadline owner's identity across the storage adapter boundary.
+/// Durable lifecycle adapters use this when their transaction rejects late work.
+pub fn deadline_expired(owner_execution_id: Uuid) -> anyhow::Error {
+    DeadlineExpired(owner_execution_id).into()
 }

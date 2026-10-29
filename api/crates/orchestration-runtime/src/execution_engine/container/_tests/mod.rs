@@ -86,11 +86,18 @@ impl CodeInvoker for Probe {
 struct Ledger {
     latest: Mutex<Option<ContainerCheckpoint>>,
     started: Mutex<Vec<ScopedExecutionIdentity>>,
+    completed: Mutex<Vec<ScopedExecutionIdentity>>,
     fail_after: Mutex<Option<ContainerTransitionKind>>,
     fail_node: Mutex<Option<String>>,
 }
 #[async_trait]
 impl ExecutionLifecycle for Ledger {
+    async fn scoped_node_receipt(
+        &self,
+        identity: &ScopedExecutionIdentity,
+    ) -> Result<Option<uuid::Uuid>> {
+        Ok(Some(identity.execution_id))
+    }
     async fn begin_node(&self, _: &CompiledNode, _: &Value) -> Result<()> {
         Ok(())
     }
@@ -101,6 +108,12 @@ impl ExecutionLifecycle for Ledger {
         *self.latest.lock().unwrap() = Some(transition.checkpoint.clone());
         if transition.kind == ContainerTransitionKind::NodeStarted {
             self.started
+                .lock()
+                .unwrap()
+                .push(transition.identity.clone());
+        }
+        if transition.kind == ContainerTransitionKind::NodeCompleted {
+            self.completed
                 .lock()
                 .unwrap()
                 .push(transition.identity.clone());
@@ -514,3 +527,5 @@ async fn expired_wait_is_failed_before_callback_payload_is_admitted() {
 mod reference;
 
 mod root;
+
+mod communication;
