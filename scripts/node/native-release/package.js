@@ -16,6 +16,11 @@ function packageName(platform, arch) {
   }
   return `1flowbase-${platform}-${arch}`;
 }
+// Node's native cpSync path can ignore dereference (nodejs/node#59168).
+// A filter uses its JS traversal, which copies linked inputs as regular files.
+function copyInputs(source, destination) {
+  fs.cpSync(source, destination, { recursive: true, dereference: true, filter: () => true });
+}
 function stagePackage({ repoRoot, apiBinary, recoveryBinary, webDir, postgresDir, outDir, platform, arch, resourcesDir, version }) {
   const name = packageName(platform, arch);
   const suffix = platform === 'windows' ? '.exe' : '';
@@ -26,12 +31,12 @@ function stagePackage({ repoRoot, apiBinary, recoveryBinary, webDir, postgresDir
   fs.mkdirSync(stage);
   fs.copyFileSync(apiBinary, path.join(stage, '1flowbase' + suffix));
   fs.copyFileSync(recoveryBinary, path.join(stage, 'system_recovery' + suffix));
-  fs.cpSync(webDir, path.join(stage, 'web'), { recursive: true, dereference: true });
-  fs.cpSync(postgresDir, path.join(stage, 'postgres'), { recursive: true, dereference: true });
+  copyInputs(webDir, path.join(stage, 'web'));
+  copyInputs(postgresDir, path.join(stage, 'postgres'));
   for (const directory of ['host-extensions', 'sets', 'capability-plugins']) {
-    fs.cpSync(path.join(repoRoot, 'api/plugins', directory), path.join(stage, 'api/plugins', directory), { recursive: true, dereference: true });
+    copyInputs(path.join(repoRoot, 'api/plugins', directory), path.join(stage, 'api/plugins', directory));
   }
-  if (resourcesDir) fs.cpSync(resourcesDir, path.join(stage, 'api/resources'), { recursive: true, dereference: true });
+  if (resourcesDir) copyInputs(resourcesDir, path.join(stage, 'api/resources'));
   for (const file of ['README.md', 'README_CN.md']) fs.copyFileSync(path.join(repoRoot, 'docker/native', file), path.join(stage, file));
   fs.copyFileSync(path.join(repoRoot, 'LICENSE'), path.join(stage, 'LICENSE'));
   const environment = nativeEnvironment(repoRoot, platform);
@@ -50,6 +55,7 @@ function stagePackage({ repoRoot, apiBinary, recoveryBinary, webDir, postgresDir
       const file = path.join(directory, entry.name);
       if (entry.isDirectory()) inventory(file);
       else {
+        if (!entry.isFile()) throw new Error(`Package input must be a regular file: ${file}`);
         const relative = path.relative(stage, file).split(path.sep).join('/');
         if (relative !== '.env') manifest.files[relative] = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
       }

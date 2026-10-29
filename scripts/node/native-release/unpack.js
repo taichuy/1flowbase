@@ -15,6 +15,7 @@ function unpack(stage, destination) {
   const root = path.join(destination,path.basename(stage));
   const manifest = JSON.parse(fs.readFileSync(path.join(root,'native-distribution.json'),'utf8'));
   for(const [name,digest] of Object.entries(manifest.files)) {
+    if(!fs.lstatSync(path.join(root,name)).isFile())throw new Error(`Extracted package entry must be a regular file: ${name}`);
     if(crypto.createHash('sha256').update(fs.readFileSync(path.join(root,name))).digest('hex')!==digest)throw new Error(`Extracted file checksum mismatch: ${name}`);
   }
   if(fs.readFileSync(path.join(root,'.env'),'utf8')!==fs.readFileSync(path.join(root,'.env.example'),'utf8'))throw new Error('Archive must contain the initial configuration template without generated credentials');
