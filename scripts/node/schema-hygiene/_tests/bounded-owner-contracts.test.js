@@ -120,7 +120,7 @@ test('communication tables keep physical scope and mutable audit times without a
   const config = loadConfig(repoRoot);
   const inventory = collectSchemaInventory({ repoRoot });
   const report = evaluateSchemaHygiene({ inventory, config });
-  const names = ['communication_bindings', 'communication_conversations', 'communication_messages', 'communication_attachments'];
+  const names = ['communication_bindings', 'communication_conversations', 'communication_inputs', 'communication_messages'];
   for (const name of names) {
     const table = report.tables.find((candidate) => candidate.name === name);
     assert.ok(table, name);

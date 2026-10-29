@@ -14,7 +14,7 @@ function ownedTableFindings(table, contract, tables = [table]) {
   for (const owner of contract.foreignKeys || []) {
     const present = table.foreignKeys.some((key) => sameColumns(key.columns, owner.columns)
       && key.references.table === owner.table && sameColumns(key.references.columns, owner.references)
-      && (!owner.onDelete || key.onDelete === owner.onDelete));
+      && (!owner.onDelete || (key.onDelete || 'no action') === owner.onDelete));
     if (!present) report('owned-table-foreign-key', `required owner reference to ${owner.table} is missing`);
     for (const name of owner.columns) {
       const column = table.columns.find((item) => item.name === name);

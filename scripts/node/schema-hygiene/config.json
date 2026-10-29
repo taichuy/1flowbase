@@ -847,15 +847,9 @@
     },
     "communication_messages": {
       "category": "managed_table",
-      "scopeGenerationSource": "communication_conversations.scope_id with channel and external identity enforced by composite foreign key",
-      "backfillSource": "new table; no historical backfill",
-      "writePathSource": "communication repository writes physical scope_id from authenticated workspace; update triggers maintain mutable audit time"
-    },
-    "communication_attachments": {
-      "category": "join_or_child",
-      "scopeGenerationSource": "communication_messages.scope_id enforced by composite foreign key",
-      "backfillSource": "new table; no historical backfill",
-      "writePathSource": "communication repository writes physical scope_id from authenticated workspace; update triggers maintain mutable audit time"
+      "scopeGenerationSource": "repository checks the complete persisted workspace, channel, sender and conversation identity; timeline rows intentionally have no deletion-coupled foreign key",
+      "backfillSource": "20261026160000 projects original text, file and reply history into typed timeline rows",
+      "writePathSource": "communications history and file repositories read typed timeline facts; communication_timeline_updated_at maintains file recovery updates"
     },
     "communication_sessions": {
       "category": "managed_table",
@@ -880,6 +874,22 @@
       "scopeGenerationSource": "host command admission derives scope from the durable inbound conversation",
       "backfillSource": "new command event table; existing message history retained without replay",
       "writePathSource": "command event repository owns effect claims, selected target, reply receipt and independent send claim"
+    },
+    "communication_inputs": {
+      "category": "managed_table",
+      "scopeGenerationSource": "persisted authenticated workspace, channel and sender identity checked in every adapter write; processing receipts outlive deleted conversations",
+      "backfillSource": "20261026160000 renames the original provider envelopes without changing their ids",
+      "writePathSource": "communications receive and turn repositories retain provider input identity and processing/admission state; the original communication_messages_updated_at trigger follows the renamed table"
+    },
+    "runtime_internal_compaction_contents": {
+      "category": "session_owned_internal_compaction",
+      "scopeGenerationSource": "authenticated scope_id and application_id reference applications(id, scope_id); canonical content references bind the same scope and application",
+      "writePathSource": "orchestration_runtime_repository/context_storage/internal_compaction_methods.rs archives canonical bodies before locking and publishing the composite scope/application/session head"
+    },
+    "runtime_internal_compaction_heads": {
+      "category": "session_owned_internal_compaction",
+      "scopeGenerationSource": "authenticated scope_id and application_id reference applications(id, scope_id); canonical content references bind the same scope and application",
+      "writePathSource": "orchestration_runtime_repository/context_storage/internal_compaction_methods.rs archives canonical bodies before locking and publishing the composite scope/application/session head"
     }
   },
   "needsOwnerReviewTables": {},
