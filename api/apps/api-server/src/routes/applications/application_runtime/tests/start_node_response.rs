@@ -3,6 +3,7 @@ use super::*;
 #[test]
 fn start_node_response_moves_legacy_output_payload_into_input() {
     let run = domain::NodeRunRecord {
+        execution_identity: None,
         id: Uuid::now_v7(),
         flow_run_id: Uuid::now_v7(),
         node_id: "node-start".to_string(),
@@ -40,6 +41,7 @@ fn start_node_response_moves_legacy_output_payload_into_input() {
 fn start_node_response_exposes_input_payload_truth_view() {
     let artifact_ref = Uuid::now_v7().to_string();
     let run = domain::NodeRunRecord {
+        execution_identity: None,
         id: Uuid::now_v7(),
         flow_run_id: Uuid::now_v7(),
         node_id: "node-start".to_string(),

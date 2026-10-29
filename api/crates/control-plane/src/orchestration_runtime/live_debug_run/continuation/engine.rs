@@ -59,9 +59,38 @@ where
         serde_json::from_value(compiled_record.plan.clone())?;
     crate::orchestration_runtime::compile_context::ensure_compiled_plan_runnable(&compiled_plan)?;
 
-    let recovery_snapshot =
+    let has_containers = compiled_plan
+        .nodes
+        .values()
+        .any(|node| matches!(node.node_type.as_str(), "loop" | "iteration"));
+    let native_recovery_started = has_containers
+        && flow_run
+            .input_payload
+            .pointer("/sys/native_inference_recovery")
+            .is_some()
+        && service
+            .repository
+            .container_native_recovery_started(flow_run.id)
+            .await?;
+    let mut recovery_snapshot =
         super::native_recovery::load_snapshot(&service.repository, &flow_run, &mut compiled_plan)
             .await?;
+    if has_containers && (recovery_snapshot.is_none() || native_recovery_started) {
+        if let Some(state) = service
+            .repository
+            .load_container_checkpoint(flow_run.id)
+            .await?
+        {
+            let state: orchestration_runtime::execution_engine::container::ContainerCheckpoint =
+                serde_json::from_value(state)?;
+            recovery_snapshot = Some(orchestration_runtime::execution_state::CheckpointSnapshot {
+                next_node_index: state.root_next_node_index,
+                variable_pool: state.root_variable_pool.clone(),
+                active_node_ids: state.root_active_node_ids.clone(),
+                container_state: Some(state),
+            });
+        }
+    }
     let mut variable_pool = flow_run
         .input_payload
         .as_object()
@@ -152,14 +181,26 @@ where
     };
     let execution = Box::pin(async {
         let outcome = if let Some(snapshot) = &recovery_snapshot {
-            let node_id = flow_run
-                .input_payload
-                .pointer("/sys/native_inference_recovery/node_id")
-                .and_then(Value::as_str)
-                .ok_or_else(|| anyhow!("native_recovery_grant_invalid"))?;
-            orchestration_runtime::execution_engine::recover_native_inference_with_runtime_context_and_lifecycle(
+            if snapshot.container_state.is_some()
+                && (native_recovery_started
+                    || flow_run
+                        .input_payload
+                        .pointer("/sys/native_inference_recovery")
+                        .is_none())
+            {
+                orchestration_runtime::execution_engine::container::recover_container_with_runtime_context_and_lifecycle(
+                    &compiled_plan, snapshot, runtime_context.clone(), &invoker, &lifecycle,
+                ).await?
+            } else {
+                let node_id = flow_run
+                    .input_payload
+                    .pointer("/sys/native_inference_recovery/node_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow!("native_recovery_grant_invalid"))?;
+                orchestration_runtime::execution_engine::recover_native_inference_with_runtime_context_and_lifecycle(
             &compiled_plan, snapshot, node_id, runtime_context.clone(), &invoker, &lifecycle,
         ).await?
+            }
         } else {
             orchestration_runtime::execution_engine::start_flow_debug_run_with_runtime_context_and_lifecycle(
             &compiled_plan, &Value::Object(variable_pool.into_owned()), runtime_context.clone(), &invoker, &lifecycle,

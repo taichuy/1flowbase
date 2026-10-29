@@ -46,10 +46,38 @@ where
         orchestration_runtime::execution_state::ExecutionStopReason::Completed
         | orchestration_runtime::execution_state::ExecutionStopReason::Incomplete(_) => None,
     };
-    let mut waiting_node_run = None;
+    let selected_wait = outcome
+        .checkpoint_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.container_state.as_ref())
+        .and_then(|state| state.waiting_execution_id);
+    let mut waiting_node_run = match selected_wait {
+        Some(execution_id) => Some(
+            repository
+                .get_container_node_run(flow_run_id, execution_id)
+                .await?
+                .ok_or_else(|| anyhow!("selected container wait has no committed node fact"))?,
+        ),
+        None => None,
+    };
     let mut stream_events = Vec::new();
 
     for (index, trace) in outcome.node_traces.iter().enumerate() {
+        if let Some(identity) = &trace.execution_identity {
+            let node_run = repository
+                .get_container_node_run(flow_run_id, identity.execution_id)
+                .await?
+                .ok_or_else(|| anyhow!("container trace has no committed node fact"))?;
+            if matches!(
+                node_run.status,
+                domain::NodeRunStatus::WaitingHuman | domain::NodeRunStatus::WaitingCallback
+            ) {
+                if selected_wait == Some(identity.execution_id) {
+                    waiting_node_run = Some(node_run);
+                }
+            }
+            continue;
+        }
         let fallback_started_at = base_started_at + Duration::seconds(index as i64);
         let node_run = if let Some(node_run) = prepared_node_runs
             .and_then(|node_runs| node_runs.get(&trace.node_id))
@@ -313,6 +341,7 @@ mod tests {
     #[test]
     fn llm_trace_uses_the_last_real_attempt_finish_time() {
         let trace = orchestration_runtime::execution_state::NodeExecutionTrace {
+            execution_identity: None,
             node_id: "node-llm".to_string(),
             node_type: "llm".to_string(),
             node_alias: "LLM".to_string(),

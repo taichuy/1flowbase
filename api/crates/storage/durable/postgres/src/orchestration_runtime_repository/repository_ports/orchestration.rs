@@ -6,6 +6,25 @@ mod dispatch_lease;
 mod log_operations;
 
 log_operations::with_log_operations! {
+    async fn commit_container_transition(&self, input: &control_plane_contracts::ports::CommitContainerTransitionInput) -> Result<Option<domain::NodeRunRecord>> {
+        PgControlPlaneStore::commit_container_transition(self, input).await
+    }
+    async fn container_native_recovery_started(&self, flow_run_id: Uuid) -> Result<bool> {
+        PgControlPlaneStore::container_native_recovery_started(self, flow_run_id).await
+    }
+    async fn fork_container_checkpoint(&self, source_flow_run_id: Uuid, target_flow_run_id: Uuid, execution_id: Uuid) -> Result<()> {
+        PgControlPlaneStore::fork_container_checkpoint(self, source_flow_run_id, target_flow_run_id, execution_id).await
+    }
+    async fn load_container_checkpoint(&self, flow_run_id: Uuid) -> Result<Option<Value>> {
+        PgControlPlaneStore::load_container_checkpoint(self, flow_run_id).await
+    }
+    async fn get_container_node_run_id(&self, flow_run_id: Uuid, execution_id: Uuid) -> Result<Option<Uuid>> {
+        PgControlPlaneStore::get_container_node_run_id(self, flow_run_id, execution_id).await
+    }
+    async fn get_container_node_run(&self, flow_run_id: Uuid, execution_id: Uuid) -> Result<Option<domain::NodeRunRecord>> {
+        PgControlPlaneStore::get_container_node_run(self, flow_run_id, execution_id).await
+    }
+
     async fn observe_internal_compaction(
         &self,
         input: &ObserveInternalCompactionInput,

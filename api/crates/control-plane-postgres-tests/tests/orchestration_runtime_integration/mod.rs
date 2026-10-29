@@ -398,3 +398,6 @@ mod storage_foundation;
 
 #[path = "_tests/communication_dispatch.rs"]
 mod communication_dispatch;
+
+#[path = "_tests/container_commits.rs"]
+mod container_commits;

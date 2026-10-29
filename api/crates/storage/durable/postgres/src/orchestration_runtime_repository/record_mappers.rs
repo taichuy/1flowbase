@@ -165,6 +165,7 @@ pub(super) fn map_flow_run_record(row: PgRow) -> Result<domain::FlowRunRecord> {
 
 pub(super) fn map_node_run_record(row: PgRow) -> Result<domain::NodeRunRecord> {
     PgOrchestrationRuntimeMapper::to_node_run_record(StoredNodeRunRow {
+        execution_identity: row.get("execution_identity"),
         id: row.get("id"),
         flow_run_id: row.get("flow_run_id"),
         node_id: row.get("node_id"),

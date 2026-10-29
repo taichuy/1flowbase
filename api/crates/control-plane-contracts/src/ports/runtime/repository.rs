@@ -6,6 +6,49 @@ pub trait FlowRunDispatchLease: Send {}
 
 #[async_trait]
 pub trait OrchestrationRuntimeRepository: Send + Sync {
+    async fn commit_container_transition(
+        &self,
+        _input: &CommitContainerTransitionInput,
+    ) -> anyhow::Result<Option<domain::NodeRunRecord>> {
+        anyhow::bail!("container transition persistence not implemented")
+    }
+
+    async fn container_native_recovery_started(&self, _flow_run_id: Uuid) -> anyhow::Result<bool> {
+        anyhow::bail!("container native recovery lookup not implemented")
+    }
+
+    async fn fork_container_checkpoint(
+        &self,
+        _source_flow_run_id: Uuid,
+        _target_flow_run_id: Uuid,
+        _execution_id: Uuid,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("container recovery fork not implemented")
+    }
+
+    async fn load_container_checkpoint(
+        &self,
+        _flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<serde_json::Value>> {
+        anyhow::bail!("container checkpoint persistence not implemented")
+    }
+
+    async fn get_container_node_run_id(
+        &self,
+        _flow_run_id: Uuid,
+        _execution_id: Uuid,
+    ) -> anyhow::Result<Option<Uuid>> {
+        anyhow::bail!("container execution receipt lookup not implemented")
+    }
+
+    async fn get_container_node_run(
+        &self,
+        _flow_run_id: Uuid,
+        _execution_id: Uuid,
+    ) -> anyhow::Result<Option<domain::NodeRunRecord>> {
+        anyhow::bail!("container execution lookup not implemented")
+    }
+
     /// Archive the original source and observe the current internal checkpoint.
     /// A stale source prefix must not replace a newer append-only observation.
     async fn observe_internal_compaction(

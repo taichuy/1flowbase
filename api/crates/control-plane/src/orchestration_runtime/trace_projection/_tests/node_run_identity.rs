@@ -6,6 +6,7 @@ fn repeated_llm_node_ids_preserve_every_execution_identity() {
     let first_id = Uuid::now_v7();
     let second_id = Uuid::now_v7();
     let node = |id| domain::NodeRunRecord {
+        execution_identity: None,
         id,
         flow_run_id: run_id,
         node_id: "repeated-llm".into(),

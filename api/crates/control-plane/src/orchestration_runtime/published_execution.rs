@@ -310,7 +310,11 @@ where
                     native_transport: None,
                     response_round_id: None,
                     resume_claim_id: claim.claim.id,
-                    resume_claim_owner: None,
+                    resume_claim_owner: Some(RenewResumeClaimInput {
+                        claim_id: claim.claim.id,
+                        claim_token: claim.claim.claim_token,
+                        expected_generation: claim.claim.generation,
+                    }),
                     actor: &actor,
                     application: &application,
                     flow_run: &flow_run,

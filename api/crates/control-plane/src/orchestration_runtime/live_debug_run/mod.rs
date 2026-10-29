@@ -1,3 +1,4 @@
+pub(in crate::orchestration_runtime) mod container;
 mod continuation;
 mod preparation;
 pub(super) use continuation::{compiled_plan_start_node_id, inject_system_variables};
@@ -148,6 +149,13 @@ where
     R: OrchestrationRuntimeRepository + Send + Sync,
     H: Send + Sync,
 {
+    async fn commit_container_transition(
+        &self,
+        transition: &orchestration_runtime::execution_engine::container::ContainerTransition<'_>,
+    ) -> Result<()> {
+        self.persist_container_transition(transition).await
+    }
+
     async fn begin_node(
         &self,
         node: &orchestration_runtime::compiled_plan::CompiledNode,
