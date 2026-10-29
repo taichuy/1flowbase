@@ -71,6 +71,12 @@ fn container_compiler_rejects_cross_boundary_edges_and_ownership_cycles() {
         .contains("boundary"));
     let mut cycle = document();
     cycle["graph"]["nodes"][1]["containerId"] = json!("loop");
+    // Isolate ownership validation: root edges would independently violate
+    // their source ownership after moving this container underneath itself.
+    cycle["graph"]["edges"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|edge| edge["id"] == "b");
     assert!(compile(&cycle).unwrap_err().to_string().contains("cycle"));
     let mut ordinary = document();
     ordinary["graph"]["nodes"][3]["containerId"] = json!("start");
