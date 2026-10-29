@@ -265,6 +265,15 @@ pub(super) fn build_nodes_and_topology(
             bail!("edge {edge_id} references unknown target node: {target}");
         }
 
+        if edge.get("containerId").and_then(Value::as_str) != nodes[source].container_id.as_deref()
+        {
+            return Err(FlowValidationError::at_node(
+                target,
+                "/containerId",
+                anyhow!("edge {edge_id} containerId must match its source node ownership"),
+            ));
+        }
+
         let source_handle = edge_handle(edge, "sourceHandle", "source_handle")?;
         let target_handle = edge_handle(edge, "targetHandle", "target_handle")?;
         validate_edge_source_handle(

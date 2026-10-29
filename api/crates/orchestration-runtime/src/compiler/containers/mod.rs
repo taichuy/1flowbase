@@ -91,6 +91,7 @@ pub(super) fn validate_containers(
         }
         if is_container_type(&node.node_type) {
             validate_settings(node)?;
+            validate_selector_types(node, nodes)?;
         }
     }
     for edge in edges {
@@ -239,6 +240,29 @@ fn validate_settings(node: &CompiledNode) -> Result<()> {
                         "loop values must name unique declared variables",
                     ));
                 }
+                if entry.pointer("/value/kind").and_then(Value::as_str) == Some("constant") {
+                    let value = entry.pointer("/value/value").unwrap_or(&Value::Null);
+                    let definition = config
+                        .loop_variables
+                        .iter()
+                        .find(|var| var.key == name)
+                        .expect("declared above");
+                    let matches = match definition.value_type.as_str() {
+                        "string" => value.is_string(),
+                        "number" => value.is_number(),
+                        "boolean" => value.is_boolean(),
+                        "object" => value.is_object(),
+                        "array" => value.is_array(),
+                        _ => false,
+                    };
+                    if !matches {
+                        return Err(invalid(
+                            node,
+                            &format!("/bindings/{key}"),
+                            format!("loop variable {name} must be {}", definition.value_type),
+                        ));
+                    }
+                }
             }
             if key == "variables" {
                 initial = names;
@@ -281,6 +305,46 @@ fn validate_settings(node: &CompiledNode) -> Result<()> {
             "/outputs",
             "containers must declare result; loops must also declare variables",
         ));
+    }
+    Ok(())
+}
+
+fn validate_selector_types(
+    node: &CompiledNode,
+    nodes: &BTreeMap<String, CompiledNode>,
+) -> Result<()> {
+    let config = ContainerConfig::from_node(node)?;
+    let declared_type = |key: &str| -> Option<String> {
+        let selector = node.bindings.get(key)?.selector_paths.first()?;
+        let source = nodes.get(selector.first()?)?;
+        if let Some(output) = container_local_output(source, selector) {
+            return Some(output.value_type);
+        }
+        if selector.len() != 2 {
+            return None;
+        }
+        source
+            .outputs
+            .iter()
+            .find(|output| output.key == selector[1])
+            .map(|output| output.value_type.clone())
+    };
+    for (key, required) in [
+        ("items", node.node_type == "iteration"),
+        ("output", config.flatten_output),
+    ] {
+        if !required {
+            continue;
+        }
+        if let Some(value_type) = declared_type(key) {
+            if !matches!(value_type.as_str(), "array" | "json" | "any") {
+                return Err(invalid(
+                    node,
+                    &format!("/bindings/{key}"),
+                    format!("{key} requires an array, but the selected output is {value_type}"),
+                ));
+            }
+        }
     }
     Ok(())
 }
