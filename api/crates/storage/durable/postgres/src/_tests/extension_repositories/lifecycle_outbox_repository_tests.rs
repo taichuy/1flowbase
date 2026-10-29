@@ -478,21 +478,28 @@ async fn root_2007_ac_007_delivery_migration_preserves_old_targets() {
         .await
         .unwrap();
     let pool = database.connect().await.unwrap();
-    for migration in [
-        include_str!("../../../migrations/20260828100000_create_lifecycle_outbox.sql"),
-        include_str!("../../../migrations/20260828190000_add_lifecycle_subscriber_deliveries.sql"),
-    ] {
-        sqlx::raw_sql(migration).execute(&pool).await.unwrap();
-    }
+    const DELIVERY_STATE_VERSION: i64 = 20260908030000;
+    let migrations = sqlx::migrate!("./migrations");
+    assert!(migrations.version_exists(DELIVERY_STATE_VERSION));
+    let historical = sqlx::migrate::Migrator::with_migrations(
+        migrations
+            .iter()
+            .filter(|migration| migration.version < DELIVERY_STATE_VERSION)
+            .cloned()
+            .collect(),
+    );
+    historical.run(&pool).await.unwrap();
     let event = Uuid::now_v7();
     sqlx::query("insert into lifecycle_outbox(event_id,transaction_id,contract_id,contract_version,canonical_payload,occurred_at,graph_fingerprint) values ($1,$1,'old.fact','v1','old',now(),'old-graph')").bind(event).execute(&pool).await.unwrap();
     sqlx::query("insert into lifecycle_outbox_deliveries(event_id,subscriber_id,handler_id,handler_version,status,claimed_by,claimed_at,delivered_at,attempt_count) values ($1,'pending','old-handler','old-version','pending',null,null,null,0),($1,'claimed','old-handler','old-version','claimed',$1,now(),null,2),($1,'delivered','old-handler','old-version','delivered',null,null,now(),3)").bind(event).execute(&pool).await.unwrap();
-    sqlx::raw_sql(include_str!(
-        "../../../migrations/20260908030000_managed_event_delivery_state.sql"
-    ))
-    .execute(&pool)
-    .await
-    .unwrap();
+    let upgrade = sqlx::migrate::Migrator::with_migrations(
+        migrations
+            .iter()
+            .filter(|migration| migration.version <= DELIVERY_STATE_VERSION)
+            .cloned()
+            .collect(),
+    );
+    upgrade.run(&pool).await.unwrap();
     let rows:Vec<(String,String,String,i32)>=sqlx::query_as("select subscriber_id,status,handler_version,attempt_count from lifecycle_outbox_deliveries order by subscriber_id").fetch_all(&pool).await.unwrap();
     assert_eq!(
         rows,
@@ -507,6 +514,9 @@ async fn root_2007_ac_007_delivery_migration_preserves_old_targets() {
             ("pending".into(), "pending".into(), "old-version".into(), 0)
         ]
     );
+    // Validate the historical transition first, then bring every repository
+    // dependency to the current embedded schema before exercising current claims.
+    run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let claims = store
         .claim_lifecycle_facts(Uuid::now_v7(), 10, Duration::seconds(30))
