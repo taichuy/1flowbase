@@ -193,8 +193,11 @@ fn archive_rejects_path_escape_and_symbolic_links() {
     let f = super::super::tests::Fixture::new();
     let file = f.directory.join("unsafe.zip");
     let mut zip = zip::ZipWriter::new(fs::File::create(&file).unwrap());
-    zip.start_file("../escape", zip::write::SimpleFileOptions::default())
-        .unwrap();
+    zip.start_file(
+        "package\\..\\..\\escape",
+        zip::write::SimpleFileOptions::default(),
+    )
+    .unwrap();
     zip.write_all(b"bad").unwrap();
     zip.finish().unwrap();
     assert!(archive::extract(&file, &f.directory.join("extract"), "package", true).is_err());
@@ -260,4 +263,36 @@ fn packaged_archive_downloads_and_extracts() {
     manifest.verify(&extracted).unwrap();
     assert!(extracted.join(".env").is_file());
     assert!(!extracted.join("data").exists());
+}
+
+#[test]
+fn windows_zip_separators_are_normalized_before_path_validation() {
+    let f = super::super::tests::Fixture::new();
+    let file = f.directory.join("windows-separators.zip");
+    let mut zip = zip::ZipWriter::new(fs::File::create(&file).unwrap());
+    for name in [
+        Manifest::executable(),
+        ".env.example",
+        "web/index.html",
+        super::super::manifest::NAME,
+    ] {
+        zip.start_file(
+            format!("package/{name}").replace('/', "\\"),
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.write_all(&fs::read(f.new.join(name)).unwrap()).unwrap();
+    }
+    zip.finish().unwrap();
+    let extracted = archive::extract(
+        &file,
+        &f.directory.join("windows-extracted"),
+        "package",
+        true,
+    )
+    .unwrap();
+    Manifest::read(&extracted)
+        .unwrap()
+        .verify(&extracted)
+        .unwrap();
 }
