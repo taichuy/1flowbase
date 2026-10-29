@@ -1,3 +1,4 @@
+import { containerBodyPickerOptions } from '../../lib/node-definitions/nodes/containers/body-policy';
 import '@xyflow/react/dist/style.css';
 
 import AimOutlined from '@ant-design/icons/es/icons/AimOutlined';
@@ -380,7 +381,12 @@ function AgentFlowCanvasInner({
             )}
             buttonClassName="agent-flow-floating-picker-anchor__button"
             open
-            options={nodePickerOptions}
+            options={containerBodyPickerOptions(
+              nodePickerOptions,
+              document.graph.nodes.find(
+                (node) => node.id === connectingPayload.sourceNodeId
+              )?.containerId ?? null
+            )}
             placement="bottom"
             onOpenChange={(open) => {
               if (!open) {

@@ -1,3 +1,4 @@
+import { canAddContainerBodyNode } from '../../node-definitions/nodes/containers/body-policy';
 import { CANVAS_NODE_WIDTH } from '../../canvas/node-dimensions';
 import {
   fitContainerBounds,
@@ -265,6 +266,9 @@ export function replaceNodeWithOption(
     node.position.y
   );
 
+  if (node.containerId !== null && !canAddContainerBodyNode(replacement.type))
+    return document;
+
   return initializeContainer(
     {
       ...document,
@@ -412,13 +416,16 @@ export function insertNodeAfter(
   const insertedNodeFlowRole = getNodeFlowRole(node.type);
 
   if (
+    (anchorNode.containerId !== null && !canAddContainerBodyNode(node.type)) ||
     insertedNodeFlowRole === 'entry' ||
     (insertedNodeFlowRole === 'terminal' && outgoingEdges.length > 0)
   ) {
     return document;
   }
   const nextPositionX =
-    anchorNode.position.x + getNodeSize(anchorNode).width + (NODE_GAP_X - CANVAS_NODE_WIDTH);
+    anchorNode.position.x +
+    getNodeSize(anchorNode).width +
+    (NODE_GAP_X - CANVAS_NODE_WIDTH);
   const mountedToolEdges = isLlmToolSourceHandle(resolvedSourceHandle)
     ? getOutgoingEdges(document, anchorNodeId)
         .filter((edge) => isLlmToolSourceHandle(edge.sourceHandle))

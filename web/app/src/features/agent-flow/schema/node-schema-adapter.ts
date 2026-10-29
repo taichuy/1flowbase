@@ -1,3 +1,8 @@
+import {
+  defaultLoopVariableValue,
+  loopVariableDefinitions,
+  type LoopVariableDefinition
+} from '../lib/variables/container-variables';
 import { selectNotificationInstance } from '../lib/node-definitions/nodes/notification';
 import {
   validatePublicOutputKey,
@@ -343,13 +348,18 @@ export function createAgentFlowNodeSchemaAdapter({
       }
 
       if (path.startsWith('config.')) {
-        return path.slice('config.'.length).split('.').reduce<unknown>(
-          (value, key) =>
-            typeof value === 'object' && value !== null && !Array.isArray(value)
-              ? (value as Record<string, unknown>)[key]
-              : undefined,
-          node.config
-        );
+        return path
+          .slice('config.'.length)
+          .split('.')
+          .reduce<unknown>(
+            (value, key) =>
+              typeof value === 'object' &&
+              value !== null &&
+              !Array.isArray(value)
+                ? (value as Record<string, unknown>)[key]
+                : undefined,
+            node.config
+          );
       }
 
       if (path.startsWith('bindings.')) {
@@ -359,6 +369,115 @@ export function createAgentFlowNodeSchemaAdapter({
       return undefined;
     },
     setValue(path: string, value: unknown) {
+      if (
+        (node.type === 'loop' || node.type === 'iteration') &&
+        path.startsWith('bindings.') &&
+        value === null
+      ) {
+        setWorkingDocument((current) => ({
+          ...current,
+          graph: {
+            ...current.graph,
+            nodes: current.graph.nodes.map((candidate) =>
+              candidate.id === nodeId
+                ? {
+                    ...candidate,
+                    bindings: omitKey(
+                      candidate.bindings,
+                      path.slice('bindings.'.length)
+                    )
+                  }
+                : candidate
+            )
+          }
+        }));
+        return;
+      }
+      if (
+        node.type === 'loop' &&
+        path === 'config.loop_variables' &&
+        Array.isArray(value)
+      ) {
+        const definitions = value as LoopVariableDefinition[];
+        setWorkingDocument((current) => {
+          const original = getNode(current, nodeId);
+          const previous = loopVariableDefinitions(original);
+          const renames = new Map<string, string>();
+          if (previous.length === definitions.length)
+            definitions.forEach((definition, index) => {
+              if (previous[index].key !== definition.key)
+                renames.set(previous[index].key, definition.key);
+            });
+          const bindings = { ...original.bindings };
+          for (const key of ['variables', 'variable_updates']) {
+            const binding = bindings[key];
+            const entries =
+              binding?.kind === 'named_bindings' ? binding.value : [];
+            bindings[key] = {
+              kind: 'named_bindings',
+              value: definitions.flatMap((definition) => {
+                const oldKey =
+                  [...renames].find(
+                    ([, name]) => name === definition.key
+                  )?.[0] ?? definition.key;
+                const oldDefinition = previous.find(
+                  (item) => item.key === oldKey
+                );
+                const entry = entries.find((item) => item.name === oldKey);
+                const typeChanged =
+                  oldDefinition &&
+                  oldDefinition.value_type !== definition.value_type;
+                if (entry && !typeChanged)
+                  return [{ ...entry, name: definition.key }];
+                return key === 'variables'
+                  ? [
+                      {
+                        name: definition.key,
+                        value: {
+                          kind: 'constant' as const,
+                          value: defaultLoopVariableValue(definition.value_type)
+                        }
+                      }
+                    ]
+                  : [];
+              })
+            };
+          }
+          const updated = {
+            ...current,
+            graph: {
+              ...current.graph,
+              nodes: current.graph.nodes.map((candidate) =>
+                candidate.id === nodeId
+                  ? {
+                      ...candidate,
+                      config: {
+                        ...candidate.config,
+                        loop_variables: definitions
+                      },
+                      bindings
+                    }
+                  : candidate
+              )
+            }
+          };
+          return renames.size
+            ? transformDocumentSelectorReferences(updated, (selector) =>
+                selector[0] === nodeId &&
+                selector[1] === 'variables' &&
+                renames.has(selector[2])
+                  ? [
+                      nodeId,
+                      'variables',
+                      renames.get(selector[2])!,
+                      ...selector.slice(3)
+                    ]
+                  : selector
+              )
+            : updated;
+        });
+        return;
+      }
       if (
         node.type === 'notification' &&
         path === 'config.instance_id' &&
@@ -514,12 +633,15 @@ export function createAgentFlowNodeSchemaAdapter({
         return getNodeDefinitionMeta(node.type);
       }
 
-      if (key === 'selectorOptions') {
+      if (key === 'selectorOptions' || key.startsWith('selectorOptions:')) {
         return listVisibleSelectorOptions(
           document,
           nodeId,
           environmentVariables,
-          workflowTriggerContext
+          workflowTriggerContext,
+          key.startsWith('selectorOptions:')
+            ? key.slice('selectorOptions:'.length)
+            : ''
         );
       }
 

@@ -1,3 +1,4 @@
+import { containerBodyPickerOptions } from '../node-definitions/nodes/containers/body-policy';
 import {
   CONTAINER_CONTENT_TOP,
   CONTAINER_PADDING,
@@ -147,7 +148,10 @@ export function toCanvasNodes(
         isContainer: node.type === 'iteration' || node.type === 'loop',
         workflowTriggerContext: actions.workflowTriggerContext ?? null,
         ...actions,
-        nodePickerOptions: actions.nodePickerOptions
+        nodePickerOptions: containerBodyPickerOptions(
+          actions.nodePickerOptions,
+          node.containerId
+        )
       }
     };
   });

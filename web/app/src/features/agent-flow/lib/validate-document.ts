@@ -1,3 +1,4 @@
+import { validateContainerNode } from './validation/containers';
 import {
   collectBindingSelectors,
   isRuntimeSelectorSource
@@ -859,6 +860,13 @@ export function validateDocument(
       });
     }
 
+    validateContainerNode(
+      issues,
+      node,
+      document,
+      environmentVariables,
+      workflowTriggerContext
+    );
     validateVariableAssignmentOperations(issues, node, document);
     validateVariableAggregatorGroups(
       issues,
@@ -890,7 +898,8 @@ export function validateDocument(
             node.id,
             selector,
             environmentVariables,
-            workflowTriggerContext
+            workflowTriggerContext,
+            `bindings.${bindingKey}`
           )
         ) {
           continue;

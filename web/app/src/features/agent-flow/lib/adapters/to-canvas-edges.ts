@@ -1,3 +1,4 @@
+import { containerBodyPickerOptions } from '../node-definitions/nodes/containers/body-policy';
 import type {
   FlowAuthoringDocument,
   FlowNodeDocument
@@ -48,7 +49,10 @@ export function toCanvasEdges(
         zIndex: edge.containerId ? 1 : 0,
         style: { stroke: '#b2c8b9', strokeWidth: 2 },
         data: {
-          nodePickerOptions: actions.nodePickerOptions,
+          nodePickerOptions: containerBodyPickerOptions(
+            actions.nodePickerOptions,
+            sourceNode?.containerId ?? null
+          ),
           onInsertNode: canInsertNode ? actions.onInsertNode : undefined
         }
       };

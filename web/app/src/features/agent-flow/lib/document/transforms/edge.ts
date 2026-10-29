@@ -1,3 +1,4 @@
+import { canAddContainerBodyNode } from '../../node-definitions/nodes/containers/body-policy';
 import { initializeContainer } from './container-geometry';
 import type {
   FlowAuthoringDocument,
@@ -237,6 +238,8 @@ export function insertNodeOnEdge(
   }
 
   if (
+    (sourceNode.containerId !== null &&
+      !canAddContainerBodyNode(payload.node.type)) ||
     getNodeFlowRole(sourceNode.type) === 'terminal' ||
     getNodeFlowRole(payload.node.type) !== 'processing'
   ) {
@@ -302,6 +305,8 @@ export function connectNodeFromSource(
   }
 
   if (
+    (sourceNode.containerId !== null &&
+      !canAddContainerBodyNode(payload.node.type)) ||
     getNodeFlowRole(sourceNode.type) === 'terminal' ||
     getNodeFlowRole(payload.node.type) === 'entry'
   ) {
