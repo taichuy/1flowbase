@@ -950,27 +950,20 @@ test('container image workflow scans temporary image tags before official promot
   assert.match(workflow, /path: tmp\/test-governance\/trivy-web-\*\.json/u);
 });
 
-test('container image workflow publishes a GitHub release for the latest API version', () => {
+test('container image workflow publishes one release after Docker and native validation', () => {
   const workflow = readRepoFile('.github', 'workflows', 'container-images.yml');
-
-  assert.match(workflow, /publish-release:\n\s+if: \$\{\{ always\(\) && github\.event_name == 'push' && github\.ref == 'refs\/heads\/latest'/u);
-  assert.match(workflow, /permissions:\n\s+contents: write/u);
-  assert.match(workflow, /RELEASE_TAG: \$\{\{ needs\.select-api-server\.outputs\.image_tag \}\}/u);
-  assert.match(workflow, /gh release view "\$RELEASE_TAG"/u);
-  assert.match(workflow, /cat > release-notes\.md <<EOF/u);
-  assert.match(workflow, /## Installation or Upgrade/u);
-  assert.match(workflow, /scripts\/shell\/docker-deploy\.sh/u);
-  assert.match(workflow, /scripts\/powershell\/docker-deploy\.ps1/u);
-  assert.match(workflow, /Windows CMD/u);
-  assert.match(workflow, /NoProfile -ExecutionPolicy Bypass/u);
-  assert.match(workflow, /## Docker Images/u);
-  assert.match(workflow, /ghcr\.io\/\$\{\{ github\.repository_owner \}\}\/1flowbase-api-server:\$RELEASE_TAG/u);
-  assert.match(workflow, /## Traceability/u);
-  assert.match(workflow, /Target commit/u);
-  assert.match(workflow, /Workflow run/u);
-  assert.match(workflow, /gh release create "\$RELEASE_TAG"/u);
-  assert.match(workflow, /--notes-file release-notes\.md/u);
-  assert.match(workflow, /--generate-notes/u);
+  const publication = workflow.slice(workflow.indexOf('  publish-release:'), workflow.indexOf('  report:'));
+  assert.match(publication, /github\.event_name == 'push' && github\.ref == 'refs\/heads\/latest'/u);
+  assert.match(publication, /needs\.build-native\.result == 'success'/u);
+  assert.match(publication, /needs\.publish-web\.result == 'success'/u);
+  assert.match(publication, /needs\.publish-api-server\.result == 'success'/u);
+  assert.match(publication, /NATIVE_TAG: \$\{\{ needs\.select-release\.outputs\.tag \}\}/u);
+  assert.match(publication, /NATIVE_RELEASE_KIND: combined/u);
+  assert.match(publication, /pattern: 1flowbase-\*/u);
+  assert.match(publication, /run: node scripts\/node\/native-release\/release\.js/u);
+  const { releaseNotes } = require('../../native-release/release.js');
+  const notes = releaseNotes({ kind: 'combined', repo: 'taichuy/1flowbase', tag: 'v0.5.9', sha: '1'.repeat(40), runId: '123' });
+  for (const expected of ['## Installation or Upgrade', 'scripts/shell/docker-deploy.sh', 'scripts/powershell/docker-deploy.ps1', 'Windows CMD', '## Docker Images', 'ghcr.io/taichuy/1flowbase-api-server:v0.5.9', '## Native portable distributions', '## Traceability', 'Target commit', 'Workflow run']) assert.ok(notes.includes(expected), expected);
 });
 
 test('container image workflow records a CD quality gate artifact for Trivy reports', () => {

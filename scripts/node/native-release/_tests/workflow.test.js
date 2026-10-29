@@ -1,0 +1,81 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '../../../..');
+const read = name => fs.readFileSync(path.join(root, '.github/workflows', name), 'utf8');
+function job(text, name) {
+  const start = text.indexOf(`\n  ${name}:\n`);
+  assert.ok(start >= 0, name);
+  const rest = text.slice(start + 1);
+  const end = rest.slice(1).search(/\n  [a-z][\w-]*:\n/);
+  return end < 0 ? rest : rest.slice(0, end + 1);
+}
+test('Docker release and manual native release share the same build-only workflow and candidate context', () => {
+  const docker = read('container-images.yml');
+  const manual = read('native-release.yml');
+  const build = read('native-build.yml');
+  assert.match(build, /on:\n  workflow_call:/);
+  assert.ok(!build.includes('\n  release:\n'));
+  assert.ok(!build.includes('contents: write'));
+  assert.ok(!build.includes('ref: ${{'));
+  assert.match(job(docker, 'build-native'), /uses: \.\/\.github\/workflows\/native-build.yml/);
+  assert.match(job(docker, 'build-native'), /target: all/);
+  assert.match(job(docker, 'build-native'), /release_tag: \$\{\{ needs.select-release.outputs.tag \}\}/);
+  assert.match(job(manual, 'build'), /uses: \.\/\.github\/workflows\/native-build.yml/);
+  assert.match(job(manual, 'build'), /release_tag: \$\{\{ inputs.release_tag \}\}/);
+  for (const target of ['linux-x64', 'linux-arm64', 'macos-x64', 'macos-arm64', 'windows-x64']) assert.ok(build.includes(`target:'${target}'`));
+  for (const name of ['build-web-dist', 'build-api-server-binary']) assert.match(job(docker, name), /- select-release/);
+});
+test('one publisher waits for both distributions and consumes native artifacts from the same run', () => {
+  const publication = job(read('container-images.yml'), 'publish-release');
+  for (const dependency of ['publish-web', 'publish-api-server', 'build-native']) {
+    assert.ok(publication.includes(`- ${dependency}`));
+    assert.ok(publication.includes(`needs.${dependency}.result == 'success'`));
+  }
+  assert.match(publication, /needs.select-release.outputs.enabled == 'true'/);
+  assert.match(publication, /NATIVE_SHA: \$\{\{ github.sha \}\}/);
+  assert.match(publication, /NATIVE_RELEASE_KIND: combined/);
+  assert.match(publication, /pattern: 1flowbase-\*/);
+  assert.ok(!publication.includes('run-id:'));
+  assert.match(job(read('native-release.yml'), 'release'), /needs: build/);
+});
+
+test('the actual release condition blocks failed builds whose publish jobs were skipped', () => {
+  const publication = job(read('container-images.yml'), 'publish-release');
+  const expression = publication.match(/    if: \$\{\{ (.+) \}\}/)[1]
+    .replace(/needs\.([\w-]+)/g, 'needs["$1"]');
+  // Evaluate this workflow's small expression vocabulary, not a duplicate implementation of its gate.
+  const gate = new Function('needs', 'github', 'always', `return (${expression});`);
+  const baseline = () => ({
+    'select-web': { result: 'success', outputs: { enabled: 'true' } },
+    'select-api-server': { result: 'success', outputs: { enabled: 'true' } },
+    'select-release': { result: 'success', outputs: { enabled: 'true' } },
+    'publish-web': { result: 'success' }, 'publish-api-server': { result: 'success' }, 'build-native': { result: 'success' },
+  });
+  const github = { event_name: 'push', ref: 'refs/heads/latest' };
+  assert.equal(gate(baseline(), github, () => true), true);
+  for (const component of ['web', 'api-server']) {
+    const needs = baseline();
+    needs[`publish-${component}`].result = 'skipped';
+    assert.equal(gate(needs, github, () => true), false, `${component} build failed => publisher skipped`);
+    needs[`select-${component}`].outputs.enabled = 'false';
+    assert.equal(gate(needs, github, () => true), true, `${component} was intentionally disabled`);
+  }
+  for (const dependency of ['publish-web', 'publish-api-server', 'build-native', 'select-release']) {
+    const needs = baseline(); needs[dependency].result = 'failure';
+    assert.equal(gate(needs, github, () => true), false, dependency);
+  }
+  assert.equal(gate(baseline(), { ...github, ref: 'refs/heads/dev' }, () => true), false);
+});
+test('publishers serialize the same tag across workflows without cancelling active publication', () => {
+  const docker = read('container-images.yml');
+  const combined = job(docker, 'publish-release');
+  const native = job(read('native-release.yml'), 'release');
+  const normalizedGroup = text => text.match(/      group: (.+)/)[1]
+    .replace('${{ github.repository }}', 'taichuy/1flowbase')
+    .replace(/\$\{\{ (needs.select-release.outputs.tag|inputs.release_tag) \}\}/g, 'v0.5.9');
+  assert.equal(normalizedGroup(combined), normalizedGroup(native));
+  for (const text of [combined, native]) assert.match(text, /      cancel-in-progress: false/);
+  assert.match(docker.slice(0, docker.indexOf('jobs:')), /  cancel-in-progress: false/);
+});
