@@ -5,13 +5,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use plugin_framework::{
     provider_contract::{ProviderInvocationInput, ProviderModelDescriptor, ProviderStreamEvent},
     provider_package::ProviderPackage,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -20,12 +20,12 @@ pub use extension_contracts::semantic_terminal::count_tokens_input_tokens_from_o
 
 use crate::{
     application::{
-        ensure_existing_application_non_crud_console_operation, ApplicationNonCrudConsoleOperation,
+        ApplicationNonCrudConsoleOperation, ensure_existing_application_non_crud_console_operation,
     },
     audit::audit_log,
     capability_plugin_runtime::{CapabilityPluginRuntimePort, ExecuteCapabilityNodeInput},
     errors::ControlPlaneError,
-    model_provider::failover_queue::{freeze_queue_items, FailoverQueueSnapshotItem},
+    model_provider::failover_queue::{FailoverQueueSnapshotItem, freeze_queue_items},
     plugin_management::ready_current_node_plugin_installation,
     ports::{
         AcquireResumeClaimInput, AppendRunEventInput, ApplicationJsDependencySelectionRepository,
@@ -91,13 +91,13 @@ use self::{
     },
     payloads::persisted_node_output_payload,
     persistence::{
+        PersistFlowDebugOutcomeInput, PreparedNodeRuns, WaitingNodeResumeUpdate,
         checkpoint_node_id, checkpoint_snapshot_from_record_with_context, next_node_started_at,
-        persist_flow_debug_outcome, persist_preview_events, PersistFlowDebugOutcomeInput,
-        PreparedNodeRuns, WaitingNodeResumeUpdate,
+        persist_flow_debug_outcome, persist_preview_events,
     },
     provider_invoker::{
-        freeze_failover_queue_routes, is_expected_runtime_event_stream_closed_error,
-        DebugDeltaKind, ThinkTagStreamSplitter,
+        DebugDeltaKind, ThinkTagStreamSplitter, freeze_failover_queue_routes,
+        is_expected_runtime_event_stream_closed_error,
     },
 };
 pub struct StartNodeDebugPreviewCommand {
@@ -657,6 +657,16 @@ where
         } else {
             None
         };
+        // Check the host response ID before bind_openai_continuation rewrites it
+        // to the upstream cursor. The checkpoint is already owned by this resume.
+        let predecessor_recovery_receipt = input
+            .snapshot
+            .variable_pool
+            .get(input.waiting_node_id)
+            .and_then(|node| node.get("__llm_tool_callback"))
+            .map(|callback| callback_predecessor_receipt(input.native_transport.as_ref(), callback))
+            .transpose()?
+            .flatten();
         let transport = match (input.native_transport, provider_continuation.as_ref()) {
             (Some(payload), Some(continuation))
                 if payload.wire_body().get("previous_response_id").is_some() =>
@@ -675,6 +685,14 @@ where
                 &input.flow_run.input_payload, payload,
             )
         }).transpose()?;
+        // Attach only after reasoning-default sealing; this host-only receipt
+        // must survive any reconstruction of the native wire payload.
+        let transport = match (transport, predecessor_recovery_receipt) {
+            (Some(payload), Some(receipt)) => {
+                Some(payload.with_predecessor_recovery_receipt(receipt)?)
+            }
+            (transport, _) => transport,
+        };
         let requires_native_transport = transport
             .as_ref()
             .is_some_and(|payload| !payload.is_preferred());
@@ -1107,3 +1125,133 @@ mod node_debug_preview;
 
 #[path = "orchestration_runtime/published_execution.rs"]
 mod published_execution;
+
+/// Enrich only an owned incremental callback. The receipt is already persisted at
+/// provider_metadata's host-owned surface; do not duplicate it in native_response.
+fn callback_predecessor_receipt(
+    transport: Option<&crate::ports::ProviderTransportPayload>,
+    request_payload: &Value,
+) -> Result<Option<extension_contracts::provider_contract::ProviderRecoveryReceipt>> {
+    let Some(transport) = transport else {
+        return Ok(None);
+    };
+    let Some(previous) = transport.wire_body().get("previous_response_id") else {
+        return Ok(None);
+    };
+    if previous.is_null() {
+        return Ok(None);
+    }
+    anyhow::ensure!(
+        previous.as_str().is_some()
+            && previous.as_str()
+                == request_payload
+                    .pointer("/provider_metadata/native_response/response_id")
+                    .and_then(Value::as_str),
+        "native_tool_output_response_mismatch"
+    );
+    let metadata = &request_payload["provider_metadata"];
+    let receipt = extension_contracts::provider_contract::recovery_receipt_from_details(metadata)
+        .map_err(anyhow::Error::msg)?;
+    // Missing legacy evidence remains unknown; do not manufacture HTTP provenance.
+    Ok(receipt)
+}
+
+#[cfg(test)]
+mod callback_predecessor_receipt_tests {
+    use super::*;
+
+    fn evidence() -> Value {
+        json!({"provider_metadata": {
+            "native_response": {"response_id": "resp_owned"},
+            "1flowbase_provider_recovery": {
+                "reason": "semantic_completed", "attempt": 0,
+                "transport": "provider_http", "disposition": "semantic_terminal",
+                "commit_level": "terminal", "transport_epoch": 15
+            }
+        }})
+    }
+
+    #[test]
+    fn owned_http_callback_reuses_receipt_without_mutating_wire_or_durable_evidence() {
+        let body = json!({"previous_response_id": "resp_owned", "input": [
+            {"type": "function_call_output", "call_id": "call_owned", "output": "ok"}
+        ]});
+        let metadata = evidence();
+        let payload =
+            crate::ports::ProviderTransportPayload::openai_responses(body.clone()).unwrap();
+        let digest = payload.digest().to_owned();
+        let receipt = callback_predecessor_receipt(Some(&payload), &metadata)
+            .unwrap()
+            .unwrap();
+        let enriched = payload.with_predecessor_recovery_receipt(receipt).unwrap();
+        assert_eq!(enriched.wire_body(), &body);
+        assert_eq!(enriched.digest(), digest);
+        assert_eq!(metadata, evidence());
+        assert_eq!(
+            enriched.predecessor_recovery_receipt().unwrap().transport,
+            extension_contracts::provider_contract::RecoveryTransport::ProviderHttp
+        );
+    }
+
+    #[test]
+    fn foreign_cursor_and_malformed_receipt_are_not_downgraded_to_missing_evidence() {
+        let foreign = crate::ports::ProviderTransportPayload::openai_responses(
+            json!({"previous_response_id": "resp_foreign"}),
+        )
+        .unwrap();
+        assert!(callback_predecessor_receipt(Some(&foreign), &evidence()).is_err());
+        let owned = || {
+            crate::ports::ProviderTransportPayload::openai_responses(
+                json!({"previous_response_id": "resp_owned"}),
+            )
+            .unwrap()
+        };
+        let mut malformed = evidence();
+        malformed["provider_metadata"]["1flowbase_provider_recovery"]["transport"] =
+            json!("invented");
+        assert!(callback_predecessor_receipt(Some(&owned()), &malformed).is_err());
+        let mut legacy = evidence();
+        legacy["provider_metadata"]
+            .as_object_mut()
+            .unwrap()
+            .remove("1flowbase_provider_recovery");
+        assert!(
+            callback_predecessor_receipt(Some(&owned()), &legacy)
+                .unwrap()
+                .is_none()
+        );
+        let full =
+            crate::ports::ProviderTransportPayload::openai_responses(json!({"input": []})).unwrap();
+        assert!(
+            callback_predecessor_receipt(Some(&full), &evidence())
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn successful_http_fallback_callback_keeps_transition_receipt_provenance() {
+        for (disposition, attempt, reason) in [
+            ("pre_commit_http_fallback", 1, "transport_rejected"),
+            ("one_full_context_rebuild", 1, "transport_disconnected"),
+        ] {
+            let mut metadata = evidence();
+            let receipt = &mut metadata["provider_metadata"]["1flowbase_provider_recovery"];
+            receipt["commit_level"] = json!("lifecycle_only");
+            receipt["disposition"] = json!(disposition);
+            receipt["attempt"] = json!(attempt);
+            receipt["reason"] = json!(reason);
+            let payload = crate::ports::ProviderTransportPayload::openai_responses(
+                json!({"previous_response_id": "resp_owned"}),
+            )
+            .unwrap();
+            let receipt = callback_predecessor_receipt(Some(&payload), &metadata)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                receipt.transport,
+                extension_contracts::provider_contract::RecoveryTransport::ProviderHttp
+            );
+        }
+    }
+}

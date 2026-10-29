@@ -1,8 +1,8 @@
 use std::{
     collections::{BTreeMap, VecDeque},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex as StdMutex, Weak,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
@@ -15,6 +15,7 @@ use orchestration_runtime::transport_session::{
     TransportSessionRegistry, TransportSessionState,
 };
 use plugin_framework::{
+    PluginFrameworkError,
     provider_contract::{
         CommitLevel, CursorBinding, ProviderClientTransport, ProviderInvocationInput,
         ProviderInvocationTransportClassification, ProviderInvocationTransportOutcome,
@@ -25,11 +26,10 @@ use plugin_framework::{
         ProviderTransportSessionIdentity, ProviderTransportSessionReceipt, ProviderWireOperation,
         RecoveryTransport,
     },
-    PluginFrameworkError,
 };
 use runtime_core::runtime_backend::{RuntimeBackend, RuntimeBackendError};
 use sha2::{Digest, Sha256};
-use tokio::sync::{broadcast, Mutex, Notify};
+use tokio::sync::{Mutex, Notify, broadcast};
 
 use super::ProviderRuntimeExecutionContext;
 
@@ -501,10 +501,14 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                             let status = registry.fence_status(&prepared.lease.fence);
                             drop(registry);
                             tracing::warn!(
-                            ?status,
-                            generation = prepared.lease.fence.generation.get(),
-                            "stale provider transport result was fenced without changing session state"
-                        );
+                                ?status,
+                                generation = prepared.lease.fence.generation.get(),
+                                "provider transport receipt generation mismatched its admitted invocation"
+                            );
+                            // The runtime invocation returned, so its host-owned lease
+                            // must settle even though the provider receipt is rejected.
+                            // Registry fencing protects a newer generation or sequence.
+                            self.fault_invocation(&prepared.lease, None).await;
                             return Err(transport_error("provider_transport_stale_generation"));
                         }
                         ProviderInvocationTransportOutcome::PhysicalConnectionFault { .. } => {

@@ -25,7 +25,7 @@ mod runtime_events;
 mod session_binding;
 mod stream_timing;
 pub(super) use failover_queue::freeze_failover_queue_routes;
-use stream_timing::{serialized_frame_size, ProviderStreamTiming};
+use stream_timing::{ProviderStreamTiming, serialized_frame_size};
 
 const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 const RESPONSES_WEBSOCKET_PREWARM_MAX_MS: i64 = 30_000;
@@ -649,7 +649,7 @@ where
         input: &mut ProviderInvocationInput,
     ) -> Result<()> {
         use orchestration_runtime::execution_engine::internal_compaction::{
-            policy_enabled, POLICY_KEY, SUMMARY_KEY,
+            POLICY_KEY, SUMMARY_KEY, policy_enabled,
         };
         if input.run_context.get(SUMMARY_KEY).and_then(Value::as_bool) == Some(true) {
             // A host summary is a new semantic Generate, never a replay of the
@@ -744,6 +744,24 @@ where
         let protocol = match payload.protocol() {
             crate::ports::ProviderTransportProtocol::OpenAiResponses => "openai_responses",
         };
+        // This hint is host evidence from the owned predecessor, not the current
+        // delivery carrier. Cursor-free full-context fallback must remain independent.
+        if payload
+            .wire_body()
+            .get("previous_response_id")
+            .is_some_and(|v| !v.is_null())
+        {
+            if let Some(receipt) = payload.predecessor_recovery_receipt() {
+                input.client_transport = Some(match receipt.transport {
+                    plugin_framework::provider_contract::RecoveryTransport::ProviderHttp => {
+                        plugin_framework::provider_contract::ProviderClientTransport::Http
+                    }
+                    plugin_framework::provider_contract::RecoveryTransport::AiNativeWebSocket => {
+                        plugin_framework::provider_contract::ProviderClientTransport::Websocket
+                    }
+                });
+            }
+        }
         input.native_transport = Some(
             plugin_framework::provider_contract::ProviderNativeTransport {
                 protocol: protocol.to_string(),
