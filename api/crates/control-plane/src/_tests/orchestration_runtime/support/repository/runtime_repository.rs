@@ -338,7 +338,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
     async fn claim_runtime_event_deliveries(
         &self,
         input: &crate::ports::ClaimRuntimeEventDeliveriesInput,
-    ) -> Result<Vec<crate::ports::RuntimeEventDeliveryClaim>> {
+    ) -> Result<crate::ports::RuntimeEventDeliveryBatch> {
         self.memory_claim_runtime_event_deliveries(input)
     }
 

@@ -161,11 +161,13 @@ async fn receipt_survives_postcommit_pool_starvation_and_valid_output_advances_o
     let claims = observer
         .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
             flow_run_id: run.id,
+            scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
             limit: 1,
             lease_seconds: 30,
         })
         .await
-        .unwrap();
+        .unwrap()
+        .claims;
     assert_eq!(claims.len(), 1);
     let ack_error = observer
         .ack_runtime_event_delivery(&AckRuntimeEventDeliveryInput {
@@ -604,7 +606,11 @@ async fn service_lost_commit_response_preserves_wait_and_result_resumes_exactly_
         "unexpected execution error: {:?}",
         waiting.flow_run.error_payload
     );
-    assert_eq!(proxy.dropped_commits(), 1, "server acknowledged COMMIT but its response was dropped before the real SQLx client received it");
+    assert_eq!(
+        proxy.dropped_commits(),
+        1,
+        "server acknowledged COMMIT but its response was dropped before the real SQLx client received it"
+    );
     assert_eq!(waiting.flow_run.status, FlowRunStatus::WaitingCallback);
     assert_eq!(waiting.callback_tasks.len(), 1);
     assert_eq!(

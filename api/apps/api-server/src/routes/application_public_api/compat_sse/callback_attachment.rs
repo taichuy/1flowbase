@@ -38,6 +38,9 @@ pub(super) async fn attach_live_compatible_callback_round(
         initial_run,
         Some(start),
         Vec::new(),
+        RuntimeEventDeliveryScope::Resume {
+            callback_task_id: round_id,
+        },
         subscription,
     ))
 }
@@ -267,6 +270,7 @@ pub(super) async fn follow_missing_compatible_round_events(
                     let mut attached = attach_terminal_compatible_round(
                         &dependencies,
                         initial_run.clone(),
+                        round_id,
                         durable_round_replay,
                     )
                     .await?;

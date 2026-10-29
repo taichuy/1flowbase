@@ -297,7 +297,11 @@ async fn assert_single_cleaned_claim(state: &ApiState, callback_id: Uuid) {
     let counts: (i64, i64, i64) = sqlx::query_as(
         "select (select count(*) from flow_run_callback_resume_attempts where callback_task_id=$1), count(*), count(*) filter (where status='failed') from flow_run_resume_claims where callback_task_id=$1",
     ).bind(callback_id).fetch_one(state.store.pool()).await.unwrap();
-    assert_eq!(counts, (1, 1, 1), "pre-execution cleanup retains one admission and one failed execution claim, without duplicate ownership");
+    assert_eq!(
+        counts,
+        (1, 1, 1),
+        "pre-execution cleanup retains one admission and one failed execution claim, without duplicate ownership"
+    );
 }
 
 async fn ingress_retry_plan(
@@ -591,6 +595,14 @@ async fn partial_tool_results_keep_waiting_receipt_without_opening_or_execution(
     .await
     .expect("partial tool results must return their waiting receipt despite a rejecting open port");
     assert_eq!(opened.initial_run.status, NativeRunStatus::Waiting);
+    assert_eq!(
+        opened.delivery_scope,
+        RuntimeEventDeliveryScope::Resume {
+            callback_task_id: callback_id
+        },
+        "NoExecution must keep the command identity even when ignored waiting ID is absent"
+    );
+    assert!(opened.ignored_waiting_callback_task_id.is_none());
     assert_eq!(
         stream
             .local

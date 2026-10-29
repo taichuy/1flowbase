@@ -94,10 +94,12 @@ impl NativeRunTerminalDependencies {
     pub(crate) async fn claim_runtime_event_deliveries(
         &self,
         flow_run_id: uuid::Uuid,
-    ) -> anyhow::Result<Vec<RuntimeEventDeliveryClaim>> {
+        scope: control_plane::ports::RuntimeEventDeliveryScope,
+    ) -> anyhow::Result<control_plane::ports::RuntimeEventDeliveryBatch> {
         self.store
             .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
                 flow_run_id,
+                scope,
                 limit: 128,
                 lease_seconds: 30,
             })

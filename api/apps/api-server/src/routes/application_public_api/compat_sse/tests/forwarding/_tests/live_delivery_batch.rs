@@ -166,6 +166,7 @@ async fn native_deltas_survive_real_subscription_typed_cursor_and_transparent_ss
         SubscribedCompatibleTypedEventStream {
             terminal_dependencies: dependencies,
             initial_run: run.clone(),
+            delivery_scope: RuntimeEventDeliveryScope::Start,
             from_sequence: None,
             durable_round_replay: Vec::new(),
             ignored_waiting_callback_task_id: None,

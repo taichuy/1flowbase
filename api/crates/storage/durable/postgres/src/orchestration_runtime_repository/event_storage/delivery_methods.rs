@@ -2,63 +2,120 @@ impl PgControlPlaneStore {
     async fn claim_runtime_event_deliveries(
         &self,
         input: &ClaimRuntimeEventDeliveriesInput,
-    ) -> Result<Vec<RuntimeEventDeliveryClaim>> {
-        if input.limit == 0 {
-            return Ok(Vec::new());
-        }
+    ) -> Result<RuntimeEventDeliveryBatch> {
         if input.lease_seconds <= 0 {
             return Err(anyhow!("runtime event delivery lease must be positive"));
         }
+        let (kind, callback) = match input.scope {
+            RuntimeEventDeliveryScope::Start => ("start", None),
+            RuntimeEventDeliveryScope::Resume { callback_task_id } => {
+                ("resume", Some(callback_task_id))
+            }
+            RuntimeEventDeliveryScope::Unresolved => {
+                return Ok(RuntimeEventDeliveryBatch::default());
+            }
+        };
         let limit = i64::try_from(input.limit).unwrap_or(i64::MAX);
+        // Recovery order is the original business transaction order. Diagnostic waiting
+        // copies and stream markers cannot move either boundary. Every claim resolves
+        // the next wait again: an absent upper boundary is never cached as open.
         let rows = sqlx::query(
             r#"
-            with candidates as (
-                select id
-                  from runtime_events
-                 where flow_run_id = $1
-                   and (
-                       delivery_status = 'pending'
-                       or (delivery_status = 'claimed' and delivery_lease_expires_at <= now())
-                   )
-                 order by sequence asc, id asc
-                 for update skip locked
-                 limit $2
+            with anchor as (
+                select 0::bigint as event_sequence, -1::bigint as recovery_sequence
+                 where $4::text = 'start'
+                union all
+                select h.event_sequence, h.sequence
+                  from flow_run_recovery_history h
+                 where $4::text = 'resume' and h.flow_run_id = $1
+                   and h.idempotency_key = 'waiting_callback:' || $5::uuid::text
+                   and h.state_code = 'waiting_callback'
+            ), bounds as (
+                select a.event_sequence as lower_sequence,
+                       n.event_sequence as upper_sequence, n.sequence as upper_recovery_sequence
+                  from anchor a
+                  left join lateral (
+                      select h.sequence, h.event_sequence
+                        from flow_run_recovery_history h
+                       where h.flow_run_id = $1 and h.sequence > a.recovery_sequence
+                         and h.state_code in ('waiting_callback', 'waiting_human')
+                       order by h.sequence limit 1
+                  ) n on true
+            ), eligible as materialized (
+                select e.* from runtime_events e cross join bounds b
+                 where e.flow_run_id = $1 and e.sequence > b.lower_sequence
+                   and (b.upper_recovery_sequence is null or e.sequence < b.upper_sequence)
+                   and e.delivery_status in ('pending', 'claimed', 'acked', 'uncertain')
+            ), candidates as (
+                select e.id from runtime_events e cross join bounds b
+                 where e.flow_run_id = $1 and e.sequence > b.lower_sequence
+                   and (b.upper_recovery_sequence is null or e.sequence < b.upper_sequence)
+                   and (e.delivery_status = 'pending'
+                        or (e.delivery_status = 'claimed' and e.delivery_lease_expires_at <= now()))
+                 order by e.sequence, e.id
+                 for update of e skip locked limit $2
+            ), claimed as (
+                update runtime_events e
+                   set delivery_status = 'claimed', delivery_claim_token = gen_random_uuid(),
+                       delivery_generation = e.delivery_generation + 1,
+                       delivery_lease_expires_at = now() + $3::bigint * interval '1 second',
+                       delivery_acked_at = null
+                  from candidates c where e.id = c.id
+                returning e.id, e.delivery_claim_token, e.delivery_generation, e.delivery_lease_expires_at
             )
-            update runtime_events event
-               set delivery_status = 'claimed',
-                   delivery_claim_token = gen_random_uuid(),
-                   delivery_generation = delivery_generation + 1,
-                   delivery_lease_expires_at = now() + $3::bigint * interval '1 second',
-                   delivery_acked_at = null
-              from candidates
-             where event.id = candidates.id
-            returning event.id, event.flow_run_id, event.node_run_id, event.span_id,
-                      event.parent_span_id, event.sequence, event.event_type, event.layer,
-                      event.source, event.trust_level, event.item_id, event.ledger_ref,
-                      runtime_original_json(event.payload, event.raw_json_payloads, 'payload') as payload, event.visibility, event.durability, event.created_at,
-                      event.delivery_claim_token, event.delivery_generation,
-                      event.delivery_lease_expires_at
+            select b.lower_sequence, b.upper_sequence, b.upper_recovery_sequence,
+                   e.id, e.flow_run_id, e.node_run_id, e.span_id, e.parent_span_id, e.sequence,
+                   e.event_type, e.layer, e.source, e.trust_level, e.item_id, e.ledger_ref,
+                   runtime_original_json(e.payload, e.raw_json_payloads, 'payload') as payload,
+                   e.visibility, e.durability, e.created_at,
+                   c.delivery_claim_token, c.delivery_generation, c.delivery_lease_expires_at
+              from (select 1) root left join bounds b on true
+              left join eligible e on true left join claimed c on c.id = e.id
+             order by e.sequence, e.id
             "#,
         )
         .bind(input.flow_run_id)
         .bind(limit)
         .bind(input.lease_seconds)
+        .bind(kind)
+        .bind(callback)
         .fetch_all(self.pool())
         .await?;
-
-        rows.into_iter()
-            .map(|row| {
-                let claim_token = row.get("delivery_claim_token");
-                let generation = row.get("delivery_generation");
-                let lease_expires_at = row.get("delivery_lease_expires_at");
-                Ok(RuntimeEventDeliveryClaim {
-                    event: map_runtime_event_record(row)?,
+        let mut batch = RuntimeEventDeliveryBatch::default();
+        for row in rows {
+            // Legacy identity without an original anchor cannot authorize executable
+            // replay. Keep supported anchored legacy recovery, never infer Start.
+            if row.get::<Option<i64>, _>("lower_sequence").is_none()
+                || (row
+                    .get::<Option<i64>, _>("upper_recovery_sequence")
+                    .is_some()
+                    && row.get::<Option<i64>, _>("upper_sequence").is_none())
+            {
+                return Err(
+                    ControlPlaneError::Conflict("runtime_event_delivery_scope_unresolved").into(),
+                );
+            }
+            if row.get::<Option<Uuid>, _>("id").is_none() {
+                continue;
+            }
+            let claim_token: Option<Uuid> = row.get("delivery_claim_token");
+            let generation: Option<i64> = row.get("delivery_generation");
+            let lease_expires_at: Option<time::OffsetDateTime> =
+                row.get("delivery_lease_expires_at");
+            let event = map_runtime_event_record(row)?;
+            if let (Some(claim_token), Some(generation), Some(lease_expires_at)) =
+                (claim_token, generation, lease_expires_at)
+            {
+                batch.claims.push(RuntimeEventDeliveryClaim {
+                    event: event.clone(),
                     claim_token,
                     generation,
                     lease_expires_at,
-                })
-            })
-            .collect()
+                });
+            }
+            batch.events.push(event);
+        }
+        Ok(batch)
     }
 
     async fn ack_runtime_event_delivery(

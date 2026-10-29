@@ -130,13 +130,8 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
     run.metadata["active_callback_attach"] = json!(true);
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     seed_flow_run_for_compat_sse_test(&state, &run).await;
-    append_compat_sse_runtime_event(
-        &state,
-        run.id,
-        "waiting_callback",
-        json!({"callback_task_id": callback_task_id}),
-    )
-    .await;
+    super::response_scoped_delivery::seed_scope_boundary(&state, &run, Some(callback_task_id))
+        .await;
     let generation = Uuid::now_v7();
     if delayed_identity {
         append_compat_sse_runtime_event(

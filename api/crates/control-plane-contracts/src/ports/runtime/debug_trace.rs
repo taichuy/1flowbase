@@ -336,9 +336,27 @@ pub struct PersistedWaitingState {
     pub recovery_history: domain::RecoveryHistoryRecord,
 }
 
+/// Immutable execution identity, independent of local stream cursors and delivery ACKs.
+/// Missing attach/legacy identity is explicit and never grants whole-run ownership.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeEventDeliveryScope {
+    Start,
+    Resume { callback_task_id: Uuid },
+    Unresolved,
+}
+
+/// Same-snapshot facts from the selected business waiting interval. `events` includes
+/// acked/uncertain facts: exact reconnect projection does not require a new claim.
+#[derive(Debug, Clone, Default)]
+pub struct RuntimeEventDeliveryBatch {
+    pub claims: Vec<RuntimeEventDeliveryClaim>,
+    pub events: Vec<domain::RuntimeEventRecord>,
+}
+
 #[derive(Debug, Clone)]
 pub struct ClaimRuntimeEventDeliveriesInput {
     pub flow_run_id: Uuid,
+    pub scope: RuntimeEventDeliveryScope,
     pub limit: usize,
     pub lease_seconds: i64,
 }

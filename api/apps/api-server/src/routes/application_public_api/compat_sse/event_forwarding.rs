@@ -2,11 +2,13 @@ use super::*;
 use crate::routes::application_public_api::delivery_receipt::{
     RuntimeEventDeliveryReceipt, RuntimeEventDeliverySettler,
 };
+use control_plane::ports::{RuntimeEventDeliveryBatch, RuntimeEventDeliveryScope};
 use std::collections::{HashMap, HashSet};
 
 pub(super) struct SubscribedCompatibleTypedEventStream {
     pub(super) terminal_dependencies: NativeRunTerminalDependencies,
     pub(super) initial_run: NativeRunResult,
+    pub(super) delivery_scope: RuntimeEventDeliveryScope,
     pub(super) from_sequence: Option<i64>,
     pub(super) durable_round_replay: Vec<RuntimeEventEnvelope>,
     pub(super) ignored_waiting_callback_task_id: Option<uuid::Uuid>,
@@ -91,6 +93,7 @@ struct TypedForwarding<'a> {
     last_forwarded_sequence: i64,
     emitted_answer_delta: bool,
     forwarded_committed_events: ForwardedCommittedEvents,
+    eligible_committed_events: ForwardedCommittedEvents,
 }
 
 async fn forward_subscribed_typed_events(
@@ -102,6 +105,7 @@ async fn forward_subscribed_typed_events(
     let SubscribedCompatibleTypedEventStream {
         terminal_dependencies,
         initial_run,
+        delivery_scope,
         from_sequence,
         durable_round_replay,
         ignored_waiting_callback_task_id,
@@ -118,9 +122,10 @@ async fn forward_subscribed_typed_events(
         last_forwarded_sequence: from_sequence.unwrap_or(0),
         emitted_answer_delta: false,
         forwarded_committed_events: ForwardedCommittedEvents::default(),
+        eligible_committed_events: ForwardedCommittedEvents::default(),
     };
-    let mut delivery_claims = match terminal_dependencies
-        .claim_runtime_event_deliveries(initial_run.id)
+    let batch = match terminal_dependencies
+        .claim_runtime_event_deliveries(initial_run.id, delivery_scope)
         .await
     {
         Ok(claims) => claims,
@@ -130,9 +135,10 @@ async fn forward_subscribed_typed_events(
                 error = %error,
                 "failed to claim pending Responses tool deliveries"
             );
-            Vec::new()
+            RuntimeEventDeliveryBatch::default()
         }
     };
+    let mut delivery_claims = admit_delivery_batch(&mut forwarding, batch);
     if !durable_round_replay.is_empty() {
         forwarding.last_forwarded_sequence = -1;
     }
@@ -191,38 +197,25 @@ async fn forward_subscribed_typed_events(
             continue;
         }
         if is_committed_tool_delivery(&event) {
-            let mut claims = match terminal_dependencies
-                .claim_runtime_event_deliveries(initial_run.id)
+            let batch = match terminal_dependencies
+                .claim_runtime_event_deliveries(initial_run.id, delivery_scope)
                 .await
             {
-                Ok(claims) => claims,
+                Ok(batch) => batch,
                 Err(error) => {
-                    warn!(
-                        flow_run_id = %initial_run.id,
-                        error = %error,
-                        "failed to claim live Responses tool delivery"
-                    );
-                    Vec::new()
+                    warn!(flow_run_id = %initial_run.id, %error,
+                        "failed to claim scoped Responses tool delivery");
+                    RuntimeEventDeliveryBatch::default()
                 }
             };
-            if !claims
-                .iter()
-                .any(|delivery| runtime_delivery_matches_envelope(delivery, &event))
-            {
-                // Durable attachment suffixes also arrive on this lane. A
-                // subscriber reads the exact fact even when no delivery claim
-                // is available; only the claim owner can settle its delivery.
-                release_delivery_claims(settler, claims);
-                if forward_ordered_typed_events(&mut forwarding, vec![(event, None)]).await {
-                    return;
-                }
-                continue;
-            }
-            // A live notification wakes the durable batch owner. Releasing its siblings
-            // and claiming again races the asynchronous settler and can lose notifications.
-            forwarding.last_forwarded_sequence =
-                forwarding.last_forwarded_sequence.max(event.sequence);
+            let mut claims = admit_delivery_batch(&mut forwarding, batch);
+            // A notification wakes the scoped durable batch, never a flow-wide batch.
+            // Its payload is projected only if this snapshot proves membership;
+            // acked/uncertain facts remain legal exact replays without a claim.
             if forward_pending_delivery_claims(&mut forwarding, &mut claims).await {
+                return;
+            }
+            if forward_ordered_typed_events(&mut forwarding, vec![(event, None)]).await {
                 return;
             }
             continue;
@@ -231,6 +224,23 @@ async fn forward_subscribed_typed_events(
             return;
         }
     }
+}
+
+fn admit_delivery_batch(
+    forwarding: &mut TypedForwarding<'_>,
+    batch: RuntimeEventDeliveryBatch,
+) -> Vec<RuntimeEventDeliveryClaim> {
+    for event in batch.events {
+        if !forwarding
+            .eligible_committed_events
+            .contains(&event.event_type, &event.payload)
+        {
+            forwarding
+                .eligible_committed_events
+                .insert(event.event_type, event.payload);
+        }
+    }
+    batch.claims
 }
 
 fn is_committed_tool_delivery(event: &RuntimeEventEnvelope) -> bool {
@@ -302,6 +312,14 @@ async fn forward_ordered_typed_events(
     events: Vec<(RuntimeEventEnvelope, Option<RuntimeEventDeliveryReceipt>)>,
 ) -> bool {
     for (event, receipt) in events {
+        if is_committed_tool_delivery(&event)
+            && !forwarding
+                .eligible_committed_events
+                .contains(&event.event_type, &event.payload)
+        {
+            drop(receipt);
+            continue;
+        }
         let Some(event) = take_ordered_compatible_event(
             event,
             &mut forwarding.last_forwarded_sequence,

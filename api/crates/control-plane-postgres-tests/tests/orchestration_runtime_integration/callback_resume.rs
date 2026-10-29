@@ -71,6 +71,7 @@ fn callback_wait_input(
     tool_count: usize,
 ) -> PersistWaitingStateInput {
     let (resume_claim_id, resume_claim_token) = resume_claim.unzip();
+    let callback_task_id = Uuid::now_v7();
     PersistWaitingStateInput {
         checkpoint_id: Uuid::now_v7(),
         scope_id: seeded.workspace_id,
@@ -102,7 +103,7 @@ fn callback_wait_input(
         } else {
             ContextTransitionKind::Callback
         },
-        recovery_idempotency_key: format!("issue-1736-wait-{wait_index}"),
+        recovery_idempotency_key: format!("waiting_callback:{callback_task_id}"),
         resume_claim_id,
         resume_claim_token,
         waiting_event: AppendRuntimeEventInput {
@@ -139,7 +140,7 @@ fn callback_wait_input(
             durability: domain::RuntimeEventDurability::Durable,
         }],
         kind: PersistWaitingKind::Callback(PersistWaitingCallbackTaskInput {
-            id: Uuid::now_v7(),
+            id: callback_task_id,
             callback_kind: "llm_tool_calls".into(),
             request_payload: json!({
                 "tool_calls": (0..tool_count).map(|index| json!({
@@ -171,21 +172,25 @@ async fn committed_tool_delivery_is_durably_claimed_released_and_acked() {
     let first = store
         .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
             flow_run_id: run.id,
-            limit: 10,
-            lease_seconds: 30,
-        })
-        .await
-        .unwrap();
-    assert_eq!(first.len(), 1);
-    assert_eq!(first[0].event.id, waiting.tool_delivery_events[0].id);
-    assert!(store
-        .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
-            flow_run_id: run.id,
+            scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
             limit: 10,
             lease_seconds: 30,
         })
         .await
         .unwrap()
+        .claims;
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].event.id, waiting.tool_delivery_events[0].id);
+    assert!(store
+        .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run.id,
+            scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
+            limit: 10,
+            lease_seconds: 30,
+        })
+        .await
+        .unwrap()
+        .claims
         .is_empty());
 
     store
@@ -199,11 +204,13 @@ async fn committed_tool_delivery_is_durably_claimed_released_and_acked() {
     let second = store
         .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
             flow_run_id: run.id,
+            scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
             limit: 10,
             lease_seconds: 30,
         })
         .await
-        .unwrap();
+        .unwrap()
+        .claims;
     assert_eq!(second[0].generation, first[0].generation + 1);
     store
         .ack_runtime_event_delivery(&AckRuntimeEventDeliveryInput {
@@ -217,11 +224,13 @@ async fn committed_tool_delivery_is_durably_claimed_released_and_acked() {
     assert!(store
         .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
             flow_run_id: run.id,
+            scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
             limit: 10,
             lease_seconds: 30,
         })
         .await
         .unwrap()
+        .claims
         .is_empty());
 }
 
@@ -239,13 +248,15 @@ async fn uncertain_tool_delivery_leaves_the_replay_set_and_is_fenced_by_its_clai
 
     let claim_input = ClaimRuntimeEventDeliveriesInput {
         flow_run_id: run.id,
+        scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
         limit: 10,
         lease_seconds: 30,
     };
     let claimed = store
         .claim_runtime_event_deliveries(&claim_input)
         .await
-        .unwrap();
+        .unwrap()
+        .claims;
     assert_eq!(claimed.len(), 1);
     let claim = &claimed[0];
 
@@ -281,6 +292,7 @@ async fn uncertain_tool_delivery_leaves_the_replay_set_and_is_fenced_by_its_clai
             .claim_runtime_event_deliveries(&claim_input)
             .await
             .unwrap()
+            .claims
             .is_empty(),
         "an uncertain delivery never replays automatically, even after the lease"
     );
@@ -1210,3 +1222,6 @@ mod public_round_context;
 
 #[path = "_tests/waiting_commit.rs"]
 mod waiting_commit;
+
+#[path = "_tests/response_scoped_delivery.rs"]
+mod response_scoped_delivery;

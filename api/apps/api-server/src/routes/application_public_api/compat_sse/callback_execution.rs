@@ -89,6 +89,12 @@ pub(super) async fn open_compatible_turn_with_invoker(
         dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
     >,
 ) -> Result<OpenedCompatibleTurn, NativeApiError> {
+    let delivery_scope = match &action {
+        CompatibleTurnAction::Start { .. } => RuntimeEventDeliveryScope::Start,
+        CompatibleTurnAction::ResumeForActor { command, .. } => RuntimeEventDeliveryScope::Resume {
+            callback_task_id: callback_task_id_from_resume_command(command),
+        },
+    };
     let turn_action = action.name();
     let ignored_waiting_callback_task_id = action.resumed_callback_task_id();
     let fresh_acquisition = matches!(&action,
@@ -164,13 +170,14 @@ pub(super) async fn open_compatible_turn_with_invoker(
                             _ => {
                                 return Err(service_error(anyhow::anyhow!(
                                     "settled callback round terminal identity missing"
-                                )))
+                                )));
                             }
                         }
                     };
                     let subscription = terminal_compatible_round_subscription(&replay);
                     return Ok(OpenedCompatibleTurn {
                         initial_run: result.run,
+                        delivery_scope,
                         from_sequence: Some(i64::MAX),
                         durable_round_replay: replay,
                         ignored_waiting_callback_task_id: if waiting {
@@ -378,6 +385,7 @@ pub(super) async fn open_compatible_turn_with_invoker(
 
     Ok(OpenedCompatibleTurn {
         initial_run,
+        delivery_scope,
         from_sequence,
         durable_round_replay,
         ignored_waiting_callback_task_id,

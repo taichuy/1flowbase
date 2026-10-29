@@ -611,7 +611,7 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     async fn claim_runtime_event_deliveries(
         &self,
         input: &ClaimRuntimeEventDeliveriesInput,
-    ) -> anyhow::Result<Vec<RuntimeEventDeliveryClaim>> {
+    ) -> anyhow::Result<RuntimeEventDeliveryBatch> {
         let _ = input;
         anyhow::bail!("claim_runtime_event_deliveries not implemented")
     }

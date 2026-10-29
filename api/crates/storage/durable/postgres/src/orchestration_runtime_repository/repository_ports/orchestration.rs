@@ -408,7 +408,7 @@ log_operations::with_log_operations! {
     async fn claim_runtime_event_deliveries(
         &self,
         input: &ClaimRuntimeEventDeliveriesInput,
-    ) -> Result<Vec<RuntimeEventDeliveryClaim>> {
+    ) -> Result<RuntimeEventDeliveryBatch> {
         PgControlPlaneStore::claim_runtime_event_deliveries(self, input).await
     }
 

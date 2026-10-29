@@ -24,7 +24,10 @@ use control_plane::{
         wait_for_runtime_debug_event_persister, OrchestrationRuntimeService,
         StartPublishedFlowRunCommand,
     },
-    ports::{RuntimeEventDeliveryClaim, RuntimeEventEnvelope, RuntimeEventPayload},
+    ports::{
+        RuntimeEventDeliveryClaim, RuntimeEventDeliveryScope, RuntimeEventEnvelope,
+        RuntimeEventPayload,
+    },
 };
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
@@ -163,11 +166,32 @@ impl CompatibleTypedTurnStream {
 
 struct OpenedCompatibleTurn {
     initial_run: NativeRunResult,
+    delivery_scope: RuntimeEventDeliveryScope,
     from_sequence: Option<i64>,
     durable_round_replay: Vec<RuntimeEventEnvelope>,
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
     subscription: control_plane::ports::RuntimeEventSubscription,
     execution: tokio::task::JoinHandle<()>,
+}
+
+fn selected_delivery_scope(run: &NativeRunResult) -> RuntimeEventDeliveryScope {
+    match run.metadata["response_round_id"]
+        .as_str()
+        .and_then(|id| uuid::Uuid::parse_str(id).ok())
+    {
+        Some(id) if id == run.id => RuntimeEventDeliveryScope::Start,
+        Some(callback_task_id) => RuntimeEventDeliveryScope::Resume { callback_task_id },
+        None => RuntimeEventDeliveryScope::Unresolved,
+    }
+}
+
+fn freeze_delivery_scope(run: &mut NativeRunResult, scope: RuntimeEventDeliveryScope) {
+    let id = match scope {
+        RuntimeEventDeliveryScope::Start => run.id,
+        RuntimeEventDeliveryScope::Resume { callback_task_id } => callback_task_id,
+        RuntimeEventDeliveryScope::Unresolved => return,
+    };
+    run.metadata["response_round_id"] = json!(id);
 }
 
 impl CompatibleTurnAction {
@@ -664,7 +688,13 @@ pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
                     event_forwarding::is_public_terminal_runtime_event(&event.event_type)
                 }) =>
             {
-                attach_terminal_compatible_round(&dependencies, initial_run, replay).await
+                attach_terminal_compatible_round(
+                    &dependencies,
+                    initial_run,
+                    callback_task_id_from_resume_command(&command),
+                    replay,
+                )
+                .await
             }
             _ => Err(service_error(anyhow::anyhow!(
                 "settled callback has no attributable durable round terminal"
@@ -704,6 +734,7 @@ pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
 async fn attach_terminal_compatible_round(
     dependencies: &CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,
+    round_id: uuid::Uuid,
     durable_round_replay: Vec<RuntimeEventEnvelope>,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
     let subscription = terminal_compatible_round_subscription(&durable_round_replay);
@@ -712,6 +743,9 @@ async fn attach_terminal_compatible_round(
         initial_run,
         Some(i64::MAX),
         durable_round_replay,
+        RuntimeEventDeliveryScope::Resume {
+            callback_task_id: round_id,
+        },
         subscription,
     ))
 }
@@ -787,13 +821,15 @@ fn opened_compatible_typed_stream(
     opened: OpenedCompatibleTurn,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
     let OpenedCompatibleTurn {
-        initial_run,
+        mut initial_run,
+        delivery_scope,
         from_sequence,
         durable_round_replay,
         ignored_waiting_callback_task_id,
         subscription,
         execution,
     } = opened;
+    freeze_delivery_scope(&mut initial_run, delivery_scope);
     let (sender, events) = mpsc::channel(32);
     let execution_sender_guard = sender.clone();
     tokio::spawn(async move {
@@ -806,6 +842,7 @@ fn opened_compatible_typed_stream(
         SubscribedCompatibleTypedEventStream {
             terminal_dependencies: native::native_run_terminal_dependencies(&dependencies.native),
             initial_run: initial_run.clone(),
+            delivery_scope,
             from_sequence,
             durable_round_replay,
             ignored_waiting_callback_task_id,
@@ -876,27 +913,32 @@ async fn attach_compatible_typed_stream_with_replay(
                 .map_err(service_error)?
         }
     };
+    let delivery_scope = selected_delivery_scope(&initial_run);
     Ok(attach_compatible_typed_stream_from_subscription(
         terminal_dependencies,
         initial_run,
         from_sequence,
         durable_round_replay,
+        delivery_scope,
         subscription,
     ))
 }
 
 fn attach_compatible_typed_stream_from_subscription(
     terminal_dependencies: NativeRunTerminalDependencies,
-    initial_run: NativeRunResult,
+    mut initial_run: NativeRunResult,
     from_sequence: Option<i64>,
     durable_round_replay: Vec<RuntimeEventEnvelope>,
+    delivery_scope: RuntimeEventDeliveryScope,
     subscription: control_plane::ports::RuntimeEventSubscription,
 ) -> CompatibleTypedTurnStream {
+    freeze_delivery_scope(&mut initial_run, delivery_scope);
     let (sender, events) = mpsc::channel(32);
     tokio::spawn(send_subscribed_compatible_typed_event_stream(
         SubscribedCompatibleTypedEventStream {
             terminal_dependencies,
             initial_run: initial_run.clone(),
+            delivery_scope,
             from_sequence,
             durable_round_replay,
             ignored_waiting_callback_task_id: None,

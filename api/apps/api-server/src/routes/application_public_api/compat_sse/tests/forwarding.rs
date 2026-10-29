@@ -170,6 +170,27 @@ fn spawn_typed_stream_with_durable(
     live_events: tokio::sync::mpsc::UnboundedReceiver<RuntimeEventEnvelope>,
     sender: mpsc::Sender<CompatibleProjectionInput>,
 ) -> tokio::task::JoinHandle<()> {
+    spawn_scoped_typed_stream(
+        state,
+        run,
+        RuntimeEventDeliveryScope::Start,
+        durable_round_replay,
+        replay,
+        live_events,
+        sender,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn spawn_scoped_typed_stream(
+    state: &Arc<ApiState>,
+    run: &NativeRunResult,
+    delivery_scope: RuntimeEventDeliveryScope,
+    durable_round_replay: Vec<RuntimeEventEnvelope>,
+    replay: Vec<RuntimeEventEnvelope>,
+    live_events: tokio::sync::mpsc::UnboundedReceiver<RuntimeEventEnvelope>,
+    sender: mpsc::Sender<CompatibleProjectionInput>,
+) -> tokio::task::JoinHandle<()> {
     use control_plane::ports::RuntimeEventSubscription;
     let (closure_sender, closure) = tokio::sync::watch::channel(None);
     let state = Arc::clone(state);
@@ -187,6 +208,7 @@ fn spawn_typed_stream_with_durable(
                 state.runtime_event_stream.clone(),
             ),
             initial_run: run.clone(),
+            delivery_scope,
             from_sequence: None,
             durable_round_replay,
             ignored_waiting_callback_task_id: None,
@@ -219,11 +241,13 @@ async fn claimable_delivery_count(state: &ApiState, run_id: Uuid) -> usize {
         .store
         .claim_runtime_event_deliveries(&control_plane::ports::ClaimRuntimeEventDeliveriesInput {
             flow_run_id: run_id,
+            scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
             limit: 8,
             lease_seconds: 30,
         })
         .await
         .unwrap()
+        .claims
         .len()
 }
 
@@ -1056,3 +1080,6 @@ mod openai_projection;
 
 #[path = "forwarding/_tests/exact_native_replay.rs"]
 mod exact_native_replay;
+
+#[path = "forwarding/_tests/response_scoped_delivery.rs"]
+mod response_scoped_delivery;
