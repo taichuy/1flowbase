@@ -6,6 +6,11 @@ use control_plane::application_public_api::{
     },
     native_tool_resume::correlate_native_responses_callback,
 };
+use control_plane_contracts::ports::{
+    ProviderContinuation, ProviderContinuationSlotId, ProviderTransportAffinity,
+    ProviderTransportStore,
+};
+use plugin_framework::provider_contract::{ProviderOutputItemPhase, ProviderStreamEvent};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
 use tokio::sync::{Barrier, Notify};
 
@@ -31,6 +36,19 @@ async fn native_fixture(pool: Option<sqlx::PgPool>) -> Fixture {
         manifest,
         text.replace(marker, &format!("{marker}  capabilities:\n    - responses.native_passthrough\n    - responses.native_output.v1\n    - native_continuation_supported\n")),
     ).unwrap();
+    // Native output requires formal output items as well as final_content;
+    // the semantic provider's empty event stream is not a native response.
+    *fixture.provider.events.lock().unwrap() = [
+        ProviderOutputItemPhase::Added,
+        ProviderOutputItemPhase::Done,
+    ]
+    .map(|phase| ProviderStreamEvent::OutputItem {
+        phase,
+        output_index: 0,
+        item: json!({"id":"msg_recovered","type":"message","role":"assistant",
+            "content":[{"type":"output_text","text":"recovered"}]}),
+    })
+    .into();
     let request = json!({"model":"gpt-5.4-mini","input":[{
         "type":"function_call_output","call_id":"call-1-0",
         "output":"complete retry output: first\nlast"
@@ -64,6 +82,37 @@ async fn native_fixture(pool: Option<sqlx::PgPool>) -> Fixture {
     // consumer here so completion also proves the entire provider answer survives.
     let mut plan: Value = sqlx::query_scalar("select p.plan from flow_compiled_plans p join flow_runs r on r.compiled_plan_id=p.id where r.id=$1")
         .bind(callback.flow_run_id).fetch_one(fixture.store.pool()).await.unwrap();
+    // A native tool wait records both the durable checkpoint marker and the
+    // small claimable continuation. The shared semantic fixture has neither.
+    let runtime = &plan["nodes"]["node-llm"]["llm_runtime"];
+    assert_eq!(runtime["model"], request["model"]);
+    fixture
+        .provider
+        .transport_store
+        .put_continuation(
+            ProviderContinuationSlotId::for_flow_run(callback.flow_run_id),
+            ProviderContinuation::new(
+                "resp_pending_retry",
+                ProviderTransportAffinity::new(
+                    runtime["provider_instance_id"].as_str().unwrap(),
+                    runtime["provider_code"].as_str().unwrap(),
+                    runtime["protocol"].as_str().unwrap(),
+                    runtime["model"].as_str().unwrap(),
+                ),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    sqlx::query("update flow_run_checkpoints set variable_snapshot=jsonb_set(variable_snapshot, '{node-llm,__llm_tool_callback,provider_continuation}', '{\"storage\":\"ephemeral\"}'::jsonb) where flow_run_id=$1")
+        .bind(callback.flow_run_id).execute(fixture.store.pool()).await.unwrap();
+    // persist_callback_wait seeds the flow/checkpoint only; production also
+    // persists the waiting node trace before accepting a native continuation.
+    sqlx::query("update node_runs set status='waiting_callback' where id=$1 and status='running'")
+        .bind(callback.node_run_id)
+        .execute(fixture.store.pool())
+        .await
+        .unwrap();
     plan["topological_order"] = json!(["node-llm", "node-answer"]);
     plan["nodes"]["node-llm"]["downstream_node_ids"] = json!(["node-answer"]);
     plan["nodes"]["node-answer"] = json!({
@@ -125,8 +174,25 @@ async fn execute_until_provider(
         panic!("complete native result must prepare execution");
     };
     let service = fixture.service.clone();
-    let task = tokio::spawn(async move { service.execute_prepared_callback(*owner).await });
-    fixture.provider.wait_until_entered().await;
+    let mut task = tokio::spawn(async move { service.execute_prepared_callback(*owner).await });
+    tokio::select! {
+        () = fixture.provider.wait_until_entered() => {}
+        result = &mut task => {
+            match result {
+                Err(error) => panic!("prepared execution task exited before provider entry: {error}"),
+                Ok(Err(error)) => {
+                    let run_error: Value = sqlx::query_scalar(
+                        "select error_payload from flow_runs where id=(select flow_run_id from flow_run_callback_tasks where id=$1)",
+                    ).bind(callback_id(fixture)).fetch_one(fixture.store.pool()).await.unwrap();
+                    panic!("prepared execution failed before provider entry: {error:#}; run_error={run_error}");
+                }
+                Ok(Ok(result)) => panic!(
+                    "prepared execution settled before provider entry: attempt={:?}, run={:?}",
+                    result.attempt, result.run
+                ),
+            }
+        }
+    }
     let counts: (i64, i64, i64) = sqlx::query_as(
         "select (select count(*) from flow_run_callback_resume_attempts where callback_task_id=$1),(select count(*) from flow_run_resume_claims where callback_task_id=$1 and status='processing' and lease_expires_at>now()),(select count(*) from flow_run_tool_callback_inbox where callback_task_id=$1 and status='received')",
     ).bind(callback_id(fixture)).fetch_one(fixture.store.pool()).await.unwrap();
@@ -166,7 +232,12 @@ async fn finish(
         result.attempt.status,
         domain::FlowRunCallbackResumeAttemptStatus::Succeeded
     );
-    assert_eq!(result.run.answer.as_deref(), Some("recovered"));
+    assert_eq!(
+        result.run.answer.as_deref(),
+        Some("recovered"),
+        "{:?}",
+        result.run
+    );
     let accepted: Value = sqlx::query_scalar("select runtime_original_json(result_payload,raw_json_payloads,'result_payload') from flow_run_tool_callback_inbox where callback_task_id=$1")
         .bind(callback_id(fixture)).fetch_one(fixture.store.pool()).await.unwrap();
     assert_eq!(

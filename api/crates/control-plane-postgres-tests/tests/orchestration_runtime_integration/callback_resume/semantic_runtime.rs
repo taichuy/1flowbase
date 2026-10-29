@@ -8,7 +8,7 @@ use control_plane_contracts::ports::{
 };
 use plugin_framework::provider_contract::{
     ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult,
-    ProviderModelDescriptor,
+    ProviderModelDescriptor, ProviderStreamEvent,
 };
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -22,6 +22,7 @@ pub(in super::super) struct PausedProvider {
     pub inputs: Arc<Mutex<Vec<ProviderInvocationInput>>>,
     pub executions: Arc<AtomicUsize>,
     pub transport_store: Arc<storage_ephemeral::MemoryProviderTransportStore>,
+    pub events: Arc<Mutex<Vec<ProviderStreamEvent>>>,
     pub results: Arc<Mutex<std::collections::VecDeque<ProviderInvocationResult>>>,
 }
 impl PausedProvider {
@@ -34,6 +35,7 @@ impl PausedProvider {
             transport_store: Arc::new(storage_ephemeral::MemoryProviderTransportStore::new(
                 Duration::minutes(5),
             )),
+            events: Arc::new(Mutex::new(vec![])),
             results: Arc::new(Mutex::new(std::collections::VecDeque::new())),
         }
     }
@@ -85,7 +87,7 @@ impl ProviderRuntimePort for PausedProvider {
         self.release.acquire().await.unwrap().forget();
         self.executions.fetch_add(1, Ordering::SeqCst);
         Ok(ProviderRuntimeInvocationOutput {
-            events: vec![],
+            events: self.events.lock().unwrap().clone(),
             result: self.results.lock().unwrap().pop_front().unwrap_or_else(|| {
                 ProviderInvocationResult {
                     final_content: Some("recovered".into()),
