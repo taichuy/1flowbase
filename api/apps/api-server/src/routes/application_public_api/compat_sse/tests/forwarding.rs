@@ -240,6 +240,7 @@ async fn claimable_delivery_count(state: &ApiState, run_id: Uuid) -> usize {
     state
         .store
         .claim_runtime_event_deliveries(&control_plane::ports::ClaimRuntimeEventDeliveriesInput {
+            include_membership: true,
             flow_run_id: run_id,
             scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
             limit: 8,
@@ -1083,3 +1084,6 @@ mod exact_native_replay;
 
 #[path = "forwarding/_tests/response_scoped_delivery.rs"]
 mod response_scoped_delivery;
+
+#[path = "forwarding/_tests/delivery_proof.rs"]
+mod delivery_proof;

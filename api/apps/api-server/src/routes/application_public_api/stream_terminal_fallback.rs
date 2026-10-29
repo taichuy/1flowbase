@@ -33,6 +33,9 @@ use crate::provider_runtime::{ApiProviderRuntime, ApiRuntimeServices};
 #[derive(Clone)]
 pub(crate) struct NativeRunTerminalDependencies {
     published_plan_cache: Option<Arc<dyn control_plane::ports::PublishedPlanCache>>,
+    #[cfg(test)]
+    pub(crate) delivery_read_samples:
+        Option<Arc<std::sync::Mutex<Vec<(bool, usize, usize, usize)>>>>,
     store: storage_durable_postgres::MainDurableStore,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     provider_runtime: Arc<ApiRuntimeServices>,
@@ -54,6 +57,8 @@ impl NativeRunTerminalDependencies {
     ) -> Self {
         Self {
             published_plan_cache: None,
+            #[cfg(test)]
+            delivery_read_samples: None,
             store,
             runtime_engine,
             provider_runtime,
@@ -91,19 +96,59 @@ impl NativeRunTerminalDependencies {
             .await
     }
 
+    pub(crate) async fn callback_waiting_boundary(
+        &self,
+        run_id: uuid::Uuid,
+        callback_task_id: uuid::Uuid,
+    ) -> anyhow::Result<Option<control_plane::ports::RuntimeCallbackWaitingBoundary>> {
+        self.store
+            .get_original_callback_waiting_boundary(run_id, callback_task_id)
+            .await
+    }
+
+    pub(crate) async fn callback_round_page(
+        &self,
+        run_id: uuid::Uuid,
+        after: i64,
+        through: Option<i64>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<domain::RuntimeEventRecord>> {
+        self.store
+            .list_runtime_event_durable_page(run_id, after, through, limit)
+            .await
+    }
+
     pub(crate) async fn claim_runtime_event_deliveries(
         &self,
         flow_run_id: uuid::Uuid,
         scope: control_plane::ports::RuntimeEventDeliveryScope,
+        include_membership: bool,
     ) -> anyhow::Result<control_plane::ports::RuntimeEventDeliveryBatch> {
-        self.store
+        let batch = self
+            .store
             .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+                include_membership,
                 flow_run_id,
                 scope,
                 limit: 128,
                 lease_seconds: 30,
             })
-            .await
+            .await?;
+        #[cfg(test)]
+        if let Some(samples) = &self.delivery_read_samples {
+            let bytes = batch
+                .events
+                .iter()
+                .map(|event| serde_json::to_vec(&event.payload).unwrap().len())
+                .sum();
+            samples.lock().unwrap().push((
+                batch.closed_proof.is_some(),
+                batch.events.len(),
+                batch.claims.len(),
+                bytes,
+            ));
+        }
+        Ok(batch)
     }
 
     pub(crate) async fn ack_runtime_event_delivery(

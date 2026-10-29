@@ -23,6 +23,7 @@ fn input(
     limit: usize,
 ) -> ClaimRuntimeEventDeliveriesInput {
     ClaimRuntimeEventDeliveriesInput {
+        include_membership: true,
         flow_run_id: run,
         scope,
         limit,
@@ -98,6 +99,10 @@ async fn response_scope_precedes_limit_and_reconnect_excludes_descendants_after_
         empty.claims.is_empty() && empty.events.is_empty(),
         "not yet committed upper is not permanently open"
     );
+    assert!(
+        empty.closed_proof.is_none(),
+        "Open empty never establishes complete membership"
+    );
     let own = wait(&store, &seeded, &run, &node, 2, 2).await;
     let future = wait(&store, &seeded, &run, &node, 3, 2).await;
     // A delayed async waiting copy is later than both real business boundaries.
@@ -108,6 +113,22 @@ async fn response_scope_precedes_limit_and_reconnect_excludes_descendants_after_
         .claim_runtime_event_deliveries(&input(run.id, scope, 128))
         .await
         .unwrap();
+    let proof = batch
+        .closed_proof
+        .as_ref()
+        .expect("atomic own tools+upper establish Closed");
+    assert_eq!(proof.upper.recovery_id, own.recovery_history.id);
+    assert_eq!(proof.upper.event_sequence, own.waiting_event.sequence);
+    let canonical = store
+        .get_original_callback_waiting_boundary(run.id, predecessor)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        canonical.original.event_sequence,
+        old.waiting_event.sequence
+    );
+    assert_eq!(canonical.next.unwrap(), proof.upper);
     let own_ids = own
         .tool_delivery_events
         .iter()
@@ -335,4 +356,97 @@ async fn original_human_stop_is_an_upper_boundary_without_any_stream_generation_
             .await
             .unwrap();
     assert_eq!(generation, 0);
+}
+
+#[tokio::test]
+async fn closed_proof_385_atomic_facts_once_and_later_claims_are_independent() {
+    let (store, seeded, run, node) = fixture().await;
+    let old = wait(&store, &seeded, &run, &node, 1, 2).await;
+    let scope = RuntimeEventDeliveryScope::Resume {
+        callback_task_id: old.callback_task.as_ref().unwrap().id,
+    };
+    let open = store
+        .claim_runtime_event_deliveries(&input(run.id, scope, 128))
+        .await
+        .unwrap();
+    assert!(open.closed_proof.is_none());
+    assert!(open.events.is_empty());
+    assert!(open.claims.is_empty());
+    let own = wait(&store, &seeded, &run, &node, 2, 385).await;
+    let future = wait(&store, &seeded, &run, &node, 3, 2).await;
+    let expected = own
+        .tool_delivery_events
+        .iter()
+        .map(|e| e.payload.clone())
+        .collect::<Vec<_>>();
+    let mut request = input(run.id, scope, 128);
+    let mut proof = None;
+    let mut claims = Vec::new();
+    let mut reads = Vec::new();
+    for expected_count in [128, 128, 128, 1, 0] {
+        let batch = store
+            .claim_runtime_event_deliveries(&request)
+            .await
+            .unwrap();
+        let decoded_bytes: usize = batch
+            .events
+            .iter()
+            .map(|e| serde_json::to_vec(&e.payload).unwrap().len())
+            .sum();
+        reads.push((
+            batch.closed_proof.is_some(),
+            batch.events.len(),
+            batch.claims.len(),
+            decoded_bytes,
+        ));
+        assert_eq!(batch.claims.len(), expected_count);
+        if proof.is_none() {
+            assert_eq!(
+                batch
+                    .events
+                    .iter()
+                    .map(|e| e.payload.clone())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            proof = batch.closed_proof.clone();
+            assert!(proof.is_some());
+        } else {
+            assert_eq!(batch.closed_proof, proof);
+            assert!(batch.events.is_empty());
+        }
+        claims.extend(batch.claims);
+        request.include_membership = false;
+    }
+    eprintln!("PG proof (closed, full facts, claims, reserialized proof bytes): {reads:?}");
+    assert_eq!(
+        reads.iter().map(|r| r.1).collect::<Vec<_>>(),
+        vec![385, 0, 0, 0, 0]
+    );
+    assert_eq!(claims.len(), 385);
+    assert_eq!(
+        claims
+            .iter()
+            .map(|c| c.event.payload.clone())
+            .collect::<Vec<_>>(),
+        expected
+    );
+    let mut unique = claims.iter().map(|c| c.event.id).collect::<Vec<_>>();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), 385);
+    let foreign = old
+        .tool_delivery_events
+        .iter()
+        .chain(&future.tool_delivery_events)
+        .map(|e| e.id)
+        .collect::<Vec<_>>();
+    let foreign_generations: Vec<i64> = sqlx::query_scalar(
+        "select delivery_generation from runtime_events where id=any($1) order by sequence",
+    )
+    .bind(foreign)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(foreign_generations, vec![0; 4]);
 }

@@ -644,6 +644,7 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         OrchestrationRuntimeRepository::claim_runtime_event_deliveries(
             &self.repository,
             &crate::ports::ClaimRuntimeEventDeliveriesInput {
+                include_membership: true,
                 flow_run_id,
                 scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
                 limit: 128,

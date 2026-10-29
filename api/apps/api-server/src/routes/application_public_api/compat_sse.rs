@@ -147,6 +147,28 @@ pub(crate) struct CompatibleTypedTurnStream {
 }
 
 impl CompatibleProjectionInput {
+    /// Ephemeral protocol failure only: never persist this synthetic snapshot or
+    /// confuse it with the durable business outcome or a delivery ACK.
+    fn protocol_failure(run: &NativeRunResult, code: &'static str, sequence: i64) -> Self {
+        let mut snapshot = run.clone();
+        snapshot.status = NativeRunStatus::Failed;
+        snapshot.error = Some(control_plane::application_public_api::native::NativeError {
+            code: code.into(),
+            message: "Responses tool delivery ownership could not be established".into(),
+            details: json!({}),
+        });
+        let envelope = RuntimeEventEnvelope::new(
+            snapshot.id,
+            sequence,
+            debug_stream_events::flow_failed(snapshot.id, json!({"code":code})),
+        );
+        Self {
+            run_snapshot: Arc::new(snapshot),
+            envelope,
+            delivery: None,
+        }
+    }
+
     pub(crate) fn into_parts(
         self,
     ) -> (
@@ -803,14 +825,26 @@ fn follow_missing_compatible_round(
     tokio::spawn(async move {
         if let Err(error) = follow_missing_compatible_round_events(
             dependencies,
-            initial_run,
+            initial_run.clone(),
             command,
             actor,
-            sender,
+            sender.clone(),
         )
         .await
         {
             warn!(error = ?error, "durable callback round follower failed");
+            let code = if error.code == "runtime_event_delivery_scope_unresolved" {
+                error.code
+            } else {
+                "runtime_event_delivery_proof_unavailable"
+            };
+            let _ = sender
+                .send(CompatibleProjectionInput::protocol_failure(
+                    &initial_run,
+                    code,
+                    0,
+                ))
+                .await;
         }
     });
     Ok(result)
@@ -900,20 +934,58 @@ async fn attach_compatible_typed_stream_with_replay(
     runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
     initial_run: NativeRunResult,
     from_sequence: Option<i64>,
-    durable_round_replay: Vec<RuntimeEventEnvelope>,
+    mut durable_round_replay: Vec<RuntimeEventEnvelope>,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
-    let subscription = match runtime_event_stream
-        .subscribe(initial_run.id, from_sequence)
-        .await
-    {
-        Ok(subscription) => subscription,
-        Err(_) => {
+    let delivery_scope = selected_delivery_scope(&initial_run);
+    let subscription = match (
+        runtime_event_stream
+            .subscribe(initial_run.id, from_sequence)
+            .await,
+        delivery_scope,
+    ) {
+        (Ok(subscription), _) => subscription,
+        (Err(_), RuntimeEventDeliveryScope::Resume { callback_task_id }) => {
+            if durable_round_replay.is_empty() {
+                durable_round_replay = match durable_replay::durable_callback_replay(
+                    &terminal_dependencies,
+                    &initial_run,
+                    callback_task_id,
+                )
+                .await?
+                {
+                    DurableCompatibleRoundReplay::Ready(replay)
+                        if replay.last().is_some_and(|event| {
+                            event_forwarding::is_public_terminal_runtime_event(&event.event_type)
+                        }) =>
+                    {
+                        replay
+                    }
+                    _ => {
+                        return Err(NativeApiError::new(
+                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                            "runtime_event_delivery_proof_unavailable",
+                            "selected callback round is not durably recoverable",
+                        ))
+                    }
+                };
+            }
+            if !durable_round_replay.last().is_some_and(|event| {
+                event_forwarding::is_public_terminal_runtime_event(&event.event_type)
+            }) {
+                return Err(NativeApiError::new(
+                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                    "runtime_event_delivery_proof_unavailable",
+                    "selected callback round has no recoverable terminal",
+                ));
+            }
+            terminal_compatible_round_subscription(&durable_round_replay)
+        }
+        (Err(_), _) => {
             cold_runtime_event_subscription(&terminal_dependencies, &initial_run, from_sequence)
                 .await
                 .map_err(service_error)?
         }
     };
-    let delivery_scope = selected_delivery_scope(&initial_run);
     Ok(attach_compatible_typed_stream_from_subscription(
         terminal_dependencies,
         initial_run,

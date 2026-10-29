@@ -7,6 +7,8 @@ async fn callback_attach_replays_exact_output_and_disconnect_leaves_round_open()
     run.metadata["response_round_id"] = json!(callback_task_id);
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     seed_flow_run_for_compat_sse_test(&state, &run).await;
+    super::response_scoped_delivery::seed_scope_boundary(&state, &run, Some(callback_task_id))
+        .await;
     let stream = Arc::new(LocalRuntimeEventStream::new());
     stream
         .open_run(run.id, RuntimeEventStreamPolicy::debug_default())

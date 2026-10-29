@@ -160,6 +160,7 @@ async fn receipt_survives_postcommit_pool_starvation_and_valid_output_advances_o
     ));
     let claims = observer
         .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            include_membership: true,
             flow_run_id: run.id,
             scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
             limit: 1,

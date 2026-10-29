@@ -645,6 +645,14 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         self.memory_list_runtime_events(flow_run_id, after_sequence)
     }
 
+    async fn get_original_callback_waiting_boundary(
+        &self,
+        flow_run_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> Result<Option<crate::ports::RuntimeCallbackWaitingBoundary>> {
+        self.memory_get_original_callback_waiting_boundary(flow_run_id, callback_task_id)
+    }
+
     async fn get_runtime_event_sequence_for_callback_task(
         &self,
         flow_run_id: Uuid,

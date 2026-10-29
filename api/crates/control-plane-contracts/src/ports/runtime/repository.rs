@@ -860,6 +860,16 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         records.truncate(limit.max(1));
         Ok(records)
     }
+    /// Canonical original waiting recovery key and its next business stop, in one snapshot.
+    /// Missing legacy anchors are explicit; diagnostic event payloads are not a fallback.
+    async fn get_original_callback_waiting_boundary(
+        &self,
+        flow_run_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> anyhow::Result<Option<RuntimeCallbackWaitingBoundary>> {
+        let _ = (flow_run_id, callback_task_id);
+        anyhow::bail!("get_original_callback_waiting_boundary not implemented")
+    }
     async fn get_runtime_event_sequence_for_callback_task(
         &self,
         flow_run_id: Uuid,

@@ -81,7 +81,12 @@ impl InMemoryOrchestrationRuntimeRepository {
                     .ok_or_else(|| anyhow::anyhow!("runtime_event_delivery_scope_unresolved"))?;
                 (anchor.coordinate.event_sequence, anchor.sequence)
             }
-            crate::ports::RuntimeEventDeliveryScope::Unresolved => return Ok(Default::default()),
+            crate::ports::RuntimeEventDeliveryScope::Unresolved => {
+                return Err(crate::errors::ControlPlaneError::Conflict(
+                    "runtime_event_delivery_scope_unresolved",
+                )
+                .into())
+            }
         };
         let upper = history
             .iter()
@@ -94,17 +99,32 @@ impl InMemoryOrchestrationRuntimeRepository {
                     )
             })
             .min_by_key(|h| h.sequence)
-            .map(|h| h.coordinate.event_sequence);
+            .map(|h| crate::ports::RuntimeEventDeliveryBoundary {
+                recovery_id: h.id,
+                recovery_sequence: h.sequence,
+                event_sequence: h.coordinate.event_sequence,
+            });
+        let closed_proof = upper.map(|upper| crate::ports::RuntimeEventDeliveryClosedProof {
+            flow_run_id: input.flow_run_id,
+            scope: input.scope,
+            lower_sequence: lower,
+            lower_recovery_sequence: ordinal,
+            upper,
+        });
         let events = events
             .into_iter()
             .filter(|e| {
                 e.sequence > lower
-                    && upper.is_none_or(|upper| e.sequence < upper)
+                    && upper.is_none_or(|upper| e.sequence < upper.event_sequence)
                     && e.payload.get("committed_delivery").and_then(Value::as_bool) == Some(true)
             })
             .collect::<Vec<_>>();
         let mut deliveries = Vec::new();
-        let eligible = events.clone();
+        let eligible = if input.include_membership {
+            events.clone()
+        } else {
+            Vec::new()
+        };
         for event in events {
             if deliveries.len() == input.limit
                 || inner.runtime_delivery_acked.contains(&event.id)
@@ -135,6 +155,7 @@ impl InMemoryOrchestrationRuntimeRepository {
             });
         }
         Ok(crate::ports::RuntimeEventDeliveryBatch {
+            closed_proof,
             claims: deliveries,
             events: eligible,
         })

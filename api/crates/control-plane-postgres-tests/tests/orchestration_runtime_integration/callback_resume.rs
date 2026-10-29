@@ -171,6 +171,7 @@ async fn committed_tool_delivery_is_durably_claimed_released_and_acked() {
 
     let first = store
         .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            include_membership: true,
             flow_run_id: run.id,
             scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
             limit: 10,
@@ -183,6 +184,7 @@ async fn committed_tool_delivery_is_durably_claimed_released_and_acked() {
     assert_eq!(first[0].event.id, waiting.tool_delivery_events[0].id);
     assert!(store
         .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            include_membership: true,
             flow_run_id: run.id,
             scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
             limit: 10,
@@ -203,6 +205,7 @@ async fn committed_tool_delivery_is_durably_claimed_released_and_acked() {
         .unwrap();
     let second = store
         .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            include_membership: true,
             flow_run_id: run.id,
             scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
             limit: 10,
@@ -223,6 +226,7 @@ async fn committed_tool_delivery_is_durably_claimed_released_and_acked() {
         .unwrap();
     assert!(store
         .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            include_membership: true,
             flow_run_id: run.id,
             scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
             limit: 10,
@@ -247,6 +251,7 @@ async fn uncertain_tool_delivery_leaves_the_replay_set_and_is_fenced_by_its_clai
     let waiting = persist_callback_wait(&store, &seeded, &run, &node_run, 1, None, None).await;
 
     let claim_input = ClaimRuntimeEventDeliveriesInput {
+        include_membership: true,
         flow_run_id: run.id,
         scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
         limit: 10,

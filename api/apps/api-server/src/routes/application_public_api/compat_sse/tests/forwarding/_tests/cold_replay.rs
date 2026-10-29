@@ -4,6 +4,7 @@ use super::*;
 async fn committed_generation_gc_keeps_cold_attach_opaque_order_and_acked_tool_semantics() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let mut run = native_run();
+    freeze_delivery_scope(&mut run, RuntimeEventDeliveryScope::Start);
     seed_flow_run_for_compat_sse_test(&state, &run).await;
     let stream =
         Arc::new(LocalRuntimeEventStream::new().with_recoverable_retention(Duration::ZERO));
@@ -260,6 +261,8 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(
     run.metadata["response_round_id"] = json!(callback_task_id);
     run.metadata["active_callback_attach"] = json!(true);
     seed_flow_run_for_compat_sse_test(&state, &run).await;
+    super::response_scoped_delivery::seed_scope_boundary(&state, &run, Some(callback_task_id))
+        .await;
     for (event_type, payload) in [
         (
             "runtime_stream_opened",
@@ -560,7 +563,8 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(
 #[tokio::test]
 async fn cold_anchored_admission_rejects_previous_waiting_and_uses_current_terminal() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
-    let run = native_run();
+    let mut run = native_run();
+    freeze_delivery_scope(&mut run, RuntimeEventDeliveryScope::Start);
     seed_flow_run_for_compat_sse_test(&state, &run).await;
     let cold_stream = Arc::new(LocalRuntimeEventStream::new());
     let dependencies = NativeRunTerminalDependencies::new(

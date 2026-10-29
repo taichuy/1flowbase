@@ -350,6 +350,7 @@ async fn scope_identity_is_explicit_and_human_wait_closes_initial_delivery_inter
         seed_pending_committed_delivery(&state, &run, committed_delivery_payload("later")).await;
     let run_id = run.id;
     let input = |scope| ClaimRuntimeEventDeliveriesInput {
+        include_membership: true,
         flow_run_id: run_id,
         scope,
         limit: 128,
@@ -358,9 +359,8 @@ async fn scope_identity_is_explicit_and_human_wait_closes_initial_delivery_inter
     let unresolved = state
         .store
         .claim_runtime_event_deliveries(&input(RuntimeEventDeliveryScope::Unresolved))
-        .await
-        .unwrap();
-    assert!(unresolved.claims.is_empty() && unresolved.events.is_empty());
+        .await;
+    assert!(unresolved.is_err());
     let missing = state
         .store
         .claim_runtime_event_deliveries(&input(RuntimeEventDeliveryScope::Resume {
@@ -384,6 +384,23 @@ async fn scope_identity_is_explicit_and_human_wait_closes_initial_delivery_inter
             .iter()
             .any(|v| v["type"] == "response.output_item.done"),
         "generic attach without identity cannot bypass ownership through claim-less replay"
+    );
+    assert_protocol_failure(
+        &unresolved_projection,
+        "runtime_event_delivery_scope_unresolved",
+    );
+    run.metadata["response_round_id"] = json!(Uuid::now_v7());
+    let missing_projection = project_round(
+        &state,
+        &run,
+        selected_delivery_scope(&run),
+        3,
+        &[first.payload.clone()],
+    )
+    .await;
+    assert_protocol_failure(
+        &missing_projection,
+        "runtime_event_delivery_scope_unresolved",
     );
     assert_eq!(
         delivery_statuses(&state, &[first.id, later.id]).await,
@@ -411,4 +428,19 @@ async fn scope_identity_is_explicit_and_human_wait_closes_initial_delivery_inter
         delivery_statuses(&state, &[later.id]).await,
         vec!["pending"]
     );
+}
+
+pub(super) fn assert_protocol_failure(events: &[Value], code: &str) {
+    assert!(
+        !events.iter().any(|event| matches!(
+            event["type"].as_str(),
+            Some("response.completed" | "response.incomplete")
+        )),
+        "no successful/waiting terminal may hide a proof failure: {events:?}"
+    );
+    let failed = events
+        .iter()
+        .find(|event| event["type"] == "response.failed")
+        .expect("stable failed terminal");
+    assert_eq!(failed["response"]["error"]["code"], code);
 }

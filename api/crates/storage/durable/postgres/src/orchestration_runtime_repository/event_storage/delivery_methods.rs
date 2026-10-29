@@ -12,13 +12,18 @@ impl PgControlPlaneStore {
                 ("resume", Some(callback_task_id))
             }
             RuntimeEventDeliveryScope::Unresolved => {
-                return Ok(RuntimeEventDeliveryBatch::default());
+                return Err(
+                    ControlPlaneError::Conflict("runtime_event_delivery_scope_unresolved").into(),
+                );
             }
         };
         let limit = i64::try_from(input.limit).unwrap_or(i64::MAX);
         // Recovery order is the original business transaction order. Diagnostic waiting
         // copies and stream markers cannot move either boundary. Every claim resolves
         // the next wait again: an absent upper boundary is never cached as open.
+        // include_membership=false gates the entire eligible CTE, not just Rust
+        // insertion. The independent claimed UNION still returns up to the existing
+        // limit, and original JSON is restored only for the resulting fact IDs.
         let rows = sqlx::query(
             r#"
             with anchor as (
@@ -31,19 +36,19 @@ impl PgControlPlaneStore {
                    and h.idempotency_key = 'waiting_callback:' || $5::uuid::text
                    and h.state_code = 'waiting_callback'
             ), bounds as (
-                select a.event_sequence as lower_sequence,
-                       n.event_sequence as upper_sequence, n.sequence as upper_recovery_sequence
+                select a.event_sequence as lower_sequence, a.recovery_sequence as lower_recovery_sequence,
+                       n.event_sequence as upper_sequence, n.sequence as upper_recovery_sequence, n.id as upper_recovery_id
                   from anchor a
                   left join lateral (
-                      select h.sequence, h.event_sequence
+                      select h.id, h.sequence, h.event_sequence
                         from flow_run_recovery_history h
                        where h.flow_run_id = $1 and h.sequence > a.recovery_sequence
                          and h.state_code in ('waiting_callback', 'waiting_human')
                        order by h.sequence limit 1
                   ) n on true
             ), eligible as materialized (
-                select e.* from runtime_events e cross join bounds b
-                 where e.flow_run_id = $1 and e.sequence > b.lower_sequence
+                select e.id from runtime_events e cross join bounds b
+                 where $6::boolean and e.flow_run_id = $1 and e.sequence > b.lower_sequence
                    and (b.upper_recovery_sequence is null or e.sequence < b.upper_sequence)
                    and e.delivery_status in ('pending', 'claimed', 'acked', 'uncertain')
             ), candidates as (
@@ -62,15 +67,21 @@ impl PgControlPlaneStore {
                        delivery_acked_at = null
                   from candidates c where e.id = c.id
                 returning e.id, e.delivery_claim_token, e.delivery_generation, e.delivery_lease_expires_at
+            ), facts as (
+                select id, true as proof_fact from eligible
+                union all
+                select id, false as proof_fact from claimed where not $6::boolean
             )
-            select b.lower_sequence, b.upper_sequence, b.upper_recovery_sequence,
+            select b.lower_sequence, b.lower_recovery_sequence, b.upper_sequence,
+                   b.upper_recovery_sequence, b.upper_recovery_id, f.proof_fact,
                    e.id, e.flow_run_id, e.node_run_id, e.span_id, e.parent_span_id, e.sequence,
                    e.event_type, e.layer, e.source, e.trust_level, e.item_id, e.ledger_ref,
                    runtime_original_json(e.payload, e.raw_json_payloads, 'payload') as payload,
                    e.visibility, e.durability, e.created_at,
                    c.delivery_claim_token, c.delivery_generation, c.delivery_lease_expires_at
               from (select 1) root left join bounds b on true
-              left join eligible e on true left join claimed c on c.id = e.id
+              left join facts f on true left join runtime_events e on e.id = f.id
+              left join claimed c on c.id = e.id
              order by e.sequence, e.id
             "#,
         )
@@ -79,9 +90,14 @@ impl PgControlPlaneStore {
         .bind(input.lease_seconds)
         .bind(kind)
         .bind(callback)
+        .bind(input.include_membership)
         .fetch_all(self.pool())
         .await?;
-        let mut batch = RuntimeEventDeliveryBatch::default();
+        let mut batch = RuntimeEventDeliveryBatch {
+            claims: Vec::new(),
+            events: Vec::new(),
+            closed_proof: None,
+        };
         for row in rows {
             // Legacy identity without an original anchor cannot authorize executable
             // replay. Keep supported anchored legacy recovery, never infer Start.
@@ -95,6 +111,19 @@ impl PgControlPlaneStore {
                     ControlPlaneError::Conflict("runtime_event_delivery_scope_unresolved").into(),
                 );
             }
+            if let Some(upper_id) = row.get::<Option<Uuid>, _>("upper_recovery_id") {
+                batch.closed_proof = Some(RuntimeEventDeliveryClosedProof {
+                    flow_run_id: input.flow_run_id,
+                    scope: input.scope,
+                    lower_sequence: row.get("lower_sequence"),
+                    lower_recovery_sequence: row.get("lower_recovery_sequence"),
+                    upper: RuntimeEventDeliveryBoundary {
+                        recovery_id: upper_id,
+                        recovery_sequence: row.get("upper_recovery_sequence"),
+                        event_sequence: row.get("upper_sequence"),
+                    },
+                });
+            }
             if row.get::<Option<Uuid>, _>("id").is_none() {
                 continue;
             }
@@ -102,6 +131,7 @@ impl PgControlPlaneStore {
             let generation: Option<i64> = row.get("delivery_generation");
             let lease_expires_at: Option<time::OffsetDateTime> =
                 row.get("delivery_lease_expires_at");
+            let proof_fact = row.get::<Option<bool>, _>("proof_fact") == Some(true);
             let event = map_runtime_event_record(row)?;
             if let (Some(claim_token), Some(generation), Some(lease_expires_at)) =
                 (claim_token, generation, lease_expires_at)
@@ -113,7 +143,9 @@ impl PgControlPlaneStore {
                     lease_expires_at,
                 });
             }
-            batch.events.push(event);
+            if proof_fact {
+                batch.events.push(event);
+            }
         }
         Ok(batch)
     }

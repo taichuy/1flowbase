@@ -2,7 +2,9 @@ use super::*;
 use crate::routes::application_public_api::delivery_receipt::{
     RuntimeEventDeliveryReceipt, RuntimeEventDeliverySettler,
 };
-use control_plane::ports::{RuntimeEventDeliveryBatch, RuntimeEventDeliveryScope};
+use control_plane::ports::{
+    RuntimeEventDeliveryBatch, RuntimeEventDeliveryClosedProof, RuntimeEventDeliveryScope,
+};
 use std::collections::{HashMap, HashSet};
 
 pub(super) struct SubscribedCompatibleTypedEventStream {
@@ -94,6 +96,7 @@ struct TypedForwarding<'a> {
     emitted_answer_delta: bool,
     forwarded_committed_events: ForwardedCommittedEvents,
     eligible_committed_events: ForwardedCommittedEvents,
+    closed_proof: Option<RuntimeEventDeliveryClosedProof>,
 }
 
 async fn forward_subscribed_typed_events(
@@ -123,26 +126,30 @@ async fn forward_subscribed_typed_events(
         emitted_answer_delta: false,
         forwarded_committed_events: ForwardedCommittedEvents::default(),
         eligible_committed_events: ForwardedCommittedEvents::default(),
+        closed_proof: None,
     };
-    let batch = match terminal_dependencies
-        .claim_runtime_event_deliveries(initial_run.id, delivery_scope)
-        .await
-    {
+    let mut delivery_claims = match refresh_delivery_batch(&mut forwarding, delivery_scope).await {
         Ok(claims) => claims,
         Err(error) => {
-            warn!(
-                flow_run_id = %initial_run.id,
-                error = %error,
-                "failed to claim pending Responses tool deliveries"
-            );
-            RuntimeEventDeliveryBatch::default()
+            fail_delivery_projection(&forwarding, &error).await;
+            return;
         }
     };
-    let mut delivery_claims = admit_delivery_batch(&mut forwarding, batch);
     if !durable_round_replay.is_empty() {
         forwarding.last_forwarded_sequence = -1;
     }
     for event in durable_round_replay {
+        if is_public_terminal_runtime_event(&event.event_type) && forwarding.closed_proof.is_none()
+        {
+            match refresh_delivery_batch(&mut forwarding, delivery_scope).await {
+                Ok(claims) => delivery_claims.extend(claims),
+                Err(error) => {
+                    release_delivery_claims(settler, delivery_claims);
+                    fail_delivery_projection(&forwarding, &error).await;
+                    return;
+                }
+            }
+        }
         if is_public_terminal_runtime_event(&event.event_type)
             && !delivery_claims.is_empty()
             && forward_pending_delivery_claims(&mut forwarding, &mut delivery_claims).await
@@ -165,6 +172,17 @@ async fn forward_subscribed_typed_events(
     // Database and local stream generations have independent sequence spaces.
     forwarding.last_forwarded_sequence = from_sequence.unwrap_or(0);
     for event in subscription.replay {
+        if is_public_terminal_runtime_event(&event.event_type) && forwarding.closed_proof.is_none()
+        {
+            match refresh_delivery_batch(&mut forwarding, delivery_scope).await {
+                Ok(claims) => delivery_claims.extend(claims),
+                Err(error) => {
+                    release_delivery_claims(settler, delivery_claims);
+                    fail_delivery_projection(&forwarding, &error).await;
+                    return;
+                }
+            }
+        }
         if is_public_terminal_runtime_event(&event.event_type)
             && !delivery_claims.is_empty()
             && forward_pending_delivery_claims(&mut forwarding, &mut delivery_claims).await
@@ -197,18 +215,13 @@ async fn forward_subscribed_typed_events(
             continue;
         }
         if is_committed_tool_delivery(&event) {
-            let batch = match terminal_dependencies
-                .claim_runtime_event_deliveries(initial_run.id, delivery_scope)
-                .await
-            {
-                Ok(batch) => batch,
+            let mut claims = match refresh_delivery_batch(&mut forwarding, delivery_scope).await {
+                Ok(claims) => claims,
                 Err(error) => {
-                    warn!(flow_run_id = %initial_run.id, %error,
-                        "failed to claim scoped Responses tool delivery");
-                    RuntimeEventDeliveryBatch::default()
+                    fail_delivery_projection(&forwarding, &error).await;
+                    return;
                 }
             };
-            let mut claims = admit_delivery_batch(&mut forwarding, batch);
             // A notification wakes the scoped durable batch, never a flow-wide batch.
             // Its payload is projected only if this snapshot proves membership;
             // acked/uncertain facts remain legal exact replays without a claim.
@@ -220,16 +233,93 @@ async fn forward_subscribed_typed_events(
             }
             continue;
         }
+        if is_public_terminal_runtime_event(&event.event_type) && forwarding.closed_proof.is_none()
+        {
+            let mut claims = match refresh_delivery_batch(&mut forwarding, delivery_scope).await {
+                Ok(claims) => claims,
+                Err(error) => {
+                    fail_delivery_projection(&forwarding, &error).await;
+                    return;
+                }
+            };
+            if forward_pending_delivery_claims(&mut forwarding, &mut claims).await {
+                return;
+            }
+        }
         if forward_ordered_typed_events(&mut forwarding, vec![(event, None)]).await {
             return;
         }
     }
 }
 
+/// Projection-local failure uses the existing protocol error path. This snapshot
+/// is never persisted and never changes the business run/terminal/receipt owner.
+async fn fail_delivery_projection(forwarding: &TypedForwarding<'_>, error: &anyhow::Error) {
+    warn!(flow_run_id = %forwarding.initial_run.id, %error, "Responses delivery proof unavailable");
+    let code = if error
+        .downcast_ref::<control_plane::errors::ControlPlaneError>()
+        .is_some_and(|e| {
+            matches!(
+                e,
+                control_plane::errors::ControlPlaneError::Conflict(
+                    "runtime_event_delivery_scope_unresolved"
+                )
+            )
+        }) {
+        "runtime_event_delivery_scope_unresolved"
+    } else {
+        "runtime_event_delivery_proof_unavailable"
+    };
+    let _ = forwarding
+        .sender
+        .send(CompatibleProjectionInput::protocol_failure(
+            forwarding.initial_run,
+            code,
+            forwarding.last_forwarded_sequence.saturating_add(1),
+        ))
+        .await;
+}
+
+async fn refresh_delivery_batch(
+    forwarding: &mut TypedForwarding<'_>,
+    scope: RuntimeEventDeliveryScope,
+) -> anyhow::Result<Vec<RuntimeEventDeliveryClaim>> {
+    let batch = match forwarding
+        .terminal_dependencies
+        .claim_runtime_event_deliveries(
+            forwarding.initial_run.id,
+            scope,
+            forwarding.closed_proof.is_none(),
+        )
+        .await
+    {
+        Ok(batch) => batch,
+        Err(error) if forwarding.closed_proof.is_some() => {
+            // A successful complete proof remains valid through a later storage fault.
+            warn!(flow_run_id = %forwarding.initial_run.id, %error, "retaining closed Responses delivery proof after claim failure");
+            return Ok(Vec::new());
+        }
+        Err(error) => return Err(error),
+    };
+    admit_delivery_batch(forwarding, scope, batch)
+}
+
 fn admit_delivery_batch(
     forwarding: &mut TypedForwarding<'_>,
+    scope: RuntimeEventDeliveryScope,
     batch: RuntimeEventDeliveryBatch,
-) -> Vec<RuntimeEventDeliveryClaim> {
+) -> anyhow::Result<Vec<RuntimeEventDeliveryClaim>> {
+    let valid =
+        batch.closed_proof.as_ref().is_none_or(|proof| {
+            proof.flow_run_id == forwarding.initial_run.id && proof.scope == scope
+        }) && forwarding
+            .closed_proof
+            .as_ref()
+            .is_none_or(|proof| Some(proof) == batch.closed_proof.as_ref());
+    if !valid {
+        release_delivery_claims(forwarding.settler, batch.claims);
+        anyhow::bail!("Responses delivery proof identity changed");
+    }
     for event in batch.events {
         if !forwarding
             .eligible_committed_events
@@ -240,7 +330,16 @@ fn admit_delivery_batch(
                 .insert(event.event_type, event.payload);
         }
     }
-    batch.claims
+    if batch.claims.iter().any(|claim| {
+        !forwarding
+            .eligible_committed_events
+            .contains(&claim.event.event_type, &claim.event.payload)
+    }) {
+        release_delivery_claims(forwarding.settler, batch.claims);
+        anyhow::bail!("Responses claimed fact is outside delivery proof");
+    }
+    forwarding.closed_proof = batch.closed_proof;
+    Ok(batch.claims)
 }
 
 fn is_committed_tool_delivery(event: &RuntimeEventEnvelope) -> bool {
@@ -712,9 +811,10 @@ async fn durable_sequence_for_ignored_waiting_callback(
     let ignored_task_id = ignored_waiting_callback_task_id?;
     state
         .store
-        .get_runtime_event_sequence_for_callback_task(run_id, ignored_task_id)
+        .get_original_callback_waiting_boundary(run_id, ignored_task_id)
         .await
         .ok()?
+        .map(|boundary| boundary.original.event_sequence)
 }
 
 #[cfg(test)]
