@@ -285,7 +285,7 @@ impl ExecutionLifecycle for ScopedLifecycle<'_> {
             .identity
             .clone();
         enter_identity(&self.scope.current_identity, &identity)?;
-        emit(
+        let admitted = emit(
             self.owner,
             &state,
             if existing {
@@ -298,7 +298,24 @@ impl ExecutionLifecycle for ScopedLifecycle<'_> {
             None,
             Some(&json!({"node_type": node.node_type, "node_alias": node.alias})),
         )
-        .await
+        .await;
+        if admitted
+            .as_ref()
+            .is_err_and(|error| error.is::<DeadlineExpired>())
+            && !existing
+        {
+            state
+                .frames
+                .get_mut(&self.scope.frame_id)
+                .expect("scope frame")
+                .rounds
+                .get_mut(&self.scope.round_index)
+                .expect("scope round")
+                .nodes
+                .remove(&node.node_id);
+            leave_identity(&self.scope.current_identity, &identity)?;
+        }
+        admitted
     }
 
     async fn complete_node(&self, trace: &NodeExecutionTrace) -> Result<()> {
