@@ -410,6 +410,8 @@ pub trait ExecutionLifecycle: Send + Sync {
         _transition: &container::ContainerTransition<'_>,
     ) -> Result<()> { Ok(()) }
 
+    async fn scoped_node_receipt(&self, _identity: &container::ScopedExecutionIdentity) -> Result<Option<uuid::Uuid>> { Ok(None) }
+
     async fn begin_node(&self, node: &CompiledNode, input_payload: &Value) -> Result<()>;
 
     /// The communication owner keeps this LLM running until final seal; this operation

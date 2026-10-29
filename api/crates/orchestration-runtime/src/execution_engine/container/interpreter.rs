@@ -625,17 +625,20 @@ where
         };
         tokio::time::timeout_at(
             scope.expires_at,
-            Box::pin(super::super::scheduler::execute_from_scoped(
-                plan,
-                index,
-                pool,
-                Some(active),
-                runtime,
-                invoker,
-                &scoped_lifecycle,
-                Some(&scope),
-                None,
-            )),
+            CURRENT_EXECUTION.scope(
+                scope.current_identity.clone(),
+                Box::pin(super::super::scheduler::execute_from_scoped(
+                    plan,
+                    index,
+                    pool,
+                    Some(active),
+                    runtime,
+                    invoker,
+                    &scoped_lifecycle,
+                    Some(&scope),
+                    None,
+                )),
+            ),
         )
         .await
         .unwrap_or_else(|_| Err(DeadlineExpired(owner).into()))

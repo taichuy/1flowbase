@@ -13,6 +13,7 @@ struct Probe {
     calls: AtomicUsize,
     live: AtomicUsize,
     peak: AtomicUsize,
+    identities: Mutex<Vec<ScopedExecutionIdentity>>,
 }
 struct Live<'a>(&'a AtomicUsize);
 impl Drop for Live<'_> {
@@ -49,6 +50,10 @@ impl CodeInvoker for Probe {
         config: Value,
         input: Value,
     ) -> Result<CodeInvocationOutput> {
+        let identity_before = scoped_execution_identity();
+        if let Some(identity) = &identity_before {
+            self.identities.lock().unwrap().push(identity.clone());
+        }
         self.calls.fetch_add(1, Ordering::SeqCst);
         let active = self.live.fetch_add(1, Ordering::SeqCst) + 1;
         self.peak.fetch_max(active, Ordering::SeqCst);
@@ -58,6 +63,11 @@ impl CodeInvoker for Probe {
         for _ in 0..delay {
             tokio::task::yield_now().await;
         }
+        assert_eq!(
+            scoped_execution_identity(),
+            identity_before,
+            "concurrent future poll changed execution identity"
+        );
         if (config.get("fail_on").and_then(Value::as_u64).is_some()
             && config.get("fail_on").and_then(Value::as_u64) == item.as_u64())
             || config.get("fail").and_then(Value::as_bool) == Some(true)

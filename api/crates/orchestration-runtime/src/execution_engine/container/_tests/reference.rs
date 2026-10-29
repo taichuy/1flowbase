@@ -232,3 +232,39 @@ async fn checkpoint_round_scope_omits_unreferenced_parent_values_and_frozen_item
     assert_eq!(round.variable_pool["source"], json!({"small":"prompt"}));
     assert!(!round.variable_pool.contains_key("unrelated"));
 }
+
+#[tokio::test]
+async fn concurrent_round_invocations_keep_their_own_identity_across_yields() {
+    let mut each = container("each", "iteration", None, 1);
+    each.config["parallelism"] = json!(3);
+    each.bindings
+        .insert("output".into(), selector(&["leaf", "value"]));
+    let mut leaf = code("leaf", "each");
+    leaf.bindings
+        .insert("item".into(), selector(&["each", "item"]));
+    let plan = plan(vec![each, leaf]);
+    let probe = Probe::default();
+    let outcome = run(&plan,json!({"source":{"items":[{"delay":3,"value":0},{"delay":2,"value":1},{"delay":1,"value":2}]}}),&probe,&Ledger::default()).await.unwrap();
+    assert_eq!(outcome.stop_reason, ExecutionStopReason::Completed);
+    let identities = probe.identities.lock().unwrap();
+    assert_eq!(identities.len(), 3);
+    assert_eq!(
+        identities
+            .iter()
+            .map(|identity| identity.execution_id)
+            .collect::<BTreeSet<_>>()
+            .len(),
+        3
+    );
+    assert_eq!(
+        identities
+            .iter()
+            .map(|identity| identity.round_path.last().unwrap().round_index)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([0, 1, 2])
+    );
+    assert!(
+        scoped_execution_identity().is_none(),
+        "identity must not leak out of the scoped future"
+    );
+}

@@ -17,6 +17,7 @@ pub(crate) struct Scope {
     pub frame_id: Uuid,
     pub round_index: u64,
     pub expires_at: tokio::time::Instant,
+    pub current_identity: CurrentIdentity,
 }
 
 #[derive(Debug)]
@@ -124,6 +125,7 @@ impl Scope {
             frame_id,
             round_index,
             expires_at: ancestor_deadline.map_or(own, |ancestor| ancestor.min(own)),
+            current_identity: Arc::default(),
         })
     }
     pub fn expired(&self) -> bool {
@@ -268,6 +270,11 @@ impl ExecutionLifecycle for ScopedLifecycle<'_> {
             })
             .identity
             .clone();
+        *self
+            .scope
+            .current_identity
+            .lock()
+            .map_err(|_| anyhow!("execution identity lock poisoned"))? = Some(identity.clone());
         emit(
             self.owner,
             &state,
@@ -315,8 +322,17 @@ impl ExecutionLifecycle for ScopedLifecycle<'_> {
         .await
     }
 
+    async fn scoped_node_receipt(
+        &self,
+        identity: &ScopedExecutionIdentity,
+    ) -> Result<Option<Uuid>> {
+        self.owner.scoped_node_receipt(identity).await
+    }
+
     async fn communication_node_receipt(&self, node: &CompiledNode) -> Result<Option<Uuid>> {
-        Ok(Some(self.identity(&node.node_id).await?.execution_id))
+        self.owner
+            .scoped_node_receipt(&self.identity(&node.node_id).await?)
+            .await
     }
 
     async fn activate_retained_communication_node(&self, node: &CompiledNode) -> Result<()> {
@@ -383,4 +399,16 @@ pub(crate) fn unix_ms() -> i64 {
     (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000)
         .try_into()
         .unwrap_or(i64::MAX)
+}
+
+pub(crate) type CurrentIdentity = Arc<std::sync::Mutex<Option<ScopedExecutionIdentity>>>;
+tokio::task_local! { pub(crate) static CURRENT_EXECUTION: CurrentIdentity; }
+
+/// Logical identity of the currently polled node. Invokers must capture it before
+/// spawning tasks; Tokio deliberately does not inherit task locals into spawn.
+pub fn scoped_execution_identity() -> Option<ScopedExecutionIdentity> {
+    CURRENT_EXECUTION
+        .try_with(|slot| slot.lock().ok().and_then(|identity| identity.clone()))
+        .ok()
+        .flatten()
 }
