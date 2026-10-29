@@ -1,41 +1,29 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/frontstage/_tests/browser-fixtures/rich-text/index.html","sha256":"5cdee4c2f371f3a574f9cb26adfb5ad5dd713df1051343b6ec7a526fb45b1635"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/frontstage/_tests/browser-fixtures/rich-text/fixture.tsx",
       "rule": "deslop/unused-file",
       "sourceSha256": "ac939e714a709a65711b144399f894e0773ba52e19f3e4f4b8df722e5a78b02e",
       "reason": "The adjacent HTML entry explicitly loads ./fixture.tsx as a module. It creates a standalone shadow root and createRoot mounts the local Fixture, so TypeScript import reachability is not its entry mechanism. It is an imperative browser test entry, not an exported production Fast Refresh component boundary.",
-      "evidence": [
-        {
-          "file": "web/app/src/features/frontstage/_tests/browser-fixtures/rich-text/index.html",
-          "sha256": "5cdee4c2f371f3a574f9cb26adfb5ad5dd713df1051343b6ec7a526fb45b1635"
-        }
-      ]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/_tests/browser-fixtures/rich-text/fixture.tsx",
       "rule": "react-doctor/only-export-components",
       "sourceSha256": "ac939e714a709a65711b144399f894e0773ba52e19f3e4f4b8df722e5a78b02e",
       "reason": "The adjacent HTML entry explicitly loads ./fixture.tsx as a module. It creates a standalone shadow root and createRoot mounts the local Fixture, so TypeScript import reachability is not its entry mechanism. It is an imperative browser test entry, not an exported production Fast Refresh component boundary.",
-      "evidence": [
-        {
-          "file": "web/app/src/features/frontstage/_tests/browser-fixtures/rich-text/index.html",
-          "sha256": "5cdee4c2f371f3a574f9cb26adfb5ad5dd713df1051343b6ec7a526fb45b1635"
-        }
-      ]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/_tests/browser-fixtures/rich-text/fixture.tsx",
       "rule": "react-doctor/button-has-type",
       "sourceSha256": "ac939e714a709a65711b144399f894e0773ba52e19f3e4f4b8df722e5a78b02e",
       "reason": "These four test-driver buttons live in the standalone main element inside a newly attached shadow root, with no form ancestor or form attribute. They cannot submit an app form: load/save/toggle actions only update fixture state for Vditor browser checks. The Load HTML button string is test content passed to the preview, not a containing form.",
-      "evidence": [
-        {
-          "file": "web/app/src/features/frontstage/_tests/browser-fixtures/rich-text/index.html",
-          "sha256": "5cdee4c2f371f3a574f9cb26adfb5ad5dd713df1051343b6ec7a526fb45b1635"
-        }
-      ]
+      "evidenceSet": 0
     }
   ]
 }

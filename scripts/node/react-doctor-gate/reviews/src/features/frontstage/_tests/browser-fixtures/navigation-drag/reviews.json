@@ -1,26 +1,29 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/frontstage/_tests/browser-fixtures/navigation-drag/index.html","sha256":"fe4ea596b0d96521d0c434c0a892c84482e7b38dc28771ffe70e25d259a92719"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/frontstage/_tests/browser-fixtures/navigation-drag/fixture.tsx",
       "rule": "deslop/unused-file",
       "sourceSha256": "e021b8bcf7230d98b8c7a5cfb4f83fe0a188777ae5ff671e85f94bfded41802a",
       "reason": "navigation-drag/index.html:10 的 module script 指向 ./fixture.tsx；fixture 自行 createRoot 并渲染导航拖拽验证 UI。 index.html module script src=./fixture.tsx 是真实入口，TS import graph 漏掉，不能删除。 Reassessed 2026-10-29: The delta adds show_title to navigation DTO/fixtures; existing drag, selection and component identities are retained.",
-      "evidence": [{"file":"web/app/src/features/frontstage/_tests/browser-fixtures/navigation-drag/index.html","sha256":"fe4ea596b0d96521d0c434c0a892c84482e7b38dc28771ffe70e25d259a92719"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/_tests/browser-fixtures/navigation-drag/fixture.tsx",
       "rule": "react-doctor/anchor-is-valid",
       "sourceSha256": "e021b8bcf7230d98b8c7a5cfb4f83fe0a188777ae5ff671e85f94bfded41802a",
       "reason": "navigation-drag/index.html:10 的 module script 指向 ./fixture.tsx；fixture 自行 createRoot 并渲染导航拖拽验证 UI。 专用 fixture anchor 模拟被拖拽 topbar link，无生产路由导航要求；HTML 入口限制为 drag 取证。 Reassessed 2026-10-29: The delta adds show_title to navigation DTO/fixtures; existing drag, selection and component identities are retained.",
-      "evidence": [{"file":"web/app/src/features/frontstage/_tests/browser-fixtures/navigation-drag/index.html","sha256":"fe4ea596b0d96521d0c434c0a892c84482e7b38dc28771ffe70e25d259a92719"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/_tests/browser-fixtures/navigation-drag/fixture.tsx",
       "rule": "react-doctor/only-export-components",
       "sourceSha256": "e021b8bcf7230d98b8c7a5cfb4f83fe0a188777ae5ff671e85f94bfded41802a",
       "reason": "navigation-drag/index.html:10 的 module script 指向 ./fixture.tsx；fixture 自行 createRoot 并渲染导航拖拽验证 UI。 browser fixture client mount 不属于生产 Fast Refresh 组件边界，或当前源已只保留组件 export。 Reassessed 2026-10-29: The delta adds show_title to navigation DTO/fixtures; existing drag, selection and component identities are retained.",
-      "evidence": [{"file":"web/app/src/features/frontstage/_tests/browser-fixtures/navigation-drag/index.html","sha256":"fe4ea596b0d96521d0c434c0a892c84482e7b38dc28771ffe70e25d259a92719"}]
+      "evidenceSet": 0
     }
   ]
 }

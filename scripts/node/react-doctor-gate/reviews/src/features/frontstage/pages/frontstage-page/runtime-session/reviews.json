@@ -1,26 +1,29 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/RetainedFrontstagePages.test.tsx","sha256":"2c2becc81568b310efa8c2256f5406eb3f91ea5aba5cfb4f4cedbf66f49595a7"},{"file":"web/app/src/features/frontstage/lib/page-canvas/runtime-activity.tsx","sha256":"c6877d2f695dcb4d46a7a4d32aa098f52fc5b3c7eaeab03b5722bd354cd57dba"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/RetainedFrontstagePages.tsx",
       "rule": "react-doctor/no-render-in-render",
       "sourceSha256": "36b1468d05ba4976668dc398eb4efae3d17c46b8ba6da6adb4758d61f13c043e",
       "reason": "RetainedFrontstagePages 用 Map entries 管理保留页面；renderEntry 是模块级 JSX wrapper，cloneElement 保留真实子组件类型；ref 只初始化空 Map。 helper 仅返回 JSX，不声明新 React 组件类型、不直接调用含 Hooks 组件，真实子组件类型稳定，无因此 remount。",
-      "evidence": [{"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/RetainedFrontstagePages.test.tsx","sha256":"2c2becc81568b310efa8c2256f5406eb3f91ea5aba5cfb4f4cedbf66f49595a7"}, {"file":"web/app/src/features/frontstage/lib/page-canvas/runtime-activity.tsx","sha256":"c6877d2f695dcb4d46a7a4d32aa098f52fc5b3c7eaeab03b5722bd354cd57dba"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/RetainedFrontstagePages.tsx",
       "rule": "react-doctor/rerender-lazy-ref-init",
       "sourceSha256": "36b1468d05ba4976668dc398eb4efae3d17c46b8ba6da6adb4758d61f13c043e",
       "reason": "RetainedFrontstagePages 用 Map entries 管理保留页面；renderEntry 是模块级 JSX wrapper，cloneElement 保留真实子组件类型；ref 只初始化空 Map。 只是空 Map/Set 构造，无 I/O 或线性计算，ref 承载持久 owner，并无昂贵构造重复执行。",
-      "evidence": [{"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/RetainedFrontstagePages.test.tsx","sha256":"2c2becc81568b310efa8c2256f5406eb3f91ea5aba5cfb4f4cedbf66f49595a7"}, {"file":"web/app/src/features/frontstage/lib/page-canvas/runtime-activity.tsx","sha256":"c6877d2f695dcb4d46a7a4d32aa098f52fc5b3c7eaeab03b5722bd354cd57dba"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/retention-protection.tsx",
       "rule": "react-doctor/no-react19-deprecated-apis",
       "sourceSha256": "3c15fa50b63a3cbc4635df61e57cd51e085390d638bb3f7b7c2188942ddca8ce",
       "reason": "useContext remains a supported React API; forwardRef remains supported and this owner forwards a typed imperative ref to an Antd/native control. The flagged import alone does not prove a removed API or broken React 19 behavior. Reassessed 2026-10-29: The delta adds the backend show_title write handler and optional title/header presentation, plus the viewport footer marker. Existing page selection effects, external owner reset and async mutation lifecycle remain; the handler awaits the existing rename operation before updating the local tree.",
-      "evidence": [{"file":"web/app/src/features/frontstage/pages/FrontStagePage.tsx","sha256":"e4587660a10e8db8de8e3eb19cdce447b8d705de74451a962a124ceb4cfc5c63"}, {"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/RetainedFrontstagePages.tsx","sha256":"36b1468d05ba4976668dc398eb4efae3d17c46b8ba6da6adb4758d61f13c043e"}, {"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/RetainedFrontstagePages.test.tsx","sha256":"2c2becc81568b310efa8c2256f5406eb3f91ea5aba5cfb4f4cedbf66f49595a7"}, {"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/retention-memory.test.ts","sha256":"6184f78ee44ad39954dbd9f69a6e209bdd3eaf667522c7b4a8d1f06fbae34efc"}, {"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/retention-policy.test.ts","sha256":"85916d4e5d58cdf8a2bddf6964562e12cf25e87bd247f6b7e397fa99ab0f869b"}, {"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/retention-stats.test.ts","sha256":"fe5351e3d324be27adb6e75d6f459bf100602a99d96d7a7a7e665ba11100c63f"}, {"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/retention-protection.tsx","sha256":"3c15fa50b63a3cbc4635df61e57cd51e085390d638bb3f7b7c2188942ddca8ce"}]
+      "evidence": [{"file":"web/app/src/features/frontstage/pages/FrontStagePage.tsx","sha256":"e4587660a10e8db8de8e3eb19cdce447b8d705de74451a962a124ceb4cfc5c63"},{"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/RetainedFrontstagePages.tsx","sha256":"36b1468d05ba4976668dc398eb4efae3d17c46b8ba6da6adb4758d61f13c043e"},{"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/RetainedFrontstagePages.test.tsx","sha256":"2c2becc81568b310efa8c2256f5406eb3f91ea5aba5cfb4f4cedbf66f49595a7"},{"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/retention-memory.test.ts","sha256":"6184f78ee44ad39954dbd9f69a6e209bdd3eaf667522c7b4a8d1f06fbae34efc"},{"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/retention-policy.test.ts","sha256":"85916d4e5d58cdf8a2bddf6964562e12cf25e87bd247f6b7e397fa99ab0f869b"},{"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/retention-stats.test.ts","sha256":"fe5351e3d324be27adb6e75d6f459bf100602a99d96d7a7a7e665ba11100c63f"},{"file":"web/app/src/features/frontstage/pages/frontstage-page/runtime-session/retention-protection.tsx","sha256":"3c15fa50b63a3cbc4635df61e57cd51e085390d638bb3f7b7c2188942ddca8ce"}]
     }
   ]
 }

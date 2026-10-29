@@ -1,26 +1,29 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx","sha256":"ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb"},{"file":"web/app/src/features/frontstage/components/block-schema-tree/_tests/BlockSchemaTreePanel.test.tsx","sha256":"273557be03afbfbab45b9094f4064c37f6054202b290848156cdfafcecc2aee6"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx",
       "rule": "react-doctor/no-derived-state",
       "sourceSha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb",
       "reason": "This state retains user input/selection/history or an external resource receipt rather than merely caching a render calculation. BlockSchemaTreePanel owns lazy backend tree expansion/search and create/edit/move/delete form transactions. expandedKeys includes deliberate user onExpand changes plus ancestors merged by Set; deriving it only from the current path would collapse user-open branches. Form target, child cache, expansion, search and error are separate axes; Tree/node title/form remain distinct render owners.",
-      "evidence": [{"file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx", "sha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb"}, {"file": "web/app/src/features/frontstage/components/block-schema-tree/_tests/BlockSchemaTreePanel.test.tsx", "sha256": "273557be03afbfbab45b9094f4064c37f6054202b290848156cdfafcecc2aee6"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx",
       "rule": "react-doctor/no-giant-component",
       "sourceSha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb",
       "reason": "The named owner and extracted child/controller boundaries below explain this component; declaration length alone is not a demonstrated competing responsibility or behavior failure. BlockSchemaTreePanel owns lazy backend tree expansion/search and create/edit/move/delete form transactions. expandedKeys includes deliberate user onExpand changes plus ancestors merged by Set; deriving it only from the current path would collapse user-open branches. Form target, child cache, expansion, search and error are separate axes; Tree/node title/form remain distinct render owners.",
-      "evidence": [{"file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx", "sha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb"}, {"file": "web/app/src/features/frontstage/components/block-schema-tree/_tests/BlockSchemaTreePanel.test.tsx", "sha256": "273557be03afbfbab45b9094f4064c37f6054202b290848156cdfafcecc2aee6"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx",
       "rule": "react-doctor/prefer-useReducer",
       "sourceSha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb",
       "reason": "The concrete independently edited axes below do not require one shared transition invariant; changing useState to a reducer would not fix a demonstrated defect. BlockSchemaTreePanel owns lazy backend tree expansion/search and create/edit/move/delete form transactions. expandedKeys includes deliberate user onExpand changes plus ancestors merged by Set; deriving it only from the current path would collapse user-open branches. Form target, child cache, expansion, search and error are separate axes; Tree/node title/form remain distinct render owners.",
-      "evidence": [{"file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx", "sha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb"}, {"file": "web/app/src/features/frontstage/components/block-schema-tree/_tests/BlockSchemaTreePanel.test.tsx", "sha256": "273557be03afbfbab45b9094f4064c37f6054202b290848156cdfafcecc2aee6"}]
+      "evidenceSet": 0
     }
   ]
 }

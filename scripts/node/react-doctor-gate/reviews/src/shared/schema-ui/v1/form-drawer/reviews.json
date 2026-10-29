@@ -1,19 +1,22 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/shared/schema-ui/v1/_tests/schema-form-drawer.test.tsx","sha256":"99acb9460f798b164b453c839ae8cfd6dc077912de8d158bc6ab2523938c0e37"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/shared/schema-ui/v1/form-drawer/SchemaFormDrawer.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
       "sourceSha256": "74e08123080fab5592fe93236cdb947b4478ffc87d1f3a29d32988c0489150b1",
       "reason": "The external owner/identity changed, so previous draft/error/resource state is explicitly invalidated; the nearest fixture/source demonstrates that lifecycle. SchemaFormDrawer clears submitError when open/resolvedInitialValues changes, after two-step root-store clear then new values to prevent nested merge leaks. The error belongs to the previous submit/record owner and must not remain on the next record; schema-form-drawer tests cover both omitted root/nested values and retained input identity.",
-      "evidence": [{"file": "web/app/src/shared/schema-ui/v1/_tests/schema-form-drawer.test.tsx", "sha256": "99acb9460f798b164b453c839ae8cfd6dc077912de8d158bc6ab2523938c0e37"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/shared/schema-ui/v1/form-drawer/SchemaFormDrawer.tsx",
       "rule": "react-doctor/no-giant-component",
       "sourceSha256": "74e08123080fab5592fe93236cdb947b4478ffc87d1f3a29d32988c0489150b1",
       "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. SchemaFormDrawer owns Antd form-store initialization, submission status and actions. Its owner-input effect must replace record values while retaining mounted custom controls; schema fields and action/status slots are distinct owners, not a reason to create a reducer or remount the entire drawer.",
-      "evidence": [{"file": "web/app/src/shared/schema-ui/v1/_tests/schema-form-drawer.test.tsx", "sha256": "99acb9460f798b164b453c839ae8cfd6dc077912de8d158bc6ab2523938c0e37"}]
+      "evidenceSet": 0
     }
   ]
 }

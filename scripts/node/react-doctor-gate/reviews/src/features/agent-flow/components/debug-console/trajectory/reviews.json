@@ -1,96 +1,101 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx","sha256":"b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"},{"file":"web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx","sha256":"b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}],
+    [{"file":"web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx","sha256":"b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}],
+    [{"file":"web/app/src/features/agent-flow/_tests/debug-console/trajectory/timeline.test.tsx","sha256":"a480bcbb4a89646d5c4a5aab9aadea75e3d8d7480fe4f735c296fb388f387029"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/NativeTrajectoryWorkspace.tsx",
       "rule": "react-doctor/no-derived-state",
       "sourceSha256": "4a7e16cfa058f85dae0fae76fda048feaaa374e6c1af59453fc16c57b3983d1a",
       "reason": "The state retains draft/history/resource information beyond the latest input projection. NativeTrajectoryWorkspace owns one workflow trajectory view: server filter/window loading, retained run metadata, selection and floating geometry. TrajectoryTimeline, TrajectoryVirtualList and detail rendering remain separate owners; filter, focus and geometry are independent axes.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/NativeTrajectoryWorkspace.tsx",
       "rule": "react-doctor/no-derived-useState",
       "sourceSha256": "4a7e16cfa058f85dae0fae76fda048feaaa374e6c1af59453fc16c57b3983d1a",
       "reason": "The incoming value initializes a locally navigable/editable view rather than a continuously controlled value. NativeTrajectoryWorkspace owns one workflow trajectory view: server filter/window loading, retained run metadata, selection and floating geometry. TrajectoryTimeline, TrajectoryVirtualList and detail rendering remain separate owners; filter, focus and geometry are independent axes.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/NativeTrajectoryWorkspace.tsx",
       "rule": "react-doctor/no-giant-component",
       "sourceSha256": "4a7e16cfa058f85dae0fae76fda048feaaa374e6c1af59453fc16c57b3983d1a",
       "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. NativeTrajectoryWorkspace owns one workflow trajectory view: server filter/window loading, retained run metadata, selection and floating geometry. TrajectoryTimeline, TrajectoryVirtualList and detail rendering remain separate owners; filter, focus and geometry are independent axes.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/NativeTrajectoryWorkspace.tsx",
       "rule": "react-doctor/prefer-tag-over-role",
       "sourceSha256": "4a7e16cfa058f85dae0fae76fda048feaaa374e6c1af59453fc16c57b3983d1a",
       "reason": "This is an asynchronous loading/export status live region, not a form-calculation output. Native output would introduce the wrong semantic owner for these messages. NativeTrajectoryWorkspace owns one workflow trajectory view: server filter/window loading, retained run metadata, selection and floating geometry. TrajectoryTimeline, TrajectoryVirtualList and detail rendering remain separate owners; filter, focus and geometry are independent axes. This is a movable pane/edge separator with orientation, keyboard handling and numeric size semantics. There is no native HTML resize-separator element; hr would describe a document thematic break rather than an adjustable pane boundary. NativeTrajectoryWorkspace owns one workflow trajectory view: server filter/window loading, retained run metadata, selection and floating geometry. TrajectoryTimeline, TrajectoryVirtualList and detail rendering remain separate owners; filter, focus and geometry are independent axes.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/NativeTrajectoryWorkspace.tsx",
       "rule": "react-doctor/prefer-useReducer",
       "sourceSha256": "4a7e16cfa058f85dae0fae76fda048feaaa374e6c1af59453fc16c57b3983d1a",
       "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. NativeTrajectoryWorkspace owns one workflow trajectory view: server filter/window loading, retained run metadata, selection and floating geometry. TrajectoryTimeline, TrajectoryVirtualList and detail rendering remain separate owners; filter, focus and geometry are independent axes.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/ProviderTrajectory.tsx",
       "rule": "react-doctor/no-array-index-as-key",
       "sourceSha256": "9ef5e617a42e4c0566be806647786c6782d4e9ba5b2a2dad438ecb54f352d1ec",
       "reason": "The list identity and mutable state contract are described in the file-specific rationale; a data-text key would not uniquely identify repeated entries. ProviderTrajectory appends views in navigate and keeps inactive views mounted/hidden; it does not insert, sort or remove individual views. Reset closes the whole portal. Repeated navigation to the same run is allowed, so runId is not a unique view key.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}]
+      "evidenceSet": 1
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/ProviderTrajectory.tsx",
       "rule": "react-doctor/no-array-index-key",
       "sourceSha256": "9ef5e617a42e4c0566be806647786c6782d4e9ba5b2a2dad438ecb54f352d1ec",
       "reason": "Alias of no-array-index-as-key; the same source-level list identity analysis applies. ProviderTrajectory appends views in navigate and keeps inactive views mounted/hidden; it does not insert, sort or remove individual views. Reset closes the whole portal. Repeated navigation to the same run is allowed, so runId is not a unique view key.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}]
+      "evidenceSet": 1
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryStepDetail.tsx",
       "rule": "react-doctor/js-combine-iterations",
       "sourceSha256": "0e0b08ccc0e1a091159c272dbedc559b6e33bf64d745124fdadf4af040994e0c",
       "reason": "web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryStepDetail.tsx:133（react-doctor/js-combine-iterations）：TrajectoryStepDetail 的 useInfiniteQuery pages 要按 page 顺序展开 sections/items；view 分支过滤当前标签后映射不同 shape 的 JSX。flatMap 是分页结果扁平化，不是第二次后端加载；map 对渲染节点设置现有 key。它没有嵌套全局 find，融合必须保留已加载页面顺序与 section index key 语义。 web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryStepDetail.tsx:157（react-doctor/js-combine-iterations）：TrajectoryStepDetail 的 useInfiniteQuery pages 要按 page 顺序展开 sections/items；view 分支过滤当前标签后映射不同 shape 的 JSX。flatMap 是分页结果扁平化，不是第二次后端加载；map 对渲染节点设置现有 key。它没有嵌套全局 find，融合必须保留已加载页面顺序与 section index key 语义。",
-      "evidence": [{"file": "web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryStepDetail.tsx", "sha256": "0e0b08ccc0e1a091159c272dbedc559b6e33bf64d745124fdadf4af040994e0c"}, {"file": "web/app/src/features/agent-flow/components/debug-console/trajectory/workflow/WorkflowEventDetail.tsx", "sha256": "1a573c12790388bbce031474469f583e060e0542219dff8641430519e8f80dc4"}]
+      "evidence": [{"file":"web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryStepDetail.tsx","sha256":"0e0b08ccc0e1a091159c272dbedc559b6e33bf64d745124fdadf4af040994e0c"},{"file":"web/app/src/features/agent-flow/components/debug-console/trajectory/workflow/WorkflowEventDetail.tsx","sha256":"1a573c12790388bbce031474469f583e060e0542219dff8641430519e8f80dc4"}]
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryTimeline.tsx",
       "rule": "react-doctor/js-combine-iterations",
       "sourceSha256": "92c93579c4b6adfba5c3f452a2d3e4734853160e5e11c0bb759b08883b518f23",
       "reason": "The domain filters non-finite point coordinates before reducing extent and explicitly uses the first finite coordinate as its seed, or [0,0] for an empty domain. This is linear in the points and has defined non-finite/empty behavior; combining the operations would only remove a transient numeric array and does not repair a discovered extent/selection defect.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/timeline.test.tsx", "sha256": "a480bcbb4a89646d5c4a5aab9aadea75e3d8d7480fe4f735c296fb388f387029"}]
+      "evidenceSet": 2
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryTimeline.tsx",
       "rule": "react-doctor/no-giant-component",
       "sourceSha256": "92c93579c4b6adfba5c3f452a2d3e4734853160e5e11c0bb759b08883b518f23",
       "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. TrajectoryTimeline owns measured track geometry, pointer brushing, focus and dense/non-dense point selection. DenseTrajectoryPoints and range helpers own drawing/math; measured width and cursor are independent state, with ResizeObserver disconnected on cleanup.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/timeline.test.tsx", "sha256": "a480bcbb4a89646d5c4a5aab9aadea75e3d8d7480fe4f735c296fb388f387029"}]
+      "evidenceSet": 2
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryTimeline.tsx",
       "rule": "react-doctor/no-initialize-state",
       "sourceSha256": "92c93579c4b6adfba5c3f452a2d3e4734853160e5e11c0bb759b08883b518f23",
       "reason": "The initial value depends on measured DOM/viewport data and is refreshed by its subscribed browser resource; it cannot be read reliably during server/render initialization. TrajectoryTimeline owns measured track geometry, pointer brushing, focus and dense/non-dense point selection. DenseTrajectoryPoints and range helpers own drawing/math; measured width and cursor are independent state, with ResizeObserver disconnected on cleanup.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/timeline.test.tsx", "sha256": "a480bcbb4a89646d5c4a5aab9aadea75e3d8d7480fe4f735c296fb388f387029"}]
+      "evidenceSet": 2
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryTimeline.tsx",
       "rule": "react-doctor/no-static-element-interactions",
       "sourceSha256": "92c93579c4b6adfba5c3f452a2d3e4734853160e5e11c0bb759b08883b518f23",
       "reason": "The track has role=group/tabIndex=0 in dense mode and handles ArrowLeft/ArrowRight/Home/End/Enter/Space selection. In non-dense mode point buttons own keyboard focus; separate brush slider handles implement range keyboard changes. The continuous pointer track is not itself a button.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/timeline.test.tsx", "sha256": "a480bcbb4a89646d5c4a5aab9aadea75e3d8d7480fe4f735c296fb388f387029"}]
+      "evidenceSet": 2
     },
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryTimeline.tsx",
       "rule": "react-doctor/prefer-tag-over-role",
       "sourceSha256": "92c93579c4b6adfba5c3f452a2d3e4734853160e5e11c0bb759b08883b518f23",
       "reason": "The two brush handles control the start/end of one custom time-domain selection with pointer capture and Arrow/Home/End handlers. Native input range would add a separate native track and input state rather than retain this paired-handle geometry. TrajectoryTimeline owns measured track geometry, pointer brushing, focus and dense/non-dense point selection. DenseTrajectoryPoints and range helpers own drawing/math; measured width and cursor are independent state, with ResizeObserver disconnected on cleanup.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/timeline.test.tsx", "sha256": "a480bcbb4a89646d5c4a5aab9aadea75e3d8d7480fe4f735c296fb388f387029"}]
+      "evidenceSet": 2
     }
   ]
 }

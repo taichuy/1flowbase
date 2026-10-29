@@ -1,40 +1,43 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/app-shell/_tests/topbar-navigation-drag.test.tsx","sha256":"bdf6b7c1ae2574cc6617c84702b22862616fcb35c92cc21fabbbbe847e991eb0"},{"file":"web/app/src/app-shell/_tests/topbar-navigation-edit.test.tsx","sha256":"69d1c3dd7aa833407f0288e4ae062eb00119bedd1b1c11797b6d98995ed75f3f"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/app-shell/Navigation.tsx",
       "rule": "react-doctor/no-render-in-render",
       "sourceSha256": "42f400f6a76526bf2e485c3ecc05e439cd4a58fba2264482b33408e0d30c1fef",
       "reason": "renderNavigationLink 是模块级普通函数，返回 ReactNode；调用处没有声明新组件类型或调用含 Hook 的组件。品牌 metadata 和删除客户端 nodes 参数的改动不改变该 helper 或 React type/key，导航行为仍由 navigation 与拖拽测试覆盖。 Reassessed 2026-10-29: The delta adds show_title to navigation DTO/fixtures; existing drag, selection and component identities are retained.",
-      "evidence": [{"file":"web/app/src/app-shell/_tests/navigation.test.tsx","sha256":"be0acdae71ade46fc5adc24cf1d3fd7a7653b7a83cb108987f24413a05901f42"}, {"file":"web/app/src/app-shell/_tests/topbar-navigation-drag.test.tsx","sha256":"bdf6b7c1ae2574cc6617c84702b22862616fcb35c92cc21fabbbbe847e991eb0"}]
+      "evidence": [{"file":"web/app/src/app-shell/_tests/navigation.test.tsx","sha256":"be0acdae71ade46fc5adc24cf1d3fd7a7653b7a83cb108987f24413a05901f42"},{"file":"web/app/src/app-shell/_tests/topbar-navigation-drag.test.tsx","sha256":"bdf6b7c1ae2574cc6617c84702b22862616fcb35c92cc21fabbbbe847e991eb0"}]
     },
     {
       "file": "web/app/src/app-shell/TopbarNavigationDesigner.tsx",
       "rule": "react-doctor/no-event-handler",
       "sourceSha256": "ac2441875934b1e5a9505f9f2cb69f35cd2b941cf09ef8336187111aa8d45375",
       "reason": "Effect cleanup 在 node/workspace 卸载或替换时，只清除当前节点拥有的 drag 状态。节点可能在未发生 drop 时卸载，事件处理不能覆盖该生命周期；移除 appendRank/nodes 不改变此 cleanup。 Reassessed 2026-10-29: The delta adds show_title to navigation DTO/fixtures; existing drag, selection and component identities are retained.",
-      "evidence": [{"file":"web/app/src/app-shell/_tests/topbar-navigation-drag.test.tsx","sha256":"bdf6b7c1ae2574cc6617c84702b22862616fcb35c92cc21fabbbbe847e991eb0"}, {"file":"web/app/src/app-shell/_tests/topbar-navigation-edit.test.tsx","sha256":"69d1c3dd7aa833407f0288e4ae062eb00119bedd1b1c11797b6d98995ed75f3f"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/app-shell/TopbarNavigationDesigner.tsx",
       "rule": "react-doctor/no-multi-comp",
       "sourceSha256": "ac2441875934b1e5a9505f9f2cb69f35cd2b941cf09ef8336187111aa8d45375",
       "reason": "TopbarNavigationItemLabel 与 TopbarNavigationDesigner 是同一顶部导航编辑 owner 的模块级组件，组件 type 稳定，不在 render 中创建类型。删除客户端排序计算后，写入口仍由 page-tree mutation owner 承担，拆文件不能修复该诊断所指的重挂载。 Reassessed 2026-10-29: The delta adds show_title to navigation DTO/fixtures; existing drag, selection and component identities are retained.",
-      "evidence": [{"file":"web/app/src/app-shell/_tests/topbar-navigation-drag.test.tsx","sha256":"bdf6b7c1ae2574cc6617c84702b22862616fcb35c92cc21fabbbbe847e991eb0"}, {"file":"web/app/src/app-shell/_tests/topbar-navigation-edit.test.tsx","sha256":"69d1c3dd7aa833407f0288e4ae062eb00119bedd1b1c11797b6d98995ed75f3f"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/app-shell/TopbarNavigationDesigner.tsx",
       "rule": "react-doctor/prefer-module-scope-pure-function",
       "sourceSha256": "ac2441875934b1e5a9505f9f2cb69f35cd2b941cf09ef8336187111aa8d45375",
       "reason": "clearDrag 仅调用 useTopbarDragStore.setState 静态方法，没有调用 Hook，也未作为 memo callback prop 传递；事件和 cleanup 直接使用它，局部函数不会改变订阅身份。 Reassessed 2026-10-29: The delta adds show_title to navigation DTO/fixtures; existing drag, selection and component identities are retained.",
-      "evidence": [{"file":"web/app/src/app-shell/_tests/topbar-navigation-drag.test.tsx","sha256":"bdf6b7c1ae2574cc6617c84702b22862616fcb35c92cc21fabbbbe847e991eb0"}, {"file":"web/app/src/app-shell/_tests/topbar-navigation-edit.test.tsx","sha256":"69d1c3dd7aa833407f0288e4ae062eb00119bedd1b1c11797b6d98995ed75f3f"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/app-shell/TopbarNavigationDesigner.tsx",
       "rule": "react-doctor/prefer-tag-over-role",
       "sourceSha256": "ac2441875934b1e5a9505f9f2cb69f35cd2b941cf09ef8336187111aa8d45375",
       "reason": "role=status 宣告当前拖拽投影提示，属于 live status 而非表单计算结果；替换为 output 会改变语义。拖拽与编辑测试保留该组件的交互责任。 Reassessed 2026-10-29: The delta adds show_title to navigation DTO/fixtures; existing drag, selection and component identities are retained.",
-      "evidence": [{"file":"web/app/src/app-shell/_tests/topbar-navigation-drag.test.tsx","sha256":"bdf6b7c1ae2574cc6617c84702b22862616fcb35c92cc21fabbbbe847e991eb0"}, {"file":"web/app/src/app-shell/_tests/topbar-navigation-edit.test.tsx","sha256":"69d1c3dd7aa833407f0288e4ae062eb00119bedd1b1c11797b6d98995ed75f3f"}]
+      "evidenceSet": 0
     }
   ]
 }

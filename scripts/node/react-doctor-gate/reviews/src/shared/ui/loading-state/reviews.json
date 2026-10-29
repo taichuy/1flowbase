@@ -1,19 +1,22 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/shared/ui/loading-state/_tests/LoadingState.test.tsx","sha256":"0f498085fb035479b6a0430b7b572bd65421d82e98ca8a848d9ab50ccef4478d"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/shared/ui/loading-state/LoadingState.tsx",
       "rule": "react-doctor/jsx-no-jsx-as-prop",
       "sourceSha256": "4092faf2cf194ec5f391a3e28c7146ef0ad500b19601075a549ed73d3e964458",
       "reason": "web/app/src/shared/ui/loading-state/LoadingState.tsx:40（react-doctor/jsx-no-jsx-as-prop）：JSX 作为 antd/共享布局的 title/toolbar/emptyText/indicator slot 是该组件的公开 ReactNode 合同。节点被 React 正常按 type/key 对账，创建 element 不等于重挂载或完整子树重算；调用方本次状态改变本来也要更新 slot 内容，不能无依赖地 hoist 活数据。",
-      "evidence": [{"file":"web/app/src/shared/ui/loading-state/_tests/LoadingState.test.tsx","sha256":"0f498085fb035479b6a0430b7b572bd65421d82e98ca8a848d9ab50ccef4478d"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/shared/ui/loading-state/LoadingState.tsx",
       "rule": "react-doctor/prefer-tag-over-role",
       "sourceSha256": "4092faf2cf194ec5f391a3e28c7146ef0ad500b19601075a549ed73d3e964458",
       "reason": "web/app/src/shared/ui/loading-state/LoadingState.tsx:33（react-doctor/prefer-tag-over-role）：role=status 为 runtime 状态/拖动投影提示/移动目标提示/加载状态提供 live announcement，不是表单计算结果。<output> 的计算输出语义不适用；当前元素不会因使用标准 status role 失去屏幕阅读器语义。",
-      "evidence": [{"file":"web/app/src/shared/ui/loading-state/_tests/LoadingState.test.tsx","sha256":"0f498085fb035479b6a0430b7b572bd65421d82e98ca8a848d9ab50ccef4478d"}]
+      "evidenceSet": 0
     }
   ]
 }

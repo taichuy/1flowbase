@@ -1,26 +1,29 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/settings/_tests/ui-management/plugin-settings-template-lifecycle.test.tsx","sha256":"e1ea7f5d4a8ee95302477682d89960981f00ffb086a3c3089e8c1f77f71dd6e9"},{"file":"web/app/src/features/settings/pages/settings-page/PluginSettingsPage.tsx","sha256":"5423258572736229472809a40d960670badb5c82aa9c94369e96c7b99cb01cb5"},{"file":"web/app/src/shared/code-block/fetched-modules/_tests/registry.test.ts","sha256":"6e9cee8956c4823ab65d20d640881878df787791b3e4c47172b430b1f2b23a33"},{"file":"web/app/src/shared/code-block/fetched-modules/registry.ts","sha256":"1be8d40b33a5fbe7be1a1a21594506bbef6a30e8a19fb8d9c49cb594b95c7b7a"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/shared/code-block/fetched-modules/registry.ts",
       "rule": "react-doctor/js-index-maps",
       "sourceSha256": "1be8d40b33a5fbe7be1a1a21594506bbef6a30e8a19fb8d9c49cb594b95c7b7a",
       "reason": "web/app/src/shared/code-block/fetched-modules/registry.ts:111（react-doctor/js-index-maps）：assets.findIndex 在该模块 lazy load 中只执行一次，定位 Promise.all bytes 与唯一 browser_module 的对应下标。不存在对每个 asset 重新扫描 assets 的嵌套循环；此前已验证 exactly one browser asset，索引保持字节/role 对齐。",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/plugin-settings-template-lifecycle.test.tsx", "sha256": "e1ea7f5d4a8ee95302477682d89960981f00ffb086a3c3089e8c1f77f71dd6e9"}, {"file": "web/app/src/features/settings/pages/settings-page/PluginSettingsPage.tsx", "sha256": "5423258572736229472809a40d960670badb5c82aa9c94369e96c7b99cb01cb5"}, {"file": "web/app/src/shared/code-block/fetched-modules/_tests/registry.test.ts", "sha256": "6e9cee8956c4823ab65d20d640881878df787791b3e4c47172b430b1f2b23a33"}, {"file": "web/app/src/shared/code-block/fetched-modules/registry.ts", "sha256": "1be8d40b33a5fbe7be1a1a21594506bbef6a30e8a19fb8d9c49cb594b95c7b7a"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/shared/code-block/fetched-modules/registry.ts",
       "rule": "react-doctor/js-set-map-lookups",
       "sourceSha256": "1be8d40b33a5fbe7be1a1a21594506bbef6a30e8a19fb8d9c49cb594b95c7b7a",
       "reason": "web/app/src/shared/code-block/fetched-modules/registry.ts:82（react-doctor/js-set-map-lookups）：asset.path.includes 检查的是单个路径字符串里的反斜线，不是数组 membership；role 检查的是固定3个合法枚举值，O(3) 上界不随资产数量增长。为每次验证创建 Set 不能消除字符串检查，也不是渐进性能改善。 web/app/src/shared/code-block/fetched-modules/registry.ts:88（react-doctor/js-set-map-lookups）：asset.path.includes 检查的是单个路径字符串里的反斜线，不是数组 membership；role 检查的是固定3个合法枚举值，O(3) 上界不随资产数量增长。为每次验证创建 Set 不能消除字符串检查，也不是渐进性能改善。",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/plugin-settings-template-lifecycle.test.tsx", "sha256": "e1ea7f5d4a8ee95302477682d89960981f00ffb086a3c3089e8c1f77f71dd6e9"}, {"file": "web/app/src/features/settings/pages/settings-page/PluginSettingsPage.tsx", "sha256": "5423258572736229472809a40d960670badb5c82aa9c94369e96c7b99cb01cb5"}, {"file": "web/app/src/shared/code-block/fetched-modules/_tests/registry.test.ts", "sha256": "6e9cee8956c4823ab65d20d640881878df787791b3e4c47172b430b1f2b23a33"}, {"file": "web/app/src/shared/code-block/fetched-modules/registry.ts", "sha256": "1be8d40b33a5fbe7be1a1a21594506bbef6a30e8a19fb8d9c49cb594b95c7b7a"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/shared/code-block/fetched-modules/registry.ts",
       "rule": "react-doctor/no-dynamic-import-path",
       "sourceSha256": "1be8d40b33a5fbe7be1a1a21594506bbef6a30e8a19fb8d9c49cb594b95c7b7a",
       "reason": "web/app/src/shared/code-block/fetched-modules/registry.ts:15（react-doctor/no-dynamic-import-path）：默认 importModule(url) 明确使用 @vite-ignore，在完整 fetch+sha256 验证后导入运行时创建的 Blob URL，并在 finally revoke；模块字节由后端资产动态提供，不属于构建期可枚举 chunk。改 literal import 会破坏 fetched 插件装载 contract。",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/plugin-settings-template-lifecycle.test.tsx", "sha256": "e1ea7f5d4a8ee95302477682d89960981f00ffb086a3c3089e8c1f77f71dd6e9"}, {"file": "web/app/src/features/settings/pages/settings-page/PluginSettingsPage.tsx", "sha256": "5423258572736229472809a40d960670badb5c82aa9c94369e96c7b99cb01cb5"}, {"file": "web/app/src/shared/code-block/fetched-modules/_tests/registry.test.ts", "sha256": "6e9cee8956c4823ab65d20d640881878df787791b3e4c47172b430b1f2b23a33"}, {"file": "web/app/src/shared/code-block/fetched-modules/registry.ts", "sha256": "1be8d40b33a5fbe7be1a1a21594506bbef6a30e8a19fb8d9c49cb594b95c7b7a"}]
+      "evidenceSet": 0
     }
   ]
 }

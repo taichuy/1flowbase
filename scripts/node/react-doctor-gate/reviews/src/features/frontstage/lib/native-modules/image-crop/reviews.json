@@ -1,19 +1,22 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/frontstage/lib/native-modules/_tests/antd-locale-modules.test.ts","sha256":"b69a4da07b375a3228ace2fa28bd543cb7a7ff7b289272a2f81ca189f797de72"},{"file":"web/app/src/features/frontstage/lib/native-modules/image-crop/antd-img-crop-runtime.tsx","sha256":"8a621de9e4e988e4237358247a1f6f6980f8ec6d35cf3b2bacc0062d55c6b542"},{"file":"web/app/src/features/frontstage/lib/native-modules/modal/_tests/runtime.test.tsx","sha256":"fde485261c8bf8fb039e01692c835c29dd79bac895f0a04e29293a00cdac4cda"},{"file":"web/app/src/features/frontstage/lib/native-modules/native-block-surface-context.ts","sha256":"16e5c2a29fa0b368686dda26e03be813c82b6d1aa60ae9bf3d4adc9ded0f599b"},{"file":"web/app/src/features/frontstage/lib/native-modules/notification/_tests/runtime.test.tsx","sha256":"4915fa4a5f3e2e79f18602de78cf20d4b31f5121fb653200341e7b1b9bbb7e34"},{"file":"web/app/src/features/frontstage/lib/native-modules/registry.ts","sha256":"e3284de120d4fcd7d3420d70db90388c9a41494aa595e9df74cc0decd62adae0"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/frontstage/lib/native-modules/image-crop/antd-img-crop-runtime.tsx",
       "rule": "react-doctor/no-react19-deprecated-apis",
       "sourceSha256": "8a621de9e4e988e4237358247a1f6f6980f8ec6d35cf3b2bacc0062d55c6b542",
       "reason": "useContext remains a supported React API; forwardRef remains supported and this owner forwards a typed imperative ref to an Antd/native control. The flagged import alone does not prove a removed API or broken React 19 behavior. Reassessed 2026-10-29: The delta registers VditorPreview and the Vditor assets plugin; existing controlled module inventory, build sorting and runtime registration contracts remain.",
-      "evidence": [{"file": "web/app/src/features/frontstage/lib/native-modules/_tests/antd-locale-modules.test.ts", "sha256": "b69a4da07b375a3228ace2fa28bd543cb7a7ff7b289272a2f81ca189f797de72"}, {"file": "web/app/src/features/frontstage/lib/native-modules/image-crop/antd-img-crop-runtime.tsx", "sha256": "8a621de9e4e988e4237358247a1f6f6980f8ec6d35cf3b2bacc0062d55c6b542"}, {"file": "web/app/src/features/frontstage/lib/native-modules/modal/_tests/runtime.test.tsx", "sha256": "fde485261c8bf8fb039e01692c835c29dd79bac895f0a04e29293a00cdac4cda"}, {"file": "web/app/src/features/frontstage/lib/native-modules/native-block-surface-context.ts", "sha256": "16e5c2a29fa0b368686dda26e03be813c82b6d1aa60ae9bf3d4adc9ded0f599b"}, {"file": "web/app/src/features/frontstage/lib/native-modules/notification/_tests/runtime.test.tsx", "sha256": "4915fa4a5f3e2e79f18602de78cf20d4b31f5121fb653200341e7b1b9bbb7e34"}, {"file": "web/app/src/features/frontstage/lib/native-modules/registry.ts", "sha256": "e3284de120d4fcd7d3420d70db90388c9a41494aa595e9df74cc0decd62adae0"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/lib/native-modules/image-crop/antd-img-crop-runtime.tsx",
       "rule": "react-doctor/only-export-components",
       "sourceSha256": "8a621de9e4e988e4237358247a1f6f6980f8ec6d35cf3b2bacc0062d55c6b542",
       "reason": "The wrapper is a runtime native module adapter, forwarding the Antd ref and preserving static API with Object.assign/injected surface context. The runtime registry expects this API shape; it is not a normal component-only Fast Refresh boundary. Reassessed 2026-10-29: The delta registers VditorPreview and the Vditor assets plugin; existing controlled module inventory, build sorting and runtime registration contracts remain.",
-      "evidence": [{"file": "web/app/src/features/frontstage/lib/native-modules/_tests/antd-locale-modules.test.ts", "sha256": "b69a4da07b375a3228ace2fa28bd543cb7a7ff7b289272a2f81ca189f797de72"}, {"file": "web/app/src/features/frontstage/lib/native-modules/image-crop/antd-img-crop-runtime.tsx", "sha256": "8a621de9e4e988e4237358247a1f6f6980f8ec6d35cf3b2bacc0062d55c6b542"}, {"file": "web/app/src/features/frontstage/lib/native-modules/modal/_tests/runtime.test.tsx", "sha256": "fde485261c8bf8fb039e01692c835c29dd79bac895f0a04e29293a00cdac4cda"}, {"file": "web/app/src/features/frontstage/lib/native-modules/native-block-surface-context.ts", "sha256": "16e5c2a29fa0b368686dda26e03be813c82b6d1aa60ae9bf3d4adc9ded0f599b"}, {"file": "web/app/src/features/frontstage/lib/native-modules/notification/_tests/runtime.test.tsx", "sha256": "4915fa4a5f3e2e79f18602de78cf20d4b31f5121fb653200341e7b1b9bbb7e34"}, {"file": "web/app/src/features/frontstage/lib/native-modules/registry.ts", "sha256": "e3284de120d4fcd7d3420d70db90388c9a41494aa595e9df74cc0decd62adae0"}]
+      "evidenceSet": 0
     }
   ]
 }
