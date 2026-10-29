@@ -87,7 +87,7 @@ test('source metadata and availability come from the catalogue; only built-in de
       'Summarize records using installed reporting settings.'
     )
   ).toBeInTheDocument();
-  expect(commandSwitch('summary')).not.toBeDisabled();
+  expect(commandSwitch('summary')).toBeEnabled();
   expect(commandSwitch('audit')).toBeDisabled();
   expect(
     screen.getByText('Unavailable: The command plugin is unavailable')
@@ -165,7 +165,7 @@ test('unavailable enabled commands remain disableable and saved missing declarat
   await screen.findByDisplayValue('Custom prompt');
   await settle();
   expect(commandSwitch('archive')).toBeChecked();
-  expect(commandSwitch('archive')).not.toBeDisabled();
+  expect(commandSwitch('archive')).toBeEnabled();
   expect(
     screen.getByText(
       'Unavailable: The command declaration is no longer installed'
@@ -206,10 +206,10 @@ test('changing the application keeps unsaved toggles and requests the saved-chan
   expect(commandSwitch('new')).not.toBeChecked();
   expect(commandSwitch('help')).toBeChecked();
   expect(commandSwitch('model')).toBeChecked();
-  expect(commandSwitch('model')).not.toBeDisabled();
+  expect(commandSwitch('model')).toBeEnabled();
   // The general model selector is enabled in this fixture. The command's own
   // backend availability must still govern its switch and reason.
-  expect(screen.getByRole('combobox', { name: 'Model' })).not.toBeDisabled();
+  expect(screen.getByRole('combobox', { name: 'Model' })).toBeEnabled();
   expect(
     screen.getByText(
       'Unavailable: This application does not allow model selection'
@@ -244,7 +244,7 @@ test('an unavailable bound application stays readable and displays its backend c
     )
   ).toBeInTheDocument();
   expect(commandSwitch('model')).toBeChecked();
-  expect(commandSwitch('model')).not.toBeDisabled();
+  expect(commandSwitch('model')).toBeEnabled();
   expect(commandSwitch('summary')).toBeChecked();
   fireEvent.click(commandSwitch('model'));
   expect(commandSwitch('model')).toBeDisabled();
@@ -305,7 +305,7 @@ test('failed save rejects without losing command, MCP, prompt or model drafts', 
   expect(screen.getByText('Model One')).toBeInTheDocument();
   expect(
     screen.getByRole('combobox', { name: 'Reasoning effort' })
-  ).not.toBeDisabled();
+  ).toBeEnabled();
   await act(async () => {
     await expect(ref.current?.save('channel-1')).rejects.toThrow();
   });

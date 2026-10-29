@@ -1,7 +1,5 @@
-import {
-  CommunicationChatStyleBoundaryScene,
-  seedStyleBoundaryCommunicationChatFetch
-} from './scene-fixtures/notifications/communications';
+import { CommunicationChatStyleBoundaryScene } from './scene-fixtures/notifications/communications';
+import { seedStyleBoundaryCommunicationChatFetch } from './scene-fixtures/notifications/communications-fetch';
 import {
   NotificationInboxStyleBoundaryScene,
   NotificationLogsStyleBoundaryScene,

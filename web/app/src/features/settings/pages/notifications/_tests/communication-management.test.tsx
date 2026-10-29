@@ -180,7 +180,7 @@ async function openChat() {
   await click(await screen.findByRole('button', { name: /^Chat$/ }));
   const dialog = await screen.findByRole('dialog');
   await within(dialog).findByText('Chat message 10');
-  return within(dialog);
+  return dialog;
 }
 
 test('default shared table lists basic conversation fields across channels with a single Chat operation', async () => {
@@ -188,7 +188,8 @@ test('default shared table lists basic conversation fields across channels with 
   const alice = await screen.findByText('Alice');
   expect(alice.closest('.data-table')).not.toBeNull();
   expect(alice.closest('a')).toBeNull();
-  expect(screen.getByText('Chat channel').closest('a')).toBeNull();
+  const channel = screen.getByText('Chat channel');
+  expect(channel.closest('a')).toBeNull();
   expect(screen.getAllByRole('columnheader')).toHaveLength(3);
   expect(screen.getAllByRole('button', { name: /^Chat$/ })).toHaveLength(1);
   expect(screen.queryByText('Delivery failed')).not.toBeInTheDocument();
@@ -220,24 +221,26 @@ test('Chat opens the modeless run-detail floating shell and reused conversation 
   ).not.toBeNull();
   expect(document.querySelector('.ant-drawer')).toBeNull();
   expect(within(shell).getAllByRole('separator')).toHaveLength(3);
-  const pane = drawer.getByTestId('debug-conversation-messages');
-  expect(drawer.getByText('Chat', { exact: true })).toBeInTheDocument();
-  expect(drawer.getByRole('textbox')).toBeDisabled();
-  expect(drawer.getByRole('textbox')).toHaveValue('');
-  expect(await drawer.findByText('deepseek-flash')).toBeInTheDocument();
-  expect(drawer.getByText('high')).toBeInTheDocument();
+  const pane = within(drawer).getByTestId('debug-conversation-messages');
+  expect(within(drawer).getByText('Chat', { exact: true })).toBeInTheDocument();
+  expect(within(drawer).getByRole('textbox')).toBeDisabled();
+  expect(within(drawer).getByRole('textbox')).toHaveValue('');
+  expect(await within(drawer).findByText('deepseek-flash')).toBeInTheDocument();
+  expect(within(drawer).getByText('high')).toBeInTheDocument();
   expect(
-    drawer.queryByRole('button', { name: /^Send$/ })
+    within(drawer).queryByRole('button', { name: /^Send$/ })
   ).not.toBeInTheDocument();
   expect(chatRequests()).toHaveLength(1);
   expect(chatRequests()[0]!.searchParams.toString()).toBe('limit=5');
   expect(within(pane).getByText('answer.pdf')).toBeInTheDocument();
   expect(calls.some((url) => url.pathname.includes('/files/'))).toBe(false);
   await click(
-    drawer.getByRole('button', { name: appI18n.t('notifications:file_access') })
+    within(drawer).getByRole('button', {
+      name: appI18n.t('notifications:file_access')
+    })
   );
   expect(
-    await drawer.findByRole('link', {
+    await within(drawer).findByRole('link', {
       name: appI18n.t('notifications:download_file')
     })
   ).toHaveAttribute('href', 'https://files.example.test/answer.pdf');
@@ -246,7 +249,7 @@ test('Chat opens the modeless run-detail floating shell and reused conversation 
       url.pathname.endsWith('/instances/channel-1/files/message-8')
     )
   ).toHaveLength(1);
-  expect(pane.textContent).toMatch(
+  expect(pane).toHaveTextContent(
     /Chat message 6[\s\S]*Chat message 7[\s\S]*answer.pdf[\s\S]*Chat message 9[\s\S]*Chat message 10/
   );
   expect(
@@ -254,16 +257,17 @@ test('Chat opens the modeless run-detail floating shell and reused conversation 
       .getByText('Chat message 6')
       .closest('.agent-flow-editor__debug-assistant-bubble')
   ).not.toBeNull();
+  const inboundMessage = within(pane).getByText('Chat message 7');
   expect(
-    within(pane)
-      .getByText('Chat message 7')
-      .closest('.agent-flow-editor__debug-assistant-bubble')
+    inboundMessage.closest('.agent-flow-editor__debug-assistant-bubble')
   ).toBeNull();
   expect(
-    drawer.queryByText('Chat message 1', { exact: true })
+    within(drawer).queryByText('Chat message 1', { exact: true })
   ).not.toBeInTheDocument();
-  await click(drawer.getByRole('button', { name: 'Load earlier messages' }));
-  await drawer.findByText('Chat message 1', { exact: true });
+  await click(
+    within(drawer).getByRole('button', { name: 'Load earlier messages' })
+  );
+  await within(drawer).findByText('Chat message 1', { exact: true });
   expect(chatRequests()).toHaveLength(2);
   expect(chatRequests()[1]!.searchParams.get('limit')).toBe('5');
   expect(chatRequests()[1]!.searchParams.get('cursor')).toBe('message-6');
@@ -271,13 +275,13 @@ test('Chat opens the modeless run-detail floating shell and reused conversation 
     expect(
       within(pane).getAllByText(`Chat message ${index}`, { exact: true })
     ).toHaveLength(1);
-  expect(pane.textContent).toMatch(
+  expect(pane).toHaveTextContent(
     /Chat message 1[\s\S]*Chat message 5[\s\S]*Chat message 6[\s\S]*Chat message 10/
   );
   expect(
-    drawer.queryByRole('button', { name: 'Load earlier messages' })
+    within(drawer).queryByRole('button', { name: 'Load earlier messages' })
   ).not.toBeInTheDocument();
-  await click(drawer.getByRole('button', { name: 'Close chat' }));
+  await click(within(drawer).getByRole('button', { name: 'Close chat' }));
   await waitFor(() =>
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   );
@@ -286,22 +290,24 @@ test('Chat opens the modeless run-detail floating shell and reused conversation 
   expect(chatRequests()[2]!.searchParams.get('limit')).toBe('5');
   expect(chatRequests()[2]!.searchParams.has('cursor')).toBe(false);
   expect(
-    reopened.queryByText('Chat message 1', { exact: true })
+    within(reopened).queryByText('Chat message 1', { exact: true })
   ).not.toBeInTheDocument();
-  const reopenedPane = reopened.getByTestId('debug-conversation-messages');
+  const reopenedPane = within(reopened).getByTestId(
+    'debug-conversation-messages'
+  );
   expect(within(reopenedPane).getAllByText(/^Chat message \d+$/)).toHaveLength(
     4
   );
   expect(within(reopenedPane).getByText('answer.pdf')).toBeInTheDocument();
   expect(
-    reopened.getByRole('button', { name: 'Load earlier messages' })
+    within(reopened).getByRole('button', { name: 'Load earlier messages' })
   ).toBeInTheDocument();
 });
 
 test('message footer keeps only copy and Aim run-log actions', async () => {
   await show();
   const drawer = await openChat();
-  const link = drawer.getByRole('link', { name: 'View run logs' });
+  const link = within(drawer).getByRole('link', { name: 'View run logs' });
   expect(link).toHaveAttribute(
     'href',
     '/applications/original-app/logs?run_id=original-run&view=trace'
@@ -309,9 +315,9 @@ test('message footer keeps only copy and Aim run-log actions', async () => {
   expect(link.querySelector('[data-icon="aim"]')).not.toBeNull();
   const actions = link.closest('.agent-flow-editor__debug-message-actions')!;
   expect(actions.querySelectorAll('button,a')).toHaveLength(2);
-  expect(actions.textContent).toBe('');
+  expect(actions).toHaveTextContent(/^$/);
   expect(
-    drawer.queryByRole('button', { name: 'Retry delivery' })
+    within(drawer).queryByRole('button', { name: 'Retry delivery' })
   ).not.toBeInTheDocument();
   expect(document.querySelector('.communication-chat__direction')).toBeNull();
 });
