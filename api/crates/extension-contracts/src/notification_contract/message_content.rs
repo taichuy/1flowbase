@@ -237,6 +237,13 @@ fn escape_line(line: &str, markdown: &mut String, encode_first: bool, encode_las
         if (encode_first && index == 0)
             || (encode_last && chars.peek().is_none())
             || (at_line_start && matches!(character, ' ' | '\t'))
+            // GFM also recognizes bare URLs and email addresses. Encoding the
+            // token boundary preserves literal punctuation without letting an
+            // autolink consume a following escape or hard break.
+            || character == '@'
+            || (character == ':' && chars.peek().is_some_and(|(_, next)| *next == '/'))
+            || (character == '.'
+                && markdown.as_bytes().last().is_some_and(|last| matches!(last, b'w' | b'W')))
         {
             markdown.push_str(&format!("&#{};", character as u32));
         } else {

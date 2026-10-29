@@ -58,6 +58,24 @@ fn notification_literal_text_cannot_create_markdown_structure_or_html() {
 }
 
 #[test]
+fn notification_literal_autolinks_preserve_punctuation_and_each_hard_break() {
+    let content = Content::text(
+        "https://example.com\nwww.example.com\nalice@example.com\nHTTPS://example.com\nWWW.example.com\nftp://example.com\nnext",
+    );
+    assert_eq!(content.render_markdown(), fixture("literal_autolinks"));
+    let split = Content::Blocks(vec![Block::Paragraph(vec![
+        Inline::Text("https".into()),
+        Inline::Text("://example.com\nwww".into()),
+        Inline::Text(".example.com\nalice".into()),
+        Inline::Text("@example.com\nnext".into()),
+    ])]);
+    assert_eq!(
+        split.render_markdown(),
+        "https&#58;//example.com\\\nwww&#46;example.com\\\nalice&#64;example.com\\\nnext"
+    );
+}
+
+#[test]
 fn notification_blocks_form_paragraphs_and_complete_bullet_items() {
     let content = Content::Blocks(vec![
         Block::Paragraph(vec![Inline::Strong("Available commands".into())]),
