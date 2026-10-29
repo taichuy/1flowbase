@@ -410,3 +410,6 @@ mod container_observations;
 
 #[path = "_tests/container_deadlines.rs"]
 mod container_deadlines;
+
+#[path = "_tests/container_crash/mod.rs"]
+mod container_crash;
