@@ -24,7 +24,11 @@ export function useContainerNavigation() {
         null;
 
       setInteractionState({
-        activeContainerPath: [...getContainerPathForNode(document, nodeId), nodeId]
+        activeContainerPath: [
+          ...getContainerPathForNode(document, nodeId),
+          nodeId
+        ],
+        pendingLocateNodeId: nodeId
       });
       setSelection({
         selectedNodeId: firstChildNode,

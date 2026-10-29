@@ -1,3 +1,4 @@
+import { fitContainerBounds } from './container-geometry';
 import { collectContainerSubgraphNodeIds } from './container';
 import type {
   FlowAuthoringDocument,
@@ -50,7 +51,7 @@ export function duplicateNodeSubgraph(
 ) {
   const sourceNode = getNodeById(document, payload.nodeId);
 
-  if (!sourceNode) {
+  if (!sourceNode || sourceNode.type === 'container_start') {
     return document;
   }
 
@@ -77,7 +78,10 @@ export function duplicateNodeSubgraph(
             node.containerId && idMap.has(node.containerId)
               ? idMap.get(node.containerId)!
               : node.containerId,
-          position: { x: node.position.x + 48, y: node.position.y + 48 }
+          position:
+            node.id === sourceNode.id
+              ? { x: node.position.x + 48, y: node.position.y + 48 }
+              : { ...node.position }
         },
         (selector) => remapSelector(selector, idMap)
       )
@@ -104,12 +108,12 @@ export function duplicateNodeSubgraph(
       };
     });
 
-  return {
+  return fitContainerBounds({
     ...document,
     graph: {
       ...document.graph,
       nodes: [...document.graph.nodes, ...duplicatedNodes],
       edges: [...document.graph.edges, ...duplicatedEdges]
     }
-  };
+  });
 }

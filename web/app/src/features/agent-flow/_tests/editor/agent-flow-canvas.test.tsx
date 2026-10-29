@@ -28,7 +28,7 @@ function createInitialState() {
     },
     versions: [],
     autosave_interval_seconds: 30,
-    user_protection_limit: 10,
+    user_protection_limit: 10
   };
 }
 
@@ -73,7 +73,7 @@ describe('AgentFlowCanvas', () => {
     ).toBeInTheDocument();
   }, 20_000);
 
-  test('focuses the iteration child canvas and returns through breadcrumb', async () => {
+  test('keeps the root and nested nodes on screen when selecting an iteration child', async () => {
     const baseDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const iterationState = {
       flow_id: 'flow-1',
@@ -120,7 +120,7 @@ describe('AgentFlowCanvas', () => {
       },
       versions: [],
       autosave_interval_seconds: 30,
-      user_protection_limit: 10,
+      user_protection_limit: 10
     };
 
     renderReactFlowScene(
@@ -132,16 +132,15 @@ describe('AgentFlowCanvas', () => {
       />
     );
 
-    fireEvent.doubleClick(await screen.findByText('Iteration'));
-    expect(
-      screen.getByRole('button', { name: '返回主画布' })
-    ).toBeInTheDocument();
-    expect(await screen.findByRole('textbox', { name: '节点别名' })).toHaveValue(
-      'Inner Answer'
-    );
-    expect(screen.queryByText('Start')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: '返回主画布' }));
+    expect(await screen.findByText('Iteration')).toBeInTheDocument();
     expect(screen.getByText('Start')).toBeInTheDocument();
+    fireEvent.click(await screen.findByText('Inner Answer'));
+    expect(
+      await screen.findByRole('textbox', { name: '节点别名' })
+    ).toHaveValue('Inner Answer');
+    expect(screen.getByText('Start')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '返回主画布' })
+    ).not.toBeInTheDocument();
   }, 15_000);
 });

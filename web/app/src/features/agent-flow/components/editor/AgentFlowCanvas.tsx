@@ -227,11 +227,13 @@ function AgentFlowCanvasInner({
           onRunNode,
           onReplaceNode: nodeInteractions.replaceNode,
           onDeleteNode: nodeInteractions.deleteNode,
+          onResizeContainer: canvasInteractions.commitContainerResize,
           nodePickerOptions
         }
       ),
     [
       activeContainerId,
+      canvasInteractions.commitContainerResize,
       document,
       issueCountByNodeId,
       nodeInteractions,
@@ -276,6 +278,12 @@ function AgentFlowCanvasInner({
         nodeTypes={agentFlowNodeTypes}
         edgeTypes={agentFlowEdgeTypes}
         connectionLineComponent={AgentFlowCustomConnectionLine}
+        deleteKeyCode={null}
+        multiSelectionKeyCode={null}
+        selectionOnDrag={false}
+        selectionKeyCode={null}
+        onPaneClick={selectionInteractions.clearSelection}
+        onNodeClick={(_, node) => nodeInteractions.selectNode(node.id)}
         nodesDraggable
         onConnect={edgeInteractions.connect}
         onConnectStart={(_, payload) => {
@@ -290,7 +298,8 @@ function AgentFlowCanvasInner({
           const target = event.target instanceof Element ? event.target : null;
 
           if (
-            target?.closest('.react-flow__node') ||
+            (target?.closest('.react-flow__node') &&
+              !target.closest('.agent-flow-container__body')) ||
             target?.closest('.react-flow__handle')
           ) {
             edgeInteractions.cancelConnection();
@@ -332,9 +341,8 @@ function AgentFlowCanvasInner({
             }
             requestAnimationFrame(() => {
               if (
-                performance.getEntriesByName(
-                  '1flowbase:CanvasInteractive'
-                ).length === 0
+                performance.getEntriesByName('1flowbase:CanvasInteractive')
+                  .length === 0
               ) {
                 performance.mark('1flowbase:CanvasInteractive');
               }

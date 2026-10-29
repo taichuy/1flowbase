@@ -1,3 +1,4 @@
+import { getContainerPathForNode } from '../../lib/document/transforms/container';
 import {
   createNextNodeId,
   createNodeDocumentWithCountedAlias
@@ -30,6 +31,9 @@ export function useNodeInteractions() {
 
   return {
     selectNode(nodeId: string | null) {
+      setInteractionState({
+        activeContainerPath: getContainerPathForNode(document, nodeId)
+      });
       setSelection({
         selectedNodeId: nodeId,
         selectedNodeIds: nodeId ? [nodeId] : [],
@@ -45,7 +49,9 @@ export function useNodeInteractions() {
       });
     },
     openNodePicker(nodeId: string, sourceHandleId: string | null = null) {
-      const sourceNode = document.graph.nodes.find((node) => node.id === nodeId);
+      const sourceNode = document.graph.nodes.find(
+        (node) => node.id === nodeId
+      );
 
       setInteractionState({
         connectingPayload: {
@@ -158,7 +164,10 @@ export function useNodeInteractions() {
 
       setWorkingDocument(nextDocument);
 
-      if (selectedNodeId === nodeId) {
+      if (
+        selectedNodeId &&
+        !nextDocument.graph.nodes.some((node) => node.id === selectedNodeId)
+      ) {
         setSelection({
           selectedNodeId: null,
           selectedNodeIds: [],
