@@ -150,6 +150,14 @@ jobs:
         env:
           NATIVE_TARGET: ${{ matrix.target }}
         run: node scripts/node/native-release/upgrade-smoke.js "tmp/native-extracted/1flowbase-$NATIVE_TARGET" tmp/test-governance/native-release/upgrade
+      # Node 24.22.1 bundles undici 7.30.1, whose macOS socket reset path
+      # can crash fetch with setTypeOfService EINVAL (nodejs/undici#6075).
+      # Node 26.7.0 bundles the fixed undici 8.9.0; only the macOS HTTP probe uses it.
+      - name: Use fixed HTTP test runtime on macOS
+        if: runner.os == 'macOS'
+        uses: actions/setup-node@v5
+        with:
+          node-version: '26.7.0'
       - name: Verify startup, restart and shutdown
         if: runner.os != 'Windows'
         env:
