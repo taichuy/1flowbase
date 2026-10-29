@@ -304,6 +304,8 @@ pub(super) fn build_nodes_and_topology(
             .expect("validated target indegree must exist") += 1;
     }
 
+    drop(node_relationships);
+
     if nodes
         .values()
         .any(|node| node.node_type == "llm" && visible_internal_llm_tools_enabled(node))

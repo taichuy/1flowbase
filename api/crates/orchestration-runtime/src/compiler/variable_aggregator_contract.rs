@@ -203,8 +203,7 @@ pub(super) fn validate_variable_aggregator_topology(
                 let path =
                     format!("/bindings/groups/value/{group_index}/candidates/{candidate_index}");
                 let output = variable_aggregator_output_for_selector(
-                    declarations.get_or_insert_with(|| DeclarationIndex::new(document, context)),
-                    nodes, &selector,
+                    &mut declarations, document, context, nodes, &selector,
                 )
                     .with_context(|| format!(
                         "node {} variable_aggregator group {} selector {} has no valid declared type",
@@ -269,13 +268,17 @@ impl<'a> DeclarationIndex<'a> {
     }
 }
 
-fn variable_aggregator_output_for_selector(
-    declarations: &DeclarationIndex<'_>,
+fn variable_aggregator_output_for_selector<'a>(
+    declarations: &mut Option<DeclarationIndex<'a>>,
+    document: &'a Value,
+    context: &'a FlowCompileContext,
     nodes: &BTreeMap<String, CompiledNode>,
     selector: &[String],
 ) -> Result<CompiledOutput> {
     let namespace = selector.first().map(String::as_str).unwrap_or_default();
     if matches!(namespace, "sys" | "env" | "trigger") {
+        let declarations =
+            declarations.get_or_insert_with(|| DeclarationIndex::new(document, context));
         let (value_type, duplicate) = declarations.run_level.get(selector).ok_or_else(|| {
             anyhow!(
                 "run-level selector {} is not declared by the backend compile context",
@@ -291,7 +294,10 @@ fn variable_aggregator_output_for_selector(
         return Ok(compiled_run_level_output(selector, value_type));
     }
     if namespace == "conversation" {
-        return conversation_output_for_selector(declarations, selector);
+        return conversation_output_for_selector(
+            declarations.get_or_insert_with(|| DeclarationIndex::new(document, context)),
+            selector,
+        );
     }
 
     output_for_selector(nodes, selector).ok_or_else(|| {
@@ -352,3 +358,7 @@ fn compiled_run_level_output(selector: &[String], value_type: &str) -> CompiledO
         json_schema: None,
     }
 }
+
+#[cfg(test)]
+#[path = "../_tests/compiler_tests/bindings_and_outputs/declaration_index.rs"]
+mod declaration_index_tests;

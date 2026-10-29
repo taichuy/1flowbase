@@ -6,13 +6,13 @@
 
 `topology.rs` 将输入边完整保留为 `CompiledEdge`，包括重复边、输入顺序与 handle。Kahn 排序的 adjacency 与 indegree 仍按多重边计数，初始队列按节点声明顺序构造。
 
-单个 `HashSet<(&str, &str)>` 仅判断 source/target 关系首次出现，再向 dependency/downstream Vec 写入；不通过集合迭代生成输出。关系 Vec 仍按输入节点 rank 排序。哈希键借用原 JSON 文本，不复制节点名。
+单个 `HashSet<(&str, &str)>` 仅判断 source/target 关系首次出现，再向 dependency/downstream Vec 写入；不通过集合迭代生成输出。关系 Vec 仍按输入节点 rank 排序。哈希键借用原 JSON 文本，不复制节点名；边循环完成立即释放集合，避免与后续临时索引同时驻留。
 
 若 E 是输入边数、U 是唯一节点对数、V 是节点数，关系判重由最坏 `O(Σ indegree² + Σ outdegree²)`（稠密图 `O(V³)`）改为期望 `O(E)` 哈希查询，另保留原有 BTreeMap 查找与关系排序成本。索引增加 `O(U)` 临时空间；不是内存缩减方案。字符串哈希成本还取决于标识符字节长度。
 
 ## 聚合变量声明
 
-声明解析归 `variable_aggregator_contract.rs`，不放在图拓扑 owner。首次实际聚合候选访问时建立 `DeclarationIndex`，同次编译的后续候选复用。没有候选时不建索引。
+声明解析归 `variable_aggregator_contract.rs`，不放在图拓扑 owner。首次访问 run-level 或 conversation 聚合候选时建立 `DeclarationIndex`，同次编译的后续声明候选复用。纯节点输出查询和没有候选时不建索引。
 
 run-level 使用完整分段 selector 作键，conversation 使用声明 name 作键。值保存首项声明及重复标记；建索引不验证声明，只有引用时才报告错误。保留重复声明、缺失类型、非法 selector 长度与候选顺序的诊断优先级。节点输出仍消费既有 resolver。
 
