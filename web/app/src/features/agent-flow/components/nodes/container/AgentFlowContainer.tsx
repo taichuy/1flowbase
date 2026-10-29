@@ -83,7 +83,14 @@ export function AgentFlowContainer({
         minWidth={data.minimumContainerSize?.width}
         minHeight={data.minimumContainerSize?.height}
         className="agent-flow-container__resize nodrag"
-        style={{ visibility: selected ? 'visible' : 'hidden' }}
+        style={{
+          visibility: selected ? 'visible' : 'hidden',
+          width: 12,
+          height: 12,
+          border: '2px solid var(--container-selection)',
+          borderRadius: 3,
+          background: 'var(--container-surface)'
+        }}
         onResizeEnd={(_, size) => data.onResizeContainer?.(data.nodeId, size)}
       />
       <Handle
