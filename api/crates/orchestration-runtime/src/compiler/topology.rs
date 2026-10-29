@@ -270,7 +270,7 @@ pub(super) fn build_nodes_and_topology(
             return Err(FlowValidationError::at_node(
                 target,
                 "/containerId",
-                anyhow!("edge {edge_id} containerId must match its source node ownership"),
+                anyhow!("edge {edge_id} containerId must match its source node ownership boundary"),
             ));
         }
 

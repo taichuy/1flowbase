@@ -560,13 +560,13 @@ async fn ac_001_application_node_catalog_distinguishes_published_and_hidden_buil
             "question_classifier",
             "tool",
             "parameter_extractor",
-            "iteration",
-            "loop",
             "human_input",
         ]
     );
 
     for published_type in [
+        "iteration",
+        "loop",
         "start",
         "answer",
         "llm",

@@ -437,7 +437,21 @@ export interface ConsoleFlowRunMetadata {
   updated_at?: string;
 }
 
+export interface ContainerRoundPath {
+  container_execution_id: string;
+  container_node_id: string;
+  round_index: number;
+}
+
+export interface NodeExecutionIdentity {
+  execution_id: string;
+  node_id: string;
+  parent_execution_id: string | null;
+  round_path: ContainerRoundPath[];
+}
+
 export interface ConsoleNodeRunDetail {
+  execution_identity?: NodeExecutionIdentity | null;
   id: string;
   flow_run_id: string;
   node_id: string;
@@ -850,6 +864,7 @@ export type ConsoleFlowDebugStreamEvent =
     }
   | {
       type: 'node_started';
+      execution_identity?: NodeExecutionIdentity | null;
       node_run_id: string;
       node_id: string;
       node_type: string;
@@ -865,6 +880,7 @@ export type ConsoleFlowDebugStreamEvent =
     }
   | {
       type: 'node_finished';
+      execution_identity?: NodeExecutionIdentity | null;
       node_run_id: string;
       node_id: string;
       status: string;

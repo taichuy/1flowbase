@@ -320,13 +320,13 @@ fn validate_selector_types(
         if let Some(output) = container_local_output(source, selector) {
             return Some(output.value_type);
         }
-        if selector.len() != 2 {
-            return None;
-        }
         source
             .outputs
             .iter()
-            .find(|output| output.key == selector[1])
+            .find(|output| {
+                (selector.len() == 2 && output.key == selector[1])
+                    || output.selector.as_slice() == &selector[1..]
+            })
             .map(|output| output.value_type.clone())
     };
     for (key, required) in [
@@ -337,7 +337,9 @@ fn validate_selector_types(
             continue;
         }
         if let Some(value_type) = declared_type(key) {
-            if !matches!(value_type.as_str(), "array" | "json" | "any") {
+            if !matches!(value_type.as_str(), "array" | "json" | "any")
+                && !value_type.starts_with("array[")
+            {
                 return Err(invalid(
                     node,
                     &format!("/bindings/{key}"),

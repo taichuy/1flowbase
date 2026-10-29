@@ -94,7 +94,9 @@
     "task_request_lane": "请求 / 任务",
     "container_round": "{{container}} · 第 {{round}} 轮",
     "all_container_rounds": "全部循环轮次",
-    "container_round_filter": "按循环轮次筛选"
+    "container_round_filter": "按循环轮次筛选",
+    "container_round_started": "本轮开始",
+    "container_round_finished": "本轮结束"
   },
   "auto": {
     "read_only_conversation_input": "只读消息输入框",

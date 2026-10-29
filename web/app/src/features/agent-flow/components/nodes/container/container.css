@@ -9,7 +9,7 @@
   position: relative;
 }
 .agent-flow-container--selected {
-  border: 2px solid #1677ff;
+  border: 2px solid var(--container-selection);
 }
 .agent-flow-container__header {
   height: 56px;
@@ -25,8 +25,8 @@
   border-radius: 8px;
   display: grid;
   place-items: center;
-  color: #fff;
-  background: #12b8bc;
+  color: var(--container-surface);
+  background: var(--container-accent);
   font-size: 18px;
 }
 .agent-flow-container__title {
@@ -44,8 +44,8 @@
   position: absolute;
   inset: 56px 0 0;
   border-radius: 0 0 15px 15px;
-  background-color: #f7f9fc;
-  background-image: radial-gradient(#dbe1e9 1px, transparent 1px);
+  background-color: var(--container-body);
+  background-image: radial-gradient(var(--container-dots) 1px, transparent 1px);
   background-size: 16px 16px;
 }
 .agent-flow-container__add {
@@ -57,9 +57,9 @@
 .agent-flow-container__resize {
   width: 12px;
   height: 12px;
-  border: 2px solid #1677ff;
+  border: 2px solid var(--container-selection);
   border-radius: 3px;
-  background: white;
+  background: var(--container-surface);
 }
 .agent-flow-container-start {
   position: relative;
@@ -68,12 +68,12 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: #fff;
-  border: 1px solid #a9e3e5;
-  color: #12a9ae;
+  background: var(--container-surface);
+  border: 1px solid var(--container-start-border);
+  color: var(--container-accent);
   font-size: 24px;
   box-sizing: border-box;
 }
 .agent-flow-container-start--selected {
-  outline: 2px solid #1677ff;
+  outline: 2px solid var(--container-selection);
 }

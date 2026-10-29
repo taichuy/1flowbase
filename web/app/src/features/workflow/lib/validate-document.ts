@@ -5,6 +5,8 @@ import {
   type FlowAuthoringIssue
 } from '../../flow-editor/authoring/validation';
 import { listWorkflowVariableOptions } from './variables';
+import { validateContainerNode } from '../../agent-flow/lib/validation/containers';
+import type { AgentFlowIssue } from '../../agent-flow/lib/validation/issues';
 
 export function validateWorkflowDocument(
   document: FlowAuthoringDocument,
@@ -61,13 +63,32 @@ export function validateWorkflowDocument(
   }
 
   for (const node of document.graph.nodes) {
-    const visibleSelectors = new Set(
-      listWorkflowVariableOptions(document, node.id, workflowTriggerContext).map(
-        (option) => option.value.join('.')
+    const containerIssues: AgentFlowIssue[] = [];
+    validateContainerNode(
+      containerIssues,
+      node,
+      document,
+      [],
+      workflowTriggerContext
+    );
+    issues.push(
+      ...containerIssues.map(
+        (issue): FlowAuthoringIssue => ({
+          ...issue,
+          scope: issue.scope === 'field' ? 'node' : issue.scope,
+          fieldKey: issue.fieldKey ?? null
+        })
       )
     );
-
     for (const [bindingKey, binding] of Object.entries(node.bindings)) {
+      const visibleSelectors = new Set(
+        listWorkflowVariableOptions(
+          document,
+          node.id,
+          workflowTriggerContext,
+          `bindings.${bindingKey}`
+        ).map((option) => option.value.join('.'))
+      );
       if (binding.kind !== 'selector' || binding.value.length === 0) continue;
       if (visibleSelectors.has(binding.value.join('.'))) continue;
 

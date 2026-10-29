@@ -24,6 +24,7 @@ export function WorkflowEventDetail({
 }) {
   const [tab, setTab] = useState(() =>
     event.event_type === 'node_finished' ||
+    event.event_type === 'round_finished' ||
     ['model_reply', 'tool_result'].includes(
       String(event.native_step?.metadata.kind)
     )

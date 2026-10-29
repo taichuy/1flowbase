@@ -6,7 +6,8 @@ import {
 } from '@xyflow/react';
 import PlayCircleOutlined from '@ant-design/icons/es/icons/PlayCircleOutlined';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
-import { Button } from 'antd';
+import { Button, theme } from 'antd';
+import type { CSSProperties } from 'react';
 import type {
   AgentFlowCanvasNode,
   AgentFlowCanvasNodeData
@@ -16,6 +17,18 @@ import { getAgentFlowNodeTypeIcon } from '../../../lib/node-type-icons';
 import { MAIN_SOURCE_HANDLE_ID } from '../../../lib/canvas/handle-ids';
 import { i18nText } from '../../../../../shared/i18n/text';
 import './container.css';
+
+function useContainerTheme(): CSSProperties {
+  const { token } = theme.useToken();
+  return {
+    '--container-accent': token.cyan6,
+    '--container-selection': token.colorInfo,
+    '--container-surface': token.colorBgContainer,
+    '--container-body': token.colorFillQuaternary,
+    '--container-dots': token.colorBorderSecondary,
+    '--container-start-border': token.cyan3
+  } as CSSProperties;
+}
 
 function Source({
   data,
@@ -59,10 +72,12 @@ export function AgentFlowContainer({
   data,
   selected
 }: NodeProps<AgentFlowCanvasNode>) {
+  const style = useContainerTheme();
   return (
     <div
       className={`agent-flow-container${selected ? ' agent-flow-container--selected' : ''}`}
       data-container-id={data.nodeId}
+      style={style}
     >
       <NodeResizeControl
         position="bottom-right"
@@ -130,10 +145,12 @@ export function ContainerStart({
   data,
   selected
 }: NodeProps<AgentFlowCanvasNode>) {
+  const style = useContainerTheme();
   return (
     <div
       className={`agent-flow-container-start${selected ? ' agent-flow-container-start--selected' : ''}`}
       role="button"
+      style={style}
       tabIndex={0}
       aria-label={data.alias}
       onClick={(event) => {

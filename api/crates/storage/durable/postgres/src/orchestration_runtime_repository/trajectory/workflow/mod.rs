@@ -14,7 +14,7 @@ fn event_sql() -> String {
 }
 fn source_rank(id: &str) -> i32 {
     match id.split(':').next().unwrap_or_default() {
-        "node_started" => 0,
+        "node_started" | "round_started" => 0,
         "workflow" => 1,
         "native" | "runtime" => 2,
         _ => 4,
@@ -65,7 +65,13 @@ impl PgControlPlaneStore {
             let valid_id = id.split_once(':').is_some_and(|(prefix, id)| {
                 matches!(
                     prefix,
-                    "native" | "workflow" | "runtime" | "node_started" | "node_finished"
+                    "native"
+                        | "workflow"
+                        | "runtime"
+                        | "node_started"
+                        | "node_finished"
+                        | "round_started"
+                        | "round_finished"
                 ) && Uuid::parse_str(id).is_ok()
             });
             if !valid_id || *rank != source_rank(id) || *sequence < 0 {
@@ -181,6 +187,7 @@ impl PgControlPlaneStore {
                 None
             };
             items.push(WorkflowTrajectoryEvent {
+                execution_identity: decode_execution_identity(&row)?,
                 event_id,
                 event_sequence: row.get("event_sequence"),
                 event_type: row.get("event_type"),
@@ -255,9 +262,13 @@ impl PgControlPlaneStore {
             None
         };
         // Catalogue and extent deliberately precede all interactive filters.
-        let nodes=sqlx::query(sqlx::AssertSqlSafe(format!("{} select n.flow_run_id,n.id node_run_id,n.node_id,n.node_alias,n.node_type from scope_runs r join node_runs n on n.flow_run_id=r.id order by n.started_at,n.id",scope_sql())))
+        let nodes = sqlx::query(sqlx::AssertSqlSafe(format!("{} select n.flow_run_id,n.id node_run_id,n.node_id,n.node_alias,n.node_type, case when ce.execution_id is not null then jsonb_build_object('execution_id',ce.execution_id,'node_id',ce.node_id,'parent_execution_id',ce.parent_execution_id,'round_path',ce.round_path) end execution_identity from scope_runs r join node_runs n on n.flow_run_id=r.id left join flow_container_executions ce on ce.node_run_id=n.id and ce.flow_run_id=n.flow_run_id order by n.started_at,n.id", scope_sql())))
             .bind(application_id).bind(flow_run_id).fetch_all(self.pool()).await?
-            .into_iter().map(|r|WorkflowTrajectoryNode {flow_run_id:r.get("flow_run_id"),node_run_id:r.get("node_run_id"),node_id:r.get("node_id"),node_alias:r.get("node_alias"),node_type:r.get("node_type")}).collect();
+            .into_iter().map(|row| Ok(WorkflowTrajectoryNode {
+                execution_identity: decode_execution_identity(&row)?,
+                flow_run_id:row.get("flow_run_id"), node_run_id:row.get("node_run_id"),
+                node_id:row.get("node_id"), node_alias:row.get("node_alias"), node_type:row.get("node_type"),
+            })).collect::<Result<Vec<_>>>()?;
         let extent = sqlx::query(sqlx::AssertSqlSafe(format!(
             "{} select min(created_at) time_start,max(created_at) time_end from events",
             event_sql()
@@ -268,7 +279,7 @@ impl PgControlPlaneStore {
         .await?;
         let overview = if query.index_only {
             // The full index excludes links, previews, bodies and locator payloads.
-            let sql=format!("{} select event_id,source_id,event_sequence,event_type,created_at,category,flow_run_id,node_run_id,node_id,node_alias,task_run_id,parent_task_run_id,depth,is_round,metadata->>'trigger_request_id' trigger_request_id,jsonb_strip_nulls(jsonb_build_object('kind',metadata->'kind','purpose',metadata->'purpose','source',metadata->'source','status',metadata->'status','step_key',metadata->'step_key','flow_run_id',metadata->'flow_run_id','node_id',metadata->'node_id','node_run_id',metadata->'node_run_id','invocation_id',metadata->'invocation_id','provider_attempt_index',metadata->'provider_attempt_index','run_mode',metadata->'run_mode')) metadata from enriched e order by created_at,flow_run_id,source_rank,coalesce(event_sequence,0),event_id",event_sql());
+            let sql=format!("{} select event_id,source_id,event_sequence,event_type,created_at,category,flow_run_id,node_run_id,node_id,node_alias,task_run_id,parent_task_run_id,depth,is_round,execution_identity,metadata->>'trigger_request_id' trigger_request_id,jsonb_strip_nulls(jsonb_build_object('kind',metadata->'kind','purpose',metadata->'purpose','source',metadata->'source','status',metadata->'status','step_key',metadata->'step_key','flow_run_id',metadata->'flow_run_id','node_id',metadata->'node_id','node_run_id',metadata->'node_run_id','invocation_id',metadata->'invocation_id','provider_attempt_index',metadata->'provider_attempt_index','run_mode',metadata->'run_mode')) metadata from enriched e order by created_at,flow_run_id,source_rank,coalesce(event_sequence,0),event_id",event_sql());
             let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(application_id)
                 .bind(flow_run_id)
@@ -323,6 +334,7 @@ impl PgControlPlaneStore {
                     None
                 };
                 index.push(WorkflowTrajectoryIndexItem {
+                    execution_identity: decode_execution_identity(&row)?,
                     node_id: row.get("node_id"),
                     event_id,
                     event_sequence: row.get("event_sequence"),
@@ -373,7 +385,26 @@ impl PgControlPlaneStore {
         };
         let source_id: Uuid = locator.get("source_id");
         let source_run: Uuid = locator.get("flow_run_id");
-        let sections = if event_id.starts_with("workflow:") || event_id.starts_with("runtime:") {
+        let sections = if event_id.starts_with("round_started:")
+            || event_id.starts_with("round_finished:")
+        {
+            let row = sqlx::query("select round_index,deadline_unix_ms,status,runtime_original_json(output_payload,raw_json_payloads,'output_payload') output_payload,runtime_original_json(variables,raw_json_payloads,'variables') variables,runtime_original_json(error_payload,raw_json_payloads,'error_payload') error_payload from flow_container_rounds where flow_run_id=$1 and execution_id=$2")
+                .bind(source_run).bind(source_id).fetch_one(self.pool()).await?;
+            let mut sections = vec![WorkflowEventSection {
+                kind: "round".into(),
+                value: serde_json::json!({"round_index":row.get::<i64,_>("round_index"),"deadline_unix_ms":row.get::<i64,_>("deadline_unix_ms"),"status":row.get::<String,_>("status")}),
+            }];
+            if event_id.starts_with("round_finished:") {
+                sections.push(WorkflowEventSection { kind: "output".into(), value: serde_json::json!({"result":row.get::<Option<Value>,_>("output_payload"),"variables":row.get::<Option<Value>,_>("variables")}) });
+                if let Some(error) = row.get::<Option<Value>, _>("error_payload") {
+                    sections.push(WorkflowEventSection {
+                        kind: "error".into(),
+                        value: error,
+                    });
+                }
+            }
+            sections
+        } else if event_id.starts_with("workflow:") || event_id.starts_with("runtime:") {
             let table = if event_id.starts_with("runtime:") {
                 "runtime_events"
             } else {
@@ -425,4 +456,13 @@ impl PgControlPlaneStore {
             sections,
         }))
     }
+}
+
+fn decode_execution_identity(
+    row: &sqlx::postgres::PgRow,
+) -> Result<Option<domain::NodeExecutionIdentity>> {
+    row.get::<Option<serde_json::Value>, _>("execution_identity")
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(Into::into)
 }

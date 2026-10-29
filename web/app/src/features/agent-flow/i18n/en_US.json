@@ -94,7 +94,9 @@
     "task_request_lane": "Requests / tasks",
     "container_round": "{{container}} · Round {{round}}",
     "all_container_rounds": "All container rounds",
-    "container_round_filter": "Filter by container round"
+    "container_round_filter": "Filter by container round",
+    "container_round_started": "Round started",
+    "container_round_finished": "Round finished"
   },
   "auto": {
     "read_only_conversation_input": "Read-only message input",

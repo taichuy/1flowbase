@@ -182,8 +182,8 @@ const SHARED_PROCESSING_NODES: &[BuiltinNodeSpec] = &[
     published_ready("variable_assigner", "Variable Assigner", "data"),
     published_ready("variable_aggregator", "Variable Aggregator", "control"),
     hidden_unavailable("parameter_extractor", "Parameter Extractor", "data"),
-    hidden_unavailable("iteration", "Iteration", "control"),
-    hidden_unavailable("loop", "Loop", "control"),
+    published_ready("iteration", "Iteration", "control"),
+    published_ready("loop", "Loop", "control"),
     hidden_ready("human_input", "Human Input", "io"),
 ];
 
