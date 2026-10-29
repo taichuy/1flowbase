@@ -33,6 +33,10 @@ struct Fixture {
 
 async fn fixture(tool_count: usize) -> Fixture {
     let pool = isolated_database().await.connect().await.unwrap();
+    fixture_with_pool(pool, tool_count).await
+}
+
+async fn fixture_with_pool(pool: sqlx::PgPool, tool_count: usize) -> Fixture {
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -137,6 +141,9 @@ async fn fixture(tool_count: usize) -> Fixture {
         _package: package,
     }
 }
+
+#[path = "_tests/pending_native_retry.rs"]
+mod pending_native_retry;
 
 #[tokio::test]
 async fn prepared_callback_execution_keeps_inline_state_within_worker_stack_budget() {

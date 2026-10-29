@@ -1,9 +1,7 @@
 use super::*;
 use control_plane::application_public_api::{
     api_keys::ApplicationApiKeyActor,
-    callback_resume::{
-        PublishedCallbackReservation, PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
-    },
+    callback_resume::{PublishedCallbackResumeSource, PublishedCallbackResumeTarget},
     native_tool_resume::correlate_native_responses_callback,
 };
 use control_plane::ports::{
@@ -117,7 +115,7 @@ async fn fixture(
         .execute(state.store.pool())
         .await
         .unwrap();
-    let (owner, workspace_id): (Uuid, Uuid) = sqlx::query_as("select r.created_by,a.workspace_id from flow_runs r join applications a on a.id=r.application_id where r.id=$1")
+    let (owner, workspace_id, tenant_id): (Uuid, Uuid, Uuid) = sqlx::query_as("select r.created_by,a.workspace_id,w.tenant_id from flow_runs r join applications a on a.id=r.application_id join workspaces w on w.id=a.workspace_id where r.id=$1")
         .bind(run.id)
         .fetch_one(state.store.pool())
         .await
@@ -126,9 +124,9 @@ async fn fixture(
         api_key_id: run.api_key_id,
         application_id: run.application_id,
         creator_user_id: owner,
-        tenant_id: Uuid::nil(),
+        tenant_id,
         workspace_id,
-        actor: domain::ActorContext::root(Uuid::nil(), Uuid::nil(), "root"),
+        actor: domain::ActorContext::root_in_scope(owner, tenant_id, workspace_id, "root"),
     };
     let node = state
         .store
@@ -302,6 +300,118 @@ async fn assert_single_cleaned_claim(state: &ApiState, callback_id: Uuid) {
     assert_eq!(counts, (1, 1, 1), "pre-execution cleanup retains one admission and one failed execution claim, without duplicate ownership");
 }
 
+async fn ingress_retry_plan(
+    state: &Arc<ApiState>,
+    actor: ApplicationApiKeyActor,
+    command: &ResumePublishedCallbackCommand,
+) -> CompatibleResumePlan {
+    match prepare_compatible_resume_for_actor(state.clone(), actor, command.clone())
+        .await
+        .expect("released callback retry must traverse real ingress prepare and reservation")
+    {
+        CompatibleResumeAdmission::Resume(plan) => *plan,
+        CompatibleResumeAdmission::StartNewTurnFromHistory { .. } => {
+            panic!("a pending/released callback must retain its original execution")
+        }
+    }
+}
+
+struct PreclaimInvokerFailure {
+    entered: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+}
+
+impl crate::routes::application_public_api::native_read_interface::NativeRuntimeInvokerFactory
+    for PreclaimInvokerFailure
+{
+    fn for_actor<'a>(
+        &'a self,
+        _: &'a ApplicationApiKeyActor,
+    ) -> crate::routes::application_public_api::native_read_interface::RuntimeInvokerFuture<'a>
+    {
+        Box::pin(async move {
+            self.entered.notify_one();
+            self.release.notified().await;
+            Err(service_error(anyhow::anyhow!(
+                "controlled pre-claim invoker failure"
+            )))
+        })
+    }
+}
+
+#[tokio::test]
+async fn callback_preclaim_invoker_failure_retries_through_ingress_prepare() {
+    let (state, mut dependencies, run, actor, mut command, service, _) = fixture("open").await;
+    let failure = Arc::new(PreclaimInvokerFailure {
+        entered: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+    });
+    dependencies.native.runtime_invoker_factory = failure.clone();
+    let acquired = service
+        .reserve_native_callback_reservation_for_actor(actor.clone(), &command)
+        .await
+        .unwrap();
+    let id = acquired.attempt_id();
+    command.reserved_attempt_id = Some(id);
+    let reservation = CompatibleCallbackReservation::new(acquired, service);
+    // The controlled invoker factory fails at the first awaited host setup
+    // operation. Neither callback consumption nor execution claim has happened.
+    let execution = tokio::spawn(execute_compatible_resume_for_actor(
+        dependencies.clone(),
+        actor.clone(),
+        command.clone(),
+        Some(reservation),
+    ));
+    tokio::time::timeout(Duration::from_secs(3), failure.entered.notified())
+        .await
+        .expect("reserved request must reach the pre-claim invoker barrier");
+    let before_failure: (String, String, i64) = sqlx::query_as(
+        "select c.status,a.status,(select count(*) from flow_run_resume_claims r where r.callback_task_id=c.id) from flow_run_callback_tasks c join flow_run_callback_resume_attempts a on a.callback_task_id=c.id where c.id=$1",
+    ).bind(callback_task_id_from_resume_command(&command)).fetch_one(state.store.pool()).await.unwrap();
+    assert_eq!(before_failure, ("pending".into(), "processing".into(), 0));
+    failure.release.notify_one();
+    let error = tokio::time::timeout(Duration::from_secs(3), execution)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(error.is_err());
+    await_received(&state, id).await;
+    let callback_id = callback_task_id_from_resume_command(&command);
+    let unstarted: (String, i64, i64) = sqlx::query_as(
+        "select c.status,(select count(*) from flow_run_resume_claims r where r.callback_task_id=c.id),(select count(*) from flow_run_tool_callback_inbox i where i.callback_task_id=c.id and i.status='received') from flow_run_callback_tasks c where c.id=$1",
+    ).bind(callback_id).fetch_one(state.store.pool()).await.unwrap();
+    assert_eq!(unstarted, ("pending".into(), 0, 0));
+    // A fresh request has no server-owned reservation ID. On the old code this
+    // real ingress call fails with callback_resume_not_completed before CAS.
+    command.reserved_attempt_id = None;
+    let plan = ingress_retry_plan(&state, actor.clone(), &command).await;
+    assert_eq!(plan.initial_run.id, run.id);
+    assert_ne!(plan.initial_run.metadata["active_callback_attach"], true);
+    assert_eq!(plan.command.reserved_attempt_id, Some(id));
+    assert!(plan.reservation.as_ref().unwrap().is_acquired());
+    // Continue through real CP prepared execution. This test's stream rejects
+    // open before provider handoff; the PG sibling tests complete the consumer.
+    let retried = open_compatible_turn_with_invoker(
+        dependencies,
+        plan.initial_run,
+        CompatibleTurnAction::ResumeForActor {
+            actor,
+            command: plan.command,
+            reservation: plan.reservation,
+        },
+        None,
+        Arc::new(NoTools),
+    )
+    .await;
+    assert!(retried.is_err());
+    await_received(&state, id).await;
+    assert_single_cleaned_claim(&state, callback_id).await;
+    let accepted: serde_json::Value = sqlx::query_scalar(
+        "select runtime_original_json(result_payload,raw_json_payloads,'result_payload') from flow_run_tool_callback_inbox where callback_task_id=$1",
+    ).bind(callback_id).fetch_one(state.store.pool()).await.unwrap();
+    assert_eq!(accepted, command.response_payload["tool_results"][0]);
+}
+
 #[tokio::test]
 async fn callback_open_and_subscribe_failure_release_own_receipt_for_immediate_retry() {
     for failure in ["open", "subscribe"] {
@@ -361,15 +471,13 @@ async fn callback_open_and_subscribe_failure_release_own_receipt_for_immediate_r
                 run.metadata["response_round_id"]
             );
         }
-        let retry = service
-            .reserve_native_callback_reservation_for_actor(actor, &command)
-            .await
-            .unwrap();
-        assert!(matches!(retry, PublishedCallbackReservation::Acquired(_)));
+        let plan = ingress_retry_plan(&state, actor, &command).await;
+        let mut retry = plan
+            .reservation
+            .expect("ingress retry must own reservation");
+        assert!(retry.is_acquired());
         assert_eq!(retry.attempt_id(), id);
-        CompatibleCallbackReservation::new(retry, service)
-            .release()
-            .await;
+        retry.release().await;
     }
 }
 
@@ -407,17 +515,16 @@ async fn cancelled_callback_preparation_releases_receipt_but_handoff_disarms_dro
     assert!(error.is_cancelled());
     await_received(&state, id).await;
     assert_single_cleaned_claim(&state, callback_task_id_from_resume_command(&command)).await;
-    let retry = service
-        .reserve_native_callback_reservation_for_actor(actor, &command)
-        .await
-        .unwrap();
-    assert!(matches!(retry, PublishedCallbackReservation::Acquired(_)));
+    let plan = ingress_retry_plan(&state, actor, &command).await;
+    let mut guard = plan
+        .reservation
+        .expect("ingress retry must own reservation");
+    assert!(guard.is_acquired());
     assert_eq!(
-        retry.attempt_id(),
+        guard.attempt_id(),
         id,
         "cancellation retry must reuse its existing admission"
     );
-    let mut guard = CompatibleCallbackReservation::new(retry, service);
     let cleanup = guard.release_ticket().unwrap();
     guard.handoff();
     drop(guard);

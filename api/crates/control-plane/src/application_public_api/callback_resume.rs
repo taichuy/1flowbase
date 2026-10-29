@@ -129,7 +129,9 @@ fn is_responses_reclaim_candidate(
         && command.responses_continuation.is_none()
         && command.native_transport.is_some()
         && context.callback_task.callback_kind == "llm_tool_calls"
-        && context.callback_task.status == domain::CallbackTaskStatus::Completed
+        && (context.callback_task.status == domain::CallbackTaskStatus::Completed
+            || (context.callback_task.status == domain::CallbackTaskStatus::Pending
+                && attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Received))
         && context.flow_run.status == domain::FlowRunStatus::WaitingCallback
         && (attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Received
             || (attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Processing
@@ -357,9 +359,10 @@ where
         if !is_responses_reclaim_candidate(context, attempt, command) {
             return Ok(false);
         }
-        // Received admissions were explicitly parked/released and need no age
-        // grace. Processing admissions keep their grace and respect the execution
-        // claim's renewable lease for a slow provider invocation.
+        // Received admissions were explicitly parked/released, including before
+        // a pending callback acquired execution. They need no age grace; the
+        // existing reservation CAS still selects the next owner. Processing
+        // admissions keep their grace and respect the renewable execution lease.
         Ok(!self
             .repository
             .has_active_published_callback_resume_claim(context.callback_task.id)
