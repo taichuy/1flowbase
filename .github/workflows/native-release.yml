@@ -140,13 +140,21 @@ jobs:
         env:
           NATIVE_TARGET: ${{ matrix.target }}
         run: node scripts/node/native-release/unpack.js "tmp/native-release/1flowbase-$NATIVE_TARGET" tmp/native-extracted
+      - name: Verify actual archive through the updater download and extraction path
+        env:
+          NATIVE_TARGET: ${{ matrix.target }}
+          NATIVE_PLATFORM: ${{ matrix.platform }}
+        run: |
+          export FLOWBASE_TEST_PACKAGE_ROOT="$(node -e 'console.log(require("node:path").resolve("tmp/native-extracted/1flowbase-" + process.env.NATIVE_TARGET))')"
+          export FLOWBASE_TEST_ARCHIVE_PATH="$(node -e 'console.log(require("node:path").resolve("tmp/native-release/1flowbase-" + process.env.NATIVE_TARGET + (process.env.NATIVE_PLATFORM === "windows" ? ".zip" : ".tar.gz")))')"
+          cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution::upgrade::online::tests::packaged_archive_downloads_and_extracts -- --ignored --exact
       - name: Verify packaged application bootstrap and reopen
         env:
           NATIVE_TARGET: ${{ matrix.target }}
         run: |
           export FLOWBASE_TEST_PACKAGE_ROOT="$(node -e 'console.log(require("node:path").resolve("tmp/native-extracted/1flowbase-" + process.env.NATIVE_TARGET))')"
           cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution::tests::bootstrap::packaged_application_bootstraps_and_reopens -- --ignored --exact
-      - name: Verify offline upgrade and complete recovery
+      - name: Verify direct update, retry and relative-path launcher
         env:
           NATIVE_TARGET: ${{ matrix.target }}
         run: node scripts/node/native-release/upgrade-smoke.js "tmp/native-extracted/1flowbase-$NATIVE_TARGET" tmp/test-governance/native-release/upgrade

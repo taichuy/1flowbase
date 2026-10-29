@@ -37,7 +37,7 @@ function main() {
   // Claim a new tag explicitly at this SHA. Never rely on --target moving an existing tag.
   if (!commit) gh(['api',`repos/${repo}/git/refs`,'--method','POST','-f',`ref=refs/tags/${tag}`,'-f',`sha=${sha}`]);
   if (!existing) {
-    const notes = `Native portable distributions / 原生便携包\n\n- Extract once; edit the root .env; launch 1flowbase.\n- 解压一次，根目录 .env 为运行配置，默认数据目录为 data/。\n- Stop the old instance, then run the new package's upgrade.cmd / upgrade.sh with the old installation path.\n- 离线升级保留配置与数据并建立完整恢复快照。仅支持同系统、架构与 PostgreSQL 大版本；早期试验包不作为升级基线。\n\nSource / 源码: ${sha}\n`;
+    const notes = `Native portable distributions / 原生便携包\n\n- Extract once; edit the root .env; launch 1flowbase.\n- 解压一次，根目录 .env 为运行配置，默认数据目录为 data/。\n- Stop the application, then run upgrade.cmd / upgrade.sh in the current installation to download and apply updates.\n- 双击升级会自动下载并直接更新当前安装，保留 .env 与数据，不创建备份。仅支持同系统、架构与 PostgreSQL 大版本。\n\nSource / 源码: ${sha}\n`;
     const notesPath = 'native-notes.md'; fs.writeFileSync(notesPath, notes);
     gh(['release','create',tag,'--target',sha,'--draft','--prerelease','--title',`${tag} · Native portable distributions`,'--notes-file',notesPath]);
   }
