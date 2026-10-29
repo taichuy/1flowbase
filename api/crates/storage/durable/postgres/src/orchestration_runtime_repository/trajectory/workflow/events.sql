@@ -39,7 +39,7 @@
  join node_runs n on n.id=ce.node_run_id and n.flow_run_id=cr.flow_run_id
  where cr.finished_at is not null
 ), enriched as (
- select e.*,case split_part(e.event_id,':',1) when 'node_started' then 0 when 'round_started' then 0 when 'workflow' then 1 when 'native' then 2 when 'runtime' then 2 else 4 end source_rank,r.task_run_id,r.parent_task_run_id,r.depth,(r.is_round or coalesce(jsonb_array_length(ce.round_path)>0,false)) is_round,n.node_id,n.node_alias,n.node_type,
+ select e.*,case split_part(e.event_id,':',1) when 'node_started' then 0 when 'round_started' then 0 when 'workflow' then 1 when 'native' then 2 when 'runtime' then 2 else 4 end source_rank,r.task_run_id,r.parent_task_run_id,r.depth,(coalesce(r.is_round,false) or e.category='rounds' or coalesce(jsonb_array_length(ce.round_path)>0,false)) is_round,n.node_id,n.node_alias,n.node_type,
  case when cr.execution_id is not null then jsonb_build_object(
    'execution_id',cr.execution_id,'node_id',ce.node_id,'parent_execution_id',ce.execution_id,
    'round_path',ce.round_path || jsonb_build_array(jsonb_build_object('container_execution_id',ce.execution_id,'container_node_id',ce.node_id,'round_index',cr.round_index))

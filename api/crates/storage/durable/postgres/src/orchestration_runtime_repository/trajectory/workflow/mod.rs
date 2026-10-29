@@ -308,7 +308,7 @@ impl PgControlPlaneStore {
                 if depth > 0 {
                     *category_counts.entry("agents".into()).or_insert(0) += 1;
                 }
-                if is_round {
+                if is_round && category != "rounds" {
                     *category_counts.entry("rounds".into()).or_insert(0) += 1;
                 }
                 if query.category.as_str() != "all"
