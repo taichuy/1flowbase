@@ -115,6 +115,7 @@ type TestFrontStageTreeNode = {
   icon?: string | null;
   tooltip?: string | null;
   is_hidden?: boolean;
+  show_title?: boolean;
   kind: 'group' | 'page';
   children?: TestFrontStageTreeNode[];
 };
@@ -156,6 +157,7 @@ function createBackendPage(pageId: string): TestFrontStageTreeNode {
   return {
     id: pageId,
     title: `页面 ${pageId}`,
+    show_title: true,
     kind: 'page'
   };
 }
@@ -567,7 +569,9 @@ describe('FrontStagePage - runtime canvas state', () => {
         <AppProviders>
           <FrontStagePageHarness
             pageId="page-1"
-            initialPageTree={[{ id: 'page-1', title: 'Reports', kind: 'page' }]}
+            initialPageTree={[
+              { id: 'page-1', title: 'Reports', kind: 'page', show_title: true }
+            ]}
             pageContent={createPageContent()}
             blockRuntimeAssembly={assembly}
           />
@@ -977,6 +981,7 @@ describe('FrontStagePage - runtime canvas state', () => {
       {
         id: 'page-custom-title',
         title: '我的自定义主页',
+        show_title: true,
         kind: 'page'
       }
     ]);
@@ -1056,6 +1061,7 @@ describe('FrontStagePage - runtime canvas state', () => {
             {
               id: 'page-1',
               title: '页面 内页',
+              show_title: true,
               kind: 'page'
             }
           ]}

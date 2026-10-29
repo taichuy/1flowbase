@@ -421,7 +421,9 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
       <FrontStagePage
         workspaceId="workspace-1"
         pageId="page-1"
-        initialPageTree={[{ id: 'page-1', title: 'Landing', kind: 'page' }]}
+        initialPageTree={[
+          { id: 'page-1', title: 'Landing', kind: 'page', show_title: true }
+        ]}
         pageContent={createStyleBoundaryFrontstagePageContent()}
       />
     );
