@@ -108,6 +108,19 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
             interface.authorization_operation_id.as_deref(),
             Some(
                 "notifications.instances.list"
+                    // Communication contracts were added after the pinned official catalog.
+                    | "communications.management.conversations.messages.list"
+                    | "communications.management.conversations.list"
+                    | "communications.management.messages.list"
+                    | "communications.management.messages.get"
+                    | "communications.options.get"
+                    | "communications.binding.get"
+                    | "communications.binding.update"
+                    | "communications.conversations.list"
+                    | "communications.messages.list"
+                    | "communications.files.list"
+                    | "communications.files.get"
+                    | "communications.messages.retry"
                     | "system.branding.get"
                     | "system.branding.save"
                     | "notifications.instances.get"
