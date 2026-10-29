@@ -113,7 +113,10 @@ where
     /// listing. A package remains selectable even while its extension desired-state is disabled:
     /// an egress instance owns its own lifecycle.
     pub async fn list_types(&self) -> Result<Vec<NetworkEgressProviderTypeView>> {
-        let mut types = vec![builtin_static_http_type()];
+        let mut types = vec![
+            builtin_static_proxy_type(domain::StaticProxyProtocol::Http),
+            builtin_static_proxy_type(domain::StaticProxyProtocol::Socks5),
+        ];
         let mut installations = self.repository.list_installations().await?;
         installations.sort_by(|left, right| {
             plugin_version_order(&right.plugin_version, &left.plugin_version)
@@ -254,8 +257,8 @@ where
         command: CreateNetworkEgressProxyCommand,
     ) -> Result<NetworkEgressProviderView> {
         let provider_code = required_text(&command.provider_code, "provider_code")?;
-        if provider_code == "builtin_static_http" {
-            return self.create_static_http_proxy(command).await;
+        if let Some(protocol) = domain::StaticProxyProtocol::from_provider_code(&provider_code) {
+            return self.create_static_proxy(command, protocol).await;
         }
         let proxy_type = self
             .list_types()
@@ -308,12 +311,15 @@ where
         Ok(provider)
     }
 
-    async fn create_static_http_proxy(
+    async fn create_static_proxy(
         &self,
         command: CreateNetworkEgressProxyCommand,
+        protocol: domain::StaticProxyProtocol,
     ) -> Result<NetworkEgressProviderView> {
-        let config =
-            validate_instance_config(&builtin_static_http_type().form_schema, command.config)?;
+        let config = validate_instance_config(
+            &builtin_static_proxy_type(protocol).form_schema,
+            command.config,
+        )?;
         let host = required_text(config["host"].as_str().unwrap_or_default(), "host")?;
         if host.contains(['/', '@', ':']) || host.chars().any(char::is_whitespace) {
             return Err(ControlPlaneError::InvalidInput("host").into());
@@ -330,27 +336,26 @@ where
         let pool =
             ensure_global_network_egress_pool(&self.repository, command.actor_user_id).await?;
         self.repository
-            .create_static_http_proxy_pool_member(
-                &crate::ports::CreateStaticHttpProxyPoolMemberInput {
-                    provider_id,
-                    member_id: Uuid::now_v7(),
-                    pool_id: pool.id,
-                    display_name,
-                    description: command.description,
-                    secret_ref: format!("secret://system/network-egress/{provider_id}"),
-                    plaintext_secret_json: serde_json::json!({
-                        "host": host,
-                        "port": port,
-                        "username": config["username"].as_str().unwrap_or_default(),
-                        "password": config["password"].as_str().unwrap_or_default(),
-                    }),
-                    master_key: self.secret_master_key.clone(),
-                    enabled: true,
-                    sequence: 0,
-                    synchronized_at: OffsetDateTime::now_utc(),
-                    actor_user_id: command.actor_user_id,
-                },
-            )
+            .create_static_proxy_pool_member(&crate::ports::CreateStaticProxyPoolMemberInput {
+                protocol,
+                provider_id,
+                member_id: Uuid::now_v7(),
+                pool_id: pool.id,
+                display_name,
+                description: command.description,
+                secret_ref: format!("secret://system/network-egress/{provider_id}"),
+                plaintext_secret_json: serde_json::json!({
+                    "host": host,
+                    "port": port,
+                    "username": config["username"].as_str().unwrap_or_default(),
+                    "password": config["password"].as_str().unwrap_or_default(),
+                }),
+                master_key: self.secret_master_key.clone(),
+                enabled: true,
+                sequence: 0,
+                synchronized_at: OffsetDateTime::now_utc(),
+                actor_user_id: command.actor_user_id,
+            })
             .await?;
         let provider = self
             .repository
@@ -616,7 +621,9 @@ fn plugin_version_order(left: &str, right: &str) -> std::cmp::Ordering {
     }
 }
 
-fn builtin_static_http_type() -> NetworkEgressProviderTypeView {
+fn builtin_static_proxy_type(
+    protocol: domain::StaticProxyProtocol,
+) -> NetworkEgressProviderTypeView {
     let required_text = |key: &str, label: &str| PluginFormFieldSchema {
         key: key.to_string(),
         label: label.to_string(),
@@ -646,8 +653,8 @@ fn builtin_static_http_type() -> NetworkEgressProviderTypeView {
     password.required = Some(false);
     NetworkEgressProviderTypeView {
         installation_id: None,
-        provider_code: "builtin_static_http".to_string(),
-        display_name: "HTTP proxy".to_string(),
+        provider_code: protocol.provider_code().to_string(),
+        display_name: protocol.label().to_string(),
         form_schema: PluginFormSchema {
             schema_version: "1flowbase.plugin.form/v1".to_string(),
             title: None,
@@ -719,7 +726,7 @@ fn validate_instance_config(schema: &PluginFormSchema, value: Value) -> Result<V
 
 #[cfg(test)]
 mod tests {
-    use super::{builtin_static_http_type, network_egress_sync_failure, validate_instance_config};
+    use super::{builtin_static_proxy_type, network_egress_sync_failure, validate_instance_config};
     use plugin_framework::{
         provider_contract::{ProviderRuntimeError, ProviderRuntimeErrorKind},
         PluginFrameworkError,
@@ -728,7 +735,7 @@ mod tests {
 
     #[test]
     fn ac_nc_global_pool_catalog_includes_the_builtin_http_proxy_type() {
-        let proxy_type = builtin_static_http_type();
+        let proxy_type = builtin_static_proxy_type(domain::StaticProxyProtocol::Http);
         assert_eq!(proxy_type.provider_code, "builtin_static_http");
         assert!(proxy_type.installation_id.is_none());
         assert_eq!(
@@ -745,7 +752,7 @@ mod tests {
     #[test]
     fn ac_proxy_save_normalizes_optional_blank_config_fields() {
         let config = validate_instance_config(
-            &builtin_static_http_type().form_schema,
+            &builtin_static_proxy_type(domain::StaticProxyProtocol::Http).form_schema,
             json!({
                 "host": " 198.65.36.212 ",
                 "port": " 37867 ",
@@ -761,7 +768,7 @@ mod tests {
     #[test]
     fn ac_proxy_save_rejects_blank_required_config_fields() {
         let error = validate_instance_config(
-            &builtin_static_http_type().form_schema,
+            &builtin_static_proxy_type(domain::StaticProxyProtocol::Http).form_schema,
             json!({ "host": "", "port": "37867" }),
         )
         .expect_err("blank required fields must still reject saving");

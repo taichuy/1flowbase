@@ -191,6 +191,10 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     ),
     other("agent_flow.data_model_options.list", "other.agent-flow"),
     other("agent_flow.data_source_options.list", "other.agent-flow"),
+    other(
+        "agent_flow.http_node_proxy_options.list",
+        "other.agent-flow",
+    ),
     settings("auth_center.login_entries.copy", "system.auth-center"),
     settings("auth_center.login_entries.create", "system.auth-center"),
     settings("auth_center.login_entries.delete", "system.auth-center"),

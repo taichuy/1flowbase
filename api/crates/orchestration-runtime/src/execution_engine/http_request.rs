@@ -143,19 +143,41 @@ where
         .get("verify_ssl")
         .and_then(Value::as_bool)
         .unwrap_or(true);
-    let lease = match provider_invoker {
-        Some(invoker) => match invoker.acquire_http_node_client(timeout, verify_ssl).await {
+    let network_egress: domain::HttpNodeNetworkEgress = match node.config.get("network_egress") {
+        None => domain::HttpNodeNetworkEgress::default(),
+        Some(value) => match serde_json::from_value(value.clone()) {
+            Ok(choice) => choice,
+            Err(_) => {
+                return http_request_execution_result(Err(anyhow!(
+                    "HTTP node network_egress is invalid"
+                )))
+            }
+        },
+    };
+    let lease = match provider_invoker
+        .filter(|_| !matches!(network_egress, domain::HttpNodeNetworkEgress::Direct))
+    {
+        Some(invoker) => match invoker
+            .acquire_http_node_client(&network_egress, timeout, verify_ssl)
+            .await
+        {
             Ok(lease) => lease,
             Err(error) => return http_request_execution_result(Err(error)),
         },
         None => None,
     };
+    if matches!(network_egress, domain::HttpNodeNetworkEgress::Proxy { .. }) && lease.is_none() {
+        return http_request_execution_result(Err(anyhow!(
+            "selected HTTP node proxy is unavailable"
+        )));
+    }
     let result = execute_http_request_node_inner(
         node,
         resolved_inputs,
         variable_pool,
         file_persister,
         lease.as_ref().map(HttpRequestClientLease::client),
+        matches!(network_egress, domain::HttpNodeNetworkEgress::Direct),
     )
     .await;
     let release = match lease {
@@ -191,6 +213,7 @@ async fn execute_http_request_node_inner(
     variable_pool: &Map<String, Value>,
     file_persister: Option<&dyn HttpResponseFilePersister>,
     routed_client: Option<&Client>,
+    direct: bool,
 ) -> Result<HttpRequestNodeExecution> {
     let timeout_ms = config_u64(&node.config, "timeout_ms", DEFAULT_TIMEOUT_MS);
     let max_response_bytes = config_u64(
@@ -206,11 +229,13 @@ async fn execute_http_request_node_inner(
         .unwrap_or(true);
     let client = match routed_client {
         Some(client) => client.clone(),
-        None => Client::builder()
-            .timeout(Duration::from_millis(timeout_ms))
-            .danger_accept_invalid_certs(!verify_ssl)
-            .build()
-            .context("failed to build HTTP client")?,
+        None => {
+            let builder = Client::builder()
+                .timeout(Duration::from_millis(timeout_ms))
+                .danger_accept_invalid_certs(!verify_ssl);
+            let builder = if direct { builder.no_proxy() } else { builder };
+            builder.build().context("failed to build HTTP client")?
+        }
     };
     let method_text = node
         .config

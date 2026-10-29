@@ -151,12 +151,12 @@ pub use modeling::{
     GENERAL_DATA_MODEL_TEMPLATE_CODE, GENERAL_DATA_MODEL_TEMPLATE_VERSION,
 };
 pub use network_egress::{
-    NetworkEgressConsumerSelector, NetworkEgressConsumerSelectorParseError,
+    HttpNodeNetworkEgress, NetworkEgressConsumerSelector, NetworkEgressConsumerSelectorParseError,
     NetworkEgressHealthStatus, NetworkEgressPool, NetworkEgressPoolMember,
     NetworkEgressPoolMemberHealth, NetworkEgressPoolMemberProbeStatus,
     NetworkEgressPoolSelectionStrategy, NetworkEgressProjectionRecord,
     NetworkEgressProviderLifecycle, NetworkEgressProviderRecord, NetworkEgressProviderSecretRecord,
-    NetworkEgressRoute,
+    NetworkEgressRoute, StaticProxyProtocol,
 };
 pub use node_contribution::{NodeContributionDependencyStatus, NodeContributionRegistryEntry};
 pub use orchestration::{

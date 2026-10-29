@@ -131,6 +131,13 @@ pub struct NetworkEgressPoolView {
     pub members: Vec<NetworkEgressPoolMemberView>,
 }
 
+/// Credential-free choices for HTTP node authors; availability is decided by the pool owner.
+pub struct HttpNodeProxyOption {
+    pub pool_member_id: Uuid,
+    pub display_name: String,
+    pub selectable: bool,
+}
+
 /// The stable member reference selected for a future runtime lease acquisition.
 #[derive(Debug, Clone)]
 pub struct NetworkEgressPoolSelection {
@@ -176,6 +183,31 @@ where
             views.push(self.view(pool, &mut providers).await?);
         }
         Ok(views)
+    }
+
+    pub async fn http_node_proxy_options(&self) -> Result<Vec<HttpNodeProxyOption>> {
+        let Some(pool) = self
+            .repository
+            .get_network_egress_pool(GLOBAL_NETWORK_EGRESS_POOL_ID)
+            .await?
+        else {
+            return Ok(Vec::new());
+        };
+        let view = self.view(pool, &mut HashMap::new()).await?;
+        Ok(view
+            .members
+            .into_iter()
+            .map(|view| HttpNodeProxyOption {
+                pool_member_id: view.member.id,
+                display_name: view.display_name,
+                selectable: view.member.enabled
+                    && matches!(
+                        view.health,
+                        domain::NetworkEgressPoolMemberHealth::Healthy
+                            | domain::NetworkEgressPoolMemberHealth::NotTested
+                    ),
+            })
+            .collect())
     }
 
     pub async fn create(
@@ -251,27 +283,26 @@ where
         let synchronized_at = OffsetDateTime::now_utc();
         let member = self
             .repository
-            .create_static_http_proxy_pool_member(
-                &crate::ports::CreateStaticHttpProxyPoolMemberInput {
-                    provider_id,
-                    member_id: Uuid::now_v7(),
-                    pool_id: command.pool_id,
-                    display_name,
-                    description: String::new(),
-                    secret_ref,
-                    plaintext_secret_json: json!({
-                        "host": host,
-                        "port": command.port,
-                        "username": command.username.trim(),
-                        "password": command.password,
-                    }),
-                    master_key: secret_master_key.to_string(),
-                    enabled: command.enabled,
-                    sequence: command.sequence,
-                    synchronized_at,
-                    actor_user_id: command.actor_user_id,
-                },
-            )
+            .create_static_proxy_pool_member(&crate::ports::CreateStaticProxyPoolMemberInput {
+                protocol: domain::StaticProxyProtocol::Http,
+                provider_id,
+                member_id: Uuid::now_v7(),
+                pool_id: command.pool_id,
+                display_name,
+                description: String::new(),
+                secret_ref,
+                plaintext_secret_json: json!({
+                    "host": host,
+                    "port": command.port,
+                    "username": command.username.trim(),
+                    "password": command.password,
+                }),
+                master_key: secret_master_key.to_string(),
+                enabled: command.enabled,
+                sequence: command.sequence,
+                synchronized_at,
+                actor_user_id: command.actor_user_id,
+            })
             .await?;
         self.audit(
             command.actor_user_id,
@@ -586,7 +617,7 @@ where
         &self,
         provider: &domain::NetworkEgressProviderRecord,
     ) -> Result<Option<String>> {
-        if provider.provider_code != "builtin_static_http" {
+        if domain::StaticProxyProtocol::from_provider_code(&provider.provider_code).is_none() {
             return Ok(None);
         }
         let Some(master_key) = self.secret_master_key.as_deref() else {

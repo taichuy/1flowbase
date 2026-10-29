@@ -880,5 +880,16 @@
     "loaded_categories": "分类 · 已加载事件计数",
     "loaded_positions": "序号轴按已加载顺序映射时间范围；边界同时间戳事件一并显示。",
     "subagent_marker": "subagent"
+  },
+  "network_egress": {
+    "label": "网络出口",
+    "workspace": "跟随工作区设置",
+    "proxy": "指定代理",
+    "direct": "直接连接",
+    "unavailable": "代理不可用",
+    "choose": "选择代理池中的代理",
+    "load_failed": "无法加载代理列表",
+    "retry": "重新加载代理",
+    "failure_policy": "指定代理不可用时请求失败，不会自动改为直连。"
   }
 }

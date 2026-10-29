@@ -19,6 +19,39 @@ use crate::{
     },
 };
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct HttpNodeProxyOptionResponse {
+    pub pool_member_id: Uuid,
+    pub display_name: String,
+    pub selectable: bool,
+}
+
+/// List HTTP node proxy choices.
+/// Returns credential-free proxy references and their current availability for workflow authors.
+#[utoipa::path(
+    get,
+    path = "/api/console/network-center/http-node-proxy-options",
+    summary = "List HTTP node proxy choices",
+    description = "Returns credential-free proxy references and their current availability for workflow authors.",
+    responses((status = 200, body = [HttpNodeProxyOptionResponse]), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_http_node_proxy_options(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<Vec<HttpNodeProxyOptionResponse>>>, ApiError> {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.http-node-proxy-options.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        super::pools_interface::NetworkPoolsInput::HttpNodeProxyOptions,
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::HttpNodeProxyOptions(options) = output else {
+        unreachable!("HTTP node proxy options binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(options)))
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateNetworkEgressPoolBody {
     pub display_name: String,
@@ -140,6 +173,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
+        .route(
+            "/network-center/http-node-proxy-options",
+            console_get(
+                list_http_node_proxy_options,
+                ConsoleOperation("agent_flow.http_node_proxy_options.list".into()),
+            ),
+        )
         .route(
             "/network-center/pools",
             console_get(

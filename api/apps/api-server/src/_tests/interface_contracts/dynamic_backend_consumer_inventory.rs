@@ -107,7 +107,8 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
         let pending_official_catalog_release = matches!(
             interface.authorization_operation_id.as_deref(),
             Some(
-                "notifications.instances.list"
+                "agent_flow.http_node_proxy_options.list"
+                    | "notifications.instances.list"
                     | "system.branding.get"
                     | "system.branding.save"
                     | "notifications.instances.get"

@@ -523,6 +523,12 @@ function createHttpRequestContract(): NodeRuntimeUiContract {
           options: [...HTTP_REQUEST_BODY_TYPE_OPTIONS]
         }),
         panelField({
+          key: 'config.network_egress',
+          title: i18nText('agentFlow', 'network_egress.label'),
+          renderer: 'http_request_network_egress',
+          valueType: 'object'
+        }),
+        panelField({
           key: 'config.verify_ssl',
           title: i18nText('agentFlow', 'auto.verify_ssl_certificate'),
           renderer: 'switch',
@@ -1073,7 +1079,6 @@ export function getBuiltinNodeRuntimeContract(
 
   return contract ? duplicateContract(contract) : null;
 }
-
 
 export {
   panelField,

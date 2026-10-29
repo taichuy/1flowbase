@@ -30,6 +30,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         &[
             "agent_flow.data_model_options.list",
             "agent_flow.data_source_options.list",
+            "agent_flow.http_node_proxy_options.list",
         ],
     ),
     core_simple_other("other.data-sources", &["data_sources.secret.rotate"]),
@@ -488,6 +489,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // Proxy discovery is a new authoring grant, independent of secret-management access.
+    "agent_flow.http_node_proxy_options.list",
     // Installation branding did not exist in the audited historic permission baseline.
     "system.branding.get",
     "system.branding.save",

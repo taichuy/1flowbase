@@ -34,6 +34,15 @@ impl NetworkEgressRuntimePort for NoExtensionRuntime {
 
 #[tokio::test]
 async fn ac_002_proxy_edit_preserves_secret_member_and_route_and_rejects_invalid_updates() {
+    proxy_edit_contract("builtin_static_http").await;
+}
+
+#[tokio::test]
+async fn network_proxy_socks5_edit_preserves_secret_member_and_route() {
+    proxy_edit_contract("builtin_static_socks5").await;
+}
+
+async fn proxy_edit_contract(provider_code: &str) {
     let (store, actor) = store().await;
     let key = "proxy-edit-test-key".to_string();
     let service = NetworkEgressProviderService::new(
@@ -44,7 +53,7 @@ async fn ac_002_proxy_edit_preserves_secret_member_and_route_and_rejects_invalid
         "test".into(),
     );
     let created = service.create_proxy(CreateNetworkEgressProxyCommand {
-        actor_user_id: actor.id, provider_code: "builtin_static_http".into(), display_name: "Original".into(),
+        actor_user_id: actor.id, provider_code: provider_code.into(), display_name: "Original".into(),
         description: "Original description".into(), config: json!({"host":"127.0.0.1","port":"3128","username":"alice","password":"keep-me"}),
     }).await.unwrap();
     let id = created.provider.id;
@@ -106,7 +115,7 @@ async fn ac_002_proxy_edit_preserves_secret_member_and_route_and_rejects_invalid
             .update_proxy(UpdateNetworkEgressProxyCommand {
                 actor_user_id: actor.id,
                 provider_id: id,
-                provider_code: "builtin_static_http".into(),
+                provider_code: provider_code.into(),
                 display_name: "Updated".into(),
                 description: "Updated description".into(),
                 config,
@@ -156,14 +165,8 @@ async fn ac_002_proxy_edit_preserves_secret_member_and_route_and_rejects_invalid
     assert_eq!(routes[0].id, route.id);
     assert_eq!(routes[0].pool_member_ids, vec![original.id]);
     for (provider_code, config) in [
-        (
-            "builtin_static_http",
-            json!({"host":"bad/host","port":"8080"}),
-        ),
-        (
-            "builtin_static_http",
-            json!({"host":"127.0.0.1","port":"0"}),
-        ),
+        (provider_code, json!({"host":"bad/host","port":"8080"})),
+        (provider_code, json!({"host":"127.0.0.1","port":"0"})),
         ("other-type", json!({"host":"127.0.0.1","port":"8080"})),
     ] {
         assert!(service
@@ -183,7 +186,7 @@ async fn ac_002_proxy_edit_preserves_secret_member_and_route_and_rejects_invalid
         .update_proxy(UpdateNetworkEgressProxyCommand {
             actor_user_id: actor.id,
             provider_id: id,
-            provider_code: "builtin_static_http".into(),
+            provider_code: provider_code.into(),
             display_name: "Updated".into(),
             description: "Updated description".into(),
             config: json!({"host":"203.0.113.20","port":"8080","password":"replacement"}),
