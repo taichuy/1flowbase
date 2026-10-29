@@ -14,6 +14,103 @@ use crate::extension_bus::{
     EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1,
 };
 
+struct GenerationWeakProbe {
+    state: std::sync::Weak<crate::app_state::ApiState>,
+    boot: std::sync::Weak<ExtensionBootSnapshot>,
+    dynamic: std::sync::Weak<interface_runtime::DynamicInterfaceRegistry>,
+    compiled: std::sync::Weak<interface_runtime::CompiledInterfaceRegistry>,
+}
+
+impl GenerationWeakProbe {
+    fn new(state: &Arc<crate::app_state::ApiState>) -> Self {
+        let boot = state.extension_boot_snapshot.as_ref().unwrap();
+        let dynamic = boot.interface_registry().unwrap();
+        Self {
+            state: Arc::downgrade(state),
+            boot: Arc::downgrade(boot),
+            dynamic: Arc::downgrade(dynamic),
+            compiled: Arc::downgrade(&dynamic.snapshot()),
+        }
+    }
+
+    fn counts(&self) -> (usize, usize, usize, usize) {
+        (
+            self.state.strong_count(),
+            self.boot.strong_count(),
+            self.dynamic.strong_count(),
+            self.compiled.strong_count(),
+        )
+    }
+}
+
+/// Use the production prepare/publish boundary, with no worker or request roots.
+/// Counts describe ownership, not allocator-resident pages or RSS.
+#[tokio::test]
+async fn publisher_rebuild_releases_each_retired_catalog_generation() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let boot = state.extension_boot_snapshot.as_ref().unwrap().clone();
+    let empty = boot.interface_registry().unwrap().snapshot();
+    boot.publish_complete_catalog(&state).unwrap();
+    let mut probes = vec![GenerationWeakProbe::new(&state)];
+    let publisher = crate::managed_publication::ManagedGenerationPublisher::new(
+        &state,
+        crate::_tests::support::default_test_config(),
+        Vec::new(),
+        crate::console_router(state.clone(), true),
+    )
+    .unwrap();
+    drop(boot);
+    drop(state);
+
+    let mut retired_counts = Vec::new();
+    for round in 1..=3 {
+        let prepared = publisher
+            .prepare(Vec::new(), std::collections::BTreeMap::new())
+            .await
+            .expect("production candidate preparation must succeed");
+        publisher.publish(prepared);
+        let retired = probes
+            .iter()
+            .map(GenerationWeakProbe::counts)
+            .collect::<Vec<_>>();
+        eprintln!("catalog_generation_ownership round={round} retired_state_boot_dynamic_compiled={retired:?}");
+        retired_counts.extend(retired);
+        let current = publisher
+            .current_state()
+            .expect("published router owns its state");
+        probes.push(GenerationWeakProbe::new(&current));
+        drop(current);
+    }
+    drop(publisher);
+    let after_all_external_roots = probes
+        .iter()
+        .map(GenerationWeakProbe::counts)
+        .collect::<Vec<_>>();
+    eprintln!("catalog_generation_ownership after_publisher_drop={after_all_external_roots:?}");
+
+    // Break test-observed cycles only after recording the lifecycle result, so a
+    // RED regression leaves neither catalogues nor isolated database fixtures alive.
+    for probe in &probes {
+        if let Some(dynamic) = probe.dynamic.upgrade() {
+            dynamic.publish(empty.clone());
+        }
+    }
+    assert!(
+        probes.iter().all(|probe| probe.counts() == (0, 0, 0, 0)),
+        "diagnostic cycle break must release all fixture generations"
+    );
+    assert!(
+        retired_counts.iter().all(|counts| *counts == (0, 0, 0, 0)),
+        "every published predecessor must release after its last external root: {retired_counts:?}"
+    );
+    assert!(
+        after_all_external_roots
+            .iter()
+            .all(|counts| *counts == (0, 0, 0, 0)),
+        "dropping ingress must release the final generation too: {after_all_external_roots:?}"
+    );
+}
+
 /// Exercise the real production contribution holders without starting production workers.
 /// The support fixture deliberately leaves its interface catalogue unpublished.
 #[tokio::test]
@@ -32,7 +129,7 @@ async fn production_catalog_releases_generation_after_external_roots_drop() {
     assert!(
         compiled
             .definitions()
-            .any(|definition| { definition.interface_id().as_str() == "mcp.tools.invoke" }),
+            .any(|definition| { definition.interface_id().as_str() == "mcp.user-api-key.invoke" }),
         "the real MCP holder must participate in this lifetime test"
     );
     let weak_compiled = Arc::downgrade(&compiled);
