@@ -19,7 +19,7 @@ impl PgControlPlaneStore {
         &self,
         flow_run_id: Uuid,
     ) -> Result<Option<Value>> {
-        let row = sqlx::query("select c.checkpoint,exists(select 1 from node_runs n where n.flow_run_id=c.flow_run_id and n.started_at>c.updated_at and not exists(select 1 from flow_container_executions e where e.node_run_id=n.id)) as unscoped_progress from flow_container_checkpoints c where c.flow_run_id=$1")
+        let row = sqlx::query("select runtime_original_json(c.checkpoint,c.raw_json_payloads,'checkpoint') as checkpoint,exists(select 1 from node_runs n where n.flow_run_id=c.flow_run_id and n.started_at>c.updated_at and not exists(select 1 from flow_container_executions e where e.node_run_id=n.id)) as unscoped_progress from flow_container_checkpoints c where c.flow_run_id=$1")
             .bind(flow_run_id).fetch_optional(self.pool()).await?;
         row.map(|row| {
             if row.get::<bool, _>("unscoped_progress") {
@@ -143,9 +143,9 @@ impl PgControlPlaneStore {
         }
         for round in &input.rounds {
             let round_index = i64::try_from(round.round_index)?;
-            let changed = sqlx::query("insert into flow_container_rounds(flow_run_id,execution_id,container_execution_id,round_index,deadline_unix_ms,status,error_payload) values($1,$2,$3,$4,$5,$6,$7) on conflict(flow_run_id,execution_id) do update set status=excluded.status,error_payload=excluded.error_payload,deadline_unix_ms=excluded.deadline_unix_ms where flow_container_rounds.container_execution_id=excluded.container_execution_id and flow_container_rounds.round_index=excluded.round_index and flow_container_rounds.deadline_unix_ms>=excluded.deadline_unix_ms and (flow_container_rounds.status in ('running','waiting') or (flow_container_rounds.status=excluded.status and flow_container_rounds.error_payload is not distinct from excluded.error_payload))")
+            let changed = sqlx::query("insert into flow_container_rounds(flow_run_id,execution_id,container_execution_id,round_index,deadline_unix_ms,status,error_payload,output_payload,variables,raw_json_payloads,finished_at) values($1,$2,$3,$4,$5,$6,($7::jsonb->0),($8::jsonb->0),($9::jsonb->0),jsonb_strip_nulls(jsonb_build_object('error_payload',($7::jsonb->1),'output_payload',($8::jsonb->1),'variables',($9::jsonb->1))),case when $6 in ('succeeded','failed','cancelled') then now() else null end) on conflict(flow_run_id,execution_id) do update set status=excluded.status,finished_at=coalesce(flow_container_rounds.finished_at,excluded.finished_at),error_payload=excluded.error_payload,output_payload=excluded.output_payload,variables=excluded.variables,raw_json_payloads=excluded.raw_json_payloads,deadline_unix_ms=excluded.deadline_unix_ms where flow_container_rounds.container_execution_id=excluded.container_execution_id and flow_container_rounds.round_index=excluded.round_index and flow_container_rounds.deadline_unix_ms>=excluded.deadline_unix_ms and (flow_container_rounds.status in ('running','waiting') or (flow_container_rounds.status=excluded.status and flow_container_rounds.error_payload is not distinct from excluded.error_payload and flow_container_rounds.output_payload is not distinct from excluded.output_payload and flow_container_rounds.variables is not distinct from excluded.variables))")
                 .bind(input.flow_run_id).bind(round.execution_id).bind(round.container_execution_id).bind(round_index)
-                .bind(round.deadline_unix_ms).bind(&round.status).bind(&round.error_payload).execute(&mut *tx).await?;
+                .bind(round.deadline_unix_ms).bind(&round.status).bind(lossless_json_parameter(&round.error_payload)).bind(lossless_json_parameter(&round.output_payload)).bind(lossless_json_parameter(&round.variables)).execute(&mut *tx).await?;
             if changed.rows_affected() != 1 {
                 return Err(ControlPlaneError::Conflict(
                     "container_round_terminal_or_identity_conflict",
@@ -155,10 +155,20 @@ impl PgControlPlaneStore {
             if matches!(round.status.as_str(), "cancelled" | "failed") {
                 // Round closure fences unfinished descendants as part of the same
                 // commit. Previously terminal facts cannot be rewritten by a stop.
-                sqlx::query("update node_run_records n set status=$3,error_payload=$4,finished_at=now(),raw_json_payloads=n.raw_json_payloads-'error_payload' from flow_container_executions e where e.flow_run_id=$1 and n.id=e.node_run_id and e.round_path @> $2 and n.finished_at is null and n.status in ('running','waiting_human','waiting_callback','retrying')")
+                sqlx::query("update node_run_records n set status=$3,error_payload=($4::jsonb->0),finished_at=now(),raw_json_payloads=(n.raw_json_payloads-'error_payload') || jsonb_strip_nulls(jsonb_build_object('error_payload',($4::jsonb->1))) from flow_container_executions e where e.flow_run_id=$1 and n.id=e.node_run_id and e.round_path @> $2 and n.finished_at is null and n.status in ('running','waiting_human','waiting_callback','retrying')")
                     .bind(input.flow_run_id)
                     .bind(json!([{"container_execution_id":round.container_execution_id,"round_index":round.round_index}]))
-                    .bind(&round.status).bind(&round.error_payload).execute(&mut *tx).await?;
+                    .bind(&round.status).bind(lossless_json_parameter(&round.error_payload)).execute(&mut *tx).await?;
+            }
+        }
+        if let Some(failure) = &input.control_failure {
+            let changed = sqlx::query("insert into flow_container_control_failures(flow_run_id,execution_id,after_round_index,error_payload,raw_json_payloads) values($1,$2,$3,($4::jsonb->0),jsonb_strip_nulls(jsonb_build_object('error_payload',($4::jsonb->1)))) on conflict(flow_run_id,execution_id,after_round_index) do update set error_payload=flow_container_control_failures.error_payload where flow_container_control_failures.error_payload=excluded.error_payload and flow_container_control_failures.raw_json_payloads=excluded.raw_json_payloads")
+                .bind(input.flow_run_id).bind(identity.execution_id).bind(i64::try_from(failure.after_round_index)?)
+                .bind(lossless_json_parameter(&failure.error_payload)).execute(&mut *tx).await?;
+            if changed.rows_affected() != 1 {
+                return Err(
+                    ControlPlaneError::Conflict("container_control_failure_conflict").into(),
+                );
             }
         }
         // Test deadlines after obtaining the write owner and doing the work;
@@ -179,7 +189,7 @@ impl PgControlPlaneStore {
             .fetch_one(&mut *tx)
             .await?;
             if input.rounds.iter().any(|round| {
-                matches!(round.status.as_str(), "running" | "waiting")
+                matches!(round.status.as_str(), "running" | "waiting" | "succeeded")
                     && now_ms >= round.deadline_unix_ms
             }) {
                 return Err(ControlPlaneError::Conflict("container_deadline_expired").into());
@@ -196,8 +206,8 @@ impl PgControlPlaneStore {
                 return Err(ControlPlaneError::Conflict("resume_claim_not_owned").into());
             }
         }
-        sqlx::query("insert into flow_container_checkpoints(flow_run_id,checkpoint) values($1,$2) on conflict(flow_run_id) do update set checkpoint=excluded.checkpoint,revision=flow_container_checkpoints.revision+1,updated_at=now(),native_recovery_started=flow_container_checkpoints.native_recovery_started or coalesce(flow_container_checkpoints.native_recovery_execution_id=$3,false)")
-            .bind(input.flow_run_id).bind(&input.checkpoint).bind(identity.execution_id).execute(&mut *tx).await?;
+        sqlx::query("insert into flow_container_checkpoints(flow_run_id,checkpoint,raw_json_payloads) values($1,($2::jsonb->0),jsonb_strip_nulls(jsonb_build_object('checkpoint',($2::jsonb->1)))) on conflict(flow_run_id) do update set checkpoint=excluded.checkpoint,raw_json_payloads=excluded.raw_json_payloads,revision=flow_container_checkpoints.revision+1,updated_at=now(),native_recovery_started=flow_container_checkpoints.native_recovery_started or coalesce(flow_container_checkpoints.native_recovery_execution_id=$3,false)")
+            .bind(input.flow_run_id).bind(lossless_json_parameter(&input.checkpoint)).bind(identity.execution_id).execute(&mut *tx).await?;
         let row = sqlx::query("select n.id,n.flow_run_id,n.node_id,n.node_type,n.node_alias,n.status,n.started_at,n.finished_at,(select jsonb_build_object('execution_id',e.execution_id,'node_id',e.node_id,'parent_execution_id',e.parent_execution_id,'round_path',e.round_path) from flow_container_executions e where e.node_run_id=n.id) as execution_identity,runtime_original_json(n.input_payload,n.raw_json_payloads,'input_payload') as input_payload,runtime_original_json(n.output_payload,n.raw_json_payloads,'output_payload') as output_payload,runtime_original_json(n.error_payload,n.raw_json_payloads,'error_payload') as error_payload,runtime_original_json(n.metrics_payload,n.raw_json_payloads,'metrics_payload') as metrics_payload,runtime_original_json(n.debug_payload,n.raw_json_payloads,'debug_payload') as debug_payload from node_run_records n join flow_container_executions e on e.node_run_id=n.id where e.flow_run_id=$1 and e.execution_id=$2")
             .bind(input.flow_run_id).bind(identity.execution_id).fetch_optional(&mut *tx).await?;
         tx.commit().await?;
@@ -222,7 +232,7 @@ impl PgControlPlaneStore {
         if allowed.is_none() {
             return Err(ControlPlaneError::Conflict("container_recovery_grant_mismatch").into());
         }
-        let copied = sqlx::query("insert into flow_container_checkpoints(flow_run_id,checkpoint,native_recovery_execution_id) select $2,checkpoint,$3 from flow_container_checkpoints where flow_run_id=$1 on conflict do nothing")
+        let copied = sqlx::query("insert into flow_container_checkpoints(flow_run_id,checkpoint,raw_json_payloads,native_recovery_execution_id) select $2,checkpoint,raw_json_payloads,$3 from flow_container_checkpoints where flow_run_id=$1 on conflict do nothing")
             .bind(source_flow_run_id).bind(target_flow_run_id).bind(execution_id).execute(&mut *tx).await?;
         if copied.rows_affected() == 0 {
             let exists: bool = sqlx::query_scalar(
@@ -239,7 +249,7 @@ impl PgControlPlaneStore {
         }
         // Read only scalar coordinates of the active scope tree; payloads stay
         // in SQL and are copied directly to each successor receipt.
-        let scopes = sqlx::query("select e.execution_id,e.node_run_id,(e.execution_id=$2 or e.execution_id in (select (value->>'container_execution_id')::uuid from flow_container_executions waiter,lateral jsonb_array_elements(waiter.round_path) value where waiter.flow_run_id=$1 and waiter.execution_id=$2)) as reopen from flow_container_executions e where e.flow_run_id=$1 and e.execution_id in (select (value #>> '{}')::uuid from flow_container_checkpoints c, lateral jsonb_path_query(c.checkpoint,'$.frames.*.identity.execution_id') value where c.flow_run_id=$1 union select (value #>> '{}')::uuid from flow_container_checkpoints c, lateral jsonb_path_query(c.checkpoint,'$.frames.*.rounds.*.nodes.*.identity.execution_id') value where c.flow_run_id=$1)")
+        let scopes = sqlx::query("select e.execution_id,e.node_run_id,(e.execution_id=$2 or e.execution_id in (select (value->>'container_execution_id')::uuid from flow_container_executions waiter,lateral jsonb_array_elements(waiter.round_path) value where waiter.flow_run_id=$1 and waiter.execution_id=$2)) as reopen from flow_container_executions e where e.flow_run_id=$1 and e.execution_id in (select (value #>> '{}')::uuid from flow_container_checkpoints c, lateral jsonb_path_query(c.checkpoint,'$.frames.*.identity.execution_id') value where c.flow_run_id=$1 union select (value #>> '{}')::uuid from flow_container_checkpoints c, lateral jsonb_path_query(c.checkpoint,'$.frames.*.rounds.*.nodes.*.identity.execution_id') value where c.flow_run_id=$1 union select (value #>> '{}')::uuid from flow_container_checkpoints c, lateral jsonb_path_query(c.checkpoint,'$.root_nodes.*.identity.execution_id') value where c.flow_run_id=$1)")
             .bind(source_flow_run_id).bind(execution_id).fetch_all(&mut *tx).await?;
         for scope in scopes {
             let logical_id: Uuid = scope.get("execution_id");
@@ -253,7 +263,7 @@ impl PgControlPlaneStore {
             sqlx::query("insert into flow_container_executions(flow_run_id,execution_id,node_id,parent_execution_id,round_path,node_run_id) select $2,execution_id,node_id,parent_execution_id,round_path,$4 from flow_container_executions where flow_run_id=$1 and execution_id=$3")
                 .bind(source_flow_run_id).bind(target_flow_run_id).bind(logical_id).bind(target_node).execute(&mut *tx).await?;
         }
-        sqlx::query("insert into flow_container_rounds(flow_run_id,execution_id,container_execution_id,round_index,deadline_unix_ms,status,error_payload) select $2,r.execution_id,r.container_execution_id,r.round_index,r.deadline_unix_ms,case when exists(select 1 from flow_container_executions waiter where waiter.flow_run_id=$1 and waiter.execution_id=$3 and waiter.round_path @> jsonb_build_array(jsonb_build_object('container_execution_id',r.container_execution_id,'round_index',r.round_index))) then 'running' else r.status end,r.error_payload from flow_container_rounds r where r.flow_run_id=$1 and exists(select 1 from flow_container_executions e where e.flow_run_id=$2 and e.execution_id=r.container_execution_id)")
+        sqlx::query("insert into flow_container_rounds(flow_run_id,execution_id,container_execution_id,round_index,deadline_unix_ms,status,error_payload,output_payload,variables,raw_json_payloads,started_at,finished_at) select $2,r.execution_id,r.container_execution_id,r.round_index,r.deadline_unix_ms,case when exists(select 1 from flow_container_executions waiter where waiter.flow_run_id=$1 and waiter.execution_id=$3 and waiter.round_path @> jsonb_build_array(jsonb_build_object('container_execution_id',r.container_execution_id,'round_index',r.round_index))) then 'running' else r.status end,r.error_payload,r.output_payload,r.variables,r.raw_json_payloads,r.started_at,case when exists(select 1 from flow_container_executions waiter where waiter.flow_run_id=$1 and waiter.execution_id=$3 and waiter.round_path @> jsonb_build_array(jsonb_build_object('container_execution_id',r.container_execution_id,'round_index',r.round_index))) then null else r.finished_at end from flow_container_rounds r where r.flow_run_id=$1 and exists(select 1 from flow_container_executions e where e.flow_run_id=$2 and e.execution_id=r.container_execution_id)")
             .bind(source_flow_run_id).bind(target_flow_run_id).bind(execution_id).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())

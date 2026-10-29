@@ -25,7 +25,19 @@ where
                     .rounds
                     .get(&index)
             });
-        let suspended_node = if transition.kind == ContainerTransitionKind::ScopeSuspended {
+        let suspended_node = if transition.kind == ContainerTransitionKind::ScopeSuspended
+            && transition
+                .detail
+                .and_then(|detail| detail.get("root"))
+                .and_then(Value::as_bool)
+                == Some(true)
+        {
+            transition
+                .checkpoint
+                .root_waiting
+                .as_ref()
+                .map(|wait| (transition.identity, wait))
+        } else if transition.kind == ContainerTransitionKind::ScopeSuspended {
             selected_round.and_then(|round| {
                 let waiting = round.waiting.as_ref()?;
                 let node_id = match waiting {
@@ -134,7 +146,7 @@ where
         }
         coordinates.sort_unstable();
         coordinates.dedup();
-        let rounds = coordinates
+        let rounds: Vec<ContainerRoundFact> = coordinates
             .into_iter()
             .filter_map(|(frame_id, index)| {
                 let frame = transition.checkpoint.frames.get(&frame_id)?;
@@ -153,9 +165,24 @@ where
                     }
                     .into(),
                     error_payload: round.error_payload.clone(),
+                    output_payload: frame.results.get(&round.round_index).cloned(),
+                    variables: (round.status == ContainerRoundStatus::Succeeded)
+                        .then(|| Value::Object(frame.variables.clone())),
                 })
             })
             .collect();
+        let deadline_owner = rounds
+            .iter()
+            .min_by_key(|round| round.deadline_unix_ms)
+            .and_then(|round| {
+                transition
+                    .checkpoint
+                    .frames
+                    .get(&round.container_execution_id)?
+                    .rounds
+                    .get(&round.round_index)
+            })
+            .map(|round| round.deadline_owner_execution_id);
         let record = self
             .service
             .repository
@@ -166,8 +193,22 @@ where
                 checkpoint: serde_json::to_value(transition.checkpoint)?,
                 node,
                 rounds,
+                control_failure: if transition.kind == ContainerTransitionKind::ControlFailed {
+                    let detail = transition.detail.ok_or_else(|| anyhow::anyhow!("container control failure missing"))?;
+                    Some(crate::ports::ContainerControlFailureFact {
+                        after_round_index: detail["after_round_index"].as_u64().ok_or_else(|| anyhow::anyhow!("container control failure round missing"))?,
+                        error_payload: detail["error_payload"].clone(),
+                    })
+                } else { None },
             })
-            .await?;
+            .await.map_err(|error| {
+                if matches!(error.downcast_ref::<crate::errors::ControlPlaneError>(), Some(crate::errors::ControlPlaneError::Conflict("container_deadline_expired"))) {
+                    if let Some(owner) = deadline_owner {
+                        return orchestration_runtime::execution_engine::container::deadline_expired(owner);
+                    }
+                }
+                error
+            })?;
         if let Some(record) = record {
             match transition.kind {
                 ContainerTransitionKind::NodeStarted | ContainerTransitionKind::FrameEntered => {
@@ -197,6 +238,35 @@ where
                     )
                     .await;
                 }
+                ContainerTransitionKind::InternalToolStarted
+                | ContainerTransitionKind::InternalToolFinished => {
+                    let detail = transition
+                        .detail
+                        .ok_or_else(|| anyhow::anyhow!("scoped tool event detail missing"))?;
+                    let mut event =
+                        if transition.kind == ContainerTransitionKind::InternalToolStarted {
+                            debug_stream_events::assistant_tool_call_started(
+                                self.flow_run_id,
+                                record.id,
+                                &record.node_id,
+                                detail["tool_call"].clone(),
+                                detail["call_usage"].clone(),
+                            )
+                        } else {
+                            debug_stream_events::assistant_tool_call_finished(
+                                self.flow_run_id,
+                                record.id,
+                                &record.node_id,
+                                detail["tool_call"].clone(),
+                                detail["call_usage"].clone(),
+                                detail["tool_result"].clone(),
+                                detail["duration_ms"].as_u64().unwrap_or(0),
+                            )
+                        };
+                    event.payload["execution_identity"] =
+                        serde_json::to_value(record.execution_identity)?;
+                    append_runtime_event(self.service, self.flow_run_id, event).await;
+                }
                 _ => {}
             }
         }
@@ -218,6 +288,15 @@ pub(in crate::orchestration_runtime) async fn waiting_execution_id<
     };
     let node_run_id =
         node_run_id.ok_or_else(|| anyhow::anyhow!("container waiting node receipt missing"))?;
+    if let Some(node) = state.root_nodes.get(node_id) {
+        if repository
+            .get_container_node_run_id(flow_run_id, node.identity.execution_id)
+            .await?
+            == Some(node_run_id)
+        {
+            return Ok(Some(node.identity.execution_id));
+        }
+    }
     for round in state
         .frames
         .values()
@@ -226,13 +305,12 @@ pub(in crate::orchestration_runtime) async fn waiting_execution_id<
         let Some(node) = round.nodes.get(node_id) else {
             continue;
         };
-        if let Some(record) = repository
-            .get_container_node_run(flow_run_id, node.identity.execution_id)
+        if repository
+            .get_container_node_run_id(flow_run_id, node.identity.execution_id)
             .await?
+            == Some(node_run_id)
         {
-            if record.id == node_run_id {
-                return Ok(Some(node.identity.execution_id));
-            }
+            return Ok(Some(node.identity.execution_id));
         }
     }
     Err(anyhow::anyhow!("container waiting execution mismatch"))
@@ -243,6 +321,15 @@ pub(in crate::orchestration_runtime) fn waiting_variable_pool<'a>(
     execution_id: Option<uuid::Uuid>,
 ) -> Result<&'a serde_json::Map<String, Value>> {
     if let Some(execution_id) = execution_id {
+        if let Some(state) = snapshot.container_state.as_ref() {
+            if state
+                .root_nodes
+                .values()
+                .any(|node| node.identity.execution_id == execution_id)
+            {
+                return Ok(&state.root_variable_pool);
+            }
+        }
         return snapshot
             .container_state
             .as_ref()

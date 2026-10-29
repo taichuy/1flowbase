@@ -10,6 +10,7 @@ pub struct CommitContainerTransitionInput {
     pub checkpoint: serde_json::Value,
     pub node: Option<ContainerNodeFact>,
     pub rounds: Vec<ContainerRoundFact>,
+    pub control_failure: Option<ContainerControlFailureFact>,
 }
 
 #[derive(Debug, Clone)]
@@ -37,4 +38,12 @@ pub struct ContainerRoundFact {
     pub deadline_unix_ms: i64,
     pub status: String,
     pub error_payload: Option<serde_json::Value>,
+    pub output_payload: Option<serde_json::Value>,
+    pub variables: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ContainerControlFailureFact {
+    pub after_round_index: u64,
+    pub error_payload: serde_json::Value,
 }

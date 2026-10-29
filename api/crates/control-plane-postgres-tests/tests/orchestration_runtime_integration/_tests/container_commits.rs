@@ -7,6 +7,7 @@ fn start(flow_run_id: Uuid, frame_id: Uuid, round_index: u64) -> CommitContainer
     CommitContainerTransitionInput {
         flow_run_id,
         resume_claim_owner: None,
+        control_failure: None,
         execution_identity: domain::NodeExecutionIdentity {
             execution_id: Uuid::now_v7(),
             node_id: "same-node".into(),
@@ -30,6 +31,8 @@ fn start(flow_run_id: Uuid, frame_id: Uuid, round_index: u64) -> CommitContainer
             deadline_unix_ms: 2000000000000,
             status: "running".into(),
             error_payload: None,
+            output_payload: None,
+            variables: None,
         }],
     }
 }
@@ -109,6 +112,23 @@ async fn container_commit_keeps_repeated_node_ids_and_rolls_back_node_round_and_
         .execute(store.pool())
         .await
         .unwrap();
+    let mut expired = terminal.clone();
+    expired.rounds[0].deadline_unix_ms = 1;
+    let error = store
+        .commit_container_transition(&expired)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("container_deadline_expired"));
+    assert_eq!(
+        store.load_container_checkpoint(run.id).await.unwrap(),
+        Some(second.checkpoint.clone())
+    );
+    let mut extended = terminal.clone();
+    extended.rounds[0].deadline_unix_ms += 1;
+    assert!(
+        store.commit_container_transition(&extended).await.is_err(),
+        "recovery cannot renew a round deadline"
+    );
     let finished = store
         .commit_container_transition(&terminal)
         .await
@@ -261,5 +281,121 @@ async fn container_round_stop_closes_inflight_but_preserves_committed_siblings()
             .await
             .is_err(),
         "late result cannot reopen a stopped round"
+    );
+}
+
+#[tokio::test]
+async fn native_container_successor_maps_receipts_without_changing_logical_parent_or_round() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let source = seed_flow_run(&store, &seeded, &compiled, OffsetDateTime::now_utc()).await;
+    let frame_id = Uuid::now_v7();
+    let mut child = start(source.id, frame_id, 0);
+    let mut frame = child.clone();
+    frame.execution_identity = domain::NodeExecutionIdentity {
+        execution_id: frame_id,
+        node_id: "loop".into(),
+        parent_execution_id: None,
+        round_path: vec![],
+    };
+    frame.rounds.clear();
+    store.commit_container_transition(&frame).await.unwrap();
+    child.checkpoint = json!({"frames":{frame_id.to_string():{
+        "identity":frame.execution_identity,
+        "rounds":{"0":{"nodes":{"same-node":{"identity":child.execution_identity}}}}
+    }}});
+    let source_node = store
+        .commit_container_transition(&child)
+        .await
+        .unwrap()
+        .unwrap();
+    child.node = Some(ContainerNodeFact::Updated {
+        status: NodeRunStatus::Failed,
+        output_payload: json!({}),
+        error_payload: Some(json!({"code":"retryable_provider_failure"})),
+        metrics_payload: json!({}),
+        debug_payload: json!({}),
+        terminal: true,
+    });
+    child.rounds[0].status = "failed".into();
+    store.commit_container_transition(&child).await.unwrap();
+    frame.checkpoint = child.checkpoint.clone();
+    frame.node = child.node.clone();
+    store.commit_container_transition(&frame).await.unwrap();
+    sqlx::query("update flow_runs set status='failed' where id=$1")
+        .bind(source.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let target = seed_flow_run(&store, &seeded, &compiled, OffsetDateTime::now_utc()).await;
+    sqlx::query("update flow_runs set input_payload=$2 where id=$1")
+        .bind(target.id)
+        .bind(json!({"sys":{"native_inference_recovery":{"failed_flow_run_id":source.id}}}))
+        .execute(store.pool())
+        .await
+        .unwrap();
+    store
+        .fork_container_checkpoint(source.id, target.id, child.execution_identity.execution_id)
+        .await
+        .unwrap();
+    let target_node = store
+        .get_container_node_run(target.id, child.execution_identity.execution_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(target_node.id, source_node.id);
+    assert_eq!(
+        target_node.execution_identity,
+        source_node.execution_identity
+    );
+    assert_eq!(target_node.status, NodeRunStatus::Running);
+    assert_eq!(
+        store
+            .get_container_node_run(target.id, frame_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        NodeRunStatus::Running
+    );
+    assert_eq!(
+        store
+            .get_container_node_run(source.id, child.execution_identity.execution_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        NodeRunStatus::Failed
+    );
+    assert!(!store
+        .container_native_recovery_started(target.id)
+        .await
+        .unwrap());
+    child.flow_run_id = target.id;
+    child.rounds[0].status = "running".into();
+    child.node = Some(ContainerNodeFact::Updated {
+        status: NodeRunStatus::Running,
+        output_payload: json!({}),
+        error_payload: None,
+        metrics_payload: json!({}),
+        debug_payload: json!({}),
+        terminal: false,
+    });
+    child.checkpoint["native_recovery_progress"] = json!("began");
+    store.commit_container_transition(&child).await.unwrap();
+    assert!(store
+        .container_native_recovery_started(target.id)
+        .await
+        .unwrap());
+    store
+        .fork_container_checkpoint(source.id, target.id, child.execution_identity.execution_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.load_container_checkpoint(target.id).await.unwrap(),
+        Some(child.checkpoint)
     );
 }

@@ -760,7 +760,16 @@ where
             Some(execution) => Some(execution.enter_execution().await?),
             None => None,
         };
-        let execution = Box::pin(async {
+        let execution: std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<
+                            orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+                        >,
+                    > + Send
+                    + '_,
+            >,
+        > = Box::pin(async {
             lifecycle
                 .restore_communication_nodes(
                     input.application.id,

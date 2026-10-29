@@ -179,7 +179,16 @@ where
         Some(execution) => Some(execution.enter_execution().await?),
         None => None,
     };
-    let execution = Box::pin(async {
+    let execution: std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+                    >,
+                > + Send
+                + '_,
+        >,
+    > = Box::pin(async {
         let outcome = if let Some(snapshot) = &recovery_snapshot {
             if snapshot.container_state.is_some()
                 && (native_recovery_started
