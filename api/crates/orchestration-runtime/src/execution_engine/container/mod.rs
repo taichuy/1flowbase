@@ -19,3 +19,9 @@ use condition::strict_condition;
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;
+
+mod frame_terminal;
+use frame_terminal::commit_frame_terminal;
+
+mod round_terminal;
+use round_terminal::commit_round_terminal;

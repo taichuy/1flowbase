@@ -215,7 +215,7 @@ fn simple_loop(rounds: u64) -> CompiledPlan {
     let mut outer = container("loop", "loop", None, rounds);
     outer
         .bindings
-        .insert("output".into(), selector(&["leaf", "value"]));
+        .insert("output".into(), selector(&["leaf", "result", "value"]));
     plan(vec![outer, code("leaf", "loop")])
 }
 async fn run(
@@ -261,7 +261,7 @@ async fn nested_round_counts_match_independent_tree_reference_for_small_domain()
                 let mut inner = container("inner", "loop", Some("middle"), inner_count);
                 inner
                     .bindings
-                    .insert("output".into(), selector(&["leaf", "value"]));
+                    .insert("output".into(), selector(&["leaf", "result", "value"]));
                 let plan = plan(vec![outer, middle, inner, code("leaf", "inner")]);
                 let probe = Probe::default();
                 let ledger = Ledger::default();
@@ -302,7 +302,7 @@ async fn serial_and_parallel_outputs_follow_input_indices_including_null() {
         iteration.config["error_policy"] = json!("continue");
         iteration
             .bindings
-            .insert("output".into(), selector(&["leaf", "value"]));
+            .insert("output".into(), selector(&["leaf", "result", "value"]));
         let mut leaf = code("leaf", "each");
         leaf.bindings
             .insert("item".into(), selector(&["each", "item"]));
@@ -327,7 +327,7 @@ async fn inner_break_finishes_only_inner_and_global_fail_bypasses_parent_continu
         inner.config["error_policy"] = json!(policy);
         inner
             .bindings
-            .insert("output".into(), selector(&["leaf", "value"]));
+            .insert("output".into(), selector(&["leaf", "result", "value"]));
         let mut leaf = code("leaf", "inner");
         leaf.config = json!({"fail":true});
         let plan = plan(vec![outer, inner, leaf]);
@@ -538,3 +538,6 @@ mod root;
 mod communication;
 
 mod control;
+
+mod deadline_rejection;
+mod durable_lifecycle;

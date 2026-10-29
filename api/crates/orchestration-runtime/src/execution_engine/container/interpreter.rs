@@ -132,11 +132,8 @@ where
         let variables = resolve_variables(node, "variables", pool)?;
         validate_variables(&config, &variables)?;
         let mut path = Vec::new();
-        let mut identity_id = Uuid::now_v7();
+        let identity_id = Uuid::now_v7();
         if let Some(scope) = parent {
-            lifecycle
-                .begin_node(node, &json!({"variables": variables}))
-                .await?;
             let state = session.state.lock().await;
             let parent_frame = &state.frames[&scope.frame_id];
             path = parent_frame.identity.round_path.clone();
@@ -145,9 +142,6 @@ where
                 container_node_id: parent_frame.identity.node_id.clone(),
                 round_index: scope.round_index,
             });
-            identity_id = parent_frame.rounds[&scope.round_index].nodes[&node.node_id]
-                .identity
-                .execution_id;
         }
         let identity = ScopedExecutionIdentity {
             execution_id: identity_id,
@@ -161,6 +155,27 @@ where
             .or(config.max_rounds)
             .ok_or_else(|| anyhow!("container limit missing"))?;
         let mut state = session.state.lock().await;
+        let input_payload = json!({"variables": variables});
+        if let Some(scope) = parent {
+            let round = state
+                .frames
+                .get_mut(&scope.frame_id)
+                .expect("parent frame")
+                .rounds
+                .get_mut(&scope.round_index)
+                .expect("parent round");
+            if round.nodes.contains_key(&node.node_id) {
+                bail!("container parent execution exists without its frame");
+            }
+            round.nodes.insert(
+                node.node_id.clone(),
+                ScopedNodeState {
+                    identity: identity.clone(),
+                    input_payload: input_payload.clone(),
+                    terminal_trace: None,
+                },
+            );
+        }
         state.frames.insert(
             identity_id,
             ContainerFrame {
@@ -172,30 +187,60 @@ where
                 rounds: BTreeMap::new(),
                 results: BTreeMap::new(),
                 closed: false,
+                terminal_trace: None,
                 global_failure: None,
                 final_condition_checked: false,
                 control_failures: Vec::new(),
             },
         );
-        emit(
+        let entered = emit(
             lifecycle,
             &state,
             ContainerTransitionKind::FrameEntered,
             &identity,
-            None,
+            Some(&input_payload),
             None,
             Some(&json!({"node_type": node.node_type, "node_alias": node.alias})),
         )
-        .await?;
+        .await;
+        if let Err(error) = entered {
+            state.frames.remove(&identity_id);
+            if let Some(scope) = parent {
+                state
+                    .frames
+                    .get_mut(&scope.frame_id)
+                    .expect("parent frame")
+                    .rounds
+                    .get_mut(&scope.round_index)
+                    .expect("parent round")
+                    .nodes
+                    .remove(&node.node_id);
+            }
+            return Err(error);
+        }
         identity_id
     };
-    {
+    if let Some(scope) = parent {
+        let state = session.state.lock().await;
+        enter_identity(&scope.current_identity, &state.frames[&frame_id].identity)?;
+    }
+    let (closed, failure) = {
         let mut state = session.state.lock().await;
         check_final_condition(&mut state, frame_id, node, &config, lifecycle).await?;
-        if let Some(error) = state.frames[&frame_id].global_failure.clone() {
-            emit_failed_frame(&state, frame_id, node, &error, lifecycle).await?;
-            return Err(GlobalFailure(error).into());
-        }
+        (
+            state.frames[&frame_id].closed,
+            state.frames[&frame_id].global_failure.clone(),
+        )
+    };
+    // A committed break/fail may precede host cancellation or FrameClosed.
+    // Recovery finishes that closure; it cannot restart the old in-flight rounds.
+    if closed {
+        cancel_active_rounds(&session, frame_id, lifecycle).await?;
+    }
+    if let Some(error) = failure {
+        let mut state = session.state.lock().await;
+        emit_failed_frame(&mut state, frame_id, node, &error, lifecycle).await?;
+        return Err(GlobalFailure(error).into());
     }
     let inherited_deadline = match parent {
         Some(scope) => Some(scope.deadline().await),
@@ -282,6 +327,7 @@ where
                 suspended = true;
             }
             RoundOutcome::Terminal {
+                already_committed,
                 output,
                 variables,
                 mut error,
@@ -303,58 +349,20 @@ where
                 if error.is_some() {
                     cancel_descendants(&mut state, frame_id, scope.round_index, lifecycle).await?;
                 }
-                let frame = state.frames.get_mut(&frame_id).expect("active frame");
-                let round = frame
-                    .rounds
-                    .get_mut(&scope.round_index)
-                    .expect("active round");
-                round.waiting = None;
-                round.error_payload = error.clone();
-                round.status = if error.is_some() {
-                    ContainerRoundStatus::Failed
-                } else {
-                    ContainerRoundStatus::Succeeded
-                };
-                // A closed frame cannot admit any late successful result.
-                if !frame.closed {
-                    if let Some(error) = error {
-                        match config.error_policy {
-                            ContainerErrorPolicy::Fail => {
-                                frame.closed = true;
-                                frame.global_failure = Some(error);
-                            }
-                            ContainerErrorPolicy::Break => frame.closed = true,
-                            ContainerErrorPolicy::Continue => {}
-                        }
-                    } else {
-                        frame.results.insert(scope.round_index, output);
-                        if node.node_type == "loop" {
-                            frame.variables = variables;
-                            if let Some(context) = frame
-                                .rounds
-                                .get_mut(&scope.round_index)
-                                .and_then(|round| round.variable_pool.get_mut(&node.node_id))
-                                .and_then(Value::as_object_mut)
-                            {
-                                context.insert(
-                                    "variables".to_owned(),
-                                    Value::Object(frame.variables.clone()),
-                                );
-                            }
-                        }
-                    }
+                if !already_committed {
+                    commit_round_terminal(
+                        &mut state,
+                        frame_id,
+                        scope.round_index,
+                        node,
+                        &config,
+                        output,
+                        variables,
+                        error,
+                        lifecycle,
+                    )
+                    .await?;
                 }
-                let identity = frame.identity.clone();
-                emit(
-                    lifecycle,
-                    &state,
-                    ContainerTransitionKind::RoundCommitted,
-                    &identity,
-                    None,
-                    None,
-                    Some(&json!({"round_index": scope.round_index})),
-                )
-                .await?;
                 check_final_condition(&mut state, frame_id, node, &config, lifecycle).await?;
                 let closed = state.frames[&frame_id].closed;
                 let global_failure = state.frames[&frame_id].global_failure.clone();
@@ -373,8 +381,8 @@ where
                     cancel_active_rounds(&session, frame_id, lifecycle).await?;
                     suspended = false;
                     if let Some(error) = global_failure {
-                        let state = session.state.lock().await;
-                        emit_failed_frame(&state, frame_id, node, &error, lifecycle).await?;
+                        let mut state = session.state.lock().await;
+                        emit_failed_frame(&mut state, frame_id, node, &error, lifecycle).await?;
                         return Err(GlobalFailure(error).into());
                     }
                     break;
@@ -459,19 +467,10 @@ where
         debug_payload: json!({}),
         provider_events: Vec::new(),
     };
-    emit(
-        lifecycle,
-        &state,
-        ContainerTransitionKind::FrameClosed,
-        &identity,
-        None,
-        Some(&trace),
-        None,
-    )
-    .await?;
+    let trace = commit_frame_terminal(&mut state, frame_id, trace, lifecycle).await?;
     drop(state);
-    if parent.is_some() {
-        lifecycle.complete_node(&trace).await?;
+    if let Some(scope) = parent {
+        leave_identity(&scope.current_identity, &identity)?;
     }
     traces.push(trace);
     Ok(ContainerExecution {
@@ -559,22 +558,55 @@ async fn start_round(
         },
     );
     let identity = frame.identity.clone();
-    emit(
+    let admission = emit(
         lifecycle,
         &state,
         ContainerTransitionKind::RoundStarted,
         &identity,
         None,
         None,
-        Some(&json!({"round_index": index})),
+        Some(&json!({"round_index":index})),
     )
-    .await?;
+    .await;
+    if let Err(error) = admission {
+        let frame = state.frames.get_mut(&frame_id).expect("active frame");
+        let mut rejected = frame.rounds.remove(&index).expect("staged round");
+        frame.started_rounds = index;
+        if error
+            .downcast_ref::<DeadlineExpired>()
+            .is_some_and(|expired| expired.0 == frame_id)
+        {
+            // No body was admitted. Commit one failed attempt atomically so a
+            // continue policy cannot repeatedly renew the deadline at zero cost.
+            rejected.error_payload = Some(
+                json!({"error_code":"container_round_admission_timeout","message":"Round deadline expired while awaiting durable admission"}),
+            );
+            let failure = rejected.error_payload.clone();
+            frame.started_rounds = index + 1;
+            frame.rounds.insert(index, rejected);
+            commit_round_terminal(
+                &mut state,
+                frame_id,
+                index,
+                node,
+                config,
+                Value::Null,
+                Map::new(),
+                failure,
+                lifecycle,
+            )
+            .await?;
+            return Ok(Some(index));
+        }
+        return Err(error);
+    }
     Ok(Some(index))
 }
 
 enum RoundOutcome {
     Waiting(Vec<NodeExecutionTrace>),
     Terminal {
+        already_committed: bool,
         output: Value,
         variables: Map<String, Value>,
         error: Option<Value>,
@@ -594,7 +626,7 @@ async fn execute_round<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
-    let (index, pool, active, waiting, condition_error) = {
+    let (index, pool, active, waiting, condition_error, already_committed) = {
         let state = scope.session.state.lock().await;
         let round = &state.frames[&scope.frame_id].rounds[&scope.round_index];
         (
@@ -603,12 +635,14 @@ where
             round.active_node_ids.iter().cloned().collect(),
             round.waiting.clone(),
             round.error_payload.clone(),
+            round.status == ContainerRoundStatus::Failed,
         )
     };
     if let Some(error) = condition_error {
         return Ok((
             scope,
             RoundOutcome::Terminal {
+                already_committed,
                 output: Value::Null,
                 variables: Map::new(),
                 error: Some(error),
@@ -663,6 +697,7 @@ where
             return Ok((
                 scope,
                 RoundOutcome::Terminal {
+                    already_committed: false,
                     output: Value::Null,
                     variables: Map::new(),
                     error: Some(
@@ -728,6 +763,7 @@ where
         ExecutionStopReason::Failed(failure) => Ok((
             scope,
             RoundOutcome::Terminal {
+                already_committed: false,
                 output: Value::Null,
                 variables: Map::new(),
                 error: Some(failure.error_payload),
@@ -772,6 +808,7 @@ where
             Ok((
                 scope,
                 RoundOutcome::Terminal {
+                    already_committed: false,
                     output,
                     variables,
                     error,
@@ -1098,16 +1135,9 @@ async fn propagate_global_failure(
         debug_payload: json!({}),
         provider_events: Vec::new(),
     };
-    emit(
-        lifecycle,
-        &state,
-        ContainerTransitionKind::FrameClosed,
-        &identity,
-        None,
-        Some(&trace),
-        None,
-    )
-    .await
+    commit_frame_terminal(&mut state, frame_id, trace, lifecycle)
+        .await
+        .map(|_| ())
 }
 
 async fn check_final_condition(
@@ -1174,7 +1204,7 @@ async fn check_final_condition(
 }
 
 async fn emit_failed_frame(
-    state: &ContainerCheckpoint,
+    state: &mut ContainerCheckpoint,
     frame_id: Uuid,
     node: &CompiledNode,
     error: &Value,
@@ -1193,14 +1223,7 @@ async fn emit_failed_frame(
         debug_payload: json!({}),
         provider_events: Vec::new(),
     };
-    emit(
-        lifecycle,
-        state,
-        ContainerTransitionKind::FrameClosed,
-        &identity,
-        None,
-        Some(&trace),
-        None,
-    )
-    .await
+    commit_frame_terminal(state, frame_id, trace, lifecycle)
+        .await
+        .map(|_| ())
 }

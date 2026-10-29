@@ -477,6 +477,7 @@ where
     }
     let frame = state.frames.get_mut(frame_id).expect("recovery frame");
     frame.closed = false;
+    frame.terminal_trace = None;
     frame.global_failure = None;
     let round = frame.rounds.get_mut(round_index).expect("recovery round");
     round.status = ContainerRoundStatus::Running;
@@ -515,10 +516,38 @@ where
     for path in &identity.round_path {
         if let Some(frame) = state.frames.get_mut(&path.container_execution_id) {
             frame.closed = false;
+            frame.terminal_trace = None;
             frame.global_failure = None;
             if let Some(round) = frame.rounds.get_mut(&path.round_index) {
                 round.status = ContainerRoundStatus::Running;
                 round.waiting = None;
+                round.error_payload = None;
+            }
+        }
+    }
+    // Explicit native recovery reopens only the failed ancestor continuation.
+    // Its cached container terminal cannot short-circuit the selected retry.
+    let reopened: Vec<_> = identity
+        .round_path
+        .iter()
+        .filter_map(|path| {
+            state
+                .frames
+                .get(&path.container_execution_id)
+                .map(|frame| frame.identity.clone())
+        })
+        .collect();
+    for container in reopened {
+        if let Some(path) = container.round_path.last() {
+            if let Some(parent) = state
+                .frames
+                .get_mut(&path.container_execution_id)
+                .and_then(|frame| frame.rounds.get_mut(&path.round_index))
+            {
+                if let Some(node) = parent.nodes.get_mut(&container.node_id) {
+                    node.terminal_trace = None;
+                }
+                parent.variable_pool.remove(&container.node_id);
             }
         }
     }

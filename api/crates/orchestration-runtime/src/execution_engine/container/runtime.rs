@@ -187,15 +187,23 @@ impl Scope {
 
     pub async fn cached_trace(&self, node_id: &str) -> Option<NodeExecutionTrace> {
         let state = self.session.state.lock().await;
-        state
+        let node = state
             .frames
             .get(&self.frame_id)?
             .rounds
             .get(&self.round_index)?
             .nodes
-            .get(node_id)?
-            .terminal_trace
-            .clone()
+            .get(node_id)?;
+        // A global container failure must re-enter its frame boundary; ordinary
+        // cached-node error policies cannot turn it into a parent-local failure.
+        if state
+            .frames
+            .get(&node.identity.execution_id)
+            .is_some_and(|frame| frame.global_failure.is_some())
+        {
+            return None;
+        }
+        node.terminal_trace.clone()
     }
 
     pub async fn uncertain(&self, node_id: &str) -> bool {

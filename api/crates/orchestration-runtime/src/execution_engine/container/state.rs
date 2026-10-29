@@ -34,6 +34,10 @@ pub struct ContainerFrame {
     pub rounds: BTreeMap<u64, ContainerRound>,
     pub results: BTreeMap<u64, Value>,
     pub closed: bool,
+    /// Durable container terminal and parent-scope cache are committed together.
+    /// `closed` alone only stops admission and is not a node terminal receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_trace: Option<NodeExecutionTrace>,
     pub global_failure: Option<Value>,
     #[serde(default)]
     pub final_condition_checked: bool,

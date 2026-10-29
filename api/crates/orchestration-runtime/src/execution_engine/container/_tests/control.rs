@@ -13,11 +13,11 @@ fn final_condition_error_plan(policy: &str) -> CompiledPlan {
             selector_paths: Vec::new(),
         },
     );
-    outer.bindings.insert("variable_updates".into(),CompiledBinding{i18n_text_ref:None,kind:"named_bindings".into(),raw_value:json!([{"name":"gate","value":{"kind":"selector","selector":["leaf","value"]}}]),selector_paths:vec![vec!["leaf".into(),"value".into()]]});
+    outer.bindings.insert("variable_updates".into(),CompiledBinding{i18n_text_ref:None,kind:"named_bindings".into(),raw_value:json!([{"name":"gate","value":{"kind":"selector","selector":["leaf","result","value"]}}]),selector_paths:vec![vec!["leaf".into(),"result".into(),"value".into()]]});
     outer.bindings.insert("break_condition".into(),CompiledBinding{i18n_text_ref:None,kind:"condition_group".into(),raw_value:json!({"operator":"and","conditions":[{"left":["loop","variables","gate","ready"],"comparator":"equals","right":{"kind":"constant","value":0}}]}),selector_paths:vec![vec!["loop".into(),"variables".into(),"gate".into(),"ready".into()]]});
     outer
         .bindings
-        .insert("output".into(), selector(&["leaf", "value"]));
+        .insert("output".into(), selector(&["leaf", "result", "value"]));
     let mut leaf = code("leaf", "loop");
     leaf.bindings
         .insert("item".into(), selector(&["source", "replacement"]));

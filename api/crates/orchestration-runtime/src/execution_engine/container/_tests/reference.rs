@@ -31,7 +31,7 @@ async fn finite_error_sequences_match_independent_reference_and_reject_reset_bud
                 let mut each = container("each", "iteration", None, 1);
                 each.config["error_policy"] = json!(policy);
                 each.bindings
-                    .insert("output".into(), selector(&["leaf", "value"]));
+                    .insert("output".into(), selector(&["leaf", "result", "value"]));
                 let mut leaf = code("leaf", "each");
                 leaf.bindings
                     .insert("item".into(), selector(&["each", "item"]));
@@ -81,7 +81,7 @@ async fn parallel_break_closes_output_before_late_success_and_stops_admission() 
     each.config["parallelism"] = json!(2);
     each.config["error_policy"] = json!("break");
     each.bindings
-        .insert("output".into(), selector(&["leaf", "value"]));
+        .insert("output".into(), selector(&["leaf", "result", "value"]));
     let mut leaf = code("leaf", "each");
     leaf.bindings
         .insert("item".into(), selector(&["each", "item"]));
@@ -118,7 +118,7 @@ async fn serial_loop_variables_commit_only_after_successful_rounds() {
             i18n_text_ref: None,
         },
     );
-    outer.bindings.insert("variable_updates".into(), CompiledBinding { kind:"named_bindings".into(), raw_value:json!([{"name":"value","value":{"kind":"selector","selector":["leaf","value"]}}]),selector_paths:vec![vec!["leaf".into(),"value".into()]],i18n_text_ref:None });
+    outer.bindings.insert("variable_updates".into(), CompiledBinding { kind:"named_bindings".into(), raw_value:json!([{"name":"value","value":{"kind":"selector","selector":["leaf","result","value"]}}]),selector_paths:vec![vec!["leaf".into(),"result".into(),"value".into()]],i18n_text_ref:None });
     outer
         .bindings
         .insert("output".into(), selector(&["loop", "variables", "value"]));
@@ -238,7 +238,7 @@ async fn concurrent_round_invocations_keep_their_own_identity_across_yields() {
     let mut each = container("each", "iteration", None, 1);
     each.config["parallelism"] = json!(3);
     each.bindings
-        .insert("output".into(), selector(&["leaf", "value"]));
+        .insert("output".into(), selector(&["leaf", "result", "value"]));
     let mut leaf = code("leaf", "each");
     leaf.bindings
         .insert("item".into(), selector(&["each", "item"]));
