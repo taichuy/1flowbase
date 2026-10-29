@@ -22,7 +22,7 @@ function useContainerTheme(): CSSProperties {
   const { token } = theme.useToken();
   return {
     '--container-accent': token.cyan6,
-    '--container-selection': token.colorInfo,
+    '--container-selection': token.blue6,
     '--container-surface': token.colorBgContainer,
     '--container-body': token.colorFillQuaternary,
     '--container-dots': token.colorBorderSecondary
