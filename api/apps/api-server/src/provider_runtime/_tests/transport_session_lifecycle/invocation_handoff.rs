@@ -130,14 +130,12 @@ async fn bound_delivery_still_rejects_its_own_concurrent_invocation() {
         .err()
         .unwrap();
     assert!(reason(error).contains("transport_session_busy"));
-    assert!(
-        coordinator
-            .registry
-            .lock()
-            .await
-            .invocation_inflight(&first.lease.fence)
-            .unwrap()
-    );
+    assert!(coordinator
+        .registry
+        .lock()
+        .await
+        .invocation_inflight(&first.lease.fence)
+        .unwrap());
 }
 
 #[tokio::test]
@@ -145,18 +143,14 @@ async fn separate_delivery_wait_expires_without_cancelling_live_predecessor() {
     let (coordinator, _, _old_scope, first) = bound_execution([]).await;
     let scope = coordinator.open_connection_scope();
     let waiting = parked_waiter(&coordinator, &scope, 2_000_020).await;
-    assert!(
-        reason(waiter_result(waiting).await.err().unwrap())
-            .contains("transport_invocation_deadline_exceeded")
-    );
-    assert!(
-        coordinator
-            .registry
-            .lock()
-            .await
-            .invocation_inflight(&first.lease.fence)
-            .unwrap()
-    );
+    assert!(reason(waiter_result(waiting).await.err().unwrap())
+        .contains("transport_invocation_deadline_exceeded"));
+    assert!(coordinator
+        .registry
+        .lock()
+        .await
+        .invocation_inflight(&first.lease.fence)
+        .unwrap());
 }
 
 #[tokio::test]

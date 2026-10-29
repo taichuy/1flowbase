@@ -1,4 +1,4 @@
-use super::{FileQuery, PageQuery, provisioning, scope};
+use super::{provisioning, scope, FileQuery, PageQuery};
 use crate::{
     app_state::{ApiNotificationService, ApiState},
     error_response::ApiError,
@@ -10,10 +10,10 @@ use crate::{
         mcp_management::interface_catalog::McpInterfaceCatalogDependencies,
     },
 };
-use base64::{Engine, engine::general_purpose::STANDARD};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use futures_util::FutureExt;
 use interface_runtime::{InterfaceContract, UserPrincipal};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;

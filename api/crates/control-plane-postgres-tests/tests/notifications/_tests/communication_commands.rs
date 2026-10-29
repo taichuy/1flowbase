@@ -1,4 +1,4 @@
-use super::communications::{KEY, authorization, config, create_channel, received};
+use super::communications::{authorization, config, create_channel, received, KEY};
 use control_plane::{notifications::*, ports::*};
 use domain::*;
 use extension_contracts::CommunicationCommandReply;
@@ -101,12 +101,10 @@ async fn communication_command_requests_claim_order_receipts_and_unknown_send_ar
             .is_none(),
         "later command cannot skip a live claim in same chat"
     );
-    assert!(
-        service
-            .renew_builtin_command_claim(&claim, 60)
-            .await
-            .unwrap()
-    );
+    assert!(service
+        .renew_builtin_command_claim(&claim, 60)
+        .await
+        .unwrap());
     let session = Uuid::parse_str(&first.request.session_id).unwrap();
     service
         .complete_builtin_command(
@@ -135,13 +133,11 @@ async fn communication_command_requests_claim_order_receipts_and_unknown_send_ar
         service.pending_admissions(&scope).await.unwrap(),
         vec![inputs[1]]
     );
-    assert!(
-        service
-            .claim_builtin_command(scope.workspace_id, scope.instance_id, 60)
-            .await
-            .unwrap()
-            .is_some()
-    );
+    assert!(service
+        .claim_builtin_command(scope.workspace_id, scope.instance_id, 60)
+        .await
+        .unwrap()
+        .is_some());
     assert_eq!(
         service
             .pending_command_responses(scope.workspace_id, scope.instance_id, 10)
@@ -155,38 +151,30 @@ async fn communication_command_requests_claim_order_receipts_and_unknown_send_ar
         .await
         .unwrap()
         .unwrap();
-    assert!(
-        service
-            .reserve_command_response(&scope, first.event_id)
-            .await
-            .unwrap()
-            .is_none()
-    );
-    assert!(
-        service
-            .record_command_response(
-                &scope,
-                first.event_id,
-                send.claim_id,
-                CommunicationCommandSendOutcome::Unknown
-            )
-            .await
-            .unwrap()
-    );
-    assert!(
-        service
-            .pending_command_responses(scope.workspace_id, scope.instance_id, 10)
-            .await
-            .unwrap()
-            .is_empty()
-    );
-    assert!(
-        service
-            .reserve_command_response(&scope, first.event_id)
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(service
+        .reserve_command_response(&scope, first.event_id)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(service
+        .record_command_response(
+            &scope,
+            first.event_id,
+            send.claim_id,
+            CommunicationCommandSendOutcome::Unknown
+        )
+        .await
+        .unwrap());
+    assert!(service
+        .pending_command_responses(scope.workspace_id, scope.instance_id, 10)
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(service
+        .reserve_command_response(&scope, first.event_id)
+        .await
+        .unwrap()
+        .is_none());
     let count: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM communication_messages WHERE input_id=$1 AND direction='outbound'",
     )
@@ -296,19 +284,17 @@ async fn communication_command_reply_reservation_fences_old_session_and_expired_
         .unwrap()
         .unwrap();
     let session = Uuid::parse_str(&first.request.session_id).unwrap();
-    assert!(
-        service
-            .complete_builtin_command(
-                &stale,
-                session,
-                CommunicationCommandReply {
-                    text: "stale".into()
-                },
-                None
-            )
-            .await
-            .is_err()
-    );
+    assert!(service
+        .complete_builtin_command(
+            &stale,
+            session,
+            CommunicationCommandReply {
+                text: "stale".into()
+            },
+            None
+        )
+        .await
+        .is_err());
     service
         .complete_builtin_command(
             &current,
@@ -325,18 +311,14 @@ async fn communication_command_reply_reservation_fences_old_session_and_expired_
         .await
         .unwrap()
         .unwrap();
-    assert!(
-        service
-            .reserve_command_response(&scope, first.event_id)
-            .await
-            .unwrap()
-            .is_none()
-    );
-    assert!(
-        service
-            .pending_command_responses(scope.workspace_id, scope.instance_id, 10)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(service
+        .reserve_command_response(&scope, first.event_id)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(service
+        .pending_command_responses(scope.workspace_id, scope.instance_id, 10)
+        .await
+        .unwrap()
+        .is_empty());
 }

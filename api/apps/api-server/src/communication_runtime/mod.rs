@@ -1,7 +1,7 @@
 //! Host lifecycle for durable communication receive and execution. Provider credentials stay here.
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use control_plane::ports::{NotificationRepository, WorkspaceRepository};
 use domain::{
     ActorContext, CommunicationBindingRecord, NotificationInstanceRecord,

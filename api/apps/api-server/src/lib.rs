@@ -12,6 +12,7 @@ pub mod app_state;
 pub(crate) mod application_log_exchange;
 pub mod application_public_docs;
 mod authentication_runtime;
+mod communication_runtime;
 pub mod config;
 #[path = "console_contracts/console_operation_compilation.rs"]
 pub(crate) mod console_operation_compilation;
@@ -40,7 +41,6 @@ pub(crate) mod model_pricing_catalog;
 pub mod network_egress_client;
 pub mod network_egress_probe;
 mod notification_runtime;
-mod communication_runtime;
 #[path = "catalog_sources/official_extension_catalog.rs"]
 pub mod official_extension_catalog;
 #[path = "catalog_sources/official_i18n_catalog_seed.rs"]

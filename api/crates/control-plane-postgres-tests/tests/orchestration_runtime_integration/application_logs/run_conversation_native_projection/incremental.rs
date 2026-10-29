@@ -6,7 +6,11 @@ mod projection_cost;
 #[path = "_tests/append_regressions.rs"]
 mod append_regressions;
 
-#[cfg(all(feature = "history-memory-probe", target_os = "linux", target_env = "gnu"))]
+#[cfg(all(
+    feature = "history-memory-probe",
+    target_os = "linux",
+    target_env = "gnu"
+))]
 #[path = "_tests/history_memory.rs"]
 mod history_memory;
 
@@ -207,7 +211,10 @@ async fn incremental_duplicate_history_reads_only_current_context_and_new_events
         .unwrap();
     assert_eq!(kept["_source_item"], original);
     assert_eq!(kept["_log_conflicting"], false);
-    eprintln!("candidate native projection: runs=12 repeated_result_occurrences=12 unique_result_keys=1 returned_source_context_rows={returned_contexts} returned_source_event_rows={returned_events} elapsed_ms={}",started.elapsed().as_millis());
+    eprintln!(
+        "candidate native projection: runs=12 repeated_result_occurrences=12 unique_result_keys=1 returned_source_context_rows={returned_contexts} returned_source_event_rows={returned_events} elapsed_ms={}",
+        started.elapsed().as_millis()
+    );
 }
 
 #[tokio::test]
