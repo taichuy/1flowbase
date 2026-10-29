@@ -1,4 +1,4 @@
-name: Native portable distribution (experimental)
+name: Native portable distribution
 
 on:
   workflow_dispatch:
@@ -8,6 +8,14 @@ on:
         type: choice
         default: linux-x64
         options: [linux-x64, linux-arm64, macos-x64, macos-arm64, windows-x64, all]
+      release_tag:
+        description: Optional new Release tag (for example v0.5.8-native.1); requires all targets
+        type: string
+        required: false
+      publish:
+        description: Publish the validated Release as a prerelease (otherwise keep it as a draft)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -22,6 +30,17 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '24.22.1'
+      - name: Validate release inputs
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_PUBLISH: ${{ inputs.publish }}
+          RELEASE_TARGET: ${{ inputs.target }}
+        run: |
+          node <<'NODE'
+          const { RELEASE_TAG: tag, RELEASE_TARGET: target, RELEASE_PUBLISH: publish } = process.env;
+          if (tag && (target !== 'all' || !/^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(tag))) throw new Error('Release requires all targets and a valid version tag');
+          if (publish === 'true' && !tag) throw new Error('Publishing requires release_tag');
+          NODE
       - name: Prepare pinned bootstrap resources
         run: node scripts/node/native-release/resources.js tmp/native-resources
       - uses: actions/upload-artifact@v4
@@ -82,7 +101,7 @@ jobs:
       - name: Test native behavior and build backend
         run: |
           mkdir -p tmp/test-governance/native-release
-          node --test scripts/node/native-release/_tests/package.test.js
+          node --test scripts/node/native-release/_tests/*.test.js
           cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution
           cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution::tests::bundled_postgres_uses_tcp_only -- --ignored --exact
           cargo build --manifest-path api/Cargo.toml --locked --release -p api-server --bin api-server --bin system_recovery
@@ -109,23 +128,41 @@ jobs:
           NATIVE_PLATFORM: ${{ matrix.platform }}
           NATIVE_ARCH: ${{ matrix.arch }}
           NATIVE_SUFFIX: ${{ matrix.suffix }}
+          NATIVE_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           node scripts/node/native-release/package.js \
             --platform "$NATIVE_PLATFORM" --arch "$NATIVE_ARCH" \
             --api-binary "api/target/release/api-server$NATIVE_SUFFIX" \
             --recovery-binary "api/target/release/system_recovery$NATIVE_SUFFIX" \
-            --web-dir web/app/dist --postgres-dir "$FLOWBASE_TEST_POSTGRES_ROOT" --resources-dir tmp/native-resources --out tmp/native-release
+            --web-dir web/app/dist --postgres-dir "$FLOWBASE_TEST_POSTGRES_ROOT" --resources-dir tmp/native-resources --out tmp/native-release \
+            --version "$(node -e 'const tag = process.env.NATIVE_RELEASE_TAG; console.log(tag ? tag.replace(/^v/, "") : require("./web/app/package.json").version)')"
+      - name: Extract and verify the actual distribution archive
+        env:
+          NATIVE_TARGET: ${{ matrix.target }}
+        run: node scripts/node/native-release/unpack.js "tmp/native-release/1flowbase-$NATIVE_TARGET" tmp/native-extracted
       - name: Verify packaged application bootstrap and reopen
         env:
           NATIVE_TARGET: ${{ matrix.target }}
         run: |
-          export FLOWBASE_TEST_PACKAGE_ROOT="$(node -e 'console.log(require("node:path").resolve("tmp/native-release/1flowbase-" + process.env.NATIVE_TARGET))')"
+          export FLOWBASE_TEST_PACKAGE_ROOT="$(node -e 'console.log(require("node:path").resolve("tmp/native-extracted/1flowbase-" + process.env.NATIVE_TARGET))')"
           cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution::tests::bootstrap::packaged_application_bootstraps_and_reopens -- --ignored --exact
+      - name: Verify offline upgrade and complete recovery
+        env:
+          NATIVE_TARGET: ${{ matrix.target }}
+        run: node scripts/node/native-release/upgrade-smoke.js "tmp/native-extracted/1flowbase-$NATIVE_TARGET" tmp/test-governance/native-release/upgrade
+      # Node 24.22.1 bundles undici 7.30.1, whose macOS socket reset path
+      # can crash fetch with setTypeOfService EINVAL (nodejs/undici#6075).
+      # Node 26.7.0 bundles the fixed undici 8.9.0; only the macOS HTTP probe uses it.
+      - name: Use fixed HTTP test runtime on macOS
+        if: runner.os == 'macOS'
+        uses: actions/setup-node@v5
+        with:
+          node-version: '26.7.0'
       - name: Verify startup, restart and shutdown
         if: runner.os != 'Windows'
         env:
           NATIVE_TARGET: ${{ matrix.target }}
-        run: node scripts/node/native-release/smoke.js "tmp/native-release/1flowbase-$NATIVE_TARGET" tmp/test-governance/native-release/smoke
+        run: node scripts/node/native-release/smoke.js "tmp/native-extracted/1flowbase-$NATIVE_TARGET" tmp/test-governance/native-release/smoke
       - uses: actions/upload-artifact@v4
         with:
           name: 1flowbase-${{ matrix.target }}
@@ -133,3 +170,40 @@ jobs:
             tmp/native-release/*.tar.gz
             tmp/native-release/*.zip
           if-no-files-found: error
+
+      - name: Preserve bounded native validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-evidence-${{ matrix.target }}
+          path: |
+            tmp/test-governance/native-release/**/result.json
+            tmp/test-governance/native-release/**/command-*.log
+            tmp/test-governance/native-release/**/startup-*.log
+          if-no-files-found: ignore
+
+  release:
+    if: inputs.release_tag != '' && inputs.target == 'all'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.22.1'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 1flowbase-*
+          merge-multiple: true
+          path: native-assets
+      - name: Publish single-layer native archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NATIVE_TAG: ${{ inputs.release_tag }}
+          NATIVE_PUBLISH: ${{ inputs.publish }}
+          NATIVE_SHA: ${{ github.sha }}
+        run: node scripts/node/native-release/release.js
