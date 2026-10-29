@@ -31,16 +31,27 @@ fn lease(
 
 #[tokio::test]
 async fn lost_prepared_lease_cancels_awaited_setup_before_side_effect() {
+    struct ExecutionDrop(Arc<AtomicUsize>);
+    impl Drop for ExecutionDrop {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
     let (lease, sender, cleanups) = lease(Instant::now() + std::time::Duration::from_secs(60));
     let effects = AtomicUsize::new(0);
+    let drops = Arc::new(AtomicUsize::new(0));
+    let execution_drop = ExecutionDrop(drops.clone());
     sender.send_replace(true);
     assert!(lease
-        .while_owned(async {
+        .while_owned(Box::pin(async {
+            let _execution_drop = execution_drop;
             effects.fetch_add(1, Ordering::SeqCst);
-        })
+        }))
         .await
         .is_err());
     assert_eq!(effects.load(Ordering::SeqCst), 0);
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
     lease.abort().await.unwrap();
     assert_eq!(cleanups.load(Ordering::SeqCst), 1);
 }

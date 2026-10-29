@@ -139,6 +139,61 @@ async fn fixture(tool_count: usize) -> Fixture {
 }
 
 #[tokio::test]
+async fn prepared_callback_execution_keeps_inline_state_within_worker_stack_budget() {
+    let fixture = fixture(1).await;
+    let PublishedCallbackReservation::Acquired(receipt) = fixture
+        .service
+        .reserve_native_callback_reservation_for_actor(fixture.actor.clone(), &fixture.command)
+        .await
+        .unwrap()
+    else {
+        panic!("must acquire");
+    };
+    let PreparedPublishedCallback::Execution(owner) = fixture
+        .service
+        .prepare_reserved_native_callback_for_actor(
+            fixture.actor.clone(),
+            fixture.command.clone(),
+            receipt,
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("must prepare execution");
+    };
+    let callback_id = owner.callback_task_id();
+    let execution = fixture.service.execute_prepared_callback(*owner);
+    let inline_bytes = std::mem::size_of_val(&execution);
+    // This is a regression budget for one future, not a business input limit or
+    // a proof of the entire poll stack. Production stack measurements also cover
+    // the graph, provider and host frames below these ownership wrappers.
+    const INLINE_STATE_BUDGET: usize = 64 * 1024;
+    println!("prepared_callback_execution_inline_bytes={inline_bytes}");
+    drop(execution);
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let attempt = fixture
+                .store
+                .get_published_callback_resume_attempt(callback_id)
+                .await
+                .unwrap()
+                .unwrap();
+            if attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Received {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("dropping the unpolled execution must finish fenced cleanup");
+    assert!(fixture.provider.inputs.lock().unwrap().is_empty());
+    assert!(
+        inline_bytes <= INLINE_STATE_BUDGET,
+        "prepared callback execution retains {inline_bytes} inline bytes; budget={INLINE_STATE_BUDGET}"
+    );
+}
+
+#[tokio::test]
 async fn prepared_callback_abort_retries_with_one_transferred_claim_and_one_execution() {
     let fixture = fixture(1).await;
     let PublishedCallbackReservation::Acquired(receipt) = fixture

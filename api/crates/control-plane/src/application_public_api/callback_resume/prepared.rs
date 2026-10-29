@@ -244,7 +244,11 @@ where
             .take()
             .expect("prepared callback executes exactly once");
         let result = owner
-            .while_owned(self.consumer.execute_prepared_callback_task(execution))
+            // Match the common callback entry: keep execution state out of both
+            // lease wrappers and their callers' ordinary Tokio worker stacks.
+            .while_owned(Box::pin(
+                self.consumer.execute_prepared_callback_task(execution),
+            ))
             .await?;
         if result
             .as_ref()
