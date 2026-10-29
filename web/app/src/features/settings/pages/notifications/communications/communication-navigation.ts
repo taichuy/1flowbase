@@ -28,7 +28,7 @@ function positivePage(value: string | null) {
   const page = Number(value);
   return Number.isSafeInteger(page) && page > 0 ? page : 1;
 }
-export function readCommunicationLocation(
+function readCommunicationLocation(
   search: string
 ): CommunicationLocation {
   const params = new URLSearchParams(search);
@@ -61,7 +61,7 @@ export function useCommunicationLocation() {
   );
   return readCommunicationLocation(search);
 }
-export function communicationHref(patch: Partial<CommunicationLocation>) {
+function communicationHref(patch: Partial<CommunicationLocation>) {
   const url = new URL(window.location.href);
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) url.searchParams.delete(key);

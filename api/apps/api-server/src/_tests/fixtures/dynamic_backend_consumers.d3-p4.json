@@ -1,16 +1,11 @@
 {
   "packet": "D3-P4",
-  "count": 85,
+  "count": 84,
   "consumers": [
     {
       "category": "settings_feature_label",
       "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
       "key": "Communications"
-    },
-    {
-      "category": "settings_feature_label",
-      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
-      "key": "Notifications"
     },
     {
       "category": "settings_feature_description",
