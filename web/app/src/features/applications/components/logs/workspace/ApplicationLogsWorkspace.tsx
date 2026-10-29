@@ -224,6 +224,7 @@ export function ApplicationLogsWorkspace({
                     title={t('auto.run_details')}
                     closeLabel={t('auto.close_run_details')}
                     traceLabel={t('auto.node_execution')}
+                    workflowTrace
                     activeTab={executionTab}
                     onTabChange={(tab) => {
                       setExecutionTab(tab);

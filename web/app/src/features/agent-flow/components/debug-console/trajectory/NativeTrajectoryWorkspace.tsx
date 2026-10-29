@@ -140,10 +140,11 @@ export function NativeTrajectoryWorkspace({
   const containerAliases = useMemo(
     () =>
       new Map(
-        (overview?.nodes ?? []).map((node) => [
-          node.node_run_id,
-          node.node_alias
-        ])
+        (overview?.nodes ?? []).flatMap((node) =>
+          node.execution_identity
+            ? [[node.execution_identity.execution_id, node.node_alias] as const]
+            : []
+        )
       ),
     [overview?.nodes]
   );
