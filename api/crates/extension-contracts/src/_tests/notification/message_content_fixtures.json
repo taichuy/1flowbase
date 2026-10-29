@@ -1,0 +1,9 @@
+{
+  "plain_multiline": "你好👋\\\n第二行\\\n第三行",
+  "structured_commands": "**Available commands**\n\n- `/help` — Show available commands.\n- `/model` — Select a model.",
+  "literal_injection": "\\# title\\\n\\- \\[link\\]\\(https://example.com\\)\\\n\\<script\\>alert\\(1\\)\\</script\\>\\\n\\&copy;\\\n\\=\\=\\=",
+  "ordered_injection": "1\\. injected",
+  "code_fences": "``alpha`beta`` / `` `edge` `` / `  both  ` / `   `",
+  "strong_edges": "ab&#99;**\\[name\\]**&#120;yz",
+  "list_multiline": "- first\\\n  second\\\n  \\- injected\n- `` `x` ``\\\n  `y`"
+}
