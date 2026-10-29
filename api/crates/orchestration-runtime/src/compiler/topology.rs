@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
 use crate::node_error_policy::{node_uses_error_branch, ERROR_BRANCH_SOURCE_HANDLE};
 
@@ -232,6 +232,7 @@ pub(super) fn build_nodes_and_topology(
     let mut adjacency = BTreeMap::<String, Vec<String>>::new();
     let mut indegree = BTreeMap::<String, usize>::new();
     let mut compiled_edges = Vec::with_capacity(edge_values.len());
+    let mut node_relationships = HashSet::new();
 
     for node_id in &node_order {
         adjacency.insert(node_id.clone(), Vec::new());
@@ -280,20 +281,18 @@ pub(super) fn build_nodes_and_topology(
             target_handle,
         });
 
-        let dependency_node_ids = &mut nodes
-            .get_mut(target)
-            .expect("validated target node must exist")
-            .dependency_node_ids;
-        if !dependency_node_ids.iter().any(|node_id| node_id == source) {
-            dependency_node_ids.push(source.to_string());
-        }
-
-        let downstream_node_ids = &mut nodes
-            .get_mut(source)
-            .expect("validated source node must exist")
-            .downstream_node_ids;
-        if !downstream_node_ids.iter().any(|node_id| node_id == target) {
-            downstream_node_ids.push(target.to_string());
+        // Only relationships are unique; edges and Kahn's multigraph retain input order.
+        if node_relationships.insert((source, target)) {
+            nodes
+                .get_mut(target)
+                .expect("validated target node must exist")
+                .dependency_node_ids
+                .push(source.to_string());
+            nodes
+                .get_mut(source)
+                .expect("validated source node must exist")
+                .downstream_node_ids
+                .push(target.to_string());
         }
 
         adjacency
