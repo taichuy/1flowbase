@@ -69,3 +69,20 @@ Tokio timeout 不等于强制终止所有任务。保证分别检查：停止后
 - 真实浏览器：`scripts/node/page-debug/scenarios/bounded-containers/README.md`。通过正式页面创建容器、编辑、保存重载、测试运行并核对两轮 × 三项；临时应用和认证会话由场景清理。
 
 有限枚举的数字仅描述测试域，不能当作产品容量限制或完整程序证明。每次验收必须附候选 SHA、命令、实际通过/失败数、原始产物和未验证范围。文档、编译通过与截图分别只证明对应的有限事实。
+
+### 有限验证域与复跑入口（F04）
+
+以下是 fixture 声明的验证域，不是已通过的结果。运行日志需带候选 SHA；使用 `cargo test --manifest-path api/Cargo.toml -p orchestration-runtime container::tests::evidence -- --nocapture` 收集 `container_model`、`container_tree`、`container_trace`、`container_stop`、`container_clock`、`container_callback`、`container_quickjs` 和 `container_cost` 行。仓库 Cargo 预算入口及单一重型进程约束仍适用。
+
+| 分解域 | 声明范围 | 证据与边界 |
+| --- | --- | --- |
+| 独立状态图 | N=0..3 × p=1/2 × 3 错误策略，共 24 配置；运行/等待/到期/终态，至多一次 crash 与 generation 0→1，逐轮一次旧结果观察 | 标准库 BFS 穷尽队列，无截断上限；打印实际 visited states、transitions、terminals、deadlocks；首个安全反例为 BFS 最短路径；另查非终态闭环 |
+| 正常嵌套树 | 深度 0..3、每层有效次数 0..3，共 1+4+16+64=85 链形树；循环/迭代交替 | 真实执行器与独立递归树输出对照；零次循环通过初始条件实现，不接受 max_rounds=0 |
+| 串行失败序列 | 长度 0..3、成功/失败布尔项、3 策略，共 45 | 既有独立 fold；过滤器 `finite_error_sequences_match_independent_reference`，不是并发交错穷举 |
+| 受控错误生产者 | 恢复重置额度、吞全局失败、接受旧 generation；另有非终态自旋 | 与正常模型、真实引擎规范化轨迹共用同一个 verifier；输出反例路径，不能用手算数值不等替代拒绝结果 |
+| 时间与停止点 | p=1/2 的成功先于/晚于 break 共 4 屏障顺序；虚拟祖先期限；3 策略 × callback-first/timeout-first/锁后跨期限共 9 顺序，另有绝对期限的祖先 callback 案例 | 活动期限使用 Tokio 虚拟单调时钟；持久绝对期限使用真实短 timer 与 admission barrier，不声称 Tokio advance 改变 UTC 或 PostgreSQL 时钟 |
+| 隔离与成本 | 真实 QuickJS `while(true)` 经容器收紧预算；深度3/每层2项/p2、无关根数据0/64KiB | 保留并 join runner 观察任务，确认实际 runner 返回 timeout；记录叶子任务峰值、活跃帧、局部值字节、15 个逻辑执行记录和14个轮次提交，不声称远端已停止 |
+
+状态图的终止性条件是有限 callback/deadline 事件最终被处理、owner 至多转移一次、不无限插入 idle 或 crash。图中包含所有合法后继而非随机抽样；自旋错误生产者引入的非终态环必须被发现。cycle 输出是实际闭合路径；安全反例是最短路径，不将任意周期长度称为全图最短周期。
+
+这些域分开验收，不构成深度×错误×并行×时间×恢复的完整笛卡尔积。模型和测试 owner 的 generation 不是数据库 fencing 实证；真实锁、lease、外部收件及进程终止继续由 PostgreSQL/F05 fixtures 证明。复用实际隔离用例 `code_runner_quickjs_timeout_is_stable` 与 `code_isolation_profile_timeout_is_enforced_by_quickjs_runner`。类型检查、fixture 数量及声明的组合数均不等于行为通过。
