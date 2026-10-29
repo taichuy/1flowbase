@@ -2,8 +2,9 @@ use super::*;
 use crate::routes::assistant::AssistantRunCapabilities;
 use control_plane::{
     notifications::{
-        apply_communication_model_availability, communication_command_help, decode_builtin_command,
-        BuiltinCommunicationIntent, CommunicationCommandIntent,
+        apply_communication_model_availability, communication_command_help,
+        communication_command_list_reply, decode_builtin_command, BuiltinCommunicationIntent,
+        CommunicationCommandIntent,
     },
     orchestration_runtime::CancelFlowRunCommand,
     ports::{
@@ -11,7 +12,10 @@ use control_plane::{
     },
 };
 use domain::CommunicationCommandView;
-use extension_contracts::CommunicationCommandReply;
+use extension_contracts::{
+    CommunicationCommandReply, CommunicationMessageBlock as Block,
+    CommunicationMessageContent as Content, CommunicationMessageInline as Inline,
+};
 
 const NEW_SESSION_REPLY: &str =
     "The previous conversation has stopped generating. A new conversation has started.";
@@ -80,11 +84,11 @@ async fn execute(state: &ApiState, claim: &ClaimedBuiltinCommunicationCommand) -
         .await?;
     let (response_session, text, failure) = match intent {
         CommunicationCommandIntent::Rejected { code, reply } => {
-            (requested_session, reply, Some(code))
+            (requested_session, reply.into(), Some(code))
         }
         CommunicationCommandIntent::Builtin(builtin) => {
             if let Some((code, reply)) = unavailable(&commands, &record.request.command_id) {
-                return complete(state, claim, requested_session, reply, Some(code)).await;
+                return complete(state, claim, requested_session, reply.into(), Some(code)).await;
             }
             match builtin {
                 BuiltinCommunicationIntent::New => {
@@ -186,23 +190,16 @@ async fn execute(state: &ApiState, claim: &ClaimedBuiltinCommunicationCommand) -
                     .map_err(|error| error.0)?;
                     apply_communication_model_availability(&mut commands, reason);
                     match builtin {
-                        BuiltinCommunicationIntent::Help => {
-                            let text = communication_command_help(&commands);
-                            (
-                                requested_session,
-                                if text.is_empty() {
-                                    "No commands are currently enabled.".into()
-                                } else {
-                                    text
-                                },
-                                None,
-                            )
-                        }
+                        BuiltinCommunicationIntent::Help => (
+                            requested_session,
+                            communication_command_help(&commands)?.into(),
+                            None,
+                        ),
                         BuiltinCommunicationIntent::Model { model } => {
                             if let Some((code, reply)) =
                                 unavailable(&commands, &record.request.command_id)
                             {
-                                (requested_session, reply, Some(code))
+                                (requested_session, reply.into(), Some(code))
                             } else {
                                 return apply_model(
                                     state,
@@ -305,36 +302,47 @@ pub(super) async fn apply_model(
             .select_command_model(
                 claim,
                 &model.id,
-                CommunicationCommandReply {
-                    text: bounded_text(format!(
-                        "Selected model: {} ({}).",
-                        model.name.as_deref().unwrap_or(&model.id),
-                        model.id
-                    )),
-                },
+                CommunicationCommandReply::from_content(Content::Blocks(vec![Block::Paragraph(
+                    vec![
+                        Inline::Text(format!(
+                            "Selected model: {} (",
+                            model.name.as_deref().unwrap_or(&model.id)
+                        )),
+                        Inline::Code(model.id.clone()),
+                        Inline::Text(").".into()),
+                    ],
+                )]))?,
             )
             .await?;
         return Ok(());
     }
-    let mut text = format!(
-        "Current model: {}\nAllowed models:",
-        current.unwrap_or("Application default")
-    );
-    for model in &capabilities.models {
-        text.push_str(&format!(
-            "\n{} — /model-user-{}",
-            model.name.as_deref().unwrap_or(&model.id),
-            model.id
-        ));
-    }
-    complete(state, claim, session, text, None).await
+    let reply = communication_command_list_reply(
+        vec![
+            Block::Paragraph(vec![
+                Inline::Text("Current model: ".into()),
+                Inline::Code(current.unwrap_or("Application default").into()),
+            ]),
+            Block::Paragraph(vec![Inline::Text("Allowed models:".into())]),
+        ],
+        capabilities
+            .models
+            .iter()
+            .map(|model| {
+                vec![
+                    Inline::Text(format!("{} — ", model.name.as_deref().unwrap_or(&model.id))),
+                    Inline::Code(format!("/model-user-{}", model.id)),
+                ]
+            })
+            .collect(),
+    )?;
+    complete(state, claim, session, reply.into(), None).await
 }
 
 async fn complete(
     state: &ApiState,
     claim: &ClaimedBuiltinCommunicationCommand,
     session: Uuid,
-    text: String,
+    content: Content,
     failure: Option<String>,
 ) -> Result<()> {
     let _permit = state.system_maintenance.try_enter_write(
@@ -345,24 +353,9 @@ async fn complete(
         .complete_builtin_command(
             claim,
             session,
-            CommunicationCommandReply {
-                text: bounded_text(text),
-            },
+            CommunicationCommandReply::from_content(content)?,
             failure,
         )
         .await?;
     Ok(())
-}
-
-fn bounded_text(mut text: String) -> String {
-    const SUFFIX: &str = "\n… Additional entries are available in channel settings.";
-    if text.len() > 32_768 {
-        let mut boundary = 32_768 - SUFFIX.len();
-        while !text.is_char_boundary(boundary) {
-            boundary -= 1;
-        }
-        text.truncate(boundary);
-        text.push_str(SUFFIX);
-    }
-    text
 }

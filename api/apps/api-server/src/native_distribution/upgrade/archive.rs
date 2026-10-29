@@ -10,7 +10,7 @@ fn destination(root: &Path, name: &Path, package: &str) -> Result<PathBuf> {
     let text = name.to_str().context("Non-UTF8 archive path")?;
     ensure!(
         !text.contains(['\\', ':']) && name.components().all(|c| matches!(c, Component::Normal(_))),
-        "Unsafe archive path"
+        "Unsafe archive path: {text}"
     );
     let relative = name
         .strip_prefix(package)
@@ -45,13 +45,15 @@ pub fn extract(archive: &Path, root: &Path, package: &str, windows: bool) -> Res
         ensure!(zip.len() <= 100_000, "Too many archive entries");
         for i in 0..zip.len() {
             let mut file = zip.by_index(i)?;
-            let destination = destination(root, Path::new(file.name()?.as_ref()), package)?;
+            // Windows .NET ZipFile emits backslashes; normalize before validating components.
+            let name = file.name()?.replace('\\', "/");
+            let destination = destination(root, Path::new(&name), package)?;
             let kind = file.unix_mode().unwrap_or(0) & 0o170000;
             ensure!(
                 matches!(kind, 0 | 0o100000 | 0o040000),
                 "Archive links/special files are not supported"
             );
-            if file.is_dir() {
+            if name.ends_with('/') {
                 fs::create_dir_all(destination)?;
             } else {
                 let size = file.size();

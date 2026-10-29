@@ -257,9 +257,9 @@ impl ManagedExtensionComposition {
         let (reply, failure_code) = match outcome {
             ManagedEventOutcome::CommandReply { reply } => (reply, None),
             ManagedEventOutcome::Failed { classification } => (
-                CommunicationCommandReply {
-                    text: format!("Command failed: {classification}"),
-                },
+                CommunicationCommandReply::from_content(format!(
+                    "Command failed: {classification}"
+                ))?,
                 Some(classification),
             ),
             _ => bail!("command requires bounded typed reply or explicit failure"),

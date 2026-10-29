@@ -419,3 +419,6 @@ mod pipeline;
 
 #[path = "turn_pipeline.rs"]
 mod turn_pipeline;
+
+#[path = "markdown_delivery.rs"]
+mod markdown_delivery;

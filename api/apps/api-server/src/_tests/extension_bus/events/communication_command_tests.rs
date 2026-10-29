@@ -165,7 +165,7 @@ async fn communication_command_installed_sdk_uses_one_frozen_target_and_one_dura
         .unwrap();
     assert_eq!(
         result.reply.unwrap().text,
-        "acme/acme.composition-commands/status: today"
+        "`acme/acme.composition-commands/status`: today"
     );
     assert_eq!(
         result.send_status,
@@ -290,7 +290,7 @@ async fn communication_command_explicit_handler_failure_is_a_durable_reply_recei
     );
     assert_eq!(
         result.reply.unwrap().text,
-        "Command failed: fixture_command_failed"
+        r"Command failed: fixture\_command\_failed"
     );
     assert_eq!(result.send_status, domain::CommunicationSendStatus::Pending);
     assert!(fixture
@@ -303,3 +303,61 @@ async fn communication_command_explicit_handler_failure_is_a_durable_reply_recei
 
 #[path = "communication_command_terminal_tests.rs"]
 mod terminal_tests;
+
+#[tokio::test]
+async fn communication_command_sdk_markdown_is_preserved_in_receipt_history_and_send_claim() {
+    let fixture = CommandFixture::new().await;
+    let intent = fixture
+        .service
+        .resolve_command(&fixture.base.actor, &[], "/status fixture-markdown")
+        .await
+        .unwrap();
+    let request = fixture
+        .service
+        .enqueue_command(&fixture.scope, fixture.input, intent)
+        .await
+        .unwrap();
+    let worker = Uuid::now_v7();
+    let rows = fixture.base.claim(worker).await;
+    let command = rows
+        .iter()
+        .find(|row| row.contract_id == COMMUNICATION_COMMAND_POINT)
+        .unwrap();
+    fixture.base.delivery.deliver(command).await.unwrap();
+    fixture.base.delivery.deliver(command).await.unwrap();
+    fixture.base.ack(worker, command).await;
+    let record = fixture
+        .base
+        .store
+        .communication_command(fixture.scope.workspace_id, request.event_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let expected = "**Status**\n\n- `/next [id]` — Ready\\\n  Second line";
+    assert_eq!(record.reply.as_ref().unwrap().text, expected);
+    let history: Vec<String> = sqlx::query_scalar(
+        "SELECT content FROM communication_messages WHERE input_id=$1 AND direction='outbound'",
+    )
+    .bind(fixture.input)
+    .fetch_all(fixture.base.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        history,
+        vec![expected.to_string()],
+        "one unchanged Markdown reply after redelivery"
+    );
+    let claimed = fixture
+        .service
+        .reserve_command_response(&fixture.scope, record.event_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(claimed.record.reply.unwrap().text, expected);
+    assert!(fixture
+        .service
+        .reserve_command_response(&fixture.scope, record.event_id)
+        .await
+        .unwrap()
+        .is_none());
+}

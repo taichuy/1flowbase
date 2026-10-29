@@ -189,7 +189,7 @@ jobs:
           echo "MANAGED_HOOK_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - name: Canonical HTTP, PostgreSQL and real worker acceptance
-        if: ${{ !cancelled() && !inputs.communication_host_only }}
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
           test_batch_status=0

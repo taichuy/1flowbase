@@ -35,3 +35,6 @@ mod notification_receive_tests;
 
 #[path = "notification/command_event_tests.rs"]
 mod communication_command_event_tests;
+
+#[path = "notification/message_content_tests.rs"]
+mod notification_message_content_tests;

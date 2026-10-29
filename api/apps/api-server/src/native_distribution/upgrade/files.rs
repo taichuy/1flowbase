@@ -129,6 +129,9 @@ pub fn json<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
 }
 
 pub fn require_space(path: &Path, bytes: u64) -> Result<()> {
+    let path = path
+        .canonicalize()
+        .context("Cannot resolve update volume")?;
     let disks = sysinfo::Disks::new_with_refreshed_list();
     let disk = disks
         .list()

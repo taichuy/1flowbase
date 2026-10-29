@@ -87,3 +87,84 @@ fn communication_command_sdk_typed_handler_returns_bounded_destination_free_repl
         "ACK cannot replace durable command reply"
     );
 }
+
+#[test]
+fn communication_command_sdk_renders_structured_parameters_before_writing_wire() {
+    use CommunicationMessageBlock::{BulletList, Paragraph};
+    use CommunicationMessageInline::{Code, Strong, Text};
+    let frame = frame();
+    let mut output = Vec::new();
+    crate::serve_communication_command(
+        serde_json::to_vec(&frame).unwrap().as_slice(),
+        &mut output,
+        |_| {
+            CommunicationMessageContent::Blocks(vec![
+                Paragraph(vec![Strong("Available commands".into())]),
+                BulletList(vec![
+                    vec![
+                        Code("/help".into()),
+                        Text(" — Show available commands.".into()),
+                    ],
+                    vec![Code("/model".into()), Text(" — Select a model.".into())],
+                ]),
+            ])
+        },
+    )
+    .unwrap();
+    let response: ManagedEventWorkerFrame = serde_json::from_slice(&output).unwrap();
+    response.validate_for(&frame).unwrap();
+    let ManagedEventOutcome::CommandReply { reply } = response.result else {
+        panic!("missing reply")
+    };
+    let expected: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../extension-contracts/src/_tests/notification/message_content_fixtures.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        reply.text,
+        expected["structured_commands"].as_str().unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(reply)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn communication_command_sdk_preserves_authored_markdown_and_checks_rendered_size() {
+    let frame = serde_json::to_vec(&frame()).unwrap();
+    let markdown = "**Status**\n\n- ready\n\n```text\n*literal*\n```";
+    let mut output = Vec::new();
+    crate::serve_communication_command(frame.as_slice(), &mut output, |_| {
+        CommunicationCommandReply {
+            text: markdown.into(),
+        }
+    })
+    .unwrap();
+    let response: ManagedEventWorkerFrame = serde_json::from_slice(&output).unwrap();
+    assert!(
+        matches!(response.result, ManagedEventOutcome::CommandReply{reply} if reply.text == markdown)
+    );
+
+    output.clear();
+    crate::serve_communication_command(frame.as_slice(), &mut output, |_| "first\nsecond").unwrap();
+    let response: ManagedEventWorkerFrame = serde_json::from_slice(&output).unwrap();
+    assert!(
+        matches!(response.result, ManagedEventOutcome::CommandReply{reply} if reply.text == "first\\\nsecond")
+    );
+    output.clear();
+    assert!(
+        crate::serve_communication_command(frame.as_slice(), &mut output, |_| {
+            "*".repeat(COMMUNICATION_COMMAND_REPLY_MAX_BYTES / 2 + 1)
+        })
+        .is_err()
+    );
+    assert!(
+        output.is_empty(),
+        "an invalid rendered reply must not emit a partial frame"
+    );
+}

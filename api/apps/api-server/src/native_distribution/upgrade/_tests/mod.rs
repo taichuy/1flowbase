@@ -182,6 +182,7 @@ fn corrupted_pending_package_and_unsafe_manifest_are_not_applied() {
 #[test]
 fn missing_configuration_and_insufficient_space_do_not_replace_program() {
     let f = Fixture::new();
+    files::require_space(&f.directory, 0).unwrap();
     assert!(files::require_space(&f.directory, u64::MAX).is_err());
     assert!(apply_from(
         &f.new,

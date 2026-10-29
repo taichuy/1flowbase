@@ -4,6 +4,11 @@ use control_plane_contracts::ports::FrozenCommunicationCommandTarget;
 use domain::{
     CommunicationCommandSetting, CommunicationCommandSourceKind, CommunicationCommandView,
 };
+use extension_contracts::{
+    CommunicationCommandReply, CommunicationCommandReplyContentError,
+    CommunicationMessageBlock as Block, CommunicationMessageContent as Content,
+    CommunicationMessageInline as Inline,
+};
 use plugin_framework::communication_commands::{
     effective_communication_commands, parse_communication_command, CommunicationCommandCatalogEntry,
 };
@@ -194,11 +199,64 @@ pub fn apply_communication_model_availability(
     }
 }
 
-pub fn communication_command_help(commands: &[CommunicationCommandView]) -> String {
-    commands
+pub fn communication_command_help(
+    commands: &[CommunicationCommandView],
+) -> Result<CommunicationCommandReply, CommunicationCommandReplyContentError> {
+    let items = commands
         .iter()
         .filter(|command| command.enabled && command.available)
-        .map(|command| format!("{} — {}", command.usage, command.description))
-        .collect::<Vec<_>>()
-        .join("\n")
+        .map(|command| {
+            vec![
+                Inline::Code(command.usage.clone()),
+                Inline::Text(format!(" — {}", command.description)),
+            ]
+        })
+        .collect::<Vec<_>>();
+    if items.is_empty() {
+        return CommunicationCommandReply::from_content("No commands are currently enabled.");
+    }
+    communication_command_list_reply(Vec::new(), items)
 }
+
+/// Host catalog replies omit complete trailing entries when the wire budget is exceeded.
+/// The shared renderer owns Markdown syntax; this owner only chooses the visible entries.
+pub fn communication_command_list_reply(
+    prefix: Vec<Block>,
+    items: Vec<Vec<Inline>>,
+) -> Result<CommunicationCommandReply, CommunicationCommandReplyContentError> {
+    let render = |count: usize, truncated: bool| {
+        let mut blocks = prefix.clone();
+        if count > 0 {
+            blocks.push(Block::BulletList(items[..count].to_vec()));
+        }
+        if truncated {
+            blocks.push(Block::Paragraph(vec![Inline::Text(
+                "… Additional entries are available in channel settings.".into(),
+            )]));
+        }
+        CommunicationCommandReply::from_content(Content::Blocks(blocks))
+    };
+    match render(items.len(), false) {
+        Ok(reply) => return Ok(reply),
+        Err(CommunicationCommandReplyContentError::TooLong { .. }) if !items.is_empty() => {}
+        Err(error) => return Err(error),
+    }
+    let mut best = render(0, true)?;
+    let (mut low, mut high) = (0, items.len());
+    while low + 1 < high {
+        let count = low + (high - low) / 2;
+        match render(count, true) {
+            Ok(reply) => {
+                best = reply;
+                low = count;
+            }
+            Err(CommunicationCommandReplyContentError::TooLong { .. }) => high = count,
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(best)
+}
+
+#[cfg(test)]
+#[path = "_tests/command_catalog.rs"]
+mod tests;
