@@ -24,6 +24,7 @@ import type { ConversationLogTraceLoader } from '../conversation-log-trace-model
 import { useTranslation } from 'react-i18next';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../shared/i18n/format';
+import { useWindowWorkspaceOverlayZIndex } from '../../../../../shared/ui/window-workspace/window-workspace-overlay-context';
 import { purposeLabel } from './trajectory-presentation';
 import {
   workflowEventLabel,
@@ -73,6 +74,12 @@ export function NativeTrajectoryWorkspace({
     link: NonNullable<ProviderTrajectoryStep['links']>[number]
   ) => void;
 }) {
+  // Keep the host portal (outside clipped windows), but inherit its popup layer.
+  const popupZIndex = useWindowWorkspaceOverlayZIndex();
+  const popupStyles =
+    popupZIndex === undefined
+      ? undefined
+      : { popup: { root: { zIndex: popupZIndex } } };
   const [selected, setSelected] = useState<string | null>(
     options?.focus_event_id ?? null
   );
@@ -313,6 +320,7 @@ export function NativeTrajectoryWorkspace({
           </Button>
         </div>
         <Select
+          styles={popupStyles}
           allowClear={!nodeRunId}
           value={nodeFilter}
           disabled={Boolean(nodeRunId)}
@@ -327,6 +335,7 @@ export function NativeTrajectoryWorkspace({
         />
         {roundOptions.length ? (
           <TreeSelect
+            styles={popupStyles}
             allowClear
             value={roundFilter}
             treeData={roundOptions}

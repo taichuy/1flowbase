@@ -189,6 +189,12 @@ test('formal Code/Template-only Workflow trace selects the backend 1/1/0 receipt
   fireEvent.mouseDown(filter);
   for (const title of ['Outer loop · 第 2 轮', 'Iteration · 第 2 轮']) {
     const label = await screen.findByTitle(title);
+    const popup = label.closest('.ant-select-dropdown');
+    const window = screen.getByTestId('application-logs-floating-run-detail');
+    // Real AntD portal and explicit slot: do not clip the menu inside the window
+    // or let its default global layer fall behind the active window's timeline.
+    expect(window).not.toContainElement(popup as HTMLElement);
+    expect(popup).toHaveStyle({ zIndex: Number(window.style.zIndex) + 1 });
     const switcher = label
       .closest('.ant-select-tree-treenode')
       ?.querySelector('.ant-select-tree-switcher');
@@ -218,7 +224,7 @@ test('formal Code/Template-only Workflow trace selects the backend 1/1/0 receipt
       leaf.event_id
     )
   );
-  const inspector = screen.getByRole('complementary');
+  const inspector = screen.getByRole('complementary', { name: '步骤检查器' });
   fireEvent.click(within(inspector).getByRole('tab', { name: '原文' }));
   expect(
     await within(inspector).findByText('event:logical-leaf-110', {
@@ -272,7 +278,7 @@ test.each(['code', 'llm'])(
     ).not.toBeInTheDocument();
     if (node_type === 'llm')
       expect(
-        screen.getByRole('button', { name: '调用轨迹' })
+        await screen.findByRole('button', { name: '调用轨迹' })
       ).toBeInTheDocument();
     expect(
       runtimeApi.fetchApplicationRunConversationMessages
@@ -290,7 +296,7 @@ test('a failed workflow index is visible and retryable without removing legacy t
     await screen.findByRole('button', { name: /LLM.*llm/ })
   ).toBeInTheDocument();
   trajectoryApi.fetchWorkflowTrajectory.mockResolvedValue(page());
-  fireEvent.click(screen.getByRole('button', { name: '重试' }));
+  fireEvent.click(screen.getByRole('button', { name: /^重\s*试$/ }));
   expect(
     await screen.findByRole('combobox', { name: '按循环轮次筛选' })
   ).toBeInTheDocument();
