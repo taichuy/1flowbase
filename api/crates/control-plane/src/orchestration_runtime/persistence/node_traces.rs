@@ -63,6 +63,8 @@ where
     let mut stream_events = Vec::new();
 
     for (index, trace) in outcome.node_traces.iter().enumerate() {
+        // Rich observations were drained from durable scoped receipts above.
+        // Only the legacy node creation/status writer is skipped here.
         if let Some(identity) = &trace.execution_identity {
             let node_run = repository
                 .get_container_node_run(flow_run_id, identity.execution_id)
@@ -265,7 +267,7 @@ where
     })
 }
 
-fn trace_started_at(
+pub(super) fn trace_started_at(
     trace: &orchestration_runtime::execution_state::NodeExecutionTrace,
 ) -> Option<OffsetDateTime> {
     trace

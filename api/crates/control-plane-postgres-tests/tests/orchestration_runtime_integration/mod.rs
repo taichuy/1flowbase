@@ -404,3 +404,6 @@ mod container_commits;
 
 #[path = "_tests/container_trajectory.rs"]
 mod container_trajectory;
+
+#[path = "_tests/container_observations.rs"]
+mod container_observations;

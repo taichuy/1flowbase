@@ -3,11 +3,16 @@ use control_plane_contracts::ports::{
     CommitContainerTransitionInput, ContainerNodeFact, ContainerRoundFact,
 };
 
-fn start(flow_run_id: Uuid, frame_id: Uuid, round_index: u64) -> CommitContainerTransitionInput {
+pub(super) fn start(
+    flow_run_id: Uuid,
+    frame_id: Uuid,
+    round_index: u64,
+) -> CommitContainerTransitionInput {
     CommitContainerTransitionInput {
         flow_run_id,
         resume_claim_owner: None,
         control_failure: None,
+        observation: None,
         execution_identity: domain::NodeExecutionIdentity {
             execution_id: Uuid::now_v7(),
             node_id: "same-node".into(),
@@ -37,7 +42,9 @@ fn start(flow_run_id: Uuid, frame_id: Uuid, round_index: u64) -> CommitContainer
     }
 }
 
-fn complete(mut input: CommitContainerTransitionInput) -> CommitContainerTransitionInput {
+pub(super) fn complete(
+    mut input: CommitContainerTransitionInput,
+) -> CommitContainerTransitionInput {
     input.checkpoint["committed"] = json!(true);
     input.node = Some(ContainerNodeFact::Updated {
         status: NodeRunStatus::Succeeded,

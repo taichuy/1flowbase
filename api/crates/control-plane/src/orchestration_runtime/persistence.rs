@@ -29,6 +29,8 @@ mod checkpoint_locator;
 pub(super) mod model_attempts;
 mod node_traces;
 mod provider_observability;
+mod scoped_observation_writer;
+pub(in crate::orchestration_runtime) mod scoped_observations;
 #[cfg(test)]
 mod tests;
 
@@ -272,6 +274,28 @@ where
             .await?
             .map(|conversation_id| conversation_id.to_string()),
     };
+    if outcome
+        .node_traces
+        .iter()
+        .any(|trace| trace.execution_identity.is_some())
+        || outcome
+            .checkpoint_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.container_state.is_some())
+    {
+        scoped_observations::drain_pending(
+            repository,
+            scoped_observations::ObservationContext {
+                scope_id,
+                application_name,
+                task_queue,
+                flow_run,
+                conversation_id: request_log_conversation_id.as_deref(),
+                flow_span_id: Some(flow_span.id),
+            },
+        )
+        .await?;
+    }
     let persisted_node_traces = persist_flow_debug_node_traces(
         repository,
         scope_id,

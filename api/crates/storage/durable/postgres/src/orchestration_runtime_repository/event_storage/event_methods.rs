@@ -3,9 +3,29 @@ impl PgControlPlaneStore {
         &self,
         input: &AppendRunEventInput,
     ) -> Result<domain::RunEventRecord> {
+        self.append_run_event_with_id(input, Uuid::now_v7(), false)
+            .await
+    }
+
+    async fn append_run_event_with_id(
+        &self,
+        input: &AppendRunEventInput,
+        record_id: Uuid,
+        historical_observation: bool,
+    ) -> Result<domain::RunEventRecord> {
         let mut tx = self.pool().begin().await?;
 
-        lock_open_flow_run_for_event_append(&mut tx, input.flow_run_id).await?;
+        if historical_observation {
+            // The scoped receipt proves this fact predates the terminal run.
+            // Reconciliation may append its diagnostic projection afterwards;
+            // ordinary event writers retain the existing open-run fence.
+            sqlx::query("select id from flow_runs where id=$1 for no key update")
+                .bind(input.flow_run_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        } else {
+            lock_open_flow_run_for_event_append(&mut tx, input.flow_run_id).await?;
+        }
         let scope_id = flow_run_scope_id_for_update(&mut tx, input.flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
         let next_sequence = next_event_sequence(&mut tx, input.flow_run_id).await?;
@@ -23,6 +43,7 @@ impl PgControlPlaneStore {
                 resume_timeline_description,
                 resume_timeline_description_projected
             , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, ($7::jsonb -> 0), $8, true, jsonb_strip_nulls(jsonb_build_object('payload', ($7::jsonb -> 1))) )
+            on conflict (id) do update set id=flow_run_events.id
             returning
                 id,
                 flow_run_id,
@@ -33,7 +54,7 @@ impl PgControlPlaneStore {
                 created_at
             "#,
         )
-        .bind(Uuid::now_v7())
+        .bind(record_id)
         .bind(scope_id)
         .bind(input.flow_run_id)
         .bind(input.node_run_id)
@@ -128,6 +149,15 @@ impl PgControlPlaneStore {
         &self,
         input: &AppendRuntimeSpanInput,
     ) -> Result<domain::RuntimeSpanRecord> {
+        self.append_runtime_span_with_id(input, Uuid::now_v7())
+            .await
+    }
+
+    async fn append_runtime_span_with_id(
+        &self,
+        input: &AppendRuntimeSpanInput,
+        record_id: Uuid,
+    ) -> Result<domain::RuntimeSpanRecord> {
         let row = sqlx::query(
             r#"
             insert into runtime_spans (
@@ -146,6 +176,7 @@ impl PgControlPlaneStore {
                 started_at,
                 finished_at
             ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            on conflict (id) do update set id=runtime_spans.id
             returning
                 id,
                 flow_run_id,
@@ -163,7 +194,7 @@ impl PgControlPlaneStore {
                 finished_at
             "#,
         )
-        .bind(Uuid::now_v7())
+        .bind(record_id)
         .bind(input.flow_run_id)
         .bind(input.node_run_id)
         .bind(input.parent_span_id)
@@ -187,11 +218,31 @@ impl PgControlPlaneStore {
         &self,
         input: &AppendRuntimeEventInput,
     ) -> Result<domain::RuntimeEventRecord> {
+        self.append_runtime_event_with_id(input, Uuid::now_v7(), false)
+            .await
+    }
+
+    async fn append_runtime_event_with_id(
+        &self,
+        input: &AppendRuntimeEventInput,
+        record_id: Uuid,
+        historical_observation: bool,
+    ) -> Result<domain::RuntimeEventRecord> {
         let mut tx = self.pool().begin().await?;
         if native_projection_queue_event(&input.event_type) {
             lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
         }
-        lock_open_flow_run_for_event_append(&mut tx, input.flow_run_id).await?;
+        if historical_observation {
+            // The scoped receipt proves this fact predates the terminal run.
+            // Reconciliation may append its diagnostic projection afterwards;
+            // ordinary event writers retain the existing open-run fence.
+            sqlx::query("select id from flow_runs where id=$1 for no key update")
+                .bind(input.flow_run_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        } else {
+            lock_open_flow_run_for_event_append(&mut tx, input.flow_run_id).await?;
+        }
         lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
         let next_sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
         observation_bodies::lock_native_batch(&mut tx, std::slice::from_ref(input)).await?;
@@ -216,6 +267,7 @@ impl PgControlPlaneStore {
                 visibility,
                 durability
             , raw_json_payloads, observation_body_content_id, observation_body_manifest_id) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, ($13::jsonb -> 0), $14, $15, jsonb_strip_nulls(jsonb_build_object('payload', ($13::jsonb -> 1))), $16, $17 )
+            on conflict (id) do update set id=runtime_events.id
             returning
                 id,
                 flow_run_id,
@@ -235,7 +287,7 @@ impl PgControlPlaneStore {
                 created_at
             "#,
         )
-        .bind(Uuid::now_v7())
+        .bind(record_id)
         .bind(input.flow_run_id)
         .bind(input.node_run_id)
         .bind(input.span_id)
@@ -398,6 +450,15 @@ impl PgControlPlaneStore {
         &self,
         input: &AppendRuntimeItemInput,
     ) -> Result<domain::RuntimeItemRecord> {
+        self.append_runtime_item_with_id(input, Uuid::now_v7())
+            .await
+    }
+
+    async fn append_runtime_item_with_id(
+        &self,
+        input: &AppendRuntimeItemInput,
+        record_id: Uuid,
+    ) -> Result<domain::RuntimeItemRecord> {
         let row = sqlx::query(
             r#"
             insert into runtime_items (
@@ -412,6 +473,7 @@ impl PgControlPlaneStore {
                 usage_ledger_id,
                 trust_level
             ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            on conflict (id) do update set id=runtime_items.id
             returning
                 id,
                 flow_run_id,
@@ -427,7 +489,7 @@ impl PgControlPlaneStore {
                 updated_at
             "#,
         )
-        .bind(Uuid::now_v7())
+        .bind(record_id)
         .bind(input.flow_run_id)
         .bind(input.span_id)
         .bind(input.kind.as_str())
@@ -446,6 +508,15 @@ impl PgControlPlaneStore {
     async fn append_context_projection(
         &self,
         input: &AppendContextProjectionInput,
+    ) -> Result<domain::ContextProjectionRecord> {
+        self.append_context_projection_with_id(input, Uuid::now_v7())
+            .await
+    }
+
+    async fn append_context_projection_with_id(
+        &self,
+        input: &AppendContextProjectionInput,
+        record_id: Uuid,
     ) -> Result<domain::ContextProjectionRecord> {
         let row = sqlx::query(
             r#"
@@ -467,6 +538,7 @@ impl PgControlPlaneStore {
                 token_estimate,
                 provider_continuation_metadata
             ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            on conflict (id) do update set id=runtime_context_projections.id
             returning
                 id,
                 flow_run_id,
@@ -487,7 +559,7 @@ impl PgControlPlaneStore {
                 created_at
             "#,
         )
-        .bind(Uuid::now_v7())
+        .bind(record_id)
         .bind(input.flow_run_id)
         .bind(input.node_run_id)
         .bind(input.llm_turn_span_id)

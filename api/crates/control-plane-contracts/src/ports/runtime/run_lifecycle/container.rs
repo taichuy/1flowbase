@@ -11,6 +11,7 @@ pub struct CommitContainerTransitionInput {
     pub node: Option<ContainerNodeFact>,
     pub rounds: Vec<ContainerRoundFact>,
     pub control_failure: Option<ContainerControlFailureFact>,
+    pub observation: Option<ContainerObservationInput>,
 }
 
 #[derive(Debug, Clone)]
@@ -46,4 +47,43 @@ pub struct ContainerRoundFact {
 pub struct ContainerControlFailureFact {
     pub after_round_index: u64,
     pub error_payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct ContainerObservationInput {
+    pub observation_key: String,
+    pub trace_payload: serde_json::Value,
+}
+#[derive(Debug, Clone)]
+pub struct PendingContainerObservation {
+    pub id: Uuid,
+    pub flow_run_id: Uuid,
+    pub node_run_id: Uuid,
+    pub started_at: OffsetDateTime,
+    pub trace_payload: serde_json::Value,
+}
+
+/// Only the existing node-observation writes needed by a scoped trace. The
+/// receipt and deterministic record IDs make interrupted projections resumable.
+#[derive(Debug, Clone)]
+pub enum ContainerObservationOperation {
+    Span(AppendRuntimeSpanInput),
+    ContextProjection(AppendContextProjectionInput),
+    Attempt(AppendModelFailoverAttemptLedgerInput),
+    Usage(AppendUsageLedgerInput),
+    RunEvent(AppendRunEventInput),
+    RuntimeEvent(AppendRuntimeEventInput),
+    Item(AppendRuntimeItemInput),
+    Capability(AppendCapabilityInvocationInput),
+}
+#[derive(Debug, Clone)]
+pub enum ContainerObservationResult {
+    Span(domain::RuntimeSpanRecord),
+    ContextProjection(domain::ContextProjectionRecord),
+    Attempt(domain::ModelFailoverAttemptLedgerRecord),
+    Usage(domain::UsageLedgerRecord),
+    RunEvent(domain::RunEventRecord),
+    RuntimeEvent(domain::RuntimeEventRecord),
+    Item(domain::RuntimeItemRecord),
+    Capability(domain::CapabilityInvocationRecord),
 }

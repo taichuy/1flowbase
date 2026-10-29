@@ -6,6 +6,15 @@ mod dispatch_lease;
 mod log_operations;
 
 log_operations::with_log_operations! {
+    async fn list_pending_container_observations(&self, flow_run_id: Uuid, after_id: Option<Uuid>, limit: i64) -> Result<Vec<control_plane_contracts::ports::PendingContainerObservation>> {
+        PgControlPlaneStore::list_pending_container_observations(self,flow_run_id,after_id,limit).await
+    }
+    async fn apply_container_observation(&self, observation_id: Uuid, record_id: Uuid, operation: &control_plane_contracts::ports::ContainerObservationOperation) -> Result<control_plane_contracts::ports::ContainerObservationResult> {
+        PgControlPlaneStore::apply_container_observation(self,observation_id,record_id,operation).await
+    }
+    async fn finish_container_observation(&self, observation_id: Uuid, debug_refs: &Value) -> Result<()> {
+        PgControlPlaneStore::finish_container_observation(self,observation_id,debug_refs).await
+    }
     async fn commit_container_transition(&self, input: &control_plane_contracts::ports::CommitContainerTransitionInput) -> Result<Option<domain::NodeRunRecord>> {
         PgControlPlaneStore::commit_container_transition(self, input).await
     }

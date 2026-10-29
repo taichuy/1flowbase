@@ -171,6 +171,11 @@ impl PgControlPlaneStore {
                 );
             }
         }
+        if let Some(observation) = &input.observation {
+            sqlx::query("insert into flow_container_observations(id,flow_run_id,execution_id,observation_key,trace_payload,raw_json_payloads) values($1,$2,$3,$4,($5::jsonb->0),jsonb_strip_nulls(jsonb_build_object('trace_payload',($5::jsonb->1)))) on conflict(flow_run_id,execution_id,observation_key) do nothing")
+                .bind(Uuid::now_v7()).bind(input.flow_run_id).bind(identity.execution_id).bind(&observation.observation_key)
+                .bind(lossless_json_parameter(&observation.trace_payload)).execute(&mut *tx).await?;
+        }
         // Test deadlines after obtaining the write owner and doing the work;
         // queued writes cannot turn a result received before expiry into a late
         // durable success. Failed/cancelled closure must remain writable.

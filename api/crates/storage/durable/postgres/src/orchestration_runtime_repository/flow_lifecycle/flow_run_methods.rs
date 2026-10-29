@@ -1060,3 +1060,6 @@ mod checkpoint_records;
 
 #[path = "flow_run_methods/container.rs"]
 mod container;
+
+#[path = "flow_run_methods/container_observations.rs"]
+mod container_observations;

@@ -6,6 +6,30 @@ pub trait FlowRunDispatchLease: Send {}
 
 #[async_trait]
 pub trait OrchestrationRuntimeRepository: Send + Sync {
+    async fn list_pending_container_observations(
+        &self,
+        _flow_run_id: Uuid,
+        _after_id: Option<Uuid>,
+        _limit: i64,
+    ) -> anyhow::Result<Vec<PendingContainerObservation>> {
+        Ok(Vec::new())
+    }
+    async fn apply_container_observation(
+        &self,
+        _observation_id: Uuid,
+        _record_id: Uuid,
+        _operation: &ContainerObservationOperation,
+    ) -> anyhow::Result<ContainerObservationResult> {
+        anyhow::bail!("container observation write not implemented")
+    }
+    async fn finish_container_observation(
+        &self,
+        _observation_id: Uuid,
+        _debug_refs: &serde_json::Value,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("container observation completion not implemented")
+    }
+
     async fn commit_container_transition(
         &self,
         _input: &CommitContainerTransitionInput,

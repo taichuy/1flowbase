@@ -12,7 +12,7 @@ pub(in crate::orchestration_runtime) async fn append_model_attempts_from_metrics
     error_payload: Option<&Value>,
 ) -> Result<Vec<domain::ModelFailoverAttemptLedgerRecord>>
 where
-    R: OrchestrationRuntimeRepository,
+    R: crate::runtime_observability::RuntimeObservationRepository,
 {
     let mut attempt_payloads = metrics_payload
         .get("attempts")

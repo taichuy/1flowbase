@@ -55,8 +55,7 @@ where
         let logical_identity = suspended_node
             .map(|(identity, _)| identity)
             .unwrap_or(transition.identity);
-        let identity: domain::NodeExecutionIdentity =
-            serde_json::from_value(serde_json::to_value(logical_identity)?)?;
+        let identity = logical_identity.clone();
         let waiting = suspended_node.map(|(_, wait)| wait);
         let node = match transition.kind {
             ContainerTransitionKind::NodeStarted | ContainerTransitionKind::FrameEntered => {
@@ -183,6 +182,20 @@ where
                     .get(&round.round_index)
             })
             .map(|round| round.deadline_owner_execution_id);
+        let observation = if transition.trace.is_some()
+            && (transition.kind != ContainerTransitionKind::ScopeSuspended
+                || suspended_node.is_some())
+        {
+            let trace_payload = serde_json::to_value(transition.trace.expect("checked"))?;
+            Some(crate::ports::ContainerObservationInput {
+                observation_key: crate::runtime_observability::projection::model_input_hash(
+                    &trace_payload,
+                ),
+                trace_payload,
+            })
+        } else {
+            None
+        };
         let record = self
             .service
             .repository
@@ -193,6 +206,7 @@ where
                 checkpoint: serde_json::to_value(transition.checkpoint)?,
                 node,
                 rounds,
+                observation,
                 control_failure: if transition.kind == ContainerTransitionKind::ControlFailed {
                     let detail = transition.detail.ok_or_else(|| anyhow::anyhow!("container control failure missing"))?;
                     Some(crate::ports::ContainerControlFailureFact {
