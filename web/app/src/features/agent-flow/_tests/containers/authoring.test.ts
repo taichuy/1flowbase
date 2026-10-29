@@ -1,3 +1,4 @@
+import '../../../workflow/register';
 import { describe, expect, test } from 'vitest';
 import { containerDocument, state } from './fixtures';
 import { createAgentFlowEditorStore } from '../../store/editor';

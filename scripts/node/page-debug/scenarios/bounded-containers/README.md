@@ -1,59 +1,68 @@
 # Bounded container browser acceptance fixture
 
-This scenario is **authored, not executed** in P07a. It is a candidate-bound fixture for the Root #2711 central QA batch. It starts no server, installs no dependency, and never changes an existing application.
+F03 repairs the QA1 fixture failures and extends the already-approved UI evidence. The repaired scene is **authored, not executed**. QA1's resize failure remains a failed result; syntax checks do not replace a new central QA run. This command starts no service and never edits an existing application.
 
 ## Run
 
-From the candidate worktree, against its already-running web/API services:
+From the assembled candidate worktree, against its already-running services:
 
 ```bash
 node scripts/node/page-debug/scenarios/bounded-containers/run.cjs \
   --web-base-url http://127.0.0.1:3102 \
   --api-base-url http://127.0.0.1:7802 \
   --chrome /usr/bin/google-chrome \
-  --output-dir tmp/test-governance/bounded-containers-browser/candidate-01
+  --reference-manifest /absolute/path/to/private-reference-manifest.json \
+  --output-dir tmp/test-governance/bounded-containers-browser/qa2
 ```
 
-For the final local web surface, pass `--web-base-url http://127.0.0.1:3100` and the actual matching API port. Neither port is restarted or taken over. `--headed` is optional. `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` is accepted when `--chrome` is omitted. The evidence directory must be empty; use a new directory for each candidate/run.
+Use `--web-base-url http://127.0.0.1:3100` and its matching API origin for the final local surface. Neither service is started, stopped, or taken over. `--headed` is optional. `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` is accepted when `--chrome` is omitted. Use an empty evidence directory for each run.
 
-Dependencies: repository `web/node_modules` Playwright, installed local Google Chrome, migrated API/database, authenticated console and Workflow APIs, the container compiler/runtime/persistence/log projection changes assembled, and an exposed loop/iteration node catalog. The existing JavaScript code runtime must be available. No model provider, external network request node, plugin, or scheduler execution is required.
+Dependencies: installed repository Playwright, local Google Chrome, migrated API/database, the assembled container compiler/runtime/persistence/trajectory fixes, published loop/iteration catalog entries, and the existing JavaScript runtime. No model provider, external request node, plugin, or live scheduled execution is required.
 
-Credentials come from `loadRootCredentials` in `scripts/node/page-debug/auth.js` and its existing service environment. The only login owner is `openTemporaryOwnerSession` from that module. Cookie/CSRF values remain in memory and are never written to evidence. Do not pass a password on this scenario's CLI.
+Credentials come from `loadRootCredentials` and `openTemporaryOwnerSession` in `scripts/node/page-debug/auth.js`. Cookie and CSRF values remain in memory. No password argument, direct sign-in, storage-state dump, HAR, or request headers are recorded.
 
-## Fixture and real interactions
+## Original user image references
 
-The scenario creates a uniquely named temporary Workflow application and immediately disables its schedule trigger. It never publishes the application. Test Run uses the existing schedule test form, which explicitly does not enqueue the real schedule.
+A private manifest supplies the three original PNG attachments, without putting personal absolute paths in source control:
 
-1. Prepare a small `Workflow Start → Code → Workflow End` draft through the real draft endpoint. `items_json` is an existing **paragraph/string input**, not a new array input type. Code uses `JSON.parse` to produce its declared `result.items` array.
-2. Use the real canvas `BC Input` plus picker to create a Loop. Set alias, maximum rounds and timeout through the inspector, save, and read the server draft. Require exactly one persisted automatic `container_start`.
-3. Prepare the remainder around that same UI-created Loop ID: `Loop → Iteration → Template Transform`. Keep its UI-created start. Add a root template successor and Workflow End. The preparation leaves the iteration's items binding unset.
-4. Through the real inspector set outer rounds to 2, outer timeout to 30000 ms and error policy to `continue`; set inner timeout to 15000 ms and policy to `break`. Select `BC Input / result / items` in the real array variable Cascader. These values are fixture inputs, not new product defaults.
-5. Select the inner leaf and require its inspector alias while the root node remains on the same canvas. Drag the outer header and resize its real xyflow control. Save and verify root movement, unchanged child-relative coordinates, increased dimensions, and exact persisted graph equality after reload.
-6. Use the formal Test Run drawer with `{"items_json":"[1,2,3]"}`. Read the actual POST response and debug snapshot. Open the formal execution Trace page.
-7. Capture desktop creation, inner selection, saved/reloaded canvas, run result, Trace, and a 390 × 844 mobile editor screenshot. Mobile evidence covers layout/overflow only; it does not claim mobile canvas editing.
+```json
+{
+  "references": [
+    { "role": "canvas-overview", "path": "/absolute/private/original-canvas.png" },
+    { "role": "loop-settings", "path": "/absolute/private/original-loop.png" },
+    { "role": "iteration-settings", "path": "/absolute/private/original-iteration.png" }
+  ]
+}
+```
 
-No browser route mock, DOM injection, application store manipulation, or response substitution is used. `page.evaluate` is restricted to reading geometry/animation stability. API preparation is separate from the subsequent UI assertions; it does not replace the automatic-start/picker proof or field/move/resize saving.
+The scenario copies the originals byte-for-byte to `references/`, records SHA-256 and dimensions, and writes `visual-comparison.md` mapping each original to its candidate screenshots. It does not claim visual equivalence automatically. QA must view both images and record the white rounded container, cyan icon, pale dotted body, internal start/edges, blue selection, inspector hierarchy, and any material differences. Deadline controls are approved additions; fixture node types, app chrome and graph topology are expected differences. The original references must not be replaced with newly captured candidate images.
 
-## Assertions and contract sources
+## Real scenario and assertions
 
-| Assertion | Source contract |
-| --- | --- |
-| Application create/delete and disabled schedule trigger | `web/packages/api-client/src/console/applications.ts`, `application-public-api/index.ts` |
-| Draft save body `{document, change_kind, summary}` and returned `draft.document` | `console/application-orchestration.ts` |
-| Test Run input `{input_payload:{[startId]:{items_json:"[1,2,3]"}}, document}` | `features/workflow/lib/test-run.ts`, `WorkflowTestRunPanel.tsx` |
-| Success status and results `[["0:1","0:2","0:3"],["1:1","1:2","1:3"]]`, successor `done` | `ConsoleApplicationRunDetail.flow_run.{status,output_payload}` and explicit fixture templates |
-| Code produced the actual `[1,2,3]` array | Code output contract selector `['result','items']`; `node_runs[].output_payload.result.items` |
-| Six leaf records, distinct record IDs and expected 2 × 3 paths | `ConsoleNodeRunDetail.execution_identity` from P06: `{execution_id,node_id,parent_execution_id,round_path}`; each path element `{container_execution_id,container_node_id,round_index}` |
-| Record identity is the execution identity | `node_runs[].id === execution_identity.execution_id`; never inferred from debug payload/text |
+1. Create a uniquely named temporary Workflow and immediately disable its schedule. Never publish it. Prepare `Workflow Start → Code → Workflow End` through the real draft API. The existing paragraph/string input `items_json` carries `"[1,2,3]"`; Code parses it to its declared `result.items` array. No new Start input type is introduced.
+2. Use the real `BC Input` plus picker to create a Loop, configure it through the inspector, save, and require exactly one persisted automatic `container_start`. Preserve that real Loop/start pair when preparing the remaining graph.
+3. Prepare three actual nested containers: **Loop(2) → Iteration(3) → Loop(1) → Template Transform**. Iteration exports the innermost loop's one-element result and uses the existing one-level flatten option. Thus the original 2 × 3 output remains unchanged and the leaf still executes exactly six times.
+4. Through real fields, set outer maximum rounds 2, timeout 30000 ms and failure strategy `continue`; set iteration timeout 15000 ms and strategy `break`. Use the real array Cascader to select `BC Input / result / items`. The innermost loop has one round and a 5000 ms fixture deadline. These are explicit fixture inputs, not product defaults.
+5. Select each container layer and the leaf, verifying the matching inspector alias and retained root canvas. Before moving or resizing, read `elementFromPoint` at the actual control, pan the real canvas with the middle mouse button when occluded, and verify the resulting hit. `receipt.pointer_targets` retains the targeting evidence. Never use forced clicks or DOM relocation to bypass a dock.
+6. Move and resize the outer container, save, and require unchanged descendant-relative positions, increased dimensions, and unchanged execution semantics. Copy the entire three-layer subtree through actual `Ctrl+C`/`Ctrl+V`; inspect its saved graph for fresh IDs, internal selector/template remaps, retained external array reference, and a single root offset. Use real Delete, Undo, and Redo, saving each state; require exact subtree restoration and final equality with the original graph. Do not fit/pan between history steps, because viewport changes are legitimate editor history.
+7. Reload and require graph equality. Use the formal Test Run form with `{"items_json":"[1,2,3]"}`. Click its actual `button[type="submit"]`, accommodating Ant Design's displayed `运 行`. The response listener has an immediate rejection handler and is always removed/settled when the action fails, so teardown cannot cause an unhandled response-promise rejection.
+8. Require `flow_run.status === "succeeded"`, output `{"results":[["0:1","0:2","0:3"],["1:1","1:2","1:3"]],"after":"done"}`, a real Code-produced array, and one successful root successor. Persist the restricted run response before assertions so a failed execution remains diagnosable.
+9. Require six distinct leaf `node_run.id` values and six distinct canonical `execution_identity.execution_id` values. These are separate identifiers, not falsely required to be equal. Require three-element `round_path` values `0/0/0`, `0/1/0`, `0/2/0`, `1/0/0`, `1/1/0`, `1/2/0` with the correct container IDs and nonempty parent/execution IDs. Never infer identity from debug text.
+10. Open the formal execution Trace, select the nested `1/1/0` round through its real TreeSelect, and require the rendered BC Item rows to point to the corresponding node-run receipt with all three path labels. Click a row and verify its selected state.
+11. Capture desktop overview, three inspector levels, copy/history, reload, run and selected trajectory screenshots. In a separate 390 × 844 context, wait for measured nested canvas nodes, fit the actual canvas, require visible nested content, and only then take the mobile screenshot and overflow measurement. A loading shell does not satisfy readiness. Mobile editing is not claimed.
 
-The exact P06 typed identity field is required; missing fields fail instead of silently skipping the assertion. `round_index` is zero-based. Outer paths are 0/1 and inner paths 0/1/2. A successful root successor must execute once after the containers.
+`page.evaluate` only reads geometry, animation stability, and rendered evidence. There is no route mock, DOM injection, application store manipulation, or response substitution. API preparation is distinct from actual UI creation/configuration/history/run assertions.
 
-The fixture checks that chosen error policies persist. It does not claim to prove their failure behavior, cancellation, recovery, parallel stop points, or the whole backend matrix; those are owned by backend fixtures. The API projections and screenshots are not substitutes for that evidence.
+## Contracts and evidence boundaries
 
-## Evidence and cleanup
+The API contracts are `console/applications.ts`, `application-public-api/index.ts`, `console/application-orchestration.ts`, and `console/application-runtime/types.ts`. Workflow test input is built by `features/workflow/lib/test-run.ts` and `WorkflowTestRunPanel.tsx`. Code output uses its established `['result','items']` selector. Trajectory assertions consume the typed `execution_identity` (`execution_id`, `node_id`, `parent_execution_id`, `round_path`) and zero-based round indices.
 
-`receipt.json` records source SHA, service origins, Chrome version, created application/run IDs, pass/fail and scoped assertions. JSON artifacts hold the known fixture drafts and a restricted run projection (status, outputs, typed execution identity). Screenshots are retained. No HAR, request headers, cookie file, browser storage dump or credentials are recorded.
+This scene checks that selected error policies persist, not their failure semantics. Backend fixtures own cancellation, error matrices, recovery, external side effects, and concurrent stop points. Six valid UI-run records are not proof of those properties.
 
-In `finally`, close browser contexts, cancel a nonpassing run when its ID is known, delete only the created application ID, revoke the temporary session through its owner, and check that the old session returns HTTP 401. `cleanup.json` reports each result; cleanup failure makes the scenario fail. Evidence files are intentional retained outputs; no transient credential files are created. If the process is forcibly killed outside JavaScript cleanup, use the exact `application_id` from the receipt to clean up that fixture; never select an existing application by display name.
+## Artifacts and cleanup
 
-Known integration risk identified while authoring: Workflow's separate variable validator originally used only flat upstream traversal. Central assembly must include its container-scope update. This scenario does not suppress Issues or fake a selector to avoid that risk. The array source deliberately uses a normal Code node so Start input types remain unchanged.
+`receipt.json` records the candidate SHA, origins, Chrome version, owned application/run IDs, assertion results, pointer targeting, video paths and original-image hashes. `videos/` contains real desktop and mobile recordings, finalized when contexts close. Saved document snapshots cover creation, copies, final history state and reload; the restricted run artifact includes status, error, outputs and canonical identity. Original comparison status remains pending until independent visual review.
+
+In `finally`, close contexts to flush video, close the browser, cancel a nonpassing run when its ID is known, delete only the created application ID, revoke the owned session, and require HTTP 401 from the old session. `cleanup.json` records results; cleanup errors fail the scenario. Evidence is intentionally retained. No transient credential file is created. Forced process termination outside JavaScript cleanup may require the QA owner to remove the exact application ID recorded in the receipt; never delete an existing app by display name.
+
+The related frontend regression batch includes the formal Workflow registry import and field-aware scope positive/negative assertions. It no longer relies on the obsolete helper-name string `listAuthoringVariableOptions` to prove the approved variable boundary. Run those tests only in the Root's consolidated QA batch.
