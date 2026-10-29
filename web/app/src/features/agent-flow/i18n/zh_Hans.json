@@ -739,7 +739,6 @@
     "view_cache": "查看缓存",
     "data_model_operation_node": "数据模型操作节点。",
     "last_run_failed_load": "上次运行加载失败",
-    "entry_conditions": "入口条件",
     "tool_callback_list": "工具回调列表",
     "apply_json": "应用 JSON",
     "system_variable_user_id": "用户 ID",
