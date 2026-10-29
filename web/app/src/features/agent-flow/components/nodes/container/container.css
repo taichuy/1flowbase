@@ -69,10 +69,17 @@
   height: 40px;
   border-radius: 50%;
   background: var(--container-surface);
-  border: 1px solid var(--container-start-border);
-  color: var(--container-accent);
-  font-size: 24px;
   box-sizing: border-box;
+}
+.agent-flow-container-start__icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--container-selection);
+  color: var(--container-surface);
+  font-size: 14px;
 }
 .agent-flow-container-start--selected {
   outline: 2px solid var(--container-selection);

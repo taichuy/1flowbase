@@ -4,7 +4,7 @@ import {
   Position,
   type NodeProps
 } from '@xyflow/react';
-import PlayCircleOutlined from '@ant-design/icons/es/icons/PlayCircleOutlined';
+import HomeFilled from '@ant-design/icons/es/icons/HomeFilled';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import { Button, theme } from 'antd';
 import type { CSSProperties } from 'react';
@@ -25,8 +25,7 @@ function useContainerTheme(): CSSProperties {
     '--container-selection': token.colorInfo,
     '--container-surface': token.colorBgContainer,
     '--container-body': token.colorFillQuaternary,
-    '--container-dots': token.colorBorderSecondary,
-    '--container-start-border': token.cyan3
+    '--container-dots': token.colorBorderSecondary
   } as CSSProperties;
 }
 
@@ -164,7 +163,9 @@ export function ContainerStart({
         }
       }}
     >
-      <PlayCircleOutlined />
+      <span className="agent-flow-container-start__icon">
+        <HomeFilled />
+      </span>
       <Source data={data} />
     </div>
   );
