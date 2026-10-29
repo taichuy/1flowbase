@@ -30,6 +30,7 @@ use crate::{
 };
 
 pub(crate) enum NetworkPoolsInput {
+    HttpNodeProxyOptions,
     List,
     CreateProxy(CreateNetworkEgressProxyBody),
     GetProxy {
@@ -79,6 +80,7 @@ pub(crate) enum NetworkPoolsInput {
 }
 
 pub(crate) enum NetworkPoolsOutput {
+    HttpNodeProxyOptions(Vec<HttpNodeProxyOptionResponse>),
     Proxy(NetworkEgressProxyResponse),
     Pools(Vec<NetworkEgressPoolResponse>),
     Pool(NetworkEgressPoolResponse),
@@ -125,6 +127,20 @@ impl NetworkPoolsAdapter {
     ) -> Result<NetworkPoolsOutput, ApiError> {
         let user_id = principal.actor().user_id;
         match input {
+            NetworkPoolsInput::HttpNodeProxyOptions => {
+                Ok(NetworkPoolsOutput::HttpNodeProxyOptions(
+                    NetworkEgressPoolService::new(self.0.store.clone())
+                        .http_node_proxy_options()
+                        .await?
+                        .into_iter()
+                        .map(|option| HttpNodeProxyOptionResponse {
+                            pool_member_id: option.pool_member_id,
+                            display_name: option.display_name,
+                            selectable: option.selectable,
+                        })
+                        .collect(),
+                ))
+            }
             NetworkPoolsInput::GetProxy { provider_id } => {
                 Ok(NetworkPoolsOutput::Proxy(proxy_response(
                     self.proxy_service()
@@ -335,6 +351,13 @@ impl ConsoleInterfacePort<NetworkPoolsInput, NetworkPoolsOutput> for NetworkPool
 }
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "agent_flow.http_node_proxy_options.list",
+        binding_id: "http.console.http-node-proxy-options.list.v1",
+        method: "GET",
+        path: "/api/console/network-center/http-node-proxy-options",
+        mutating: false,
+    },
     ConsoleInterfaceDeclaration {
         interface_id: "network_egress_proxies.get",
         binding_id: "http.console.network-egress-proxies.get.v1",

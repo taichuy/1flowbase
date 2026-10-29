@@ -224,12 +224,17 @@ pub trait ProviderRuntimePort: Send + Sync {
 
     async fn acquire_http_node_client(
         &self,
+        network_egress: &domain::HttpNodeNetworkEgress,
         workspace_id: uuid::Uuid,
         timeout: std::time::Duration,
         verify_ssl: bool,
     ) -> anyhow::Result<Option<orchestration_runtime::execution_engine::HttpRequestClientLease>>
     {
         let _ = (workspace_id, timeout, verify_ssl);
+        anyhow::ensure!(
+            !matches!(network_egress, domain::HttpNodeNetworkEgress::Proxy { .. }),
+            "configured HTTP node proxy resolver is unavailable"
+        );
         Ok(None)
     }
 }

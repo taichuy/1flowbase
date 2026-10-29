@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use control_plane_contracts::ports::{
     CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
     CreateNetworkEgressProviderInput, CreateNetworkEgressRouteInput,
-    CreateStaticHttpProxyPoolMemberInput, NetworkEgressPoolRepository, NetworkEgressRepository,
+    CreateStaticProxyPoolMemberInput, NetworkEgressPoolRepository, NetworkEgressRepository,
     NetworkEgressRouteRepository, RecordNetworkEgressPoolMemberProbeInput,
     RecordNetworkEgressSyncFailureInput, ReplaceNetworkEgressProjectionInput,
     UpdateNetworkEgressPoolInput, UpdateNetworkEgressPoolMemberInput,
@@ -257,9 +257,9 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         Ok(())
     }
 
-    async fn create_static_http_proxy_pool_member(
+    async fn create_static_proxy_pool_member(
         &self,
-        input: &CreateStaticHttpProxyPoolMemberInput,
+        input: &CreateStaticProxyPoolMemberInput,
     ) -> Result<domain::NetworkEgressPoolMember> {
         let encrypted_secret_json =
             encrypt_secret_json(&input.plaintext_secret_json, &input.master_key)?;
@@ -271,7 +271,7 @@ impl NetworkEgressRepository for PgControlPlaneStore {
                 provider_code, display_name, description, secret_ref,
                 lifecycle, health_status, created_by, updated_by
             ) values (
-                $1, $2, null, null, null, 'builtin_static_http', $3, $4, $5,
+                $1, $2, null, null, null, $7, $3, $4, $5,
                 'active', 'healthy', $6, $6
             )
         "#,
@@ -282,6 +282,7 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         .bind(&input.description)
         .bind(&input.secret_ref)
         .bind(input.actor_user_id)
+        .bind(input.protocol.provider_code())
         .execute(&mut *transaction)
         .await?;
         sqlx::query(
@@ -300,12 +301,14 @@ impl NetworkEgressRepository for PgControlPlaneStore {
             r#"
             insert into network_egress_projections (
                 provider_id, provider_egress_key, display_name, region, tags, availability, synced_at
-            ) values ($1, 'static-http', $2, null, array['static', 'http'], 'available', $3)
+            ) values ($1, $4, $2, null, array['static', $5], 'available', $3)
         "#,
         )
         .bind(input.provider_id)
         .bind(&input.display_name)
         .bind(input.synchronized_at)
+        .bind(input.protocol.egress_key())
+        .bind(input.protocol.tag())
         .execute(&mut *transaction)
         .await?;
         let row = sqlx::query(
@@ -313,7 +316,7 @@ impl NetworkEgressRepository for PgControlPlaneStore {
             insert into network_egress_pool_members (
                 id, pool_id, provider_id, provider_egress_key, enabled, sequence,
                 created_by, updated_by
-            ) values ($1, $2, $3, 'static-http', $4, $5, $6, $6)
+            ) values ($1, $2, $3, $7, $4, $5, $6, $6)
             returning *
         "#,
         )
@@ -323,6 +326,7 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         .bind(input.enabled)
         .bind(input.sequence)
         .bind(input.actor_user_id)
+        .bind(input.protocol.egress_key())
         .fetch_one(&mut *transaction)
         .await?;
         transaction.commit().await?;

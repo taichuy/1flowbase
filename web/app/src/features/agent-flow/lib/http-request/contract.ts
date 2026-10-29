@@ -1,4 +1,7 @@
-import type { FlowBinding, FlowNodeOutputDocument } from '@1flowbase/flow-schema';
+import type {
+  FlowBinding,
+  FlowNodeOutputDocument
+} from '@1flowbase/flow-schema';
 
 import { i18nText } from '../../../../shared/i18n/text';
 
@@ -32,6 +35,7 @@ export type HttpRequestBodyType =
   (typeof HTTP_REQUEST_BODY_TYPE_OPTIONS)[number]['value'];
 
 export const HTTP_REQUEST_DEFAULT_CONFIG = {
+  network_egress: { mode: 'workspace' },
   method: 'GET',
   url: '',
   body_type: 'none',
@@ -75,5 +79,7 @@ export const HTTP_REQUEST_OUTPUTS = [
 export function isHttpRequestBodyType(
   value: unknown
 ): value is HttpRequestBodyType {
-  return HTTP_REQUEST_BODY_TYPE_OPTIONS.some((option) => option.value === value);
+  return HTTP_REQUEST_BODY_TYPE_OPTIONS.some(
+    (option) => option.value === value
+  );
 }

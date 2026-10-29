@@ -55,11 +55,12 @@ where
 
     async fn acquire_http_node_client(
         &self,
+        network_egress: &domain::HttpNodeNetworkEgress,
         timeout: std::time::Duration,
         verify_ssl: bool,
     ) -> Result<Option<orchestration_runtime::execution_engine::HttpRequestClientLease>> {
         self.runtime
-            .acquire_http_node_client(self.workspace_id, timeout, verify_ssl)
+            .acquire_http_node_client(network_egress, self.workspace_id, timeout, verify_ssl)
             .await
     }
 

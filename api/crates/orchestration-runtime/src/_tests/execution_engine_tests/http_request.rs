@@ -289,6 +289,7 @@ impl ProviderInvoker for FailingNetworkEgressInvoker {
 
     async fn acquire_http_node_client(
         &self,
+        _network_egress: &domain::HttpNodeNetworkEgress,
         _timeout: std::time::Duration,
         _verify_ssl: bool,
     ) -> Result<Option<crate::execution_engine::HttpRequestClientLease>> {
@@ -315,6 +316,7 @@ impl ProviderInvoker for HostCreatedProxyClientInvoker {
 
     async fn acquire_http_node_client(
         &self,
+        _network_egress: &domain::HttpNodeNetworkEgress,
         _timeout: std::time::Duration,
         _verify_ssl: bool,
     ) -> Result<Option<crate::execution_engine::HttpRequestClientLease>> {
@@ -843,3 +845,6 @@ async fn http_request_node_projects_binary_response_file_descriptor_when_enabled
 }
 #[path = "http_request/response_budgets.rs"]
 mod response_budgets;
+
+#[path = "http_request/network_egress.rs"]
+mod network_egress;

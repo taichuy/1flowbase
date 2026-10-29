@@ -30,8 +30,10 @@ where
         &self,
         provider: &domain::NetworkEgressProviderRecord,
     ) -> Result<PluginFormSchema> {
-        if provider.provider_code == "builtin_static_http" {
-            return Ok(builtin_static_http_type().form_schema);
+        if let Some(protocol) =
+            domain::StaticProxyProtocol::from_provider_code(&provider.provider_code)
+        {
+            return Ok(builtin_static_proxy_type(protocol).form_schema);
         }
         let family = provider
             .extension_family
@@ -134,7 +136,9 @@ where
         let mut config = validate_instance_config(&schema, Value::Object(config))?;
         let display_name = required_text(&command.display_name, "display_name")?;
         let now = OffsetDateTime::now_utc();
-        let egresses = if provider.provider_code == "builtin_static_http" {
+        let egresses = if let Some(protocol) =
+            domain::StaticProxyProtocol::from_provider_code(&provider.provider_code)
+        {
             let host = required_text(config["host"].as_str().unwrap_or_default(), "host")?;
             if host.contains(['/', '@', ':']) || host.chars().any(char::is_whitespace) {
                 return Err(ControlPlaneError::InvalidInput("host").into());
@@ -148,10 +152,10 @@ where
             config["port"] = serde_json::json!(port);
             vec![domain::NetworkEgressProjectionRecord {
                 provider_id: provider.id,
-                provider_egress_key: "static-http".into(),
+                provider_egress_key: protocol.egress_key().into(),
                 display_name: display_name.clone(),
                 region: None,
-                tags: vec!["static".into(), "http".into()],
+                tags: vec!["static".into(), protocol.tag().into()],
                 availability: "available".into(),
                 synced_at: now,
             }]
@@ -221,7 +225,7 @@ where
                 ),
             })
             .await?;
-        if provider.provider_code != "builtin_static_http" {
+        if domain::StaticProxyProtocol::from_provider_code(&provider.provider_code).is_none() {
             self.runtime
                 .unload_network_egress_provider(provider.id)
                 .await?;
@@ -232,5 +236,6 @@ where
 
 fn proxy_field_is_secret(provider_code: &str, key: &str) -> bool {
     // Extension config has no public-field declaration and may contain credential-bearing URLs.
-    provider_code != "builtin_static_http" || !matches!(key, "host" | "port" | "username")
+    domain::StaticProxyProtocol::from_provider_code(provider_code).is_none()
+        || !matches!(key, "host" | "port" | "username")
 }

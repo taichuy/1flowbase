@@ -320,6 +320,7 @@ impl ProviderInvoker for HttpPreviewInvoker {
     }
     async fn acquire_http_node_client(
         &self,
+        _network_egress: &domain::HttpNodeNetworkEgress,
         timeout: std::time::Duration,
         verify_ssl: bool,
     ) -> Result<Option<crate::execution_engine::HttpRequestClientLease>> {

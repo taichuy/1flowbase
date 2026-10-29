@@ -1,3 +1,4 @@
+export * from './console/http-node-proxy-options';
 export * from './application-public-api';
 export * from './console/applications';
 export * from './console/api-docs';

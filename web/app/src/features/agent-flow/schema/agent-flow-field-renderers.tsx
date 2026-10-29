@@ -73,6 +73,11 @@ const lazyField = <TModule, K extends keyof TModule>(
     }))
   );
 
+const HttpRequestNetworkEgressField = lazyField(
+  () =>
+    import('../components/detail/fields/http-request/HttpRequestNetworkEgressField'),
+  'HttpRequestNetworkEgressField'
+);
 const NotificationField = lazyField(
   () => import('../components/detail/fields/notification/NotificationField'),
   'NotificationField'
@@ -167,15 +172,18 @@ const HttpRequestBodyField = lazyField(
   'HttpRequestBodyField'
 );
 const HttpRequestCurlImportField = lazyField(
-  () => import('../components/detail/fields/http-request/HttpRequestCurlImportField'),
+  () =>
+    import('../components/detail/fields/http-request/HttpRequestCurlImportField'),
   'HttpRequestCurlImportField'
 );
 const HttpRequestKeyValuesField = lazyField(
-  () => import('../components/detail/fields/http-request/HttpRequestKeyValuesField'),
+  () =>
+    import('../components/detail/fields/http-request/HttpRequestKeyValuesField'),
   'HttpRequestKeyValuesField'
 );
 const HttpRequestTemplateInput = lazyField(
-  () => import('../components/detail/fields/http-request/HttpRequestTemplateInput'),
+  () =>
+    import('../components/detail/fields/http-request/HttpRequestTemplateInput'),
   'HttpRequestTemplateInput'
 );
 
@@ -1138,6 +1146,7 @@ export const agentFlowFieldRenderers = {
   start_input_fields: renderStartInputFieldsField,
   start_model_list: renderStartModelListField,
   notification: NotificationField,
+  http_request_network_egress: HttpRequestNetworkEgressField,
   http_request_endpoint: renderHttpRequestEndpointField,
   http_request_key_values: renderHttpRequestKeyValuesField,
   http_request_body: renderHttpRequestBodyField,

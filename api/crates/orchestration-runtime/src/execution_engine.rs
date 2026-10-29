@@ -306,9 +306,14 @@ pub trait ProviderInvoker: Send + Sync {
 
     async fn acquire_http_node_client(
         &self,
+        network_egress: &domain::HttpNodeNetworkEgress,
         _timeout: std::time::Duration,
         _verify_ssl: bool,
     ) -> Result<Option<HttpRequestClientLease>> {
+        anyhow::ensure!(
+            !matches!(network_egress, domain::HttpNodeNetworkEgress::Proxy { .. }),
+            "configured HTTP node proxy resolver is unavailable"
+        );
         Ok(None)
     }
 }

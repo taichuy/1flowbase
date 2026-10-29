@@ -7,6 +7,7 @@ pub(super) fn contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-network-pools",
             &[
+                "agent_flow.http_node_proxy_options.list",
                 "network_egress_pools.list",
                 "network_egress_proxies.create",
                 "network_egress_proxies.get",

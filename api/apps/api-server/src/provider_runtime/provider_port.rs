@@ -584,21 +584,37 @@ impl ProviderRuntimePort for ApiProviderRuntime {
 
     async fn acquire_http_node_client(
         &self,
+        network_egress: &domain::HttpNodeNetworkEgress,
         workspace_id: Uuid,
         timeout: std::time::Duration,
         verify_ssl: bool,
     ) -> anyhow::Result<Option<orchestration_runtime::execution_engine::HttpRequestClientLease>>
     {
-        let Some(network_egress) = self.network_egress.as_ref() else {
+        if matches!(network_egress, domain::HttpNodeNetworkEgress::Direct) {
+            return Ok(None);
+        }
+        let Some(resolver) = self.network_egress.as_ref() else {
+            anyhow::ensure!(
+                !matches!(network_egress, domain::HttpNodeNetworkEgress::Proxy { .. }),
+                "configured HTTP node proxy resolver is unavailable"
+            );
             return Ok(None);
         };
-        let Some(scope) = network_egress
-            .acquire(
-                workspace_id,
-                domain::NetworkEgressConsumerSelector::HttpNodeDefault,
-            )
-            .await?
-        else {
+        let scope = match network_egress {
+            domain::HttpNodeNetworkEgress::Workspace => {
+                resolver
+                    .acquire(
+                        workspace_id,
+                        domain::NetworkEgressConsumerSelector::HttpNodeDefault,
+                    )
+                    .await?
+            }
+            domain::HttpNodeNetworkEgress::Proxy { pool_member_id } => {
+                Some(resolver.acquire_pool_member(*pool_member_id).await?)
+            }
+            domain::HttpNodeNetworkEgress::Direct => unreachable!(),
+        };
+        let Some(scope) = scope else {
             return Ok(None);
         };
         scope

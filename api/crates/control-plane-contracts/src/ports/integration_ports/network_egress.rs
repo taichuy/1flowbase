@@ -13,7 +13,8 @@ pub struct CreateNetworkEgressProviderInput {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateStaticHttpProxyPoolMemberInput {
+pub struct CreateStaticProxyPoolMemberInput {
+    pub protocol: domain::StaticProxyProtocol,
     pub provider_id: Uuid,
     pub member_id: Uuid,
     pub pool_id: Uuid,
@@ -162,9 +163,9 @@ pub trait NetworkEgressRepository: Send + Sync {
     /// Used only to compensate an initial provider creation whose first synchronization failed.
     /// Existing providers retain their unhealthy state so operators can inspect and retry them.
     async fn delete_network_egress_provider(&self, provider_id: Uuid) -> anyhow::Result<()>;
-    async fn create_static_http_proxy_pool_member(
+    async fn create_static_proxy_pool_member(
         &self,
-        input: &CreateStaticHttpProxyPoolMemberInput,
+        input: &CreateStaticProxyPoolMemberInput,
     ) -> anyhow::Result<domain::NetworkEgressPoolMember>;
     async fn update_network_egress_proxy(
         &self,

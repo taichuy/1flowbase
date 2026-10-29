@@ -880,5 +880,16 @@
     "loaded_categories": "Categories · counts in loaded pages",
     "loaded_positions": "Loaded positions map to a time range; events sharing boundary timestamps are included.",
     "subagent_marker": "subagent"
+  },
+  "network_egress": {
+    "label": "Network egress",
+    "workspace": "Use workspace settings",
+    "proxy": "Use a proxy",
+    "direct": "Connect directly",
+    "unavailable": "Proxy unavailable",
+    "choose": "Select a proxy from the pool",
+    "load_failed": "Could not load proxies",
+    "retry": "Reload proxies",
+    "failure_policy": "Requests fail if the selected proxy is unavailable. They will not connect directly."
   }
 }
