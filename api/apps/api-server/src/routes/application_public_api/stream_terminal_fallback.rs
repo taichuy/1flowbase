@@ -36,6 +36,8 @@ pub(crate) struct NativeRunTerminalDependencies {
     #[cfg(test)]
     pub(crate) delivery_read_samples:
         Option<Arc<std::sync::Mutex<Vec<(bool, usize, usize, usize)>>>>,
+    #[cfg(test)]
+    pub(crate) delivery_read_attempts: Option<Arc<std::sync::atomic::AtomicUsize>>,
     store: storage_durable_postgres::MainDurableStore,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     provider_runtime: Arc<ApiRuntimeServices>,
@@ -59,6 +61,8 @@ impl NativeRunTerminalDependencies {
             published_plan_cache: None,
             #[cfg(test)]
             delivery_read_samples: None,
+            #[cfg(test)]
+            delivery_read_attempts: None,
             store,
             runtime_engine,
             provider_runtime,
@@ -124,6 +128,8 @@ impl NativeRunTerminalDependencies {
         scope: control_plane::ports::RuntimeEventDeliveryScope,
         include_membership: bool,
     ) -> anyhow::Result<control_plane::ports::RuntimeEventDeliveryBatch> {
+        #[cfg(test)]
+        self.observe_delivery_read_attempt();
         let batch = self
             .store
             .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
@@ -135,20 +141,39 @@ impl NativeRunTerminalDependencies {
             })
             .await?;
         #[cfg(test)]
+        self.observe_delivery_read(&batch);
+        Ok(batch)
+    }
+
+    #[cfg(test)]
+    fn observe_delivery_read_attempt(&self) {
+        if let Some(counter) = &self.delivery_read_attempts {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    #[cfg(test)]
+    fn observe_delivery_read(&self, batch: &control_plane::ports::RuntimeEventDeliveryBatch) {
         if let Some(samples) = &self.delivery_read_samples {
             let bytes = batch
                 .events
                 .iter()
-                .map(|event| serde_json::to_vec(&event.payload).unwrap().len())
+                .map(|event| {
+                    serde_json::to_vec(&event.payload)
+                        .expect("proof observation payload must serialize")
+                        .len()
+                })
                 .sum();
-            samples.lock().unwrap().push((
-                batch.closed_proof.is_some(),
-                batch.events.len(),
-                batch.claims.len(),
-                bytes,
-            ));
+            samples
+                .lock()
+                .expect("proof observation lock must remain valid")
+                .push((
+                    batch.closed_proof.is_some(),
+                    batch.events.len(),
+                    batch.claims.len(),
+                    bytes,
+                ));
         }
-        Ok(batch)
     }
 
     pub(crate) async fn ack_runtime_event_delivery(

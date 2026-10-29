@@ -7,7 +7,7 @@ use control_plane::ports::{
 
 // Use the actual atomic waiting writer: tool facts, original wait, context and
 // recovery anchor commit together, unlike asynchronous diagnostic append copies.
-async fn commit_wait(
+pub(super) async fn commit_wait(
     state: &ApiState,
     run: &NativeRunResult,
     payloads: &[Value],
@@ -129,7 +129,7 @@ fn empty_subscription() -> RuntimeEventSubscription {
     }
 }
 
-async fn collect_projection(
+pub(super) async fn collect_projection(
     mut receiver: mpsc::Receiver<CompatibleProjectionInput>,
 ) -> (Vec<Value>, usize) {
     let mut mapper = OpenAiResponseStreamMapper::with_mode(
@@ -236,6 +236,7 @@ async fn closed_proof_reads_385_facts_once_across_four_real_pg_forwarder_batches
         SubscribedCompatibleTypedEventStream {
             terminal_dependencies: dependencies,
             initial_run: run.clone(),
+            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
             delivery_scope: RuntimeEventDeliveryScope::Resume {
                 callback_task_id: callback,
             },
@@ -306,6 +307,7 @@ async fn initial_proof_read_failure_with_acked_uncertain_exact_replay_is_explici
         SubscribedCompatibleTypedEventStream {
             terminal_dependencies: terminal_dependencies(&state),
             initial_run: run.clone(),
+            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
             delivery_scope: RuntimeEventDeliveryScope::Resume {
                 callback_task_id: callback,
             },

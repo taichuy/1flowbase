@@ -141,6 +141,30 @@ pub(crate) struct CompatibleProjectionInput {
     delivery: Option<RuntimeEventDeliveryReceipt>,
 }
 
+/// Host-selected consumer capability, never inferred from request JSON or scope absence.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CompatibleDeliveryPolicy {
+    ScopedResponses,
+    NativeRunAttachment,
+}
+
+/// A Native-only consumer cannot be passed to a Responses stream projector.
+/// Its sole production constructor is the authenticated Native WS attach path.
+pub(crate) struct NativeRunAttachmentStream {
+    events: mpsc::Receiver<CompatibleProjectionInput>,
+}
+
+impl NativeRunAttachmentStream {
+    pub(crate) async fn next_native(
+        &mut self,
+    ) -> Option<(Arc<NativeRunResult>, RuntimeEventEnvelope)> {
+        self.events
+            .recv()
+            .await
+            .map(|input| (input.run_snapshot, input.envelope))
+    }
+}
+
 pub(crate) struct CompatibleTypedTurnStream {
     initial_run: NativeRunResult,
     events: mpsc::Receiver<CompatibleProjectionInput>,
@@ -876,6 +900,7 @@ fn opened_compatible_typed_stream(
         SubscribedCompatibleTypedEventStream {
             terminal_dependencies: native::native_run_terminal_dependencies(&dependencies.native),
             initial_run: initial_run.clone(),
+            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
             delivery_scope,
             from_sequence,
             durable_round_replay,
@@ -890,27 +915,41 @@ fn opened_compatible_typed_stream(
     })
 }
 
-pub(crate) async fn start_compatible_typed_attach_stream(
-    state: Arc<ApiState>,
+/// Called only after the Native WebSocket owner authenticated and read this run.
+/// Native cold recovery deliberately does not select a Responses callback round.
+pub(crate) async fn start_native_run_attachment_stream(
+    terminal_dependencies: NativeRunTerminalDependencies,
+    runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
     initial_run: NativeRunResult,
     from_sequence: Option<i64>,
-) -> Result<CompatibleTypedTurnStream, NativeApiError> {
-    attach_compatible_typed_stream(
-        NativeRunTerminalDependencies::new(
-            state.store.clone(),
-            state.runtime_engine.clone(),
-            state.provider_runtime.clone(),
-            state.provider_secret_master_key.clone(),
-            state.model_billing_require_provider_usage,
-            state.infrastructure.provider_transport_store(),
-            state.runtime_event_stream.clone(),
-        )
-        .with_published_plan_cache(state.infrastructure.published_plan_cache()),
-        state.runtime_event_stream.clone(),
-        initial_run,
-        from_sequence,
-    )
-    .await
+) -> Result<NativeRunAttachmentStream, NativeApiError> {
+    let subscription = match runtime_event_stream
+        .subscribe(initial_run.id, from_sequence)
+        .await
+    {
+        Ok(subscription) => subscription,
+        Err(_) => {
+            cold_runtime_event_subscription(&terminal_dependencies, &initial_run, from_sequence)
+                .await
+                .map_err(service_error)?
+        }
+    };
+    let (sender, events) = mpsc::channel(32);
+    tokio::spawn(send_subscribed_compatible_typed_event_stream(
+        SubscribedCompatibleTypedEventStream {
+            terminal_dependencies,
+            initial_run,
+            delivery_policy: CompatibleDeliveryPolicy::NativeRunAttachment,
+            // Explicitly unavailable Responses identity: this capability never reads it.
+            delivery_scope: RuntimeEventDeliveryScope::Unresolved,
+            from_sequence,
+            durable_round_replay: Vec::new(),
+            ignored_waiting_callback_task_id: None,
+            subscription,
+            sender,
+        },
+    ));
+    Ok(NativeRunAttachmentStream { events })
 }
 
 async fn attach_compatible_typed_stream(
@@ -1010,6 +1049,7 @@ fn attach_compatible_typed_stream_from_subscription(
         SubscribedCompatibleTypedEventStream {
             terminal_dependencies,
             initial_run: initial_run.clone(),
+            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
             delivery_scope,
             from_sequence,
             durable_round_replay,

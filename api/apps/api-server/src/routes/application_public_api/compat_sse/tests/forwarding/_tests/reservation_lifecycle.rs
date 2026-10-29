@@ -653,3 +653,166 @@ async fn partial_tool_results_keep_waiting_receipt_without_opening_or_execution(
         "waiting receipt projection must not invent a durable producer marker"
     );
 }
+
+#[tokio::test]
+async fn native_attach_keeps_llm_required_action_and_native_resume_owner_checks() {
+    use control_plane::application_public_api::run_service::ApplicationPublishedRunControlRepository;
+    use control_plane::application_public_api::{
+        callback_resume::{PreparedPublishedCallback, PublishedCallbackReservation},
+        native::ApplicationNativeRunService,
+    };
+    use control_plane::ports::UpdateCallbackTaskPayloadsInput;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let (state, dependencies, run, actor, mut command, service, stream) = fixture("open").await;
+    let callback_id = callback_task_id_from_resume_command(&command);
+    command.source = PublishedCallbackResumeSource::NativeAgent;
+    command.native_transport = None;
+    command.target = PublishedCallbackResumeTarget::FlowRun {
+        flow_run_id: run.id,
+        callback_task_id: callback_id,
+    };
+    let mut callback = state
+        .store
+        .get_published_callback_task(callback_id)
+        .await
+        .unwrap()
+        .unwrap();
+    callback.request_payload["tool_calls"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"id":"call_pending","name":"fixture","arguments":{}}));
+    state
+        .store
+        .update_callback_task_payloads(&UpdateCallbackTaskPayloadsInput {
+            callback_task_id: callback_id,
+            request_payload: callback.request_payload.clone(),
+            response_payload: None,
+            external_ref_payload: None,
+        })
+        .await
+        .unwrap();
+    sqlx::query("insert into flow_run_tool_callback_inbox (id,scope_id,application_id,flow_run_id,callback_task_id,tool_call_id,tool_ordinal) select $1,a.workspace_id,a.id,$2,$3,'call_pending',1 from applications a where a.id=$4")
+        .bind(Uuid::now_v7()).bind(run.id).bind(callback_id).bind(run.application_id).execute(state.store.pool()).await.unwrap();
+    let actual = ApplicationNativeRunService::new(state.store.clone())
+        .get_native_run_for_actor(actor.clone(), run.id)
+        .await
+        .unwrap();
+    assert!(
+        actual.metadata["response_round_id"].is_null(),
+        "real ordinary Native read has no Responses identity"
+    );
+    let expected = debug_stream_events::waiting_callback_with_task(
+        run.id,
+        callback.node_run_id,
+        "fixture",
+        &callback,
+    );
+    stream.append(run.id, expected.clone()).await.unwrap();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let mut terminal_dependencies = native::native_run_terminal_dependencies(&dependencies.native);
+    terminal_dependencies.delivery_read_attempts = Some(attempts.clone());
+    let mut attached =
+        start_native_run_attachment_stream(terminal_dependencies, stream, actual, None)
+            .await
+            .unwrap();
+    let (snapshot, event) = attached.next_native().await.unwrap();
+    assert_eq!(event.event_type, "waiting_callback");
+    let (_, payload) =
+        crate::routes::application_public_api::sse::native_sse_payload_for_runtime_event(
+            &snapshot,
+            crate::routes::application_public_api::sse::IncludeWorkflowEvents::Public,
+            event,
+        )
+        .unwrap();
+    let payload = serde_json::to_value(payload).unwrap();
+    assert_eq!(
+        payload["required_action"],
+        expected.payload["required_action"]
+    );
+    assert_eq!(
+        payload["required_action"]["action_type"],
+        "submit_tool_outputs"
+    );
+    assert_eq!(
+        payload["required_action"]["payload"]["callback_task_id"],
+        json!(callback_id)
+    );
+    assert_eq!(
+        payload["required_action"]["payload"]["flow_run_id"],
+        json!(run.id)
+    );
+    assert_eq!(
+        payload["required_action"]["payload"]["tool_calls"],
+        callback.request_payload["tool_calls"]
+    );
+    assert!(attached.next_native().await.is_none());
+    assert_eq!(attempts.load(Ordering::SeqCst), 0);
+    // Native WS run.resume delegates these exact FlowRun/NativeAgent commands to
+    // this CP owner; no Responses identity can replace its authorization checks.
+    for bad_field in ["run", "app", "key", "creator"] {
+        let mut bad_actor = actor.clone();
+        let mut bad_command = command.clone();
+        match bad_field {
+            "run" => {
+                bad_command.target = PublishedCallbackResumeTarget::FlowRun {
+                    flow_run_id: Uuid::now_v7(),
+                    callback_task_id: callback_id,
+                }
+            }
+            "app" => bad_actor.application_id = Uuid::now_v7(),
+            "key" => bad_actor.api_key_id = Uuid::now_v7(),
+            "creator" => bad_actor.creator_user_id = Uuid::now_v7(),
+            _ => unreachable!(),
+        }
+        let error = service
+            .prepare_callback_resume_for_actor(bad_actor, &bad_command)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                error.downcast_ref::<control_plane::errors::ControlPlaneError>(),
+                Some(control_plane::errors::ControlPlaneError::PermissionDenied(
+                    _
+                ))
+            ),
+            "{bad_field}: {error}"
+        );
+    }
+    assert!(matches!(
+        service
+            .prepare_callback_resume_for_actor(actor.clone(), &command)
+            .await
+            .unwrap(),
+        PreparedPublishedCallbackResume::Resume { .. }
+    ));
+    let PublishedCallbackReservation::Acquired(receipt) = service
+        .reserve_native_callback_reservation_for_actor(actor.clone(), &command)
+        .await
+        .unwrap()
+    else {
+        panic!("new owned Native receipt must reserve");
+    };
+    command.reserved_attempt_id = Some(receipt.attempt_id());
+    let prepared = service
+        .prepare_reserved_native_callback_for_actor(actor, command, receipt)
+        .await
+        .unwrap();
+    let PreparedPublishedCallback::NoExecution(result) = prepared else {
+        panic!("one of two Native tool results cannot execute a model or tool");
+    };
+    assert_eq!(result.run.id, run.id);
+    assert_eq!(result.run.status, NativeRunStatus::Waiting);
+    let action = result.run.required_action.unwrap();
+    assert_eq!(action.action_type, "submit_tool_outputs");
+    assert_eq!(action.payload["callback_task_id"], json!(callback_id));
+    assert_eq!(action.payload["flow_run_id"], json!(run.id));
+    let inbox:Vec<(String,String)>=sqlx::query_as("select tool_call_id,status from flow_run_tool_callback_inbox where callback_task_id=$1 order by tool_ordinal")
+        .bind(callback_id).fetch_all(state.store.pool()).await.unwrap();
+    assert_eq!(
+        inbox,
+        vec![
+            ("call_fixture".into(), "received".into()),
+            ("call_pending".into(), "pending".into())
+        ]
+    );
+}

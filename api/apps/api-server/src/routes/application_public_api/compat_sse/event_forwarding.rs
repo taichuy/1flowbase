@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 pub(super) struct SubscribedCompatibleTypedEventStream {
     pub(super) terminal_dependencies: NativeRunTerminalDependencies,
     pub(super) initial_run: NativeRunResult,
+    pub(super) delivery_policy: CompatibleDeliveryPolicy,
     pub(super) delivery_scope: RuntimeEventDeliveryScope,
     pub(super) from_sequence: Option<i64>,
     pub(super) durable_round_replay: Vec<RuntimeEventEnvelope>,
@@ -91,6 +92,7 @@ struct TypedForwarding<'a> {
     initial_run: &'a Arc<NativeRunResult>,
     sender: &'a mpsc::Sender<CompatibleProjectionInput>,
     settler: &'a RuntimeEventDeliverySettler,
+    delivery_policy: CompatibleDeliveryPolicy,
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
     last_forwarded_sequence: i64,
     emitted_answer_delta: bool,
@@ -108,6 +110,7 @@ async fn forward_subscribed_typed_events(
     let SubscribedCompatibleTypedEventStream {
         terminal_dependencies,
         initial_run,
+        delivery_policy,
         delivery_scope,
         from_sequence,
         durable_round_replay,
@@ -121,6 +124,7 @@ async fn forward_subscribed_typed_events(
         initial_run: &initial_run,
         sender: &sender,
         settler,
+        delivery_policy,
         ignored_waiting_callback_task_id,
         last_forwarded_sequence: from_sequence.unwrap_or(0),
         emitted_answer_delta: false,
@@ -128,18 +132,24 @@ async fn forward_subscribed_typed_events(
         eligible_committed_events: ForwardedCommittedEvents::default(),
         closed_proof: None,
     };
-    let mut delivery_claims = match refresh_delivery_batch(&mut forwarding, delivery_scope).await {
-        Ok(claims) => claims,
-        Err(error) => {
-            fail_delivery_projection(&forwarding, &error).await;
-            return;
+    let mut delivery_claims = if delivery_policy == CompatibleDeliveryPolicy::ScopedResponses {
+        match refresh_delivery_batch(&mut forwarding, delivery_scope).await {
+            Ok(claims) => claims,
+            Err(error) => {
+                fail_delivery_projection(&forwarding, &error).await;
+                return;
+            }
         }
+    } else {
+        Vec::new()
     };
     if !durable_round_replay.is_empty() {
         forwarding.last_forwarded_sequence = -1;
     }
     for event in durable_round_replay {
-        if is_public_terminal_runtime_event(&event.event_type) && forwarding.closed_proof.is_none()
+        if delivery_policy == CompatibleDeliveryPolicy::ScopedResponses
+            && is_public_terminal_runtime_event(&event.event_type)
+            && forwarding.closed_proof.is_none()
         {
             match refresh_delivery_batch(&mut forwarding, delivery_scope).await {
                 Ok(claims) => delivery_claims.extend(claims),
@@ -172,7 +182,9 @@ async fn forward_subscribed_typed_events(
     // Database and local stream generations have independent sequence spaces.
     forwarding.last_forwarded_sequence = from_sequence.unwrap_or(0);
     for event in subscription.replay {
-        if is_public_terminal_runtime_event(&event.event_type) && forwarding.closed_proof.is_none()
+        if delivery_policy == CompatibleDeliveryPolicy::ScopedResponses
+            && is_public_terminal_runtime_event(&event.event_type)
+            && forwarding.closed_proof.is_none()
         {
             match refresh_delivery_batch(&mut forwarding, delivery_scope).await {
                 Ok(claims) => delivery_claims.extend(claims),
@@ -215,6 +227,9 @@ async fn forward_subscribed_typed_events(
             continue;
         }
         if is_committed_tool_delivery(&event) {
+            if delivery_policy == CompatibleDeliveryPolicy::NativeRunAttachment {
+                continue;
+            }
             let mut claims = match refresh_delivery_batch(&mut forwarding, delivery_scope).await {
                 Ok(claims) => claims,
                 Err(error) => {
@@ -233,7 +248,9 @@ async fn forward_subscribed_typed_events(
             }
             continue;
         }
-        if is_public_terminal_runtime_event(&event.event_type) && forwarding.closed_proof.is_none()
+        if delivery_policy == CompatibleDeliveryPolicy::ScopedResponses
+            && is_public_terminal_runtime_event(&event.event_type)
+            && forwarding.closed_proof.is_none()
         {
             let mut claims = match refresh_delivery_batch(&mut forwarding, delivery_scope).await {
                 Ok(claims) => claims,
@@ -411,6 +428,13 @@ async fn forward_ordered_typed_events(
     events: Vec<(RuntimeEventEnvelope, Option<RuntimeEventDeliveryReceipt>)>,
 ) -> bool {
     for (event, receipt) in events {
+        // All three input lanes share this guard. Native required_action is a
+        // different, supported event; provider inbox items are never Native output.
+        if forwarding.delivery_policy == CompatibleDeliveryPolicy::NativeRunAttachment
+            && is_committed_tool_delivery(&event)
+        {
+            continue;
+        }
         if is_committed_tool_delivery(&event)
             && !forwarding
                 .eligible_committed_events
@@ -474,8 +498,10 @@ async fn forward_ordered_typed_events(
                 continue;
             }
             // Reload terminal state once, then share the immutable durable snapshot.
-            if let Some(round_id) = forwarding.initial_run.metadata.get("response_round_id") {
-                run.metadata["response_round_id"] = round_id.clone();
+            if forwarding.delivery_policy == CompatibleDeliveryPolicy::ScopedResponses {
+                if let Some(round_id) = forwarding.initial_run.metadata.get("response_round_id") {
+                    run.metadata["response_round_id"] = round_id.clone();
+                }
             }
             let run = Arc::new(run);
             if !forwarding.emitted_answer_delta {

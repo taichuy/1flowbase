@@ -208,6 +208,7 @@ fn spawn_scoped_typed_stream(
                 state.runtime_event_stream.clone(),
             ),
             initial_run: run.clone(),
+            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
             delivery_scope,
             from_sequence: None,
             durable_round_replay,
@@ -1087,3 +1088,6 @@ mod response_scoped_delivery;
 
 #[path = "forwarding/_tests/delivery_proof.rs"]
 mod delivery_proof;
+
+#[path = "forwarding/_tests/native_attachment.rs"]
+mod native_attachment;
