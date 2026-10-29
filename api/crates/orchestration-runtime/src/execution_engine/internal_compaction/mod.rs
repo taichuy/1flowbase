@@ -159,14 +159,14 @@ pub fn select_prefix(messages: &[ProviderMessage]) -> Result<CompactionSelection
         .iter()
         .copied()
         .filter(|cut| *cut < messages.len())
-        .last()
+        .next_back()
         .ok_or_else(|| anyhow::anyhow!("no safe compaction cut"))?;
     let covered_count = if cuts.last() == Some(&messages.len()) {
         // Retain the last two complete groups where possible, for recent causal detail.
         cuts.iter()
             .copied()
             .filter(|cut| *cut < latest_closed)
-            .last()
+            .next_back()
             .unwrap_or(latest_closed)
     } else {
         latest_closed

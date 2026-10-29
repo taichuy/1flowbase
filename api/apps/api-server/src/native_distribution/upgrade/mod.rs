@@ -402,7 +402,10 @@ fn restore(target: &Path, backup: &Path) -> Result<()> {
     let additional = files::size(&snapshot.join("program"))?
         .saturating_sub(current_program)
         .saturating_add(files::size(&snapshot.join("data"))?.saturating_sub(files::size(&data)?));
-    files::require_space(target.parent().unwrap(), additional)?;
+    files::require_space(
+        target.parent().context("Invalid installation location")?,
+        additional,
+    )?;
     files::require_space(data.parent().context("Invalid data location")?, additional)?;
     set_state(&target, &backup, "restoring", None)?;
     // The original snapshot is immutable. A second invocation can resume a partial restore.
