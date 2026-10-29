@@ -102,6 +102,10 @@ jobs:
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib provider_runtime::transport_session_lifecycle > tmp/test-governance/gateway-target-handoff/ci/coordinator.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/coordinator.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/coordinator.log
+      - name: Production catalogue generation ownership
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib catalog_releases_generation_after_external_roots_drop -- --nocapture > tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log
       - name: Callback admission ownership and recovery regressions
         if: ${{ !cancelled() && inputs.verify_callback_attachment }}
         run: |

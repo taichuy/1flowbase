@@ -14,6 +14,85 @@ use crate::extension_bus::{
     EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1,
 };
 
+/// Exercise the real production contribution holders without starting production workers.
+/// The support fixture deliberately leaves its interface catalogue unpublished.
+#[tokio::test]
+async fn production_catalog_releases_generation_after_external_roots_drop() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let boot = state.extension_boot_snapshot.as_ref().unwrap().clone();
+    let registry = boot.interface_registry().unwrap().clone();
+    let empty = registry.snapshot();
+    let weak_state = Arc::downgrade(&state);
+    let weak_boot = Arc::downgrade(&boot);
+    let weak_registry = Arc::downgrade(&registry);
+
+    boot.publish_complete_catalog(&state)
+        .expect("production interface catalogue must compile before testing ownership");
+    let compiled = registry.snapshot();
+    assert!(
+        compiled
+            .definitions()
+            .any(|definition| { definition.interface_id().as_str() == "mcp.tools.invoke" }),
+        "the real MCP holder must participate in this lifetime test"
+    );
+    let weak_compiled = Arc::downgrade(&compiled);
+    drop(compiled);
+    drop(registry);
+    drop(boot);
+    drop(state);
+
+    let retained_without_roots = (
+        weak_state.strong_count(),
+        weak_boot.strong_count(),
+        weak_registry.strong_count(),
+        weak_compiled.strong_count(),
+    );
+
+    // Diagnostic control and fixture cleanup only: replacing current must sever the
+    // contribution-holder backedges. This is not a proposed production shutdown policy.
+    if let Some(registry) = weak_registry.upgrade() {
+        registry.publish(empty);
+    }
+    assert!(
+        weak_state.upgrade().is_none(),
+        "diagnostic control must release state"
+    );
+    assert!(
+        weak_boot.upgrade().is_none(),
+        "diagnostic control must release boot"
+    );
+    assert!(
+        weak_registry.upgrade().is_none(),
+        "diagnostic control must release registry"
+    );
+    assert!(
+        weak_compiled.upgrade().is_none(),
+        "diagnostic control must release compiled catalogue"
+    );
+
+    assert_eq!(
+        retained_without_roots,
+        (0, 0, 0, 0),
+        "published production catalogue must not retain a generation after every external root drops; counts are state/boot/dynamic/compiled"
+    );
+}
+
+#[tokio::test]
+async fn unpublished_catalog_releases_generation_after_external_roots_drop() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let boot = state.extension_boot_snapshot.as_ref().unwrap().clone();
+    let registry = boot.interface_registry().unwrap().clone();
+    let weak_state = Arc::downgrade(&state);
+    let weak_boot = Arc::downgrade(&boot);
+    let weak_registry = Arc::downgrade(&registry);
+    drop(registry);
+    drop(boot);
+    drop(state);
+    assert!(weak_state.upgrade().is_none());
+    assert!(weak_boot.upgrade().is_none());
+    assert!(weak_registry.upgrade().is_none());
+}
+
 #[test]
 fn activated_graph_and_effective_plan_share_exact_arc_and_fingerprint() {
     let workspace_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
