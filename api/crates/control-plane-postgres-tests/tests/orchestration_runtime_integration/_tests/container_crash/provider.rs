@@ -3,7 +3,7 @@ use control_plane::capability_plugin_runtime::*;
 use control_plane::ports::{ProviderRuntimeInvocationOutput, ProviderRuntimePort};
 use plugin_framework::provider_contract::{
     ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult,
-    ProviderModelDescriptor,
+    ProviderModelDescriptor, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent,
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -66,6 +66,23 @@ impl ProviderRuntimePort for ReceiptProvider {
             BufReader::new(connection).read_line(&mut response),
         )
         .await??;
+        if response.trim() == "recorded-terminal-failure" {
+            // The independent service received the request and explicitly
+            // rejected it. The existing semantic-terminal contract forbids retry.
+            return Ok(ProviderRuntimeInvocationOutput {
+                events: vec![ProviderStreamEvent::Error {
+                    error: ProviderRuntimeError::new(
+                        ProviderRuntimeErrorKind::ProviderUpstreamError,
+                        "crash fixture explicit terminal provider rejection",
+                    )
+                    .with_provider_details(json!({"semantic_terminal":true,"status_code":400})),
+                }],
+                result: ProviderInvocationResult {
+                    finish_reason: Some(ProviderFinishReason::Error),
+                    ..Default::default()
+                },
+            });
+        }
         anyhow::ensure!(
             response.trim() == "recorded",
             "external receipt was not acknowledged"

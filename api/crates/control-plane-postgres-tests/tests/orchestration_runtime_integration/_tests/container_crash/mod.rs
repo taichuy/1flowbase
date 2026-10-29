@@ -4,7 +4,9 @@ use control_plane::orchestration_runtime::{
 };
 use orchestration_runtime::execution_engine::container::ContainerCheckpoint;
 
+mod diagnostics;
 mod harness;
+mod plan;
 mod provider;
 
 #[tokio::test]
@@ -43,45 +45,15 @@ async fn container_crash_child_process() {
             flow_run_id: run_id,
             workspace_id: Uuid::parse_str(config["workspace_id"].as_str().unwrap()).unwrap(),
         })
-        .await
-        .unwrap();
-    println!(
-        "container_crash_child_terminal={}",
-        json!({"flow_run_id":run_id,"status":result.flow_run.status.as_str(),"node_count":result.node_runs.len()})
-    );
+        .await;
+    let terminal = match &result {
+        Ok(detail) => json!({"flow_run_id":run_id,"status":detail.flow_run.status.as_str(),
+            "node_count":detail.node_runs.len(),"error_payload":detail.flow_run.error_payload}),
+        Err(error) => json!({"flow_run_id":run_id,"execution_error":format!("{error:#}")}),
+    };
+    println!("container_crash_child_terminal={terminal}");
+    result.expect("child continuation failed; terminal error printed above");
     store.pool().close().await;
-}
-
-async fn prepare_plan(
-    store: &PgControlPlaneStore,
-    compiled: &domain::CompiledPlanRecord,
-    break_case: bool,
-) {
-    let mut plan: Value = sqlx::query_scalar("select plan from flow_compiled_plans where id=$1")
-        .bind(compiled.id)
-        .fetch_one(store.pool())
-        .await
-        .unwrap();
-    plan["topological_order"] = json!(["loop", "node-llm"]);
-    plan["nodes"]["node-llm"]["container_id"] = json!("loop");
-    let selected_output = if break_case { "missing_result" } else { "text" };
-    plan["nodes"]["loop"] = json!({
-        "node_id":"loop","node_type":"loop","alias":"Bounded crash matrix","container_id":null,
-        "dependency_node_ids":[],"downstream_node_ids":[],
-        "bindings":{"output":{"kind":"selector","raw_value":["node-llm",selected_output],"selector_paths":[["node-llm",selected_output]]}},
-        "outputs":[{"key":"result","title":"Result","value_type":"array","selector":[]},{"key":"variables","title":"Variables","value_type":"object","selector":[]}],
-        "config":{"max_rounds":2,"round_timeout_ms":120000,"parallelism":1,"error_policy":if break_case {"break"} else {"fail"}}
-    });
-    // Use the same frozen compiled-plan consumer as the existing real service
-    // fixtures; no persistence adapter or execution engine is substituted.
-    let _: orchestration_runtime::compiled_plan::CompiledPlan =
-        serde_json::from_value(plan.clone()).unwrap();
-    sqlx::query("update flow_compiled_plans set plan=$2 where id=$1")
-        .bind(compiled.id)
-        .bind(plan)
-        .execute(store.pool())
-        .await
-        .unwrap();
 }
 
 async fn checkpoint(store: &PgControlPlaneStore, run: Uuid) -> ContainerCheckpoint {
@@ -109,9 +81,17 @@ async fn container_real_process_crash_matrix_preserves_durable_work_and_external
             &store, &seeded, &compiled, None,
         )
         .await;
-        prepare_plan(&store, &compiled, phase == "after_break_marker").await;
         let run = seed_flow_run(&store, &seeded, &compiled, OffsetDateTime::now_utc()).await;
-        let ledger = harness::ReceiptLedger::start(phase == "external_effect").await;
+        let logs = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tmp/test-governance/bounded-containers-crash")
+            .join(run.id.to_string());
+        std::fs::create_dir_all(&logs).unwrap();
+        plan::prepare(&store, &compiled, phase == "after_break_marker", &logs).await;
+        let ledger = harness::ReceiptLedger::start(
+            phase == "external_effect",
+            phase == "after_break_marker",
+        )
+        .await;
         harness::install_gate(&store, phase).await;
         let mut barrier = store.pool().begin().await.unwrap();
         let blocker_pid: i32 = sqlx::query_scalar("select pg_backend_pid()")
@@ -124,20 +104,36 @@ async fn container_real_process_crash_matrix_preserves_durable_work_and_external
             .unwrap();
         let config = json!({"database_url":database_url,"run_id":run.id,"application_id":seeded.application_id,
             "workspace_id":seeded.workspace_id,"package":package.0,"ledger":ledger.address});
-        let logs = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../tmp/test-governance/bounded-containers-crash")
-            .join(run.id.to_string());
-        std::fs::create_dir_all(&logs).unwrap();
+        diagnostics::capture(
+            &store,
+            &run,
+            phase,
+            &logs,
+            "before-kill.json",
+            &ledger,
+            json!({"stage":"before_spawn"}),
+        )
+        .await;
         let mut child = harness::spawn_child(&config, &logs.join(format!("{phase}-crashed.log")));
-        if phase == "external_effect" {
-            tokio::time::timeout(
-                std::time::Duration::from_secs(25),
-                ledger.received.notified(),
+        let gate = harness::wait_for_gate(&store, blocker_pid, phase, &ledger, &mut child).await;
+        diagnostics::capture(&store, &run, phase, &logs, "before-kill.json", &ledger,
+            json!({"stage":"gate_wait","error":gate.as_ref().err().map(|error|format!("{error:#}"))})).await;
+        if let Err(error) = gate {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            barrier.rollback().await.unwrap();
+            harness::remove_gate(&store, phase).await;
+            diagnostics::capture(
+                &store,
+                &run,
+                phase,
+                &logs,
+                "final-diagnostics.json",
+                &ledger,
+                json!({"stage":"early_exit","error":format!("{error:#}")}),
             )
-            .await
-            .expect("child must reach independent external receipt ledger");
-        } else {
-            harness::wait_for_db_gate(&store, blocker_pid).await;
+            .await;
+            panic!("phase={phase}: {error:#}; inspect {}", logs.display());
         }
         let before = checkpoint(&store, run.id).await;
         let old_nodes: Vec<(Uuid, Uuid, String)> = sqlx::query_as(
@@ -148,7 +144,7 @@ async fn container_real_process_crash_matrix_preserves_durable_work_and_external
         ).bind(run.id).fetch_all(store.pool()).await.unwrap();
         let before_requests = ledger.receipts.lock().unwrap().len();
         std::fs::write(
-            logs.join("before-kill.json"),
+            logs.join("gate-state.json"),
             serde_json::to_vec_pretty(&json!({
                 "phase":phase,"checkpoint":before,"nodes":old_nodes,"rounds":old_rounds,
                 "external_receipts":ledger.receipts.lock().unwrap().clone(),
@@ -196,8 +192,19 @@ async fn container_real_process_crash_matrix_preserves_durable_work_and_external
         );
         let mut recovered =
             harness::spawn_child(&config, &logs.join(format!("{phase}-recovered.log")));
-        let exit = tokio::time::timeout(std::time::Duration::from_secs(30), recovered.wait())
-            .await
+        let recovery =
+            tokio::time::timeout(std::time::Duration::from_secs(30), recovered.wait()).await;
+        diagnostics::capture(
+            &store,
+            &run,
+            phase,
+            &logs,
+            "final-diagnostics.json",
+            &ledger,
+            json!({"stage":"recovery_exit","process_result":format!("{recovery:?}")}),
+        )
+        .await;
+        let exit = recovery
             .expect("fresh production recovery must be bounded")
             .unwrap();
         std::fs::write(

@@ -8,7 +8,7 @@ pub(super) struct ReceiptLedger {
     task: tokio::task::JoinHandle<()>,
 }
 impl ReceiptLedger {
-    pub async fn start(hold_first_response: bool) -> Self {
+    pub async fn start(hold_first_response: bool, terminal_failure: bool) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap().to_string();
         let receipts = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -34,7 +34,12 @@ impl ReceiptLedger {
                     let mut byte = [0];
                     let _ = reader.read(&mut byte).await;
                 } else {
-                    reader.get_mut().write_all(b"recorded\n").await.unwrap();
+                    let response = if terminal_failure {
+                        b"recorded-terminal-failure\n".as_slice()
+                    } else {
+                        b"recorded\n".as_slice()
+                    };
+                    reader.get_mut().write_all(response).await.unwrap();
                 }
             }
         });
@@ -68,30 +73,41 @@ pub(super) fn spawn_child(config: &Value, log: &std::path::Path) -> tokio::proce
         .unwrap()
 }
 
-pub(super) async fn wait_for_db_gate(store: &PgControlPlaneStore, blocker_pid: i32) {
-    tokio::time::timeout(std::time::Duration::from_secs(25), async {
-        loop {
-            let waiting: bool = sqlx::query_scalar(
-                "select exists(select 1 from pg_stat_activity where $1=any(pg_blocking_pids(pid)))",
-            )
-            .bind(blocker_pid)
-            .fetch_one(store.pool())
-            .await
-            .unwrap();
-            if waiting {
-                return;
+pub(super) async fn wait_for_gate(
+    store: &PgControlPlaneStore,
+    blocker_pid: i32,
+    phase: &str,
+    ledger: &ReceiptLedger,
+    child: &mut tokio::process::Child,
+) -> anyhow::Result<()> {
+    let gate =
+        async {
+            if phase == "external_effect" {
+                ledger.received.notified().await;
+                return Ok(());
             }
-            tokio::task::yield_now().await;
+            loop {
+                let waiting: bool = sqlx::query_scalar(
+                "select exists(select 1 from pg_stat_activity where $1=any(pg_blocking_pids(pid)))",
+            ).bind(blocker_pid).fetch_one(store.pool()).await?;
+                if waiting {
+                    return Ok(());
+                }
+                tokio::task::yield_now().await;
+            }
+        };
+    tokio::time::timeout(std::time::Duration::from_secs(25), async {
+        tokio::select! {
+            result = gate => result,
+            exit = child.wait() => anyhow::bail!("child exited before {phase} barrier: {:?}", exit?),
         }
-    })
-    .await
-    .expect("child must reach the requested PostgreSQL barrier; inspect child log");
+    }).await.map_err(|_|anyhow::anyhow!("child timed out before {phase} barrier"))?
 }
 
 pub(super) async fn install_gate(store: &PgControlPlaneStore, phase: &str) {
     let (table, event, predicate) = match phase {
         "before_round_start" => ("flow_container_rounds", "insert", "new.round_index=0"),
-        "after_round_start" => ("node_runs", "insert", "new.node_id='node-llm'"),
+        "after_round_start" => ("node_runs", "insert", "new.node_id='loop-start'"),
         "after_node_commit" => (
             "flow_container_rounds",
             "update",
