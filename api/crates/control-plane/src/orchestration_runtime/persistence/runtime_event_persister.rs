@@ -656,5 +656,5 @@ fn classify_event(
 }
 
 #[cfg(test)]
-#[path = "../_tests/orchestration_runtime/runtime_event_persister.rs"]
+#[path = "../../_tests/orchestration_runtime/runtime_event_persister.rs"]
 mod tests;
