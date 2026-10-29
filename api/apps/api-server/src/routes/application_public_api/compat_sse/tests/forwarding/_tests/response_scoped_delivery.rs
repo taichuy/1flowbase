@@ -16,6 +16,45 @@ pub(super) async fn seed_scope_boundary(
         .fetch_one(state.store.pool())
         .await
         .unwrap();
+    // This helper models recovery history only, not callback execution. Keep
+    // the preceding immutable context/coordinates when appending its Running hop.
+    let previous: Option<(i64,Uuid,Option<Uuid>,i64,i64,i32,i64,i64)> = sqlx::query_as(
+        "select sequence,context_version_id,recovery_content_id,node_sequence,iteration_index,attempt_index,resume_sequence,event_sequence from flow_run_recovery_history where flow_run_id=$1 order by sequence desc limit 1",
+    ).bind(run.id).fetch_optional(state.store.pool()).await.unwrap();
+    if let Some((
+        sequence,
+        context,
+        content,
+        node_sequence,
+        iteration_index,
+        attempt_index,
+        resume_sequence,
+        event_sequence,
+    )) = previous
+    {
+        state
+            .store
+            .append_recovery_history(&AppendRecoveryHistoryInput {
+                scope_id,
+                application_id: run.application_id,
+                flow_run_id: run.id,
+                node_run_id: None,
+                sequence: sequence + 1,
+                state_code: domain::RecoveryStateCode::Running,
+                coordinate: domain::RecoveryCoordinate {
+                    node_sequence,
+                    iteration_index,
+                    attempt_index,
+                    resume_sequence,
+                    event_sequence,
+                },
+                context_version_id: context,
+                recovery_content_id: content,
+                idempotency_key: format!("fixture_resume:{sequence}:running"),
+            })
+            .await
+            .unwrap();
+    }
     let content = state
         .store
         .put_canonical_runtime_content(&PutCanonicalRuntimeContentInput {
@@ -38,8 +77,9 @@ pub(super) async fn seed_scope_boundary(
             scope_id,
             application_id: run.application_id,
             flow_run_id: run.id,
-            parent_context_version_id: None,
-            sequence,
+            parent_context_version_id: previous.map(|(_,context,_,_,_,_,_,_)| context),
+            sequence: sqlx::query_scalar("select coalesce(max(context_sequence),-1)+1 from runtime_context_projections where flow_run_id=$1 and projection_kind='context_version'")
+                .bind(run.id).fetch_one(state.store.pool()).await.unwrap(),
             transition_kind: domain::ContextTransitionKind::Append,
             transition_actor: domain::ContextTransitionActor::Host,
             declared_compaction_provenance: None,

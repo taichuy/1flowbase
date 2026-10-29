@@ -31,6 +31,73 @@ fn input(
     }
 }
 
+// The real resume owner appends Running between every business wait and
+// hands its actual token to the next atomic writer (including human waits).
+async fn resume_previous_wait(
+    store: &PgControlPlaneStore,
+    seeded: &RuntimeSeedState,
+    run: &domain::FlowRunRecord,
+) -> (Option<Uuid>, Option<(Uuid, Uuid)>) {
+    let previous: Option<(String, Uuid, Uuid, Option<Uuid>)> = sqlx::query_as(
+        "select h.state_code,h.context_version_id,c.id,h.node_run_id \
+         from flow_run_recovery_history h join flow_run_checkpoints c \
+         on c.flow_run_id=h.flow_run_id and c.locator_payload->>'context_version_id'=h.context_version_id::text \
+         where h.flow_run_id=$1 order by h.sequence desc limit 1",
+    ).bind(run.id).fetch_optional(store.pool()).await.unwrap();
+    let Some((state, context, checkpoint, node)) = previous else {
+        return (None, None);
+    };
+    let claim = if state == "running" {
+        // The failed-ACK regression has already consumed its predecessor through
+        // commit_tool_callback_results; retain that exact processing owner.
+        sqlx::query_as::<_,(Uuid,Uuid)>("select id,claim_token from flow_run_resume_claims where checkpoint_id=$1 and status='processing'")
+            .bind(checkpoint).fetch_one(store.pool()).await.unwrap()
+    } else if state == "waiting_human" {
+        let resumed = store
+            .acquire_resume_claim(&AcquireResumeClaimInput {
+                scope_id: seeded.workspace_id,
+                application_id: seeded.application_id,
+                flow_run_id: run.id,
+                checkpoint_id: checkpoint,
+                callback_task_id: None,
+                kind: ResumeClaimKind::Human,
+                request_payload: json!({"approved":true}),
+            })
+            .await
+            .unwrap();
+        assert_eq!(resumed.disposition, ResumeClaimDisposition::Acquired);
+        (resumed.claim.id, resumed.claim.claim_token)
+    } else {
+        assert_eq!(state, "waiting_callback");
+        let callback: Uuid = sqlx::query_scalar("select id from flow_run_callback_tasks where flow_run_id=$1 and node_run_id=$2 and status='pending' order by created_at desc,id desc limit 1")
+            .bind(run.id).bind(node).fetch_one(store.pool()).await.unwrap();
+        let task = store.get_callback_task(callback).await.unwrap().unwrap();
+        let results = task.request_payload["tool_calls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|call| tool_result(call["id"].as_str().unwrap(), json!("fixture-result")))
+            .collect();
+        let resumed = store
+            .commit_tool_callback_results(&CommitToolCallbackResultsInput {
+                responses_continuation: None,
+                scope_id: seeded.workspace_id,
+                application_id: seeded.application_id,
+                flow_run_id: run.id,
+                checkpoint_id: checkpoint,
+                callback_task_id: callback,
+                results,
+            })
+            .await
+            .unwrap();
+        let owner = resumed
+            .claim
+            .expect("complete callback results must acquire execution");
+        (owner.id, owner.claim_token)
+    };
+    (Some(context), Some(claim))
+}
+
 async fn wait(
     store: &PgControlPlaneStore,
     seeded: &RuntimeSeedState,
@@ -39,7 +106,14 @@ async fn wait(
     ordinal: usize,
     count: usize,
 ) -> control_plane_contracts::ports::PersistedWaitingState {
-    let mut value = callback_wait_input(seeded, run, node, ordinal, None, None, count);
+    let (context, claim) = resume_previous_wait(store, seeded, run).await;
+    let mut value = callback_wait_input(seeded, run, node, ordinal, context, claim, count);
+    value.expected_status = store
+        .get_flow_run(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .status;
     let template = value.tool_delivery_events[0].clone();
     value.tool_delivery_events = (0..count)
         .map(|i| {
@@ -325,8 +399,11 @@ async fn original_human_stop_is_an_upper_boundary_without_any_stream_generation_
     let (store, seeded, run, node) = fixture().await;
     let old = wait(&store, &seeded, &run, &node, 1, 1).await;
     let callback = old.callback_task.as_ref().unwrap().id;
-    let mut human = callback_wait_input(&seeded, &run, &node, 2, None, None, 1);
+    let (context, claim) = resume_previous_wait(&store, &seeded, &run).await;
+    let mut human = callback_wait_input(&seeded, &run, &node, 2, context, claim, 1);
     human.kind = PersistWaitingKind::Human;
+    human.checkpoint_status = "waiting_human".into();
+    human.checkpoint_reason = "human".into();
     human.tool_delivery_events.clear();
     human.recovery_idempotency_key = format!("waiting_human:{}", node.id);
     human.waiting_event.event_type = "waiting_human".into();
@@ -335,9 +412,7 @@ async fn original_human_stop_is_an_upper_boundary_without_any_stream_generation_
         stopped.recovery_history.state_code,
         RecoveryStateCode::WaitingHuman
     );
-    let mut future = callback_wait_input(&seeded, &run, &node, 3, None, None, 1);
-    future.expected_status = FlowRunStatus::WaitingHuman;
-    let later = store.persist_waiting_state(&future).await.unwrap().unwrap();
+    let later = wait(&store, &seeded, &run, &node, 3, 1).await;
     let batch = store
         .claim_runtime_event_deliveries(&input(
             run.id,

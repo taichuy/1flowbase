@@ -11,9 +11,9 @@ use axum::response::{
 };
 use control_plane::application_public_api::{
     callback_resume::{
-        ApplicationPublishedCallbackResumeService, PreparedPublishedCallbackResume,
-        PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
-        ResumePublishedCallbackCommand,
+        ApplicationPublishedCallbackResumeService, PendingNativeWaitingReceipt,
+        PreparedPublishedCallbackResume, PublishedCallbackResumeSource,
+        PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
     },
     native::NativeRunStatus,
 };
@@ -210,14 +210,62 @@ impl CompatibleTypedTurnStream {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct NativeWaitingReceiptConsumer(());
+#[derive(Clone, Copy)]
+pub(crate) enum CompatibleResumeConsumer {
+    Scoped,
+    NativeWaiting(NativeWaitingReceiptConsumer),
+}
+impl CompatibleResumeConsumer {
+    /// Selected from the actual registered protocol binding, never request JSON.
+    pub(crate) fn for_binding(binding: &str) -> Self {
+        if binding == super::compatibility_interface::NATIVE_WEBSOCKET_STREAM_BINDING_ID {
+            Self::NativeWaiting(NativeWaitingReceiptConsumer(()))
+        } else {
+            Self::Scoped
+        }
+    }
+}
+
 struct OpenedCompatibleTurn {
     initial_run: NativeRunResult,
     delivery_scope: RuntimeEventDeliveryScope,
-    from_sequence: Option<i64>,
-    durable_round_replay: Vec<RuntimeEventEnvelope>,
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
-    subscription: control_plane::ports::RuntimeEventSubscription,
-    execution: tokio::task::JoinHandle<()>,
+    projection: CompatibleTurnProjection,
+}
+enum CompatibleTurnProjection {
+    Scoped {
+        from_sequence: Option<i64>,
+        durable_round_replay: Vec<RuntimeEventEnvelope>,
+        subscription: control_plane::ports::RuntimeEventSubscription,
+        execution: tokio::task::JoinHandle<()>,
+    },
+    PendingNativeWaiting(Box<PendingNativeWaitingReceipt>),
+}
+
+fn consume_pending_native_waiting(
+    receipt: PendingNativeWaitingReceipt,
+    consumer: CompatibleResumeConsumer,
+    application_id: uuid::Uuid,
+    run_id: uuid::Uuid,
+    callback_id: uuid::Uuid,
+) -> Result<
+    control_plane::application_public_api::callback_resume::ResumePublishedCallbackResult,
+    NativeApiError,
+> {
+    if !matches!(consumer, CompatibleResumeConsumer::NativeWaiting(_))
+        || receipt.result().run.id != run_id
+        || receipt.result().run.application_id != application_id
+        || receipt.callback_task_id() != callback_id
+    {
+        return Err(NativeApiError::new(
+            axum::http::StatusCode::CONFLICT,
+            "native_waiting_receipt_consumer_required",
+            "pending Native waiting receipt requires its Native protocol consumer",
+        ));
+    }
+    Ok(receipt.into_result())
 }
 
 fn selected_delivery_scope(run: &NativeRunResult) -> RuntimeEventDeliveryScope {
@@ -692,7 +740,26 @@ pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
     initial_run: NativeRunResult,
     command: ResumePublishedCallbackCommand,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    reservation: Option<CompatibleCallbackReservation>,
+) -> Result<CompatibleTypedTurnStream, NativeApiError> {
+    start_compatible_typed_resume_stream_for_consumer(
+        dependencies,
+        initial_run,
+        command,
+        actor,
+        reservation,
+        CompatibleResumeConsumer::Scoped,
+    )
+    .await
+}
+
+pub(crate) async fn start_compatible_typed_resume_stream_for_consumer(
+    dependencies: CompatibilityExecutionDependencies,
+    initial_run: NativeRunResult,
+    command: ResumePublishedCallbackCommand,
+    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     mut reservation: Option<CompatibleCallbackReservation>,
+    consumer: CompatibleResumeConsumer,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
     if reservation.is_none() && initial_run.metadata["active_callback_attach"] == true {
         let round_id = callback_task_id_from_resume_command(&command);
@@ -774,7 +841,7 @@ pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
         mcp_runtime_invoker,
     )
     .await?;
-    opened_compatible_typed_stream(dependencies, opened)
+    opened_compatible_typed_stream_for_consumer(dependencies, opened, consumer)
 }
 
 async fn attach_terminal_compatible_round(
@@ -878,15 +945,85 @@ fn opened_compatible_typed_stream(
     dependencies: CompatibilityExecutionDependencies,
     opened: OpenedCompatibleTurn,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
+    opened_compatible_typed_stream_for_consumer(
+        dependencies,
+        opened,
+        CompatibleResumeConsumer::Scoped,
+    )
+}
+
+fn opened_compatible_typed_stream_for_consumer(
+    dependencies: CompatibilityExecutionDependencies,
+    opened: OpenedCompatibleTurn,
+    consumer: CompatibleResumeConsumer,
+) -> Result<CompatibleTypedTurnStream, NativeApiError> {
+    project_opened_compatible_turn(
+        native::native_run_terminal_dependencies(&dependencies.native),
+        opened,
+        consumer,
+    )
+}
+
+fn project_opened_compatible_turn(
+    terminal_dependencies: NativeRunTerminalDependencies,
+    opened: OpenedCompatibleTurn,
+    consumer: CompatibleResumeConsumer,
+) -> Result<CompatibleTypedTurnStream, NativeApiError> {
     let OpenedCompatibleTurn {
         mut initial_run,
         delivery_scope,
-        from_sequence,
-        durable_round_replay,
         ignored_waiting_callback_task_id,
-        subscription,
-        execution,
+        projection,
     } = opened;
+    let (from_sequence, durable_round_replay, subscription, execution) = match projection {
+        CompatibleTurnProjection::PendingNativeWaiting(receipt) => {
+            let RuntimeEventDeliveryScope::Resume {
+                callback_task_id: callback,
+            } = delivery_scope
+            else {
+                return Err(service_error(anyhow::anyhow!(
+                    "Native waiting receipt requires its original Resume scope"
+                )));
+            };
+            let result = consume_pending_native_waiting(
+                *receipt,
+                consumer,
+                initial_run.application_id,
+                initial_run.id,
+                callback,
+            )?;
+            initial_run = result.run;
+            freeze_delivery_scope(&mut initial_run, delivery_scope);
+            let mut waiting =
+                terminal_runtime_event_from_native_run(&initial_run).ok_or_else(|| {
+                    service_error(anyhow::anyhow!("frozen Native waiting receipt missing"))
+                })?;
+            waiting.sequence = 1;
+            waiting.persist_required = false;
+            waiting.durability = control_plane::ports::RuntimeEventDurability::Ephemeral;
+            waiting.payload["response_round_id"] = json!(callback);
+            // A finite frozen observation: no repository read, subscription,
+            // generation, execution task, or executable delivery settler.
+            let (sender, events) = mpsc::channel(1);
+            sender
+                .try_send(CompatibleProjectionInput {
+                    run_snapshot: Arc::new(initial_run.clone()),
+                    envelope: waiting,
+                    delivery: None,
+                })
+                .map_err(|error| service_error(anyhow::anyhow!(error.to_string())))?;
+            return Ok(CompatibleTypedTurnStream {
+                initial_run,
+                events,
+            });
+        }
+        CompatibleTurnProjection::Scoped {
+            from_sequence,
+            durable_round_replay,
+            subscription,
+            execution,
+        } => (from_sequence, durable_round_replay, subscription, execution),
+    };
     freeze_delivery_scope(&mut initial_run, delivery_scope);
     let (sender, events) = mpsc::channel(32);
     let execution_sender_guard = sender.clone();
@@ -898,7 +1035,7 @@ fn opened_compatible_typed_stream(
     });
     tokio::spawn(send_subscribed_compatible_typed_event_stream(
         SubscribedCompatibleTypedEventStream {
-            terminal_dependencies: native::native_run_terminal_dependencies(&dependencies.native),
+            terminal_dependencies,
             initial_run: initial_run.clone(),
             delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
             delivery_scope,

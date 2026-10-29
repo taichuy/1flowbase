@@ -2,7 +2,9 @@ mod inference_recovery;
 mod prepared;
 mod reservation;
 pub use inference_recovery::NativeInferenceRecoveryGrant;
-pub use prepared::{PreparedPublishedCallback, PreparedPublishedCallbackExecution};
+pub use prepared::{
+    PendingNativeWaitingReceipt, PreparedPublishedCallback, PreparedPublishedCallbackExecution,
+};
 pub use reservation::{PublishedCallbackReservation, PublishedCallbackReservationReceipt};
 
 use std::{sync::Arc, time::Duration};

@@ -259,7 +259,6 @@ async fn authenticated_native_cold_attach_without_responses_identity_keeps_text_
         debug_stream_events::answer_text_delta("answer", "cold Native".into(), 0, None, None, None);
     delta.payload["stream_generation_id"] = json!(generation);
     append_compat_sse_runtime_event(&state, run.id, &delta.event_type, delta.payload).await;
-    complete(&state, &run, "cold Native").await;
     append_compat_sse_runtime_event(
         &state,
         run.id,
@@ -267,6 +266,7 @@ async fn authenticated_native_cold_attach_without_responses_identity_keeps_text_
         json!({"stream_generation_id":generation,"status":"succeeded"}),
     )
     .await;
+    complete(&state, &run, "cold Native").await;
     let actual = ApplicationNativeRunService::new(state.store.clone())
         .get_native_run_for_actor(actor, run.id)
         .await

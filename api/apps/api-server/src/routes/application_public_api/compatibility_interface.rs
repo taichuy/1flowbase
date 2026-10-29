@@ -189,12 +189,14 @@ pub(crate) trait CompatibilityBlockingPort: Send + Sync + 'static {
         &'a self,
         principal: &'a ApplicationPrincipal,
         input: CompatibilityBlockingInput,
+        consumer: super::compat_sse::CompatibleResumeConsumer,
     ) -> CompatibilityBlockingFuture<'a>;
 
     fn execute_stream<'a>(
         &'a self,
         principal: &'a ApplicationPrincipal,
         input: CompatibilityBlockingInput,
+        consumer: super::compat_sse::CompatibleResumeConsumer,
     ) -> CompatibilityBlockingStreamFuture<'a>;
 }
 
@@ -230,6 +232,7 @@ pub(crate) fn compatibility_execution_port(
 
 struct CompatibilityBlockingHandler {
     port: Arc<dyn CompatibilityBlockingPort>,
+    consumer: super::compat_sse::CompatibleResumeConsumer,
 }
 
 impl
@@ -246,8 +249,9 @@ impl
         input: CompatibilityBlockingInput,
     ) -> InterfaceHandlerFuture<CompatibilityBlockingOutput, CompatibilityBlockingTargetError> {
         let port = Arc::clone(&self.port);
+        let consumer = self.consumer;
         Box::pin(async move {
-            port.execute(context.principal(), input)
+            port.execute(context.principal(), input, consumer)
                 .await
                 .map_err(|error| InterfaceTargetFailure::new("compatibility_blocking", error))
         })
@@ -256,6 +260,7 @@ impl
 
 struct CompatibilityStreamHandler {
     port: Arc<dyn CompatibilityBlockingPort>,
+    consumer: super::compat_sse::CompatibleResumeConsumer,
 }
 
 impl
@@ -277,8 +282,9 @@ impl
         CompatibilityBlockingTargetError,
     > {
         let port = Arc::clone(&self.port);
+        let consumer = self.consumer;
         Box::pin(async move {
-            port.execute_stream(context.principal(), input)
+            port.execute_stream(context.principal(), input, consumer)
                 .await
                 .map_err(|error| InterfaceTargetFailure::new("compatibility_stream", error))
         })
@@ -290,6 +296,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
         &'a self,
         principal: &'a ApplicationPrincipal,
         input: CompatibilityBlockingInput,
+        consumer: super::compat_sse::CompatibleResumeConsumer,
     ) -> CompatibilityBlockingFuture<'a> {
         let dependencies = self.0.clone();
         let actor = application_actor(principal);
@@ -310,6 +317,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                         actor,
                         command,
                         reservation,
+                        consumer,
                     )
                     .await
                     .map(CompatibilityBlockingOutput)
@@ -365,6 +373,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
         &'a self,
         principal: &'a ApplicationPrincipal,
         input: CompatibilityBlockingInput,
+        consumer: super::compat_sse::CompatibleResumeConsumer,
     ) -> Pin<
         Box<
             dyn Future<
@@ -440,12 +449,13 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                     initial_run,
                     command,
                     reservation,
-                } => crate::routes::application_public_api::compat_sse::start_compatible_typed_resume_stream_for_actor(
+                } => crate::routes::application_public_api::compat_sse::start_compatible_typed_resume_stream_for_consumer(
                     dependencies,
                     initial_run,
                     command,
                     actor,
                     reservation,
+                    consumer,
                 )
                 .await
                 .map_err(CompatibilityBlockingTargetError)?,
@@ -557,6 +567,7 @@ impl CompatibilityBlockingPort for UnavailableCompatibilityBlockingPort {
         &'a self,
         _principal: &'a ApplicationPrincipal,
         _input: CompatibilityBlockingInput,
+        _consumer: super::compat_sse::CompatibleResumeConsumer,
     ) -> CompatibilityBlockingFuture<'a> {
         Box::pin(async {
             Err(CompatibilityBlockingTargetError(NativeApiError::new(
@@ -571,6 +582,7 @@ impl CompatibilityBlockingPort for UnavailableCompatibilityBlockingPort {
         &'a self,
         _principal: &'a ApplicationPrincipal,
         _input: CompatibilityBlockingInput,
+        _consumer: super::compat_sse::CompatibleResumeConsumer,
     ) -> Pin<
         Box<
             dyn Future<

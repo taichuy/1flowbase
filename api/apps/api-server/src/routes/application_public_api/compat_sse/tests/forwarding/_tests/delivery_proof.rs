@@ -6,6 +6,93 @@ use control_plane::ports::{
     PersistWaitingStateInput, PersistedWaitingState, RuntimeEventSubscription,
 };
 
+// Reuse the actual inbox owner for both execution-before-output and the next
+// waiting commit. An exact second call observes the same processing claim.
+pub(super) async fn resume_waiting_callback(
+    state: &ApiState,
+    run: &NativeRunResult,
+) -> (
+    Option<Uuid>,
+    Option<control_plane::ports::ResumeClaimRecord>,
+) {
+    let scope_id: Uuid = sqlx::query_scalar("select scope_id from flow_runs where id=$1")
+        .bind(run.id)
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let previous: Option<(Uuid, Uuid, Uuid)> = sqlx::query_as(
+        "select h.context_version_id,c.id,t.id from flow_run_recovery_history h \
+         join flow_run_checkpoints c on c.flow_run_id=h.flow_run_id \
+           and c.locator_payload->>'context_version_id'=h.context_version_id::text \
+         join flow_run_callback_tasks t on t.flow_run_id=h.flow_run_id and t.node_run_id=h.node_run_id \
+         where h.flow_run_id=$1 order by h.sequence desc,t.created_at desc,t.id desc limit 1",
+    ).bind(run.id).fetch_optional(state.store.pool()).await.unwrap();
+    if let Some((context, checkpoint, callback)) = previous {
+        let task = state
+            .store
+            .get_callback_task(callback)
+            .await
+            .unwrap()
+            .unwrap();
+        let results = if task.status == domain::CallbackTaskStatus::Completed {
+            task.response_payload.as_ref().unwrap()["tool_results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .cloned()
+                .map(control_plane::ports::ToolCallbackResultInput::from_payload)
+                .collect::<anyhow::Result<Vec<_>>>()
+                .unwrap()
+        } else {
+            task.request_payload["tool_calls"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|call| {
+                    control_plane::ports::ToolCallbackResultInput::from_payload(
+                        json!({"tool_call_id":call["id"],"content":"fixture-result"}),
+                    )
+                    .unwrap()
+                })
+                .collect()
+        };
+        let resumed = state
+            .store
+            .commit_tool_callback_results(&control_plane::ports::CommitToolCallbackResultsInput {
+                responses_continuation: None,
+                scope_id,
+                application_id: run.application_id,
+                flow_run_id: run.id,
+                checkpoint_id: checkpoint,
+                callback_task_id: callback,
+                results,
+            })
+            .await
+            .unwrap();
+        let claim = resumed
+            .claim
+            .expect("successor wait must have its real execution owner");
+        assert_eq!(
+            claim.status,
+            control_plane::ports::ResumeClaimStatus::Processing
+        );
+        (Some(context), Some(claim))
+    } else {
+        let has_history: bool = sqlx::query_scalar(
+            "select exists(select 1 from flow_run_recovery_history where flow_run_id=$1)",
+        )
+        .bind(run.id)
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+        assert!(
+            !has_history,
+            "a successor fixture cannot invent initial-execution authority"
+        );
+        (None, None)
+    }
+}
+
 // Use the actual atomic waiting writer: tool facts, original wait, context and
 // recovery anchor commit together, unlike asynchronous diagnostic append copies.
 pub(super) async fn commit_wait(
@@ -24,6 +111,7 @@ pub(super) async fn commit_wait(
         .fetch_one(state.store.pool())
         .await
         .unwrap();
+    let (parent_context, resume_claim) = resume_waiting_callback(state, run).await;
     let node = state
         .store
         .create_node_run(&CreateNodeRunInput {
@@ -70,11 +158,15 @@ pub(super) async fn commit_wait(
             variable_snapshot: json!({}),
             checkpoint_external_ref_payload: None,
             context_content: json!({"format":"runtime_snapshot_v1","variable_pool":{}}),
-            parent_context_version_id: None,
-            context_transition_kind: domain::ContextTransitionKind::Append,
+            parent_context_version_id: parent_context,
+            context_transition_kind: if parent_context.is_some() {
+                domain::ContextTransitionKind::Callback
+            } else {
+                domain::ContextTransitionKind::Append
+            },
             recovery_idempotency_key: format!("waiting_callback:{callback}"),
-            resume_claim_id: None,
-            resume_claim_token: None,
+            resume_claim_id: resume_claim.as_ref().map(|claim| claim.id),
+            resume_claim_token: resume_claim.as_ref().map(|claim| claim.claim_token),
             waiting_event: event("waiting_callback", json!({"callback_task_id":callback})),
             tool_delivery_events: payloads
                 .iter()
