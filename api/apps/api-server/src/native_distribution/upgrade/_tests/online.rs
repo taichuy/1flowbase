@@ -78,23 +78,36 @@ fn server(name: &str, bytes: Vec<u8>, digest: String, version: &str) -> Server {
         while !running.load(Ordering::SeqCst) {
             match socket.accept() {
                 Ok((mut stream, _)) => {
+                    // BSD/macOS inherits O_NONBLOCK from the listening socket; Linux does not.
+                    stream.set_nonblocking(false).unwrap();
+                    stream
+                        .set_write_timeout(Some(std::time::Duration::from_secs(60)))
+                        .unwrap();
                     stream
                         .set_read_timeout(Some(std::time::Duration::from_secs(3)))
                         .unwrap();
-                    let mut buffer = [0; 8192];
-                    let n = stream.read(&mut buffer).unwrap_or(0);
-                    let body = if String::from_utf8_lossy(&buffer[..n]).starts_with("GET /archive ")
-                    {
+                    let mut request = Vec::new();
+                    let mut buffer = [0; 1024];
+                    while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                        let n = stream.read(&mut buffer).unwrap();
+                        assert!(
+                            n > 0 && request.len() + n <= 8192,
+                            "Invalid fixture HTTP request"
+                        );
+                        request.extend_from_slice(&buffer[..n]);
+                    }
+                    let body = if String::from_utf8_lossy(&request).starts_with("GET /archive ") {
                         &bytes
                     } else {
                         &metadata
                     };
-                    let _ = write!(
+                    write!(
                         stream,
                         "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                         body.len()
-                    );
-                    let _ = stream.write_all(body);
+                    )
+                    .unwrap();
+                    stream.write_all(body).unwrap();
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     thread::sleep(std::time::Duration::from_millis(5))
