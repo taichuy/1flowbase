@@ -1,7 +1,11 @@
+import { resizeContainer } from '../../lib/document/transforms/container-geometry';
 import type { NodeChange } from '@xyflow/react';
 import { useCallback, useMemo } from 'react';
 
-import { arrangeCanvasLeftToRight } from '../../lib/document/transforms/layout';
+import {
+  arrangeCanvasLeftToRight,
+  makeRoomForContainerAncestors
+} from '../../lib/document/transforms/layout';
 import { moveNodes } from '../../lib/document/transforms/node';
 import { setViewport } from '../../lib/document/transforms/viewport';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
@@ -59,6 +63,18 @@ export function useCanvasInteractions() {
     [setWorkingDocument]
   );
 
+  const commitContainerResize = useCallback(
+    (nodeId: string, size: { width: number; height: number }) => {
+      setWorkingDocument((document) =>
+        makeRoomForContainerAncestors(
+          resizeContainer(document, nodeId, size),
+          nodeId
+        )
+      );
+    },
+    [setWorkingDocument]
+  );
+
   const commitViewportChange = useCallback(
     (viewport: { x: number; y: number; zoom: number }) => {
       setWorkingDocument((currentDocument) =>
@@ -81,9 +97,10 @@ export function useCanvasInteractions() {
   return useMemo(
     () => ({
       onNodesChange,
+      commitContainerResize,
       commitViewportChange,
       arrangeCanvas
     }),
-    [arrangeCanvas, commitViewportChange, onNodesChange]
+    [arrangeCanvas, commitContainerResize, commitViewportChange, onNodesChange]
   );
 }

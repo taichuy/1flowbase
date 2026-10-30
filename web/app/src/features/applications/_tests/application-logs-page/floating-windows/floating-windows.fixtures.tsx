@@ -183,12 +183,14 @@ const runtimeApi = vi.hoisted(() => ({
 }));
 
 const trajectoryApi = vi.hoisted(() => ({
-  fetchRunPayload: vi.fn()
+  fetchRunPayload: vi.fn(),
+  fetchWorkflowTrajectory: vi.fn(),
+  fetchWorkflowTrajectoryBody: vi.fn()
 }));
 
 vi.mock('../../../api/trajectory', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../api/trajectory')>()),
-  fetchRunPayload: trajectoryApi.fetchRunPayload
+  ...trajectoryApi
 }));
 
 vi.mock('../../../api/runtime', () => runtimeApi);
@@ -242,6 +244,15 @@ beforeEach(async () => {
   runtimeApi.fetchApplicationConversationMessages.mockReset();
   runtimeApi.fetchApplicationRunConversationMessages.mockReset();
   runtimeApi.fetchRuntimeDebugArtifact.mockReset();
+  trajectoryApi.fetchWorkflowTrajectory.mockReset().mockResolvedValue({
+    items: [],
+    overview: { items: [], total_count: 0, category_counts: {} },
+    nodes: [],
+    next_cursor: null,
+    time_start: null,
+    time_end: null
+  });
+  trajectoryApi.fetchWorkflowTrajectoryBody.mockReset();
   trajectoryApi.fetchRunPayload.mockReset();
   trajectoryApi.fetchRunPayload.mockImplementation(
     async (

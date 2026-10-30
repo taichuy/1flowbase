@@ -59,7 +59,12 @@ const CONTRACT_FIELD_RENDERER_ALLOWLIST = new Set([
   'http_request_endpoint',
   'http_request_key_values',
   'http_request_body',
-  'http_request_curl_import'
+  'http_request_curl_import',
+  'container_variables',
+  'container_break_condition',
+  'container_selector',
+  'container_parallelism',
+  'container_positive_integer'
 ]);
 
 function createFieldBlock(field: NodeDefinitionField): SchemaFieldBlock {
@@ -294,7 +299,11 @@ export function buildCommonConfigBlocks(nodeType: FlowNodeType): SchemaBlock[] {
       : { remainingSections: definitionSections, extractedBlocks: [] };
   const outputVariableBlocks = buildSharedOutputVariableBlocks(nodeType);
   const policyBlocks: SchemaBlock[] =
-    nodeType === 'start' || isTerminalNodeType(nodeType)
+    nodeType === 'start' ||
+    nodeType === 'container_start' ||
+    nodeType === 'loop' ||
+    nodeType === 'iteration' ||
+    isTerminalNodeType(nodeType)
       ? []
       : [
           {

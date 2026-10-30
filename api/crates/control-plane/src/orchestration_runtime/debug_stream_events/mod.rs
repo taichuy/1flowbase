@@ -285,6 +285,7 @@ pub fn node_started(node_run: &domain::NodeRunRecord) -> RuntimeEventPayload {
         payload: json!({
             "type": "node_started",
             "node_run_id": node_run.id,
+            "execution_identity": node_run.execution_identity,
             "node_id": node_run.node_id,
             "node_type": node_run.node_type,
             "title": node_run.node_alias,
@@ -304,6 +305,7 @@ pub fn node_finished(node_run: &domain::NodeRunRecord) -> RuntimeEventPayload {
         payload: json!({
             "type": "node_finished",
             "node_run_id": node_run.id,
+            "execution_identity": node_run.execution_identity,
             "node_id": node_run.node_id,
             "node_type": node_run.node_type,
             "status": node_run.status.as_str(),

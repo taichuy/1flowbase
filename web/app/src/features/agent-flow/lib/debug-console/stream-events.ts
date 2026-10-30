@@ -335,6 +335,7 @@ export function applyDebugStreamEventToTrace(
 
     return upsertTraceItem(items, {
       nodeRunId: event.node_run_id,
+      execution_identity: event.execution_identity,
       nodeId: event.node_id,
       nodeAlias: event.title,
       nodeType: event.node_type,
@@ -359,6 +360,7 @@ export function applyDebugStreamEventToTrace(
 
     return upsertTraceItem(items, {
       nodeRunId: event.node_run_id,
+      execution_identity: event.execution_identity,
       nodeId: event.node_id,
       nodeAlias: existing?.nodeAlias ?? event.node_id,
       nodeType: existing?.nodeType ?? 'node',

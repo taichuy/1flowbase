@@ -346,8 +346,26 @@ pub struct FlowRunRecord {
     pub updated_at: OffsetDateTime,
 }
 
+/// Logical identity of a node inside a bounded container, preserved on resume.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NodeExecutionIdentity {
+    pub execution_id: Uuid,
+    pub node_id: String,
+    pub parent_execution_id: Option<Uuid>,
+    pub round_path: Vec<ContainerRoundPath>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContainerRoundPath {
+    pub container_execution_id: Uuid,
+    pub container_node_id: String,
+    pub round_index: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeRunRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_identity: Option<NodeExecutionIdentity>,
     pub id: Uuid,
     pub flow_run_id: Uuid,
     pub node_id: String,

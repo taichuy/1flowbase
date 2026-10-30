@@ -3,6 +3,7 @@ import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { ApiClientError } from '../../errors';
 import type {
   ConsoleAnswerPresentation,
+  NodeExecutionIdentity,
   ConsoleFlowDebugStreamCursor,
   ConsoleFlowDebugStreamEvent,
   ConsoleFlowDebugStreamHandlers
@@ -165,6 +166,9 @@ function normalizeFromEnvelope(
     return {
       ...base,
       type: 'node_started',
+      execution_identity: payload.execution_identity as
+        | NodeExecutionIdentity
+        | undefined,
       run_id: base.run_id,
       node_run_id: base.node_run_id ?? '',
       node_id: nodeId,
@@ -183,6 +187,9 @@ function normalizeFromEnvelope(
     return {
       ...base,
       type: 'node_finished',
+      execution_identity: payload.execution_identity as
+        | NodeExecutionIdentity
+        | undefined,
       run_id: base.run_id,
       node_run_id: base.node_run_id ?? '',
       node_id: nodeId,

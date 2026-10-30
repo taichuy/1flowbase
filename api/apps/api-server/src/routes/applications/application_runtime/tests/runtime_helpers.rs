@@ -167,6 +167,7 @@ fn application_run_statistics_counts_indexed_llm_tool_callbacks() {
             serde_json::json!({}),
         ),
         node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
             id: node_run_id,
             flow_run_id,
             node_id: "node-llm".to_string(),
@@ -662,6 +663,7 @@ fn cache_usage_detail_aggregates_inclusive_input_across_provider_conventions() {
                 "cache_read_tokens": 80, "cache_write_tokens": 10, "output_tokens": output}),
             serde_json::json!({"input_tokens": 900, "input_cache_hit_tokens": 0, "output_tokens": output}),
         ].into_iter().map(|usage| domain::NodeRunRecord {
+            execution_identity: None,
             id: Uuid::now_v7(), flow_run_id,
             node_id: "llm".into(), node_type: "llm".into(), node_alias: "LLM".into(),
             status: domain::NodeRunStatus::Succeeded,

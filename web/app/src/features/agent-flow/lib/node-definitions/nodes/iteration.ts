@@ -14,13 +14,37 @@ export const iterationNodeDefinition: NodeDefinition = {
       key: 'inputs',
       title: 'Inputs',
       fields: [
-        { key: 'bindings.items', label: i18nText("agentFlow", "auto.circular_list"), editor: 'selector', required: true }
+        {
+          key: 'config.round_timeout_ms',
+          label: i18nText('agentFlow', 'containers.round_timeout_ms'),
+          editor: 'number',
+          required: true
+        },
+        {
+          key: 'bindings.output',
+          label: i18nText('agentFlow', 'containers.output'),
+          editor: 'selector',
+          required: true
+        },
+        {
+          key: 'bindings.items',
+          label: i18nText('agentFlow', 'auto.circular_list'),
+          editor: 'selector',
+          required: true
+        }
       ]
     },
     {
       key: 'outputs',
       title: 'Outputs',
-      fields: [{ key: 'outputs.result', label: i18nText("agentFlow", "auto.aggregate_output"), editor: 'text', required: true }]
+      fields: [
+        {
+          key: 'outputs.result',
+          label: i18nText('agentFlow', 'auto.aggregate_output'),
+          editor: 'text',
+          required: true
+        }
+      ]
     }
   ]
 };

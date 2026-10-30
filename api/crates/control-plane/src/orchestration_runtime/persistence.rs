@@ -29,6 +29,8 @@ mod checkpoint_locator;
 pub(super) mod model_attempts;
 mod node_traces;
 mod provider_observability;
+mod scoped_observation_writer;
+pub(in crate::orchestration_runtime) mod scoped_observations;
 #[cfg(test)]
 mod tests;
 
@@ -113,6 +115,14 @@ async fn prepare_recovery_checkpoint<R>(
 where
     R: OrchestrationRuntimeRepository,
 {
+    if snapshot.container_state.is_some() {
+        return Ok(PreparedRecoveryCheckpoint {
+            context_content: json!({"format":"runtime_snapshot_v1","variable_pool":{}}),
+            parent_context_version_id: None,
+            locator_payload: CheckpointLocatorPayload::from_snapshot(node_id, snapshot).into_json(),
+            variable_snapshot: json!({}),
+        });
+    }
     let metadata = checkpoint_locator::CheckpointContentMetadata::from_snapshot(snapshot)?;
     let previous = match metadata.parent_context_version_id {
         Some(parent_context_version_id) => {
@@ -228,7 +238,17 @@ where
         })
         .await?;
 
-    if let Some(waiting_node_resume) = waiting_node_resume {
+    // Scoped waits are completed by the same atomic lifecycle hook as their
+    // checkpoint. Never overwrite that receipt through the legacy node writer.
+    let scoped_outcome = outcome
+        .node_traces
+        .iter()
+        .any(|trace| trace.execution_identity.is_some())
+        || outcome
+            .checkpoint_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.container_state.is_some());
+    if let Some(waiting_node_resume) = waiting_node_resume.filter(|_| !scoped_outcome) {
         ensure_node_run_transition(
             waiting_node_resume.from_status,
             domain::NodeRunStatus::Succeeded,
@@ -254,6 +274,28 @@ where
             .await?
             .map(|conversation_id| conversation_id.to_string()),
     };
+    if outcome
+        .node_traces
+        .iter()
+        .any(|trace| trace.execution_identity.is_some())
+        || outcome
+            .checkpoint_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.container_state.is_some())
+    {
+        scoped_observations::drain_pending(
+            repository,
+            scoped_observations::ObservationContext {
+                scope_id,
+                application_name,
+                task_queue,
+                flow_run,
+                conversation_id: request_log_conversation_id.as_deref(),
+                flow_span_id: Some(flow_span.id),
+            },
+        )
+        .await?;
+    }
     let persisted_node_traces = persist_flow_debug_node_traces(
         repository,
         scope_id,

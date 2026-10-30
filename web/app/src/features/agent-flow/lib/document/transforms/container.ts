@@ -13,7 +13,9 @@ export function getContainerPathForNode(
   const path: string[] = [];
   let currentNode = getNodeById(document, nodeId);
 
-  while (currentNode?.containerId) {
+  const visited = new Set<string>();
+  while (currentNode?.containerId && !visited.has(currentNode.id)) {
+    visited.add(currentNode.id);
     path.unshift(currentNode.containerId);
     currentNode = getNodeById(document, currentNode.containerId);
   }

@@ -11,6 +11,7 @@ fn builder_projects_artifact_indexed_host_internal_tool_lifecycle() {
         native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
             id: node_run_id,
             flow_run_id,
             node_id: "node-llm".to_string(),

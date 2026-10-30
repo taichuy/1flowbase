@@ -22,6 +22,7 @@ import {
   type ConsoleFlowDebugStreamCursor,
   type ConsoleFlowDebugStreamHandlers,
   type ConsoleNodeLastRun,
+  type NodeExecutionIdentity,
   type ConsoleRuntimeDebugArtifactPreview
 } from '@1flowbase/api-client';
 
@@ -71,6 +72,7 @@ export interface AgentFlowAnswerSnapshot {
 }
 
 export interface AgentFlowTraceItem {
+  execution_identity?: NodeExecutionIdentity | null;
   nodeId: string;
   nodeRunId?: string;
   nodeAlias: string;

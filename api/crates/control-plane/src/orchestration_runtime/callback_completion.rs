@@ -687,7 +687,7 @@ where
     }
 }
 
-async fn run_with_resume_claim_heartbeat<T, E, R, F>(
+pub(super) async fn run_with_resume_claim_heartbeat<T, E, R, F>(
     execution: E,
     mut renew: R,
     period: std::time::Duration,

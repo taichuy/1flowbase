@@ -87,6 +87,7 @@ dependencies = [
  "hyper-util",
  "interface-runtime",
  "jsonschema",
+ "libc",
  "observability",
  "opentelemetry-proto",
  "orchestration-runtime",

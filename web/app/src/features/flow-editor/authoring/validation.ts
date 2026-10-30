@@ -69,6 +69,7 @@ export function validateAuthoringDocument(
     if (
       node.type !== 'start' &&
       node.type !== 'workflow_start' &&
+      node.type !== 'container_start' &&
       !document.graph.edges.some(
         (edge) => edge.target === node.id && nodeIds.has(edge.source)
       )

@@ -1,4 +1,8 @@
 import {
+  createContainerContract,
+  createContainerStartContract
+} from './nodes/containers/contracts';
+import {
   cloneJsonValue,
   duplicateContract,
   branchPorts,
@@ -766,83 +770,6 @@ function createParameterExtractorContract(): NodeRuntimeUiContract {
   });
 }
 
-function createIterationContract(): NodeRuntimeUiContract {
-  const outputs = [
-    {
-      key: 'result',
-      title: i18nText('agentFlow', 'auto.aggregate_output'),
-      valueType: 'array'
-    }
-  ];
-
-  return createNodeRuntimeContract({
-    type: 'iteration',
-    title: 'Iteration',
-    description: i18nText(
-      'agentFlow',
-      'auto.iterate_through_list_process_each_item'
-    ),
-    category: 'control',
-    config: { max_steps: 10 },
-    outputs,
-    panelSections: [
-      basicsPanelSection,
-      panelSection('inputs', 'Inputs', [
-        panelField({
-          key: 'bindings.items',
-          title: i18nText('agentFlow', 'auto.circular_list'),
-          renderer: 'selector',
-          required: true
-        })
-      ]),
-      outputsPanelSection(outputs)
-    ]
-  });
-}
-
-function createLoopContract(): NodeRuntimeUiContract {
-  const outputs = [
-    {
-      key: 'result',
-      title: i18nText('agentFlow', 'auto.aggregate_output'),
-      valueType: 'array'
-    }
-  ];
-
-  return createNodeRuntimeContract({
-    type: 'loop',
-    title: 'Loop',
-    description: i18nText(
-      'agentFlow',
-      'auto.conditionally_execute_node_repeatedly'
-    ),
-    category: 'control',
-    config: { max_rounds: 10 },
-    outputs,
-    panelSections: [
-      basicsPanelSection,
-      panelSection('inputs', 'Inputs', [
-        panelField({
-          key: 'bindings.entry_condition',
-          title: i18nText('agentFlow', 'auto.entry_conditions'),
-          renderer: 'condition_group',
-          valueType: 'json',
-          required: true
-        })
-      ]),
-      panelSection('policy', 'Policy', [
-        panelField({
-          key: 'config.max_rounds',
-          title: i18nText('agentFlow', 'auto.maximum_number_rounds'),
-          renderer: 'number',
-          valueType: 'number'
-        })
-      ]),
-      outputsPanelSection(outputs)
-    ]
-  });
-}
-
 function createHumanInputContract(): NodeRuntimeUiContract {
   const outputs = [
     {
@@ -1064,8 +991,9 @@ export const BUILTIN_NODE_RUNTIME_CONTRACTS: Record<
   variable_aggregator: createVariableAggregatorContract(),
   variable_assigner: createVariableAssignerContract(),
   parameter_extractor: createParameterExtractorContract(),
-  iteration: createIterationContract(),
-  loop: createLoopContract(),
+  iteration: createContainerContract('iteration'),
+  loop: createContainerContract('loop'),
+  container_start: createContainerStartContract(),
   human_input: createHumanInputContract(),
   plugin_node: createPluginNodeContract()
 };

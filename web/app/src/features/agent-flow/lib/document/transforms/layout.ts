@@ -1,3 +1,8 @@
+import {
+  fitContainerBounds,
+  getNodeSize,
+  isContainerNode
+} from './container-geometry';
 import type {
   FlowAuthoringDocument,
   FlowNodeDocument
@@ -6,8 +11,7 @@ import { getNodeById, getOutgoingEdges } from '../selectors';
 import { isLlmToolSourceHandle } from '../../llm-node-config';
 import {
   CANVAS_NODE_BASE_HEIGHT,
-  CANVAS_NODE_WIDTH,
-  getCanvasNodeMinimumHeightForDocument
+  CANVAS_NODE_WIDTH
 } from '../../canvas/node-dimensions';
 
 const ARRANGE_ORIGIN_X = 120;
@@ -127,14 +131,19 @@ function resolveAABBCollisions(
         if (!posB) continue;
 
         const dx =
-          CANVAS_NODE_WIDTH + 30 - Math.abs(posB.x - posA.x);
+          Math.min(
+            posA.x + getNodeSize(nodeA).width,
+            posB.x + getNodeSize(nodeB).width
+          ) +
+          30 -
+          Math.max(posA.x, posB.x);
 
         if (dx <= 0) {
           continue;
         }
 
-        const heightA = getCanvasNodeMinimumHeightForDocument(nodeA);
-        const heightB = getCanvasNodeMinimumHeightForDocument(nodeB);
+        const heightA = getNodeSize(nodeA).height;
+        const heightB = getNodeSize(nodeB).height;
         const shiftId = posB.y < posA.y ? idA : idB;
         const shiftDistance =
           posB.y < posA.y
@@ -309,7 +318,11 @@ export function shiftDownstreamNodesBFS(
       if (!targetCurrentPos) continue;
 
       // 计算目标节点的最小 X 坐标 (父节点 X 坐标 + 节点宽度 + 净间隙)
-      const targetMinX = currentPos.x + CANVAS_NODE_WIDTH + netGapX;
+      const currentNode = getNodeById(document, currentNodeId);
+      const targetMinX =
+        currentPos.x +
+        (currentNode ? getNodeSize(currentNode).width : CANVAS_NODE_WIDTH) +
+        netGapX;
 
       if (targetCurrentPos.x < targetMinX) {
         positions[targetNodeId] = {
@@ -343,7 +356,7 @@ export function shiftDownstreamNodesBFS(
   }
 
   // 5. 执行阶段三：局部活跃节点力导向物理松弛
-  if (shiftedAABBNodeIds.size > 0) {
+  if (shiftedAABBNodeIds.size > 0 && !containerNodes.some(isContainerNode)) {
     const activeRelaxIds = new Set<string>([
       startNodeId,
       ...shiftedNodeIds,
@@ -372,7 +385,7 @@ export function shiftDownstreamNodesBFS(
   }
 
   // 7. 返回包含更新位置的新文档对象
-  return {
+  return fitContainerBounds({
     ...document,
     graph: {
       ...document.graph,
@@ -385,7 +398,7 @@ export function shiftDownstreamNodesBFS(
           : node
       )
     }
-  };
+  });
 }
 
 export function arrangeCanvasLeftToRight(
@@ -480,6 +493,15 @@ export function arrangeCanvasLeftToRight(
     nodesByLayer.set(layer, [...(nodesByLayer.get(layer) ?? []), node]);
   }
 
+  const layerX = new Map<number, number>();
+  let nextLayerX = ARRANGE_ORIGIN_X;
+  for (const [layer, nodes] of [...nodesByLayer].sort(([a], [b]) => a - b)) {
+    layerX.set(layer, nextLayerX);
+    nextLayerX +=
+      Math.max(...nodes.map((node) => getNodeSize(node).width)) +
+      ARRANGE_GAP_X -
+      CANVAS_NODE_WIDTH;
+  }
   const positions: Record<string, { x: number; y: number }> = {};
   const mountEdgesBySourceId = new Map<
     string,
@@ -511,10 +533,10 @@ export function arrangeCanvasLeftToRight(
 
     const layerHeight =
       sortedLayerNodes.reduce(
-        (height, node) =>
-          height + getCanvasNodeMinimumHeightForDocument(node),
+        (height, node) => height + getNodeSize(node).height,
         0
-      ) + Math.max(0, sortedLayerNodes.length - 1) * ARRANGE_GAP_Y;
+      ) +
+      Math.max(0, sortedLayerNodes.length - 1) * ARRANGE_GAP_Y;
     const layerTop =
       ARRANGE_ORIGIN_Y + CANVAS_NODE_BASE_HEIGHT / 2 - layerHeight / 2;
     let nextNodeTop = layerTop;
@@ -522,13 +544,10 @@ export function arrangeCanvasLeftToRight(
     sortedLayerNodes.forEach((node) => {
       const nodeTop = snapToGrid(nextNodeTop);
       positions[node.id] = {
-        x: snapToGrid(ARRANGE_ORIGIN_X + layer * ARRANGE_GAP_X),
+        x: snapToGrid(layerX.get(layer) ?? ARRANGE_ORIGIN_X),
         y: nodeTop
       };
-      nextNodeTop =
-        nodeTop +
-        getCanvasNodeMinimumHeightForDocument(node) +
-        ARRANGE_GAP_Y;
+      nextNodeTop = nodeTop + getNodeSize(node).height + ARRANGE_GAP_Y;
     });
   }
 
@@ -569,8 +588,7 @@ export function arrangeCanvasLeftToRight(
 
   for (const sourceId of sourceIdsWithMounts) {
     const sourceNode = getNodeById(document, sourceId);
-    const sourcePosition =
-      positions[sourceId] ?? sourceNode?.position;
+    const sourcePosition = positions[sourceId] ?? sourceNode?.position;
 
     if (!sourcePosition || !sourceNode) {
       continue;
@@ -597,9 +615,7 @@ export function arrangeCanvasLeftToRight(
     );
 
     let nextLaneTop =
-      sourcePosition.y +
-      getCanvasNodeMinimumHeightForDocument(sourceNode) +
-      ARRANGE_GAP_Y;
+      sourcePosition.y + getNodeSize(sourceNode).height + ARRANGE_GAP_Y;
 
     mountEdges.forEach((edge) => {
       const laneNodes = nodesByMountLaneId.get(edge.id);
@@ -618,7 +634,7 @@ export function arrangeCanvasLeftToRight(
       )) {
         positions[node.id] = {
           x: snapToGrid(
-            ARRANGE_ORIGIN_X + (layerByNodeId.get(node.id) ?? 0) * ARRANGE_GAP_X
+            layerX.get(layerByNodeId.get(node.id) ?? 0) ?? ARRANGE_ORIGIN_X
           ),
           y: laneTop
         };
@@ -626,21 +642,12 @@ export function arrangeCanvasLeftToRight(
 
       nextLaneTop =
         laneTop +
-        Math.max(
-          ...laneNodes.map((node) =>
-            getCanvasNodeMinimumHeightForDocument(node)
-          )
-        ) +
+        Math.max(...laneNodes.map((node) => getNodeSize(node).height)) +
         ARRANGE_GAP_Y;
     });
   }
 
-  resolveAABBCollisions(
-    positions,
-    containerNodes,
-    ARRANGE_GAP_Y,
-    8
-  );
+  resolveAABBCollisions(positions, containerNodes, ARRANGE_GAP_Y, 8);
 
   const finalPositions: Record<string, { x: number; y: number }> = {};
   for (const nodeId of Object.keys(positions)) {
@@ -650,7 +657,7 @@ export function arrangeCanvasLeftToRight(
     };
   }
 
-  return {
+  return fitContainerBounds({
     ...document,
     graph: {
       ...document.graph,
@@ -663,5 +670,21 @@ export function arrangeCanvasLeftToRight(
           : node
       )
     }
-  };
+  });
+}
+
+/** A grown nested container must also make room in each enclosing graph. */
+export function makeRoomForContainerAncestors(
+  document: FlowAuthoringDocument,
+  nodeId: string
+) {
+  let next = document;
+  let node = getNodeById(next, nodeId);
+  const visited = new Set<string>();
+  while (node && !visited.has(node.id)) {
+    visited.add(node.id);
+    if (isContainerNode(node)) next = shiftDownstreamNodesBFS(next, node.id);
+    node = node.containerId ? getNodeById(next, node.containerId) : null;
+  }
+  return next;
 }

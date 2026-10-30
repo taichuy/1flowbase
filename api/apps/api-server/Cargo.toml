@@ -85,6 +85,9 @@ runtime-profile = { path = "../../crates/runtime-profile" }
 [target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
 tikv-jemallocator = { version = "0.7.0", features = ["background_threads"] }
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.190"
+
 [dev-dependencies]
 tokio-tungstenite = "0.30.0"
 serde_yaml = "0.9.34"

@@ -27,8 +27,27 @@
  union all
  select 'node_finished:'||n.id,n.id,null::bigint,'node_finished',n.finished_at,'nodes',n.flow_run_id,n.id,n.status,n.node_alias,null::jsonb
  from scope_runs r join node_runs n on n.flow_run_id=r.id where n.finished_at is not null
+ union all
+ select 'round_started:'||cr.execution_id,cr.execution_id,null::bigint,'round_started',cr.started_at,'rounds',cr.flow_run_id,ce.node_run_id,'running',n.node_alias,null::jsonb
+ from scope_runs r join flow_container_rounds cr on cr.flow_run_id=r.id
+ join flow_container_executions ce on ce.flow_run_id=cr.flow_run_id and ce.execution_id=cr.container_execution_id
+ join node_runs n on n.id=ce.node_run_id and n.flow_run_id=cr.flow_run_id
+ union all
+ select 'round_finished:'||cr.execution_id,cr.execution_id,null::bigint,'round_finished',cr.finished_at,'rounds',cr.flow_run_id,ce.node_run_id,cr.status,n.node_alias,null::jsonb
+ from scope_runs r join flow_container_rounds cr on cr.flow_run_id=r.id
+ join flow_container_executions ce on ce.flow_run_id=cr.flow_run_id and ce.execution_id=cr.container_execution_id
+ join node_runs n on n.id=ce.node_run_id and n.flow_run_id=cr.flow_run_id
+ where cr.finished_at is not null
 ), enriched as (
- select e.*,case split_part(e.event_id,':',1) when 'node_started' then 0 when 'workflow' then 1 when 'native' then 2 when 'runtime' then 2 else 4 end source_rank,r.task_run_id,r.parent_task_run_id,r.depth,r.is_round,n.node_id,n.node_alias,n.node_type
+ select e.*,case split_part(e.event_id,':',1) when 'node_started' then 0 when 'round_started' then 0 when 'workflow' then 1 when 'native' then 2 when 'runtime' then 2 else 4 end source_rank,r.task_run_id,r.parent_task_run_id,r.depth,(coalesce(r.is_round,false) or e.category='rounds' or coalesce(jsonb_array_length(ce.round_path)>0,false)) is_round,n.node_id,n.node_alias,n.node_type,
+ case when cr.execution_id is not null then jsonb_build_object(
+   'execution_id',cr.execution_id,'node_id',ce.node_id,'parent_execution_id',ce.execution_id,
+   'round_path',ce.round_path || jsonb_build_array(jsonb_build_object('container_execution_id',ce.execution_id,'container_node_id',ce.node_id,'round_index',cr.round_index))
+ ) when ce.execution_id is not null then jsonb_build_object(
+   'execution_id',ce.execution_id,'node_id',ce.node_id,'parent_execution_id',ce.parent_execution_id,'round_path',ce.round_path
+ ) end execution_identity
  from events e join scope_runs r on r.id=e.flow_run_id
  left join node_runs n on n.id=e.node_run_id and n.flow_run_id=e.flow_run_id
+ left join flow_container_executions ce on ce.node_run_id=n.id and ce.flow_run_id=n.flow_run_id
+ left join flow_container_rounds cr on cr.flow_run_id=e.flow_run_id and cr.execution_id=e.source_id and e.event_type in ('round_started','round_finished')
 )

@@ -21,7 +21,8 @@ function getBuiltinNodeType(nodeType: string): BuiltinFlowNodeType {
   if (
     !contract ||
     contract.meta.type === 'plugin_node' ||
-    contract.meta.type === 'unresolved_node'
+    contract.meta.type === 'unresolved_node' ||
+    contract.meta.type === 'container_start'
   ) {
     throw new Error(`Missing built-in renderer for catalog node: ${nodeType}`);
   }

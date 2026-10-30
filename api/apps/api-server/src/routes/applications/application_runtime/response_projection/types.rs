@@ -386,6 +386,9 @@ pub struct ApplicationConversationMessagesPageResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct NodeRunResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<Object>)]
+    pub execution_identity: Option<domain::NodeExecutionIdentity>,
     pub id: String,
     pub flow_run_id: String,
     pub node_id: String,

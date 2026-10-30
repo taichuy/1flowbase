@@ -32,6 +32,7 @@ export type BuiltinFlowNodeType =
 
 export type FlowNodeType =
   | BuiltinFlowNodeType
+  | 'container_start'
   | 'plugin_node'
   | 'unresolved_node';
 
@@ -544,6 +545,9 @@ export interface FlowNodeDocument {
   description?: string;
   containerId: string | null;
   position: { x: number; y: number };
+  /** Canvas size in flow coordinates; children use parent-relative positions. */
+  width?: number;
+  height?: number;
   configVersion: number;
   config: Record<string, unknown>;
   bindings: Record<string, FlowBinding>;

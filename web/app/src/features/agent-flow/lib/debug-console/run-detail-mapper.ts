@@ -303,6 +303,7 @@ function mapNodeRunToTraceItem({
 }): AgentFlowTraceItem {
   return {
     nodeRunId: nodeRun.id,
+    execution_identity: nodeRun.execution_identity,
     nodeId: nodeRun.node_id,
     nodeAlias: nodeRun.node_alias,
     nodeType: nodeRun.node_type,

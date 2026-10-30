@@ -67,8 +67,15 @@ pub(super) async fn load_snapshot<R: OrchestrationRuntimeRepository>(
             successor.id,
         )
         .await?;
-    let metadata = snapshot
-        .variable_pool
+    let execution_id = super::super::container::waiting_execution_id(
+        repository,
+        failed_id,
+        &snapshot,
+        node_id,
+        Some(node_run_id),
+    )
+    .await?;
+    let metadata = super::super::container::waiting_variable_pool(&snapshot, execution_id)?
         .get(node_id)
         .and_then(|node| node.pointer("/__llm_tool_callback/provider_metadata/native_response"))
         .ok_or_else(|| anyhow!("native_recovery_checkpoint_mismatch"))?;
@@ -113,5 +120,13 @@ pub(super) async fn load_snapshot<R: OrchestrationRuntimeRepository>(
     runtime.protocol = text("protocol")?;
     runtime.model = text("model")?;
     runtime.routing = None;
+    if let Some(execution_id) = execution_id {
+        repository
+            .fork_container_checkpoint(failed_id, successor.id, execution_id)
+            .await?;
+        if let Some(state) = snapshot.container_state.as_mut() {
+            state.root_variable_pool = snapshot.variable_pool.clone();
+        }
+    }
     Ok(Some(snapshot))
 }

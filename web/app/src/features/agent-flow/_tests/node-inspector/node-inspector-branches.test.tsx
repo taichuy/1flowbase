@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs';
 
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test } from 'vitest';
 
 import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
@@ -30,11 +36,13 @@ describe('NodeInspector branches', () => {
     );
 
     expect(screen.queryByText('Inputs')).not.toBeInTheDocument();
-    expect(screen.getByText('Policy')).toBeInTheDocument();
-    const toolbar = screen.getByTestId('condition-group-toolbar');
+    expect(screen.getByText('执行设置')).toBeInTheDocument();
+    const toolbar = await screen.findByTestId('condition-group-toolbar');
 
     expect(
-      within(toolbar).getByRole('combobox', { name: /入口条件-operator|Entry conditions-operator/ })
+      within(toolbar).getByRole('combobox', {
+        name: /终止条件-operator|Stop condition-operator/
+      })
     ).toBeInTheDocument();
     expect(
       within(toolbar).getByRole('button', { name: /新增条件$/ })
@@ -43,7 +51,7 @@ describe('NodeInspector branches', () => {
       'agent-flow-editor__inspector-field--inline'
     );
     expect(
-      screen.getByTestId('inspector-field-bindings.entry_condition')
+      screen.getByTestId('inspector-field-bindings.break_condition')
     ).not.toHaveClass('agent-flow-editor__inspector-field--inline');
   });
 
@@ -106,9 +114,7 @@ describe('NodeInspector branches', () => {
 
     await domEvents.click(addElseIfButton);
 
-    const elseIfBranch = await screen.findByTestId(
-      'if-else-branch-else-if-1'
-    );
+    const elseIfBranch = await screen.findByTestId('if-else-branch-else-if-1');
 
     expect(
       within(elseIfBranch).getByLabelText('Else If 1 分支名称')
@@ -119,9 +125,11 @@ describe('NodeInspector branches', () => {
       })
     ).toBeInTheDocument();
 
-    await domEvents.click(within(screen.getByTestId('if-else-branch-if')).getByRole('button', {
+    await domEvents.click(
+      within(screen.getByTestId('if-else-branch-if')).getByRole('button', {
         name: /新增条件组/
-      }));
+      })
+    );
 
     expect(
       within(screen.getByTestId('if-else-branch-if')).getAllByTestId(
@@ -181,7 +189,9 @@ describe('NodeInspector branches', () => {
 
     const ifBranch = await screen.findByTestId('if-else-branch-if');
 
-    await domEvents.click(within(ifBranch).getByRole('button', { name: /新增条件$/ }));
+    await domEvents.click(
+      within(ifBranch).getByRole('button', { name: /新增条件$/ })
+    );
 
     await openSelect('分支-if-0-comparator');
     expect(await screen.findByTitle('为空')).toBeInTheDocument();
@@ -256,7 +266,9 @@ describe('NodeInspector branches', () => {
 
     const ifBranch = await screen.findByTestId('if-else-branch-if');
 
-    await domEvents.click(within(ifBranch).getByRole('button', { name: /新增条件$/ }));
+    await domEvents.click(
+      within(ifBranch).getByRole('button', { name: /新增条件$/ })
+    );
 
     await openSelect('分支-if-0-left');
     await selectOption('Start');
@@ -353,11 +365,15 @@ describe('NodeInspector branches', () => {
 
 async function dispatch<T>(event: () => T) {
   let result!: T;
-  await act(async () => { result = event(); });
+  await act(async () => {
+    result = event();
+  });
   return result;
 }
 
 const domEvents = {
-  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args)),
-  change: (...args: Parameters<typeof fireEvent.change>) => dispatch(() => fireEvent.change(...args))
+  click: (...args: Parameters<typeof fireEvent.click>) =>
+    dispatch(() => fireEvent.click(...args)),
+  change: (...args: Parameters<typeof fireEvent.change>) =>
+    dispatch(() => fireEvent.change(...args))
 };

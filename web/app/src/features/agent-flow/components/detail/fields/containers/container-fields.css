@@ -1,0 +1,11 @@
+.agent-flow-container-field,
+.agent-flow-container-field__value {
+  display: grid;
+  gap: 8px;
+}
+.agent-flow-container-field__row {
+  display: grid;
+  gap: 8px;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}

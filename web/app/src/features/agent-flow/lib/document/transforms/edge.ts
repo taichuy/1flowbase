@@ -1,3 +1,5 @@
+import { canAddContainerBodyNode } from '../../node-definitions/nodes/containers/body-policy';
+import { initializeContainer } from './container-geometry';
 import type {
   FlowAuthoringDocument,
   FlowNodeDocument
@@ -11,7 +13,10 @@ import {
 } from '../../llm-node-config';
 import { createEdgeDocument } from '../edge-factory';
 import { getEdgeById, getNodeById } from '../selectors';
-import { shiftDownstreamNodesBFS } from './layout';
+import {
+  shiftDownstreamNodesBFS,
+  makeRoomForContainerAncestors
+} from './layout';
 import { getNodeFlowRole } from '../../node-definitions';
 
 export interface EdgeConnection {
@@ -38,11 +43,22 @@ export function validateConnection(
     sourceNode.id === targetNode.id ||
     sourceNode.containerId !== targetNode.containerId ||
     getNodeFlowRole(sourceNode.type) === 'terminal' ||
+    targetNode.type === 'container_start' ||
     getNodeFlowRole(targetNode.type) === 'entry'
   ) {
     return false;
   }
 
+  // Every container body is a DAG; crossing its boundary is already rejected above.
+  const reachable = [targetNode.id];
+  const visited = new Set<string>();
+  for (const id of reachable) {
+    if (id === sourceNode.id) return false;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    for (const edge of document.graph.edges)
+      if (edge.source === id) reachable.push(edge.target);
+  }
   return true;
 }
 
@@ -78,7 +94,18 @@ export function reconnectEdge(
 
   if (
     !edge ||
-    !validateConnection(document, payload.connection)
+    !validateConnection(
+      {
+        ...document,
+        graph: {
+          ...document.graph,
+          edges: document.graph.edges.filter(
+            (candidate) => candidate.id !== payload.edgeId
+          )
+        }
+      },
+      payload.connection
+    )
   ) {
     return document;
   }
@@ -91,6 +118,9 @@ export function reconnectEdge(
         item.id === payload.edgeId
           ? {
               ...item,
+              containerId:
+                getNodeById(document, payload.connection.source ?? null)
+                  ?.containerId ?? null,
               source: payload.connection.source ?? item.source,
               target: payload.connection.target ?? item.target,
               sourceHandle: payload.connection.sourceHandle ?? null,
@@ -208,6 +238,8 @@ export function insertNodeOnEdge(
   }
 
   if (
+    (sourceNode.containerId !== null &&
+      !canAddContainerBodyNode(payload.node.type)) ||
     getNodeFlowRole(sourceNode.type) === 'terminal' ||
     getNodeFlowRole(payload.node.type) !== 'processing'
   ) {
@@ -249,7 +281,13 @@ export function insertNodeOnEdge(
     }
   };
 
-  return shiftDownstreamNodesBFS(intermediateDoc, sourceNode.id, 280);
+  return makeRoomForContainerAncestors(
+    initializeContainer(
+      shiftDownstreamNodesBFS(intermediateDoc, sourceNode.id, 280),
+      insertedNode.id
+    ),
+    insertedNode.id
+  );
 }
 
 export function connectNodeFromSource(
@@ -267,6 +305,8 @@ export function connectNodeFromSource(
   }
 
   if (
+    (sourceNode.containerId !== null &&
+      !canAddContainerBodyNode(payload.node.type)) ||
     getNodeFlowRole(sourceNode.type) === 'terminal' ||
     getNodeFlowRole(payload.node.type) === 'entry'
   ) {
@@ -302,7 +342,13 @@ export function connectNodeFromSource(
     }
   };
 
-  return shiftDownstreamNodesBFS(intermediateDoc, sourceNode.id, 280);
+  return makeRoomForContainerAncestors(
+    initializeContainer(
+      shiftDownstreamNodesBFS(intermediateDoc, sourceNode.id, 280),
+      insertedNode.id
+    ),
+    insertedNode.id
+  );
 }
 
 export function removeEdge(
