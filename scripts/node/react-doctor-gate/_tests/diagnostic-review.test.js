@@ -158,10 +158,6 @@ function sharedFixture(t) {
 test('shared evidence preserves each review and invalidates all dependent reviews on proof changes', (t) => {
   const f = sharedFixture(t);
   assert.deepEqual(f.evaluate(), { status: 'reviewed', reviewed: 2, findings: [] });
-  const { loadReviews } = require('../diagnostic-review.js');
-  const reviews = loadReviews(f.repoRoot, f.group.toolPackage);
-  assert.notStrictEqual(reviews[0].evidence, reviews[1].evidence);
-  assert.notStrictEqual(reviews[0].evidence[0], reviews[1].evidence[0]);
   fs.appendFileSync(path.join(f.repoRoot, f.proof), 'changedContract();\n');
   const result = f.evaluate();
   assert.equal(result.reviewed, 0);

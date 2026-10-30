@@ -33,7 +33,7 @@ function loadReviews(repoRoot, toolPackage) {
           throw new Error('invalid or ambiguous shared evidence reference');
         }
         const { evidenceSet, ...resolved } = review;
-        return { ...resolved, evidence: group.evidenceSets[evidenceSet].map((entry) => ({ ...entry })) };
+        return { ...resolved, evidence: group.evidenceSets[evidenceSet] };
       });
     });
   } catch {
