@@ -19,6 +19,10 @@ fn local_command_contract_accepts_only_command_and_keeps_content_private() {
 fn local_command_needs_no_deployment_configuration() {
     assert!(crate::config::ApiConfig::from_env_map(&[
         ("API_DATABASE_URL", "postgres://unused"),
+        ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
+        ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
+        ("BOOTSTRAP_ROOT_PASSWORD", "test-password"),
+        ("BOOTSTRAP_WORKSPACE_NAME", "test"),
         // Removed settings must not remain a hidden activation gate or parser error.
         ("API_LOCAL_COMMAND_TIMEOUT_MS", "not-a-number"),
         ("API_LOCAL_COMMAND_MAX_OUTPUT_BYTES", "not-a-number"),

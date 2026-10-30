@@ -13,7 +13,9 @@ struct Group {
 }
 impl Group {
     fn stop(&self) -> io::Result<()> {
-        if self.stopped.swap(true, Ordering::AcqRel) {
+        // A reader failure can signal while the shell is forking. Signal again after
+        // reaping the shell; one successful killpg is not proof that the group is empty.
+        if self.stopped.load(Ordering::Acquire) {
             return Ok(());
         }
         if unsafe { libc::kill(-self.pid, libc::SIGKILL) } == 0 {
@@ -21,14 +23,19 @@ impl Group {
         }
         let error = io::Error::last_os_error();
         if error.raw_os_error() == Some(libc::ESRCH) {
+            self.stopped.store(true, Ordering::Release);
             Ok(())
         } else {
             Err(error)
         }
     }
     fn exited(&self) -> bool {
-        (unsafe { libc::kill(-self.pid, 0) }) == -1
-            && io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+        let exited = (unsafe { libc::kill(-self.pid, 0) }) == -1
+            && io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
+        if exited {
+            self.stopped.store(true, Ordering::Release);
+        }
+        exited
     }
 }
 impl Drop for Group {

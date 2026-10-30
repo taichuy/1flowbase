@@ -57,10 +57,14 @@ fn local_command_native_quotes_unicode_and_pipeline() {
         format!("cd '{}' && pwd", path.display())
     };
     let value = body(&command);
-    assert!(value["data"]["stdout"]
-        .as_str()
-        .unwrap()
-        .contains("command path 中文"));
+    assert_eq!(value["data"]["exit_code"], 0, "{value}");
+    assert!(
+        value["data"]["stdout"]
+            .as_str()
+            .unwrap()
+            .contains("command path 中文"),
+        "{value}"
+    );
     std::fs::remove_dir(path).unwrap();
 }
 
@@ -185,23 +189,30 @@ fn local_command_spool_carrier_is_private_and_deleted_on_close() {
     }
     #[cfg(windows)]
     {
-        use std::os::windows::io::AsRawHandle;
-        use windows_sys::Win32::Storage::FileSystem::{
-            FileStandardInfo, GetFileInformationByHandleEx, FILE_STANDARD_INFO,
+        use std::os::windows::{ffi::OsStringExt, io::AsRawHandle};
+        use windows_sys::Win32::Storage::FileSystem::GetFinalPathNameByHandleW;
+        let size =
+            unsafe { GetFinalPathNameByHandleW(file.as_raw_handle(), std::ptr::null_mut(), 0, 0) };
+        assert!(size > 0);
+        let mut buffer = vec![0u16; size as usize + 1];
+        let length = unsafe {
+            GetFinalPathNameByHandleW(
+                file.as_raw_handle(),
+                buffer.as_mut_ptr(),
+                buffer.len() as u32,
+                0,
+            )
         };
-        let mut info: FILE_STANDARD_INFO = unsafe { std::mem::zeroed() };
-        assert_ne!(
-            unsafe {
-                GetFileInformationByHandleEx(
-                    file.as_raw_handle(),
-                    FileStandardInfo,
-                    (&mut info as *mut FILE_STANDARD_INFO).cast(),
-                    std::mem::size_of_val(&info) as u32,
-                )
-            },
-            0
+        assert!(length > 0 && length < buffer.len() as u32);
+        let path =
+            std::path::PathBuf::from(std::ffi::OsString::from_wide(&buffer[..length as usize]));
+        assert!(path.exists());
+        drop(file);
+        assert!(
+            !path.exists(),
+            "delete-on-close must actually remove the carrier"
         );
-        assert!(info.DeletePending);
+        return;
     }
     drop(file);
 }
