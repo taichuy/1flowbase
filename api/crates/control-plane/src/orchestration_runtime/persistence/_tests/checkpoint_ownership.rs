@@ -150,6 +150,7 @@ async fn successor_checkpoint_re_roots_legacy_inline_snapshot_too() {
 async fn recovery_metadata_rejects_uuid_before_sequence_and_missing_lineage() {
     let service = OrchestrationRuntimeService::for_tests();
     let mut snapshot = orchestration_runtime::execution_state::CheckpointSnapshot {
+        container_state: None,
         next_node_index: 2,
         active_node_ids: vec!["node-tool".into()],
         variable_pool: serde_json::Map::from_iter([(
@@ -185,6 +186,7 @@ async fn recovery_metadata_rejects_uuid_before_sequence_and_missing_lineage() {
 async fn recovery_sequence_overflow_still_precedes_lineage_loading() {
     let service = OrchestrationRuntimeService::for_tests();
     let snapshot = orchestration_runtime::execution_state::CheckpointSnapshot {
+        container_state: None,
         next_node_index: 0,
         active_node_ids: Vec::new(),
         variable_pool: serde_json::Map::from_iter([(
@@ -207,6 +209,7 @@ async fn recovery_metadata_keeps_nonstring_marker_defaults_and_negative_sequence
         (json!({"sequence":u64::MAX}), 0),
     ] {
         let snapshot = orchestration_runtime::execution_state::CheckpointSnapshot {
+            container_state: None,
             next_node_index: 3,
             active_node_ids: vec!["node-tool".into(), "node-answer".into()],
             variable_pool: serde_json::Map::from_iter([
@@ -248,6 +251,7 @@ async fn prepared_full_then_history_delta_resumes_exact_snapshot() {
         .seed_waiting_callback_run("Prepared checkpoint round trip")
         .await;
     let mut snapshot = orchestration_runtime::execution_state::CheckpointSnapshot {
+        container_state: None,
         next_node_index: 3,
         active_node_ids: vec!["node-tool".into(), "node-answer".into()],
         variable_pool: serde_json::Map::from_iter([
@@ -363,6 +367,7 @@ fn compact_delta_moves_changed_values_in_order_without_recovery_marker() {
         "changed": {"old":true}
     });
     let snapshot = orchestration_runtime::execution_state::CheckpointSnapshot {
+        container_state: None,
         next_node_index: 1,
         active_node_ids: vec!["node-tool".into()],
         variable_pool: json!({

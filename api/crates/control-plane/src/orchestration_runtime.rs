@@ -611,6 +611,16 @@ where
     where
         R: BillingRepository + crate::ports::FileManagementRepository,
     {
+        let scoped_execution_id = live_debug_run::container::waiting_execution_id(
+            &self.repository,
+            input.flow_run.id,
+            input.snapshot,
+            input.waiting_node_id,
+            input.waiting_node_run_id,
+        )
+        .await?;
+        let waiting_variable_pool =
+            live_debug_run::container::waiting_variable_pool(input.snapshot, scoped_execution_id)?;
         let flow_execution_context = self.runtime_flow_execution_context(
             input.actor.clone(),
             input.flow_run.authorized_account.clone(),
@@ -645,7 +655,7 @@ where
             .with_provider_session_scope(input.flow_run)
             .with_flow_execution_context(flow_execution_context.clone());
         let provider_continuation = if orchestration_runtime::execution_engine::pending_llm_tool_callback_requires_ephemeral_provider_continuation(
-            &input.snapshot.variable_pool,
+            waiting_variable_pool,
             input.waiting_node_id,
         ) {
             let store = &self.provider_transport_store;
@@ -706,18 +716,14 @@ where
             .with_transport_connection_scope_override(input.transport_connection_scope)
             .with_observation_context(input.observation_context);
         invoker.response_round_id = input.response_round_id;
-        invoker.native_history = input
-            .snapshot
-            .variable_pool
+        invoker.native_history = waiting_variable_pool
             .get(input.waiting_node_id)
             .and_then(|node| {
                 node.pointer("/__llm_tool_callback/provider_metadata/native_response/history")
             })
             .filter(|value| value.is_object())
             .cloned();
-        invoker.native_user_messages_digest = input
-            .snapshot
-            .variable_pool
+        invoker.native_user_messages_digest = waiting_variable_pool
             .get(input.waiting_node_id)
             .and_then(|node| {
                 node.pointer(
@@ -772,7 +778,16 @@ where
             Some(execution) => Some(execution.enter_execution().await?),
             None => None,
         };
-        let execution = Box::pin(async {
+        let execution: std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<
+                            orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+                        >,
+                    > + Send
+                    + '_,
+            >,
+        > = Box::pin(async {
             lifecycle
                 .restore_communication_nodes(
                     input.application.id,
@@ -780,7 +795,13 @@ where
                     &runtime_context,
                 )
                 .await?;
-            let outcome = orchestration_runtime::execution_engine::resume_flow_debug_run_with_runtime_context_and_lifecycle(
+            let outcome = if let Some(execution_id) = scoped_execution_id {
+                orchestration_runtime::execution_engine::container::resume_scoped_container_with_runtime_context_and_lifecycle(
+                    input.compiled_plan, input.snapshot, execution_id, input.resume_payload,
+                    runtime_context.clone(), &invoker, &lifecycle,
+                ).await?
+            } else {
+                orchestration_runtime::execution_engine::resume_flow_debug_run_with_runtime_context_and_lifecycle(
             input.compiled_plan,
             input.snapshot,
             input.waiting_node_id,
@@ -789,7 +810,8 @@ where
             &invoker,
             &lifecycle,
         )
-        .await?;
+        .await?
+            };
             communication_execution::finish_communication_execution(
                 input.compiled_plan,
                 outcome,

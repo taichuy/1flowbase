@@ -7,12 +7,13 @@ use uuid::Uuid;
 
 use crate::ports::{
     AppendRunEventInput, AppendRuntimeEventInput, AppendRuntimeItemInput, AppendRuntimeSpanInput,
-    OrchestrationRuntimeRepository,
 };
 
 pub mod debug_read_model;
 pub mod items;
 pub mod projection;
+mod writer;
+pub use writer::RuntimeObservationRepository;
 
 pub use control_plane_contracts::persistence_projection::audit_row_hash;
 pub use items::item_kind_for_event;
@@ -35,7 +36,7 @@ pub async fn append_host_span<R>(
     input: AppendHostSpanInput,
 ) -> Result<domain::RuntimeSpanRecord>
 where
-    R: OrchestrationRuntimeRepository,
+    R: RuntimeObservationRepository,
 {
     let AppendHostSpanInput {
         flow_run_id,
@@ -76,7 +77,7 @@ pub async fn append_host_event<R>(
     payload: Value,
 ) -> Result<domain::RuntimeEventRecord>
 where
-    R: OrchestrationRuntimeRepository,
+    R: RuntimeObservationRepository,
 {
     let event_type = event_type.into();
     let event = repository
@@ -122,7 +123,7 @@ pub async fn mark_external_opaque_boundary<R>(
     payload: Value,
 ) -> Result<domain::RuntimeEventRecord>
 where
-    R: OrchestrationRuntimeRepository,
+    R: RuntimeObservationRepository,
 {
     repository
         .append_runtime_event(&AppendRuntimeEventInput {
@@ -196,7 +197,7 @@ pub async fn append_provider_stream_event<R>(
     event: &ProviderStreamEvent,
 ) -> Result<domain::RunEventRecord>
 where
-    R: OrchestrationRuntimeRepository,
+    R: RuntimeObservationRepository,
 {
     if matches!(event, ProviderStreamEvent::ProtocolObservation { .. }) {
         bail!("provider protocol observations require invocation-scoped persistence");
@@ -244,7 +245,7 @@ pub async fn append_provider_stream_events_raw<R>(
     events: &[ProviderStreamEvent],
 ) -> Result<Vec<domain::RunEventRecord>>
 where
-    R: OrchestrationRuntimeRepository,
+    R: RuntimeObservationRepository,
 {
     append_provider_stream_events_raw_filtered(
         repository,
@@ -266,7 +267,7 @@ pub async fn append_provider_stream_events_raw_filtered<R, F>(
     should_append_run_event: F,
 ) -> Result<Vec<domain::RunEventRecord>>
 where
-    R: OrchestrationRuntimeRepository,
+    R: RuntimeObservationRepository,
     F: Fn(&ProviderStreamEvent) -> bool,
 {
     if events.is_empty() {

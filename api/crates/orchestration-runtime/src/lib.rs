@@ -9,6 +9,7 @@ pub mod code_executor_capability;
 mod code_runtime;
 pub mod compiled_plan;
 pub mod compiler;
+pub mod container_contract;
 pub mod execution_engine;
 pub mod execution_state;
 pub mod node_error_policy;

@@ -400,7 +400,7 @@ describe('agent-flow node schema registry', () => {
     );
     const loopConditionField = findFieldBlock(
       loopSchema.detail.tabs.config.blocks,
-      'bindings.entry_condition'
+      'bindings.break_condition'
     );
 
     expect(contract?.defaults.outputs).toEqual([]);
@@ -437,8 +437,8 @@ describe('agent-flow node schema registry', () => {
     );
     expect(loopConditionField).toEqual(
       expect.objectContaining({
-        renderer: 'condition_group',
-        path: 'bindings.entry_condition'
+        renderer: 'container_break_condition',
+        path: 'bindings.break_condition'
       })
     );
   });

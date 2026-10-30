@@ -11,6 +11,7 @@ fn ac_010_native_request_overlay_preserves_completed_callback_truth() {
         native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
             id: node_run_id,
             flow_run_id,
             node_id: "node-llm".to_string(),

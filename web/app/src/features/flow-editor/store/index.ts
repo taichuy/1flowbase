@@ -46,7 +46,9 @@ export interface FlowEditorState
       | FlowAuthoringDocument
       | ((document: FlowAuthoringDocument) => FlowAuthoringDocument)
   ) => void;
+  redoStack: FlowAuthoringDocument[];
   restorePreviousDocument: () => void;
+  restoreNextDocument: () => void;
   setSelection: (payload: Partial<SelectionSlice>) => void;
   setViewportState: (payload: Partial<ViewportSlice>) => void;
   setPanelState: (
@@ -82,6 +84,7 @@ export function createFlowEditorStore(
     workingDocument: state.draft.document,
     lastSavedDocument: state.draft.document,
     undoStack: [],
+    redoStack: [],
     draftMeta: {
       draftId: state.draft.id,
       flowId: state.flow_id,
@@ -142,7 +145,11 @@ export function createFlowEditorStore(
 
         return {
           workingDocument,
+          activeContainerPath: current.activeContainerPath.filter((id) =>
+            workingDocument.graph.nodes.some((node) => node.id === id)
+          ),
           undoStack,
+          redoStack: [],
           viewport: workingDocument.editor.viewport,
           isDirty: hasDocumentChanged(
             workingDocument,
@@ -178,7 +185,14 @@ export function createFlowEditorStore(
 
         return {
           workingDocument: previousDocument,
+          activeContainerPath: current.activeContainerPath.filter((id) =>
+            nextNodeIds.has(id)
+          ),
           undoStack: current.undoStack.slice(0, -1),
+          redoStack: [
+            ...current.redoStack.slice(-(MAX_UNDO_STACK_SIZE - 1)),
+            current.workingDocument
+          ],
           viewport: previousDocument.editor.viewport,
           selectedNodeId,
           selectedEdgeId,
@@ -191,6 +205,42 @@ export function createFlowEditorStore(
             previousDocument,
             current.lastSavedDocument
           )
+        };
+      }),
+    restoreNextDocument: () =>
+      set((current) => {
+        const document = current.redoStack.at(-1);
+        if (!document) return current;
+        const nodeIds = new Set(document.graph.nodes.map((node) => node.id));
+        const selectedNodeId =
+          current.selectedNodeId && nodeIds.has(current.selectedNodeId)
+            ? current.selectedNodeId
+            : null;
+        return {
+          workingDocument: document,
+          activeContainerPath: current.activeContainerPath.filter((id) =>
+            nodeIds.has(id)
+          ),
+          viewport: document.editor.viewport,
+          undoStack: [
+            ...current.undoStack.slice(-(MAX_UNDO_STACK_SIZE - 1)),
+            current.workingDocument
+          ],
+          redoStack: current.redoStack.slice(0, -1),
+          selectedNodeId,
+          selectedNodeIds: current.selectedNodeIds.filter((id) =>
+            nodeIds.has(id)
+          ),
+          selectedEdgeId: document.graph.edges.some(
+            (edge) => edge.id === current.selectedEdgeId
+          )
+            ? current.selectedEdgeId
+            : null,
+          focusedFieldKey: selectedNodeId ? current.focusedFieldKey : null,
+          openInspectorSectionKey: selectedNodeId
+            ? current.openInspectorSectionKey
+            : null,
+          isDirty: hasDocumentChanged(document, current.lastSavedDocument)
         };
       }),
     setSelection: (payload) =>
@@ -293,6 +343,7 @@ export function createFlowEditorStore(
         workingDocument: nextState.draft.document,
         lastSavedDocument: nextState.draft.document,
         undoStack: [],
+        redoStack: [],
         draftMeta: {
           draftId: nextState.draft.id,
           flowId: nextState.flow_id,

@@ -1089,3 +1089,44 @@ mod provider_execution;
 mod provider_usage;
 
 use provider_usage::*;
+
+impl<R: OrchestrationRuntimeRepository, H> RuntimeProviderInvoker<R, H> {
+    /// A scoped invocation reads its own durable receipt. A process-wide active
+    /// node is only valid for the pre-existing, unscoped sequential executor.
+    async fn active_runtime_node(&self) -> Result<Option<RuntimeActiveNode>> {
+        if let Some(identity) =
+            orchestration_runtime::execution_engine::container::scoped_execution_identity()
+        {
+            let flow_run_id = self
+                .flow_run_id
+                .ok_or_else(|| anyhow!("scoped invocation has no flow run"))?;
+            let node_run_id = self
+                .repository
+                .get_container_node_run_id(flow_run_id, identity.execution_id)
+                .await?
+                .ok_or_else(|| anyhow!("scoped invocation has no committed node receipt"))?;
+            return Ok(Some(RuntimeActiveNode {
+                node_id: identity.node_id,
+                node_run_id,
+            }));
+        }
+        let active = self
+            .flow_execution_context
+            .as_ref()
+            .map(|context| {
+                context
+                    .active_node
+                    .lock()
+                    .map(|node| node.clone())
+                    .map_err(|_| anyhow!("active runtime node lock is poisoned"))
+            })
+            .transpose()?
+            .flatten();
+        Ok(active.or_else(|| {
+            Some(RuntimeActiveNode {
+                node_id: self.active_node_id.clone()?,
+                node_run_id: self.active_node_run_id?,
+            })
+        }))
+    }
+}

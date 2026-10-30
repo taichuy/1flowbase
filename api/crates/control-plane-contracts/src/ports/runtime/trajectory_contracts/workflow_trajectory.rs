@@ -43,6 +43,8 @@ pub struct WorkflowTrajectoryQuery {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkflowTrajectoryNode {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_identity: Option<domain::NodeExecutionIdentity>,
     pub flow_run_id: Uuid,
     pub node_run_id: Uuid,
     pub node_id: String,
@@ -52,6 +54,8 @@ pub struct WorkflowTrajectoryNode {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkflowTrajectoryEvent {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_identity: Option<domain::NodeExecutionIdentity>,
     pub event_id: String,
     /// Sequence within the persisted source/run, never a global causal order.
     pub event_sequence: Option<i64>,
@@ -99,6 +103,8 @@ impl std::error::Error for InvalidWorkflowTrajectoryQuery {}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkflowTrajectoryIndexItem {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_identity: Option<domain::NodeExecutionIdentity>,
     pub node_id: Option<String>,
     pub event_type: String,
     pub node_alias: Option<String>,

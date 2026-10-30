@@ -300,7 +300,7 @@ where
             return Ok(current_detail);
         }
         let mut communication_events = None;
-        let result = async {
+        let execution = async {
             communication_events = self.begin_communication_events(&flow_run).await?;
             let execution = self
                 .resume_execution_segment(ResumeExecutionSegmentInput {
@@ -310,7 +310,11 @@ where
                     native_transport: None,
                     response_round_id: None,
                     resume_claim_id: claim.claim.id,
-                    resume_claim_owner: None,
+                    resume_claim_owner: Some(RenewResumeClaimInput {
+                        claim_id: claim.claim.id,
+                        claim_token: claim.claim.claim_token,
+                        expected_generation: claim.claim.generation,
+                    }),
                     actor: &actor,
                     application: &application,
                     flow_run: &flow_run,
@@ -345,8 +349,22 @@ where
                 tool_delivery_events: execution.tool_delivery_events.clone(),
             })
             .await
-        }
-        .await;
+        };
+        let result = if snapshot.container_state.is_some() {
+            let renew = RenewResumeClaimInput {
+                claim_id: claim.claim.id,
+                claim_token: claim.claim.claim_token,
+                expected_generation: claim.claim.generation,
+            };
+            callback_completion::run_with_resume_claim_heartbeat(
+                Box::pin(execution),
+                || self.repository.renew_resume_claim(&renew),
+                std::time::Duration::from_secs(60),
+            )
+            .await
+        } else {
+            execution.await
+        };
         let finish = FinishResumeClaimInput {
             claim_id: claim.claim.id,
             claim_token: claim.claim.claim_token,

@@ -74,6 +74,7 @@ impl ApplicationPublicApiTestRepository {
         inner.node_runs.insert(
             node_run_id,
             domain::NodeRunRecord {
+                execution_identity: None,
                 id: node_run_id,
                 flow_run_id,
                 node_id: "node-llm".to_string(),
@@ -150,6 +151,7 @@ impl ApplicationPublicApiTestRepository {
         inner.node_runs.insert(
             node_run_id,
             domain::NodeRunRecord {
+                execution_identity: None,
                 id: node_run_id,
                 flow_run_id,
                 node_id: "node-llm".to_string(),
@@ -197,6 +199,7 @@ impl ApplicationPublicApiTestRepository {
         inner.node_runs.insert(
             node_run_id,
             domain::NodeRunRecord {
+                execution_identity: None,
                 id: node_run_id,
                 flow_run_id,
                 node_id: "node-llm".to_string(),

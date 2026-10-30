@@ -12,7 +12,7 @@ pub(super) async fn append_provider_stream_events<R>(
     events: &[ProviderStreamEvent],
 ) -> Result<Vec<domain::RunEventRecord>>
 where
-    R: OrchestrationRuntimeRepository,
+    R: crate::runtime_observability::RuntimeObservationRepository,
 {
     let records =
         append_provider_stream_events_raw(repository, flow_run_id, node_run_id, span_id, events)
@@ -32,7 +32,7 @@ async fn append_provider_capability_intent<R>(
     event: &ProviderStreamEvent,
 ) -> Result<()>
 where
-    R: OrchestrationRuntimeRepository,
+    R: crate::runtime_observability::RuntimeObservationRepository,
 {
     let (capability_id, call) = match event {
         ProviderStreamEvent::ToolCallCommit { call } => (
@@ -98,7 +98,7 @@ pub(super) async fn persist_llm_context_observability<R>(
     trace: &orchestration_runtime::execution_state::NodeExecutionTrace,
 ) -> Result<LlmDebugObservabilityRefs>
 where
-    R: OrchestrationRuntimeRepository,
+    R: crate::runtime_observability::RuntimeObservationRepository,
 {
     let model_input = json!({
         "node_input": trace.input_payload,

@@ -1,3 +1,10 @@
+import { canAddContainerBodyNode } from '../../node-definitions/nodes/containers/body-policy';
+import { CANVAS_NODE_WIDTH } from '../../canvas/node-dimensions';
+import {
+  fitContainerBounds,
+  getNodeSize,
+  initializeContainer
+} from './container-geometry';
 import { collectContainerSubgraphNodeIds } from './container';
 import type {
   FlowAuthoringDocument,
@@ -14,7 +21,10 @@ import {
   getDefaultIfElseSourceHandle,
   getIfElseBranches
 } from '../../if-else-branches';
-import { shiftDownstreamNodesBFS } from './layout';
+import {
+  shiftDownstreamNodesBFS,
+  makeRoomForContainerAncestors
+} from './layout';
 import {
   createLlmToolSourceHandleId,
   getLlmVisibleInternalTools,
@@ -189,7 +199,7 @@ export function moveNodes(
     return document;
   }
 
-  return {
+  return fitContainerBounds({
     ...document,
     graph: {
       ...document.graph,
@@ -202,7 +212,7 @@ export function moveNodes(
           : node
       )
     }
-  };
+  });
 }
 
 export function removeNodeSubgraph(
@@ -211,7 +221,7 @@ export function removeNodeSubgraph(
 ): FlowAuthoringDocument {
   const node = getNodeById(document, payload.nodeId);
 
-  if (!node) {
+  if (!node || node.type === 'container_start') {
     return document;
   }
 
@@ -240,7 +250,12 @@ export function replaceNodeWithOption(
 ): FlowAuthoringDocument {
   const node = getNodeById(document, payload.nodeId);
 
-  if (!node) {
+  if (
+    !node ||
+    node.type === 'container_start' ||
+    node.type === 'loop' ||
+    node.type === 'iteration'
+  ) {
     return document;
   }
 
@@ -251,22 +266,28 @@ export function replaceNodeWithOption(
     node.position.y
   );
 
-  return {
-    ...document,
-    graph: {
-      ...document.graph,
-      nodes: document.graph.nodes.map((candidate) =>
-        candidate.id === payload.nodeId
-          ? {
-              ...replacement,
-              id: node.id,
-              containerId: node.containerId,
-              position: node.position
-            }
-          : candidate
-      )
-    }
-  };
+  if (node.containerId !== null && !canAddContainerBodyNode(replacement.type))
+    return document;
+
+  return initializeContainer(
+    {
+      ...document,
+      graph: {
+        ...document.graph,
+        nodes: document.graph.nodes.map((candidate) =>
+          candidate.id === payload.nodeId
+            ? {
+                ...replacement,
+                id: node.id,
+                containerId: node.containerId,
+                position: node.position
+              }
+            : candidate
+        )
+      }
+    },
+    node.id
+  );
 }
 
 export function updateNodeField(
@@ -301,7 +322,11 @@ export function updateNodeField(
 
     if (payload.fieldKey.startsWith('config.')) {
       const configKey = payload.fieldKey.slice('config.'.length);
-      const nextConfig = updateConfigField(node.config, configKey, payload.value);
+      const nextConfig = updateConfigField(
+        node.config,
+        configKey,
+        payload.value
+      );
 
       return {
         ...node,
@@ -391,12 +416,16 @@ export function insertNodeAfter(
   const insertedNodeFlowRole = getNodeFlowRole(node.type);
 
   if (
+    (anchorNode.containerId !== null && !canAddContainerBodyNode(node.type)) ||
     insertedNodeFlowRole === 'entry' ||
     (insertedNodeFlowRole === 'terminal' && outgoingEdges.length > 0)
   ) {
     return document;
   }
-  const nextPositionX = anchorNode.position.x + NODE_GAP_X;
+  const nextPositionX =
+    anchorNode.position.x +
+    getNodeSize(anchorNode).width +
+    (NODE_GAP_X - CANVAS_NODE_WIDTH);
   const mountedToolEdges = isLlmToolSourceHandle(resolvedSourceHandle)
     ? getOutgoingEdges(document, anchorNodeId)
         .filter((edge) => isLlmToolSourceHandle(edge.sourceHandle))
@@ -460,5 +489,11 @@ export function insertNodeAfter(
     }
   };
 
-  return shiftDownstreamNodesBFS(intermediateDoc, insertedNode.id, NODE_GAP_X);
+  return makeRoomForContainerAncestors(
+    initializeContainer(
+      shiftDownstreamNodesBFS(intermediateDoc, insertedNode.id, NODE_GAP_X),
+      insertedNode.id
+    ),
+    insertedNode.id
+  );
 }

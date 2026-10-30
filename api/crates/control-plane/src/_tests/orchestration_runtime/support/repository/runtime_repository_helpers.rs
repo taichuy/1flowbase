@@ -114,6 +114,7 @@ pub(super) fn node_run_record_from_create_input(
     input: &CreateNodeRunInput,
 ) -> domain::NodeRunRecord {
     domain::NodeRunRecord {
+        execution_identity: None,
         id: Uuid::now_v7(),
         flow_run_id: input.flow_run_id,
         node_id: input.node_id.clone(),

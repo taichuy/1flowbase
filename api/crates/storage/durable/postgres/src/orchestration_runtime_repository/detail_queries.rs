@@ -94,7 +94,8 @@ pub(super) async fn fetch_node_run(
             runtime_original_json(metrics_payload, node_run_records.raw_json_payloads, 'metrics_payload') as metrics_payload,
             runtime_original_json(debug_payload, node_run_records.raw_json_payloads, 'debug_payload') as debug_payload,
             started_at,
-            finished_at
+            finished_at,
+            (select jsonb_build_object('execution_id',e.execution_id,'node_id',e.node_id,'parent_execution_id',e.parent_execution_id,'round_path',e.round_path) from flow_container_executions e where e.node_run_id=node_run_records.id) as execution_identity
         from node_run_records
         where id = $1
         "#,
@@ -118,7 +119,8 @@ pub(super) async fn list_node_run_metadata_for_flow_run(
         select id, flow_run_id, node_id, node_type, node_alias, status,
             '{}'::jsonb as input_payload, '{}'::jsonb as output_payload,
             null::jsonb as error_payload, '{}'::jsonb as metrics_payload,
-            '{}'::jsonb as debug_payload, started_at, finished_at
+            '{}'::jsonb as debug_payload, started_at, finished_at,
+            (select jsonb_build_object('execution_id',e.execution_id,'node_id',e.node_id,'parent_execution_id',e.parent_execution_id,'round_path',e.round_path) from flow_container_executions e where e.node_run_id=node_runs.id) as execution_identity
         from node_runs where flow_run_id=$1 and id=any($2) order by started_at,id
         "#,
     )
@@ -148,7 +150,8 @@ pub(super) async fn list_node_runs_for_flow_run(
             runtime_original_json(metrics_payload, node_run_records.raw_json_payloads, 'metrics_payload') as metrics_payload,
             runtime_original_json(debug_payload, node_run_records.raw_json_payloads, 'debug_payload') as debug_payload,
             started_at,
-            finished_at
+            finished_at,
+            (select jsonb_build_object('execution_id',e.execution_id,'node_id',e.node_id,'parent_execution_id',e.parent_execution_id,'round_path',e.round_path) from flow_container_executions e where e.node_run_id=node_run_records.id) as execution_identity
         from node_run_records
         where flow_run_id = $1
         order by started_at asc, id asc

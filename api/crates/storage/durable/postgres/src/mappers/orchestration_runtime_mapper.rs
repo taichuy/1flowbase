@@ -50,6 +50,7 @@ pub struct StoredFlowRunRow {
 
 #[derive(Debug, Clone)]
 pub struct StoredNodeRunRow {
+    pub execution_identity: Option<serde_json::Value>,
     pub id: Uuid,
     pub flow_run_id: Uuid,
     pub node_id: String,
@@ -428,6 +429,10 @@ impl PgOrchestrationRuntimeMapper {
 
     pub fn to_node_run_record(row: StoredNodeRunRow) -> Result<domain::NodeRunRecord> {
         Ok(domain::NodeRunRecord {
+            execution_identity: row
+                .execution_identity
+                .map(serde_json::from_value)
+                .transpose()?,
             id: row.id,
             flow_run_id: row.flow_run_id,
             node_id: row.node_id,

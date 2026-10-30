@@ -521,11 +521,7 @@ where
             "cache_write_by_ttl_seconds":usage.cache_write_by_ttl_seconds, "cache_write_cost":rated.cache_write_cost.to_string(),
             "output_tokens":rated.output_tokens, "raw_usage":usage})
         };
-        let active_node = self
-            .invoker
-            .flow_execution_context
-            .as_ref()
-            .and_then(|context| context.active_node.lock().ok()?.clone());
+        let active_node = self.invoker.active_runtime_node().await?;
         let observation = crate::ports::RecordModelObservationInput {
             usage: crate::ports::AppendUsageLedgerInput {
                 flow_run_id,

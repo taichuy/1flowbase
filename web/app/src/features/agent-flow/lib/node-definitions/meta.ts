@@ -3,6 +3,11 @@ import { dataModelNodeMeta } from './nodes/data-model';
 import { i18nText } from '../../../../shared/i18n/text';
 
 export const nodeDefinitionMeta: NodeDefinitionMetaMap = {
+  container_start: {
+    summary: i18nText('agentFlow', 'containers.start'),
+    helpHref: null,
+    flowRole: 'entry'
+  },
   start: {
     summary: i18nText(
       'agentFlow',
@@ -86,10 +91,7 @@ export const nodeDefinitionMeta: NodeDefinitionMetaMap = {
     helpHref: '/docs/agentflow/nodes/sql'
   },
   variable_aggregator: {
-    summary: i18nText(
-      'agentFlow',
-      'auto.variable_aggregator_description'
-    ),
+    summary: i18nText('agentFlow', 'auto.variable_aggregator_description'),
     helpHref: '/docs/agentflow/nodes/variable-aggregator'
   },
   variable_assigner: {
@@ -112,7 +114,7 @@ export const nodeDefinitionMeta: NodeDefinitionMetaMap = {
       'auto.performs_item_iteration_over_input_collection_summarizes_results'
     ),
     helpHref: '/docs/agentflow/nodes/iteration',
-    canEnterContainer: true
+    canEnterContainer: false
   },
   loop: {
     summary: i18nText(
@@ -120,7 +122,7 @@ export const nodeDefinitionMeta: NodeDefinitionMetaMap = {
       'auto.execute_sub_processes_within_container_conditional_loop'
     ),
     helpHref: '/docs/agentflow/nodes/loop',
-    canEnterContainer: true
+    canEnterContainer: false
   },
   human_input: {
     summary: i18nText('agentFlow', 'auto.wait_manual_input_continue_process'),

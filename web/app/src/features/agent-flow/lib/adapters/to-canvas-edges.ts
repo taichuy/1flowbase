@@ -1,3 +1,4 @@
+import { containerBodyPickerOptions } from '../node-definitions/nodes/containers/body-policy';
 import type {
   FlowAuthoringDocument,
   FlowNodeDocument
@@ -9,7 +10,7 @@ import type { NodePickerOption } from '../plugin-node-definitions';
 
 export function toCanvasEdges(
   document: FlowAuthoringDocument,
-  activeContainerId: string | null,
+  _activeContainerId: string | null,
   selectedEdgeId: string | null,
   actions: {
     nodePickerOptions: NodePickerOption[];
@@ -21,13 +22,14 @@ export function toCanvasEdges(
   for (const node of document.graph.nodes) {
     // Keep the first-match behavior of node lookup, including duplicate IDs.
     if (!nodesById.has(node.id)) nodesById.set(node.id, node);
-    if (node.containerId === activeContainerId) visibleNodeIds.add(node.id);
+    visibleNodeIds.add(node.id);
   }
 
   return document.graph.edges
     .filter(
       (edge) =>
-        edge.containerId === activeContainerId &&
+        nodesById.get(edge.source)?.containerId === edge.containerId &&
+        nodesById.get(edge.target)?.containerId === edge.containerId &&
         visibleNodeIds.has(edge.source) &&
         visibleNodeIds.has(edge.target)
     )
@@ -44,9 +46,13 @@ export function toCanvasEdges(
         sourceHandle: edge.sourceHandle ?? MAIN_SOURCE_HANDLE_ID,
         targetHandle: edge.targetHandle,
         animated: false,
+        zIndex: edge.containerId ? 1 : 0,
         style: { stroke: '#b2c8b9', strokeWidth: 2 },
         data: {
-          nodePickerOptions: actions.nodePickerOptions,
+          nodePickerOptions: containerBodyPickerOptions(
+            actions.nodePickerOptions,
+            sourceNode?.containerId ?? null
+          ),
           onInsertNode: canInsertNode ? actions.onInsertNode : undefined
         }
       };

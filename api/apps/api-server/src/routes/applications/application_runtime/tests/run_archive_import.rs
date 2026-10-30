@@ -266,6 +266,7 @@ fn trace_export_fixture(run_id: &str) -> ApplicationRunTraceExportResponse {
         updated_at: updated_at.to_string(),
     };
     let node_run = NodeRunResponse {
+        execution_identity: None,
         id: "019ef419-9af9-7612-a0c2-39520f1f7a24".to_string(),
         flow_run_id: run_id.to_string(),
         node_id: "node-start".to_string(),

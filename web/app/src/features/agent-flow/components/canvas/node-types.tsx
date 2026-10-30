@@ -1,3 +1,7 @@
+import {
+  AgentFlowContainer,
+  ContainerStart
+} from '../nodes/container/AgentFlowContainer';
 import type { FlowNodeType } from '@1flowbase/flow-schema';
 import type { EdgeTypes, Node, NodeTypes } from '@xyflow/react';
 
@@ -16,6 +20,11 @@ export interface AgentFlowCanvasNodeData extends Record<string, unknown> {
   config: Record<string, unknown>;
   issueCount: number;
   canEnterContainer: boolean;
+  minimumContainerSize?: { width: number; height: number };
+  onResizeContainer?: (
+    nodeId: string,
+    size: { width: number; height: number }
+  ) => void;
   pickerOpen: boolean;
   showTargetHandle: boolean;
   showSourceHandle: boolean;
@@ -41,12 +50,14 @@ export interface AgentFlowCanvasNodeData extends Record<string, unknown> {
 
 export type AgentFlowCanvasNode = Node<
   AgentFlowCanvasNodeData,
-  'agentFlowNode'
+  'agentFlowNode' | 'agentFlowContainer' | 'containerStart'
 >;
 export type { AgentFlowCanvasEdge };
 
 export const agentFlowNodeTypes: NodeTypes = {
-  agentFlowNode: AgentFlowNodeCard
+  agentFlowNode: AgentFlowNodeCard,
+  agentFlowContainer: AgentFlowContainer,
+  containerStart: ContainerStart
 };
 
 export const agentFlowEdgeTypes: EdgeTypes = {

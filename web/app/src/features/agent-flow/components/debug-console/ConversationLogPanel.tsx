@@ -34,6 +34,7 @@ import type {
   ConversationLogTraceLoader
 } from './conversation-log-trace-model';
 import { LazyConversationTrace } from './LazyConversationTrace';
+import { WorkflowRunTrace } from './trajectory/workflow/WorkflowRunTrace';
 export {
   LazyTraceNodeItem,
   TraceProjectionStatusNotice
@@ -358,12 +359,14 @@ function ConversationLogDetail({
 }
 
 function ConversationTrace({
+  workflowTrace,
   defaultToolsExpanded,
   message,
   onLoadArtifact,
   onLoadArtifacts,
   traceLoader
 }: {
+  workflowTrace: boolean;
   defaultToolsExpanded: boolean;
   message: AgentFlowDebugMessage;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
@@ -391,7 +394,7 @@ function ConversationTrace({
     );
   }
   if (traceLoader?.loadTree && traceRunId) {
-    return (
+    const nodeTree = (
       <LazyConversationTrace
         key={`${message.id}:${traceRunId}`}
         defaultToolsExpanded={defaultToolsExpanded}
@@ -400,6 +403,17 @@ function ConversationTrace({
         runId={traceRunId}
         traceLoader={traceLoader}
       />
+    );
+    return workflowTrace && traceLoader.loadWorkflowTrajectory ? (
+      <WorkflowRunTrace
+        key={traceRunId}
+        runId={traceRunId}
+        loader={traceLoader}
+      >
+        {nodeTree}
+      </WorkflowRunTrace>
+    ) : (
+      nodeTree
     );
   }
 
@@ -538,6 +552,7 @@ export function ConversationLogPanel({
   closeLabel,
   traceLabel,
   defaultTraceToolsExpanded = false,
+  workflowTrace = false,
   exportingRun = false,
   message,
   onClose,
@@ -553,6 +568,7 @@ export function ConversationLogPanel({
   closeLabel?: string;
   traceLabel?: string;
   defaultTraceToolsExpanded?: boolean;
+  workflowTrace?: boolean;
   exportingRun?: boolean;
   message: AgentFlowDebugMessage;
   onClose: () => void;
@@ -631,6 +647,7 @@ export function ConversationLogPanel({
             children:
               activeTabKey === 'trace' ? (
                 <ConversationTrace
+                  workflowTrace={workflowTrace}
                   defaultToolsExpanded={defaultTraceToolsExpanded}
                   message={message}
                   onLoadArtifact={loadArtifact}

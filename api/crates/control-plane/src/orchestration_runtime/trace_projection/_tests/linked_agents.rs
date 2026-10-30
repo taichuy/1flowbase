@@ -13,6 +13,7 @@ fn builder_projects_linked_agent_tools_as_subagent_llm_nodes() {
         native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
             id: parent_node_run_id,
             flow_run_id,
             node_id: "node-llm".to_string(),
@@ -71,6 +72,7 @@ fn builder_projects_linked_agent_tools_as_subagent_llm_nodes() {
                 ..flow_run(subagent_run_id, now + time::Duration::seconds(2))
             },
             node_runs: vec![domain::NodeRunRecord {
+                execution_identity: None,
                 id: subagent_llm_node_run_id,
                 flow_run_id: subagent_run_id,
                 node_id: "node-subagent-llm".to_string(),
@@ -228,6 +230,7 @@ fn builder_projects_linked_agent_without_llm_node_run_as_fallback_llm_node() {
         native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
             id: parent_node_run_id,
             flow_run_id,
             node_id: "node-llm".to_string(),

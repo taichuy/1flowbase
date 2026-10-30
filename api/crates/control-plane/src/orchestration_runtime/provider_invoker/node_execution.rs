@@ -98,11 +98,9 @@ where
             .flow_execution_context
             .as_ref()
             .ok_or_else(|| anyhow!("data model flow execution context is not configured"))?;
-        let active_node = context
-            .active_node
-            .lock()
-            .map_err(|_| anyhow!("active runtime node lock is poisoned"))?
-            .clone()
+        let active_node = self
+            .active_runtime_node()
+            .await?
             .ok_or_else(|| anyhow!("data model active runtime node is not set"))?;
         if active_node.node_id != node.node_id {
             return Err(anyhow!(

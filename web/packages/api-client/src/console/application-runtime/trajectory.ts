@@ -1,3 +1,4 @@
+import type { NodeExecutionIdentity } from './types';
 import type { TrajectoryOverview } from './client-trajectory';
 import { apiFetch } from '../../transport';
 
@@ -164,6 +165,7 @@ export interface WorkflowTrajectoryOptions {
   to?: string;
 }
 export interface WorkflowTrajectoryNode {
+  execution_identity?: NodeExecutionIdentity | null;
   flow_run_id: string;
   node_run_id: string;
   node_id: string;
@@ -171,6 +173,7 @@ export interface WorkflowTrajectoryNode {
   node_type: string;
 }
 export interface WorkflowTrajectoryEvent {
+  execution_identity?: NodeExecutionIdentity | null;
   event_id: string;
   event_sequence: number | null;
   event_type: string;
@@ -188,6 +191,7 @@ export interface WorkflowTrajectoryEvent {
   native_step: ProviderTrajectoryStep | null;
 }
 export interface WorkflowTrajectoryIndexItem {
+  execution_identity?: NodeExecutionIdentity | null;
   node_id: string | null;
   event_type: string;
   node_alias: string | null;

@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Empty, Spin, Segmented, Select } from 'antd';
+import {
+  Alert,
+  Button,
+  Empty,
+  Spin,
+  Segmented,
+  Select,
+  TreeSelect
+} from 'antd';
 import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
 import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
@@ -16,6 +24,7 @@ import type { ConversationLogTraceLoader } from '../conversation-log-trace-model
 import { useTranslation } from 'react-i18next';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../shared/i18n/format';
+import { useWindowWorkspaceOverlayZIndex } from '../../../../../shared/ui/window-workspace/window-workspace-overlay-context';
 import { purposeLabel } from './trajectory-presentation';
 import {
   workflowEventLabel,
@@ -24,6 +33,12 @@ import {
   workflowNodeName
 } from './workflow/presentation';
 import { WorkflowEventDetail } from './workflow/WorkflowEventDetail';
+import {
+  containerRoundLabel,
+  containerRoundOptions,
+  findContainerRound,
+  isWithinContainerRound
+} from './workflow/container-rounds';
 import { TrajectoryTimeline } from './TrajectoryTimeline';
 import { type TrajectoryRange } from './timeline-model';
 import { useTrajectoryWindow } from './virtual/use-trajectory-window';
@@ -59,6 +74,12 @@ export function NativeTrajectoryWorkspace({
     link: NonNullable<ProviderTrajectoryStep['links']>[number]
   ) => void;
 }) {
+  // Keep the host portal (outside clipped windows), but inherit its popup layer.
+  const popupZIndex = useWindowWorkspaceOverlayZIndex();
+  const popupStyles =
+    popupZIndex === undefined
+      ? undefined
+      : { popup: { root: { zIndex: popupZIndex } } };
   const [selected, setSelected] = useState<string | null>(
     options?.focus_event_id ?? null
   );
@@ -68,6 +89,9 @@ export function NativeTrajectoryWorkspace({
   const [timeRange, setTimeRange] = useState<TrajectoryRange>(null);
   const [category, setCategory] = useState<WorkflowTrajectoryCategory>('all');
   const [nodeFilter, setNodeFilter] = useState<string | undefined>(nodeRunId);
+  const [roundFilter, setRoundFilter] = useState<string | undefined>();
+  const { i18n } = useTranslation('agentFlow');
+  const language = i18n.resolvedLanguage ?? i18n.language;
   const [groupCalls, setGroupCalls] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const list = useRef<TrajectoryVirtualListRef>(null);
@@ -116,10 +140,41 @@ export function NativeTrajectoryWorkspace({
   const overview =
     indexQuery.data ??
     (scopeMetadata?.runId === runId ? scopeMetadata.page : undefined);
-  const matches = useMemo(
+  const allMatches = useMemo(
     () => indexQuery.data?.overview?.items ?? [],
     [indexQuery.data]
   );
+  const containerAliases = useMemo(
+    () =>
+      new Map(
+        (overview?.nodes ?? []).flatMap((node) =>
+          node.execution_identity
+            ? [[node.execution_identity.execution_id, node.node_alias] as const]
+            : []
+        )
+      ),
+    [overview?.nodes]
+  );
+  const roundOptions = useMemo(
+    () =>
+      containerRoundOptions(
+        allMatches.map((step) => step.execution_identity),
+        containerAliases,
+        language
+      ),
+    [allMatches, containerAliases, language]
+  );
+  const matches = useMemo(() => {
+    const path = findContainerRound(roundOptions, roundFilter);
+    return path.length
+      ? allMatches.filter((step) =>
+          isWithinContainerRound(step.execution_identity, path)
+        )
+      : allMatches;
+  }, [allMatches, roundOptions, roundFilter]);
+  useEffect(() => {
+    setRoundFilter(undefined);
+  }, [runId]);
   const selectedStep = items.find(
     (step) =>
       step.event_id === selected || step.native_step?.event_id === selected
@@ -162,8 +217,6 @@ export function NativeTrajectoryWorkspace({
     [groupCalls, groups, collapsed, matches]
   );
 
-  const { i18n } = useTranslation('agentFlow');
-  const language = i18n.resolvedLanguage ?? i18n.language;
   const timelinePoints = useMemo(
     () =>
       matches.map((step) => ({
@@ -194,6 +247,15 @@ export function NativeTrajectoryWorkspace({
         </span>
         <span className="provider-trajectory__preview">
           <strong>{workflowNodeName(step, language)}</strong>
+          {step.execution_identity?.round_path.length ? (
+            <span>
+              {step.execution_identity.round_path
+                .map((entry) =>
+                  containerRoundLabel(entry, containerAliases, language)
+                )
+                .join(' / ')}
+            </span>
+          ) : null}
           {step.preview &&
           step.preview !== step.event_type &&
           step.preview !== workflowNodeName(step, language) ? (
@@ -258,6 +320,7 @@ export function NativeTrajectoryWorkspace({
           </Button>
         </div>
         <Select
+          styles={popupStyles}
           allowClear={!nodeRunId}
           value={nodeFilter}
           disabled={Boolean(nodeRunId)}
@@ -270,6 +333,24 @@ export function NativeTrajectoryWorkspace({
           }))}
           onChange={setNodeFilter}
         />
+        {roundOptions.length ? (
+          <TreeSelect
+            styles={popupStyles}
+            allowClear
+            value={roundFilter}
+            treeData={roundOptions}
+            className="workflow-trajectory__node-filter"
+            aria-label={i18nText(
+              'agentFlow',
+              'trajectory.container_round_filter'
+            )}
+            placeholder={i18nText(
+              'agentFlow',
+              'trajectory.all_container_rounds'
+            )}
+            onChange={setRoundFilter}
+          />
+        ) : null}
       </div>
       <TrajectoryTimeline
         laneLabels={[

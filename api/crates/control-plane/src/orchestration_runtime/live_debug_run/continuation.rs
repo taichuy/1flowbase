@@ -179,6 +179,26 @@ where
         }
     };
     if flow_run.status != domain::FlowRunStatus::Running {
+        if !service
+            .repository
+            .list_pending_container_observations(flow_run.id, None, 1)
+            .await?
+            .is_empty()
+        {
+            let application = service
+                .repository
+                .get_application(command.workspace_id, command.application_id)
+                .await?
+                .ok_or(ControlPlaneError::NotFound("application"))?;
+            crate::orchestration_runtime::persistence::scoped_observations::drain_pending(
+                &service.repository,
+                crate::orchestration_runtime::persistence::scoped_observations::ObservationContext {
+                    scope_id:application.workspace_id,application_name:&application.name,
+                    task_queue:service.provider_request_log_queue.as_ref(),flow_run:&flow_run,
+                    conversation_id:flow_run.external_conversation_id.as_deref(),flow_span_id:None,
+                },
+            ).await?;
+        }
         return load_run_detail(&service.repository, command.application_id, flow_run.id).await;
     }
     let result = continue_flow_debug_run_inner(
@@ -203,7 +223,7 @@ where
 pub(super) async fn cancel_flow_run<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     command: CancelFlowRunCommand,
-    _context: &ApplicationRunContext,
+    context: &ApplicationRunContext,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::ApplicationRepository
@@ -231,6 +251,24 @@ where
         domain::FlowRunStatus::Cancelled,
         "cancel_flow_run",
     )?;
+    if let Err(error) =
+        crate::orchestration_runtime::persistence::scoped_observations::drain_pending(
+            &service.repository,
+            crate::orchestration_runtime::persistence::scoped_observations::ObservationContext {
+                scope_id: context.application.workspace_id,
+                application_name: &context.application.name,
+                task_queue: service.provider_request_log_queue.as_ref(),
+                flow_run: &flow_run,
+                conversation_id: flow_run.external_conversation_id.as_deref(),
+                flow_span_id: None,
+            },
+        )
+        .await
+    {
+        // Cancellation retains authority even when a diagnostic sink is down.
+        // The durable pending trace remains available for reconciliation.
+        tracing::warn!(flow_run_id=%flow_run.id, %error, "scoped observations remain pending during cancellation");
+    }
     let terminal_event = debug_stream_events::flow_cancelled(flow_run.id);
     let output_payload = cancellation_output_payload(service, &flow_run).await;
     let receipt = service

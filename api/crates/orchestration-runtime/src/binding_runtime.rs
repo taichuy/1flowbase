@@ -111,7 +111,7 @@ pub fn project_referenced_i18n_messages(
         .collect()
 }
 
-fn resolve_binding(binding: &CompiledBinding, variable_pool: &Map<String, Value>) -> Result<Value> {
+pub(crate) fn resolve_binding(binding: &CompiledBinding, variable_pool: &Map<String, Value>) -> Result<Value> {
     match binding.kind.as_str() {
         "i18n_text" => binding
             .i18n_text_ref
