@@ -48,12 +48,6 @@
   background-image: radial-gradient(var(--container-dots) 1px, transparent 1px);
   background-size: 16px 16px;
 }
-.agent-flow-container__add {
-  position: absolute;
-  right: -36px;
-  top: 50%;
-  transform: translateY(-50%);
-}
 .agent-flow-container-start {
   position: relative;
   display: grid;
@@ -76,4 +70,8 @@
 }
 .agent-flow-container-start--selected {
   outline: 2px solid var(--container-selection);
+}
+
+.agent-flow-container-start .agent-flow-node-handle--source.react-flow__handle {
+  right: -16px;
 }
