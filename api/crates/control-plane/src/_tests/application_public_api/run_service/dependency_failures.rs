@@ -54,7 +54,7 @@ async fn check_start_dependency(operation: &'static str) {
             .start_native_run_for_actor(actor.clone(), request.clone(), TranslationProtocol::Native)
             .await
             .unwrap_err();
-        assert_service_source(error.into(), operation, unavailable);
+        assert_service_source(error, operation, unavailable);
         repository.set_native_repository_failure(None, false);
         assert!(service
             .start_native_run_for_actor(actor.clone(), request, TranslationProtocol::Native)
@@ -121,18 +121,15 @@ async fn native_read_and_cancel_dependencies_preserve_sources_and_recover() {
                 "find_published_flow_run_by_provider_response_id" => native
                     .get_native_run_by_provider_response_id_for_actor(actor.clone(), "resp-fault")
                     .await
-                    .unwrap_err()
-                    .into(),
+                    .unwrap_err(),
                 "get_published_flow_run" | "get_published_run_stream_state" => native
                     .get_native_run_for_actor(actor.clone(), run.id)
                     .await
-                    .unwrap_err()
-                    .into(),
+                    .unwrap_err(),
                 _ => native
                     .cancel_native_run_for_actor(actor.clone(), run.id)
                     .await
-                    .unwrap_err()
-                    .into(),
+                    .unwrap_err(),
             };
             assert_service_source(error, operation, unavailable);
             repository.set_native_repository_failure(None, false);
@@ -159,8 +156,7 @@ async fn native_read_and_cancel_dependencies_preserve_sources_and_recover() {
     let missing: NativeRunError = native
         .get_native_run_for_actor(actor, Uuid::nil())
         .await
-        .unwrap_err()
-        .into();
+        .unwrap_err();
     assert!(matches!(
         missing,
         NativeRunError::Validation(NativeRunValidationError::NotFound)

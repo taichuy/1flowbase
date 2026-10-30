@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 import { NodePickerPopover } from '../components/node-picker/NodePickerPopover';
@@ -396,12 +396,12 @@ describe('NodePickerPopover', () => {
     expect(selectNode).not.toHaveBeenCalled();
 
     const builtinTab = screen.getByRole('tab', { name: '内置' });
-    builtinTab.focus();
+    await act(async () => builtinTab.focus());
     expect(fireEvent.keyDown(builtinTab, { key: 'Enter' })).toBe(true);
     fireEvent.click(builtinTab, { detail: 0 });
     expect(builtinTab).toHaveAttribute('aria-selected', 'true');
     const pluginTab = screen.getByRole('tab', { name: '扩展' });
-    pluginTab.focus();
+    await act(async () => pluginTab.focus());
     expect(fireEvent.keyDown(pluginTab, { key: ' ' })).toBe(true);
     fireEvent.click(pluginTab, { detail: 0 });
     expect(pluginTab).toHaveAttribute('aria-selected', 'true');
