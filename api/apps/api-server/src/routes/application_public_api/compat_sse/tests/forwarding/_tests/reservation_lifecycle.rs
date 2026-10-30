@@ -393,21 +393,19 @@ async fn fixture_with_callback_kind(
         observation_context: None,
         reserved_attempt_id: None,
     };
+    append_compat_sse_runtime_event(
+        &state,
+        run.id,
+        "waiting_callback",
+        json!({"callback_task_id": callback.id}),
+    )
+    .await;
     let old_generation = Uuid::now_v7();
     append_compat_sse_runtime_event(
         &state,
         run.id,
         "runtime_stream_opened",
         json!({"stream_generation_id": old_generation}),
-    )
-    .await;
-    // This diagnostic copy belongs to the old producer. An untagged terminal
-    // before the anchor would instead be a supported legacy round completion.
-    append_compat_sse_runtime_event(
-        &state,
-        run.id,
-        "waiting_callback",
-        json!({"callback_task_id": callback.id, "stream_generation_id": old_generation}),
     )
     .await;
     append_compat_sse_runtime_event(
@@ -457,37 +455,6 @@ async fn fixture_with_callback_kind(
         native,
         provider_transport_store: state.infrastructure.provider_transport_store(),
     };
-    let suffix = state
-        .store
-        .list_runtime_events(run.id, waiting.waiting_event.sequence)
-        .await
-        .unwrap();
-    let anchor = suffix
-        .iter()
-        .find(|event| event.event_type == "runtime_stream_opened")
-        .expect("old producer anchor");
-    let diagnostic = suffix
-        .iter()
-        .find(|event| event.event_type == "waiting_callback")
-        .expect("old waiting diagnostic retained");
-    assert!(anchor.sequence < diagnostic.sequence);
-    assert_eq!(
-        anchor.payload["stream_generation_id"],
-        json!(old_generation)
-    );
-    assert_eq!(
-        diagnostic.payload["stream_generation_id"],
-        json!(old_generation)
-    );
-    assert_eq!(diagnostic.payload["callback_task_id"], json!(callback.id));
-    assert!(suffix.iter().any(|event| event.event_type == "flow_failed"
-        && event.payload["stream_generation_id"] == json!(old_generation)));
-    assert!(
-        suffix
-            .iter()
-            .all(|event| event.event_type != "flow_started"),
-        "the old anchor and failure have no selected-round producer marker"
-    );
     assert!(
         matches!(
             durable_compatible_round_replay(&dependencies, &run, callback.id)

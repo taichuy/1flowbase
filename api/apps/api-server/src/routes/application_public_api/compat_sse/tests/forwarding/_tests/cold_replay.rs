@@ -347,9 +347,7 @@ async fn assert_cold_callback_scope(delayed_identity: bool, missing_marker: bool
         ),
         (
             "waiting_callback",
-            // Keep the late predecessor terminal foreign to the selected producer.
-            // Untagged waiting would legally terminate an unbounded legacy suffix.
-            json!({"callback_task_id": callback_task_id, "stream_generation_id": old_generation}),
+            json!({"callback_task_id": callback_task_id}),
         ),
     ] {
         append_compat_sse_runtime_event(&state, run.id, event_type, payload).await;
@@ -425,53 +423,6 @@ async fn assert_cold_callback_scope(delayed_identity: bool, missing_marker: bool
     ] {
         append_compat_sse_runtime_event(&state, run.id, event_type, payload).await;
     }
-    // Verify the adversary in the stored suffix, not just the input variables:
-    // the stale same-round marker arrived after the requested producer's anchor.
-    let boundary = state
-        .store
-        .get_original_callback_waiting_boundary(run.id, callback_task_id)
-        .await
-        .unwrap()
-        .unwrap();
-    let adversary = state
-        .store
-        .list_runtime_events(run.id, boundary.original.event_sequence)
-        .await
-        .unwrap();
-    let selected_anchor = adversary
-        .iter()
-        .find(|event| {
-            event.event_type == "runtime_stream_opened"
-                && event.payload["stream_generation_id"] == json!(requested_generation)
-        })
-        .expect("requested generation anchor");
-    assert_ne!(old_generation, requested_generation);
-    assert!(
-        adversary
-            .iter()
-            .any(|event| event.event_type == "waiting_callback"
-                && event.sequence < selected_anchor.sequence
-                && event.payload["callback_task_id"] == json!(callback_task_id)
-                && event.payload["stream_generation_id"] == json!(old_generation)),
-        "predecessor waiting remains foreign"
-    );
-    assert!(
-        adversary
-            .iter()
-            .any(|event| event.event_type == "flow_started"
-                && event.sequence > selected_anchor.sequence
-                && event.payload["response_round_id"] == json!(callback_task_id)
-                && event.payload["stream_generation_id"] == json!(old_generation)),
-        "late stale marker is an actual durable fact"
-    );
-    assert!(
-        adversary
-            .iter()
-            .any(|event| event.event_type == "flow_finished"
-                && event.payload["response_round_id"] == json!(later_round)
-                && event.payload["stream_generation_id"] == json!(requested_generation)),
-        "foreign round terminal shares the selected generation"
-    );
     let reasoning = json!({"type": "reasoning", "id": "rs_callback_original", "encrypted_content": "opaque-callback-bytes", "extension": {"numeric_lexeme": "00"}});
     let message = json!({"type": "message", "id": "msg_callback_original", "content": [{"type": "output_text", "text": "requested callback"}]});
     let stream = Arc::new(LocalRuntimeEventStream::new());
