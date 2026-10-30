@@ -100,6 +100,10 @@ pub struct ResumePublishedCallbackResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PreparedPublishedCallbackResume {
+    /// Read classification only; the reservation CAS still grants admission.
+    NativeToolResume {
+        initial_run: Box<NativeRunResult>,
+    },
     Resume {
         initial_run: Box<NativeRunResult>,
     },
@@ -194,6 +198,21 @@ where
             .repository
             .get_published_callback_resume_attempt(context.callback_task.id)
             .await?;
+        // A parked Native tool round accepts another partial delivery through
+        // the existing fenced inbox owner, not the settled replay matcher.
+        if command.source == PublishedCallbackResumeSource::NativeAgent
+            && context.callback_task.callback_kind == "llm_tool_calls"
+            && context.callback_task.status == domain::CallbackTaskStatus::Pending
+            && context.flow_run.status == domain::FlowRunStatus::WaitingCallback
+            && existing.as_ref().is_none_or(|attempt| {
+                attempt.source == command.source.as_str()
+                    && attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Received
+            })
+        {
+            return Ok(PreparedPublishedCallbackResume::NativeToolResume {
+                initial_run: Box::new(self.native_result_for_flow_run(&context.flow_run).await?),
+            });
+        }
         let expired_predecessor = match existing.as_ref() {
             Some(attempt) => {
                 self.is_reclaimable_responses_predecessor(&context, attempt, command)

@@ -484,10 +484,18 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
             .prepare_callback_resume_for_actor(actor.clone(), &command)
             .await
             .map_err(service_error)?;
+        let native_tool_resume = matches!(
+            &prepared,
+            PreparedPublishedCallbackResume::NativeToolResume { .. }
+        );
         return Ok(match prepared {
-            PreparedPublishedCallbackResume::Resume { initial_run } => {
+            PreparedPublishedCallbackResume::Resume { initial_run }
+            | PreparedPublishedCallbackResume::NativeToolResume { initial_run } => {
                 let mut reservation = None;
-                if command.native_transport.is_some() || command.responses_continuation.is_some() {
+                if native_tool_resume
+                    || command.native_transport.is_some()
+                    || command.responses_continuation.is_some()
+                {
                     match service
                         .reserve_native_callback_reservation_for_actor(actor.clone(), &command)
                         .await

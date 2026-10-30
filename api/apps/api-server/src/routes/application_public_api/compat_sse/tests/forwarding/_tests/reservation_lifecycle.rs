@@ -149,6 +149,8 @@ struct PreparationStream {
     local: LocalRuntimeEventStream,
     failure: &'static str,
     entered: tokio::sync::Notify,
+    open_attempts: std::sync::atomic::AtomicUsize,
+    subscriptions: std::sync::atomic::AtomicUsize,
 }
 
 #[async_trait::async_trait]
@@ -160,6 +162,8 @@ impl RuntimeEventStream for PreparationStream {
         self.local.terminal_writer(run).await
     }
     async fn open_run(&self, run: Uuid, policy: RuntimeEventStreamPolicy) -> anyhow::Result<()> {
+        self.open_attempts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.entered.notify_one();
         match self.failure {
             "open" => anyhow::bail!("controlled pre-handoff open failure"),
@@ -188,6 +192,8 @@ impl RuntimeEventStream for PreparationStream {
         run: Uuid,
         cursor: Option<i64>,
     ) -> anyhow::Result<RuntimeEventSubscription> {
+        self.subscriptions
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if self.failure == "subscribe" {
             anyhow::bail!("controlled pre-handoff subscribe failure");
         }
@@ -226,6 +232,22 @@ async fn fixture(
 async fn fixture_with_tool_count(
     failure: &'static str,
     tool_count: usize,
+) -> (
+    Arc<ApiState>,
+    CompatibilityExecutionDependencies,
+    NativeRunResult,
+    ApplicationApiKeyActor,
+    ResumePublishedCallbackCommand,
+    Arc<callback_reservation::CallbackService>,
+    Arc<PreparationStream>,
+) {
+    fixture_with_callback_kind(failure, tool_count, "llm_tool_calls").await
+}
+
+async fn fixture_with_callback_kind(
+    failure: &'static str,
+    tool_count: usize,
+    callback_kind: &str,
 ) -> (
     Arc<ApiState>,
     CompatibilityExecutionDependencies,
@@ -295,7 +317,7 @@ async fn fixture_with_tool_count(
         .execute(state.store.pool()).await.unwrap();
     let callback_id = Uuid::now_v7();
     let variable_snapshot = json!({"fixture":{"__llm_tool_callback":{
-        "callback_kind":"llm_tool_calls",
+        "callback_kind":callback_kind,
         "pending_tool_calls":tool_calls,
         "system":[],"history":[{"role":"assistant","content":"","tool_calls":tool_calls}]
     }}});
@@ -317,7 +339,7 @@ async fn fixture_with_tool_count(
     let waiting = state.store.persist_waiting_state(&PersistWaitingStateInput {
         checkpoint_id: Uuid::now_v7(), scope_id: workspace_id, application_id:run.application_id,
         flow_run_id:run.id,node_run_id:node.id,expected_status:domain::FlowRunStatus::WaitingCallback,
-        output_payload:json!({}),checkpoint_status:"waiting_callback".into(),checkpoint_reason:"llm_tool_calls".into(),
+        output_payload:json!({}),checkpoint_status:"waiting_callback".into(),checkpoint_reason:callback_kind.into(),
         locator_payload:json!({"node_id":"fixture","next_node_index":0,"active_node_ids":["fixture"]}),
         variable_snapshot:variable_snapshot.clone(),checkpoint_external_ref_payload:None,
         context_content:json!({"format":"runtime_snapshot_v1","variable_pool":variable_snapshot}),
@@ -327,7 +349,7 @@ async fn fixture_with_tool_count(
         tool_delivery_events:tool_calls.iter().enumerate().map(|(index,call)|event("provider_output_item_done",json!({"output_index":index,"committed_delivery":true,
             "item":{"type":"function_call","call_id":call["id"],"name":call["name"],"arguments":"{}","opaque":{"original":index}}}))).collect(),
         kind:PersistWaitingKind::Callback(PersistWaitingCallbackTaskInput {
-            id:callback_id,callback_kind:"llm_tool_calls".into(),external_ref_payload:None,
+            id:callback_id,callback_kind:callback_kind.into(),external_ref_payload:None,
             request_payload:json!({"tool_calls":tool_calls,
                 "provider_metadata":{"native_response":{
                     "response_id":response_id,
@@ -346,12 +368,17 @@ async fn fixture_with_tool_count(
         waiting.waiting_event.sequence
     );
     run.metadata["response_round_id"] = json!(callback.id);
-    let (correlated_callback, response_payload) =
-        correlate_native_responses_callback(&state.store, &actor, &request)
-            .await
-            .unwrap()
-            .expect("the real native Responses ingress must recognize this owned callback");
-    assert_eq!(correlated_callback.id, callback.id);
+    let response_payload = if callback_kind == "llm_tool_calls" {
+        let (correlated_callback, payload) =
+            correlate_native_responses_callback(&state.store, &actor, &request)
+                .await
+                .unwrap()
+                .expect("the real native Responses ingress must recognize this owned callback");
+        assert_eq!(correlated_callback.id, callback.id);
+        payload
+    } else {
+        json!({"answer":"approved"})
+    };
     let command = ResumePublishedCallbackCommand {
         bearer_token: String::new(),
         target: PublishedCallbackResumeTarget::CallbackTask {
@@ -392,6 +419,8 @@ async fn fixture_with_tool_count(
         local: LocalRuntimeEventStream::new(),
         failure,
         entered: tokio::sync::Notify::new(),
+        open_attempts: std::sync::atomic::AtomicUsize::new(0),
+        subscriptions: std::sync::atomic::AtomicUsize::new(0),
     });
     stream
         .local
@@ -1257,7 +1286,7 @@ async fn native_attach_keeps_llm_required_action_and_native_resume_owner_checks(
             .prepare_callback_resume_for_actor(actor.clone(), &command)
             .await
             .unwrap(),
-        PreparedPublishedCallbackResume::Resume { .. }
+        PreparedPublishedCallbackResume::NativeToolResume { .. }
     ));
     let PublishedCallbackReservation::Acquired(receipt) = service
         .reserve_native_callback_reservation_for_actor(actor.clone(), &command)
@@ -1370,3 +1399,6 @@ async fn completed_a_waiting_b_no_execution_keeps_ordinary_scoped_projection() {
         "ordinary result must acquire B's actual scoped tool receipt"
     );
 }
+
+#[path = "reservation_lifecycle/native_ingress.rs"]
+mod native_ingress;
