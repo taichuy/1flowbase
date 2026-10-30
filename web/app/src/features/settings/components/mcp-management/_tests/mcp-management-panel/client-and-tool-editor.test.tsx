@@ -35,7 +35,9 @@ describe('McpManagementPanel', () => {
     expect(codexInstallPreview).toHaveClass('mcp-client-command-preview');
     expect(codexInstallPreview).toHaveTextContent(endpoint);
     expect(codexInstallPreview).toHaveTextContent('test-secret-key');
-    expect(codexInstallPreview).toHaveTextContent('~/.codex/config.toml');
+    expect(codexInstallPreview).toHaveTextContent('config.toml');
+    expect(codexInstallPreview).toHaveTextContent('CODEX_HOME');
+    expect(codexInstallPreview).not.toHaveTextContent('codex mcp add');
     expect(codexInstallPreview).toHaveTextContent('http_headers');
     expect(codexInstallPreview).toHaveTextContent(
       'Authorization = "Bearer test-secret-key"'

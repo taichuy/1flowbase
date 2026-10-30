@@ -1,3 +1,9 @@
+import { buildCodexCommands } from './client-configuration/codex-commands';
+import {
+  quotePosix,
+  quotePowerShell,
+  quoteWindowsCommand
+} from './client-configuration/command-quoting';
 import { ChatGptConfiguration } from './client-configuration/ChatGptConfiguration';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import KeyOutlined from '@ant-design/icons/es/icons/KeyOutlined';
@@ -26,59 +32,6 @@ function buildMcpServerConfiguration(endpoint: string, apiKey: string) {
       Authorization: `Bearer ${apiKey}`
     }
   };
-}
-
-function quotePosix(value: string) {
-  return `'${value.replaceAll("'", `'"'"'`)}'`;
-}
-
-function quotePowerShell(value: string) {
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
-function quoteWindowsCommand(value: string) {
-  return `"${value.replaceAll('"', '""')}"`;
-}
-
-function quoteTomlString(value: string) {
-  return JSON.stringify(value);
-}
-
-function buildCodexTomlHeaderLines(instanceName: string, apiKey: string) {
-  return [
-    `[mcp_servers.${quoteTomlString(instanceName)}.http_headers]`,
-    `Authorization = ${quoteTomlString(`Bearer ${apiKey}`)}`
-  ];
-}
-
-function buildCodexCommands(
-  instanceName: string,
-  endpoint: string,
-  apiKey: string
-) {
-  const [headerSection, authorizationHeader] = buildCodexTomlHeaderLines(
-    instanceName,
-    apiKey
-  );
-  const cmdHeaderSection = `${quotePowerShell('[mcp_servers.')} + [char]34 + ${quotePowerShell(instanceName)} + [char]34 + ${quotePowerShell('.http_headers]')}`;
-  const cmdAuthorizationHeader = `${quotePowerShell('Authorization = ')} + [char]34 + ${quotePowerShell(`Bearer ${apiKey}`)} + [char]34`;
-  return [
-    {
-      title: 'macOS / Linux Shell',
-      language: 'bash',
-      command: `codex mcp remove ${quotePosix(instanceName)} >/dev/null 2>&1 || true; codex mcp add ${quotePosix(instanceName)} --url ${quotePosix(endpoint)} && printf '%s\\n' '' ${quotePosix(headerSection)} ${quotePosix(authorizationHeader)} >> ~/.codex/config.toml`
-    },
-    {
-      title: 'Windows PowerShell',
-      language: 'powershell',
-      command: `codex mcp remove ${quotePowerShell(instanceName)} 2>$null; codex mcp add ${quotePowerShell(instanceName)} --url ${quotePowerShell(endpoint)}; Add-Content -Path (Join-Path $HOME '.codex\\config.toml') -Value '', ${quotePowerShell(headerSection)}, ${quotePowerShell(authorizationHeader)}`
-    },
-    {
-      title: 'Windows CMD',
-      language: 'bat',
-      command: `codex mcp remove ${quoteWindowsCommand(instanceName)} >nul 2>&1 & codex mcp add ${quoteWindowsCommand(instanceName)} --url ${quoteWindowsCommand(endpoint)} && powershell -NoProfile -Command "Add-Content -Path (Join-Path $HOME '.codex\\config.toml') -Value '', (${cmdHeaderSection}), (${cmdAuthorizationHeader})"`
-    }
-  ];
 }
 
 function buildCodexRemoveCommands(instanceName: string) {
