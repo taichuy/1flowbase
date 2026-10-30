@@ -1,7 +1,7 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/assistant-activity.test.tsx","sha256":"7d0a5f637e5a6e765d9c121920750ea3fa36a673d21fcb141847402a2cd17096"},{"file":"web/app/src/features/agent-flow/api/runtime.ts","sha256":"3852bccbf75a2a479c073f01674846d12b63a5d7091122c586b5a7077f986027"},{"file":"web/app/src/features/agent-flow/lib/debug-console/assistant-content.ts","sha256":"f628f9a6e4c541782c99726f950f7184bc780cfe9cc7cebab500ea8728f7c88f"}],
+    [{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/assistant-activity.test.tsx","sha256":"7d0a5f637e5a6e765d9c121920750ea3fa36a673d21fcb141847402a2cd17096"},{"file":"web/app/src/features/agent-flow/api/runtime.ts","sha256":"6524ee4658e9c8c79fd918c5b03093e3c3896511d8a9ff343f2cc13e2290c431"},{"file":"web/app/src/features/agent-flow/lib/debug-console/assistant-content.ts","sha256":"f628f9a6e4c541782c99726f950f7184bc780cfe9cc7cebab500ea8728f7c88f"}],
     [{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx","sha256":"0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"},{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.fixtures.tsx","sha256":"bd4f0af2bd27917c1e6115813cf653fc1938de01af9cffcac279c8935c2a74e4"},{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx","sha256":"11cc9a5257ea2902ea449e756a4c62bb758792e2aa78803097df1c2d28e7fc2a"},{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-layout-and-runs.test.tsx","sha256":"a08ec1cd4b92c01ba0b23d5579af8a6082f3fe8e9c0e29d986c0a832425a04b3"},{"file":"web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx","sha256":"5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}],
     [{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/page-reference-selection.test.tsx","sha256":"5de140d4e796ab2954eb2ba87f7bfce87ce5c45e7a1772ac4ba388fa4cb9eb27"}]
   ],
@@ -10,49 +10,49 @@
       "file": "web/app/src/features/agent-flow/components/embedded-assistant/AssistantRunActivityPanel.tsx",
       "rule": "react-doctor/js-combine-iterations",
       "sourceSha256": "55776661d67e7202c8af9ad11c25b12f4a0d2ed2d1a1784f2ef8f224cd626d48",
-      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 逐阶段线性选择/投影保持顺序与类型缩窄，后续过滤可能依赖前一步计算；没有由组合产生重复副作用或错误结果。",
+      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 逐阶段线性选择/投影保持顺序与类型缩窄，后续过滤可能依赖前一步计算；没有由组合产生重复副作用或错误结果。 Reassessed 2026-10-30: Runtime trace DTO adds optional execution_identity from api-client without changing existing message, callback or state ownership.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/agent-flow/components/embedded-assistant/AssistantRunActivityPanel.tsx",
       "rule": "react-doctor/js-tosorted-immutable",
       "sourceSha256": "55776661d67e7202c8af9ad11c25b12f4a0d2ed2d1a1784f2ef8f224cd626d48",
-      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 排序目标是 spread/Array.from 新数组，未更改生产者集合，已满足输入不可变语义。",
+      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 排序目标是 spread/Array.from 新数组，未更改生产者集合，已满足输入不可变语义。 Reassessed 2026-10-30: Runtime trace DTO adds optional execution_identity from api-client without changing existing message, callback or state ownership.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/agent-flow/components/embedded-assistant/AssistantRunActivityPanel.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
       "sourceSha256": "55776661d67e7202c8af9ad11c25b12f4a0d2ed2d1a1784f2ef8f224cd626d48",
-      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。",
+      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。 Reassessed 2026-10-30: Runtime trace DTO adds optional execution_identity from api-client without changing existing message, callback or state ownership.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/agent-flow/components/embedded-assistant/AssistantRunActivityPanel.tsx",
       "rule": "react-doctor/no-cascading-set-state",
       "sourceSha256": "55776661d67e7202c8af9ad11c25b12f4a0d2ed2d1a1784f2ef8f224cd626d48",
-      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。",
+      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。 Reassessed 2026-10-30: Runtime trace DTO adds optional execution_identity from api-client without changing existing message, callback or state ownership.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/agent-flow/components/embedded-assistant/AssistantRunActivityPanel.tsx",
       "rule": "react-doctor/no-derived-state",
       "sourceSha256": "55776661d67e7202c8af9ad11c25b12f4a0d2ed2d1a1784f2ef8f224cd626d48",
-      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。",
+      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。 Reassessed 2026-10-30: Runtime trace DTO adds optional execution_identity from api-client without changing existing message, callback or state ownership.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/agent-flow/components/embedded-assistant/AssistantRunActivityPanel.tsx",
       "rule": "react-doctor/no-event-handler",
       "sourceSha256": "55776661d67e7202c8af9ad11c25b12f4a0d2ed2d1a1784f2ef8f224cd626d48",
-      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。",
+      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。 Reassessed 2026-10-30: Runtime trace DTO adds optional execution_identity from api-client without changing existing message, callback or state ownership.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/agent-flow/components/embedded-assistant/AssistantRunActivityPanel.tsx",
       "rule": "react-doctor/rerender-state-only-in-handlers",
       "sourceSha256": "55776661d67e7202c8af9ad11c25b12f4a0d2ed2d1a1784f2ef8f224cd626d48",
-      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 该 state 还参与 render/异步生命周期，改 ref 会失去必须的 UI 更新，不只是 handler 内部锁。",
+      "reason": "loadDurableActivity/snapshot 请求由 runId/status 驱动且有 disposed；reasoningExpanded 包含手动覆盖，activeReasoningKey 随外部流式事件变化。 该 state 还参与 render/异步生命周期，改 ref 会失去必须的 UI 更新，不只是 handler 内部锁。 Reassessed 2026-10-30: Runtime trace DTO adds optional execution_identity from api-client without changing existing message, callback or state ownership.",
       "evidenceSet": 0
     },
     {

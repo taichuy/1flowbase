@@ -64,8 +64,8 @@
       "file": "web/app/src/features/agent-flow/components/detail/NodePreviewVariablesModal.tsx",
       "rule": "react-doctor/no-render-in-render",
       "sourceSha256": "87d7dcd8e672cf1391cdcfad451772f1a67c5f0017c9aa0b80ac465043b700e0",
-      "reason": "web/app/src/features/agent-flow/components/detail/NodePreviewVariablesModal.tsx:149（react-doctor/no-render-in-render）：命中点是普通 render helper 的直接函数调用，返回现有组件/原生 JSX element；不是 `<LocalComponent />` 形式的新函数组件类型。React 根据返回元素的 type/key 对账，不会因为 helper 的调用本身重挂载。循环行保留既有 key；真实的 index-key 问题另记 F7。",
-      "evidence": [{"file":"web/app/src/features/agent-flow/components/detail/NodePreviewVariablesModal.tsx","sha256":"87d7dcd8e672cf1391cdcfad451772f1a67c5f0017c9aa0b80ac465043b700e0"},{"file":"web/app/src/features/agent-flow/components/editor/AgentFlowCanvasFrame.tsx","sha256":"90aaa2ec9076ead9df3c8ffa8a25001be30e9410dca1f7acc136ade458519a4b"}]
+      "reason": "web/app/src/features/agent-flow/components/detail/NodePreviewVariablesModal.tsx:149（react-doctor/no-render-in-render）：命中点是普通 render helper 的直接函数调用，返回现有组件/原生 JSX element；不是 `<LocalComponent />` 形式的新函数组件类型。React 根据返回元素的 type/key 对账，不会因为 helper 的调用本身重挂载。循环行保留既有 key；真实的 index-key 问题另记 F7。 Reassessed 2026-10-30: Frame removes active-container breadcrumb and return-to-root UI. Existing dock controller, draft/session orchestration, read-only export, variable callback and resize separator remain.",
+      "evidence": [{"file":"web/app/src/features/agent-flow/components/detail/NodePreviewVariablesModal.tsx","sha256":"87d7dcd8e672cf1391cdcfad451772f1a67c5f0017c9aa0b80ac465043b700e0"},{"file":"web/app/src/features/agent-flow/components/editor/AgentFlowCanvasFrame.tsx","sha256":"d7f26d2122c6588d897351e0cf00926248f6d0b32a06bccbe3f1a99c4de7e618"}]
     }
   ]
 }
