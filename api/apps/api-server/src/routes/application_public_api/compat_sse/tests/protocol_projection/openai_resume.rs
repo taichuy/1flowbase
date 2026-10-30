@@ -214,9 +214,6 @@ async fn openai_chat_waiting_internal_llm_tool_callback_is_explicitly_unsupporte
 #[tokio::test]
 async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_tool_call() {
     let mut run = native_run();
-    let node_run_id = Uuid::from_u128(0x77777777777777777777777777777777);
-    let previous_callback_task_id = Uuid::from_u128(0x88888888888888888888888888888888);
-    let next_callback_task_id = Uuid::from_u128(0x99999999999999999999999999999999);
     run.status = NativeRunStatus::Waiting;
     run.tool_calls = Some(json!([
         {
@@ -225,39 +222,49 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_tool_call(
             "arguments": { "query": "next" }
         }
     ]));
-    run.required_action = Some(NativeRequiredAction {
-        action_type: "submit_tool_outputs".to_string(),
-        payload: json!({
-            "callback_task_id": next_callback_task_id,
-            "callback_kind": "llm_tool_calls",
-            "node_run_id": node_run_id,
-            "tool_calls": run.tool_calls.clone().unwrap()
-        }),
-    });
-
     let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     seed_flow_run_for_compat_sse_test(&base_state, &run).await;
-    append_compat_sse_runtime_event(
+    // A diagnostic waiting event alone has no original recovery boundary. Create the
+    // prior callback through the atomic waiting owner, then admit its real resume
+    // before writing the durable answer prefix that this replay must recover.
+    let previous_wait = super::super::forwarding::delivery_proof::commit_wait_with_tool_calls(
         &base_state,
-        run.id,
-        "waiting_callback",
-        json!({
-            "type": "waiting_callback",
-            "run_id": run.id,
-            "status": "waiting_callback",
-            "callback_task_id": previous_callback_task_id,
-            "callback_kind": "llm_tool_calls",
-            "node_run_id": node_run_id,
-            "tool_calls": [
-                {
-                    "id": "call_previous",
-                    "name": "lookup_previous",
-                    "arguments": { "query": "previous" }
-                }
-            ]
-        }),
+        &run,
+        &[json!({
+            "output_index": 0,
+            "committed_delivery": true,
+            "item": {
+                "type": "function_call",
+                "call_id": "call_previous",
+                "name": "lookup_previous",
+                "arguments": "{\"query\":\"previous\"}"
+            }
+        })],
+        Some(&json!([{
+            "id": "call_previous",
+            "name": "lookup_previous",
+            "arguments": {"query": "previous"}
+        }])),
     )
     .await;
+    let previous_callback_task_id = previous_wait.callback_task.as_ref().unwrap().id;
+    let boundary = base_state
+        .store
+        .get_original_callback_waiting_boundary(run.id, previous_callback_task_id)
+        .await
+        .unwrap()
+        .expect("atomic wait must create the original durable replay boundary");
+    assert_eq!(
+        boundary.original.event_sequence,
+        previous_wait.waiting_event.sequence
+    );
+    let (_, resume_claim) =
+        super::super::forwarding::delivery_proof::resume_waiting_callback(&base_state, &run).await;
+    assert!(
+        resume_claim.is_some(),
+        "durable text must follow the real callback resume"
+    );
+    let node_run_id = previous_wait.callback_task.as_ref().unwrap().node_run_id;
     append_compat_sse_runtime_event(
         &base_state,
         run.id,
@@ -281,21 +288,36 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_tool_call(
         }),
     )
     .await;
-    append_compat_sse_runtime_event(
+    let next_wait = super::super::forwarding::delivery_proof::commit_wait_with_tool_calls(
         &base_state,
-        run.id,
-        "waiting_callback",
-        json!({
-            "type": "waiting_callback",
-            "run_id": run.id,
-            "status": "waiting_callback",
-            "callback_task_id": next_callback_task_id,
-            "callback_kind": "llm_tool_calls",
-            "node_run_id": node_run_id,
-            "tool_calls": run.tool_calls.clone().unwrap()
-        }),
+        &run,
+        &[json!({
+            "output_index": 0,
+            "committed_delivery": true,
+            "item": {
+                "type": "function_call",
+                "call_id": "call_next",
+                "name": "lookup_next",
+                "arguments": "{\"query\":\"next\"}"
+            }
+        })],
+        run.tool_calls.as_ref(),
     )
     .await;
+    run.required_action = Some(NativeRequiredAction {
+        action_type: "submit_tool_outputs".to_string(),
+        payload: next_wait.waiting_event.payload.clone(),
+    });
+    let boundary = base_state
+        .store
+        .get_original_callback_waiting_boundary(run.id, previous_callback_task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        boundary.next.unwrap().event_sequence,
+        next_wait.waiting_event.sequence
+    );
 
     let subscription_replay = vec![
         RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),
@@ -303,20 +325,12 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_tool_call(
             run.id,
             2,
             RuntimeEventPayload {
-                event_type: "waiting_callback".to_string(),
+                event_type: next_wait.waiting_event.event_type.clone(),
                 source: RuntimeEventSource::Runtime,
                 durability: RuntimeEventDurability::DurableRequired,
                 persist_required: true,
                 trace_visible: true,
-                payload: json!({
-                    "type": "waiting_callback",
-                    "run_id": run.id,
-                    "status": "waiting_callback",
-                    "callback_task_id": next_callback_task_id,
-                    "callback_kind": "llm_tool_calls",
-                    "node_run_id": node_run_id,
-                    "tool_calls": run.tool_calls.clone().unwrap()
-                }),
+                payload: next_wait.waiting_event.payload.clone(),
             },
         ),
     ];
@@ -409,6 +423,10 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_tool_call(
 
     assert!(body.contains("prior node answer"), "{body}");
     assert!(body.contains("lookup_next"), "{body}");
+    assert!(
+        body.find("prior node answer").unwrap() < body.find("lookup_next").unwrap(),
+        "{body}"
+    );
     assert!(!body.contains("required_action_not_supported"), "{body}");
     assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
     assert!(body.contains("\"finish_reason\":\"tool_calls\""), "{body}");

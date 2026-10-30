@@ -1087,7 +1087,7 @@ mod exact_native_replay;
 mod response_scoped_delivery;
 
 #[path = "forwarding/_tests/delivery_proof.rs"]
-mod delivery_proof;
+pub(super) mod delivery_proof;
 
 #[path = "forwarding/_tests/native_attachment.rs"]
 mod native_attachment;

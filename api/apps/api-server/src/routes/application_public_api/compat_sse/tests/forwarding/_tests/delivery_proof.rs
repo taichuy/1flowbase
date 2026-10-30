@@ -8,7 +8,7 @@ use control_plane::ports::{
 
 // Reuse the actual inbox owner for both execution-before-output and the next
 // waiting commit. An exact second call observes the same processing claim.
-pub(super) async fn resume_waiting_callback(
+pub(in super::super) async fn resume_waiting_callback(
     state: &ApiState,
     run: &NativeRunResult,
 ) -> (
@@ -100,6 +100,17 @@ pub(super) async fn commit_wait(
     run: &NativeRunResult,
     payloads: &[Value],
 ) -> PersistedWaitingState {
+    commit_wait_with_tool_calls(state, run, payloads, None).await
+}
+
+// Semantic protocol fixtures also need the callback tools on the atomic waiting
+// event. Exact-native fixtures keep their existing minimal waiting payload.
+pub(in super::super) async fn commit_wait_with_tool_calls(
+    state: &ApiState,
+    run: &NativeRunResult,
+    payloads: &[Value],
+    tool_calls: Option<&Value>,
+) -> PersistedWaitingState {
     let current = state
         .store
         .get_flow_run(run.application_id, run.id)
@@ -167,7 +178,21 @@ pub(super) async fn commit_wait(
             recovery_idempotency_key: format!("waiting_callback:{callback}"),
             resume_claim_id: resume_claim.as_ref().map(|claim| claim.id),
             resume_claim_token: resume_claim.as_ref().map(|claim| claim.claim_token),
-            waiting_event: event("waiting_callback", json!({"callback_task_id":callback})),
+            waiting_event: event(
+                "waiting_callback",
+                match tool_calls {
+                    Some(tool_calls) => json!({
+                        "type": "waiting_callback",
+                        "run_id": run.id,
+                        "status": "waiting_callback",
+                        "callback_task_id": callback,
+                        "callback_kind": "llm_tool_calls",
+                        "node_run_id": node.id,
+                        "tool_calls": tool_calls
+                    }),
+                    None => json!({"callback_task_id":callback}),
+                },
+            ),
             tool_delivery_events: payloads
                 .iter()
                 .map(|payload| event("provider_output_item_done", payload.clone()))
@@ -176,9 +201,11 @@ pub(super) async fn commit_wait(
                 id: callback,
                 callback_kind: "llm_tool_calls".into(),
                 external_ref_payload: None,
-                request_payload: json!({"tool_calls":payloads.iter().map(|payload| json!({
-                "id":payload["item"]["call_id"],"name":"exec","arguments":{}
-            })).collect::<Vec<_>>()}),
+                request_payload: json!({"tool_calls": tool_calls.cloned().unwrap_or_else(|| {
+                    json!(payloads.iter().map(|payload| json!({
+                        "id":payload["item"]["call_id"],"name":"exec","arguments":{}
+                    })).collect::<Vec<_>>())
+                })}),
             }),
         })
         .await
