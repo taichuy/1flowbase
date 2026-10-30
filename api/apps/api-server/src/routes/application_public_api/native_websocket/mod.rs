@@ -15,6 +15,8 @@ use axum::{
 
 mod actor;
 mod projector;
+#[cfg(test)]
+pub(crate) use projector::NativeWebSocketProjector;
 pub(crate) mod schema;
 #[cfg(test)]
 mod tests;

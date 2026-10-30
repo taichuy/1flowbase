@@ -12,6 +12,66 @@ type Cleanup = Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = Result<()>> + Sen
 pub enum PreparedPublishedCallback {
     Execution(Box<PreparedPublishedCallbackExecution>),
     NoExecution(Box<ResumePublishedCallbackResult>),
+    PendingNativeWaiting(Box<PendingNativeWaitingReceipt>),
+}
+
+/// Issued only by the authenticated/fenced Pending consumer branch below.
+/// This frozen observation grants no execution or executable delivery authority.
+#[derive(Debug)]
+pub struct PendingNativeWaitingReceipt {
+    callback_task_id: Uuid,
+    result: ResumePublishedCallbackResult,
+}
+impl PendingNativeWaitingReceipt {
+    pub fn callback_task_id(&self) -> Uuid {
+        self.callback_task_id
+    }
+    pub fn result(&self) -> &ResumePublishedCallbackResult {
+        &self.result
+    }
+    pub fn into_result(self) -> ResumePublishedCallbackResult {
+        self.result
+    }
+}
+
+fn validate_pending_native_waiting(
+    run: &NativeRunResult,
+    flow_run_id: Uuid,
+    application_id: Uuid,
+    callback: &domain::CallbackTaskRecord,
+) -> Result<()> {
+    let mut payload = json!({"callback_task_id":callback.id,"callback_kind":callback.callback_kind,
+        "flow_run_id":callback.flow_run_id,"node_run_id":callback.node_run_id});
+    let tool_wait = callback.callback_kind == "llm_tool_calls";
+    if tool_wait {
+        payload["tool_calls"] = callback
+            .request_payload
+            .get("tool_calls")
+            .cloned()
+            .unwrap_or(Value::Null);
+    } else {
+        payload["request_payload"] = callback.request_payload.clone();
+    }
+    let expected = super::super::native::NativeRequiredAction {
+        action_type: if tool_wait {
+            "submit_tool_outputs"
+        } else {
+            "callback"
+        }
+        .into(),
+        payload,
+    };
+    if run.id != flow_run_id
+        || run.application_id != application_id
+        || callback.flow_run_id != flow_run_id
+        || callback.status != domain::CallbackTaskStatus::Pending
+        || run.status != super::super::native::NativeRunStatus::Waiting
+        || run.required_action.as_ref() != Some(&expected)
+        || (tool_wait && run.tool_calls.as_ref() != expected.payload.get("tool_calls"))
+    {
+        return Err(ControlPlaneError::Conflict("pending_native_waiting_identity_mismatch").into());
+    }
+    Ok(())
 }
 
 /// A single execution claim owner. Move it from host setup into execution; do not clone.
@@ -178,7 +238,28 @@ where
                     .await?
                     .ok_or(ControlPlaneError::NotFound("callback_task"))?;
                 if callback.status == domain::CallbackTaskStatus::Pending {
-                    self.release_unstarted_native_callback(&receipt).await?;
+                    // Freeze A before releasing admission. A later mutable Waiting B
+                    // cannot authorize or replace this original A observation.
+                    let frozen_native =
+                        if command.source == PublishedCallbackResumeSource::NativeAgent {
+                            let frozen = self.native_result_for_flow_run(&run).await?;
+                            validate_pending_native_waiting(
+                                &frozen,
+                                context.flow_run.id,
+                                context.flow_run.application_id,
+                                &callback,
+                            )?;
+                            Some(frozen)
+                        } else {
+                            None
+                        };
+                    let released = self.release_unstarted_native_callback(&receipt).await?;
+                    if frozen_native.is_some() && !released {
+                        return Err(ControlPlaneError::Conflict(
+                            "callback_resume_reservation_mismatch",
+                        )
+                        .into());
+                    }
                     let attempt = self
                         .repository
                         .get_published_callback_resume_attempt(callback.id)
@@ -186,6 +267,14 @@ where
                         .ok_or(ControlPlaneError::Conflict(
                             "callback_resume_reservation_missing",
                         ))?;
+                    if let Some(run) = frozen_native {
+                        return Ok(PreparedPublishedCallback::PendingNativeWaiting(Box::new(
+                            PendingNativeWaitingReceipt {
+                                callback_task_id: callback.id,
+                                result: ResumePublishedCallbackResult { run, attempt },
+                            },
+                        )));
+                    }
                     return Ok(PreparedPublishedCallback::NoExecution(Box::new(
                         ResumePublishedCallbackResult {
                             run: self.native_result_for_flow_run(&run).await?,

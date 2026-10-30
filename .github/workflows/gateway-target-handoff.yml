@@ -186,6 +186,8 @@ jobs:
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib routes::application_public_api::compat_sse::tests::forwarding > tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib routes::application_public_api::compat_sse::event_forwarding::committed_event_index_tests > tmp/test-governance/gateway-target-handoff/ci/callback-canonical-index.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-canonical-index.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/callback-canonical-index.log
       - name: Runtime event generation retirement regressions
         if: ${{ !cancelled() && inputs.verify_callback_attachment && !inputs.verify_generation_ownership }}
         run: |

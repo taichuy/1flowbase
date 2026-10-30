@@ -2,11 +2,16 @@ use super::*;
 use crate::routes::application_public_api::delivery_receipt::{
     RuntimeEventDeliveryReceipt, RuntimeEventDeliverySettler,
 };
-use std::collections::{HashMap, HashSet};
+use control_plane::ports::{
+    RuntimeEventDeliveryBatch, RuntimeEventDeliveryClosedProof, RuntimeEventDeliveryScope,
+};
+use std::collections::HashMap;
 
 pub(super) struct SubscribedCompatibleTypedEventStream {
     pub(super) terminal_dependencies: NativeRunTerminalDependencies,
     pub(super) initial_run: NativeRunResult,
+    pub(super) delivery_policy: CompatibleDeliveryPolicy,
+    pub(super) delivery_scope: RuntimeEventDeliveryScope,
     pub(super) from_sequence: Option<i64>,
     pub(super) durable_round_replay: Vec<RuntimeEventEnvelope>,
     pub(super) ignored_waiting_callback_task_id: Option<uuid::Uuid>,
@@ -25,14 +30,6 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
     settler.settled().await;
 }
 
-// IDs select candidate buckets only; complete JSON equality remains authoritative.
-#[derive(Default)]
-struct EventTypeBucket {
-    identified: HashMap<String, Vec<Value>>,
-    unidentified: HashSet<Value>,
-}
-#[derive(Default)]
-struct ForwardedCommittedEvents(HashMap<String, EventTypeBucket>);
 fn payload_partition(payload: &Value) -> Option<&str> {
     payload
         .get("call_id")
@@ -50,35 +47,50 @@ fn payload_partition(payload: &Value) -> Option<&str> {
                 .and_then(Value::as_str)
         })
 }
-impl ForwardedCommittedEvents {
-    fn contains(&self, event_type: &str, payload: &Value) -> bool {
-        let Some(bucket) = self.0.get(event_type) else {
-            return false;
-        };
-        match payload_partition(payload) {
-            Some(id) => bucket
-                .identified
-                .get(id)
-                .is_some_and(|values| values.iter().any(|value| value == payload)),
-            None => bucket.unidentified.contains(payload),
-        }
+/// Original durable order, independent of provider output_index and local stream cursors.
+/// The payloads live here once; indexes and the projected prefix carry no JSON copies.
+#[derive(Default)]
+struct CanonicalDeliveryPrefix {
+    events: Vec<domain::RuntimeEventRecord>,
+    positions: HashMap<uuid::Uuid, usize>,
+    buckets: HashMap<(String, Option<String>), Vec<usize>>,
+    projected: usize,
+}
+impl CanonicalDeliveryPrefix {
+    fn position(&self, event_type: &str, payload: &Value) -> Option<usize> {
+        self.buckets
+            .get(&(
+                event_type.to_owned(),
+                payload_partition(payload).map(str::to_owned),
+            ))?
+            .iter()
+            .copied()
+            .find(|&index| self.events[index].payload == *payload)
     }
-    // Production insertion follows a negative contains result; preserves original Vec insertion semantics.
-    fn insert(&mut self, event_type: String, payload: Value) {
-        let bucket = self.0.entry(event_type).or_default();
-        match payload_partition(&payload) {
-            Some(id) => match bucket.identified.entry(id.to_owned()) {
-                std::collections::hash_map::Entry::Vacant(entry) => {
-                    entry.insert(vec![payload]);
-                }
-                std::collections::hash_map::Entry::Occupied(mut entry) => {
-                    entry.get_mut().push(payload);
-                }
-            },
-            None => {
-                bucket.unidentified.insert(payload);
-            }
+
+    fn replace(&mut self, mut events: Vec<domain::RuntimeEventRecord>) -> anyhow::Result<()> {
+        events.sort_by_key(|event| (event.sequence, event.id));
+        if events.len() < self.projected
+            || self.events[..self.projected] != events[..self.projected]
+        {
+            anyhow::bail!("Responses canonical projected prefix changed");
         }
+        self.positions.clear();
+        self.buckets.clear();
+        for (index, event) in events.iter().enumerate() {
+            if self.positions.insert(event.id, index).is_some() {
+                anyhow::bail!("Responses canonical membership contains duplicate event ID");
+            }
+            self.buckets
+                .entry((
+                    event.event_type.clone(),
+                    payload_partition(&event.payload).map(str::to_owned),
+                ))
+                .or_default()
+                .push(index);
+        }
+        self.events = events;
+        Ok(())
     }
 }
 
@@ -87,10 +99,12 @@ struct TypedForwarding<'a> {
     initial_run: &'a Arc<NativeRunResult>,
     sender: &'a mpsc::Sender<CompatibleProjectionInput>,
     settler: &'a RuntimeEventDeliverySettler,
+    delivery_policy: CompatibleDeliveryPolicy,
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
     last_forwarded_sequence: i64,
     emitted_answer_delta: bool,
-    forwarded_committed_events: ForwardedCommittedEvents,
+    canonical: CanonicalDeliveryPrefix,
+    closed_proof: Option<RuntimeEventDeliveryClosedProof>,
 }
 
 async fn forward_subscribed_typed_events(
@@ -102,6 +116,8 @@ async fn forward_subscribed_typed_events(
     let SubscribedCompatibleTypedEventStream {
         terminal_dependencies,
         initial_run,
+        delivery_policy,
+        delivery_scope,
         from_sequence,
         durable_round_replay,
         ignored_waiting_callback_task_id,
@@ -114,44 +130,30 @@ async fn forward_subscribed_typed_events(
         initial_run: &initial_run,
         sender: &sender,
         settler,
+        delivery_policy,
         ignored_waiting_callback_task_id,
         last_forwarded_sequence: from_sequence.unwrap_or(0),
         emitted_answer_delta: false,
-        forwarded_committed_events: ForwardedCommittedEvents::default(),
+        canonical: CanonicalDeliveryPrefix::default(),
+        closed_proof: None,
     };
-    let mut delivery_claims = match terminal_dependencies
-        .claim_runtime_event_deliveries(initial_run.id)
-        .await
-    {
-        Ok(claims) => claims,
-        Err(error) => {
-            warn!(
-                flow_run_id = %initial_run.id,
-                error = %error,
-                "failed to claim pending Responses tool deliveries"
-            );
-            Vec::new()
+    let mut delivery_claims = if delivery_policy == CompatibleDeliveryPolicy::ScopedResponses {
+        match refresh_delivery_batch(&mut forwarding, delivery_scope).await {
+            Ok(claims) => claims,
+            Err(error) => {
+                fail_delivery_projection(&forwarding, &error).await;
+                return;
+            }
         }
+    } else {
+        Vec::new()
     };
     if !durable_round_replay.is_empty() {
         forwarding.last_forwarded_sequence = -1;
     }
     for event in durable_round_replay {
-        if is_public_terminal_runtime_event(&event.event_type)
-            && !delivery_claims.is_empty()
-            && forward_pending_delivery_claims(&mut forwarding, &mut delivery_claims).await
+        if forward_scoped_input(&mut forwarding, delivery_scope, event, &mut delivery_claims).await
         {
-            release_delivery_claims(settler, delivery_claims);
-            return;
-        }
-        let matching_claim = delivery_claims
-            .iter()
-            .position(|delivery| runtime_delivery_matches_envelope(delivery, &event));
-        let receipt = matching_claim.map(|index| {
-            let delivery = delivery_claims.remove(index);
-            settler.receipt(delivery)
-        });
-        if forward_ordered_typed_events(&mut forwarding, vec![(event, receipt)]).await {
             release_delivery_claims(settler, delivery_claims);
             return;
         }
@@ -159,20 +161,8 @@ async fn forward_subscribed_typed_events(
     // Database and local stream generations have independent sequence spaces.
     forwarding.last_forwarded_sequence = from_sequence.unwrap_or(0);
     for event in subscription.replay {
-        if is_public_terminal_runtime_event(&event.event_type)
-            && !delivery_claims.is_empty()
-            && forward_pending_delivery_claims(&mut forwarding, &mut delivery_claims).await
+        if forward_scoped_input(&mut forwarding, delivery_scope, event, &mut delivery_claims).await
         {
-            return;
-        }
-        let matching_claim = delivery_claims
-            .iter()
-            .position(|delivery| runtime_delivery_matches_envelope(delivery, &event));
-        let receipt = matching_claim.map(|index| {
-            let delivery = delivery_claims.remove(index);
-            settler.receipt(delivery)
-        });
-        if forward_ordered_typed_events(&mut forwarding, vec![(event, receipt)]).await {
             release_delivery_claims(settler, delivery_claims);
             return;
         }
@@ -182,55 +172,130 @@ async fn forward_subscribed_typed_events(
     }
 
     while let Some(event) = subscription.live_events.recv().await {
-        if forwarding
-            .forwarded_committed_events
-            .contains(&event.event_type, &event.payload)
-        {
-            forwarding.last_forwarded_sequence =
-                forwarding.last_forwarded_sequence.max(event.sequence);
-            continue;
-        }
         if is_committed_tool_delivery(&event) {
-            let mut claims = match terminal_dependencies
-                .claim_runtime_event_deliveries(initial_run.id)
-                .await
-            {
-                Ok(claims) => claims,
-                Err(error) => {
-                    warn!(
-                        flow_run_id = %initial_run.id,
-                        error = %error,
-                        "failed to claim live Responses tool delivery"
-                    );
-                    Vec::new()
-                }
-            };
-            if !claims
-                .iter()
-                .any(|delivery| runtime_delivery_matches_envelope(delivery, &event))
-            {
-                // Durable attachment suffixes also arrive on this lane. A
-                // subscriber reads the exact fact even when no delivery claim
-                // is available; only the claim owner can settle its delivery.
-                release_delivery_claims(settler, claims);
-                if forward_ordered_typed_events(&mut forwarding, vec![(event, None)]).await {
-                    return;
-                }
+            if delivery_policy == CompatibleDeliveryPolicy::NativeRunAttachment {
                 continue;
             }
-            // A live notification wakes the durable batch owner. Releasing its siblings
-            // and claiming again races the asynchronous settler and can lose notifications.
-            forwarding.last_forwarded_sequence =
-                forwarding.last_forwarded_sequence.max(event.sequence);
-            if forward_pending_delivery_claims(&mut forwarding, &mut claims).await {
-                return;
+            if forwarding
+                .canonical
+                .position(&event.event_type, &event.payload)
+                .is_some_and(|index| index < forwarding.canonical.projected)
+            {
+                continue;
             }
-            continue;
         }
-        if forward_ordered_typed_events(&mut forwarding, vec![(event, None)]).await {
+        if forward_scoped_input(&mut forwarding, delivery_scope, event, &mut delivery_claims).await
+        {
+            release_delivery_claims(settler, delivery_claims);
             return;
         }
     }
+}
+
+/// Projection-local failure uses the existing protocol error path. This snapshot
+/// is never persisted and never changes the business run/terminal/receipt owner.
+async fn fail_delivery_projection(forwarding: &TypedForwarding<'_>, error: &anyhow::Error) {
+    warn!(flow_run_id = %forwarding.initial_run.id, %error, "Responses delivery proof unavailable");
+    let code = if error
+        .downcast_ref::<control_plane::errors::ControlPlaneError>()
+        .is_some_and(|e| {
+            matches!(
+                e,
+                control_plane::errors::ControlPlaneError::Conflict(
+                    "runtime_event_delivery_scope_unresolved"
+                )
+            )
+        }) {
+        "runtime_event_delivery_scope_unresolved"
+    } else {
+        "runtime_event_delivery_proof_unavailable"
+    };
+    let _ = forwarding
+        .sender
+        .send(CompatibleProjectionInput::protocol_failure(
+            forwarding.initial_run,
+            code,
+            forwarding.last_forwarded_sequence.saturating_add(1),
+        ))
+        .await;
+}
+
+async fn refresh_delivery_batch(
+    forwarding: &mut TypedForwarding<'_>,
+    scope: RuntimeEventDeliveryScope,
+) -> anyhow::Result<Vec<RuntimeEventDeliveryClaim>> {
+    let batch = match forwarding
+        .terminal_dependencies
+        .claim_runtime_event_deliveries(
+            forwarding.initial_run.id,
+            scope,
+            forwarding.closed_proof.is_none(),
+        )
+        .await
+    {
+        Ok(batch) => batch,
+        Err(error)
+            if forwarding.closed_proof.is_some()
+                && error
+                    .downcast_ref::<control_plane::errors::ControlPlaneError>()
+                    .is_none() =>
+        {
+            // A successful complete proof remains valid through a later storage fault.
+            warn!(flow_run_id = %forwarding.initial_run.id, %error, "retaining closed Responses delivery proof after claim failure");
+            return Ok(Vec::new());
+        }
+        Err(error) => return Err(error),
+    };
+    admit_delivery_batch(forwarding, scope, batch)
+}
+
+fn admit_delivery_batch(
+    forwarding: &mut TypedForwarding<'_>,
+    scope: RuntimeEventDeliveryScope,
+    batch: RuntimeEventDeliveryBatch,
+) -> anyhow::Result<Vec<RuntimeEventDeliveryClaim>> {
+    let valid =
+        batch.closed_proof.as_ref().is_none_or(|proof| {
+            proof.flow_run_id == forwarding.initial_run.id && proof.scope == scope
+        }) && forwarding
+            .closed_proof
+            .as_ref()
+            .is_none_or(|proof| Some(proof) == batch.closed_proof.as_ref());
+    if !valid {
+        release_delivery_claims(forwarding.settler, batch.claims);
+        anyhow::bail!("Responses delivery proof identity changed");
+    }
+    if batch.events.iter().any(|event| {
+        event.flow_run_id != forwarding.initial_run.id
+            || batch.closed_proof.as_ref().is_some_and(|proof| {
+                event.sequence <= proof.lower_sequence
+                    || event.sequence >= proof.upper.event_sequence
+            })
+    }) {
+        release_delivery_claims(forwarding.settler, batch.claims);
+        anyhow::bail!("Responses canonical fact is outside delivery proof bounds");
+    }
+    if forwarding.closed_proof.is_none() {
+        if let Err(error) = forwarding.canonical.replace(batch.events) {
+            release_delivery_claims(forwarding.settler, batch.claims);
+            return Err(error);
+        }
+    } else if !batch.events.is_empty() {
+        release_delivery_claims(forwarding.settler, batch.claims);
+        anyhow::bail!("Responses closed membership unexpectedly reloaded");
+    }
+    if batch.claims.iter().any(|claim| {
+        forwarding
+            .canonical
+            .positions
+            .get(&claim.event.id)
+            .is_none_or(|&index| forwarding.canonical.events[index] != claim.event)
+    }) {
+        release_delivery_claims(forwarding.settler, batch.claims);
+        anyhow::bail!("Responses claimed fact is outside delivery proof");
+    }
+    forwarding.closed_proof = batch.closed_proof;
+    Ok(batch.claims)
 }
 
 fn is_committed_tool_delivery(event: &RuntimeEventEnvelope) -> bool {
@@ -239,13 +304,6 @@ fn is_committed_tool_delivery(event: &RuntimeEventEnvelope) -> bool {
         .get("committed_delivery")
         .and_then(Value::as_bool)
         == Some(true)
-}
-
-fn runtime_delivery_matches_envelope(
-    delivery: &RuntimeEventDeliveryClaim,
-    event: &RuntimeEventEnvelope,
-) -> bool {
-    delivery.event.event_type == event.event_type && delivery.event.payload == event.payload
 }
 
 fn release_delivery_claims(
@@ -257,44 +315,153 @@ fn release_delivery_claims(
     }
 }
 
-async fn forward_pending_delivery_claims(
+/// Every Closed batch advances a canonical prefix, filling peer/settled gaps
+/// without receipts. Only an actual local claim can grant settlement authority.
+async fn project_canonical_prefix(
     forwarding: &mut TypedForwarding<'_>,
+    end: usize,
     deliveries: &mut Vec<RuntimeEventDeliveryClaim>,
 ) -> bool {
-    // UPDATE ... RETURNING does not inherit the candidate query's ORDER BY.
-    deliveries.sort_by_key(|delivery| (delivery.event.sequence, delivery.event.id));
-    let mut pending = std::mem::take(deliveries).into_iter();
-    while let Some(delivery) = pending.next() {
-        let envelope = durable_record_to_runtime_event_envelope(delivery.event.clone());
-        let run = Arc::clone(forwarding.initial_run);
-        if forwarding
-            .forwarded_committed_events
-            .contains(&envelope.event_type, &envelope.payload)
-        {
-            forwarding.settler.release(delivery);
-            continue;
-        }
-        forwarding
-            .forwarded_committed_events
-            .insert(envelope.event_type.clone(), envelope.payload.clone());
-        let receipt = forwarding.settler.receipt(delivery);
+    let mut owned: HashMap<_, _> = std::mem::take(deliveries)
+        .into_iter()
+        .map(|delivery| (delivery.event.id, delivery))
+        .collect();
+    while forwarding.canonical.projected < end {
+        let record = &forwarding.canonical.events[forwarding.canonical.projected];
+        let delivery = owned
+            .remove(&record.id)
+            .map(|claim| forwarding.settler.receipt(claim));
+        let envelope = durable_record_to_runtime_event_envelope(record.clone());
         if forwarding
             .sender
             .send(CompatibleProjectionInput {
-                run_snapshot: run,
+                run_snapshot: Arc::clone(forwarding.initial_run),
                 envelope,
-                delivery: Some(receipt),
+                delivery,
             })
             .await
             .is_err()
         {
-            // The dropped input releases its own receipt; only the claims that
-            // never became receipts still need an explicit release.
-            release_delivery_claims(forwarding.settler, pending);
+            release_delivery_claims(forwarding.settler, owned.into_values());
             return true;
         }
+        forwarding.canonical.projected += 1;
     }
+    // Seen-prefix claims are released, never falsely acknowledged.
+    release_delivery_claims(forwarding.settler, owned.into_values());
     false
+}
+
+async fn forward_pending_delivery_claims(
+    forwarding: &mut TypedForwarding<'_>,
+    deliveries: &mut Vec<RuntimeEventDeliveryClaim>,
+) -> bool {
+    let end = deliveries
+        .iter()
+        .filter_map(|claim| forwarding.canonical.positions.get(&claim.event.id))
+        .map(|index| index + 1)
+        .max()
+        .unwrap_or(forwarding.canonical.projected);
+    project_canonical_prefix(forwarding, end, deliveries).await
+}
+
+/// All three terminal lanes use the same finite completion rule. Each successful
+/// iteration decreases |M\F|. No progress (including retained-proof read faults)
+/// finishes by exact replay, independent of ACK success or lease expiration.
+async fn complete_canonical_deliveries(
+    forwarding: &mut TypedForwarding<'_>,
+    scope: RuntimeEventDeliveryScope,
+    deliveries: &mut Vec<RuntimeEventDeliveryClaim>,
+    waiting_terminal: bool,
+) -> anyhow::Result<bool> {
+    if forwarding.closed_proof.is_none() {
+        deliveries.extend(refresh_delivery_batch(forwarding, scope).await?);
+    }
+    if forwarding.closed_proof.is_none() {
+        // A validated Open-empty read is legal for a text-only final run: the
+        // terminal path below still requires a matching durable terminal status.
+        // Executable facts and their upper wait commit atomically; a waiting
+        // terminal cannot use Open as evidence of complete membership.
+        if waiting_terminal || !forwarding.canonical.events.is_empty() {
+            anyhow::bail!("Responses waiting terminal lacks complete canonical delivery proof");
+        }
+        return Ok(false);
+    }
+    if forward_pending_delivery_claims(forwarding, deliveries).await {
+        return Ok(true);
+    }
+    while forwarding.canonical.projected < forwarding.canonical.events.len() {
+        let before = forwarding.canonical.projected;
+        *deliveries = refresh_delivery_batch(forwarding, scope).await?;
+        if forward_pending_delivery_claims(forwarding, deliveries).await {
+            return Ok(true);
+        }
+        if forwarding.canonical.projected == before {
+            let end = forwarding.canonical.events.len();
+            return Ok(project_canonical_prefix(forwarding, end, deliveries).await);
+        }
+    }
+    Ok(false)
+}
+
+async fn forward_scoped_input(
+    forwarding: &mut TypedForwarding<'_>,
+    scope: RuntimeEventDeliveryScope,
+    event: RuntimeEventEnvelope,
+    deliveries: &mut Vec<RuntimeEventDeliveryClaim>,
+) -> bool {
+    if forwarding.delivery_policy == CompatibleDeliveryPolicy::ScopedResponses {
+        if is_public_terminal_runtime_event(&event.event_type)
+            && !is_ignored_waiting_callback(&event, forwarding.ignored_waiting_callback_task_id)
+        {
+            match complete_canonical_deliveries(
+                forwarding,
+                scope,
+                deliveries,
+                matches!(
+                    event.event_type.as_str(),
+                    "waiting_callback" | "waiting_human"
+                ),
+            )
+            .await
+            {
+                Ok(true) => return true,
+                Ok(false) => {}
+                Err(error) => {
+                    fail_delivery_projection(forwarding, &error).await;
+                    return true;
+                }
+            }
+        } else if is_committed_tool_delivery(&event) {
+            if forwarding
+                .canonical
+                .position(&event.event_type, &event.payload)
+                .is_some_and(|index| index < forwarding.canonical.projected)
+            {
+                return false;
+            }
+            if deliveries.is_empty() {
+                match refresh_delivery_batch(forwarding, scope).await {
+                    Ok(claims) => *deliveries = claims,
+                    Err(error) => {
+                        fail_delivery_projection(forwarding, &error).await;
+                        return true;
+                    }
+                }
+            }
+            if forward_pending_delivery_claims(forwarding, deliveries).await {
+                return true;
+            }
+            if let Some(index) = forwarding
+                .canonical
+                .position(&event.event_type, &event.payload)
+            {
+                return project_canonical_prefix(forwarding, index + 1, deliveries).await;
+            }
+            return false;
+        }
+    }
+    forward_ordered_typed_events(forwarding, vec![(event, None)]).await
 }
 
 async fn forward_ordered_typed_events(
@@ -302,32 +469,21 @@ async fn forward_ordered_typed_events(
     events: Vec<(RuntimeEventEnvelope, Option<RuntimeEventDeliveryReceipt>)>,
 ) -> bool {
     for (event, receipt) in events {
+        // All three input lanes share this guard. Native required_action is a
+        // different, supported event; provider inbox items are never Native output.
+        if forwarding.delivery_policy == CompatibleDeliveryPolicy::NativeRunAttachment
+            && is_committed_tool_delivery(&event)
+        {
+            continue;
+        }
         let Some(event) = take_ordered_compatible_event(
             event,
             &mut forwarding.last_forwarded_sequence,
             forwarding.ignored_waiting_callback_task_id,
         ) else {
-            if let Some(receipt) = receipt {
-                // The client cursor is already past this committed fact; the
-                // client has consumed it and it must not replay.
-                receipt.projected();
-            }
+            drop(receipt);
             continue;
         };
-        if is_committed_tool_delivery(&event) {
-            if forwarding
-                .forwarded_committed_events
-                .contains(&event.event_type, &event.payload)
-            {
-                // This response already owns the fact. Dropping an unused
-                // receipt releases its claim rather than inventing an ACK.
-                drop(receipt);
-                continue;
-            }
-            forwarding
-                .forwarded_committed_events
-                .insert(event.event_type.clone(), event.payload.clone());
-        }
         let terminal = is_public_terminal_runtime_event(&event.event_type);
         let run = if terminal {
             let mut run = match load_durable_native_run_for_terminal_projection_with_dependencies(
@@ -357,8 +513,10 @@ async fn forward_ordered_typed_events(
                 continue;
             }
             // Reload terminal state once, then share the immutable durable snapshot.
-            if let Some(round_id) = forwarding.initial_run.metadata.get("response_round_id") {
-                run.metadata["response_round_id"] = round_id.clone();
+            if forwarding.delivery_policy == CompatibleDeliveryPolicy::ScopedResponses {
+                if let Some(round_id) = forwarding.initial_run.metadata.get("response_round_id") {
+                    run.metadata["response_round_id"] = round_id.clone();
+                }
             }
             let run = Arc::new(run);
             if !forwarding.emitted_answer_delta {
@@ -694,9 +852,10 @@ async fn durable_sequence_for_ignored_waiting_callback(
     let ignored_task_id = ignored_waiting_callback_task_id?;
     state
         .store
-        .get_runtime_event_sequence_for_callback_task(run_id, ignored_task_id)
+        .get_original_callback_waiting_boundary(run_id, ignored_task_id)
         .await
         .ok()?
+        .map(|boundary| boundary.original.event_sequence)
 }
 
 #[cfg(test)]

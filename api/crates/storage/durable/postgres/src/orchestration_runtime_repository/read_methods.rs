@@ -285,6 +285,58 @@ impl PgControlPlaneStore {
         rows.into_iter().map(map_runtime_event_record).collect()
     }
 
+    async fn get_original_callback_waiting_boundary(
+        &self,
+        flow_run_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> Result<Option<RuntimeCallbackWaitingBoundary>> {
+        let row = sqlx::query(
+            r#"
+            select a.id, a.sequence, a.event_sequence,
+                   n.id as next_id, n.sequence as next_sequence,
+                   n.event_sequence as next_event_sequence
+              from flow_run_recovery_history a
+              left join lateral (
+                  select h.id, h.sequence, h.event_sequence
+                    from flow_run_recovery_history h
+                   where h.flow_run_id = a.flow_run_id and h.sequence > a.sequence
+                     and h.state_code in ('waiting_callback', 'waiting_human')
+                   order by h.sequence limit 1
+              ) n on true
+             where a.flow_run_id = $1
+               and a.idempotency_key = 'waiting_callback:' || $2::uuid::text
+               and a.state_code = 'waiting_callback'
+        "#,
+        )
+        .bind(flow_run_id)
+        .bind(callback_task_id)
+        .fetch_optional(self.pool())
+        .await?;
+        row.map(|row| {
+            let original = RuntimeEventDeliveryBoundary {
+                recovery_id: row.get("id"),
+                recovery_sequence: row.get("sequence"),
+                event_sequence: row.try_get::<Option<i64>, _>("event_sequence")?.ok_or(
+                    ControlPlaneError::Conflict("runtime_event_delivery_scope_unresolved"),
+                )?,
+            };
+            let next = row
+                .get::<Option<Uuid>, _>("next_id")
+                .map(|id| -> Result<_> {
+                    Ok(RuntimeEventDeliveryBoundary {
+                        recovery_id: id,
+                        recovery_sequence: row.get("next_sequence"),
+                        event_sequence: row.get::<Option<i64>, _>("next_event_sequence").ok_or(
+                            ControlPlaneError::Conflict("runtime_event_delivery_scope_unresolved"),
+                        )?,
+                    })
+                })
+                .transpose()?;
+            Ok(RuntimeCallbackWaitingBoundary { original, next })
+        })
+        .transpose()
+    }
+
     async fn get_runtime_event_sequence_for_callback_task(
         &self,
         flow_run_id: Uuid,
