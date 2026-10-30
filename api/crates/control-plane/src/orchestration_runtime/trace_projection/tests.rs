@@ -55,6 +55,7 @@ fn ac_004_answer_node_truth_trace_hides_legacy_waiting_snapshots() {
                     debug_payload: serde_json::Value,
                     offset: i64| {
         domain::NodeRunRecord {
+            execution_identity: None,
             id,
             flow_run_id,
             node_id: node_id.to_string(),
@@ -167,6 +168,7 @@ fn builder_projects_node_run_tool_group_and_tool_callbacks() {
         native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
             id: node_run_id,
             flow_run_id,
             node_id: "node-llm".to_string(),
@@ -308,6 +310,7 @@ fn builder_projects_node_run_content_as_lightweight_refs() {
         native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
             id: node_run_id,
             flow_run_id,
             node_id: "node-llm".to_string(),
@@ -404,6 +407,7 @@ fn builder_projects_tool_route_fusion_and_branch_nodes() {
         native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
             id: node_run_id,
             flow_run_id,
             node_id: "node-llm".to_string(),
@@ -524,6 +528,7 @@ fn builder_projects_intercepted_route_tool_callback_status() {
         native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
             id: node_run_id,
             flow_run_id,
             node_id: "node-llm".to_string(),
@@ -674,6 +679,7 @@ fn builder_merges_callback_task_tools_with_internal_route_tools() {
         native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
             id: callback_node_run_id,
             flow_run_id,
             node_id: "node-llm".to_string(),

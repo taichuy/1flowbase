@@ -55,10 +55,16 @@ const CONTRACT_FIELD_RENDERER_ALLOWLIST = new Set([
   ...Object.values(FIELD_RENDERER_BY_EDITOR),
   'switch',
   'variable_assignment',
+  'http_request_network_egress',
   'http_request_endpoint',
   'http_request_key_values',
   'http_request_body',
-  'http_request_curl_import'
+  'http_request_curl_import',
+  'container_variables',
+  'container_break_condition',
+  'container_selector',
+  'container_parallelism',
+  'container_positive_integer'
 ]);
 
 function createFieldBlock(field: NodeDefinitionField): SchemaFieldBlock {
@@ -174,19 +180,20 @@ function buildSharedOutputVariableBlocks(
 
 function splitBlocksByPath(sections: SchemaSectionBlock[], paths: Set<string>) {
   const extractedBlocksByPath = new Map<string, SchemaFieldBlock>();
-  const remainingSections = sections
-    .flatMap((section) => {
-      const remainingBlocks = section.blocks.filter((block) => {
-        if (block.kind === 'field' && paths.has(block.path)) {
-          extractedBlocksByPath.set(block.path, block);
-          return false;
-        }
+  const remainingSections = sections.flatMap((section) => {
+    const remainingBlocks = section.blocks.filter((block) => {
+      if (block.kind === 'field' && paths.has(block.path)) {
+        extractedBlocksByPath.set(block.path, block);
+        return false;
+      }
 
-        return true;
-      });
-
-      return remainingBlocks.length > 0 ? [{ ...section, blocks: remainingBlocks }] : [];
+      return true;
     });
+
+    return remainingBlocks.length > 0
+      ? [{ ...section, blocks: remainingBlocks }]
+      : [];
+  });
 
   const extractedBlocks = [...paths]
     .map((path) => extractedBlocksByPath.get(path))
@@ -242,8 +249,8 @@ export function buildNodeCardBlocks(nodeType: FlowNodeType): SchemaBlock[] {
 
 export function buildCommonConfigBlocks(nodeType: FlowNodeType): SchemaBlock[] {
   const contract = getBuiltinNodeRuntimeContract(nodeType);
-  const contractSections = (contract?.panel.sections ?? [])
-    .flatMap((section) => {
+  const contractSections = (contract?.panel.sections ?? []).flatMap(
+    (section) => {
       if (
         section.key === 'basics' ||
         (section.key === 'outputs' &&
@@ -258,25 +265,25 @@ export function buildCommonConfigBlocks(nodeType: FlowNodeType): SchemaBlock[] {
 
       const block = createContractSectionBlock(section);
       return block === null ? [] : [block];
-    });
+    }
+  );
   const definitionSections = contractSections?.length
     ? contractSections
-    : getNodeDefinitionSections(nodeType)
-        .flatMap((section) => {
-          if (
-            section.key === 'basics' ||
-            (section.key === 'outputs' &&
-              !isEditableOutputContractNodeType(nodeType))
-          ) {
-            return [];
-          }
+    : getNodeDefinitionSections(nodeType).flatMap((section) => {
+        if (
+          section.key === 'basics' ||
+          (section.key === 'outputs' &&
+            !isEditableOutputContractNodeType(nodeType))
+        ) {
+          return [];
+        }
 
-          if (nodeType === 'llm' && section.key === 'advanced') {
-            return [];
-          }
+        if (nodeType === 'llm' && section.key === 'advanced') {
+          return [];
+        }
 
-          return [createSectionBlock(section.title, section.fields)];
-        });
+        return [createSectionBlock(section.title, section.fields)];
+      });
   const { remainingSections, extractedBlocks } =
     nodeType === 'http_request'
       ? splitBlocksByPath(
@@ -292,7 +299,11 @@ export function buildCommonConfigBlocks(nodeType: FlowNodeType): SchemaBlock[] {
       : { remainingSections: definitionSections, extractedBlocks: [] };
   const outputVariableBlocks = buildSharedOutputVariableBlocks(nodeType);
   const policyBlocks: SchemaBlock[] =
-    nodeType === 'start' || isTerminalNodeType(nodeType)
+    nodeType === 'start' ||
+    nodeType === 'container_start' ||
+    nodeType === 'loop' ||
+    nodeType === 'iteration' ||
+    isTerminalNodeType(nodeType)
       ? []
       : [
           {

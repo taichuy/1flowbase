@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
-import { App, Button, Typography } from 'antd';
+import { App, Typography } from 'antd';
 import {
   useEffect,
   lazy,
@@ -135,9 +135,6 @@ function useWorkflowCanvasController({
   const selectedNodeId = useAgentFlowEditorStore(
     (state) => state.selectedNodeId
   );
-  const activeContainerPath = useAgentFlowEditorStore(
-    (state) => state.activeContainerPath
-  );
   const issuesOpen = useAgentFlowEditorStore((state) => state.issuesOpen);
   const historyOpen = useAgentFlowEditorStore((state) => state.historyOpen);
   const isRestoringVersion = useAgentFlowEditorStore(
@@ -204,7 +201,6 @@ function useWorkflowCanvasController({
     () => buildNodePickerOptions(nodeCatalog.nodes),
     [nodeCatalog.nodes]
   );
-  const activeContainerId = activeContainerPath.at(-1) ?? null;
   const boundedNodeDetailWidth = clampNodeDetailWidth(nodeDetailWidth, 1200);
   const nodeDetailLayout = getNodeDetailLayout(boundedNodeDetailWidth);
 
@@ -377,7 +373,7 @@ function useWorkflowCanvasController({
     applicationName, applicationId, autosaveIntervalMs, autosaveStatus, issueErrorCount,
     isPublished, publishMutation, revertToDraftMutation, workingDocument, triggerContext,
     navigate, setPanelState, historyOpen, setEnvironmentVariablesOpen, openHistory,
-    issuesOpen, draftSync, confirmRevertToDraft, activeContainerId, navigation,
+    issuesOpen, draftSync, confirmRevertToDraft, navigation,
     issueCountByNodeId, nodePickerOptions, viewportSnapshotRef, viewportGetterRef,
     selectedNodeId, nodeDetailLayout, isResizingNodeDetail, boundedNodeDetailWidth,
     handleNodeDetailResizeKeyDown, handleNodeDetailResizeStart, nodeDetailTab,
@@ -392,7 +388,7 @@ export function WorkflowCanvasFrame(props: Parameters<typeof useWorkflowCanvasCo
     applicationName, applicationId, autosaveIntervalMs, autosaveStatus, issueErrorCount,
     isPublished, publishMutation, revertToDraftMutation, workingDocument, triggerContext,
     navigate, setPanelState, historyOpen, setEnvironmentVariablesOpen, openHistory,
-    issuesOpen, draftSync, confirmRevertToDraft, activeContainerId, navigation,
+    issuesOpen, draftSync, confirmRevertToDraft, navigation,
     issueCountByNodeId, nodePickerOptions, viewportSnapshotRef, viewportGetterRef,
     selectedNodeId, nodeDetailLayout, isResizingNodeDetail, boundedNodeDetailWidth,
     handleNodeDetailResizeKeyDown, handleNodeDetailResizeStart, nodeDetailTab,
@@ -448,21 +444,6 @@ export function WorkflowCanvasFrame(props: Parameters<typeof useWorkflowCanvasCo
         onPublish={() => publishMutation.mutate()}
         onRevertToDraft={confirmRevertToDraft}
       />
-      {activeContainerId ? (
-        <div className="agent-flow-editor__breadcrumb">
-          <Button onClick={navigation.returnToRoot}>
-            {i18nText('agentFlow', 'auto.return_main_canvas')}
-          </Button>
-          <Typography.Text type="secondary">
-            {i18nText('agentFlow', 'auto.currently_located_container_node')}{' '}
-            {
-              workingDocument.graph.nodes.find(
-                (node) => node.id === activeContainerId
-              )?.alias
-            }
-          </Typography.Text>
-        </div>
-      ) : null}
       <div
         className="agent-flow-editor__body agent-flow-editor__shell"
         data-testid="workflow-editor-body"

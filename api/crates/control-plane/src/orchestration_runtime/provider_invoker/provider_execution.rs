@@ -55,11 +55,12 @@ where
 
     async fn acquire_http_node_client(
         &self,
+        network_egress: &domain::HttpNodeNetworkEgress,
         timeout: std::time::Duration,
         verify_ssl: bool,
     ) -> Result<Option<orchestration_runtime::execution_engine::HttpRequestClientLease>> {
         self.runtime
-            .acquire_http_node_client(self.workspace_id, timeout, verify_ssl)
+            .acquire_http_node_client(network_egress, self.workspace_id, timeout, verify_ssl)
             .await
     }
 
@@ -85,16 +86,7 @@ where
         if let Some(scope) = &self.transport_connection_scope_override {
             apply_transport_connection_scope_override(&mut input, scope.as_deref());
         }
-        let active_node = self
-            .flow_execution_context
-            .as_ref()
-            .and_then(|context| context.active_node.lock().ok()?.clone())
-            .or_else(|| {
-                Some(RuntimeActiveNode {
-                    node_id: self.active_node_id.clone()?,
-                    node_run_id: self.active_node_run_id?,
-                })
-            });
+        let active_node = self.active_runtime_node().await?;
         let capture = native_trajectory::start(
             self.repository.clone(),
             self.flow_run_id,
@@ -377,16 +369,7 @@ where
         >::new()));
         let mut required_forward_handle = None;
         let mut diagnostic_forward_handle = None;
-        let active_node = self
-            .flow_execution_context
-            .as_ref()
-            .and_then(|context| context.active_node.lock().ok()?.clone());
-        let active_node = active_node.or_else(|| {
-            Some(RuntimeActiveNode {
-                node_id: self.active_node_id.clone()?,
-                node_run_id: self.active_node_run_id?,
-            })
-        });
+        let active_node = self.active_runtime_node().await?;
         let billing_node_id = active_node.as_ref().map(|node| node.node_id.clone());
         let provider_generation_writer = match (&self.runtime_event_stream, self.flow_run_id) {
             (Some(stream), Some(run_id)) => stream.terminal_writer(run_id).await.ok(),

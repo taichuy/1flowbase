@@ -214,7 +214,7 @@ fn reentrant_serialized_source(
 }
 
 pub(crate) async fn replay_for_import(
-    state: &std::sync::Arc<crate::app_state::ApiState>,
+    generation: &crate::generation_dispatch::GenerationLease,
     binding: &runtime_core::runtime_backend::FileImportBinding,
     actor: &domain::ActorContext,
     user: domain::UserRecord,
@@ -224,6 +224,8 @@ pub(crate) async fn replay_for_import(
     extension_contracts::FileImportError,
 > {
     use extension_contracts::FileImportError;
+    let state = &generation.state;
+    let dispatch = &generation.owner;
     let reference = ResourceReference::decode(uri)
         .map_err(|_| FileImportError::new("file_import_resource_invalid"))?;
     let mut catalog = control_plane::mcp_management::McpManagementService::new(state.store.clone())
@@ -293,10 +295,6 @@ pub(crate) async fn replay_for_import(
     {
         return Err(FileImportError::new("file_import_reentrant_source"));
     }
-    let dispatch = virtual_ui::ConsoleRouterMcpInterfaceDispatchPort::new(crate::console_router(
-        state.clone(),
-        true,
-    ));
     let dependencies = virtual_ui::RuntimeInternalToolInvokerDependencies::new(
         state.store.clone(),
         state.infrastructure.cache_store(),
@@ -314,7 +312,7 @@ pub(crate) async fn replay_for_import(
                 virtual_ui::McpCallRequest {
                     dependencies: &dependencies,
                     interface_catalog: &interface_catalog,
-                    interface_dispatch: &dispatch,
+                    interface_dispatch: dispatch.as_ref(),
                     headers: &headers,
                     actor,
                     catalog: &catalog,

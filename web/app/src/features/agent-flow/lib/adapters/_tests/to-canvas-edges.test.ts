@@ -35,7 +35,7 @@ describe('toCanvasEdges', () => {
     expect(edges[2].data?.onInsertNode).toBeUndefined();
   });
 
-  test('excludes dangling and cross-container edges in both canvas views', () => {
+  test('shows all layers while excluding dangling and cross-container edges', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'containers' });
     const [first] = document.graph.edges;
     document.graph.nodes.push({
@@ -60,13 +60,19 @@ describe('toCanvasEdges', () => {
 
     expect(
       toCanvasEdges(document, null, null, actions).map((edge) => edge.id)
-    ).toEqual(document.graph.edges.slice(0, 2).map((edge) => edge.id));
+    ).toEqual([
+      ...document.graph.edges.slice(0, 2).map((edge) => edge.id),
+      'nested-self'
+    ]);
     expect(
       toCanvasEdges(document, 'loop', null, actions).map((edge) => edge.id)
-    ).toEqual(['nested-self']);
+    ).toEqual([
+      ...document.graph.edges.slice(0, 2).map((edge) => edge.id),
+      'nested-self'
+    ]);
   });
 
-  test('retains the first source type when duplicate IDs span containers', () => {
+  test('does not render edges whose first resolved source belongs to another layer', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'duplicates' });
     document.graph.nodes.unshift({
       ...document.graph.nodes[0],
@@ -77,8 +83,7 @@ describe('toCanvasEdges', () => {
 
     const edges = toCanvasEdges(document, null, null, actions);
 
-    expect(edges).toHaveLength(2);
-    expect(edges[0].data?.onInsertNode).toBeUndefined();
-    expect(edges[1].data?.onInsertNode).toBe(actions.onInsertNode);
+    expect(edges).toHaveLength(1);
+    expect(edges[0].data?.onInsertNode).toBe(actions.onInsertNode);
   });
 });

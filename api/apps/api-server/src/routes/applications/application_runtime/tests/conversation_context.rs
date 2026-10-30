@@ -376,6 +376,7 @@ async fn run_conversation_reads_llm_system_when_run_input_system_is_split_from_p
         native_messages: Vec::new(),
         flow_run,
         node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
             id: Uuid::now_v7(),
             flow_run_id: run_id,
             node_id: "node-llm".to_string(),

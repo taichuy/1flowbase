@@ -264,6 +264,14 @@ async fn next_agent_log_pricing_record(
         PgControlPlaneStore::list_runtime_events(self, flow_run_id, after_sequence).await
     }
 
+    async fn get_original_callback_waiting_boundary(
+        &self,
+        flow_run_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> Result<Option<RuntimeCallbackWaitingBoundary>> {
+        PgControlPlaneStore::get_original_callback_waiting_boundary(self, flow_run_id, callback_task_id).await
+    }
+
     async fn get_runtime_event_sequence_for_callback_task(
         &self,
         flow_run_id: Uuid,

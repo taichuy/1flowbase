@@ -87,6 +87,7 @@ dependencies = [
  "hyper-util",
  "interface-runtime",
  "jsonschema",
+ "libc",
  "observability",
  "opentelemetry-proto",
  "orchestration-runtime",
@@ -130,6 +131,7 @@ dependencies = [
  "utoipa",
  "utoipa-swagger-ui",
  "uuid",
+ "windows-sys 0.61.2",
  "zip 9.0.3",
 ]
 

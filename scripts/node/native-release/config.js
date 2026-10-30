@@ -47,8 +47,32 @@ function nativeEnvironment(repoRoot, platform) {
 
 function maintenanceScripts(platform) {
   if (platform === 'windows') return {
-    'upgrade.cmd': '@echo off\r\nsetlocal\r\nif /I "%~1"=="--restore" (\r\n  "%~dp01flowbase.exe" %*\r\n) else (\r\n  "%~dp01flowbase.exe" --upgrade %*\r\n)\r\nset "result=%errorlevel%"\r\nif "%~1"=="" pause\r\nexit /b %result%\r\n',
+    'upgrade.cmd': '@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0upgrade.ps1"\r\n',
+    'upgrade.ps1': `$ErrorActionPreference = 'Stop'
+$installation = $PSScriptRoot
+$worker = Join-Path ([System.IO.Path]::GetTempPath()) ('1flowbase-upgrade-' + [guid]::NewGuid())
+$result = 1
+try {
+  New-Item -ItemType Directory -Path $worker | Out-Null
+  $executable = Join-Path $worker '1flowbase.exe'
+  Copy-Item -LiteralPath (Join-Path $installation '1flowbase.exe') -Destination $executable
+  & $executable --upgrade $installation
+  $result = $LASTEXITCODE
+} catch { Write-Host $_ -ForegroundColor Red }
+finally {
+  Remove-Item -LiteralPath $worker -Recurse -Force -ErrorAction SilentlyContinue
+}
+Read-Host 'Press Enter to close'
+exit $result
+`.replaceAll('\n', '\r\n'),
   };
-  return { 'upgrade.sh': '#!/bin/sh\nset -eu\npackage_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nif [ "${1:-}" = "--restore" ]; then exec "$package_dir/1flowbase" "$@"; fi\nexec "$package_dir/1flowbase" --upgrade "$@"\n' };
+  return { 'upgrade.sh': `#!/bin/sh
+set -eu
+package_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+worker=$(mktemp -d "\${TMPDIR:-/tmp}/1flowbase-upgrade.XXXXXXXX")
+trap 'rm -rf -- "$worker"' EXIT HUP INT TERM
+cp -- "$package_dir/1flowbase" "$worker/1flowbase"
+"$worker/1flowbase" --upgrade "$package_dir"
+` };
 }
 module.exports = { nativeEnvironment, maintenanceScripts };

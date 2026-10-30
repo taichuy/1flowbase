@@ -7,6 +7,7 @@ use crate::ContributionId;
 
 pub const COMMUNICATION_COMMAND_POINT: &str = "1flowbase.communication.command.requested";
 pub const COMMUNICATION_COMMAND_CONTRACT_VERSION: &str = "1";
+pub const COMMUNICATION_COMMAND_REPLY_MAX_BYTES: usize = 32_768;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -39,6 +40,7 @@ pub struct CommunicationCommandRequest {
 #[serde(deny_unknown_fields)]
 pub struct CommunicationCommandReply {
     /// Host binds the destination to the durable request; workers cannot select recipients.
+    /// Already rendered Markdown; new authors should construct replies with `from_content`.
     pub text: String,
 }
 
@@ -129,7 +131,7 @@ impl CommunicationCommandRequest {
 
 impl CommunicationCommandReply {
     pub fn validate(&self) -> ContractResult {
-        if self.text.trim().is_empty() || self.text.len() > 32_768 {
+        if self.text.trim().is_empty() || self.text.len() > COMMUNICATION_COMMAND_REPLY_MAX_BYTES {
             return Err(invalid("command reply requires bounded non-empty text"));
         }
         Ok(())

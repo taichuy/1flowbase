@@ -78,6 +78,7 @@ async fn late_success_projects_cancelled_winner_without_success_terminal_or_answ
         checkpoint_snapshot: None,
         operation_terminal: None,
         node_traces: vec![NodeExecutionTrace {
+            execution_identity: None,
             node_id: "node-answer".to_string(),
             node_type: "answer".to_string(),
             node_alias: "Answer".to_string(),

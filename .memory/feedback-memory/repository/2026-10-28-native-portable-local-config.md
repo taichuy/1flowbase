@@ -7,8 +7,8 @@ keywords: [native, portable, settings.json, data-directory, windows]
 match_when:
   - 设计或调整 1flowbase 原生便携包的配置、数据位置及首次登录体验
 created_at: 2026-10-28 22
-updated_at: 2026-10-28 22
-last_verified_at: 2026-10-28 22
+updated_at: 2026-10-29 15
+last_verified_at: 2026-10-29 15
 decision_policy: direct_reference
 scope: [native-distribution, portable-config]
 ---
@@ -24,3 +24,11 @@ scope: [native-distribution, portable-config]
 ## 适用场景
 
 原生包配置路径、首次登录说明、便携数据布局及升级迁移；调整默认位置时保留既有数据库、密码和加密密钥，不用新建空库掩盖旧数据。
+
+## 升级入口纠正（2026-10-29）
+
+用户指出双击 upgrade.cmd 后还要求输入旧安装目录不符合一键使用预期。升级入口应以脚本/程序所在安装目录定位目标，正常流程不要求用户手输路径；用户提出点击后直接下载新版的预期。不能将终端当前目录等同安装目录，也不能将新包目录自动当作旧安装目录。
+
+原因与适用范围：便携包的日常升级应由程序吸收路径与平台选择复杂度；涉及在线下载、更新渠道与升级生命周期的具体方案仍按当前确认范围实现，不把该反馈扩大为静默后台自动更新授权。
+
+用户进一步明确：一键升级不自动创建备份，直接更新当前安装。更新仍须保留用户 .env 和持久数据；不备份不等于允许删除或重建数据库，也不能继续承诺依赖完整备份的自动恢复。此要求覆盖此前升级前完整冷备份的方案。

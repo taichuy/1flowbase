@@ -324,6 +324,7 @@ async fn upgrade(
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
+    let generation = crate::generation_dispatch::GenerationDispatch::acquire(&state)?;
     let context = crate::middleware::require_session::require_session(&state, &headers).await?;
     let session = context.cookie_session()?.session_id.clone();
     let origin = super::stream_ticket::origin(&headers)?;
@@ -377,7 +378,9 @@ async fn upgrade(
     let (events, completion) = stream.into_parts();
     let (terminal_tx, terminal_rx) = oneshot::channel();
     // This owner is independent of upgrade success, socket task abort and event projection failure.
+    let completion_generation = generation.clone();
     tokio::spawn(async move {
+        let _generation = completion_generation;
         let _ = terminal_tx.send(completion.complete().await);
     });
     Ok(ws
@@ -387,6 +390,7 @@ async fn upgrade(
             run_socket(
                 socket,
                 SocketSession {
+                    generation,
                     state,
                     operation,
                     headers,
@@ -401,6 +405,7 @@ async fn upgrade(
         }))
 }
 struct SocketSession {
+    generation: Arc<crate::generation_dispatch::GenerationDispatch>,
     state: Arc<ApiState>,
     operation: Arc<plugin_framework::ManagedServiceOperation>,
     headers: HeaderMap,
@@ -421,6 +426,7 @@ struct SocketSession {
 }
 async fn run_socket(socket: WebSocket, session: SocketSession) {
     let SocketSession {
+        generation,
         state,
         operation,
         headers,
@@ -444,7 +450,9 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
         mpsc::channel::<(Message, Option<oneshot::Sender<()>>)>(16);
     let acknowledgements = Arc::new(Mutex::new(BTreeMap::<u64, oneshot::Sender<()>>::new()));
     let mut writer_cancel = cancel.clone();
+    let writer_generation = generation.clone();
     let writer_task = tokio::spawn(async move {
+        let _generation = writer_generation;
         loop {
             tokio::select! {
                 _ = writer_cancel.changed() => break,
@@ -468,7 +476,9 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
     let projection_out = outgoing.clone();
     let mut projection_cancel = cancel.clone();
     let (projection_done, mut projected) = oneshot::channel();
+    let projection_generation = generation.clone();
     let projection_task = tokio::spawn(async move {
+        let _generation = projection_generation;
         let mut id = 0;
         loop {
             let event = tokio::select! {
@@ -497,7 +507,9 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
     });
     let mut auth_cancel = cancel.clone();
     let auth_stop = lease.cancel.clone();
+    let auth_generation = generation.clone();
     let auth_task = tokio::spawn(async move {
+        let _generation = auth_generation;
         let mut validation = tokio::time::interval(std::time::Duration::from_secs(30));
         validation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         validation.tick().await;
@@ -518,7 +530,9 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
         mpsc::unbounded_channel::<(Value, tokio::sync::OwnedSemaphorePermit)>();
     let input_bytes = Arc::new(tokio::sync::Semaphore::new(FRAME_BYTES));
     let mut input_cancel = cancel.clone();
+    let input_generation = generation.clone();
     let input_task = tokio::spawn(async move {
+        let _generation = input_generation;
         loop {
             tokio::select! {
                 _ = input_cancel.changed() => break,

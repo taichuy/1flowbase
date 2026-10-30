@@ -58,12 +58,14 @@ impl orchestration_runtime::execution_engine::ProviderInvoker for ResolverBacked
 
     async fn acquire_http_node_client(
         &self,
+        network_egress: &domain::HttpNodeNetworkEgress,
         timeout: Duration,
         verify_ssl: bool,
     ) -> anyhow::Result<Option<orchestration_runtime::execution_engine::HttpRequestClientLease>>
     {
         ProviderRuntimePort::acquire_http_node_client(
             &self.runtime,
+            network_egress,
             self.workspace_id,
             timeout,
             verify_ssl,

@@ -121,6 +121,8 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "communications.files.list"
                     | "communications.files.get"
                     | "communications.messages.retry"
+                    | "agent_flow.http_node_proxy_options.list"
+                    | "local_commands.execute"
                     | "system.branding.get"
                     | "system.branding.save"
                     | "notifications.instances.get"

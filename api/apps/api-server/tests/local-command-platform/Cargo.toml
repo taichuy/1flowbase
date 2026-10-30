@@ -1,0 +1,21 @@
+[package]
+name = "local-command-platform-evidence"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Test-only compilation of the actual production module, without unrelated API/DB code.
+[workspace]
+[lib]
+path = "lib.rs"
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.154", features = ["preserve_order"] }
+uuid = { version = "=1.28.0", features = ["v7"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.190"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_System_Environment", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_SystemInformation", "Win32_System_Threading"] }

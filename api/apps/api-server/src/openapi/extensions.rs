@@ -3,6 +3,7 @@ use utoipa::OpenApi;
 #[derive(OpenApi)]
 #[openapi(
     paths(
+        crate::routes::local_commands::execute_local_command,
         crate::routes::plugins::list_catalog,
         crate::routes::plugins::extension_center::list_local_extension_inventory,
         crate::routes::plugins::extension_center::select_local_extension_installation,
@@ -161,6 +162,7 @@ use utoipa::OpenApi;
         crate::routes::network_center::plugins::install_official_plugin,
         crate::routes::network_center::plugins::install_uploaded_plugin,
         crate::routes::network_center::pools::list_network_egress_pools,
+        crate::routes::network_center::pools::list_http_node_proxy_options,
         crate::routes::network_center::pools::create_network_egress_proxy,
         crate::routes::network_center::pools::get_network_egress_proxy,
         crate::routes::network_center::pools::update_network_egress_proxy,
@@ -178,6 +180,8 @@ use utoipa::OpenApi;
         crate::routes::network_center::delete_network_egress_route,
     ),
     components(schemas(
+        crate::routes::local_commands::LocalCommandBody,
+        crate::routes::local_commands::LocalCommandResponse,
         crate::routes::plugins::InstallPluginBody,
         crate::routes::plugins::InstallOfficialPluginBody,
         crate::routes::plugins::InstallPluginResponse,
@@ -368,6 +372,7 @@ use utoipa::OpenApi;
         crate::routes::network_center::pools::CreateNetworkEgressPoolMemberBody,
         crate::routes::network_center::pools::UpdateNetworkEgressPoolMemberBody,
         crate::routes::network_center::pools::NetworkEgressPoolResponse,
+        crate::routes::network_center::pools::HttpNodeProxyOptionResponse,
         crate::routes::network_center::pools::NetworkEgressPoolMemberResponse,
         crate::routes::network_center::CreateNetworkEgressRouteBody,
         crate::routes::network_center::UpdateNetworkEgressRouteBody,

@@ -1,6 +1,6 @@
 {
   "packet": "D3-P4",
-  "count": 84,
+  "count": 86,
   "consumers": [
     {
       "category": "settings_feature_label",
@@ -421,6 +421,16 @@
       "category": "settings_policy_group",
       "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
       "key": "Manage installation-wide public branding"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "Local commands"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "Run one-shot commands on the backend host"
     }
   ]
 }

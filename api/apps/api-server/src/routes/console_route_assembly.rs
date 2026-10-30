@@ -158,6 +158,7 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct ConsoleRouteAssembly<S> {
     router: Router<S>,
     bindings: Vec<ConsoleRouteAssemblyBinding>,
@@ -271,6 +272,7 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations_and
     ConsoleRouteAssembly::new()
         .merge(console_health_route_assembly())
         .merge(super::session::route_assembly())
+        .merge(super::local_commands::route_assembly())
         .merge(super::me::route_assembly())
         .merge(super::external_auth::console_route_assembly())
         .merge(super::me_authentication_methods::route_assembly())
@@ -799,6 +801,7 @@ mod tests {
         let expected = ConsoleRouteAssembly::new()
             .merge(console_health_route_assembly())
             .merge(crate::routes::session::route_assembly())
+            .merge(crate::routes::local_commands::route_assembly())
             .merge(crate::routes::me::route_assembly())
             .merge(crate::routes::external_auth::console_route_assembly())
             .merge(crate::routes::me_authentication_methods::route_assembly())

@@ -1,5 +1,9 @@
 //! Real SDK process used by Root #2007 AC-005/007. No host identity is accepted in worker output.
-use runtime_extension_sdk::{serve_managed_event, ManagedEventOutcome, ManagedEventPublication};
+use runtime_extension_sdk::{
+    serve_communication_command, serve_managed_event, CommunicationMessageBlock as Block,
+    CommunicationMessageContent as Content, CommunicationMessageInline as Inline,
+    ManagedEventOutcome, ManagedEventPublication,
+};
 use std::io::{Read, Write};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut raw = Vec::new();
@@ -49,23 +53,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
+    if request.handler == "communication_command" {
+        if request.delivery.payload["arguments"] == "fixture-fail" {
+            serve_managed_event(raw.as_slice(), std::io::stdout().lock(), |_| {
+                ManagedEventOutcome::Failed {
+                    classification: "fixture_command_failed".into(),
+                }
+            })?;
+        } else {
+            serve_communication_command(raw.as_slice(), std::io::stdout().lock(), |request| {
+                if request.arguments == "fixture-markdown" {
+                    Content::Blocks(vec![
+                        Block::Paragraph(vec![Inline::Strong("Status".into())]),
+                        Block::BulletList(vec![vec![
+                            Inline::Code("/next [id]".into()),
+                            Inline::Text(" — Ready\nSecond line".into()),
+                        ]]),
+                    ])
+                } else {
+                    Content::Blocks(vec![Block::Paragraph(vec![
+                        Inline::Code(request.command_id.clone()),
+                        Inline::Text(format!(": {}", request.arguments)),
+                    ])])
+                }
+            })?;
+        }
+        return Ok(());
+    }
     serve_managed_event(raw.as_slice(), std::io::stdout().lock(), |frame| {
         use extension_contracts::{PluginDataOperation, PluginDataTarget, PluginDataValue};
         let payload = &frame.delivery.payload;
-        if frame.handler == "communication_command" {
-            let request: extension_contracts::CommunicationCommandRequest =
-                serde_json::from_value(payload.clone()).expect("validated command schema");
-            if request.arguments == "fixture-fail" {
-                return ManagedEventOutcome::Failed {
-                    classification: "fixture_command_failed".into(),
-                };
-            }
-            ManagedEventOutcome::CommandReply {
-                reply: extension_contracts::CommunicationCommandReply {
-                    text: format!("{}: {}", request.command_id, request.arguments),
-                },
-            }
-        } else if frame.handler == "publish" {
+        if frame.handler == "publish" {
             ManagedEventOutcome::Publish {
                 publication: ManagedEventPublication {
                     contract_id: extension_contracts::MANAGED_PROCESSED_EVENT_ID.into(),

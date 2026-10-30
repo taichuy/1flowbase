@@ -152,3 +152,48 @@ async fn unscoped_native_http_without_session_keeps_client_carrier() {
         .is_none());
     assert_eq!(input.client_transport, Some(ProviderClientTransport::Http));
 }
+
+#[tokio::test]
+async fn owned_http_cursor_selector_preserves_provenance_and_explicit_policy_precedence() {
+    for (policy, expected) in [
+        ("inherit", RecoveryTransport::ProviderHttp),
+        ("force_http_sse", RecoveryTransport::ProviderHttp),
+        ("force_websocket", RecoveryTransport::AiNativeWebSocket),
+    ] {
+        let coordinator = TransportSessionCoordinator::new_with_clock(
+            Arc::new(FakeTransportRuntime::new([])),
+            transport_config(),
+            FakeClock::new(2_000_000),
+        )
+        .unwrap();
+        let scope = coordinator.open_connection_scope();
+        let mut input = scope_input(&scope, "model-a");
+        input.provider_config = serde_json::json!({"transport_mode":"responses_websocket"});
+        input.model_parameters.clear();
+        input.model_parameters.insert(
+            "responses_transport_policy".into(),
+            serde_json::json!(policy),
+        );
+        input.client_transport = Some(ProviderClientTransport::Http);
+        input.native_transport = Some(
+            plugin_framework::provider_contract::ProviderNativeTransport {
+                protocol: "openai_responses".into(),
+                wire_body: serde_json::json!({"model":"model-a", "previous_response_id":"resp_owned", "input":[]}),
+                digest: "fixture".into(),
+                size_bytes: 0,
+            },
+        );
+        let prepared = coordinator
+            .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(prepared.transport, expected);
+        let output = if expected == RecoveryTransport::ProviderHttp {
+            output_with_result(ProviderInvocationResult::default())
+        } else {
+            successful_output(prepared.lease.fence.generation.get())
+        };
+        coordinator.finish(prepared, &output).await.unwrap();
+    }
+}

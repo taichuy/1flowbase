@@ -400,7 +400,7 @@ describe('agent-flow node schema registry', () => {
     );
     const loopConditionField = findFieldBlock(
       loopSchema.detail.tabs.config.blocks,
-      'bindings.entry_condition'
+      'bindings.break_condition'
     );
 
     expect(contract?.defaults.outputs).toEqual([]);
@@ -437,8 +437,8 @@ describe('agent-flow node schema registry', () => {
     );
     expect(loopConditionField).toEqual(
       expect.objectContaining({
-        renderer: 'condition_group',
-        path: 'bindings.entry_condition'
+        renderer: 'container_break_condition',
+        path: 'bindings.break_condition'
       })
     );
   });
@@ -742,6 +742,7 @@ describe('agent-flow node schema registry', () => {
     expect(contract).not.toBeNull();
     expect(contract?.defaults.alias).toBe('HTTP');
     expect(contract?.defaults.config).toEqual({
+      network_egress: { mode: 'workspace' },
       method: 'GET',
       url: '',
       body_type: 'none',
@@ -776,6 +777,12 @@ describe('agent-flow node schema registry', () => {
     expect(serializedConfigBlocks).toContain('"path":"bindings.params"');
     expect(serializedConfigBlocks).toContain('"path":"bindings.headers"');
     expect(serializedConfigBlocks).toContain('"path":"config.body_type"');
+    expect(findFieldBlock(configBlocks, 'config.network_egress')).toMatchObject(
+      {
+        renderer: 'http_request_network_egress',
+        label: '网络出口'
+      }
+    );
     expect(serializedConfigBlocks).toContain('"path":"config.verify_ssl"');
     expect(serializedConfigBlocks).toContain(
       '"path":"config.store_response_as_file"'

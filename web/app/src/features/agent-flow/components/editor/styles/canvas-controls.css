@@ -11,7 +11,9 @@
 }
 
 .agent-flow-node-handle--source.react-flow__handle {
-  right: -7px;
+  width: 32px;
+  height: 32px;
+  right: 0;
   transform: translate(50%, -50%);
   display: flex;
   align-items: center;
@@ -95,27 +97,30 @@
 }
 
 .agent-flow-node-handle__icon {
-  opacity: 0;
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+  opacity: 1;
   pointer-events: none;
   transition: opacity 0.2s ease;
 }
 
+.react-flow__node.selected .agent-flow-node-handle--source.react-flow__handle,
 .react-flow__node:hover .agent-flow-node-handle--source.react-flow__handle,
 .agent-flow-node-handle--source.react-flow__handle[aria-expanded='true'] {
-  width: 24px;
-  height: 24px;
-  right: -12px;
+  width: 40px;
+  height: 40px;
+  right: 0;
   border: 2px solid #fff;
   background: #1677ff;
   box-shadow: 0 2px 8px rgba(22, 119, 255, 0.4);
 }
 
-.react-flow__node:hover
-  .agent-flow-node-handle--source
-  .agent-flow-node-handle__icon,
-.agent-flow-node-handle--source.react-flow__handle[aria-expanded='true']
-  .agent-flow-node-handle__icon {
-  opacity: 1;
+/* Branch pitch is 32px; keep adjacent connection targets disjoint. */
+.react-flow__node
+  .agent-flow-node-handle--source.agent-flow-node-handle--branch.react-flow__handle {
+  width: 28px;
+  height: 28px;
 }
 
 .agent-flow-node-handle--source.react-flow__handle:hover,
@@ -241,9 +246,7 @@
 }
 
 .agent-flow-canvas .agent-flow-node-picker-popover {
-  top: calc(
-    (100% - var(--agent-flow-node-picker-height)) / 2
-  ) !important;
+  top: calc((100% - var(--agent-flow-node-picker-height)) / 2) !important;
 }
 
 .agent-flow-node-picker {

@@ -345,8 +345,9 @@ async fn invocation_transport_outcomes_preserve_missing_stale_fault_and_http_fal
         TransportSessionState::Faulted
     );
 
+    let stale_runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(true)]));
     let stale_coordinator = TransportSessionCoordinator::new_with_clock(
-        Arc::new(FakeTransportRuntime::new([])),
+        stale_runtime.clone(),
         transport_config(),
         clock.clone(),
     )
@@ -358,13 +359,41 @@ async fn invocation_transport_outcomes_preserve_missing_stale_fault_and_http_fal
         .unwrap()
         .unwrap();
     let stale_generation = stale.lease.fence.generation.get();
-    let before_stale = stale_coordinator.safe_snapshot().await;
     let stale_error = stale_coordinator
         .finish(stale, &successful_output(stale_generation + 1))
         .await
         .unwrap_err();
     assert!(reason(stale_error).contains("provider_transport_stale_generation"));
-    assert_eq!(stale_coordinator.safe_snapshot().await, before_stale);
+    let after_stale = stale_coordinator.safe_snapshot().await;
+    assert_eq!(after_stale.sessions.len(), 1);
+    assert_eq!(
+        after_stale.sessions[0].state,
+        TransportSessionState::Faulted
+    );
+    assert!(!after_stale.sessions[0].inflight);
+    assert!(after_stale.sessions[0]
+        .closure_evidence
+        .as_ref()
+        .is_some_and(|evidence| evidence.local_released));
+    assert_eq!(stale_runtime.commands().len(), 1);
+    assert_eq!(
+        stale_runtime.commands()[0].generation,
+        stale_generation,
+        "close the host-owned physical generation, never the mismatched receipt generation"
+    );
+    let mut successor_input = invocation_input("stale-receipt", ProviderWireOperation::Generate);
+    let successor = stale_coordinator
+        .prepare_dispatched("runtime-a", &mut successor_input, &context(2_000_100))
+        .await
+        .unwrap()
+        .unwrap();
+    let successor_generation = successor.lease.fence.generation.get();
+    assert!(successor_generation > stale_generation);
+    stale_coordinator
+        .finish(successor, &successful_output(successor_generation))
+        .await
+        .unwrap();
+    assert!(!stale_coordinator.safe_snapshot().await.sessions[0].inflight);
 
     let old_generation_coordinator = TransportSessionCoordinator::new_with_clock(
         Arc::new(FakeTransportRuntime::new([])),

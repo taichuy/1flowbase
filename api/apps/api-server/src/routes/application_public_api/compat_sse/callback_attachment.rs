@@ -38,6 +38,9 @@ pub(super) async fn attach_live_compatible_callback_round(
         initial_run,
         Some(start),
         Vec::new(),
+        RuntimeEventDeliveryScope::Resume {
+            callback_task_id: round_id,
+        },
         subscription,
     ))
 }
@@ -70,10 +73,10 @@ pub(super) fn follow_callback_subscription(
         let mut durable_cursor = match dependencies
             .native
             .store
-            .get_runtime_event_sequence_for_callback_task(initial_run.id, round_id)
+            .get_original_callback_waiting_boundary(initial_run.id, round_id)
             .await
         {
-            Ok(Some(boundary)) => boundary,
+            Ok(Some(boundary)) => boundary.original.event_sequence,
             result => {
                 warn!(flow_run_id = %initial_run.id, ?result,
                     "callback attachment durable boundary unavailable");
@@ -205,10 +208,19 @@ pub(super) async fn follow_missing_compatible_round_events(
     let mut cursor = dependencies
         .native
         .store
-        .get_runtime_event_sequence_for_callback_task(initial_run.id, round_id)
+        .get_original_callback_waiting_boundary(initial_run.id, round_id)
         .await
         .map_err(service_error)?
-        .ok_or_else(|| service_error(anyhow::anyhow!("callback round boundary missing")))?;
+        .ok_or_else(|| {
+            service_error(
+                control_plane::errors::ControlPlaneError::Conflict(
+                    "runtime_event_delivery_scope_unresolved",
+                )
+                .into(),
+            )
+        })?
+        .original
+        .event_sequence;
     let mut terminal_observed = false;
     loop {
         if sender.is_closed() {
@@ -267,6 +279,7 @@ pub(super) async fn follow_missing_compatible_round_events(
                     let mut attached = attach_terminal_compatible_round(
                         &dependencies,
                         initial_run.clone(),
+                        round_id,
                         durable_round_replay,
                     )
                     .await?;

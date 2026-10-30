@@ -6,6 +6,7 @@ pub(in crate::orchestration_runtime) struct CheckpointLocatorPayload {
     next_node_index: usize,
     active_node_ids: Vec<String>,
     context_version_id: Option<Uuid>,
+    container_state: bool,
 }
 
 impl CheckpointLocatorPayload {
@@ -18,6 +19,7 @@ impl CheckpointLocatorPayload {
             next_node_index: snapshot.next_node_index,
             active_node_ids: snapshot.active_node_ids.clone(),
             context_version_id: None,
+            container_state: snapshot.container_state.is_some(),
         }
     }
 
@@ -32,6 +34,7 @@ impl CheckpointLocatorPayload {
             next_node_index,
             active_node_ids,
             context_version_id: None,
+            container_state: false,
         }
     }
 
@@ -77,6 +80,11 @@ impl CheckpointLocatorPayload {
             next_node_index,
             active_node_ids,
             context_version_id,
+            container_state: checkpoint
+                .locator_payload
+                .get("container_state")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         })
     }
 
@@ -86,6 +94,9 @@ impl CheckpointLocatorPayload {
             "next_node_index": self.next_node_index,
             "active_node_ids": self.active_node_ids,
         });
+        if self.container_state {
+            locator["container_state"] = json!(true);
+        }
         if let Some(context_version_id) = self.context_version_id {
             locator["context_version_id"] = json!(context_version_id);
         }
@@ -97,6 +108,7 @@ impl CheckpointLocatorPayload {
         variable_snapshot: &Value,
     ) -> Result<orchestration_runtime::execution_state::CheckpointSnapshot> {
         Ok(orchestration_runtime::execution_state::CheckpointSnapshot {
+            container_state: None,
             next_node_index: self.next_node_index,
             variable_pool: variable_snapshot
                 .as_object()
@@ -455,12 +467,30 @@ where
     R: crate::ports::OrchestrationRuntimeRepository,
 {
     let locator = CheckpointLocatorPayload::from_record(checkpoint)?;
+    if locator.container_state {
+        let state = repository
+            .load_container_checkpoint(checkpoint.flow_run_id)
+            .await?
+            .ok_or_else(|| anyhow!("container checkpoint missing"))?;
+        let mut state: orchestration_runtime::execution_engine::container::ContainerCheckpoint =
+            serde_json::from_value(state)?;
+        if checkpoint.flow_run_id != target_flow_run_id {
+            state.root_variable_pool.remove(RECOVERY_CONTEXT_MARKER);
+        }
+        return Ok(orchestration_runtime::execution_state::CheckpointSnapshot {
+            next_node_index: state.root_next_node_index,
+            variable_pool: state.root_variable_pool.clone(),
+            active_node_ids: state.root_active_node_ids.clone(),
+            container_state: Some(state),
+        });
+    }
     let mut snapshot = match locator.context_version_id {
         Some(context_version_id) => {
             let lineage = repository
                 .load_runtime_context_content_lineage(context_version_id)
                 .await?;
             orchestration_runtime::execution_state::CheckpointSnapshot {
+                container_state: None,
                 next_node_index: locator.next_node_index,
                 variable_pool: materialize_checkpoint_content(&lineage)?,
                 active_node_ids: locator.active_node_ids,

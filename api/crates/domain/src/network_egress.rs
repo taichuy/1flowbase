@@ -2,6 +2,71 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+/// Protocol of a built-in proxy. Plugin forward-proxy leases remain HTTP-only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StaticProxyProtocol {
+    Http,
+    Socks5,
+}
+
+impl StaticProxyProtocol {
+    pub fn from_provider_code(code: &str) -> Option<Self> {
+        match code {
+            "builtin_static_http" => Some(Self::Http),
+            "builtin_static_socks5" => Some(Self::Socks5),
+            _ => None,
+        }
+    }
+
+    pub const fn provider_code(self) -> &'static str {
+        match self {
+            Self::Http => "builtin_static_http",
+            Self::Socks5 => "builtin_static_socks5",
+        }
+    }
+
+    pub const fn egress_key(self) -> &'static str {
+        match self {
+            Self::Http => "static-http",
+            Self::Socks5 => "static-socks5",
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Http => "HTTP proxy",
+            Self::Socks5 => "SOCKS5 proxy",
+        }
+    }
+
+    pub const fn tag(self) -> &'static str {
+        match self {
+            Self::Http => "http",
+            Self::Socks5 => "socks5",
+        }
+    }
+
+    /// SOCKS5 hostnames are resolved by the proxy, never by the application host.
+    pub const fn url_scheme(self) -> &'static str {
+        match self {
+            Self::Http => "http",
+            Self::Socks5 => "socks5h",
+        }
+    }
+}
+
+/// A workflow stores only an egress choice, never proxy addresses or credentials.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HttpNodeNetworkEgress {
+    #[default]
+    Workspace,
+    Direct,
+    Proxy {
+        pool_member_id: Uuid,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NetworkEgressProviderLifecycle {

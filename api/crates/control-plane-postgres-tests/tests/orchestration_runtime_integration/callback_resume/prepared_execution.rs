@@ -670,3 +670,71 @@ async fn aged_same_admission_version_can_atomically_acquire_actual_execution() {
     assert!(output.claim.is_some());
     assert!(fixture.provider.inputs.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn native_partial_and_exact_duplicate_issue_frozen_pending_receipts_without_execution() {
+    let mut fixture = fixture(2).await;
+    fixture.command.source = PublishedCallbackResumeSource::NativeAgent;
+    let callback_id = match &fixture.command.target {
+        PublishedCallbackResumeTarget::CallbackTask { callback_task_id }
+        | PublishedCallbackResumeTarget::FlowRun {
+            callback_task_id, ..
+        } => *callback_task_id,
+    };
+    let mut original_inbox = None;
+    let delivery_before:Value=sqlx::query_scalar("select jsonb_agg(jsonb_build_object('id',id,'status',delivery_status,'token',delivery_claim_token,'generation',delivery_generation,'lease',delivery_lease_expires_at,'acked',delivery_acked_at,'uncertain',delivery_uncertain_at) order by sequence,id) from runtime_events where flow_run_id=(select flow_run_id from flow_run_callback_tasks where id=$1) and delivery_status is not null")
+        .bind(callback_id).fetch_one(fixture.store.pool()).await.unwrap();
+    for _ in 0..2 {
+        let PublishedCallbackReservation::Acquired(receipt) = fixture
+            .service
+            .reserve_native_callback_reservation_for_actor(fixture.actor.clone(), &fixture.command)
+            .await
+            .unwrap()
+        else {
+            panic!("parked partial must immediately re-acquire")
+        };
+        let PreparedPublishedCallback::PendingNativeWaiting(receipt) = fixture
+            .service
+            .prepare_reserved_native_callback_for_actor(
+                fixture.actor.clone(),
+                fixture.command.clone(),
+                receipt,
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("Native pending result must keep its opaque receipt type")
+        };
+        assert_eq!(receipt.callback_task_id(), callback_id);
+        let result = receipt.into_result();
+        assert_eq!(
+            result.run.status,
+            control_plane::application_public_api::native::NativeRunStatus::Waiting
+        );
+        assert_eq!(
+            result.attempt.status,
+            domain::FlowRunCallbackResumeAttemptStatus::Received
+        );
+        assert_eq!(
+            result.run.required_action.as_ref().unwrap().payload["callback_task_id"],
+            json!(callback_id)
+        );
+        let inbox:Value=sqlx::query_scalar("select jsonb_agg(to_jsonb(i) order by tool_ordinal) from flow_run_tool_callback_inbox i where callback_task_id=$1")
+            .bind(callback_id).fetch_one(fixture.store.pool()).await.unwrap();
+        if let Some(before) = &original_inbox {
+            assert_eq!(&inbox, before, "duplicate c1 causes zero new inbox writes")
+        };
+        original_inbox = Some(inbox);
+        let claims: i64 =
+            sqlx::query_scalar("select count(*) from flow_run_resume_claims where flow_run_id=$1")
+                .bind(result.run.id)
+                .fetch_one(fixture.store.pool())
+                .await
+                .unwrap();
+        assert_eq!(claims, 0);
+        assert!(fixture.provider.inputs.lock().unwrap().is_empty());
+        let delivery_after:Value=sqlx::query_scalar("select jsonb_agg(jsonb_build_object('id',id,'status',delivery_status,'token',delivery_claim_token,'generation',delivery_generation,'lease',delivery_lease_expires_at,'acked',delivery_acked_at,'uncertain',delivery_uncertain_at) order by sequence,id) from runtime_events where flow_run_id=$1 and delivery_status is not null")
+            .bind(result.run.id).fetch_one(fixture.store.pool()).await.unwrap();
+        assert_eq!(delivery_after, delivery_before);
+    }
+}

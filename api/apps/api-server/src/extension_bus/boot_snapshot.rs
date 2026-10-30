@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeMap,
-    sync::{Arc, OnceLock},
+    sync::{Arc, Mutex, OnceLock, Weak},
 };
 
 use plugin_framework::extension_bus::{
@@ -20,6 +20,10 @@ pub const EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1: &str = "1flowbase.effective-extens
 
 pub struct ExtensionBootSnapshot {
     generation_id: uuid::Uuid,
+    #[cfg(test)]
+    dispatch_assemblies: std::sync::atomic::AtomicUsize,
+    dispatch_owner: OnceLock<Weak<crate::generation_dispatch::GenerationDispatch>>,
+    publication: Mutex<()>,
     managed_composition: OnceLock<Arc<super::ManagedExtensionComposition>>,
     graph: Arc<EffectiveExtensionGraph>,
     interface_registry: Option<Arc<interface_runtime::DynamicInterfaceRegistry>>,
@@ -55,6 +59,16 @@ impl std::fmt::Debug for ExtensionBootSnapshot {
 }
 
 impl ExtensionBootSnapshot {
+    #[cfg(test)]
+    pub(crate) fn record_dispatch_assembly(&self) {
+        self.dispatch_assemblies
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    #[cfg(test)]
+    pub(crate) fn dispatch_assembly_count(&self) -> usize {
+        self.dispatch_assemblies
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
     pub(crate) fn generation_id(&self) -> uuid::Uuid {
         self.generation_id
     }
@@ -80,6 +94,10 @@ impl ExtensionBootSnapshot {
         .compile()?;
         let fork = Self {
             generation_id: uuid::Uuid::now_v7(),
+            #[cfg(test)]
+            dispatch_assemblies: std::sync::atomic::AtomicUsize::new(0),
+            dispatch_owner: OnceLock::new(),
+            publication: Mutex::new(()),
             managed_composition: OnceLock::new(),
             graph: self.graph.clone(),
             interface_registry: Some(Arc::new(interface_runtime::DynamicInterfaceRegistry::new(
@@ -118,6 +136,10 @@ impl ExtensionBootSnapshot {
     pub(crate) fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
         Self {
             generation_id: uuid::Uuid::now_v7(),
+            #[cfg(test)]
+            dispatch_assemblies: std::sync::atomic::AtomicUsize::new(0),
+            dispatch_owner: OnceLock::new(),
+            publication: Mutex::new(()),
             graph,
             interface_registry: None,
             authentication_factories: Arc::new(
@@ -152,6 +174,10 @@ impl ExtensionBootSnapshot {
         authentication_factories.activate_host_extensions(host_authentication_factories)?;
         Ok(Self {
             generation_id: uuid::Uuid::now_v7(),
+            #[cfg(test)]
+            dispatch_assemblies: std::sync::atomic::AtomicUsize::new(0),
+            dispatch_owner: OnceLock::new(),
+            publication: Mutex::new(()),
             graph,
             interface_registry: Some(interface_registry),
             authentication_factories: Arc::new(authentication_factories),
@@ -201,10 +227,60 @@ impl ExtensionBootSnapshot {
         self.external_endpoint_catalog.get()
     }
 
+    pub(crate) fn dispatch_owner(
+        &self,
+    ) -> Result<Arc<crate::generation_dispatch::GenerationDispatch>, crate::error_response::ApiError>
+    {
+        self.dispatch_owner
+            .get()
+            .and_then(Weak::upgrade)
+            .ok_or_else(crate::generation_dispatch::unavailable)
+    }
+
+    /// Transfer the returned strong owner into an external serving/candidate root.
+    /// This snapshot only stores Weak; retaining state or metadata alone is not execution admission.
     pub(crate) fn publish_complete_catalog(
         &self,
         state: &Arc<crate::app_state::ApiState>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Arc<crate::generation_dispatch::GenerationDispatch>> {
+        self.publish_complete_catalog_inner(state, None)
+    }
+
+    pub(crate) fn publish_complete_catalog_with_route_assembly(
+        &self,
+        state: &Arc<crate::app_state::ApiState>,
+        assembly: crate::routes::console_route_assembly::ConsoleRouteAssembly<
+            Arc<crate::app_state::ApiState>,
+        >,
+    ) -> anyhow::Result<Arc<crate::generation_dispatch::GenerationDispatch>> {
+        self.publish_complete_catalog_inner(state, Some(assembly))
+    }
+
+    fn publish_complete_catalog_inner(
+        &self,
+        state: &Arc<crate::app_state::ApiState>,
+        assembly: Option<
+            crate::routes::console_route_assembly::ConsoleRouteAssembly<
+                Arc<crate::app_state::ApiState>,
+            >,
+        >,
+    ) -> anyhow::Result<Arc<crate::generation_dispatch::GenerationDispatch>> {
+        let _publication = self
+            .publication
+            .lock()
+            .map_err(|_| anyhow::anyhow!("catalog publication lock poisoned"))?;
+        if self.console_operation_snapshot.get().is_some() || self.dispatch_owner.get().is_some() {
+            anyhow::bail!("complete catalog is already published");
+        }
+        if state
+            .extension_boot_snapshot
+            .as_ref()
+            .map(|boot| boot.generation_id())
+            != Some(self.generation_id)
+        {
+            anyhow::bail!("catalog state belongs to another generation");
+        }
+        let owner = crate::generation_dispatch::GenerationDispatch::new(self.generation_id);
         let registry = self
             .interface_registry
             .as_ref()
@@ -215,7 +291,7 @@ impl ExtensionBootSnapshot {
             interface_runtime::GraphFingerprint::new(self.graph.fingerprint().as_str())?,
         )
         .with_managed_invocations(managed.clone());
-        for contribution in production_interface_contributions(state)? {
+        for contribution in production_interface_contributions(state, &owner)? {
             collector.add(contribution)?;
         }
         for service in state.console_surface_registry.managed_services() {
@@ -238,13 +314,19 @@ impl ExtensionBootSnapshot {
         }
         self.authentication_factories
             .validate_registry(&candidate)?;
-        registry.publish(candidate);
+        owner
+            .compile_router(state, &candidate, assembly)
+            .map_err(|error| error.0)?;
         self.console_operation_snapshot
             .set(Arc::new(console_operation_snapshot))
             .map_err(|_| {
                 anyhow::anyhow!("compiled Console operation snapshot is already published")
             })?;
-        Ok(())
+        self.dispatch_owner
+            .set(Arc::downgrade(&owner))
+            .map_err(|_| anyhow::anyhow!("generation dispatch already published"))?;
+        registry.publish(candidate);
+        Ok(owner)
     }
 
     pub(crate) async fn authenticate_invocation<C, P>(

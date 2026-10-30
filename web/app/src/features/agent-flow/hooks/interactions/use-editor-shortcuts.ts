@@ -22,6 +22,9 @@ export function useEditorShortcuts() {
   const setWorkingDocument = useAgentFlowEditorStore(
     (state) => state.setWorkingDocument
   );
+  const restoreNextDocument = useAgentFlowEditorStore(
+    (state) => state.restoreNextDocument
+  );
   const restorePreviousDocument = useAgentFlowEditorStore(
     (state) => state.restorePreviousDocument
   );
@@ -103,6 +106,12 @@ export function useEditorShortcuts() {
           return;
         }
 
+        if ((shortcutKey === 'z' && event.shiftKey) || shortcutKey === 'y') {
+          event.preventDefault();
+          restoreNextDocument();
+          return;
+        }
+
         if (shortcutKey === 'z' && !event.shiftKey) {
           event.preventDefault();
           restorePreviousDocument();
@@ -178,6 +187,7 @@ export function useEditorShortcuts() {
     selectedNodeId,
     selectedEdgeId,
     restorePreviousDocument,
+    restoreNextDocument,
     setInteractionState,
     setPanelState,
     setSelection,

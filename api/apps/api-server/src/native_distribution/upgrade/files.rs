@@ -29,7 +29,7 @@ pub fn size(path: &Path) -> Result<u64> {
         fs::symlink_metadata(path).with_context(|| format!("Cannot inspect {}", path.display()))?;
     ensure!(
         !info.file_type().is_symlink(),
-        "Symlinks are not supported in upgrade snapshots: {}",
+        "Symlinks are not supported in update files: {}",
         path.display()
     );
     if info.is_file() {
@@ -129,6 +129,9 @@ pub fn json<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
 }
 
 pub fn require_space(path: &Path, bytes: u64) -> Result<()> {
+    let path = path
+        .canonicalize()
+        .context("Cannot resolve update volume")?;
     let disks = sysinfo::Disks::new_with_refreshed_list();
     let disk = disks
         .list()
@@ -145,41 +148,9 @@ pub fn require_space(path: &Path, bytes: u64) -> Result<()> {
         .context("Cannot determine free disk space for upgrade")?;
     ensure!(
         disk.available_space() >= bytes.saturating_add(16 * 1024 * 1024),
-        "Insufficient space for program staging and complete data backup"
+        "Insufficient space for the new program files"
     );
     Ok(())
-}
-
-pub fn inventory(root: &Path) -> Result<std::collections::BTreeMap<String, String>> {
-    fn walk(
-        root: &Path,
-        path: &Path,
-        out: &mut std::collections::BTreeMap<String, String>,
-    ) -> Result<()> {
-        if path != root && path.strip_prefix(root)? == Path::new("instance.lock") {
-            return Ok(());
-        }
-        let info = fs::symlink_metadata(path)?;
-        ensure!(!info.file_type().is_symlink(), "Symlink in snapshot");
-        if info.is_dir() {
-            for entry in fs::read_dir(path)? {
-                walk(root, &entry?.path(), out)?;
-            }
-        } else {
-            ensure!(info.is_file(), "Unsupported snapshot file");
-            out.insert(
-                path.strip_prefix(root)?
-                    .to_str()
-                    .context("Non-UTF8 snapshot path")?
-                    .replace('\\', "/"),
-                hash(path)?,
-            );
-        }
-        Ok(())
-    }
-    let mut out = std::collections::BTreeMap::new();
-    walk(root, root, &mut out)?;
-    Ok(out)
 }
 
 #[cfg(windows)]
@@ -213,4 +184,43 @@ pub fn sync_directory(path: &Path) -> Result<()> {
     #[cfg(not(unix))]
     let _ = path;
     Ok(())
+}
+
+/// Replace a program file atomically; this is a new-file staging copy, never an old-file backup.
+pub fn replace(source: &Path, destination: &Path) -> Result<()> {
+    let parent = destination.parent().context("Invalid program path")?;
+    fs::create_dir_all(parent)?;
+    let temporary = temporary_path(destination)?;
+    remove(&temporary)?;
+    let result = (|| -> Result<()> {
+        copy(source, &temporary, false)?;
+        #[cfg(windows)]
+        if destination.try_exists()? {
+            let mut permissions = fs::metadata(destination)?.permissions();
+            if permissions.readonly() {
+                permissions.set_readonly(false);
+                fs::set_permissions(destination, permissions)?;
+            }
+        }
+        fs::rename(&temporary, destination)?;
+        sync_directory(parent)?;
+        Ok(())
+    })();
+    if temporary.exists() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+pub fn temporary_path(destination: &Path) -> Result<std::path::PathBuf> {
+    Ok(destination
+        .parent()
+        .context("Invalid program path")?
+        .join(format!(
+            ".update-{}.tmp",
+            destination
+                .file_name()
+                .context("Invalid file name")?
+                .to_string_lossy()
+        )))
 }

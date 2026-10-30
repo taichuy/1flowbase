@@ -45,6 +45,18 @@ fn final_item() -> domain::ApplicationRunConversationMessageItem {
         output_source: Some("persisted_answer".into()),
     }
 }
+
+#[test]
+fn communication_ai_markdown_keeps_blocks_and_has_no_command_size_limit() {
+    let mut item = final_item();
+    let markdown = format!("**Answer**\n\n- first\n- second\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```text\n*literal*\n```\n\n{}", "中文".repeat(6000));
+    assert!(markdown.len() > extension_contracts::COMMUNICATION_COMMAND_REPLY_MAX_BYTES);
+    item.answer = Some(markdown.clone());
+    assert_eq!(
+        request::final_reply(&item).as_deref(),
+        Some(markdown.as_str())
+    );
+}
 #[test]
 fn new_message_changes_only_current_user_and_has_public_file_reference() {
     let mut input = input();

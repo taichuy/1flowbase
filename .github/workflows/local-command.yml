@@ -1,0 +1,61 @@
+name: Local command native evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev, 'codex/local-command-portable-*']
+    paths:
+      - 'api/apps/api-server/src/local_command/**'
+      - 'api/apps/api-server/src/routes/local_commands/**'
+      - 'api/apps/api-server/tests/local-command-platform/**'
+      - 'api/crates/control-plane/src/system_services/local_command.rs'
+      - '.github/workflows/local-command.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-command-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Native commands (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux, runner: ubuntu-24.04 }
+          - { platform: windows, runner: windows-2025 }
+          - { platform: macos, runner: macos-15 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api/apps/api-server/tests/local-command-platform -> target
+          key: local-command-${{ matrix.platform }}
+          cache-on-failure: true
+      - name: Test actual production process module on native OS
+        env:
+          RUST_BACKTRACE: '1'
+        run: |
+          set -euo pipefail
+          evidence=tmp/test-governance/local-command-portable
+          mkdir -p "$evidence"
+          git rev-parse HEAD > "$evidence/candidate-sha.txt"
+          rustc --version > "$evidence/rust-version.txt"
+          cargo test --locked --manifest-path api/apps/api-server/tests/local-command-platform/Cargo.toml --lib -- --nocapture 2>&1 | tee "$evidence/native-${{ matrix.platform }}.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: local-command-${{ matrix.platform }}-${{ github.sha }}
+          path: tmp/test-governance/local-command-portable/
+          if-no-files-found: warn

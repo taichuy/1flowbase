@@ -133,7 +133,7 @@ impl WebMcpAdapter {
         let catalog_dependencies = self
             .dispatch
             .interface_catalog
-            .with_interface_registry_snapshot(self.dispatch.interface_registry.snapshot());
+            .with_interface_registry_snapshot(self.dispatch.interface_registry.snapshot()?);
         let interface_catalog = virtual_ui::McpInterfaceCatalogSnapshot::new(
             crate::routes::mcp_management::interface_catalog::mcp_interface_catalog_entries_with(
                 &catalog_dependencies,

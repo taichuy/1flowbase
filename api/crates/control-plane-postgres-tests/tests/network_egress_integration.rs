@@ -6,7 +6,7 @@ use control_plane::{
     network_egress_route::{CreateNetworkEgressRouteCommand, NetworkEgressRouteService},
     ports::{
         CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
-        CreateNetworkEgressRouteInput, CreateStaticHttpProxyPoolMemberInput,
+        CreateNetworkEgressRouteInput, CreateStaticProxyPoolMemberInput,
         NetworkEgressPoolRepository, NetworkEgressRouteRepository, PluginRepository,
         UpsertPluginInstallationInput,
     },
@@ -809,9 +809,10 @@ async fn ac_nc16_static_http_proxy_member_is_atomic_and_keeps_credentials_out_of
     .await
     .expect("target pool should persist");
     let rolled_back_provider_id = Uuid::now_v7();
-    let failed = NetworkEgressRepository::create_static_http_proxy_pool_member(
+    let failed = NetworkEgressRepository::create_static_proxy_pool_member(
         &store,
-        &CreateStaticHttpProxyPoolMemberInput {
+        &CreateStaticProxyPoolMemberInput {
+            protocol: domain::StaticProxyProtocol::Http,
             provider_id: rolled_back_provider_id,
             member_id: Uuid::now_v7(),
             pool_id: Uuid::now_v7(),
@@ -839,9 +840,10 @@ async fn ac_nc16_static_http_proxy_member_is_atomic_and_keeps_credentials_out_of
         "a failed member write must roll back its newly-created provider and secret"
     );
     let provider_id = Uuid::now_v7();
-    let member = NetworkEgressRepository::create_static_http_proxy_pool_member(
+    let member = NetworkEgressRepository::create_static_proxy_pool_member(
         &store,
-        &CreateStaticHttpProxyPoolMemberInput {
+        &CreateStaticProxyPoolMemberInput {
+            protocol: domain::StaticProxyProtocol::Http,
             provider_id,
             member_id: Uuid::now_v7(),
             pool_id,

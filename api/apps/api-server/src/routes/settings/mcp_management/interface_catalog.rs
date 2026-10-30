@@ -2,22 +2,28 @@ use super::*;
 use crate::openapi_interface::OpenApiCapabilitySource;
 
 pub(crate) trait McpInterfaceRegistrySnapshotPort: Send + Sync + 'static {
-    fn snapshot(&self) -> Arc<interface_runtime::CompiledInterfaceRegistry>;
+    fn snapshot(&self) -> Result<Arc<interface_runtime::CompiledInterfaceRegistry>, ApiError>;
 }
 
 pub(crate) struct DynamicMcpInterfaceRegistrySnapshotPort {
-    registry: Arc<interface_runtime::DynamicInterfaceRegistry>,
+    registry: std::sync::Weak<interface_runtime::DynamicInterfaceRegistry>,
 }
 
 impl DynamicMcpInterfaceRegistrySnapshotPort {
     pub(crate) fn new(registry: Arc<interface_runtime::DynamicInterfaceRegistry>) -> Self {
-        Self { registry }
+        Self {
+            registry: Arc::downgrade(&registry),
+        }
     }
 }
 
 impl McpInterfaceRegistrySnapshotPort for DynamicMcpInterfaceRegistrySnapshotPort {
-    fn snapshot(&self) -> Arc<interface_runtime::CompiledInterfaceRegistry> {
-        self.registry.snapshot()
+    fn snapshot(&self) -> Result<Arc<interface_runtime::CompiledInterfaceRegistry>, ApiError> {
+        Ok(self
+            .registry
+            .upgrade()
+            .ok_or_else(crate::generation_dispatch::unavailable)?
+            .snapshot())
     }
 }
 

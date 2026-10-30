@@ -1072,3 +1072,147 @@ fn increment_model_admission_errors_project_as_client_or_configuration_errors() 
         assert_eq!(projected.code, code);
     }
 }
+
+/// Real Native and Responses upgrades retain the selected generation after 101/body release.
+#[tokio::test]
+async fn generation_native_and_responses_ws_connection_and_first_turn_keep_frozen_owner() {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state.clone());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let application_id = create_application(&app, &cookie, &csrf, "Generation WS").await;
+    publish_native_application(
+        &app,
+        &cookie,
+        &csrf,
+        &application_id,
+        mapping_with_runnable_generate_target(),
+    )
+    .await;
+    let token = create_application_key(&app, &cookie, &csrf, &application_id).await;
+    let owner = crate::generation_dispatch::GenerationDispatch::acquire(&state).unwrap();
+    let old_owner = std::sync::Arc::downgrade(&owner);
+    let retired = owner.retirement_notification();
+    let old_boot = std::sync::Arc::downgrade(state.extension_boot_snapshot.as_ref().unwrap());
+    let publisher = crate::managed_publication::ManagedGenerationPublisher::new(
+        &state,
+        test_config(),
+        vec![],
+        app,
+    )
+    .unwrap();
+    let ingress = publisher.ingress();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, ingress).await.unwrap();
+    });
+    let connect = |responses: bool| {
+        let token = token.clone();
+        async move {
+            let path = if responses {
+                "/v1/responses"
+            } else {
+                "/api/agent/v1/runs/websocket"
+            };
+            let mut request = format!("ws://{address}{path}")
+                .into_client_request()
+                .unwrap();
+            request
+                .headers_mut()
+                .insert("authorization", format!("Bearer {token}").parse().unwrap());
+            if responses {
+                request.headers_mut().insert(
+                    "openai-beta",
+                    "responses_websockets=2026-02-06".parse().unwrap(),
+                );
+            } else {
+                request.headers_mut().insert(
+                    "sec-websocket-protocol",
+                    "1flowbase.native.v1".parse().unwrap(),
+                );
+            }
+            let (socket, response) = tokio_tungstenite::connect_async(request).await.unwrap();
+            assert_eq!(response.status().as_u16(), 101);
+            socket
+        }
+    };
+    let mut native = connect(false).await;
+    let mut responses = connect(true).await;
+    drop(owner);
+    drop(state);
+    publisher.publish(
+        publisher
+            .prepare(vec![], std::collections::BTreeMap::new())
+            .await
+            .unwrap(),
+    );
+    assert!(
+        old_owner.upgrade().is_some(),
+        "old upgrades, not 101 bodies, must own the dispatch"
+    );
+    native
+        .send(Message::Text(
+            json!({"type":"run.attach","request_id":"old","run_id":Uuid::now_v7()})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    responses
+        .send(Message::Text(
+            json!({"type":"response.create","model":"unknown-generation-model","input":"hello"})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    for socket in [&mut native, &mut responses] {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), socket.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+        assert!(
+            !value
+                .to_string()
+                .contains("selected host generation is unavailable"),
+            "{value}"
+        );
+    }
+    assert_eq!(old_boot.upgrade().unwrap().dispatch_assembly_count(), 1);
+    // Fresh upgrades select G2, and retain it independently when G3 is published.
+    let current = publisher.current_generation().unwrap();
+    let next_owner = std::sync::Arc::downgrade(&current.owner);
+    let next_retired = current.owner.retirement_notification();
+    let mut new_native = connect(false).await;
+    let mut new_responses = connect(true).await;
+    drop(current);
+    publisher.publish(
+        publisher
+            .prepare(vec![], std::collections::BTreeMap::new())
+            .await
+            .unwrap(),
+    );
+    assert!(next_owner.upgrade().is_some());
+    native.close(None).await.unwrap();
+    responses.close(None).await.unwrap();
+    drop(native);
+    drop(responses);
+    tokio::time::timeout(std::time::Duration::from_secs(5), retired.notified())
+        .await
+        .unwrap();
+    assert!(old_owner.upgrade().is_none());
+    new_native.close(None).await.unwrap();
+    new_responses.close(None).await.unwrap();
+    drop(new_native);
+    drop(new_responses);
+    tokio::time::timeout(std::time::Duration::from_secs(5), next_retired.notified())
+        .await
+        .unwrap();
+    assert!(next_owner.upgrade().is_none());
+    server.abort();
+    let _ = server.await;
+}

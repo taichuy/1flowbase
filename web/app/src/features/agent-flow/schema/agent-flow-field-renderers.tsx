@@ -73,6 +73,11 @@ const lazyField = <TModule, K extends keyof TModule>(
     }))
   );
 
+const HttpRequestNetworkEgressField = lazyField(
+  () =>
+    import('../components/detail/fields/http-request/HttpRequestNetworkEgressField'),
+  'HttpRequestNetworkEgressField'
+);
 const NotificationField = lazyField(
   () => import('../components/detail/fields/notification/NotificationField'),
   'NotificationField'
@@ -167,27 +172,53 @@ const HttpRequestBodyField = lazyField(
   'HttpRequestBodyField'
 );
 const HttpRequestCurlImportField = lazyField(
-  () => import('../components/detail/fields/http-request/HttpRequestCurlImportField'),
+  () =>
+    import('../components/detail/fields/http-request/HttpRequestCurlImportField'),
   'HttpRequestCurlImportField'
 );
 const HttpRequestKeyValuesField = lazyField(
-  () => import('../components/detail/fields/http-request/HttpRequestKeyValuesField'),
+  () =>
+    import('../components/detail/fields/http-request/HttpRequestKeyValuesField'),
   'HttpRequestKeyValuesField'
 );
 const HttpRequestTemplateInput = lazyField(
-  () => import('../components/detail/fields/http-request/HttpRequestTemplateInput'),
+  () =>
+    import('../components/detail/fields/http-request/HttpRequestTemplateInput'),
   'HttpRequestTemplateInput'
+);
+
+const ContainerVariablesField = lazyField(
+  () => import('../components/detail/fields/containers/ContainerFields'),
+  'ContainerVariablesField'
+);
+const ContainerSelectorField = lazyField(
+  () => import('../components/detail/fields/containers/ContainerFields'),
+  'ContainerSelectorField'
+);
+const ContainerBreakConditionField = lazyField(
+  () => import('../components/detail/fields/containers/ContainerFields'),
+  'ContainerBreakConditionField'
+);
+const ContainerPositiveIntegerField = lazyField(
+  () => import('../components/detail/fields/containers/ContainerFields'),
+  'ContainerPositiveIntegerField'
+);
+const ContainerParallelismField = lazyField(
+  () => import('../components/detail/fields/containers/ContainerFields'),
+  'ContainerParallelismField'
 );
 
 const BYTES_PER_MIB = 1024 * 1024;
 const DEFAULT_ENABLED_SWITCH_PATHS = new Set(['config.verify_ssl']);
 
-function getSelectorOptions(adapter: SchemaFieldRendererProps['adapter']) {
+function getSelectorOptions(
+  adapter: SchemaFieldRendererProps['adapter'],
+  fieldKey = ''
+) {
   return (
-    (adapter.getDerived('selectorOptions') as
-      | FlowSelectorOption[]
-      | null
-      | undefined) ?? []
+    (adapter.getDerived(
+      fieldKey ? `selectorOptions:${fieldKey}` : 'selectorOptions'
+    ) as FlowSelectorOption[] | null | undefined) ?? []
   );
 }
 
@@ -380,7 +411,7 @@ function renderSelectorField(props: SchemaFieldRendererProps) {
   return (
     <SelectorField
       ariaLabel={block.label}
-      options={getSelectorOptions(adapter)}
+      options={getSelectorOptions(adapter, block.path)}
       value={binding}
       onChange={(nextValue) =>
         adapter.setValue(block.path, {
@@ -400,7 +431,7 @@ function renderSelectorListField({ adapter, block }: SchemaFieldRendererProps) {
     <SelectorField
       ariaLabel={block.label}
       multiple
-      options={getSelectorOptions(adapter)}
+      options={getSelectorOptions(adapter, block.path)}
       value={binding}
       onChange={(nextValue) =>
         adapter.setValue(block.path, {
@@ -426,7 +457,7 @@ function renderVariableGroupsField({
   return (
     <VariableGroupsField
       ariaLabel={block.label}
-      options={getSelectorOptions(adapter)}
+      options={getSelectorOptions(adapter, block.path)}
       value={binding}
       onChange={(groups) =>
         adapter.setValue(block.path, {
@@ -443,7 +474,7 @@ function renderTemplatedTextField({
   block
 }: SchemaFieldRendererProps) {
   const value = adapter.getValue(block.path);
-  const selectorOptions = getSelectorOptions(adapter);
+  const selectorOptions = getSelectorOptions(adapter, block.path);
   const isBindingPath = block.path.startsWith('bindings.');
   if (isBindingPath && hasBindingKind(value, 'i18n_text')) {
     const reference = value.value as { key?: unknown };
@@ -505,7 +536,7 @@ function renderLlmPromptMessagesField({
 
   return (
     <LlmPromptMessagesField
-      options={getSelectorOptions(adapter)}
+      options={getSelectorOptions(adapter, block.path)}
       value={messages}
       onChange={(nextValue) =>
         adapter.setValue(block.path, toPromptMessagesBinding(nextValue))
@@ -521,8 +552,8 @@ function renderLlmContextPolicyField({
   const contextPolicy = getLlmContextPolicy({
     context_policy: adapter.getValue(block.path)
   });
-  const contextOptions = getSelectorOptions(adapter).filter((option) =>
-    outputHasLlmContextSchema(option)
+  const contextOptions = getSelectorOptions(adapter, block.path).filter(
+    (option) => outputHasLlmContextSchema(option)
   );
   const selectedSelector =
     contextPolicy.context_selector ?? contextOptions[0]?.value ?? [];
@@ -642,7 +673,7 @@ function renderNamedBindingsField({
   return (
     <NamedBindingsField
       ariaLabel={block.label}
-      options={getSelectorOptions(adapter)}
+      options={getSelectorOptions(adapter, block.path)}
       value={binding}
       nameOptions={nameOptions}
       namePlaceholder={
@@ -727,7 +758,7 @@ function renderTemplatedNamedBindingsField({
   block
 }: SchemaFieldRendererProps) {
   const value = adapter.getValue(block.path);
-  const options = getSelectorOptions(adapter);
+  const options = getSelectorOptions(adapter, block.path);
   const binding = normalizeTemplatedNamedBindingEntries(value, options);
 
   return (
@@ -759,7 +790,7 @@ function renderConditionGroupField({
   return (
     <ConditionGroupField
       ariaLabel={block.label}
-      options={getSelectorOptions(adapter)}
+      options={getSelectorOptions(adapter, block.path)}
       value={binding}
       onChange={(nextValue) =>
         adapter.setValue(block.path, {
@@ -785,7 +816,7 @@ function renderIfElseBranchesField({
   return (
     <IfElseBranchesField
       ariaLabel={block.label}
-      options={getSelectorOptions(adapter)}
+      options={getSelectorOptions(adapter, block.path)}
       value={normalizeIfElseBranches(binding.branches)}
       onChange={(branches) =>
         adapter.setValue(block.path, {
@@ -806,7 +837,7 @@ function renderStateWriteField({ adapter, block }: SchemaFieldRendererProps) {
   return (
     <StateWriteField
       ariaLabel={block.label}
-      options={getSelectorOptions(adapter)}
+      options={getSelectorOptions(adapter, block.path)}
       value={binding as never}
       onChange={(nextValue) =>
         adapter.setValue(block.path, {
@@ -838,7 +869,7 @@ function renderVariableAssignmentField({
     <VariableAssignmentField
       ariaLabel={block.label}
       conversationVariables={conversationVariables}
-      selectorOptions={getSelectorOptions(adapter)}
+      selectorOptions={getSelectorOptions(adapter, block.path)}
       value={binding}
       onChange={(nextValue) =>
         adapter.setValue(block.path, {
@@ -890,7 +921,7 @@ function renderSqlSourceField({ adapter, block }: SchemaFieldRendererProps) {
       label={block.label}
       language="sql"
       value={sql}
-      variableOptions={getSelectorOptions(adapter)}
+      variableOptions={getSelectorOptions(adapter, block.path)}
       onChange={(nextValue) =>
         adapter.setValue(block.path, {
           kind: 'templated_text',
@@ -1000,7 +1031,7 @@ function renderDataModelQueryField({
         typeof dataModelCode === 'string' && dataModelCode.trim().length > 0
       }
       fields={fields}
-      selectorOptions={getSelectorOptions(adapter)}
+      selectorOptions={getSelectorOptions(adapter, block.path)}
       value={binding}
       includePagination={
         (adapter.getDerived('node') as FlowNodeDocument | null | undefined)
@@ -1023,7 +1054,7 @@ function renderHttpRequestKeyValuesField({
   return (
     <HttpRequestKeyValuesField
       ariaLabel={block.label}
-      options={getSelectorOptions(adapter)}
+      options={getSelectorOptions(adapter, block.path)}
       value={adapter.getValue(block.path)}
       onChange={(nextValue) => adapter.setValue(block.path, nextValue)}
     />
@@ -1049,7 +1080,7 @@ function renderHttpRequestEndpointField({
       <HttpRequestTemplateInput
         ariaLabel={block.label}
         label={block.label}
-        options={getSelectorOptions(adapter)}
+        options={getSelectorOptions(adapter, block.path)}
         value={typeof urlValue === 'string' ? urlValue : ''}
         onChange={(nextValue) => adapter.setValue(block.path, nextValue)}
       />
@@ -1067,7 +1098,7 @@ function renderHttpRequestBodyField({
       bodyType={adapter.getValue(block.path)}
       bodyValue={adapter.getValue('bindings.body')}
       formDataValue={adapter.getValue('bindings.form_data')}
-      options={getSelectorOptions(adapter)}
+      options={getSelectorOptions(adapter, block.path)}
       urlencodedValue={adapter.getValue('bindings.urlencoded')}
       onBinaryChange={(nextValue) =>
         adapter.setValue('bindings.binary', nextValue)
@@ -1108,6 +1139,11 @@ function renderHttpRequestCurlImportField({
 }
 
 export const agentFlowFieldRenderers = {
+  container_variables: ContainerVariablesField,
+  container_selector: ContainerSelectorField,
+  container_break_condition: ContainerBreakConditionField,
+  container_positive_integer: ContainerPositiveIntegerField,
+  container_parallelism: ContainerParallelismField,
   text: renderTextField,
   static_select: renderStaticSelectField,
   switch: renderSwitchField,
@@ -1138,6 +1174,7 @@ export const agentFlowFieldRenderers = {
   start_input_fields: renderStartInputFieldsField,
   start_model_list: renderStartModelListField,
   notification: NotificationField,
+  http_request_network_egress: HttpRequestNetworkEgressField,
   http_request_endpoint: renderHttpRequestEndpointField,
   http_request_key_values: renderHttpRequestKeyValuesField,
   http_request_body: renderHttpRequestBodyField,

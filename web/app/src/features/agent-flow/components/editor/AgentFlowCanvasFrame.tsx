@@ -158,9 +158,6 @@ export function AgentFlowCanvasFrame({
   const selectedNodeId = useAgentFlowEditorStore(
     (state) => state.selectedNodeId
   );
-  const activeContainerPath = useAgentFlowEditorStore(
-    (state) => state.activeContainerPath
-  );
   const issuesOpen = useAgentFlowEditorStore((state) => state.issuesOpen);
   const historyOpen = useAgentFlowEditorStore((state) => state.historyOpen);
   const isRestoringVersion = useAgentFlowEditorStore(
@@ -429,7 +426,6 @@ export function AgentFlowCanvasFrame({
   const variableAggregatorSaveBlocked = issues.some(
     isVariableAggregatorCandidateTypeMismatchIssue
   );
-  const activeContainerId = activeContainerPath.at(-1) ?? null;
   const detailActions = useNodeDetailActions();
   const issueCountByNodeId = useMemo(
     () => countIssuesByNodeId(issues),
@@ -571,21 +567,6 @@ export function AgentFlowCanvasFrame({
         exportLoading={exportTemplateMutation.isPending}
         publishDisabled={publishMutation.isPending || issueErrorCount > 0}
       />
-      {activeContainerId ? (
-        <div className="agent-flow-editor__breadcrumb">
-          <Button onClick={navigation.returnToRoot}>
-            {i18nText('agentFlow', 'auto.return_main_canvas')}
-          </Button>
-          <Typography.Text type="secondary">
-            {i18nText('agentFlow', 'auto.currently_located_container_node')}{' '}
-            {
-              workingDocument.graph.nodes.find(
-                (node) => node.id === activeContainerId
-              )?.alias
-            }
-          </Typography.Text>
-        </div>
-      ) : null}
       <div
         ref={bodyRef}
         className="agent-flow-editor__body agent-flow-editor__shell"

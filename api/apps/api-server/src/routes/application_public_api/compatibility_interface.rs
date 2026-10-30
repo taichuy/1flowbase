@@ -189,12 +189,14 @@ pub(crate) trait CompatibilityBlockingPort: Send + Sync + 'static {
         &'a self,
         principal: &'a ApplicationPrincipal,
         input: CompatibilityBlockingInput,
+        consumer: super::compat_sse::CompatibleResumeConsumer,
     ) -> CompatibilityBlockingFuture<'a>;
 
     fn execute_stream<'a>(
         &'a self,
         principal: &'a ApplicationPrincipal,
         input: CompatibilityBlockingInput,
+        consumer: super::compat_sse::CompatibleResumeConsumer,
     ) -> CompatibilityBlockingStreamFuture<'a>;
 }
 
@@ -230,6 +232,7 @@ pub(crate) fn compatibility_execution_port(
 
 struct CompatibilityBlockingHandler {
     port: Arc<dyn CompatibilityBlockingPort>,
+    consumer: super::compat_sse::CompatibleResumeConsumer,
 }
 
 impl
@@ -246,8 +249,9 @@ impl
         input: CompatibilityBlockingInput,
     ) -> InterfaceHandlerFuture<CompatibilityBlockingOutput, CompatibilityBlockingTargetError> {
         let port = Arc::clone(&self.port);
+        let consumer = self.consumer;
         Box::pin(async move {
-            port.execute(context.principal(), input)
+            port.execute(context.principal(), input, consumer)
                 .await
                 .map_err(|error| InterfaceTargetFailure::new("compatibility_blocking", error))
         })
@@ -256,6 +260,7 @@ impl
 
 struct CompatibilityStreamHandler {
     port: Arc<dyn CompatibilityBlockingPort>,
+    consumer: super::compat_sse::CompatibleResumeConsumer,
 }
 
 impl
@@ -277,8 +282,9 @@ impl
         CompatibilityBlockingTargetError,
     > {
         let port = Arc::clone(&self.port);
+        let consumer = self.consumer;
         Box::pin(async move {
-            port.execute_stream(context.principal(), input)
+            port.execute_stream(context.principal(), input, consumer)
                 .await
                 .map_err(|error| InterfaceTargetFailure::new("compatibility_stream", error))
         })
@@ -290,6 +296,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
         &'a self,
         principal: &'a ApplicationPrincipal,
         input: CompatibilityBlockingInput,
+        consumer: super::compat_sse::CompatibleResumeConsumer,
     ) -> CompatibilityBlockingFuture<'a> {
         let dependencies = self.0.clone();
         let actor = application_actor(principal);
@@ -310,6 +317,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                         actor,
                         command,
                         reservation,
+                        consumer,
                     )
                     .await
                     .map(CompatibilityBlockingOutput)
@@ -365,6 +373,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
         &'a self,
         principal: &'a ApplicationPrincipal,
         input: CompatibilityBlockingInput,
+        consumer: super::compat_sse::CompatibleResumeConsumer,
     ) -> Pin<
         Box<
             dyn Future<
@@ -440,12 +449,13 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                     initial_run,
                     command,
                     reservation,
-                } => crate::routes::application_public_api::compat_sse::start_compatible_typed_resume_stream_for_actor(
+                } => crate::routes::application_public_api::compat_sse::start_compatible_typed_resume_stream_for_consumer(
                     dependencies,
                     initial_run,
                     command,
                     actor,
                     reservation,
+                    consumer,
                 )
                 .await
                 .map_err(CompatibilityBlockingTargetError)?,
@@ -557,6 +567,7 @@ impl CompatibilityBlockingPort for UnavailableCompatibilityBlockingPort {
         &'a self,
         _principal: &'a ApplicationPrincipal,
         _input: CompatibilityBlockingInput,
+        _consumer: super::compat_sse::CompatibleResumeConsumer,
     ) -> CompatibilityBlockingFuture<'a> {
         Box::pin(async {
             Err(CompatibilityBlockingTargetError(NativeApiError::new(
@@ -571,6 +582,7 @@ impl CompatibilityBlockingPort for UnavailableCompatibilityBlockingPort {
         &'a self,
         _principal: &'a ApplicationPrincipal,
         _input: CompatibilityBlockingInput,
+        _consumer: super::compat_sse::CompatibleResumeConsumer,
     ) -> Pin<
         Box<
             dyn Future<
@@ -814,16 +826,20 @@ fn project_stream_invocation(
     projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
     recorder: Option<ClientTrajectoryRecorder>,
 ) -> Result<Response, NativeApiError> {
+    let owner = crate::generation_dispatch::GenerationDispatch::acquire(&state)
+        .map_err(|error| native::service_error(error.0))?;
     let (sender, receiver) = tokio::sync::mpsc::channel(32);
     let sse_activity = state.runtime_activity.start(
         application_id,
         crate::runtime_activity::ApplicationActivityKind::SseConnection,
     );
+    let (events, completion) = invocation.into_parts();
+    let projection = project_observed_compatibility_stream(
+        events, completion, projection, sender, recorder, owner,
+    );
     tokio::spawn(async move {
         let _sse_activity = sse_activity;
-        let (events, completion) = invocation.into_parts();
-        project_observed_compatibility_stream(events, completion, projection, sender, recorder)
-            .await;
+        projection.await;
     });
     Ok(
         Sse::new(tokio_stream::wrappers::ReceiverStream::new(receiver))
@@ -835,7 +851,7 @@ fn project_stream_invocation(
 /// The protocol terminal ends delivery; the independent Kernel owner still
 /// settles the invocation even when the client has stopped reading.
 #[cfg(test)]
-pub(super) async fn project_compatibility_stream(
+pub(super) fn project_compatibility_stream(
     events: tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
     completion: interface_runtime::InterfaceStreamCompletion<
         CompatibilityBlockingOutput,
@@ -843,11 +859,12 @@ pub(super) async fn project_compatibility_stream(
     >,
     projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
     sender: tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>,
-) {
-    project_observed_compatibility_stream(events, completion, projection, sender, None).await;
+    owner: Arc<crate::generation_dispatch::GenerationDispatch>,
+) -> impl std::future::Future<Output = ()> + Send + 'static {
+    project_observed_compatibility_stream(events, completion, projection, sender, None, owner)
 }
 
-async fn project_observed_compatibility_stream(
+fn project_observed_compatibility_stream(
     mut events: tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
     completion: interface_runtime::InterfaceStreamCompletion<
         CompatibilityBlockingOutput,
@@ -856,46 +873,53 @@ async fn project_observed_compatibility_stream(
     mut projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
     sender: tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>,
     recorder: Option<ClientTrajectoryRecorder>,
-) {
-    let completion = tokio::spawn(completion.complete());
-    let mut projection_open = true;
-    while let Some(event) = events.recv().await {
-        let (run, envelope, mut delivery) = event.into_parts();
-        if let Some(recorder) = recorder.as_ref() {
-            recorder.bind_run(run.id, None);
-            if envelope.source == control_plane::ports::RuntimeEventSource::Provider {
-                if let Some(node_run_id) = envelope.node_run_id {
-                    recorder.link_llm_node(run.id, node_run_id);
+    owner: Arc<crate::generation_dispatch::GenerationDispatch>,
+) -> impl std::future::Future<Output = ()> + Send + 'static {
+    // Transfer finalization and its generation lease before returning a
+    // cancellable projection future. Even an unpolled consumer can be aborted.
+    let completion =
+        crate::generation_dispatch::spawn_with_lease(owner.clone(), completion.complete());
+    async move {
+        let _projection_owner = owner;
+        let mut projection_open = true;
+        while let Some(event) = events.recv().await {
+            let (run, envelope, mut delivery) = event.into_parts();
+            if let Some(recorder) = recorder.as_ref() {
+                recorder.bind_run(run.id, None);
+                if envelope.source == control_plane::ports::RuntimeEventSource::Provider {
+                    if let Some(node_run_id) = envelope.node_run_id {
+                        recorder.link_llm_node(run.id, node_run_id);
+                    }
                 }
             }
-        }
-        let terminal = super::sse::is_public_terminal_runtime_event(&envelope.event_type);
-        let frames = projection.runtime_event_to_sse(&run, envelope);
-        if projection_open {
-            if let Some(delivery) = delivery.as_mut() {
-                delivery.begin_write();
-            }
-            for frame in frames {
-                if sender.send(frame).await.is_err() {
-                    projection_open = false;
-                    break;
+            let terminal = super::sse::is_public_terminal_runtime_event(&envelope.event_type);
+            let frames = projection.runtime_event_to_sse(&run, envelope);
+            if projection_open {
+                if let Some(delivery) = delivery.as_mut() {
+                    delivery.begin_write();
+                }
+                for frame in frames {
+                    if sender.send(frame).await.is_err() {
+                        projection_open = false;
+                        break;
+                    }
                 }
             }
-        }
-        if projection_open {
-            if let Some(delivery) = delivery.take() {
-                delivery.projected();
+            if projection_open {
+                if let Some(delivery) = delivery.take() {
+                    delivery.projected();
+                }
+            }
+            // A closed projection drops the receipt: released when no write
+            // started, uncertain when the transport failed mid-write.
+            drop(delivery);
+            if terminal {
+                break;
             }
         }
-        // A closed projection drops the receipt: released when no write
-        // started, uncertain when the transport failed mid-write.
-        drop(delivery);
-        if terminal {
-            break;
+        if let Ok(Ok(terminal)) = completion.await {
+            let _receipt = terminal.receipt().clone().projected();
         }
-    }
-    if let Ok(Ok(terminal)) = completion.await {
-        let _receipt = terminal.receipt().clone().projected();
     }
 }
 

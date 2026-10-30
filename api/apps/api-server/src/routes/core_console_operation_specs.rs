@@ -94,6 +94,7 @@ const fn resource_action(
 /// here with an explicit policy group and authorization contract.
 pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     authenticated_routes("core.authenticated", "core.authenticated"),
+    other("local_commands.execute", "other.local-commands"),
     settings(
         "communications.management.conversations.messages.list",
         "system.notifications",
@@ -191,6 +192,10 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     ),
     other("agent_flow.data_model_options.list", "other.agent-flow"),
     other("agent_flow.data_source_options.list", "other.agent-flow"),
+    other(
+        "agent_flow.http_node_proxy_options.list",
+        "other.agent-flow",
+    ),
     settings("auth_center.login_entries.copy", "system.auth-center"),
     settings("auth_center.login_entries.create", "system.auth-center"),
     settings("auth_center.login_entries.delete", "system.auth-center"),

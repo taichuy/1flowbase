@@ -21,6 +21,8 @@ mod receive;
 pub use receive::*;
 mod commands;
 pub use commands::*;
+mod message_content;
+pub use message_content::*;
 mod log;
 pub use log::*;
 mod managed;

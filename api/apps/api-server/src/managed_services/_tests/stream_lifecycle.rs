@@ -54,3 +54,73 @@ fn client_frames_reject_schema_forgery_unknown_fields_and_oversize_transport() {
     }
     assert!(parse_client_frame(&"x".repeat(FRAME_BYTES + 1), &schema).is_err());
 }
+
+/// The production session root is separate from both the HTTP body and the completion task.
+#[tokio::test]
+async fn generation_managed_socket_session_retains_old_owner_until_session_drop() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let owner = state
+        .extension_boot_snapshot
+        .as_ref()
+        .unwrap()
+        .publish_complete_catalog(&state)
+        .unwrap();
+    let probe = Arc::downgrade(&owner);
+    let state_probe = Arc::downgrade(&state);
+    let publisher = crate::managed_publication::ManagedGenerationPublisher::new(
+        &state,
+        crate::_tests::support::test_config(),
+        vec![],
+        crate::console_router(state.clone(), true),
+    )
+    .unwrap();
+    let operation: plugin_framework::ManagedServiceOperation = serde_json::from_value(json!({
+        "interface_id":"fixture.stream","contribution_id":"fixture.stream","method":"GET",
+        "path":"/api/console/managed-services/fixture/stream","summary":"Stream","description":"Stream fixture",
+        "input_schema":{"type":"object"},"output_schema":{"type":"object"}
+    })).unwrap();
+    let (input, _) = mpsc::channel(1);
+    let (_, events) = mpsc::channel(1);
+    let (_, terminal) = oneshot::channel();
+    let (cancel_sender, cancel) = watch::channel(false);
+    let session = SocketSession {
+        state: state.clone(),
+        generation: owner.clone(),
+        operation: Arc::new(operation),
+        headers: HeaderMap::new(),
+        session: String::new(),
+        input,
+        events,
+        terminal,
+        cancel,
+        lease: SocketLease {
+            installation: uuid::Uuid::now_v7(),
+            id: uuid::Uuid::now_v7(),
+            cancel: cancel_sender,
+        },
+    };
+    drop(owner);
+    drop(state);
+    publisher.publish(publisher.prepare(vec![], BTreeMap::new()).await.unwrap());
+    assert!(probe.upgrade().is_some());
+    assert_eq!(
+        session.generation.generation_id(),
+        session
+            .state
+            .extension_boot_snapshot
+            .as_ref()
+            .unwrap()
+            .generation_id()
+    );
+    assert_ne!(
+        session.generation.generation_id(),
+        publisher
+            .current_generation()
+            .unwrap()
+            .owner
+            .generation_id()
+    );
+    drop(session);
+    assert!(probe.upgrade().is_none());
+    assert!(state_probe.upgrade().is_none());
+}

@@ -43,7 +43,8 @@ impl PgControlPlaneStore {
                 runtime_original_json(metrics_payload, node_run_records.raw_json_payloads, 'metrics_payload') as metrics_payload,
                 runtime_original_json(debug_payload, node_run_records.raw_json_payloads, 'debug_payload') as debug_payload,
                 started_at,
-                finished_at
+                finished_at,
+                null::jsonb as execution_identity
             "#,
         )
         .bind(Uuid::now_v7())
@@ -142,7 +143,8 @@ impl PgControlPlaneStore {
                 runtime_original_json(node_run_records.metrics_payload, node_run_records.raw_json_payloads, 'metrics_payload') as metrics_payload,
                 runtime_original_json(node_run_records.debug_payload, node_run_records.raw_json_payloads, 'debug_payload') as debug_payload,
                 node_run_records.started_at,
-                node_run_records.finished_at
+                node_run_records.finished_at,
+                (select jsonb_build_object('execution_id',e.execution_id,'node_id',e.node_id,'parent_execution_id',e.parent_execution_id,'round_path',e.round_path) from flow_container_executions e where e.node_run_id=node_run_records.id) as execution_identity
             "#,
         )
         .bind(input.node_run_id)

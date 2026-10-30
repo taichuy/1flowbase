@@ -6,6 +6,7 @@ pub(crate) async fn execute_compatible_resume_for_actor(
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     command: ResumePublishedCallbackCommand,
     mut reservation: Option<CompatibleCallbackReservation>,
+    consumer: CompatibleResumeConsumer,
 ) -> Result<NativeRunResult, NativeApiError> {
     let round_id = Some(callback_task_id_from_resume_command(&command));
     let runtime_internal_tool_invoker = match dependencies
@@ -59,22 +60,34 @@ pub(crate) async fn execute_compatible_resume_for_actor(
     };
     tokio::spawn(async move {
         let result = match prepared {
-            Some(PreparedPublishedCallback::Execution(owner)) => {
-                service.execute_prepared_callback(*owner).await
-            }
+            Some(PreparedPublishedCallback::Execution(owner)) => service
+                .execute_prepared_callback(*owner)
+                .await
+                .map_err(service_error),
             Some(PreparedPublishedCallback::NoExecution(result)) => Ok(*result),
-            None => service.resume_callback_for_actor(actor, command).await,
+            Some(PreparedPublishedCallback::PendingNativeWaiting(receipt)) => {
+                let run_id = receipt.result().run.id;
+                consume_pending_native_waiting(
+                    *receipt,
+                    consumer,
+                    actor.application_id,
+                    run_id,
+                    round_id.expect("resume round"),
+                )
+            }
+            None => service
+                .resume_callback_for_actor(actor, command)
+                .await
+                .map_err(service_error),
         };
-        result
-            .map(|mut result| {
-                if let Some(round_id) = round_id {
-                    if result.run.metadata["native_inference_recovery_replay"] != true {
-                        result.run.metadata["response_round_id"] = json!(round_id);
-                    }
+        result.map(|mut result| {
+            if let Some(round_id) = round_id {
+                if result.run.metadata["native_inference_recovery_replay"] != true {
+                    result.run.metadata["response_round_id"] = json!(round_id);
                 }
-                result.run
-            })
-            .map_err(service_error)
+            }
+            result.run
+        })
     })
     .await
     .map_err(|error| service_error(anyhow::anyhow!(error)))?
@@ -89,7 +102,15 @@ pub(super) async fn open_compatible_turn_with_invoker(
         dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
     >,
 ) -> Result<OpenedCompatibleTurn, NativeApiError> {
+    let delivery_scope = match &action {
+        CompatibleTurnAction::Start { .. } => RuntimeEventDeliveryScope::Start,
+        CompatibleTurnAction::ResumeForActor { command, .. } => RuntimeEventDeliveryScope::Resume {
+            callback_task_id: callback_task_id_from_resume_command(command),
+        },
+    };
     let turn_action = action.name();
+    // Retain the invoker's generation through recovery/terminal writes after business return.
+    let execution_invoker = mcp_runtime_invoker.clone();
     let ignored_waiting_callback_task_id = action.resumed_callback_task_id();
     let fresh_acquisition = matches!(&action,
         CompatibleTurnAction::ResumeForActor { reservation: Some(reservation), .. } if reservation.is_acquired());
@@ -125,62 +146,31 @@ pub(super) async fn open_compatible_turn_with_invoker(
             reservation.handoff();
             match prepared {
                 PreparedPublishedCallback::Execution(owner) => prepared_owner = Some(owner),
-                PreparedPublishedCallback::NoExecution(mut result) => {
-                    let round_id =
-                        ignored_waiting_callback_task_id.expect("reserved callback has round");
-                    let waiting = result.run.status == NativeRunStatus::Waiting;
-                    let replay = if waiting {
-                        // Partial tool results have a canonical typed waiting
-                        // receipt, but no execution generation. Project that
-                        // receipt read-only; do not persist a producer marker.
-                        result.run.metadata["response_round_id"] = json!(round_id);
-                        let mut started = debug_stream_events::flow_started(result.run.id);
-                        started.payload["response_round_id"] = json!(round_id);
-                        let mut terminal = terminal_runtime_event_from_native_run(&result.run)
-                            .ok_or_else(|| {
-                                service_error(anyhow::anyhow!(
-                                    "partial callback waiting receipt missing"
-                                ))
-                            })?;
-                        terminal.sequence = 1;
-                        terminal.payload["response_round_id"] = json!(round_id);
-                        vec![
-                            RuntimeEventEnvelope::new(result.run.id, 0, started),
-                            terminal,
-                        ]
-                    } else {
-                        match durable_compatible_round_replay(&dependencies, &initial_run, round_id)
-                            .await?
-                        {
-                            DurableCompatibleRoundReplay::Ready(replay)
-                                if replay.last().is_some_and(|event| {
-                                    event_forwarding::is_public_terminal_runtime_event(
-                                        &event.event_type,
-                                    )
-                                }) =>
-                            {
-                                replay
-                            }
-                            _ => {
-                                return Err(service_error(anyhow::anyhow!(
-                                    "settled callback round terminal identity missing"
-                                )))
-                            }
-                        }
-                    };
-                    let subscription = terminal_compatible_round_subscription(&replay);
-                    return Ok(OpenedCompatibleTurn {
-                        initial_run: result.run,
-                        from_sequence: Some(i64::MAX),
-                        durable_round_replay: replay,
-                        ignored_waiting_callback_task_id: if waiting {
-                            None
-                        } else {
-                            ignored_waiting_callback_task_id
+                PreparedPublishedCallback::PendingNativeWaiting(receipt) => {
+                    let round_id = receipt.callback_task_id();
+                    let mut frozen = receipt.result().run.clone();
+                    freeze_delivery_scope(
+                        &mut frozen,
+                        RuntimeEventDeliveryScope::Resume {
+                            callback_task_id: round_id,
                         },
-                        subscription,
-                        execution: tokio::spawn(async {}),
+                    );
+                    return Ok(OpenedCompatibleTurn {
+                        initial_run: frozen,
+                        delivery_scope,
+                        ignored_waiting_callback_task_id: None,
+                        projection: CompatibleTurnProjection::PendingNativeWaiting(receipt),
                     });
+                }
+                PreparedPublishedCallback::NoExecution(result) => {
+                    return open_compatible_no_execution_replay(
+                        &dependencies,
+                        &initial_run,
+                        *result,
+                        delivery_scope,
+                        ignored_waiting_callback_task_id,
+                    )
+                    .await;
                 }
             }
         }
@@ -296,6 +286,7 @@ pub(super) async fn open_compatible_turn_with_invoker(
     let background_dependencies = dependencies.clone();
     let background_run = initial_run.clone();
     let execution = tokio::spawn(async move {
+        let _execution_invoker = execution_invoker;
         match action {
             CompatibleTurnAction::Start {
                 transport_connection_scope,
@@ -378,10 +369,52 @@ pub(super) async fn open_compatible_turn_with_invoker(
 
     Ok(OpenedCompatibleTurn {
         initial_run,
-        from_sequence,
-        durable_round_replay,
+        delivery_scope,
         ignored_waiting_callback_task_id,
-        subscription,
-        execution,
+        projection: CompatibleTurnProjection::Scoped {
+            from_sequence,
+            durable_round_replay,
+            subscription,
+            execution,
+        },
+    })
+}
+
+// Ordinary NoExecution preserves the selected execution scope even when the
+// current run is Waiting for a distinct successor callback.
+pub(super) async fn open_compatible_no_execution_replay(
+    dependencies: &CompatibilityExecutionDependencies,
+    initial_run: &NativeRunResult,
+    result: control_plane::application_public_api::callback_resume::ResumePublishedCallbackResult,
+    delivery_scope: RuntimeEventDeliveryScope,
+    ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+) -> Result<OpenedCompatibleTurn, NativeApiError> {
+    let round_id = ignored_waiting_callback_task_id
+        .ok_or_else(|| service_error(anyhow::anyhow!("settled callback has no selected round")))?;
+    let replay = match durable_compatible_round_replay(dependencies, initial_run, round_id).await? {
+        DurableCompatibleRoundReplay::Ready(replay)
+            if replay.last().is_some_and(|event| {
+                event_forwarding::is_public_terminal_runtime_event(&event.event_type)
+            }) =>
+        {
+            replay
+        }
+        _ => {
+            return Err(service_error(anyhow::anyhow!(
+                "settled callback round terminal identity missing"
+            )))
+        }
+    };
+    let subscription = terminal_compatible_round_subscription(&replay);
+    Ok(OpenedCompatibleTurn {
+        initial_run: result.run,
+        delivery_scope,
+        ignored_waiting_callback_task_id,
+        projection: CompatibleTurnProjection::Scoped {
+            from_sequence: Some(i64::MAX),
+            durable_round_replay: replay,
+            subscription,
+            execution: tokio::spawn(async {}),
+        },
     })
 }

@@ -527,6 +527,9 @@ pub struct ProviderTransportPayload {
     size_bytes: usize,
     affinity: Option<ProviderTransportAffinity>,
     native_history: Option<Value>,
+    // Invocation-only copy of the owned predecessor receipt; never part of wire_body.
+    predecessor_recovery_receipt:
+        Option<extension_contracts::provider_contract::ProviderRecoveryReceipt>,
 }
 
 impl ProviderTransportPayload {
@@ -544,7 +547,24 @@ impl ProviderTransportPayload {
             size_bytes,
             affinity: None,
             native_history: None,
+            predecessor_recovery_receipt: None,
         })
+    }
+
+    /// Host-only evidence read from an already owned callback, not client metadata.
+    pub fn with_predecessor_recovery_receipt(
+        mut self,
+        receipt: extension_contracts::provider_contract::ProviderRecoveryReceipt,
+    ) -> anyhow::Result<Self> {
+        receipt.validate().map_err(anyhow::Error::msg)?;
+        self.predecessor_recovery_receipt = Some(receipt);
+        Ok(self)
+    }
+
+    pub fn predecessor_recovery_receipt(
+        &self,
+    ) -> Option<&extension_contracts::provider_contract::ProviderRecoveryReceipt> {
+        self.predecessor_recovery_receipt.as_ref()
     }
 
     pub fn preferred(mut self) -> Self {

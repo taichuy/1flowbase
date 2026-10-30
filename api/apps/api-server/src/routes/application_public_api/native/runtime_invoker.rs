@@ -19,17 +19,19 @@ pub(crate) async fn public_mcp_runtime_invoker_for_actor(
 }
 
 pub(crate) struct NativeRuntimeInvokerFactoryDependencies {
+    pub(crate) generation: std::sync::Weak<crate::generation_dispatch::GenerationDispatch>,
     pub(crate) runtime_dependencies: virtual_ui::RuntimeInternalToolInvokerDependencies,
     pub(crate) interface_catalog:
         crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies,
     pub(crate) interface_registry:
         Arc<dyn crate::routes::mcp_management::interface_catalog::McpInterfaceRegistrySnapshotPort>,
-    pub(crate) interface_dispatch: Arc<dyn virtual_ui::McpInterfaceDispatchPort>,
 }
 
 pub(super) struct NativeRuntimeInvokerFactoryAdapter(NativeRuntimeInvokerFactoryDependencies);
 
-pub(super) struct NoMcpRuntimeInternalTools;
+pub(super) struct NoMcpRuntimeInternalTools {
+    _generation: Arc<crate::generation_dispatch::GenerationDispatch>,
+}
 
 #[async_trait::async_trait]
 impl orchestration_runtime::execution_engine::RuntimeInternalToolInvoker
@@ -109,7 +111,7 @@ pub(crate) async fn runtime_internal_tool_invoker_for_run(
     match plan_has_mcp_bindings_for_run(dependencies, run).await {
         Ok(Some(false)) => {
             debug!(flow_run_id = %run.id, "published plan has no MCP bindings; skipping runtime MCP catalog");
-            Ok(Arc::new(NoMcpRuntimeInternalTools))
+            dependencies.runtime_invoker_factory.without_mcp()
         }
         Ok(Some(true) | None) => dependencies.runtime_invoker_factory.for_actor(actor).await,
         Err(error) => {
@@ -120,16 +122,37 @@ pub(crate) async fn runtime_internal_tool_invoker_for_run(
 }
 
 impl NativeRuntimeInvokerFactory for NativeRuntimeInvokerFactoryAdapter {
+    fn without_mcp(
+        &self,
+    ) -> Result<
+        Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
+        NativeApiError,
+    > {
+        let owner = self
+            .0
+            .generation
+            .upgrade()
+            .ok_or_else(|| service_error(crate::generation_dispatch::unavailable().0))?;
+        Ok(Arc::new(NoMcpRuntimeInternalTools { _generation: owner }))
+    }
+
     fn for_actor<'a>(
         &'a self,
         actor: &'a control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     ) -> RuntimeInvokerFuture<'a> {
         let actor = actor.clone();
         Box::pin(async move {
-            let catalog_dependencies = self
+            let owner = self
                 .0
-                .interface_catalog
-                .with_interface_registry_snapshot(self.0.interface_registry.snapshot());
+                .generation
+                .upgrade()
+                .ok_or_else(|| service_error(crate::generation_dispatch::unavailable().0))?;
+            let catalog_dependencies = self.0.interface_catalog.with_interface_registry_snapshot(
+                self.0
+                    .interface_registry
+                    .snapshot()
+                    .map_err(|error| service_error(error.0))?,
+            );
             let interface_catalog =
                 crate::routes::mcp_management::interface_catalog::mcp_interface_catalog_entries_with(
                     &catalog_dependencies,
@@ -143,7 +166,7 @@ impl NativeRuntimeInvokerFactory for NativeRuntimeInvokerFactoryAdapter {
                     Arc::new(virtual_ui::McpInterfaceCatalogSnapshot::new(
                         interface_catalog,
                     )),
-                    Arc::clone(&self.0.interface_dispatch),
+                    owner,
                 ),
                 HeaderMap::new(),
                 actor.actor.clone(),

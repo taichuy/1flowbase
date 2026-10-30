@@ -38,7 +38,7 @@ impl RuntimeHostSystemPort for StubRuntimeHostSystemClient {
     }
 }
 
-fn default_test_config() -> ApiConfig {
+pub(crate) fn default_test_config() -> ApiConfig {
     let database_url = std::env::var("API_DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into());
     let root_account = std::env::var("BOOTSTRAP_ROOT_ACCOUNT").unwrap_or_else(|_| "root".into());

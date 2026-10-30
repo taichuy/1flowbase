@@ -23,7 +23,7 @@ use crate::{
     app_state::ApiState,
     routes::application_public_api::{
         compat_sse::{
-            prepare_compatible_resume_for_actor, start_compatible_typed_attach_stream,
+            prepare_compatible_resume_for_actor, start_native_run_attachment_stream,
             CompatibleResumeAdmission,
         },
         compatibility_interface,
@@ -31,6 +31,7 @@ use crate::{
             include_workflow_event_visibility, include_workflow_events, native_error,
             parse_native_run_request,
         },
+        stream_terminal_fallback::NativeRunTerminalDependencies,
     },
 };
 
@@ -258,8 +259,22 @@ impl NativeTurnBridge {
         let visibility = include_workflow_event_visibility(stream_options.include_workflow_events)?;
         let from_sequence = sequence_from_event_id(run_id, after_event_id)
             .map_err(|error| Self::rejected(error.code(), error.to_string()))?;
-        let stream =
-            start_compatible_typed_attach_stream(self.state.clone(), run, from_sequence).await?;
+        let stream = start_native_run_attachment_stream(
+            NativeRunTerminalDependencies::new(
+                self.state.store.clone(),
+                self.state.runtime_engine.clone(),
+                self.state.provider_runtime.clone(),
+                self.state.provider_secret_master_key.clone(),
+                self.state.model_billing_require_provider_usage,
+                self.state.infrastructure.provider_transport_store(),
+                self.state.runtime_event_stream.clone(),
+            )
+            .with_published_plan_cache(self.state.infrastructure.published_plan_cache()),
+            self.state.runtime_event_stream.clone(),
+            run,
+            from_sequence,
+        )
+        .await?;
         self.project_stream(request_id, visibility, stream, frames)
             .await
     }
@@ -268,27 +283,19 @@ impl NativeTurnBridge {
         &self,
         request_id: String,
         visibility: crate::routes::application_public_api::sse::IncludeWorkflowEvents,
-        stream: crate::routes::application_public_api::compat_sse::CompatibleTypedTurnStream,
+        mut stream: crate::routes::application_public_api::compat_sse::NativeRunAttachmentStream,
         frames: mpsc::Sender<String>,
     ) -> Result<(), NativeTurnBridgeError> {
-        let (_initial_run, mut events) = stream.into_parts();
         let mut projector = NativeWebSocketProjector::new(request_id, visibility);
-        while let Some(input) = events.recv().await {
-            let (run, envelope, mut delivery) = input.into_parts();
+        while let Some((run, envelope)) = stream.next_native().await {
             let frame = projector
                 .project(&run, envelope)
                 .map_err(|error| Self::rejected("projection_failed", error.to_string()))?;
             if let Some(frame) = frame {
-                if let Some(delivery) = delivery.as_mut() {
-                    delivery.begin_write();
-                }
                 frames
                     .send(frame)
                     .await
                     .map_err(|_| NativeTurnBridgeError::WriterClosed)?;
-            }
-            if let Some(delivery) = delivery.take() {
-                delivery.projected();
             }
             if projector.has_terminal() {
                 return Ok(());
@@ -306,6 +313,11 @@ impl NativeTurnBridge {
         emit_accepted: bool,
     ) -> Result<(), NativeTurnBridgeError> {
         let (mut events, completion) = invocation.into_parts();
+        let generation = self.authorization._generation.clone();
+        let completion = tokio::spawn(async move {
+            let _generation = generation;
+            completion.complete().await
+        });
         let mut projector = NativeWebSocketProjector::new(request_id.clone(), visibility);
         let mut accepted = false;
         while let Some(input) = events.recv().await {
@@ -342,8 +354,8 @@ impl NativeTurnBridge {
             }
             if projector.has_terminal() {
                 let terminal = completion
-                    .complete()
                     .await
+                    .map_err(|error| Self::rejected("interface_completion", error.to_string()))?
                     .map_err(|error| Self::rejected("interface_terminal", format!("{error:?}")))?;
                 let _receipt = terminal.receipt().clone().projected();
                 return Ok(());

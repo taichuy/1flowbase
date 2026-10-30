@@ -24,4 +24,6 @@ R/D 分别是 run-level/conversation 声明数、C 是查询数，重复线性�
 
 Level 1 复用局部格式、静态规则、变更模块测试；Level 2 复用 PR 影响路由和契约门禁；Level 3 保留完整 CI、coverage 与发布验收，不通过删除业务场景加速。`repo-hygiene` 对测试文本只清洗一次并复用 structuralLines；完整 findings 及顺序由旧新差分验证。
 
-量化样本、精确版本、CPU/RSS、故障检测与线上收据由 [Root #2700](https://github.com/taichuy/1flowbase/issues/2700) 及 `tmp/test-governance/optimization-20261029/` 留档。最新实际发布基线为 v0.5.8-native.1（原生分发预发布），正式版对照为 v0.5.8；另列本轮相对 beta 起始 9e77a12fe 的增量。v0.5.8-native.1、原始探针 current 47bdb3fb7 与 9e77a12fe 的编译器、依赖锁和扫描器源码一致时，复用相同源码的测量，不将不相关版本变化算作优化收益。
+量化样本、精确版本、CPU/RSS、故障检测与线上收据由 [Root #2700](https://github.com/taichuy/1flowbase/issues/2700) 及 `tmp/test-governance/optimization-20261029/` 留档。最新实际发布基线为 v0.5.8-native.2（原生分发预发布，a69128c52），正式版对照为 v0.5.8；另列本轮相对 beta 起始 614217824 的增量。v0.5.8-native.2 与原始探针 current 47bdb3fb7 的编译器、依赖锁和扫描器源码一致时，复用相同源码的测量，不将不相关版本变化算作优化收益。
+
+2026-10-30 整合保留 `beta` 新增的循环容器节点、edge container ownership 与 selector visibility；关系判重不替代这些校验。最终候选的行为与性能以候选 SHA 绑定的新 receipt 为准。

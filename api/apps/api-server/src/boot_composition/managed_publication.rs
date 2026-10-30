@@ -26,6 +26,7 @@ use crate::{
 
 pub(crate) struct PreparedGeneration {
     router: Router,
+    owner: Arc<crate::generation_dispatch::GenerationDispatch>,
     stream_generation: String,
     state: Weak<ApiState>,
     pub(crate) permission_catalog: control_plane_contracts::CompiledConsolePolicyCatalog,
@@ -33,6 +34,7 @@ pub(crate) struct PreparedGeneration {
 
 struct PublishedGeneration {
     router: Router,
+    owner: Arc<crate::generation_dispatch::GenerationDispatch>,
     /// Router owns this exact state; Host adapters retain only a weak generation reference.
     state: Weak<ApiState>,
 }
@@ -58,6 +60,8 @@ impl ManagedGenerationPublisher {
             .extension_boot_snapshot
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("host generation requires a boot snapshot"))?;
+        let owner = crate::generation_dispatch::GenerationDispatch::acquire(state)
+            .map_err(|error| error.0)?;
         let mut template = state.as_ref().clone();
         // Every candidate rebuilds docs before wiring its handlers. Do not pin the initial
         // canonical document or its cache after the last old-generation request finishes.
@@ -90,6 +94,7 @@ impl ManagedGenerationPublisher {
             native_interfaces,
             current: RwLock::new(PublishedGeneration {
                 router: initial_router,
+                owner,
                 state: Arc::downgrade(state),
             }),
             template,
@@ -98,12 +103,22 @@ impl ManagedGenerationPublisher {
         }))
     }
 
-    pub(crate) fn current_state(&self) -> Option<Arc<ApiState>> {
-        self.current
+    pub(crate) fn current_generation(&self) -> Option<crate::generation_dispatch::GenerationLease> {
+        let current = self
+            .current
             .read()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .state
-            .upgrade()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let state = current.state.upgrade()?;
+        let owner = current.owner.clone();
+        if state.extension_boot_snapshot.as_ref()?.generation_id() != owner.generation_id() {
+            return None;
+        }
+        Some(crate::generation_dispatch::GenerationLease { state, owner })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn current_state(&self) -> Option<Arc<ApiState>> {
+        self.current_generation().map(|lease| lease.state)
     }
 
     pub(crate) fn interface_module(
@@ -128,15 +143,20 @@ impl ManagedGenerationPublisher {
     pub(crate) fn ingress(self: &Arc<Self>) -> Router {
         let publisher = self.clone();
         Router::new().fallback_service(tower::service_fn(move |request: Request| {
-            // The guard is dropped synchronously before dispatch. Even requests suspended in
-            // middleware, streaming responses and protocol upgrades retain their selected router.
-            let router = publisher
-                .current
-                .read()
-                .unwrap_or_else(|poison| poison.into_inner())
-                .router
-                .clone();
-            async move { router.oneshot(request).await }
+            // Select router and execution owner under the same publication lock.
+            let (router, owner) = {
+                let current = publisher
+                    .current
+                    .read()
+                    .unwrap_or_else(|poison| poison.into_inner());
+                (current.router.clone(), current.owner.clone())
+            };
+            async move {
+                router
+                    .oneshot(request)
+                    .await
+                    .map(|response| crate::generation_dispatch::bind_response(response, owner))
+            }
         }))
     }
 
@@ -214,7 +234,8 @@ impl ManagedGenerationPublisher {
             .with_default_cache()?,
         );
         let state = Arc::new(state);
-        boot.publish_complete_catalog(&state)?;
+        let owner =
+            boot.publish_complete_catalog_with_route_assembly(&state, plan.route_assembly.clone())?;
         let document = crate::openapi::dynamic_openapi_document(&state)
             .await
             .map_err(|error| error.0)?;
@@ -227,6 +248,7 @@ impl ManagedGenerationPublisher {
                 state.console_operation_registry.inventory(),
             )?;
         Ok(PreparedGeneration {
+            owner,
             state: Arc::downgrade(&state),
             stream_generation: crate::managed_services::stream_ticket::generation(&state)
                 .map_err(|error| error.0)?,
@@ -248,6 +270,7 @@ impl ManagedGenerationPublisher {
                 &mut *current,
                 PublishedGeneration {
                     router: prepared.router,
+                    owner: prepared.owner,
                     state: prepared.state,
                 },
             )
@@ -256,3 +279,7 @@ impl ManagedGenerationPublisher {
         drop(previous);
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/generation_ownership.rs"]
+mod generation_ownership;

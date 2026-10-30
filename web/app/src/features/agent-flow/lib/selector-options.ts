@@ -1,3 +1,7 @@
+import {
+  containerLocalOutputs,
+  loopVariableOutputs
+} from './variables/container-variables';
 import { notificationNestedOutputs } from './node-definitions/nodes/notification';
 import {
   DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE,
@@ -94,7 +98,8 @@ function jsonSchemaPropertyValueType(property: unknown) {
 
 function collectUpstreamSelectorContext(
   document: FlowAuthoringDocument,
-  nodeId: string
+  nodeId: string,
+  fieldKey: string
 ) {
   const visibleNodeIds = new Set<string>();
   const incomingEdges = new Map<string, typeof document.graph.edges>();
@@ -110,6 +115,32 @@ function collectUpstreamSelectorContext(
   for (const node of document.graph.nodes) {
     if (!nodesById.has(node.id)) nodesById.set(node.id, node);
   }
+  const target = nodesById.get(nodeId);
+  const containers = [];
+  const ancestors = new Set<string>();
+  let parent = target?.containerId
+    ? nodesById.get(target.containerId)
+    : undefined;
+  while (parent && !ancestors.has(parent.id)) {
+    ancestors.add(parent.id);
+    containers.push(parent);
+    queue.push(parent.id);
+    parent = parent.containerId ? nodesById.get(parent.containerId) : undefined;
+  }
+  const isContainer = target?.type === 'loop' || target?.type === 'iteration';
+  const bodyBinding =
+    isContainer &&
+    (fieldKey === 'bindings.output' ||
+      fieldKey === 'bindings.variable_updates');
+  if (
+    target &&
+    isContainer &&
+    (bodyBinding || fieldKey === 'bindings.break_condition')
+  )
+    containers.push(target);
+  if (bodyBinding)
+    for (const node of nodesById.values())
+      if (node.containerId === nodeId) visibleNodeIds.add(node.id);
   type InternalTool = ReturnType<typeof getLlmVisibleInternalTools>[number];
   const toolsByNodeId = new Map<string, Map<string, InternalTool>>();
 
@@ -123,6 +154,11 @@ function collectUpstreamSelectorContext(
     visitedNodeIds.add(currentNodeId);
 
     for (const edge of incomingEdges.get(currentNodeId) ?? []) {
+      if (
+        nodesById.get(edge.source)?.containerId !==
+        nodesById.get(currentNodeId)?.containerId
+      )
+        continue;
       // The seed is visible only if an incoming path reaches it again.
       visibleNodeIds.add(edge.source);
       queue.push(edge.source);
@@ -181,17 +217,22 @@ function collectUpstreamSelectorContext(
     }
   }
 
-  return { visibleNodeIds, toolArgumentOptions: [...optionsByField.values()] };
+  return {
+    visibleNodeIds,
+    containers,
+    toolArgumentOptions: [...optionsByField.values()]
+  };
 }
 
 export function listVisibleSelectorOptions(
   document: FlowAuthoringDocument,
   nodeId: string,
   environmentVariables: AgentFlowEnvironmentVariable[] = [],
-  workflowTriggerContext: unknown = null
+  workflowTriggerContext: unknown = null,
+  fieldKey = ''
 ): FlowSelectorOption[] {
-  const { visibleNodeIds, toolArgumentOptions } =
-    collectUpstreamSelectorContext(document, nodeId);
+  const { visibleNodeIds, toolArgumentOptions, containers } =
+    collectUpstreamSelectorContext(document, nodeId, fieldKey);
   const isWorkflowDocument = document.graph.nodes.some(
     (node) => node.type === 'workflow_start'
   );
@@ -249,7 +290,10 @@ export function listVisibleSelectorOptions(
   const nodeOptions = document.graph.nodes
     .filter((node) => visibleNodeIds.has(node.id))
     .flatMap((node) =>
-      getNodeVariableOutputs(node)
+      [
+        ...getNodeVariableOutputs(node),
+        ...(node.type === 'loop' ? loopVariableOutputs(node) : [])
+      ]
         .flatMap((output) =>
           node.type === 'notification'
             ? [output, ...notificationNestedOutputs(output)]
@@ -278,6 +322,17 @@ export function listVisibleSelectorOptions(
     ...environmentOptions,
     ...conversationOptions,
     ...toolArgumentOptions,
+    ...containers.flatMap((container) =>
+      containerLocalOutputs(container).map((output) => ({
+        nodeId: container.id,
+        nodeLabel: container.alias,
+        outputKey: output.key,
+        outputLabel: output.title,
+        valueType: output.valueType,
+        value: outputSelectorValue(container.id, output),
+        displayLabel: formatNodeVariableLabel(container.alias, output.title)
+      }))
+    ),
     ...nodeOptions
   ];
 }
@@ -390,7 +445,8 @@ export function isSelectorVisible(
   nodeId: string,
   selector: string[],
   environmentVariables: AgentFlowEnvironmentVariable[] = [],
-  workflowTriggerContext: unknown = null
+  workflowTriggerContext: unknown = null,
+  fieldKey = ''
 ): boolean {
   if (selector.length < 2) {
     return false;
@@ -400,7 +456,8 @@ export function isSelectorVisible(
     document,
     nodeId,
     environmentVariables,
-    workflowTriggerContext
+    workflowTriggerContext,
+    fieldKey
   ).some(
     (option) =>
       option.value.length === selector.length &&

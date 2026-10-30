@@ -106,6 +106,7 @@ where
         }
     }
     outcome.node_traces[trace_index] = NodeExecutionTrace {
+        execution_identity: None,
         node_id: node.node_id.clone(),
         node_type: node.node_type.clone(),
         node_alias: node.alias.clone(),
@@ -140,6 +141,7 @@ where
             request_payload: wait.request_payload,
         });
         outcome.checkpoint_snapshot = Some(CheckpointSnapshot {
+            container_state: None,
             next_node_index: index,
             variable_pool: wait.checkpoint_variable_pool,
             active_node_ids,

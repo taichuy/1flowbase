@@ -29,6 +29,7 @@ fn builder_projects_stitched_trace_as_collapsed_context_group() {
                 ..flow_run(prior_run_id, now - time::Duration::seconds(10))
             },
             node_runs: vec![domain::NodeRunRecord {
+                execution_identity: None,
                 id: prior_node_run_id,
                 flow_run_id: prior_run_id,
                 node_id: "prior-node".to_string(),
@@ -113,6 +114,7 @@ fn builder_nests_stitched_trace_under_current_llm_root_as_tool_sibling() {
             ..flow_run(flow_run_id, now)
         },
         node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
             id: current_node_run_id,
             flow_run_id,
             node_id: "node-llm".to_string(),
@@ -171,6 +173,7 @@ fn builder_nests_stitched_trace_under_current_llm_root_as_tool_sibling() {
                 ..flow_run(prior_run_id, now - time::Duration::seconds(10))
             },
             node_runs: vec![domain::NodeRunRecord {
+                execution_identity: None,
                 id: Uuid::now_v7(),
                 flow_run_id: prior_run_id,
                 node_id: "prior-node".to_string(),
@@ -286,6 +289,7 @@ fn issue_2035_builder_projects_task_rounds_and_child_tasks_under_llm_node() {
     let now = OffsetDateTime::UNIX_EPOCH;
     let llm_node_run_id = Uuid::now_v7();
     let llm = |id: Uuid, run_id: Uuid, offset: i64| domain::NodeRunRecord {
+        execution_identity: None,
         id,
         flow_run_id: run_id,
         node_id: "node-llm".to_string(),

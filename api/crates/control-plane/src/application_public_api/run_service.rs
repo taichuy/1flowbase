@@ -1182,6 +1182,7 @@ mod tests {
     fn test_node_run(node_id: &str, usage: Value) -> domain::NodeRunRecord {
         let created_at = OffsetDateTime::UNIX_EPOCH;
         domain::NodeRunRecord {
+            execution_identity: None,
             id: Uuid::now_v7(),
             flow_run_id: Uuid::from_u128(0x11111111111111111111111111111111),
             node_id: node_id.to_string(),

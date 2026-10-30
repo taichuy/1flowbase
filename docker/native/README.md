@@ -1,93 +1,62 @@
-# 1flowbase native portable distribution
+# 1flowbase portable distribution
 
-The package includes the Rust API/static-web host, PostgreSQL 18 and offline maintenance tools. Running or upgrading it requires no Docker, Nginx, Node.js or Python installation.
+The package includes the Rust backend, web assets, PostgreSQL 18 and an updater. Neither startup nor updates require Docker, Nginx, Node.js or Python.
 
-## First launch and configuration
+## Start and configure
 
-Download the archive for your OS/architecture from GitHub Releases and extract it once into a writable directory. On Windows, launch `1flowbase.exe`; on Linux/macOS, run `./start.sh` as a regular user. The default browser opens `http://127.0.0.1:7800`. Keep the terminal open; use Ctrl+C and wait for PostgreSQL to stop normally.
+Download the archive for your OS and architecture from GitHub Releases and extract it once into a writable directory. On Windows, double-click `1flowbase.exe`. On Linux/macOS, run `./start.sh` as a regular user. The default browser opens `http://127.0.0.1:7800`. Keep the terminal open; press Ctrl+C to stop and wait for PostgreSQL to shut down.
 
-The root `.env` is the runtime configuration. It is generated from `api/apps/api-server/.env.example` with native production-mode, localhost and resource-path adjustments. Defaults are account `root` and initial password `root@1flowbase123`; edit `BOOTSTRAP_ROOT_*` before first launch if desired. Restarting does not reset existing accounts.
+The root `.env` is the runtime configuration, generated from `api/apps/api-server/.env.example` with portable ports, production mode and paths. The default account is `root`, with initial password `root@1flowbase123`. Edit `BOOTSTRAP_ROOT_*` before the first launch to change those defaults. Restarting does not reset existing accounts.
 
 ```text
 1flowbase-windows-x64/
 ├── 1flowbase.exe
-├── .env                      # User configuration, preserved during upgrades
-├── .env.example              # This release's defaults, for comparison
-├── upgrade.cmd               # Windows upgrade/restore entry point
-├── native-distribution.json  # Version, platform, PG major and file checksums
-├── api/  web/  postgres/     # Managed program files and resources
-└── data/                     # Created on first launch; preserved during upgrades
-    ├── postgres/
-    ├── postgres.log
-    ├── api/                  # Business files and installed plugins
-    └── backups/
+├── .env                      # User configuration, preserved during updates
+├── .env.example              # Defaults for this version
+├── upgrade.cmd               # Double-click to update; no directory prompt
+├── upgrade.ps1               # Windows update launcher
+├── native-distribution.json  # Version, platform and file inventory
+├── api/  web/  postgres/     # Program and resources
+└── data/                     # Database, business files and installed plugins
 ```
 
-Linux/macOS use `1flowbase`, `upgrade.sh` and `start.sh`. Archive names contain the product, OS and architecture; version and checksum information belongs to the Release/manifest.
+Linux/macOS use `1flowbase`, `start.sh` and `upgrade.sh`. Archive names contain only the product, OS and architecture; versions belong to the Release.
 
-Configuration rules:
+- Configuration is always read beside the executable. Relative paths resolve from that directory. File entries override matching inherited environment variables.
+- Use UTF-8 `KEY=value` entries, single-quoted literals, JSON-style double-quoted escapes and comments. No shell execution or variable expansion occurs. Duplicate keys and malformed entries fail explicitly.
+- `__GENERATE__` database passwords and encryption keys are generated and saved to `.env` on first launch, then remain stable. Preserve the original `.env` with your data. Do not arbitrarily change credentials for an existing database or its encryption key.
+- `API_SERVER_ADDR` defaults to `127.0.0.1:7800`. `API_DATABASE_URL` points to bundled PostgreSQL on `127.0.0.1:35432`, using the `postgres` user and `1flowbase` database.
+- If changing the public address, update `API_AUTH_PUBLIC_ORIGIN` / `API_ALLOWED_ORIGINS` as well. If changing `FLOWBASE_DATA_DIR`, adjust the related storage paths.
+- Set `FLOWBASE_OPEN_BROWSER=false` to suppress browser opening. Restart after configuration changes.
 
-- The launcher reads `.env` beside its executable regardless of the terminal's working directory. Relative paths use that same base.
-- Entries in `.env` override inherited environment variables with the same names. The launcher no longer reads `settings.json` or embedded Docker defaults.
-- Use UTF-8. Supported syntax includes `KEY=value`, single-quoted literals, JSON-style double-quoted escapes, and comments. There is no shell execution or variable expansion. Duplicate keys and malformed values are errors.
-- `__GENERATE__` placeholders for the database password and encryption key are generated once and saved back to `.env`. Preserve this file with the complete data directory. Secrets are never regenerated for an existing cluster.
-- Restart after editing configuration. A database password must match the existing PostgreSQL credential; retain the encryption key used by your data.
+## Update this installation
 
-| Setting | Native default / purpose |
-| --- | --- |
-| `API_SERVER_ADDR` | `127.0.0.1:7800`, web/API address |
-| `API_DATABASE_URL` | Authoritative private PG connection settings; port `35432` |
-| `API_AUTH_PUBLIC_ORIGIN` / `API_ALLOWED_ORIGINS` | Default to the 7800 origin; update together with your access address |
-| `FLOWBASE_DATA_DIR` | `data`, database and instance data |
-| `API_BUSINESS_FILE_LOCAL_ROOT` and other storage paths | Under `data/` by default; update dependent paths when relocating data |
-| `FLOWBASE_OPEN_BROWSER` | `true`; set `false` to disable automatic browser opening |
+1. Press Ctrl+C to stop the application and wait for PostgreSQL to stop normally.
+2. In the **current installation**, double-click `upgrade.cmd`, or run `./upgrade.sh` on Linux/macOS.
+3. Wait for download, verification and replacement to finish, then start normally.
 
-This entry point manages the local `postgres` user and `1flowbase` database only. It does not adopt external databases or stop other instances. Port conflicts are reported explicitly.
+You do not need to choose an architecture, enter an installation path or download the new archive yourself. The launcher locates the installation from its own path. Windows uses built-in PowerShell and runs the updater from a temporary directory so its executable can be replaced.
 
-## Offline upgrade
+The updater queries the official `taichuy/1flowbase` GitHub Releases for a higher version with the matching native asset. Stable installations only accept stable releases; prerelease installations may accept higher prereleases or stable versions. If already current, it reports that and exits. Network errors stop the operation before replacement.
 
-This layout establishes the supported upgrade baseline. Earlier experimental packages without a root `.env` or versioned manifest are not supported upgrade sources; no experimental password/directory migration is included.
+The download's official SHA256, archive paths and file inventory are verified, followed by platform, architecture, PostgreSQL major, space, configuration and stopped-process checks. The updater then **replaces program files in the current installation, preserving `.env` and user data. It creates no backup and provides no rollback.** It runs initialization, migrations and a health check. `.env.example` becomes the new reference; your `.env` is not automatically merged.
 
-1. Stop the old application normally with Ctrl+C and wait for PostgreSQL to stop.
-2. Extract the new archive **outside** the existing installation. Do not overwrite it manually.
-3. Run the upgrade entry point from the new package and select the existing installation. Double-clicking `upgrade.cmd` prompts for the directory, or use:
+Downloaded files are staged beside the installation in `.<installation-name>-update/`. This holds only new program files and update logs; it never copies the old program, configuration or database. It is removed after success.
 
-```powershell
-.\upgrade.cmd "E:\Apps\1flowbase"
-```
+## Failed or interrupted updates
 
-Linux/macOS:
+Download or verification failures leave the current program untouched. Once replacement starts, `.upgrade-state.json` records incomplete work and blocks normal startup. Confirm the application and PostgreSQL are stopped, then **run the same update launcher again**. It downloads a newer corrective release if available, otherwise retries the verified pending package. Keep the pending package and state file intact.
 
-```sh
-./upgrade.sh /path/to/existing/1flowbase
-```
+Initialization errors are recorded in `.<installation-name>-update/startup-validation.log`. Correct configuration errors and retry. A defective release requires a corrective release. With no backup, completed migrations and data changes are not rolled back.
 
-The updater verifies checksums, OS/architecture, versions, PG major, configuration, free space and stopped processes. It creates a complete cold snapshot, replaces managed program files, preserves `.env` and user data, then runs application initialization, migrations, health checks and shutdown validation. Validation does not expose business HTTP traffic or open a browser. After success, start the application normally from the **original installation directory**.
+Updates require the same OS, architecture and PostgreSQL major version. PostgreSQL major upgrades need a separate migration. Occupied ports, damaged packages and running processes stop the update; unrelated databases are never adopted or stopped.
 
-Snapshots are stored next to that directory in `.<directory-name>-upgrade-backups/<backup-id>/`, containing the old program, `.env`, complete data, checksummed receipt and validation log. They are never deleted automatically. `.env.example` is updated; user `.env` is never merged or overwritten. Missing required configuration is reported before replacement so you can compare and amend it.
+This version introduces the online launcher; older scripts do not acquire this behavior automatically. Download this package to start using it. Early experimental packages without a root `.env` are not an upgrade baseline.
 
-Only upgrades on the same OS, architecture and PostgreSQL major version are supported. PG major upgrades require a separate migration. Data must be in `data/` or a separate external directory; business-file, plugin and backup paths must all reside within the configured data directory. Symlinks and external tablespaces are outside this cold-snapshot contract and cause a refusal.
+## Build and verification boundaries
 
-## Failure and restoration
+Official releases follow `container images`. Use `node scripts/node/cli/bump-version.js` to synchronize versions, then merge into `latest` through the existing release process. Docker images and all five native targets build automatically. `VERSION`, frontend and backend versions must match. After both distribution types pass their build/validation jobs, a single stable GitHub Release contains the Docker instructions and native downloads at the same version.
 
-Validation or snapshot failure before replacement leaves the existing program and data unchanged. Once replacement begins, `.upgrade-state.json` records the snapshot and phase. Failure or interruption blocks normal launch and retains recovery information.
+`native-build.yml` is the shared builder and retains actual-archive, initialization, editable-configuration, no-backup update, retry and launcher checks. `Native portable distribution` remains available for manual validation and independent prereleases. Ordinary source changes without a version change do not create another release. Re-running an already complete release at the same source commit skips publication rather than replacing public assets.
 
-After confirming all related processes and PostgreSQL have stopped, run the explicit restore command from the **new package**:
-
-```powershell
-.\upgrade.cmd --restore "E:\Apps\1flowbase" "E:\Apps\.1flowbase-upgrade-backups\backup-id"
-```
-
-```sh
-./upgrade.sh --restore /path/to/existing/1flowbase /path/to/.1flowbase-upgrade-backups/backup-id
-```
-
-Restore verifies snapshot ownership and checksums, then restores the matching **program, configuration and complete data**. Repeat the same command to resume an interrupted restore. It discards changes made after the snapshot; replacing only the executable is not a valid rollback after database migrations. Corrupt backups, mismatched targets and active processes are rejected before restoration.
-
-See `startup-validation.log` inside the snapshot directory. Do not delete PostgreSQL's `postmaster.pid`. If an abnormal exit leaves the owned PG instance running, verify it and stop it with the bundled `postgres/bin/pg_ctl -D <data-directory>/postgres stop -m fast -w`.
-
-## Build and evidence boundaries
-
-The `Native portable distribution` workflow builds all native artifacts and exercises configuration/upgrade negative cases, real PostgreSQL lifecycle and real-package upgrade/restoration. With `release_tag` and target `all`, single-layer archives are uploaded to GitHub Releases only after every platform succeeds.
-
-`system_recovery` remains the system-backup recovery utility; it is not this program updater. Plugin platform availability, signing/notarization, system services and online automatic updates are outside this offline-upgrade feature. Windows network-egress descendant-process cleanup retains its existing support boundary.
+`system_recovery` remains a separate business backup/recovery tool and is not invoked by the updater. Signing/notarization, system services and unattended background updates are outside this feature's scope. Existing Windows network-egress descendant-process cleanup limitations still apply.

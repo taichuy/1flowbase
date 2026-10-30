@@ -34,7 +34,10 @@ function isFieldBlock(
 
 function isInlineFieldRenderer(renderer: string) {
   return (
-    renderer === 'text' || renderer === 'number' || renderer === 'selector'
+    renderer === 'text' ||
+    renderer === 'number' ||
+    renderer === 'selector' ||
+    renderer === 'container_positive_integer'
   );
 }
 

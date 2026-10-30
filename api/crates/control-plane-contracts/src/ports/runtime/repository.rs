@@ -6,6 +6,73 @@ pub trait FlowRunDispatchLease: Send {}
 
 #[async_trait]
 pub trait OrchestrationRuntimeRepository: Send + Sync {
+    async fn list_pending_container_observations(
+        &self,
+        _flow_run_id: Uuid,
+        _after_id: Option<Uuid>,
+        _limit: i64,
+    ) -> anyhow::Result<Vec<PendingContainerObservation>> {
+        Ok(Vec::new())
+    }
+    async fn apply_container_observation(
+        &self,
+        _observation_id: Uuid,
+        _record_id: Uuid,
+        _operation: &ContainerObservationOperation,
+    ) -> anyhow::Result<ContainerObservationResult> {
+        anyhow::bail!("container observation write not implemented")
+    }
+    async fn finish_container_observation(
+        &self,
+        _observation_id: Uuid,
+        _debug_refs: &serde_json::Value,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("container observation completion not implemented")
+    }
+
+    async fn commit_container_transition(
+        &self,
+        _input: &CommitContainerTransitionInput,
+    ) -> anyhow::Result<Option<domain::NodeRunRecord>> {
+        anyhow::bail!("container transition persistence not implemented")
+    }
+
+    async fn container_native_recovery_started(&self, _flow_run_id: Uuid) -> anyhow::Result<bool> {
+        anyhow::bail!("container native recovery lookup not implemented")
+    }
+
+    async fn fork_container_checkpoint(
+        &self,
+        _source_flow_run_id: Uuid,
+        _target_flow_run_id: Uuid,
+        _execution_id: Uuid,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("container recovery fork not implemented")
+    }
+
+    async fn load_container_checkpoint(
+        &self,
+        _flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<serde_json::Value>> {
+        anyhow::bail!("container checkpoint persistence not implemented")
+    }
+
+    async fn get_container_node_run_id(
+        &self,
+        _flow_run_id: Uuid,
+        _execution_id: Uuid,
+    ) -> anyhow::Result<Option<Uuid>> {
+        anyhow::bail!("container execution receipt lookup not implemented")
+    }
+
+    async fn get_container_node_run(
+        &self,
+        _flow_run_id: Uuid,
+        _execution_id: Uuid,
+    ) -> anyhow::Result<Option<domain::NodeRunRecord>> {
+        anyhow::bail!("container execution lookup not implemented")
+    }
+
     /// Archive the original source and observe the current internal checkpoint.
     /// A stale source prefix must not replace a newer append-only observation.
     async fn observe_internal_compaction(
@@ -611,7 +678,7 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     async fn claim_runtime_event_deliveries(
         &self,
         input: &ClaimRuntimeEventDeliveriesInput,
-    ) -> anyhow::Result<Vec<RuntimeEventDeliveryClaim>> {
+    ) -> anyhow::Result<RuntimeEventDeliveryBatch> {
         let _ = input;
         anyhow::bail!("claim_runtime_event_deliveries not implemented")
     }
@@ -859,6 +926,16 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         records.sort_by_key(|event| event.sequence);
         records.truncate(limit.max(1));
         Ok(records)
+    }
+    /// Canonical original waiting recovery key and its next business stop, in one snapshot.
+    /// Missing legacy anchors are explicit; diagnostic event payloads are not a fallback.
+    async fn get_original_callback_waiting_boundary(
+        &self,
+        flow_run_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> anyhow::Result<Option<RuntimeCallbackWaitingBoundary>> {
+        let _ = (flow_run_id, callback_task_id);
+        anyhow::bail!("get_original_callback_waiting_boundary not implemented")
     }
     async fn get_runtime_event_sequence_for_callback_task(
         &self,

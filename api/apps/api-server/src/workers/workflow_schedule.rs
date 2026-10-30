@@ -191,9 +191,20 @@ const WORKFLOW_SCHEDULE_IDLE_SLEEP: StdDuration = StdDuration::from_secs(1);
 /// scans due cron schedules every minute, the other consumes enqueued
 /// schedule runs. Loop failures are logged and retried on the next tick so a
 /// transient error never kills the scheduler.
-pub fn spawn_workflow_schedule_loops(state: Arc<ApiState>) {
-    tokio::spawn(run_workflow_schedule_dispatch_loop(state.clone()));
-    tokio::spawn(run_workflow_schedule_worker_loop(state));
+pub(crate) fn spawn_workflow_schedule_loops(
+    state: Arc<ApiState>,
+    owner: Arc<crate::generation_dispatch::GenerationDispatch>,
+) {
+    let dispatch_state = state.clone();
+    let dispatch_owner = owner.clone();
+    tokio::spawn(async move {
+        let _generation = dispatch_owner;
+        run_workflow_schedule_dispatch_loop(dispatch_state).await;
+    });
+    tokio::spawn(async move {
+        let _generation = owner;
+        run_workflow_schedule_worker_loop(state).await;
+    });
 }
 
 async fn run_workflow_schedule_dispatch_loop(state: Arc<ApiState>) {

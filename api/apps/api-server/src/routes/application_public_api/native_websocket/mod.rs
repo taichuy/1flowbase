@@ -15,6 +15,8 @@ use axum::{
 
 mod actor;
 mod projector;
+#[cfg(test)]
+pub(crate) use projector::NativeWebSocketProjector;
 pub(crate) mod schema;
 #[cfg(test)]
 mod tests;
@@ -23,6 +25,7 @@ mod turn_bridge;
 const NATIVE_WEBSOCKET_PROTOCOL: &str = "1flowbase.native.v1";
 
 pub(crate) struct NativeWebSocketAuthorization {
+    pub(crate) _generation: Arc<crate::generation_dispatch::GenerationDispatch>,
     pub(crate) principal: interface_runtime::ApplicationPrincipal,
 }
 
@@ -59,7 +62,12 @@ pub(crate) async fn upgrade(
     )
     .await?
     .into_principal();
-    let authorization = Arc::new(NativeWebSocketAuthorization { principal });
+    let generation = crate::generation_dispatch::GenerationDispatch::acquire(&state)
+        .map_err(|error| crate::routes::application_public_api::native::service_error(error.0))?;
+    let authorization = Arc::new(NativeWebSocketAuthorization {
+        principal,
+        _generation: generation,
+    });
     Ok(websocket
         .max_message_size(usize::MAX)
         .max_frame_size(usize::MAX)

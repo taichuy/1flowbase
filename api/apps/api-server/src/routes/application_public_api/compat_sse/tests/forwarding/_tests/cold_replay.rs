@@ -1,9 +1,31 @@
 use super::*;
 
+// The receipt owner settles asynchronously after forwarding closes its sender.
+// Observe its real ACK before asserting reconnect ownership; never synthesize it.
+pub(super) async fn await_tool_ack(state: &ApiState, event: Uuid) {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if delivery_statuses(state, &[event]).await == vec!["acked"] {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("actual projected receipt must settle before reconnect");
+}
+
 #[tokio::test]
 async fn committed_generation_gc_keeps_cold_attach_opaque_order_and_acked_tool_semantics() {
+    for tool_wait in [false, true] {
+        assert_gc_cold_attach_scope(tool_wait).await;
+    }
+}
+
+async fn assert_gc_cold_attach_scope(tool_wait: bool) {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let mut run = native_run();
+    freeze_delivery_scope(&mut run, RuntimeEventDeliveryScope::Start);
     seed_flow_run_for_compat_sse_test(&state, &run).await;
     let stream =
         Arc::new(LocalRuntimeEventStream::new().with_recoverable_retention(Duration::ZERO));
@@ -69,22 +91,53 @@ async fn committed_generation_gc_keeps_cold_attach_opaque_order_and_acked_tool_s
     );
     let reasoning = json!({"type": "reasoning", "id": "rs_cold_original", "encrypted_content": "opaque-provider-bytes", "extension": {"numeric_lexeme": "00"}});
     let message = json!({"type": "message", "id": "msg_cold_original", "content": [{"type": "output_text", "text": "recovered"}]});
-    let tool =
-        seed_pending_committed_delivery(&state, &run, committed_delivery_payload("call-cold-once"))
-            .await;
-    complete_attached_callback_round(&state, run.id, &reasoning, &message).await;
+    let tool_payload = committed_delivery_payload("call-cold-once");
+    let tool = if tool_wait {
+        let wait = super::callback_attach::append_tool_wait_round(
+            &state,
+            &run,
+            &reasoning,
+            &message,
+            &tool_payload,
+        )
+        .await;
+        Some(wait.tool_delivery_events[0].clone())
+    } else {
+        complete_attached_callback_round(&state, run.id, &reasoning, &message).await;
+        None
+    };
+    let terminal_kind = if tool_wait {
+        "waiting_callback"
+    } else {
+        "flow_finished"
+    };
     assert!(state
         .store
         .has_runtime_event_terminal_after(
             run.id,
             writer.durable_replay_boundary().unwrap(),
-            "flow_finished",
+            terminal_kind,
             generation_id,
         )
         .await
         .unwrap());
-    run.status = NativeRunStatus::Succeeded;
-    let mut terminal = debug_stream_events::flow_finished(run.id, json!({}));
+    run.status = if tool_wait {
+        NativeRunStatus::Waiting
+    } else {
+        NativeRunStatus::Succeeded
+    };
+    let mut terminal = if tool_wait {
+        RuntimeEventPayload {
+            event_type: "waiting_callback".into(),
+            source: RuntimeEventSource::Runtime,
+            durability: RuntimeEventDurability::Ephemeral,
+            persist_required: false,
+            trace_visible: true,
+            payload: json!({}),
+        }
+    } else {
+        debug_stream_events::flow_finished(run.id, json!({}))
+    };
     terminal.persist_required = false;
     terminal.durability = RuntimeEventDurability::Ephemeral;
     stream
@@ -108,7 +161,7 @@ async fn committed_generation_gc_keeps_cold_attach_opaque_order_and_acked_tool_s
     .expect("proven closed hot replay expires");
     assert_eq!(probe().1, 0);
     assert_eq!(probe().2, 0);
-    for expected_tool_count in [1, 0] {
+    for expected_tool_count in if tool_wait { [1, 0] } else { [0, 0] } {
         let dependencies = NativeRunTerminalDependencies::new(
             state.store.clone(),
             state.runtime_engine.clone(),
@@ -128,6 +181,7 @@ async fn committed_generation_gc_keeps_cold_attach_opaque_order_and_acked_tool_s
         .await
         .unwrap();
         let mut items = Vec::new();
+        let mut indices = Vec::new();
         let mut tool_count = 0;
         let mut terminal_count = 0;
         while let Some(input) = tokio::time::timeout(Duration::from_secs(3), attached.events.recv())
@@ -141,6 +195,7 @@ async fn committed_generation_gc_keeps_cold_attach_opaque_order_and_acked_tool_s
             );
             if let Some(receipt) = receipt {
                 tool_count += 1;
+                assert_eq!(event.payload, tool_payload);
                 receipt.projected();
             }
             if event.event_type == "provider_output_item_done"
@@ -149,16 +204,23 @@ async fn committed_generation_gc_keeps_cold_attach_opaque_order_and_acked_tool_s
                     .unwrap_or(false)
             {
                 items.push(event.payload["item"].clone());
+                indices.push(event.payload["output_index"].clone());
             }
-            if event.event_type == "flow_finished" {
+            if event.event_type == terminal_kind {
                 terminal_count += 1;
             }
         }
         assert_eq!(items, vec![reasoning.clone(), message.clone()]);
+        assert_eq!(indices, vec![json!(0), json!(1)]);
         assert_eq!(tool_count, expected_tool_count);
+        if expected_tool_count == 1 {
+            await_tool_ack(&state, tool.as_ref().unwrap().id).await;
+        }
         assert_eq!(terminal_count, 1);
     }
-    assert_eq!(delivery_statuses(&state, &[tool.id]).await, vec!["acked"]);
+    if let Some(tool) = tool {
+        assert_eq!(delivery_statuses(&state, &[tool.id]).await, vec!["acked"]);
+    }
     assert!(
         state
             .store
@@ -244,6 +306,12 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(
     delayed_identity: bool,
     missing_marker: bool,
 ) {
+    for tool_wait in [false, true] {
+        assert_cold_callback_scope(delayed_identity, missing_marker, tool_wait).await;
+    }
+}
+
+async fn assert_cold_callback_scope(delayed_identity: bool, missing_marker: bool, tool_wait: bool) {
     use control_plane::application_public_api::{
         api_keys::ApplicationApiKeyActor,
         callback_resume::{
@@ -253,13 +321,25 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(
     };
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let mut run = native_run();
-    let callback_task_id = Uuid::now_v7();
     let requested_generation = Uuid::now_v7();
     let old_generation = Uuid::now_v7();
     let later_round = Uuid::now_v7();
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let callback_task_id = if tool_wait {
+        let old = super::delivery_proof::commit_wait(
+            &state,
+            &run,
+            &[committed_delivery_payload("prior-cold-callback")],
+        )
+        .await;
+        old.callback_task.unwrap().id
+    } else {
+        let id = Uuid::now_v7();
+        super::response_scoped_delivery::seed_scope_boundary(&state, &run, Some(id)).await;
+        id
+    };
     run.metadata["response_round_id"] = json!(callback_task_id);
     run.metadata["active_callback_attach"] = json!(true);
-    seed_flow_run_for_compat_sse_test(&state, &run).await;
     for (event_type, payload) in [
         (
             "runtime_stream_opened",
@@ -440,12 +520,11 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(
     } else {
         None
     };
-    let tool = seed_pending_committed_delivery(
-        &state,
-        &run,
-        committed_delivery_payload("call-callback-once"),
-    )
-    .await;
+    let tool_payload = committed_delivery_payload("call-callback-once");
+    // Consume the real predecessor before producing ordinary native output.
+    if tool_wait {
+        super::delivery_proof::resume_waiting_callback(&state, &run).await;
+    }
     // Most fixtures retain legitimately untagged business-owner output. The
     // missing-marker fixture requires explicit host-owned round/generation IDs.
     // Seed subsequent rounds before sealing the run, as required by the real
@@ -465,12 +544,33 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(
                 json!({"output_index": index, "item": item,
                     "response_round_id": callback_task_id, "stream_generation_id": requested_generation})).await;
         }
-        append_compat_sse_runtime_event(&state, run.id, "flow_finished",
-            json!({"type": "flow_finished", "status": "succeeded",
-                "response_round_id": callback_task_id, "stream_generation_id": requested_generation})).await;
+        if !tool_wait {
+            append_compat_sse_runtime_event(&state, run.id, "flow_finished",
+                json!({"type":"flow_finished","status":"succeeded","response_round_id":callback_task_id,"stream_generation_id":requested_generation})).await;
+        }
+    } else if tool_wait {
+        for (index, item) in [(1, &message), (0, &reasoning)] {
+            append_compat_sse_runtime_event(
+                &state,
+                run.id,
+                "provider_output_item_done",
+                json!({"output_index":index,"item":item}),
+            )
+            .await;
+        }
     } else {
         append_attached_callback_round_events(&state, run.id, &reasoning, &message).await;
     }
+    let waiting = if tool_wait {
+        Some(super::delivery_proof::commit_wait(&state, &run, &[tool_payload.clone()]).await)
+    } else {
+        None
+    };
+    let terminal_kind = if tool_wait {
+        "waiting_callback"
+    } else {
+        "flow_finished"
+    };
     for (event_type, payload) in [
         (
             "runtime_stream_opened",
@@ -492,9 +592,11 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(
         append_compat_sse_runtime_event(&state, run.id, event_type, payload).await;
     }
 
-    seal_attached_callback_round(&state, run.id).await;
+    if !tool_wait {
+        seal_attached_callback_round(&state, run.id).await;
+    }
 
-    for expected_tool_count in [1, 0] {
+    for expected_tool_count in if tool_wait { [1, 0] } else { [0, 0] } {
         let mut attached = if let Some(attached) = pending_attachment.take() {
             attached
         } else {
@@ -509,6 +611,7 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(
             .unwrap()
         };
         let mut items = Vec::new();
+        let mut indices = Vec::new();
         let mut terminal_count = 0;
         let mut tool_count = 0;
         while let Some(input) = tokio::time::timeout(Duration::from_secs(3), attached.events.recv())
@@ -518,6 +621,7 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(
             let (_snapshot, event, receipt) = input.into_parts();
             if let Some(receipt) = receipt {
                 tool_count += 1;
+                assert_eq!(event.payload, tool_payload);
                 receipt.projected();
             }
             if event.event_type == "provider_output_item_done"
@@ -526,8 +630,15 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(
                     .unwrap_or(false)
             {
                 items.push(event.payload["item"].clone());
+                indices.push(event.payload["output_index"].clone());
             }
-            if event.event_type == "flow_finished" {
+            if event.event_type == terminal_kind {
+                if let Some(wait) = &waiting {
+                    assert_eq!(
+                        event.payload["callback_task_id"],
+                        json!(wait.callback_task.as_ref().unwrap().id)
+                    );
+                }
                 assert!(
                     event.payload["marker"].is_null(),
                     "foreign terminal cut requested prefix"
@@ -536,10 +647,19 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(
             }
         }
         assert_eq!(items, vec![reasoning.clone(), message.clone()]);
+        assert_eq!(indices, vec![json!(0), json!(1)]);
         assert_eq!(terminal_count, 1);
         assert_eq!(tool_count, expected_tool_count);
+        if expected_tool_count == 1 {
+            await_tool_ack(&state, waiting.as_ref().unwrap().tool_delivery_events[0].id).await;
+        }
     }
-    assert_eq!(delivery_statuses(&state, &[tool.id]).await, vec!["acked"]);
+    if let Some(wait) = waiting {
+        assert_eq!(
+            delivery_statuses(&state, &[wait.tool_delivery_events[0].id]).await,
+            vec!["acked"]
+        );
+    }
     let attempt_count: i64 = sqlx::query_scalar(
         "select count(*) from flow_run_callback_resume_attempts where flow_run_id = $1",
     )
@@ -560,7 +680,8 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(
 #[tokio::test]
 async fn cold_anchored_admission_rejects_previous_waiting_and_uses_current_terminal() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
-    let run = native_run();
+    let mut run = native_run();
+    freeze_delivery_scope(&mut run, RuntimeEventDeliveryScope::Start);
     seed_flow_run_for_compat_sse_test(&state, &run).await;
     let cold_stream = Arc::new(LocalRuntimeEventStream::new());
     let dependencies = NativeRunTerminalDependencies::new(

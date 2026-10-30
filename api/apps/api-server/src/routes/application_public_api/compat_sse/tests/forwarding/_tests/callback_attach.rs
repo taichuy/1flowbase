@@ -1,5 +1,27 @@
 use super::*;
 
+// Ordinary native facts precede the atomic tool+upper wait. They are never
+// assigned delivery_status; only the real waiting writer creates executable M.
+pub(super) async fn append_tool_wait_round(
+    state: &ApiState,
+    run: &NativeRunResult,
+    first: &Value,
+    second: &Value,
+    tool: &Value,
+) -> control_plane::ports::PersistedWaitingState {
+    super::delivery_proof::resume_waiting_callback(state, run).await;
+    for (index, item) in [(1, second), (0, first)] {
+        append_compat_sse_runtime_event(
+            state,
+            run.id,
+            "provider_output_item_done",
+            json!({"output_index":index,"item":item}),
+        )
+        .await;
+    }
+    super::delivery_proof::commit_wait(state, run, &[tool.clone()]).await
+}
+
 #[tokio::test]
 async fn callback_attach_replays_exact_output_and_disconnect_leaves_round_open() {
     let mut run = native_run();
@@ -7,6 +29,8 @@ async fn callback_attach_replays_exact_output_and_disconnect_leaves_round_open()
     run.metadata["response_round_id"] = json!(callback_task_id);
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     seed_flow_run_for_compat_sse_test(&state, &run).await;
+    super::response_scoped_delivery::seed_scope_boundary(&state, &run, Some(callback_task_id))
+        .await;
     let stream = Arc::new(LocalRuntimeEventStream::new());
     stream
         .open_run(run.id, RuntimeEventStreamPolicy::debug_default())
@@ -101,7 +125,8 @@ async fn callback_attach_follows_durable_completion_with_stalled_live_generation
 
 #[tokio::test]
 async fn callback_attach_partial_live_then_durable_does_not_repeat_items_or_deltas() {
-    assert_terminal_callback_attach(true, 2).await;
+    assert_terminal_callback_attach_scenario(true, 2, false).await;
+    assert_terminal_callback_attach_scenario(true, 2, true).await;
 }
 
 #[tokio::test]
@@ -115,6 +140,14 @@ async fn missing_callback_round_retains_terminal_observation_until_identity_only
 }
 
 async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mode: u8) {
+    assert_terminal_callback_attach_scenario(terminal_after_subscribe, live_mode, false).await;
+}
+
+async fn assert_terminal_callback_attach_scenario(
+    terminal_after_subscribe: bool,
+    live_mode: u8,
+    tool_wait: bool,
+) {
     use control_plane::application_public_api::{
         api_keys::ApplicationApiKeyActor,
         callback_resume::{
@@ -125,18 +158,23 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
     let delayed_identity = matches!(live_mode, 3 | 5);
     let live_enabled = matches!(live_mode, 1..=3);
     let mut run = native_run();
-    let callback_task_id = Uuid::now_v7();
-    run.metadata["response_round_id"] = json!(callback_task_id);
-    run.metadata["active_callback_attach"] = json!(true);
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     seed_flow_run_for_compat_sse_test(&state, &run).await;
-    append_compat_sse_runtime_event(
-        &state,
-        run.id,
-        "waiting_callback",
-        json!({"callback_task_id": callback_task_id}),
-    )
-    .await;
+    let callback_task_id = if tool_wait {
+        let old = super::delivery_proof::commit_wait(
+            &state,
+            &run,
+            &[committed_delivery_payload("prior-callback")],
+        )
+        .await;
+        old.callback_task.unwrap().id
+    } else {
+        let id = Uuid::now_v7();
+        super::response_scoped_delivery::seed_scope_boundary(&state, &run, Some(id)).await;
+        id
+    };
+    run.metadata["response_round_id"] = json!(callback_task_id);
+    run.metadata["active_callback_attach"] = json!(true);
     let generation = Uuid::now_v7();
     if delayed_identity {
         append_compat_sse_runtime_event(
@@ -157,8 +195,10 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
 
     let tool_payload = json!({"output_index": 2, "committed_delivery": true,
         "item": {"type": "function_call", "call_id": "attach-once", "name": "lookup"}});
-    let tool = if live_mode == 2 {
-        Some(seed_pending_committed_delivery(&state, &run, tool_payload.clone()).await)
+    let tool = if tool_wait {
+        let waiting =
+            append_tool_wait_round(&state, &run, &first_item, &second_item, &tool_payload).await;
+        Some(waiting.tool_delivery_events[0].clone())
     } else {
         None
     };
@@ -202,7 +242,7 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
                 .unwrap();
         }
     }
-    if live_mode == 2 {
+    if tool_wait {
         stream
             .append(
                 run.id,
@@ -273,7 +313,15 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
     .unwrap();
     let mut events = Vec::new();
     if live_enabled {
-        for _ in 0..if live_mode == 2 { 4 } else { 1 } {
+        for _ in 0..if live_mode == 2 {
+            if tool_wait {
+                4
+            } else {
+                3
+            }
+        } else {
+            1
+        } {
             let input = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
                 .await
                 .expect("live delivery must remain immediate")
@@ -285,7 +333,7 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
             events.push(event);
         }
     }
-    if terminal_after_subscribe {
+    if terminal_after_subscribe && !tool_wait {
         assert!(
             tokio::time::timeout(Duration::from_millis(50), attached.events.recv())
                 .await
@@ -344,17 +392,25 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
         .map(|event| event.event_type.as_str())
         .collect::<Vec<_>>();
     if live_mode == 2 {
-        assert_eq!(
-            types,
+        let expected = if tool_wait {
             vec![
                 "flow_started",
                 "provider_output_item_done",
                 "text_delta",
                 "provider_output_item_done",
                 "provider_output_item_done",
-                "flow_finished"
+                "waiting_callback",
             ]
-        );
+        } else {
+            vec![
+                "flow_started",
+                "provider_output_item_done",
+                "text_delta",
+                "provider_output_item_done",
+                "flow_finished",
+            ]
+        };
+        assert_eq!(types, expected);
         assert_eq!(events[2].text.as_deref(), Some("partial live"));
     } else {
         assert_eq!(
@@ -372,15 +428,14 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
         .filter(|event| event.event_type == "provider_output_item_done")
         .map(|event| event.payload["item"].clone())
         .collect::<Vec<_>>();
-    if live_mode == 2 {
+    if tool_wait {
         assert_eq!(
             items,
             vec![first_item, tool_payload["item"].clone(), second_item]
         );
-        assert_eq!(
-            delivery_statuses(&state, &[tool.unwrap().id]).await,
-            vec!["acked"]
-        );
+        let tool = tool.unwrap();
+        super::cold_replay::await_tool_ack(&state, tool.id).await;
+        assert_eq!(delivery_statuses(&state, &[tool.id]).await, vec!["acked"]);
     } else {
         assert_eq!(items, vec![first_item, second_item]);
     }

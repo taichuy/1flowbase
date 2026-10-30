@@ -17,14 +17,14 @@ impl ApiFileImportPort {
         permission: &str,
     ) -> Result<
         (
-            std::sync::Arc<crate::app_state::ApiState>,
+            crate::generation_dispatch::GenerationLease,
             domain::ActorContext,
             Box<dyn control_plane_contracts::ports::ContributionAuthorityLease>,
         ),
         HostServiceError,
     > {
         let state = self
-            .current_state()
+            .current_generation()
             .ok_or_else(|| HostServiceError::new("host_service_unavailable"))?;
         let (actor, _) = self
             .current_caller(&state, binding)
@@ -103,7 +103,7 @@ impl HttpEgressPort for ApiFileImportPort {
                 (state, actor.current_workspace_id, lease)
             } else {
                 let state = self
-                    .current_state()
+                    .current_generation()
                     .ok_or_else(|| HostServiceError::new("host_service_unavailable"))?;
                 let lease = control_plane::plugin_management::authorize_authentication_egress(
                     &state.store,

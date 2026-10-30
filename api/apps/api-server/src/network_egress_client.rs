@@ -162,6 +162,26 @@ impl NetworkEgressHttpClientResolver {
             .await
     }
 
+    /// Explicit node selection uses the same availability rules as workspace routes, with no fallback.
+    pub async fn acquire_pool_member(
+        &self,
+        member_id: Uuid,
+    ) -> Result<NetworkEgressExecutionScope> {
+        let (store, _, _, _) = self
+            .configured_backend()
+            .context("configured HTTP node proxy resolver is unavailable")?;
+        let selected = NetworkEgressPoolService::new(store.clone())
+            .select_healthy_first_from(
+                control_plane::network_egress_pool::GLOBAL_NETWORK_EGRESS_POOL_ID,
+                &[member_id],
+            )
+            .await
+            .context("selected HTTP node proxy is unavailable")?;
+        self.acquire_provider_egress(selected.provider_id, &selected.provider_egress_key)
+            .await?
+            .context("selected HTTP node proxy is unavailable")
+    }
+
     /// Acquires one member selected by the Network Center operator. This is deliberately separate
     /// from route resolution so connection testing cannot accept a caller-provided target URL.
     pub async fn acquire_provider_egress(
@@ -183,8 +203,10 @@ impl NetworkEgressHttpClientResolver {
         .resolve_for_runner(&provider)
         .await?
         .context("configured network egress provider secret is unavailable")?;
-        if provider.provider_code == "builtin_static_http" {
-            return static_http_execution_scope(secret.secret_json);
+        if let Some(protocol) =
+            domain::StaticProxyProtocol::from_provider_code(&provider.provider_code)
+        {
+            return static_proxy_execution_scope(protocol, secret.secret_json);
         }
         let extension_family = provider
             .extension_family
@@ -405,26 +427,27 @@ impl NetworkEgressExecutionScope {
     }
 }
 
-fn static_http_execution_scope(
+fn static_proxy_execution_scope(
+    protocol: domain::StaticProxyProtocol,
     secret: serde_json::Value,
 ) -> Result<Option<NetworkEgressExecutionScope>> {
     let host = secret["host"]
         .as_str()
         .filter(|value| !value.is_empty())
-        .context("configured static HTTP proxy is missing its host")?;
+        .context("configured static proxy is missing its host")?;
     let port = secret["port"]
         .as_u64()
         .filter(|port| (1..=65535).contains(port))
-        .context("configured static HTTP proxy has an invalid port")?;
-    let mut proxy_url = Url::parse(&format!("http://{host}:{port}"))
-        .context("configured static HTTP proxy has an invalid host")?;
+        .context("configured static proxy has an invalid port")?;
+    let mut proxy_url = Url::parse(&format!("{}://{host}:{port}", protocol.url_scheme()))
+        .context("configured static proxy has an invalid host")?;
     if let Some(username) = secret["username"]
         .as_str()
         .filter(|value| !value.is_empty())
     {
         proxy_url
             .set_username(username)
-            .map_err(|_| anyhow::anyhow!("configured static HTTP proxy has an invalid username"))?;
+            .map_err(|_| anyhow::anyhow!("configured static proxy has an invalid username"))?;
     }
     if let Some(password) = secret["password"]
         .as_str()
@@ -432,11 +455,11 @@ fn static_http_execution_scope(
     {
         proxy_url
             .set_password(Some(password))
-            .map_err(|_| anyhow::anyhow!("configured static HTTP proxy has an invalid password"))?;
+            .map_err(|_| anyhow::anyhow!("configured static proxy has an invalid password"))?;
     }
     let http_proxy_url = proxy_url.to_string();
     let client = Client::builder()
-        .proxy(Proxy::all(&http_proxy_url).context("configured static HTTP proxy URL is invalid")?)
+        .proxy(Proxy::all(&http_proxy_url).context("configured static proxy URL is invalid")?)
         .build()
         .context("failed to construct routed HTTP client")?;
     Ok(Some(NetworkEgressExecutionScope {
@@ -458,3 +481,36 @@ impl Drop for NetworkEgressExecutionScope {
 #[cfg(test)]
 #[path = "_tests/exchange_network_egress.rs"]
 mod exchange_network_egress;
+
+/// Host-owned maintenance client: available before the application/database runtime starts.
+/// Its only consumer is native release metadata and archive download from GitHub.
+pub fn native_release_client() -> Result<Client> {
+    Client::builder()
+        .user_agent("1flowbase-native-updater")
+        .https_only(true)
+        .connect_timeout(std::time::Duration::from_secs(20))
+        .timeout(std::time::Duration::from_secs(600))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            let host = attempt.url().host_str().unwrap_or_default();
+            if attempt.previous().len() >= 8
+                || attempt.url().scheme() != "https"
+                || !matches!(
+                    host,
+                    "github.com"
+                        | "api.github.com"
+                        | "release-assets.githubusercontent.com"
+                        | "objects.githubusercontent.com"
+                )
+            {
+                attempt.error("Unexpected native release redirect")
+            } else {
+                attempt.follow()
+            }
+        }))
+        .build()
+        .context("Cannot construct native release download client")
+}
+
+#[cfg(test)]
+#[path = "_tests/network_proxy/mod.rs"]
+mod network_proxy;

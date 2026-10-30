@@ -72,18 +72,15 @@ async function smoke(stage, evidence) {
     originalManifest.files['README.md'] = crypto.createHash('sha256').update(fs.readFileSync(path.join(target,'README.md'))).digest('hex');
     fs.writeFileSync(path.join(target,'native-distribution.json'),JSON.stringify(originalManifest));
     // Real process/cluster refusal must leave the database running and readable.
-    withDatabase(sql => { run(candidate,['--upgrade',target],false); assert.equal(sql('SELECT value FROM native_upgrade_probe'),'before'); });
-    run(candidate,['--upgrade',target]);
+    withDatabase(sql => { run(candidate,['--apply-update',candidate,target],false); assert.equal(sql('SELECT value FROM native_upgrade_probe'),'before'); });
+    run(candidate,['--apply-update',candidate,target]);
     assert.equal(fs.readFileSync(path.join(target,'.env'),'utf8'),environment);
     assert.equal(fs.readFileSync(path.join(target,'data/api/storage/upgrade-file.txt'),'utf8'),'user file');
     assert.equal(fs.readFileSync(path.join(target,'data/api/plugins/upgrade-plugin.txt'),'utf8'),'installed plugin');
     assert.equal(fs.readFileSync(path.join(target,'README.md'),'utf8'),fs.readFileSync(path.join(candidate,'README.md'),'utf8'));
-    const backupRoot = path.join(evidence,'.old installation-upgrade-backups');
-    const firstBackup = path.join(backupRoot,fs.readdirSync(backupRoot)[0]);
-    withDatabase(sql => { assert.equal(sql('SELECT value FROM native_upgrade_probe'),'before'); sql("UPDATE native_upgrade_probe SET value='after-upgrade'"); });
-    run(candidate,['--restore',target,firstBackup]);
+    assert.ok(!fs.existsSync(path.join(evidence,'.old installation-upgrade-backups')));
+    assert.ok(!fs.existsSync(path.join(evidence,'.old installation-update')));
     withDatabase(sql => assert.equal(sql('SELECT value FROM native_upgrade_probe'),'before'));
-    assert.equal(fs.readFileSync(path.join(target,'README.md'),'utf8'),'previous release fixture\n');
     // Valid checksums do not imply a bootable application. Corrupt the plugin-set document
     // and update its checksum, exercising post-replacement initialization failure.
     const brokenFile = 'api/plugins/sets/default.yaml';
@@ -92,17 +89,41 @@ async function smoke(stage, evidence) {
     brokenManifest.build_id += '-startup-failure-fixture';
     brokenManifest.files[brokenFile] = crypto.createHash('sha256').update(fs.readFileSync(path.join(candidate,brokenFile))).digest('hex');
     fs.writeFileSync(path.join(candidate,'native-distribution.json'),JSON.stringify(brokenManifest));
-    run(candidate,['--upgrade',target],false);
+    run(candidate,['--apply-update',candidate,target],false);
     const state = JSON.parse(fs.readFileSync(path.join(target,'.upgrade-state.json'),'utf8'));
     assert.equal(state.phase,'failed');
     run(target,[],false);
-    // Simulate persisted writes from a partial schema migration, then verify physical restore.
+    // No backup means no data rollback: preserve writes while a corrected package completes the update.
     withDatabase(sql => sql("UPDATE native_upgrade_probe SET value='partial-migration'"));
-    run(candidate,['--restore',target,state.backup]);
-    withDatabase(sql => assert.equal(sql('SELECT value FROM native_upgrade_probe'),'before'));
+    fs.copyFileSync(path.join(stage,brokenFile),path.join(candidate,brokenFile));
+    const fixedManifest = JSON.parse(fs.readFileSync(path.join(candidate,'native-distribution.json')));
+    fixedManifest.build_id += '-corrected-fixture';
+    fixedManifest.files[brokenFile] = crypto.createHash('sha256').update(fs.readFileSync(path.join(candidate,brokenFile))).digest('hex');
+    fs.writeFileSync(path.join(candidate,'native-distribution.json'),JSON.stringify(fixedManifest));
+    run(candidate,['--apply-update',candidate,target]);
+    withDatabase(sql => assert.equal(sql('SELECT value FROM native_upgrade_probe'),'partial-migration'));
     run(target,['--check-startup']);
     assert.equal(fs.readFileSync(path.join(target,'.env'),'utf8'),environment);
-    const result = { platform:process.platform, arch:process.arch, baseline:'controlled preceding-release layout using the candidate executable', passed:['editable-env','running-cluster-refusal','upgrade-config-data-files-plugins','cold-database-restore','startup-failure-blocks-launch','failed-upgrade-recovery','restored-startup'] };
+    assert.ok(!fs.existsSync(path.join(evidence,'.old installation-upgrade-backups')));
+    assert.ok(!fs.existsSync(path.join(evidence,'.old installation-update')));
+    // Exercise the public launcher and replace its own scripts/executable from an unrelated cwd.
+    // Only release lookup is adapted to a known fixture; the real installer and startup check run.
+    const compiled = spawnSync('rustc',['--edition=2021',path.join(__dirname,'_tests/launcher.rs'),'-o',path.join(target,executable)],{encoding:'utf8'});
+    assert.equal(compiled.status,0,compiled.stderr);
+    const launcherManifest = JSON.parse(fs.readFileSync(path.join(target,'native-distribution.json')));
+    launcherManifest.version = '0.0.0';
+    launcherManifest.build_id += '-launcher-fixture';
+    launcherManifest.files[executable] = crypto.createHash('sha256').update(fs.readFileSync(path.join(target,executable))).digest('hex');
+    fs.writeFileSync(path.join(target,'native-distribution.json'),JSON.stringify(launcherManifest));
+    const launcher = process.platform === 'win32'
+      ? [process.env.ComSpec || 'cmd.exe', ['/d','/s','/c',`""${path.join(target,'upgrade.cmd')}""`]]
+      : ['sh', [path.join(target,'upgrade.sh')]];
+    const launched = spawnSync(launcher[0],launcher[1],{cwd:evidence,input:'\r\n',encoding:'utf8',timeout:300000,windowsVerbatimArguments:process.platform==='win32',env:{...process.env,FLOWBASE_TEST_UPDATER:path.join(candidate,executable),FLOWBASE_TEST_UPDATE_PACKAGE:candidate}});
+    assert.equal(launched.status,0,launched.stderr || launched.stdout);
+    assert.equal(fs.readFileSync(path.join(target,'.env'),'utf8'),environment);
+    assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(target,executable))).digest('hex'),fixedManifest.files[executable]);
+    withDatabase(sql => assert.equal(sql('SELECT value FROM native_upgrade_probe'),'partial-migration'));
+    const result = { platform:process.platform, arch:process.arch, baseline:'controlled preceding-release layout using the candidate executable', passed:['editable-env','running-cluster-refusal','upgrade-config-data-files-plugins','no-backup-created','startup-failure-blocks-launch','corrected-update-preserves-partial-data','relative-path-launcher-replaces-itself'] };
     fs.writeFileSync(path.join(evidence,'result.json'),JSON.stringify(result,null,2));
     console.log(JSON.stringify(result));
   } finally {

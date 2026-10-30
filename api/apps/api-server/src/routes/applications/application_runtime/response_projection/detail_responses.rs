@@ -3,6 +3,7 @@ fn to_node_run_response(run: domain::NodeRunRecord) -> NodeRunResponse {
     let input_payload_view = node_input_payload_view(&input_payload);
 
     NodeRunResponse {
+        execution_identity: run.execution_identity,
         id: run.id.to_string(),
         flow_run_id: run.flow_run_id.to_string(),
         node_id: run.node_id,

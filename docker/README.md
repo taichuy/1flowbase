@@ -214,7 +214,7 @@ cd docker
 FLOWBASE_WEB_VERSION=local FLOWBASE_API_SERVER_VERSION=local docker compose up -d
 ```
 
-CI 发布镜像时也会继续使用 GitHub Actions cache，因此同一镜像的后续构建会复用远端缓存。CI 使用 buildx 发布 `linux/amd64` 和 `linux/arm64`。镜像按组件 manifest 版本自动发布：`web/app/package.json` 的 `version` 变化只发布 web 镜像，`api/apps/api-server/Cargo.toml` 的 `version` 变化只发布唯一 Backend 镜像。普通源码提交不会发布镜像。
+CI 使用 buildx 发布 `linux/amd64` 和 `linux/arm64` 镜像，并复用 GitHub Actions cache。使用 `node scripts/node/cli/bump-version.js` 同步更新 `VERSION`、前端和后端版本，再按现有流程合入 `latest`，会自动同时构建 Docker 镜像与 Windows/Linux/macOS 五个平台的原生包。版本必须一致；镜像和原生验证都通过后，同一个正式 GitHub Release 提供镜像说明和原生下载。普通不改版本的提交不会新建原生发行；手动单组件镜像构建保持独立。
 
 ## 内置应用模板
 

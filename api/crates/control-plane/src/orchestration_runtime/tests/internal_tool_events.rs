@@ -40,6 +40,7 @@ async fn orchestration_runtime_persists_visible_internal_llm_tool_route_events()
         checkpoint_snapshot: None,
         operation_terminal: None,
         node_traces: vec![NodeExecutionTrace {
+            execution_identity: None,
             node_id: "node-llm".to_string(),
             node_type: "llm".to_string(),
             node_alias: "Main LLM".to_string(),

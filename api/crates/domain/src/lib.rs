@@ -151,12 +151,12 @@ pub use modeling::{
     GENERAL_DATA_MODEL_TEMPLATE_CODE, GENERAL_DATA_MODEL_TEMPLATE_VERSION,
 };
 pub use network_egress::{
-    NetworkEgressConsumerSelector, NetworkEgressConsumerSelectorParseError,
+    HttpNodeNetworkEgress, NetworkEgressConsumerSelector, NetworkEgressConsumerSelectorParseError,
     NetworkEgressHealthStatus, NetworkEgressPool, NetworkEgressPoolMember,
     NetworkEgressPoolMemberHealth, NetworkEgressPoolMemberProbeStatus,
     NetworkEgressPoolSelectionStrategy, NetworkEgressProjectionRecord,
     NetworkEgressProviderLifecycle, NetworkEgressProviderRecord, NetworkEgressProviderSecretRecord,
-    NetworkEgressRoute,
+    NetworkEgressRoute, StaticProxyProtocol,
 };
 pub use node_contribution::{NodeContributionDependencyStatus, NodeContributionRegistryEntry};
 pub use orchestration::{
@@ -170,11 +170,12 @@ pub use orchestration::{
     ApplicationRunTraceNodeRecord, ApplicationRunTraceProjectionDiagnostic,
     ApplicationRunTraceProjectionSource, ApplicationRunTraceProjectionStatus,
     ApplicationRunTraceProjectionStatusRecord, CallbackTaskRecord, CallbackTaskStatus,
-    CheckpointRecord, CompiledPlanRecord, DataModelSideEffectReceiptRecord,
+    CheckpointRecord, CompiledPlanRecord, ContainerRoundPath, DataModelSideEffectReceiptRecord,
     FlowRunCallbackResumeAttemptRecord, FlowRunCallbackResumeAttemptStatus, FlowRunExecutionStage,
     FlowRunInvocationContext, FlowRunInvocationSource, FlowRunMode, FlowRunPrincipal,
-    FlowRunPrincipalKind, FlowRunRecord, FlowRunStatus, NodeDebugPreviewResult, NodeLastRun,
-    NodeRunRecord, NodeRunStatus, RunEventRecord, RuntimeDebugArtifactRecord,
+    FlowRunPrincipalKind, FlowRunRecord, FlowRunStatus, NodeDebugPreviewResult,
+    NodeExecutionIdentity, NodeLastRun, NodeRunRecord, NodeRunStatus, RunEventRecord,
+    RuntimeDebugArtifactRecord,
 };
 pub use plugin_worker::{PluginWorkerLeaseRecord, PluginWorkerStatus};
 pub use resource::runtime_model_resource_code;

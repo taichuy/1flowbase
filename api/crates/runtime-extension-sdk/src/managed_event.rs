@@ -13,8 +13,16 @@ use crate::RuntimeExtensionSdkError;
 /// current contribution authority and commits effects before acknowledging delivery.
 pub fn serve_managed_event<R: Read, W: Write>(
     reader: R,
-    mut writer: W,
+    writer: W,
     event: impl FnOnce(&ManagedEventHostFrame) -> ManagedEventOutcome,
+) -> Result<(), RuntimeExtensionSdkError> {
+    serve_managed_event_result(reader, writer, |frame| Ok(event(frame)))
+}
+
+fn serve_managed_event_result<R: Read, W: Write>(
+    reader: R,
+    mut writer: W,
+    event: impl FnOnce(&ManagedEventHostFrame) -> Result<ManagedEventOutcome, RuntimeExtensionSdkError>,
 ) -> Result<(), RuntimeExtensionSdkError> {
     let mut bytes = Vec::new();
     reader
@@ -32,7 +40,7 @@ pub fn serve_managed_event<R: Read, W: Write>(
     let response = ManagedEventWorkerFrame {
         protocol: MANAGED_EVENT_PROTOCOL_V2.into(),
         call_id: request.call_id.clone(),
-        result: event(&request),
+        result: event(&request)?,
     };
     response
         .validate_for(&request)
@@ -43,30 +51,36 @@ pub fn serve_managed_event<R: Read, W: Write>(
     Ok(())
 }
 
-/// A finite typed command worker. Destination/actor authority stays in the Host request receipt.
-pub fn serve_communication_command<R: Read, W: Write>(
+/// A finite typed command worker. Content is rendered with the same factory as Host replies.
+/// Existing wire replies are already Markdown and remain unchanged. Destination/actor
+/// authority stays in the Host request receipt.
+pub fn serve_communication_command<R: Read, W: Write, C>(
     reader: R,
     writer: W,
-    command: impl FnOnce(
-        &extension_contracts::CommunicationCommandRequest,
-    ) -> extension_contracts::CommunicationCommandReply,
-) -> Result<(), RuntimeExtensionSdkError> {
-    serve_managed_event(reader, writer, |frame| {
+    command: impl FnOnce(&extension_contracts::CommunicationCommandRequest) -> C,
+) -> Result<(), RuntimeExtensionSdkError>
+where
+    C: Into<extension_contracts::CommunicationMessageContent>,
+{
+    serve_managed_event_result(reader, writer, |frame| {
         let parsed = serde_json::from_value::<extension_contracts::CommunicationCommandRequest>(
             frame.delivery.payload.clone(),
         );
-        match parsed {
+        Ok(match parsed {
             Ok(request)
                 if frame.delivery.point_id == extension_contracts::COMMUNICATION_COMMAND_POINT
                     && request.validate().is_ok() =>
             {
                 ManagedEventOutcome::CommandReply {
-                    reply: command(&request),
+                    reply: extension_contracts::CommunicationCommandReply::from_content(command(
+                        &request,
+                    ))
+                    .map_err(|error| RuntimeExtensionSdkError::InvalidRequest(error.to_string()))?,
                 }
             }
             _ => ManagedEventOutcome::Failed {
                 classification: "invalid_command_request".into(),
             },
-        }
+        })
     })
 }

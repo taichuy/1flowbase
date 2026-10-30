@@ -10,13 +10,28 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         let connection_scope_id = take_transport_connection_scope(input);
         // Cursor-free HTTP fallback is meaningful even without a logical session.
         // A validated WebSocket delivery below overrides this default carrier.
+        let predecessor_transport = if input.protocol == "openai_responses"
+            && input.native_transport.as_ref().is_some_and(|native| {
+                native
+                    .wire_body
+                    .get("previous_response_id")
+                    .is_some_and(|v| !v.is_null())
+            }) {
+            input.client_transport
+        } else {
+            None
+        };
         if input.protocol == "openai_responses" {
             input.client_transport = input.native_transport.as_ref().and_then(|native| {
                 let has_cursor = native
                     .wire_body
                     .get("previous_response_id")
                     .is_some_and(|value| !value.is_null());
-                (!has_cursor).then_some(ProviderClientTransport::Http)
+                if has_cursor {
+                    predecessor_transport
+                } else {
+                    Some(ProviderClientTransport::Http)
+                }
             });
         }
         let Some(protocol_session_id) = protocol_session_id(input) else {
@@ -49,7 +64,9 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         // Delivery ownership and wire transport are independent host facts. An
         // HTTP scope must not turn a cursor-free fallback back into WebSocket;
         // cursor-based HTTP continuations retain the existing provider policy.
-        if carrier == Some(ProviderClientTransport::Websocket) {
+        // A new delivery cannot change an owned incremental cursor's upstream
+        // carrier. Explicit force_* node policy still wins in the selector below.
+        if predecessor_transport.is_none() && carrier == Some(ProviderClientTransport::Websocket) {
             input.client_transport = Some(ProviderClientTransport::Websocket);
         }
         let transport = selected_responses_transport(input)?;

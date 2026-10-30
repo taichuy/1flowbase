@@ -1,6 +1,38 @@
 use super::*;
 use serde_json::json;
 
+// Existing exact-equality trace oracle now exercises the production canonical
+// index, rather than retaining the superseded full-JSON dedup cache.
+#[derive(Default)]
+struct ForwardedCommittedEvents(CanonicalDeliveryPrefix);
+impl ForwardedCommittedEvents {
+    fn contains(&self, kind: &str, payload: &Value) -> bool {
+        self.0.position(kind, payload).is_some()
+    }
+    fn insert(&mut self, kind: String, payload: Value) {
+        let mut events = self.0.events.clone();
+        events.push(domain::RuntimeEventRecord {
+            id: uuid::Uuid::now_v7(),
+            flow_run_id: uuid::Uuid::nil(),
+            node_run_id: None,
+            span_id: None,
+            parent_span_id: None,
+            sequence: events.len() as i64 + 1,
+            event_type: kind,
+            layer: domain::RuntimeEventLayer::RuntimeItem,
+            source: domain::RuntimeEventSource::Host,
+            trust_level: domain::RuntimeTrustLevel::HostFact,
+            item_id: None,
+            ledger_ref: None,
+            payload,
+            visibility: domain::RuntimeEventVisibility::Workspace,
+            durability: domain::RuntimeEventDurability::Durable,
+            created_at: time::OffsetDateTime::now_utc(),
+        });
+        self.0.replace(events).expect("canonical index fixture");
+    }
+}
+
 #[test]
 fn committed_event_partitions_keep_distinct_bodies_with_the_same_id() {
     let payloads = [

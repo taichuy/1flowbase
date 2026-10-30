@@ -2,6 +2,8 @@
 
 SDK 提供 typed Hook / event worker 协议与作者侧 client。Host 负责可信 context、权限、调用 scope 和进程生命周期；SDK 不提供 SQL、数据库连接、宿主 registry 或无限制 RPC。plugin → Host 回调不能自行声明可信 installation / workspace / actor，Host → worker 的 typed context 由 Host 注入。
 
+通讯贡献使用公共内容参数生成 Markdown：普通文本、结构化段落/列表和已有 Markdown 有明确区别，底座与 SDK 复用同一 renderer。规范与示例：[中文](docs/communication-messages.md) / [English](docs/communication-messages.en.md)。
+
 当前示例覆盖只读 Create Hook 与 committed / processed 事件。贡献必须经正式包安装、工作区分配、独立授权与执行绑定；manifest 声明不是授权。同包贡献不共享权限。事件消费的 owned-write 必须授予实际消费贡献。
 
 ## 构建实际 worker

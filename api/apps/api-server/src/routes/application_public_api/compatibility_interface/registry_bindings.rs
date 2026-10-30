@@ -65,7 +65,7 @@ pub(super) fn register_stream_binding(
     compiler.bind_stream_handler::<CompatibilityBlockingInput, CompatibilityStreamEvent, CompatibilityBlockingOutput, CompatibilityBlockingTargetError, ApplicationPrincipal>(
         &interface_id,
         handler,
-        Arc::new(CompatibilityStreamHandler { port }),
+        Arc::new(CompatibilityStreamHandler { port, consumer:super::super::compat_sse::CompatibleResumeConsumer::for_binding(binding_id) }),
     )?;
     Ok(())
 }
@@ -133,7 +133,7 @@ pub(super) fn register_binding(
     compiler.bind_handler::<CompatibilityBlockingInput, CompatibilityBlockingOutput, CompatibilityBlockingTargetError, ApplicationPrincipal>(
         &interface_id,
         handler,
-        Arc::new(CompatibilityBlockingHandler { port }),
+        Arc::new(CompatibilityBlockingHandler { port, consumer:super::super::compat_sse::CompatibleResumeConsumer::for_binding(binding_id) }),
     )?;
     Ok(())
 }

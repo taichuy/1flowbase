@@ -5,6 +5,17 @@ pub(super) fn contributions(
 ) -> Result<Vec<InterfaceRegistryContribution>, RegistryCompilationError> {
     Ok(vec![
         InterfaceRegistryContribution::new(
+            "api-server.console-local-commands",
+            &["local_commands.execute"],
+            &["api-server.console-local-commands"],
+            crate::routes::local_commands::compile_registry(
+                control_plane::local_command::LocalCommandService::new(
+                    state.store.clone(),
+                    crate::local_command::executor(),
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-runtime-reads",
             &[
                 "applications.runtime.current-context.get",

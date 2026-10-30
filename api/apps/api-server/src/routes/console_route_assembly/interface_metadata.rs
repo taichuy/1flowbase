@@ -273,6 +273,7 @@ pub(super) fn expand_core_interface_registrations(
 
 pub(super) fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "local_commands.execute" => Some("Execute one local shell command"),
         "communications.options.get" => Some("List communication execution options"),
         "communications.binding.get" => Some("Read communication binding"),
         "communications.binding.update" => Some("Save communication binding"),
@@ -480,6 +481,7 @@ pub(super) fn compile_console_interface_metadata(
             _ => static_english_interface_summary(&interface_id),
         };
         let description = match interface_id.as_str() {
+            "local_commands.execute" => "Execute a single command string in the backend instance environment as its OS account. Requires the local command operation permission; returns complete output and termination status without a reusable session, deployment opt-in, or automatic retry.".to_owned(),
             "communications.options.get" => "Return published Agent-flow applications, visible enabled MCP instances and the selected application model and reasoning capabilities.".to_owned(),
             "communications.binding.get" => "Read the channel execution binding and plugin-owned default prompt without credentials.".to_owned(),
             "communications.binding.update" => "Validate and store the channel application, model, reasoning, file table, editable system prompt and selected MCP instances.".to_owned(),

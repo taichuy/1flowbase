@@ -40,7 +40,7 @@ impl NativeDistribution {
         );
         anyhow::ensure!(
             check_startup || !root.join(".upgrade-state.json").exists(),
-            "An upgrade is incomplete; use the restore command recorded in .upgrade-state.json"
+            "An update is incomplete; run upgrade.cmd / upgrade.sh again to continue (no backup was created)"
         );
         let configuration = Settings::inspect(&root)?;
         let data = configuration.data.clone();

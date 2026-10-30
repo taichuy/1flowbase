@@ -3,6 +3,15 @@ impl PgControlPlaneStore {
         &self,
         input: &AppendUsageLedgerInput,
     ) -> Result<domain::UsageLedgerRecord> {
+        self.append_usage_ledger_with_id(input, Uuid::now_v7())
+            .await
+    }
+
+    async fn append_usage_ledger_with_id(
+        &self,
+        input: &AppendUsageLedgerInput,
+        record_id: Uuid,
+    ) -> Result<domain::UsageLedgerRecord> {
         let row = sqlx::query(
             r#"
             insert into runtime_usage_ledger (
@@ -33,6 +42,7 @@ impl PgControlPlaneStore {
             ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                       $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
                       $21, $22, $23, $24)
+            on conflict (id) do update set id=runtime_usage_ledger.id
             returning
                 id,
                 flow_run_id,
@@ -61,7 +71,7 @@ impl PgControlPlaneStore {
                 created_at
             "#,
         )
-        .bind(Uuid::now_v7())
+        .bind(record_id)
         .bind(input.flow_run_id)
         .bind(input.node_run_id)
         .bind(input.span_id)
@@ -591,6 +601,15 @@ impl PgControlPlaneStore {
         &self,
         input: &AppendModelFailoverAttemptLedgerInput,
     ) -> Result<domain::ModelFailoverAttemptLedgerRecord> {
+        self.append_model_failover_attempt_ledger_with_id(input, Uuid::now_v7())
+            .await
+    }
+
+    async fn append_model_failover_attempt_ledger_with_id(
+        &self,
+        input: &AppendModelFailoverAttemptLedgerInput,
+        record_id: Uuid,
+    ) -> Result<domain::ModelFailoverAttemptLedgerRecord> {
         let row = sqlx::query(
             r#"
             insert into model_failover_attempt_ledger (
@@ -620,6 +639,7 @@ impl PgControlPlaneStore {
             ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                       $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
                       $21, $22, $23)
+            on conflict (id) do update set id=model_failover_attempt_ledger.id
             returning
                 id,
                 flow_run_id,
@@ -646,7 +666,7 @@ impl PgControlPlaneStore {
                 response_ref
             "#,
         )
-        .bind(Uuid::now_v7())
+        .bind(record_id)
         .bind(input.flow_run_id)
         .bind(input.node_run_id)
         .bind(input.llm_turn_span_id)
@@ -722,6 +742,15 @@ impl PgControlPlaneStore {
         &self,
         input: &AppendCapabilityInvocationInput,
     ) -> Result<domain::CapabilityInvocationRecord> {
+        self.append_capability_invocation_with_id(input, Uuid::now_v7())
+            .await
+    }
+
+    async fn append_capability_invocation_with_id(
+        &self,
+        input: &AppendCapabilityInvocationInput,
+        record_id: Uuid,
+    ) -> Result<domain::CapabilityInvocationRecord> {
         let row = sqlx::query(
             r#"
             insert into capability_invocations (
@@ -740,6 +769,7 @@ impl PgControlPlaneStore {
                 finished_at,
                 error_payload
             ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            on conflict (id) do update set id=capability_invocations.id
             returning
                 id,
                 flow_run_id,
@@ -758,7 +788,7 @@ impl PgControlPlaneStore {
                 created_at
             "#,
         )
-        .bind(Uuid::now_v7())
+        .bind(record_id)
         .bind(input.flow_run_id)
         .bind(input.span_id)
         .bind(&input.capability_id)

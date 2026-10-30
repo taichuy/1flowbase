@@ -22,6 +22,19 @@ pub(super) fn compile_node(
         .get("config")
         .cloned()
         .unwrap_or(Value::Object(Default::default()));
+    if node_type == "http_request" {
+        if let Some(value) = config.get("network_egress") {
+            serde_json::from_value::<domain::HttpNodeNetworkEgress>(value.clone()).map_err(
+                |_| {
+                    FlowValidationError::at_node(
+                        &node_id,
+                        "/config/network_egress",
+                        anyhow!("HTTP node network_egress is invalid"),
+                    )
+                },
+            )?;
+        }
+    }
     if node_type == "llm" {
         let protocol_context = match config.get("protocol_context") {
             None => Some(crate::compiled_plan::VariableReference::system_protocol_context()),

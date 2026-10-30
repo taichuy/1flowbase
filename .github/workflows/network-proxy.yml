@@ -1,0 +1,81 @@
+name: Network proxy evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev, 'codex/network-proxy-*']
+    paths:
+      - 'api/**/network_egress*'
+      - 'api/**/network_egress/**'
+      - 'api/**/network_proxy/**'
+      - 'api/**/http_request*'
+      - 'api/**/http_request/**'
+      - '.github/workflows/network-proxy.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: network-proxy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: web/.nvmrc
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: network-proxy
+          cache-on-failure: true
+          workspaces: api -> target
+      - name: Verify proxy contracts and real traffic
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=tmp/test-governance/network-proxy
+          mkdir -p "$evidence"
+          git rev-parse HEAD > "$evidence/candidate-sha.txt"
+          export CARGO_BUILD_JOBS="$(nproc)"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS ltree WITH SCHEMA public'
+          verification_status=0
+          run_test() {
+            local label="$1"
+            shift
+            cargo test --locked --manifest-path api/Cargo.toml "$@" 2>&1 | tee "$evidence/$label.log" || verification_status=1
+            node scripts/node/verify/cargo-test-results.js "$evidence/$label.log" || verification_status=1
+          }
+          run_test contracts -p control-plane-contracts --lib
+          run_test workflow -p orchestration-runtime --lib http_request
+          run_test persistence -p control-plane-postgres-tests --test network_egress_integration
+          run_test traffic -p api-server --lib --features root-1805-consumer-fixture network_proxy
+          run_test workspace-regression -p api-server --lib --features root-1805-consumer-fixture root_1805_http_node
+          exit "$verification_status"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: network-proxy-${{ github.sha }}
+          path: tmp/test-governance/network-proxy/
+          if-no-files-found: error

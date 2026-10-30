@@ -121,12 +121,13 @@ pub async fn dispatch(
     arguments: DispatchArguments,
     injected_path: BTreeMap<String, String>,
 ) -> Result<DispatchSuccess, DispatchError> {
-    dispatch_with_console_router(
-        crate::console_router(state, true),
-        source_headers,
-        entry,
-        arguments,
-        injected_path,
+    let owner = crate::generation_dispatch::GenerationDispatch::acquire(&state)
+        .map_err(|error| DispatchError::Api(error.0))?;
+    let forwarding = forwarding_from_headers(source_headers).map_err(DispatchError::Api)?;
+    legacy_dispatch_result(
+        owner
+            .dispatch(entry, arguments, injected_path, forwarding)
+            .await,
     )
     .await
 }

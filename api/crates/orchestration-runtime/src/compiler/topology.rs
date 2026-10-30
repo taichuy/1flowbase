@@ -50,6 +50,9 @@ const EXECUTABLE_NODE_TYPES: &[&str] = &[
     "human_input",
     "plugin_node",
     "unresolved_node",
+    "loop",
+    "iteration",
+    "container_start",
 ];
 
 type NodeTopologyBuild = (
@@ -263,6 +266,15 @@ pub(super) fn build_nodes_and_topology(
             bail!("edge {edge_id} references unknown target node: {target}");
         }
 
+        if edge.get("containerId").and_then(Value::as_str) != nodes[source].container_id.as_deref()
+        {
+            return Err(FlowValidationError::at_node(
+                target,
+                "/containerId",
+                anyhow!("edge {edge_id} containerId must match its source node ownership boundary"),
+            ));
+        }
+
         let source_handle = edge_handle(edge, "sourceHandle", "source_handle")?;
         let target_handle = edge_handle(edge, "targetHandle", "target_handle")?;
         validate_edge_source_handle(
@@ -374,6 +386,7 @@ pub(super) fn build_nodes_and_topology(
         );
     }
 
+    super::containers::validate_containers(&nodes, &compiled_edges)?;
     super::variable_aggregator_contract::validate_variable_aggregator_topology(
         document, context, &nodes,
     )?;
@@ -467,7 +480,13 @@ fn validate_protocol_context_reference(
     let Some(source) = nodes.get(source_id) else {
         return;
     };
-    if !node_depends_on(nodes, &target.node_id, source_id) {
+    if !super::containers::selector_is_visible(
+        nodes,
+        target,
+        source,
+        selector,
+        "/config/protocol_context",
+    ) {
         return;
     }
     if !matches!(
@@ -542,7 +561,7 @@ fn validate_variable_selector(
         return;
     };
 
-    if !node_depends_on(nodes, &target.node_id, source_id) {
+    if !super::containers::selector_is_visible(nodes, target, source, selector, field_path) {
         issues.push(CompileIssue {
             field_path: Some(field_path.to_owned()),
             node_id: target.node_id.clone(),
@@ -558,6 +577,15 @@ fn validate_variable_selector(
     let Some(output_key) = selector.get(1) else {
         return;
     };
+    if super::containers::container_local_output(source, selector).is_some() {
+        // Local item/index/variables are only visible through the ownership checks above.
+        // A downstream outer node can only consume the container's declared outputs.
+        let local = source.node_id == target.node_id
+            || super::containers::is_enclosing_container(nodes, target, &source.node_id);
+        if local {
+            return;
+        }
+    }
     if matches!(source.node_type.as_str(), "start" | "workflow_start") {
         return;
     }
@@ -582,7 +610,7 @@ fn validate_variable_selector(
     });
 }
 
-fn node_depends_on(
+pub(super) fn node_depends_on(
     nodes: &BTreeMap<String, CompiledNode>,
     node_id: &str,
     dependency_node_id: &str,

@@ -5,9 +5,6 @@ import { selectWorkingDocument } from '../../store/editor/selectors';
 
 export function useContainerNavigation() {
   const document = useAgentFlowEditorStore(selectWorkingDocument);
-  const activeContainerPath = useAgentFlowEditorStore(
-    (state) => state.activeContainerPath
-  );
   const setInteractionState = useAgentFlowEditorStore(
     (state) => state.setInteractionState
   );
@@ -24,21 +21,15 @@ export function useContainerNavigation() {
         null;
 
       setInteractionState({
-        activeContainerPath: [...getContainerPathForNode(document, nodeId), nodeId]
+        activeContainerPath: [
+          ...getContainerPathForNode(document, nodeId),
+          nodeId
+        ],
+        pendingLocateNodeId: nodeId
       });
       setSelection({
         selectedNodeId: firstChildNode,
         selectedNodeIds: firstChildNode ? [firstChildNode] : [],
-        selectedEdgeId: null
-      });
-    },
-    returnToRoot() {
-      const currentContainerId = activeContainerPath.at(-1) ?? null;
-
-      setInteractionState({ activeContainerPath: [] });
-      setSelection({
-        selectedNodeId: currentContainerId,
-        selectedNodeIds: currentContainerId ? [currentContainerId] : [],
         selectedEdgeId: null
       });
     },

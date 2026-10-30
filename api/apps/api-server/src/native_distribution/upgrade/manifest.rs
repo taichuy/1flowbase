@@ -22,6 +22,7 @@ const ROOTS: &[&str] = &[
     "start.sh",
     "upgrade.sh",
     "upgrade.cmd",
+    "upgrade.ps1",
     ".env.example",
 ];
 
@@ -42,6 +43,11 @@ impl Manifest {
             &fs::read(root.join(NAME))
                 .context("Not a supported native installation: manifest missing")?,
         )?;
+        manifest.validate()?;
+        Ok(manifest)
+    }
+    pub fn validate(&self) -> Result<()> {
+        let manifest = self;
         ensure!(manifest.format_version == 1 && manifest.config_schema == 1, "Unsupported native package/config format; early experimental packages are not an upgrade baseline");
         semver::Version::parse(&manifest.version).context("Invalid native package version")?;
         ensure!(
@@ -51,16 +57,18 @@ impl Manifest {
         for (name, hash) in &manifest.files {
             ensure!(
                 !name.contains(['\\', ':'])
-                    && name
-                        .split('/')
-                        .all(|p| !p.is_empty() && p != "." && p != ".."),
+                    && name.split('/').all(|p| !p.is_empty()
+                        && p != "."
+                        && p != ".."
+                        && !p.starts_with(".update-")),
                 "Unsafe manifest path: {name}"
             );
             ensure!(
                 Path::new(name)
                     .components()
                     .all(|p| matches!(p, Component::Normal(_)))
-                    && ROOTS.contains(&name.split('/').next().unwrap()),
+                    && ROOTS
+                        .contains(&name.split_once('/').map_or(name.as_str(), |(root, _)| root)),
                 "Unmanaged manifest path: {name}"
             );
             ensure!(
@@ -74,7 +82,7 @@ impl Manifest {
                 "Manifest missing {required}"
             );
         }
-        Ok(manifest)
+        Ok(())
     }
     pub fn allowed_root(name: &str) -> bool {
         name == NAME || ROOTS.contains(&name)
@@ -89,7 +97,11 @@ impl Manifest {
     pub fn roots(&self) -> BTreeSet<String> {
         self.files
             .keys()
-            .map(|name| name.split('/').next().unwrap().to_owned())
+            .map(|name| {
+                name.split_once('/')
+                    .map_or(name.as_str(), |(root, _)| root)
+                    .to_owned()
+            })
             .chain([NAME.to_owned()])
             .collect()
     }
@@ -101,7 +113,7 @@ impl Manifest {
                 "Not a regular package file: {name}"
             );
             // Checking ancestors also prevents an apparently regular file under a symlink.
-            let mut ancestor = file.parent().unwrap();
+            let mut ancestor = file.parent().context("Invalid package file path")?;
             while ancestor != root {
                 ensure!(
                     !fs::symlink_metadata(ancestor)?.file_type().is_symlink(),
@@ -168,7 +180,7 @@ impl Manifest {
         );
         ensure!(
             semver::Version::parse(&self.version)? >= semver::Version::parse(&old.version)?,
-            "Program downgrades require restoring the matching backup"
+            "Program downgrades are not supported"
         );
         ensure!(
             self.build_id != old.build_id,

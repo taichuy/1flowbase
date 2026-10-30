@@ -1,3 +1,4 @@
+import { getNodeAbsolutePosition } from '../../lib/document/transforms/container-geometry';
 import { useEffect, useRef } from 'react';
 
 import {
@@ -130,12 +131,21 @@ export function useEdgeInteractions() {
         return;
       }
 
+      const sourceNode = document.graph.nodes.find(
+        (node) => node.id === sourceNodeId
+      );
+      const parentPosition = getNodeAbsolutePosition(
+        document,
+        sourceNode?.containerId ?? null
+      );
       const flowPosition = {
         x: Math.round(
-          (anchorCanvasPosition.x - document.editor.viewport.x) / zoom
+          (anchorCanvasPosition.x - document.editor.viewport.x) / zoom -
+            parentPosition.x
         ),
         y: Math.round(
-          (anchorCanvasPosition.y - document.editor.viewport.y) / zoom
+          (anchorCanvasPosition.y - document.editor.viewport.y) / zoom -
+            parentPosition.y
         )
       };
       const nextNode = createNodeDocumentWithCountedAlias(

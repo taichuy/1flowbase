@@ -1,12 +1,13 @@
 use super::*;
+use std::collections::BTreeMap;
 
-struct Fixture {
-    directory: PathBuf,
-    old: PathBuf,
-    new: PathBuf,
+pub(super) struct Fixture {
+    pub(super) directory: PathBuf,
+    pub(super) old: PathBuf,
+    pub(super) new: PathBuf,
 }
 impl Fixture {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let directory =
             std::env::temp_dir().join(format!("native-upgrade-{}", uuid::Uuid::now_v7()));
         fs::create_dir(&directory).unwrap();
@@ -44,7 +45,7 @@ impl Fixture {
                 postgres_major: 18,
                 files: entries,
             };
-            files::json(&root.join(NAME), &manifest).unwrap();
+            files::json(&root.join(manifest::NAME), &manifest).unwrap();
         }
         fs::create_dir_all(old.join("data/postgres")).unwrap();
         fs::write(old.join("data/postgres/PG_VERSION"), "18").unwrap();
@@ -59,14 +60,6 @@ impl Fixture {
             new,
         }
     }
-    fn backup(&self) -> PathBuf {
-        fs::read_dir(self.directory.join(".old installation-upgrade-backups"))
-            .unwrap()
-            .next()
-            .unwrap()
-            .unwrap()
-            .path()
-    }
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -75,10 +68,10 @@ impl Drop for Fixture {
 }
 
 #[test]
-fn upgrade_preserves_configuration_and_user_data_and_restores_matching_snapshot() {
+fn update_preserves_configuration_and_data_without_creating_backups() {
     let f = Fixture::new();
     let original = fs::read(f.old.join(".env")).unwrap();
-    let backup = upgrade(
+    apply_from(
         &f.new,
         &f.old,
         |_| Ok(()),
@@ -92,31 +85,24 @@ fn upgrade_preserves_configuration_and_user_data_and_restores_matching_snapshot(
                 fs::read_to_string(target.join("data/business-file"))?,
                 "original user content"
             );
-            assert!(target.join(STATE).exists());
             fs::write(target.join("data/migration-result"), "new schema")?;
             Ok(())
         },
     )
     .unwrap();
     assert!(!f.old.join(STATE).exists());
-    assert!(backup.join("completed.json").exists());
-    restore(&f.old, &backup).unwrap();
-    assert_eq!(
-        fs::read_to_string(f.old.join(Manifest::executable())).unwrap(),
-        "old"
-    );
+    assert!(!workspace(&f.old).unwrap().exists());
+    assert!(!f
+        .directory
+        .join(".old installation-upgrade-backups")
+        .exists());
+    assert!(f.old.join("data/migration-result").exists());
     assert_eq!(fs::read(f.old.join(".env")).unwrap(), original);
-    assert!(!f.old.join("data/migration-result").exists());
-    assert_eq!(
-        fs::read_to_string(f.old.join("data/business-file")).unwrap(),
-        "original user content"
-    );
 }
-
 #[test]
-fn failed_migration_retains_blocking_state_and_restore_resumes_partial_replacement() {
+fn failed_update_can_resume_without_rolling_back_user_data() {
     let f = Fixture::new();
-    assert!(upgrade(
+    assert!(apply_from(
         &f.new,
         &f.old,
         |_| Ok(()),
@@ -127,87 +113,121 @@ fn failed_migration_retains_blocking_state_and_restore_resumes_partial_replaceme
     )
     .is_err());
     assert!(f.old.join(STATE).exists());
-    assert!(upgrade(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).is_err());
-    // Simulate an interruption after removing some restore targets, including .env.
-    fs::remove_file(f.old.join(".env")).unwrap();
-    fs::remove_dir_all(f.old.join("web")).unwrap();
-    fs::remove_file(f.old.join("data/postgres/PG_VERSION")).unwrap();
-    restore(&f.old, &f.backup()).unwrap();
-    assert!(!f.old.join(STATE).exists());
-    assert_eq!(
-        fs::read_to_string(f.old.join("data/business-file")).unwrap(),
-        "original user content"
-    );
-}
-
-#[test]
-fn preflight_rejects_corrupt_wrong_platform_running_and_overlapping_targets() {
-    let f = Fixture::new();
-    let original = fs::read(f.old.join(".env")).unwrap();
-    let guard = lock(&f.old.join("data/instance.lock")).unwrap();
-    assert!(upgrade(
+    // Emulate an interrupted atomic file write and a partially replaced program tree.
+    fs::write(f.old.join("web/.update-index.html.tmp"), "partial new file").unwrap();
+    fs::remove_file(f.old.join("web/index.html")).unwrap();
+    apply_from(
         &f.new,
         &f.old,
         |_| Ok(()),
-        |_, _| panic!("validation must not run")
+        |target, _| {
+            assert_eq!(
+                fs::read_to_string(target.join("data/business-file"))?,
+                "migration changed data"
+            );
+            Ok(())
+        },
     )
-    .is_err());
+    .unwrap();
+    assert!(!f.old.join(STATE).exists());
+    assert!(!f.old.join("web/.update-index.html.tmp").exists());
+    assert!(!workspace(&f.old).unwrap().exists());
+}
+#[test]
+fn preflight_refuses_corruption_running_processes_platform_pg_and_overlap() {
+    let f = Fixture::new();
+    let original = fs::read(f.old.join(Manifest::executable())).unwrap();
+    let guard = lock(&f.old.join("data/instance.lock")).unwrap();
+    assert!(apply_from(&f.new, &f.old, |_| Ok(()), |_, _| panic!("must not run")).is_err());
     drop(guard);
     fs::write(f.old.join("data/postgres/postmaster.pid"), "123").unwrap();
-    assert!(upgrade(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).is_err());
+    assert!(apply_from(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).is_err());
     fs::remove_file(f.old.join("data/postgres/postmaster.pid")).unwrap();
-    assert!(upgrade(&f.old, &f.old, |_| Ok(()), |_, _| Ok(())).is_err());
+    assert!(apply_from(&f.old, &f.old, |_| Ok(()), |_, _| Ok(())).is_err());
     let mut manifest = Manifest::read(&f.new).unwrap();
     manifest.postgres_major = 19;
-    files::json(&f.new.join(NAME), &manifest).unwrap();
-    assert!(upgrade(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).is_err());
+    files::json(&f.new.join(manifest::NAME), &manifest).unwrap();
+    assert!(apply_from(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).is_err());
     manifest.postgres_major = 18;
     manifest.arch = "wrong".into();
-    files::json(&f.new.join(NAME), &manifest).unwrap();
-    assert!(upgrade(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).is_err());
+    files::json(&f.new.join(manifest::NAME), &manifest).unwrap();
+    assert!(apply_from(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).is_err());
     manifest.arch = if cfg!(target_arch = "aarch64") {
         "arm64"
     } else {
         "x64"
     }
     .into();
-    files::json(&f.new.join(NAME), &manifest).unwrap();
+    files::json(&f.new.join(manifest::NAME), &manifest).unwrap();
     fs::write(f.new.join(Manifest::executable()), "corrupted").unwrap();
-    assert!(upgrade(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).is_err());
-    assert_eq!(fs::read(f.old.join(".env")).unwrap(), original);
+    assert!(apply_from(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).is_err());
+    assert_eq!(
+        fs::read(f.old.join(Manifest::executable())).unwrap(),
+        original
+    );
     assert!(!f.old.join(STATE).exists());
 }
-
 #[test]
-fn corrupted_backup_and_manifest_escape_are_rejected_before_replacement() {
+fn corrupted_pending_package_and_unsafe_manifest_are_not_applied() {
     let f = Fixture::new();
-    let backup = upgrade(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).unwrap();
-    fs::write(backup.join("snapshot/data/business-file"), "corrupt").unwrap();
-    assert!(restore(&f.old, &backup).is_err());
-    assert_eq!(
-        fs::read_to_string(f.old.join(Manifest::executable())).unwrap(),
-        "new"
-    );
+    assert!(apply_from(&f.new, &f.old, |_| Ok(()), |_, _| bail!("fail startup")).is_err());
+    let work = workspace(&f.old).unwrap();
+    fs::write(work.join("package/web/index.html"), "corrupted").unwrap();
+    assert!(apply_from(&f.new, &f.old, |_| Ok(()), |_, _| panic!("must not run")).is_err());
     let mut manifest = Manifest::read(&f.new).unwrap();
-    manifest.files.insert("../escape".into(), "0".repeat(64));
-    files::json(&f.new.join(NAME), &manifest).unwrap();
+    manifest.files.insert("../data".into(), "0".repeat(64));
+    files::json(&f.new.join(manifest::NAME), &manifest).unwrap();
     assert!(Manifest::read(&f.new).is_err());
 }
-
 #[test]
-fn missing_configuration_and_space_fail_before_replacement() {
+fn missing_configuration_and_insufficient_space_do_not_replace_program() {
     let f = Fixture::new();
+    files::require_space(&f.directory, 0).unwrap();
     assert!(files::require_space(&f.directory, u64::MAX).is_err());
-    let content = fs::read_to_string(f.old.join(".env")).unwrap();
+    assert!(apply_from(
+        &f.new,
+        &f.old,
+        |_| bail!("new required configuration missing"),
+        |_, _| Ok(())
+    )
+    .is_err());
+    let env = fs::read_to_string(f.old.join(".env")).unwrap();
     fs::write(
         f.old.join(".env"),
-        content.replace("API_DATABASE_URL=", "IGNORED_DATABASE_URL="),
+        env.replace("API_DATABASE_URL=", "IGNORED_DATABASE_URL="),
     )
     .unwrap();
-    assert!(upgrade(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).is_err());
+    assert!(apply_from(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).is_err());
     assert_eq!(
         fs::read_to_string(f.old.join(Manifest::executable())).unwrap(),
         "old"
     );
     assert!(!f.old.join(STATE).exists());
+}
+
+#[test]
+fn corrective_release_removes_assets_and_temporary_files_from_failed_attempts() {
+    let f = Fixture::new();
+    fs::write(f.new.join("web/failed-release.js"), "failed release asset").unwrap();
+    let mut manifest = Manifest::read(&f.new).unwrap();
+    manifest.files.insert(
+        "web/failed-release.js".into(),
+        files::hash(&f.new.join("web/failed-release.js")).unwrap(),
+    );
+    files::json(&f.new.join(manifest::NAME), &manifest).unwrap();
+    assert!(apply_from(&f.new, &f.old, |_| Ok(()), |_, _| bail!("failed release")).is_err());
+    fs::write(
+        f.old.join("web/.update-failed-release.js.tmp"),
+        "partial staged file",
+    )
+    .unwrap();
+    fs::remove_file(f.new.join("web/failed-release.js")).unwrap();
+    manifest.files.remove("web/failed-release.js");
+    manifest.version = "1.2.0".into();
+    manifest.build_id = "corrective-release".into();
+    files::json(&f.new.join(manifest::NAME), &manifest).unwrap();
+    apply_from(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).unwrap();
+    assert!(!f.old.join("web/failed-release.js").exists());
+    assert!(!f.old.join("web/.update-failed-release.js.tmp").exists());
+    Manifest::read(&f.old).unwrap().verify(&f.old).unwrap();
 }

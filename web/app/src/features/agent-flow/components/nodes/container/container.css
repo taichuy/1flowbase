@@ -1,0 +1,77 @@
+.agent-flow-container {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  position: relative;
+}
+.agent-flow-container--selected {
+  border: 2px solid var(--container-selection);
+}
+.agent-flow-container__header {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  cursor: grab;
+}
+.agent-flow-container__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--container-surface);
+  background: var(--container-accent);
+  font-size: 18px;
+}
+.agent-flow-container__title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-flow-container__issues {
+  color: var(--status-failed);
+}
+.agent-flow-container__body {
+  position: absolute;
+  inset: 56px 0 0;
+  border-radius: 0 0 15px 15px;
+  background-color: var(--container-body);
+  background-image: radial-gradient(var(--container-dots) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+.agent-flow-container-start {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--container-surface);
+  box-sizing: border-box;
+}
+.agent-flow-container-start__icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--container-selection);
+  color: var(--container-surface);
+  font-size: 14px;
+}
+.agent-flow-container-start--selected {
+  outline: 2px solid var(--container-selection);
+}
+
+.agent-flow-container-start .agent-flow-node-handle--source.react-flow__handle {
+  right: -16px;
+}

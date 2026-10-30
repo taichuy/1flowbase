@@ -93,6 +93,7 @@ fn run_detail_response_moves_waiting_prefix_answer_into_answer_snapshot() {
         ),
         node_runs: vec![
             domain::NodeRunRecord {
+                execution_identity: None,
                 id: waiting_node_run_id,
                 flow_run_id,
                 node_id: "node-llm-2".to_string(),
@@ -108,6 +109,7 @@ fn run_detail_response_moves_waiting_prefix_answer_into_answer_snapshot() {
                 finished_at: None,
             },
             domain::NodeRunRecord {
+                execution_identity: None,
                 id: virtual_answer_node_run_id,
                 flow_run_id,
                 node_id: "node-answer".to_string(),
@@ -206,6 +208,7 @@ fn ac_004_answer_node_truth_waiting_snapshot_uses_flow_run_output_without_synthe
             serde_json::json!({ "answer": "checking policy" }),
         ),
         node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
             id: waiting_node_run_id,
             flow_run_id,
             node_id: "node-llm".to_string(),
@@ -290,6 +293,7 @@ fn stitched_run_detail_response_fixture() -> (ApplicationRunDetailResponse, Uuid
             ),
             node_runs: vec![
                 domain::NodeRunRecord {
+                    execution_identity: None,
                     id: source_node_run_id,
                     flow_run_id: source_flow_run_id,
                     node_id: "node-llm".to_string(),
@@ -314,6 +318,7 @@ fn stitched_run_detail_response_fixture() -> (ApplicationRunDetailResponse, Uuid
                     finished_at: Some(OffsetDateTime::UNIX_EPOCH),
                 },
                 domain::NodeRunRecord {
+                    execution_identity: None,
                     id: source_answer_node_run_id,
                     flow_run_id: source_flow_run_id,
                     node_id: "node-answer".to_string(),
@@ -414,6 +419,7 @@ fn visible_internal_llm_route_trace_uses_precise_node_run_id_before_reused_node_
         ),
         node_runs: vec![
             domain::NodeRunRecord {
+                execution_identity: None,
                 id: routed_node_run_id,
                 flow_run_id,
                 node_id: "node-llm".to_string(),
@@ -432,6 +438,7 @@ fn visible_internal_llm_route_trace_uses_precise_node_run_id_before_reused_node_
                 finished_at: Some(OffsetDateTime::UNIX_EPOCH),
             },
             domain::NodeRunRecord {
+                execution_identity: None,
                 id: later_node_run_id,
                 flow_run_id,
                 node_id: "node-llm".to_string(),
@@ -535,6 +542,7 @@ fn visible_internal_llm_fusion_branch_trace_uses_branch_node_run_payloads() {
         ),
         node_runs: vec![
             domain::NodeRunRecord {
+                execution_identity: None,
                 id: main_node_run_id,
                 flow_run_id,
                 node_id: "node-main-llm".to_string(),
@@ -565,6 +573,7 @@ fn visible_internal_llm_fusion_branch_trace_uses_branch_node_run_payloads() {
                 finished_at: Some(OffsetDateTime::UNIX_EPOCH),
             },
             domain::NodeRunRecord {
+                execution_identity: None,
                 id: branch_node_run_id,
                 flow_run_id,
                 node_id: "node-panel-a".to_string(),
@@ -684,6 +693,7 @@ fn run_detail_response_hides_historical_waiting_prefix_after_run_finishes() {
         ),
         node_runs: vec![
             domain::NodeRunRecord {
+                execution_identity: None,
                 id: waiting_node_run_id,
                 flow_run_id,
                 node_id: "node-llm-2".to_string(),
@@ -699,6 +709,7 @@ fn run_detail_response_hides_historical_waiting_prefix_after_run_finishes() {
                 finished_at: Some(OffsetDateTime::UNIX_EPOCH),
             },
             domain::NodeRunRecord {
+                execution_identity: None,
                 id: virtual_answer_node_run_id,
                 flow_run_id,
                 node_id: "node-answer".to_string(),
@@ -727,6 +738,7 @@ fn run_detail_response_hides_historical_waiting_prefix_after_run_finishes() {
                 finished_at: Some(OffsetDateTime::UNIX_EPOCH),
             },
             domain::NodeRunRecord {
+                execution_identity: None,
                 id: final_answer_node_run_id,
                 flow_run_id,
                 node_id: "node-answer".to_string(),

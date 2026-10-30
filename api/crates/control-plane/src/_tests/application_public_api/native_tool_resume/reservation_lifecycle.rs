@@ -4,6 +4,7 @@ use crate::application_public_api::callback_resume::{
     PublishedCallbackReservation, PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
     ResumePublishedCallbackCommand,
 };
+use crate::application_public_api::run_service::ApplicationPublishedRunControlRepository;
 
 type ReservationService = ApplicationPublishedCallbackResumeService<
     ApplicationPublicApiTestRepository,
@@ -194,4 +195,199 @@ async fn waiting_predecessor_reclassifies_when_aged_execution_owner_expires() {
             .unwrap(),
         PreparedPublishedCallbackResume::Resume { .. }
     ));
+}
+
+#[tokio::test]
+async fn native_tool_read_plan_reuses_parked_attempt_without_changing_generic_replay_rules() {
+    let (repository, actor, callback, mut command, service) = reservation_fixture().await;
+    command.source = PublishedCallbackResumeSource::NativeAgent;
+    command.native_transport = None;
+    command.responses_continuation = None;
+    let flow_run_id = repository
+        .get_published_callback_task(callback)
+        .await
+        .unwrap()
+        .unwrap()
+        .flow_run_id;
+    command.target = PublishedCallbackResumeTarget::FlowRun {
+        flow_run_id,
+        callback_task_id: callback,
+    };
+    assert!(matches!(
+        service
+            .prepare_callback_resume_for_actor(actor.clone(), &command)
+            .await
+            .unwrap(),
+        PreparedPublishedCallbackResume::NativeToolResume { .. }
+    ));
+    assert!(
+        repository.callback_resume_attempts().is_empty(),
+        "classification is read only"
+    );
+    let PublishedCallbackReservation::Acquired(first) = service
+        .reserve_native_callback_reservation_for_actor(actor.clone(), &command)
+        .await
+        .unwrap()
+    else {
+        panic!("existing CAS must own Native tool admission")
+    };
+    let processing = repository.callback_resume_attempts();
+    assert!(service
+        .prepare_callback_resume_for_actor(actor.clone(), &command)
+        .await
+        .is_err());
+    assert_eq!(repository.callback_resume_attempts(), processing);
+    assert!(service
+        .release_unstarted_native_callback(&first)
+        .await
+        .unwrap());
+    for changed_payload in [false, true] {
+        let mut next = command.clone();
+        if changed_payload {
+            next.response_payload =
+                json!({"tool_results":[{"tool_call_id":"custom","content":"later"}]});
+        }
+        let parked = repository.callback_resume_attempts();
+        assert!(matches!(
+            service
+                .prepare_callback_resume_for_actor(actor.clone(), &next)
+                .await
+                .unwrap(),
+            PreparedPublishedCallbackResume::NativeToolResume { .. }
+        ));
+        assert_eq!(
+            repository.callback_resume_attempts(),
+            parked,
+            "the plan never changes request/fence"
+        );
+        let PublishedCallbackReservation::Acquired(owner) = service
+            .reserve_native_callback_reservation_for_actor(actor.clone(), &next)
+            .await
+            .unwrap()
+        else {
+            panic!("the original reservation owner must reacquire")
+        };
+        assert_eq!(first.attempt_id(), owner.attempt_id());
+        assert_ne!(first, owner);
+        assert!(!service
+            .release_unstarted_native_callback(&first)
+            .await
+            .unwrap());
+        assert!(service
+            .release_unstarted_native_callback(&owner)
+            .await
+            .unwrap());
+    }
+    // Both read classifications may succeed, but only the existing CAS can win.
+    for _ in 0..2 {
+        assert!(matches!(
+            service
+                .prepare_callback_resume_for_actor(actor.clone(), &command)
+                .await
+                .unwrap(),
+            PreparedPublishedCallbackResume::NativeToolResume { .. }
+        ));
+    }
+    let (one, two) = tokio::join!(
+        service.reserve_native_callback_reservation_for_actor(actor.clone(), &command),
+        service.reserve_native_callback_reservation_for_actor(actor.clone(), &command),
+    );
+    assert_eq!(usize::from(one.is_ok()) + usize::from(two.is_ok()), 1);
+    let PublishedCallbackReservation::Acquired(winner) = one.or(two).unwrap() else {
+        panic!("only a fenced acquisition grants the prepared route")
+    };
+    assert!(!service
+        .release_unstarted_native_callback(&first)
+        .await
+        .unwrap());
+    assert!(service
+        .release_unstarted_native_callback(&winner)
+        .await
+        .unwrap());
+    let mut foreign = command.clone();
+    foreign.source = PublishedCallbackResumeSource::OpenAiChat;
+    let before = repository.callback_resume_attempts();
+    assert!(service
+        .prepare_callback_resume_for_actor(actor, &foreign)
+        .await
+        .is_err());
+    assert_eq!(repository.callback_resume_attempts(), before);
+}
+
+#[tokio::test]
+async fn native_tool_read_plan_excludes_non_tools_other_sources_and_non_pending_runs() {
+    for source in [
+        PublishedCallbackResumeSource::NativeAgent,
+        PublishedCallbackResumeSource::OpenAiResponses,
+        PublishedCallbackResumeSource::OpenAiChat,
+        PublishedCallbackResumeSource::AnthropicMessages,
+    ] {
+        let (repository, actor, run) = fixture().await;
+        let callback = repository.seed_pending_callback_task(run);
+        let service = ApplicationPublishedCallbackResumeService::new(
+            repository.clone(),
+            RecordingNativeCallbackConsumer {
+                repository: repository.clone(),
+                calls: Default::default(),
+            },
+        );
+        let command = ResumePublishedCallbackCommand {
+            responses_continuation: None,
+            transport_connection_scope: None,
+            observation_context: None,
+            reserved_attempt_id: None,
+            native_transport: None,
+            bearer_token: String::new(),
+            target: PublishedCallbackResumeTarget::FlowRun {
+                flow_run_id: run,
+                callback_task_id: callback.id,
+            },
+            source,
+            response_payload: json!({"answer":"yes"}),
+            response_mode: Some("streaming".into()),
+        };
+        assert!(
+            matches!(
+                service
+                    .prepare_callback_resume_for_actor(actor, &command)
+                    .await
+                    .unwrap(),
+                PreparedPublishedCallbackResume::Resume { .. }
+            ),
+            "non-tool callbacks retain ordinary execution"
+        );
+        assert!(repository.callback_resume_attempts().is_empty());
+    }
+    for variant in ["responses", "chat", "anthropic", "running", "completed"] {
+        let (repository, actor, callback, mut command, service) = reservation_fixture().await;
+        let flow_run_id = repository
+            .get_published_callback_task(callback)
+            .await
+            .unwrap()
+            .unwrap()
+            .flow_run_id;
+        command.source = PublishedCallbackResumeSource::NativeAgent;
+        command.native_transport = None;
+        match variant {
+            "responses" => command.source = PublishedCallbackResumeSource::OpenAiResponses,
+            "chat" => command.source = PublishedCallbackResumeSource::OpenAiChat,
+            "anthropic" => command.source = PublishedCallbackResumeSource::AnthropicMessages,
+            "running" => {
+                repository.set_flow_run_status_for_test(flow_run_id, domain::FlowRunStatus::Running)
+            }
+            "completed" => repository.complete_callback_task_for_test(callback),
+            _ => unreachable!(),
+        }
+        assert!(
+            matches!(
+                service
+                    .prepare_callback_resume_for_actor(actor, &command)
+                    .await
+                    .unwrap(),
+                PreparedPublishedCallbackResume::Resume { .. }
+            ),
+            "{variant}"
+        );
+        assert!(repository.callback_resume_attempts().is_empty());
+    }
 }

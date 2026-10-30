@@ -38,6 +38,7 @@ export type {
 
 export const nodeDefinitions: NodeDefinitionMap = {
   start: startNodeDefinition,
+  container_start: { label: 'Container start', sections: [] },
   answer: answerNodeDefinition,
   llm: llmNodeDefinition,
   knowledge_retrieval: knowledgeRetrievalNodeDefinition,

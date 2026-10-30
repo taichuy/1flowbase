@@ -2,6 +2,76 @@ use super::*;
 use control_plane::ports::RuntimeEventCloseReason;
 
 #[test]
+fn no_mcp_responses_execution_survives_g3_publication_and_g2_body_drop() {
+    run_compat_route_test(|| async {
+        let (state, _) = test_api_state_with_database_url().await;
+        let config = test_config();
+        let initial = crate::app_with_state_and_config(state.clone(), &config);
+        let publisher = crate::managed_publication::ManagedGenerationPublisher::new(
+            &state,
+            config,
+            vec![],
+            initial,
+        )
+        .unwrap();
+        let ingress = publisher.ingress();
+        publisher.publish(publisher.prepare(vec![], Default::default()).await.unwrap());
+        let (token, gate) =
+            setup_published_app_with_provider_gate(&ingress, "G2 no MCP lease").await;
+        let g2 = publisher.current_generation().unwrap();
+        let g2_id = g2.owner.generation_id();
+        let probe = Arc::downgrade(&g2.owner);
+        let retired = g2.owner.retirement_notification();
+        let response = post_json(
+            &ingress,
+            "/v1/responses",
+            ("authorization", format!("Bearer {token}")),
+            responses_body(true),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let run_id = wait_for_active_streaming_run(&g2.state).await;
+        wait_for_provider_partial_delta(&g2.state, run_id, &gate).await;
+        let plan: Value = sqlx::query_scalar(
+            "select p.plan from flow_runs r join flow_compiled_plans p on p.id=r.compiled_plan_id where r.id=$1",
+        ).bind(run_id).fetch_one(g2.state.store.pool()).await.unwrap();
+        for node in plan["nodes"].as_object().unwrap().values() {
+            let config = node["config"].as_object().unwrap();
+            assert!(config
+                .get("mcp_instance_ids")
+                .is_none_or(|ids| ids.is_null() || ids.as_array().is_some_and(Vec::is_empty)));
+        }
+        let store = g2.state.store.clone();
+        drop(g2);
+        publisher.publish(publisher.prepare(vec![], Default::default()).await.unwrap());
+        assert_ne!(
+            publisher
+                .current_generation()
+                .unwrap()
+                .owner
+                .generation_id(),
+            g2_id
+        );
+        drop(response);
+        assert!(
+            probe.upgrade().is_some(),
+            "G2 execution must outlive publication and HTTP body"
+        );
+        let status: String = sqlx::query_scalar("select status from flow_runs where id=$1")
+            .bind(run_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+        assert_eq!(status, "running", "provider barrier still holds execution");
+        gate.release();
+        timeout(Duration::from_secs(10), retired.notified())
+            .await
+            .expect("execution and independent completion must both release G2");
+        assert!(probe.upgrade().is_none());
+    });
+}
+
+#[test]
 fn ac_002_compatible_turn_subscribes_before_execution_can_append() {
     run_compat_route_test(|| async {
         let runtime_events = Arc::new(SubscribeBeforeAppendRuntimeEventStream::new());

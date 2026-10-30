@@ -27,6 +27,8 @@ mod installed_provider_package;
 #[path = "extension_services/js_dependency.rs"]
 pub mod js_dependency;
 pub mod lifecycle_outbox_dispatcher;
+#[path = "system_services/local_command.rs"]
+pub mod local_command;
 pub mod mcp_bundle;
 pub mod mcp_management;
 pub mod member;

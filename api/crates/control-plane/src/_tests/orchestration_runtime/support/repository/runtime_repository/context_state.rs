@@ -55,7 +55,7 @@ impl InMemoryOrchestrationRuntimeRepository {
     pub(super) fn memory_claim_runtime_event_deliveries(
         &self,
         input: &crate::ports::ClaimRuntimeEventDeliveriesInput,
-    ) -> Result<Vec<crate::ports::RuntimeEventDeliveryClaim>> {
+    ) -> Result<crate::ports::RuntimeEventDeliveryBatch> {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
         let now = OffsetDateTime::now_utc();
         let events = inner
@@ -63,7 +63,68 @@ impl InMemoryOrchestrationRuntimeRepository {
             .get(&input.flow_run_id)
             .cloned()
             .unwrap_or_default();
+        let history = inner
+            .recovery_history_by_flow_run_id
+            .get(&input.flow_run_id)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let (lower, ordinal) = match input.scope {
+            crate::ports::RuntimeEventDeliveryScope::Start => (0, -1),
+            crate::ports::RuntimeEventDeliveryScope::Resume { callback_task_id } => {
+                let key = format!("waiting_callback:{callback_task_id}");
+                let anchor = history
+                    .iter()
+                    .find(|h| {
+                        h.idempotency_key == key
+                            && h.state_code == domain::RecoveryStateCode::WaitingCallback
+                    })
+                    .ok_or_else(|| anyhow::anyhow!("runtime_event_delivery_scope_unresolved"))?;
+                (anchor.coordinate.event_sequence, anchor.sequence)
+            }
+            crate::ports::RuntimeEventDeliveryScope::Unresolved => {
+                return Err(crate::errors::ControlPlaneError::Conflict(
+                    "runtime_event_delivery_scope_unresolved",
+                )
+                .into())
+            }
+        };
+        let upper = history
+            .iter()
+            .filter(|h| {
+                h.sequence > ordinal
+                    && matches!(
+                        h.state_code,
+                        domain::RecoveryStateCode::WaitingCallback
+                            | domain::RecoveryStateCode::WaitingHuman
+                    )
+            })
+            .min_by_key(|h| h.sequence)
+            .map(|h| crate::ports::RuntimeEventDeliveryBoundary {
+                recovery_id: h.id,
+                recovery_sequence: h.sequence,
+                event_sequence: h.coordinate.event_sequence,
+            });
+        let closed_proof = upper.map(|upper| crate::ports::RuntimeEventDeliveryClosedProof {
+            flow_run_id: input.flow_run_id,
+            scope: input.scope,
+            lower_sequence: lower,
+            lower_recovery_sequence: ordinal,
+            upper,
+        });
+        let events = events
+            .into_iter()
+            .filter(|e| {
+                e.sequence > lower
+                    && upper.is_none_or(|upper| e.sequence < upper.event_sequence)
+                    && e.payload.get("committed_delivery").and_then(Value::as_bool) == Some(true)
+            })
+            .collect::<Vec<_>>();
         let mut deliveries = Vec::new();
+        let eligible = if input.include_membership {
+            events.clone()
+        } else {
+            Vec::new()
+        };
         for event in events {
             if deliveries.len() == input.limit
                 || inner.runtime_delivery_acked.contains(&event.id)
@@ -93,7 +154,11 @@ impl InMemoryOrchestrationRuntimeRepository {
                 lease_expires_at,
             });
         }
-        Ok(deliveries)
+        Ok(crate::ports::RuntimeEventDeliveryBatch {
+            closed_proof,
+            claims: deliveries,
+            events: eligible,
+        })
     }
 
     pub(super) fn memory_ack_runtime_event_delivery(

@@ -163,7 +163,8 @@ async fn external_auth_complete_boot_catalog_recognizes_all_safe_contracts() {
     use interface_runtime::InterfaceContract;
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let boot = state.extension_boot_snapshot.as_ref().unwrap();
-    boot.publish_complete_catalog(&state)
+    let _owner = boot
+        .publish_complete_catalog(&state)
         .expect("complete managed catalog must accept every external-auth binding at startup");
     let registry = boot.interface_registry().unwrap().snapshot();
     for binding in [

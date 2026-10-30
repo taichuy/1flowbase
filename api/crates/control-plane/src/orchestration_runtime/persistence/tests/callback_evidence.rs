@@ -50,6 +50,7 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
             }),
             variable_pool: Map::new(),
             checkpoint_snapshot: Some(CheckpointSnapshot {
+                container_state: None,
                 next_node_index: 0,
                 variable_pool: Map::new(),
                 active_node_ids: vec![node.node_id.clone()],
@@ -273,6 +274,7 @@ async fn semantic_round_evidence_is_atomic_with_callback_and_checkpoint() {
             }),
             variable_pool: Map::new(),
             checkpoint_snapshot: Some(CheckpointSnapshot {
+                container_state: None,
                 next_node_index: 0,
                 variable_pool: [(node.node_id.clone(), json!({"__llm_tool_callback": {"pending_tool_calls":payload["tool_calls"],"history":[],"system":[]}}))].into_iter().collect(),
                 active_node_ids: vec![node.node_id.clone()],

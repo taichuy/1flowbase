@@ -21,171 +21,40 @@ permissions:
   contents: read
 
 jobs:
-  select:
+  validate:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.select.outputs.matrix }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: '24.22.1'
-      - name: Validate release inputs
+      - name: Validate manual release inputs
         env:
+          RELEASE_TARGET: ${{ inputs.target }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           RELEASE_PUBLISH: ${{ inputs.publish }}
-          RELEASE_TARGET: ${{ inputs.target }}
         run: |
           node <<'NODE'
-          const { RELEASE_TAG: tag, RELEASE_TARGET: target, RELEASE_PUBLISH: publish } = process.env;
-          if (tag && (target !== 'all' || !/^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(tag))) throw new Error('Release requires all targets and a valid version tag');
-          if (publish === 'true' && !tag) throw new Error('Publishing requires release_tag');
-          NODE
-      - name: Prepare pinned bootstrap resources
-        run: node scripts/node/native-release/resources.js tmp/native-resources
-      - uses: actions/upload-artifact@v4
-        with:
-          name: native-bootstrap-resources
-          path: tmp/native-resources
-      - id: select
-        env:
-          TARGET: ${{ inputs.target }}
-        run: |
-          node <<'NODE' >> "$GITHUB_OUTPUT"
-          const entries = [
-            {target:'linux-x64', platform:'linux', arch:'x64', runner:'ubuntu-24.04', suffix:''},
-            {target:'linux-arm64', platform:'linux', arch:'arm64', runner:'ubuntu-24.04-arm', suffix:''},
-            {target:'macos-x64', platform:'macos', arch:'x64', runner:'macos-15-intel', suffix:''},
-            {target:'macos-arm64', platform:'macos', arch:'arm64', runner:'macos-15', suffix:''},
-            {target:'windows-x64', platform:'windows', arch:'x64', runner:'windows-2025', suffix:'.exe'}
-          ];
-          const include = entries.filter(item => process.env.TARGET === 'all' || item.target === process.env.TARGET);
-          if (!include.length) throw new Error('Unsupported target');
-          console.log('matrix=' + JSON.stringify({include}));
+          require('./scripts/node/native-release/plan.js').validateBuildInputs({
+            target: process.env.RELEASE_TARGET, tag: process.env.RELEASE_TAG,
+            publish: process.env.RELEASE_PUBLISH === 'true'
+          });
           NODE
 
   build:
-    needs: select
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '24.22.1'
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: '1.99.0'
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: api
-          key: native-${{ matrix.target }}
-          cache-on-failure: true
-          cache-workspace-crates: true
-      - name: Fetch pinned PostgreSQL
-        env:
-          NATIVE_TARGET: ${{ matrix.target }}
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const { fetchPostgres } = require('./scripts/node/native-release/fetch-postgres.js');
-          const root = fetchPostgres(process.env.NATIVE_TARGET, 'tmp/native-postgres');
-          fs.appendFileSync(process.env.GITHUB_ENV, `FLOWBASE_TEST_POSTGRES_ROOT=${root}\n`);
-          NODE
-      - name: Test native behavior and build backend
-        run: |
-          mkdir -p tmp/test-governance/native-release
-          node --test scripts/node/native-release/_tests/*.test.js
-          cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution
-          cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution::tests::bundled_postgres_uses_tcp_only -- --ignored --exact
-          cargo build --manifest-path api/Cargo.toml --locked --release -p api-server --bin api-server --bin system_recovery
-      - name: Preserve native backend artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-backend-${{ matrix.target }}
-          path: |
-            api/target/release/api-server${{ matrix.suffix }}
-            api/target/release/system_recovery${{ matrix.suffix }}
-          if-no-files-found: error
-      - name: Build web
-        run: |
-          npm install --global pnpm@12.11.2
-          pnpm --dir web install --frozen-lockfile
-          pnpm --dir web build
-      - uses: actions/download-artifact@v4
-        with:
-          name: native-bootstrap-resources
-          path: tmp/native-resources
-      - name: Package native distribution
-        env:
-          NATIVE_TARGET: ${{ matrix.target }}
-          NATIVE_PLATFORM: ${{ matrix.platform }}
-          NATIVE_ARCH: ${{ matrix.arch }}
-          NATIVE_SUFFIX: ${{ matrix.suffix }}
-          NATIVE_RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          node scripts/node/native-release/package.js \
-            --platform "$NATIVE_PLATFORM" --arch "$NATIVE_ARCH" \
-            --api-binary "api/target/release/api-server$NATIVE_SUFFIX" \
-            --recovery-binary "api/target/release/system_recovery$NATIVE_SUFFIX" \
-            --web-dir web/app/dist --postgres-dir "$FLOWBASE_TEST_POSTGRES_ROOT" --resources-dir tmp/native-resources --out tmp/native-release \
-            --version "$(node -e 'const tag = process.env.NATIVE_RELEASE_TAG; console.log(tag ? tag.replace(/^v/, "") : require("./web/app/package.json").version)')"
-      - name: Extract and verify the actual distribution archive
-        env:
-          NATIVE_TARGET: ${{ matrix.target }}
-        run: node scripts/node/native-release/unpack.js "tmp/native-release/1flowbase-$NATIVE_TARGET" tmp/native-extracted
-      - name: Verify packaged application bootstrap and reopen
-        env:
-          NATIVE_TARGET: ${{ matrix.target }}
-        run: |
-          export FLOWBASE_TEST_PACKAGE_ROOT="$(node -e 'console.log(require("node:path").resolve("tmp/native-extracted/1flowbase-" + process.env.NATIVE_TARGET))')"
-          cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution::tests::bootstrap::packaged_application_bootstraps_and_reopens -- --ignored --exact
-      - name: Verify offline upgrade and complete recovery
-        env:
-          NATIVE_TARGET: ${{ matrix.target }}
-        run: node scripts/node/native-release/upgrade-smoke.js "tmp/native-extracted/1flowbase-$NATIVE_TARGET" tmp/test-governance/native-release/upgrade
-      # Node 24.22.1 bundles undici 7.30.1, whose macOS socket reset path
-      # can crash fetch with setTypeOfService EINVAL (nodejs/undici#6075).
-      # Node 26.7.0 bundles the fixed undici 8.9.0; only the macOS HTTP probe uses it.
-      - name: Use fixed HTTP test runtime on macOS
-        if: runner.os == 'macOS'
-        uses: actions/setup-node@v5
-        with:
-          node-version: '26.7.0'
-      - name: Verify startup, restart and shutdown
-        if: runner.os != 'Windows'
-        env:
-          NATIVE_TARGET: ${{ matrix.target }}
-        run: node scripts/node/native-release/smoke.js "tmp/native-extracted/1flowbase-$NATIVE_TARGET" tmp/test-governance/native-release/smoke
-      - uses: actions/upload-artifact@v4
-        with:
-          name: 1flowbase-${{ matrix.target }}
-          path: |
-            tmp/native-release/*.tar.gz
-            tmp/native-release/*.zip
-          if-no-files-found: error
-
-      - name: Preserve bounded native validation evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-evidence-${{ matrix.target }}
-          path: |
-            tmp/test-governance/native-release/**/result.json
-            tmp/test-governance/native-release/**/command-*.log
-            tmp/test-governance/native-release/**/startup-*.log
-          if-no-files-found: ignore
+    needs: validate
+    uses: ./.github/workflows/native-build.yml
+    with:
+      target: ${{ inputs.target }}
+      release_tag: ${{ inputs.release_tag }}
 
   release:
     if: inputs.release_tag != '' && inputs.target == 'all'
     needs: build
     runs-on: ubuntu-latest
+    concurrency:
+      group: release-${{ github.repository }}-${{ inputs.release_tag }}
+      cancel-in-progress: false
     permissions:
       contents: write
       actions: read

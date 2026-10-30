@@ -320,7 +320,7 @@ pub(crate) trait AssistantRuntimeToolInvokerFactory: Send + Sync + 'static {
 }
 
 struct StateAssistantRuntimeToolInvokerFactory {
-    state: Arc<ApiState>,
+    state: std::sync::Weak<ApiState>,
 }
 
 impl AssistantRuntimeToolInvokerFactory for StateAssistantRuntimeToolInvokerFactory {
@@ -334,10 +334,13 @@ impl AssistantRuntimeToolInvokerFactory for StateAssistantRuntimeToolInvokerFact
                 + 'a,
         >,
     > {
-        Box::pin(crate::runtime_internal_tool_invoker_factory(
-            &self.state,
-            actor,
-        ))
+        Box::pin(async move {
+            let state = self
+                .state
+                .upgrade()
+                .ok_or_else(crate::generation_dispatch::unavailable)?;
+            crate::runtime_internal_tool_invoker_factory(&state, actor).await
+        })
     }
 }
 
@@ -362,7 +365,9 @@ pub(crate) fn run_dependencies(state: Arc<ApiState>) -> AssistantRunDependencies
         conversation_events: state.assistant_conversation_events.clone(),
         assistant_executions: state.assistant_executions.clone(),
         assistant_client_sessions: state.assistant_client_sessions.clone(),
-        runtime_tool_invoker_factory: Arc::new(StateAssistantRuntimeToolInvokerFactory { state }),
+        runtime_tool_invoker_factory: Arc::new(StateAssistantRuntimeToolInvokerFactory {
+            state: Arc::downgrade(&state),
+        }),
     }
 }
 
@@ -658,6 +663,7 @@ pub async fn start_run_stream(
     >,
     ApiError,
 > {
+    let owner = crate::generation_dispatch::GenerationDispatch::acquire(&state)?;
     let stream = crate::routes::console_interface::invoke_server_stream::<
         interface::AssistantRunInput,
         interface::AssistantRunStreamEvent,
@@ -674,14 +680,16 @@ pub async fn start_run_stream(
     .await?;
     let (sender, receiver) = mpsc::channel(32);
     let (mut events, completion) = stream.into_parts();
+    let projection_owner = owner.clone();
     tokio::spawn(async move {
+        let _projection_owner = projection_owner;
         while let Some(interface::AssistantRunStreamEvent(event)) = events.recv().await {
             if sender.send(event).await.is_err() {
                 return;
             }
         }
     });
-    tokio::spawn(async move {
+    crate::generation_dispatch::spawn_with_lease(owner, async move {
         let _ = completion.complete().await;
     });
 

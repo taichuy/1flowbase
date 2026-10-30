@@ -35,6 +35,46 @@ impl InMemoryOrchestrationRuntimeRepository {
             .collect())
     }
 
+    pub(super) fn memory_get_original_callback_waiting_boundary(
+        &self,
+        flow_run_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> Result<Option<crate::ports::RuntimeCallbackWaitingBoundary>> {
+        let inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let rows = inner
+            .recovery_history_by_flow_run_id
+            .get(&flow_run_id)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let Some(original) = rows.iter().find(|row| {
+            row.idempotency_key == format!("waiting_callback:{callback_task_id}")
+                && row.state_code == domain::RecoveryStateCode::WaitingCallback
+        }) else {
+            return Ok(None);
+        };
+        let boundary =
+            |row: &domain::RecoveryHistoryRecord| crate::ports::RuntimeEventDeliveryBoundary {
+                recovery_id: row.id,
+                recovery_sequence: row.sequence,
+                event_sequence: row.coordinate.event_sequence,
+            };
+        let next = rows
+            .iter()
+            .filter(|row| {
+                row.sequence > original.sequence
+                    && matches!(
+                        row.state_code,
+                        domain::RecoveryStateCode::WaitingCallback
+                            | domain::RecoveryStateCode::WaitingHuman
+                    )
+            })
+            .min_by_key(|row| row.sequence);
+        Ok(Some(crate::ports::RuntimeCallbackWaitingBoundary {
+            original: boundary(original),
+            next: next.map(boundary),
+        }))
+    }
+
     pub(super) fn memory_get_runtime_event_sequence_for_callback_task(
         &self,
         flow_run_id: Uuid,

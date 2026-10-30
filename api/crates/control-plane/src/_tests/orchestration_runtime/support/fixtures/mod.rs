@@ -644,13 +644,16 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         OrchestrationRuntimeRepository::claim_runtime_event_deliveries(
             &self.repository,
             &crate::ports::ClaimRuntimeEventDeliveriesInput {
+                include_membership: true,
                 flow_run_id,
+                scope: control_plane_contracts::ports::RuntimeEventDeliveryScope::Start,
                 limit: 128,
                 lease_seconds: 30,
             },
         )
         .await
         .expect("runtime event deliveries should be claimable")
+        .claims
     }
 
     pub fn list_run_events(&self, flow_run_id: Uuid) -> Vec<domain::RunEventRecord> {

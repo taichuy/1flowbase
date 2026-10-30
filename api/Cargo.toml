@@ -56,7 +56,7 @@ percent-encoding = "2.3.2"
 rand_core = { version = "0.10.1" }
 rand = "0.10.3"
 rand_regex = { version = "0.19.0", default-features = false }
-reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "query", "form"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "query", "form", "socks"] }
 regex = "1.13.1"
 regex-syntax = "0.8.11"
 rust_decimal = { version = "1.43.0", features = ["serde-with-str"] }

@@ -101,7 +101,15 @@ async function run() {
     assert.equal(mock.trace.filter(r => r.transport === 'websocket').length, wsCount);
     assert.equal(mock.trace.filter(r => r.transport === 'http').length, 2);
     evidence.upstream = mock.trace;
-    assert.ok(!JSON.stringify(evidence).includes('private-canary'), 'peer close reason remains redacted');
+    // A peer-supplied close reason is a protocol fact, not a host credential.
+    // openai@0.2.79 preserves it; typed recovery classification remains separate.
+    const peerReason = 'fixture-close-only; token=private-canary';
+    const wireFailure = evidence.websocket_events.find(event => event.type === 'response.failed');
+    assert.ok(wireFailure, 'the original physical failure has a Responses terminal');
+    assert.equal(wireFailure.response.error.message, peerReason, 'wire error preserves peer protocol text');
+    assert.equal(evidence.failures[0].message, peerReason, 'persisted failure preserves the same peer text');
+    assert.equal(evidence.failures[0].ai_native_recovery.provider_inner_receipt.reason,
+      'transport_disconnected', 'display text cannot replace typed recovery classification');
     evidence.api_binary_sha256 = crypto.createHash('sha256').update(fs.readFileSync(process.env.NRA_API_BINARY)).digest('hex');
     evidence.plugin_package_sha256 = crypto.createHash('sha256').update(fs.readFileSync(process.env.NRA_PLUGIN_PACKAGE)).digest('hex');
     fs.writeFileSync(path.join(artifactRoot, 'receipt.json'), JSON.stringify(evidence, null, 2));

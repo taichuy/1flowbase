@@ -35,6 +35,7 @@ fn typed_trace(
     error_payload: Option<Value>,
 ) -> NodeExecutionTrace {
     NodeExecutionTrace {
+        execution_identity: None,
         node_id: node_id.to_string(),
         node_type: node_type.to_string(),
         node_alias: node_id.to_string(),
@@ -146,6 +147,7 @@ fn checkpoint_snapshot_from_record_requires_active_node_ids() {
 #[test]
 fn checkpoint_locator_payload_round_trips_snapshot_fields() {
     let snapshot = orchestration_runtime::execution_state::CheckpointSnapshot {
+        container_state: None,
         next_node_index: 3,
         variable_pool: Map::from_iter([("node-human".to_string(), json!({ "answer": "ok" }))]),
         active_node_ids: vec!["node-answer".to_string(), "node-followup".to_string()],
@@ -210,6 +212,7 @@ fn compact_checkpoint_content_appends_llm_history_without_copying_fixed_context(
         ),
     ]);
     let first_snapshot = orchestration_runtime::execution_state::CheckpointSnapshot {
+        container_state: None,
         next_node_index: 1,
         variable_pool: first_pool.clone(),
         active_node_ids: vec!["node-llm".to_string()],
@@ -238,6 +241,7 @@ fn compact_checkpoint_content_appends_llm_history_without_copying_fixed_context(
         .unwrap()
         .remove("obsolete_state");
     let second_snapshot = orchestration_runtime::execution_state::CheckpointSnapshot {
+        container_state: None,
         next_node_index: 1,
         variable_pool: second_pool.clone(),
         active_node_ids: vec!["node-llm".to_string()],
@@ -273,6 +277,7 @@ fn compact_checkpoint_content_appends_llm_history_without_copying_fixed_context(
         .push(json!({ "role": "assistant", "content": "round two" }));
     let third = compact_checkpoint_content(
         &orchestration_runtime::execution_state::CheckpointSnapshot {
+            container_state: None,
             next_node_index: 1,
             variable_pool: third_pool.clone(),
             active_node_ids: vec!["node-llm".to_string()],
@@ -300,6 +305,7 @@ fn compact_checkpoint_content_appends_llm_history_without_copying_fixed_context(
         .push(json!({ "role": "tool", "content": "round three" }));
     let fourth = compact_checkpoint_content(
         &orchestration_runtime::execution_state::CheckpointSnapshot {
+            container_state: None,
             next_node_index: 1,
             variable_pool: fourth_pool.clone(),
             active_node_ids: vec!["node-llm".to_string()],

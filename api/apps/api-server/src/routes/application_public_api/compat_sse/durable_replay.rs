@@ -33,34 +33,61 @@ pub(super) async fn durable_compatible_round_replay(
     initial_run: &NativeRunResult,
     round_id: uuid::Uuid,
 ) -> Result<DurableCompatibleRoundReplay, NativeApiError> {
+    durable_callback_replay(
+        &native::native_run_terminal_dependencies(&dependencies.native),
+        initial_run,
+        round_id,
+    )
+    .await
+}
+
+pub(super) async fn durable_callback_replay(
+    dependencies: &NativeRunTerminalDependencies,
+    initial_run: &NativeRunResult,
+    round_id: uuid::Uuid,
+) -> Result<DurableCompatibleRoundReplay, NativeApiError> {
     let boundary = dependencies
-        .native
-        .store
-        .get_runtime_event_sequence_for_callback_task(initial_run.id, round_id)
+        .callback_waiting_boundary(initial_run.id, round_id)
         .await
         .map_err(service_error)?
-        .ok_or_else(|| service_error(anyhow::anyhow!("callback round boundary missing")))?;
+        .ok_or_else(|| {
+            service_error(
+                control_plane::errors::ControlPlaneError::Conflict(
+                    "runtime_event_delivery_scope_unresolved",
+                )
+                .into(),
+            )
+        })?;
     let window = dependencies
-        .native
-        .store
-        .get_runtime_event_replay_window(initial_run.id)
+        .replay_window(initial_run.id)
         .await
         .map_err(service_error)?;
-    let through = window.map(|window| window.through_sequence);
+    let identity_through = window.map(|window| window.through_sequence);
+    let through = boundary
+        .next
+        .map(|next| next.event_sequence)
+        .map(|upper| identity_through.map_or(upper, |high| high.min(upper)))
+        .or(identity_through);
+    let original_boundary = boundary.original.event_sequence;
+    let next_waiting_sequence = boundary.next.map(|next| next.event_sequence);
     // The latest window may belong to a later callback. Resolve this round's
     // anchor with bounded pages, retaining only its scalar generation identity.
     let (generation, replay_boundary) = match durable_compatible_round_generation(
         dependencies,
         initial_run.id,
         round_id,
-        boundary,
-        through,
+        original_boundary,
+        next_waiting_sequence,
+        identity_through,
     )
     .await?
     {
-        DurableCompatibleRoundIdentity::Legacy => (None, boundary),
-        DurableCompatibleRoundIdentity::Generation { id, after_sequence } => {
-            (Some(id), after_sequence)
+        DurableCompatibleRoundIdentity::Legacy => (None, original_boundary),
+        DurableCompatibleRoundIdentity::Generation { id, .. } => {
+            // A diagnostic marker can commit after the original tools+upper.
+            // Generation selects the producer; only the business anchor selects
+            // the durable suffix. Local/marker sequence is never its lower bound.
+            (Some(id), original_boundary)
         }
         DurableCompatibleRoundIdentity::Pending => {
             return Ok(DurableCompatibleRoundReplay::PendingIdentity);
@@ -70,9 +97,7 @@ pub(super) async fn durable_compatible_round_replay(
     let mut records = Vec::new();
     loop {
         let page = dependencies
-            .native
-            .store
-            .list_runtime_event_durable_page(initial_run.id, cursor, through, 64)
+            .callback_round_page(initial_run.id, cursor, through, 64)
             .await
             .map_err(service_error)?;
         let Some(last) = page.last() else {
@@ -97,6 +122,9 @@ pub(super) async fn durable_compatible_round_replay(
                         .is_some_and(|value| value != generation)
                 })
             {
+                continue;
+            }
+            if !respects_callback_waiting_boundary(&record, next_waiting_sequence) {
                 continue;
             }
             let terminal = event_forwarding::is_public_terminal_runtime_event(&record.event_type);
@@ -128,11 +156,24 @@ pub(super) async fn durable_compatible_round_replay(
     Ok(DurableCompatibleRoundReplay::Ready(replay))
 }
 
-pub(super) async fn durable_compatible_round_generation(
-    dependencies: &CompatibilityExecutionDependencies,
+// A diagnostic waiting copy cannot terminate this selected callback response.
+// Only its next original business stop grants waiting-terminal authority.
+fn respects_callback_waiting_boundary(
+    record: &domain::RuntimeEventRecord,
+    next_waiting_sequence: Option<i64>,
+) -> bool {
+    !matches!(
+        record.event_type.as_str(),
+        "waiting_callback" | "waiting_human"
+    ) || next_waiting_sequence.is_some_and(|upper| record.sequence == upper)
+}
+
+async fn durable_compatible_round_generation(
+    dependencies: &NativeRunTerminalDependencies,
     run_id: uuid::Uuid,
     round_id: uuid::Uuid,
     boundary: i64,
+    next_waiting_sequence: Option<i64>,
     through: Option<i64>,
 ) -> Result<DurableCompatibleRoundIdentity, NativeApiError> {
     let mut cursor = boundary;
@@ -146,9 +187,7 @@ pub(super) async fn durable_compatible_round_generation(
     let mut legacy_terminal = false;
     loop {
         let page = dependencies
-            .native
-            .store
-            .list_runtime_event_durable_page(run_id, cursor, through, 64)
+            .callback_round_page(run_id, cursor, through, 64)
             .await
             .map_err(service_error)?;
         let Some(last) = page.last() else {
@@ -223,6 +262,7 @@ pub(super) async fn durable_compatible_round_generation(
                 && record.payload["stream_generation_id"].is_null()
                 && record.payload["response_round_id"].is_null()
                 && event_forwarding::is_public_terminal_runtime_event(&record.event_type)
+                && respects_callback_waiting_boundary(&record, next_waiting_sequence)
             {
                 legacy_terminal = true;
             }

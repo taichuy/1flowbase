@@ -336,9 +336,56 @@ pub struct PersistedWaitingState {
     pub recovery_history: domain::RecoveryHistoryRecord,
 }
 
+/// Immutable execution identity, independent of local stream cursors and delivery ACKs.
+/// Missing attach/legacy identity is explicit and never grants whole-run ownership.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeEventDeliveryScope {
+    Start,
+    Resume { callback_task_id: Uuid },
+    Unresolved,
+}
+
+/// Append-only original business stop, never an asynchronous diagnostic copy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuntimeEventDeliveryBoundary {
+    pub recovery_id: Uuid,
+    pub recovery_sequence: i64,
+    pub event_sequence: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeCallbackWaitingBoundary {
+    pub original: RuntimeEventDeliveryBoundary,
+    pub next: Option<RuntimeEventDeliveryBoundary>,
+}
+
+/// Complete membership is immutable only after the original upper business stop
+/// and all its tool facts are visible in the same SQL snapshot. Open is not empty.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeEventDeliveryClosedProof {
+    pub flow_run_id: Uuid,
+    pub scope: RuntimeEventDeliveryScope,
+    pub lower_sequence: i64,
+    pub lower_recovery_sequence: i64,
+    pub upper: RuntimeEventDeliveryBoundary,
+}
+
+/// `events` contains full proof facts only when requested, including acked/uncertain
+/// exact replay facts. Claims are returned independently of the proof-facts branch.
+#[derive(Debug, Clone)]
+pub struct RuntimeEventDeliveryBatch {
+    pub closed_proof: Option<RuntimeEventDeliveryClosedProof>,
+    pub claims: Vec<RuntimeEventDeliveryClaim>,
+    pub events: Vec<domain::RuntimeEventRecord>,
+}
+
 #[derive(Debug, Clone)]
 pub struct ClaimRuntimeEventDeliveriesInput {
     pub flow_run_id: Uuid,
+    pub scope: RuntimeEventDeliveryScope,
+    /// False only after this response retained a complete ClosedProof + membership.
+    /// SQL still resolves and applies the original scope on every claim.
+    pub include_membership: bool,
     pub limit: usize,
     pub lease_seconds: i64,
 }

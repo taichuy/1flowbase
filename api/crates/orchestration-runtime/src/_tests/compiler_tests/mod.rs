@@ -448,6 +448,7 @@ fn code_js_dependency_context(alias: &str, target: &str) -> FlowCompileContext {
 mod bindings_and_outputs;
 mod branches;
 mod code_runtime;
+mod containers;
 mod provider_and_plugin;
 
 mod diagnostics;
