@@ -82,6 +82,11 @@ pub(super) fn run(
         loop {
             if cancellation.is_cancelled() {
                 group.stop()?;
+                // Reap after signalling instead of signalling on every poll. On
+                // macOS a group containing only an unreaped zombie can return
+                // EPERM; that is not a failure to terminate the owned child.
+                let status = child.child.wait()?;
+                return Ok((status.code().map(i64::from), status.signal()));
             }
             if let Some(status) = child.child.try_wait()? {
                 return Ok((status.code().map(i64::from), status.signal()));

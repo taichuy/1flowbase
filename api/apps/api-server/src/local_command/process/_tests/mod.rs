@@ -96,17 +96,20 @@ fn local_command_native_complete_output_is_spooled_not_truncated() {
 
 #[test]
 fn local_command_native_cancellation_reaps_owned_process() {
-    let cancellation = Cancellation::default();
-    let token = cancellation.clone();
-    let task = std::thread::spawn(move || {
-        execute(shell("exec sleep 30", "ping -n 30 127.0.0.1 >nul"), &token)
-    });
-    std::thread::sleep(Duration::from_millis(150));
-    cancellation.cancel();
-    assert_eq!(
-        task.join().unwrap().err().unwrap().kind(),
-        io::ErrorKind::Interrupted
-    );
+    // Exercise the signal/reap race repeatedly on native runners, especially macOS.
+    for _ in 0..8 {
+        let cancellation = Cancellation::default();
+        let token = cancellation.clone();
+        let task = std::thread::spawn(move || {
+            execute(shell("exec sleep 30", "ping -n 30 127.0.0.1 >nul"), &token)
+        });
+        std::thread::sleep(Duration::from_millis(150));
+        cancellation.cancel();
+        assert_eq!(
+            task.join().unwrap().err().unwrap().kind(),
+            io::ErrorKind::Interrupted
+        );
+    }
 }
 
 #[test]
