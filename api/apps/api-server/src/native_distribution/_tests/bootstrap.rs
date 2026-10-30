@@ -8,7 +8,6 @@ use argon2::{
     password_hash::{phc::PasswordHash, PasswordVerifier},
     Argon2,
 };
-use control_plane_contracts::ports::AuthRepository;
 use std::net::TcpListener;
 
 // Run alone: Settings::apply configures the process environment before Tokio starts.
