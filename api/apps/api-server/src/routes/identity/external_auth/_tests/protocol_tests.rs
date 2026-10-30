@@ -194,8 +194,9 @@ async fn external_auth_complete_boot_catalog_recognizes_all_safe_contracts() {
                 contract_version: descriptor.contract.version().into(),
                 schema: descriptor
                     .schema
-                    .clone()
-                    .expect("canonical startup requires every safe schema"),
+                    .as_deref()
+                    .expect("canonical startup requires every safe schema")
+                    .clone(),
             },
         )
         .unwrap();

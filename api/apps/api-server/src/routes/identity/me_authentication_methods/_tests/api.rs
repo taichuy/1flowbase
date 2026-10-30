@@ -695,8 +695,9 @@ async fn authentication_methods_all_four_routes_publish_typed_plans_and_bounded_
             contract_version: descriptor.contract.version().into(),
             schema: descriptor
                 .schema
-                .clone()
-                .expect("typed managed hook schema is explicit"),
+                .as_deref()
+                .expect("typed managed hook schema is explicit")
+                .clone(),
         };
         crate::extension_bus::FrozenManagedProjection::compile(schema)
             .expect("BoundedSchema accepts the actual published contract");

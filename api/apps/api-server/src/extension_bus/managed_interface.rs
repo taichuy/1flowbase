@@ -5,7 +5,7 @@ use extension_contracts::{
     CompiledManagedProjection, HookPhase, ManagedHookInvocation, ManagedHookOutcome,
     ManagedHookTerminal, ManagedInterfaceInput, ManagedInterfaceProtocol,
     ManagedInterfaceReferenceInput, ManagedInterfaceReferenceView, ManagedInterfaceView,
-    ManagedProjectionContract,
+    ManagedProjectionCompiler, ManagedProjectionContract,
 };
 use interface_runtime::*;
 use plugin_framework::extension_bus::{
@@ -21,28 +21,33 @@ use std::{
 type Contracts = BTreeMap<ContractIdentity, FrozenManagedProjection>;
 
 pub(crate) struct FrozenManagedProjection {
-    contract: ManagedProjectionContract,
+    schema: Arc<serde_json::Value>,
     compiled: CompiledManagedProjection,
 }
 impl FrozenManagedProjection {
+    #[cfg(test)]
     pub(crate) fn compile(contract: ManagedProjectionContract) -> anyhow::Result<Self> {
         let compiled = contract.compile_for_registration()?;
-        Ok(Self { contract, compiled })
+        Ok(Self {
+            schema: Arc::new(contract.schema),
+            compiled,
+        })
     }
     pub(crate) fn validate_projection(
         &self,
         projection: &ManagedInterfaceProjection,
     ) -> Result<ManagedInterfaceReferenceView, &'static str> {
-        if projection.contract().contract_id() != self.contract.contract_id
-            || projection.contract().version() != self.contract.contract_version
+        let reference = self.compiled.reference();
+        if projection.contract().contract_id() != reference.contract_id
+            || projection.contract().version() != reference.contract_version
         {
             return Err("managed-contract-not-frozen");
         }
-        if &self.contract.schema != projection.schema() {
+        if self.schema.as_ref() != projection.schema() {
             return Err("managed-schema-changed");
         }
         let view = ManagedInterfaceReferenceView {
-            contract: self.compiled.reference(),
+            contract: reference,
             value: projection.value().clone(),
         };
         self.compiled
@@ -91,26 +96,30 @@ impl ManagedInterfaceFactory {
     pub(crate) fn bind_registry(&self, registry: &CompiledInterfaceRegistry) -> anyhow::Result<()> {
         let mut contracts = BTreeMap::new();
         let mut schema_failures = Vec::new();
+        let mut compiler = ManagedProjectionCompiler::default();
         for entry in registry.managed_contracts() {
-            let contract = ManagedProjectionContract {
-                contract_id: entry.contract.contract_id().into(),
-                contract_version: entry.contract.version().into(),
-                schema: entry
-                    .schema
-                    .clone()
-                    .ok_or_else(|| anyhow::anyhow!("compiled managed schema missing"))?,
-            };
-            match FrozenManagedProjection::compile(contract.clone()) {
-                Ok(frozen) => {
-                    contracts.insert(entry.contract.clone(), frozen);
+            let schema = entry
+                .schema
+                .clone()
+                .ok_or_else(|| anyhow::anyhow!("compiled managed schema missing"))?;
+            match compiler.compile_for_registration(
+                entry.contract.contract_id(),
+                entry.contract.version(),
+                schema.as_ref(),
+            ) {
+                Ok(compiled) => {
+                    contracts.insert(
+                        entry.contract.clone(),
+                        FrozenManagedProjection { schema, compiled },
+                    );
                 }
                 Err(error) => {
                     schema_failures.push(format!(
                         "contract_id={} version={} rust_type={} schema_bytes={}: {}",
-                        contract.contract_id,
-                        contract.contract_version,
+                        entry.contract.contract_id(),
+                        entry.contract.version(),
                         entry.rust_type,
-                        serde_json::to_vec(&contract.schema)?.len(),
+                        serde_json::to_vec(schema.as_ref())?.len(),
                         error,
                     ));
                 }
@@ -331,7 +340,11 @@ impl FrozenInvocation {
             .ok_or("managed-contract-not-frozen")?;
         let reference = contract.validate_projection(projection)?;
         let view = ManagedInterfaceView {
-            contract: contract.contract.clone(),
+            contract: ManagedProjectionContract {
+                contract_id: reference.contract.contract_id,
+                contract_version: reference.contract.contract_version,
+                schema: contract.schema.as_ref().clone(),
+            },
             value: reference.value,
         };
         Ok(view)

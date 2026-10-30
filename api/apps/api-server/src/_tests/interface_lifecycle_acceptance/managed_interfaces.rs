@@ -202,7 +202,7 @@ async fn root_2014_ac_001_complete_compiled_profiles() {
         ManagedProjectionContract {
             contract_id: descriptor.contract.contract_id().into(),
             contract_version: descriptor.contract.version().into(),
-            schema: descriptor.schema.clone().unwrap(),
+            schema: descriptor.schema.as_deref().unwrap().clone(),
         }
         .compile_for_registration()
         .unwrap();
@@ -693,8 +693,9 @@ async fn root_2014_r3_probe_complete_contract_compilation() {
             contract_version: descriptor.contract.version().into(),
             schema: descriptor
                 .schema
-                .clone()
-                .expect("every candidate contract has its complete schema"),
+                .as_deref()
+                .expect("every candidate contract has its complete schema")
+                .clone(),
         };
         let bytes = serde_json::to_vec(&contract.schema).unwrap().len();
         let started = std::time::Instant::now();

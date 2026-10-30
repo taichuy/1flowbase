@@ -1168,13 +1168,13 @@ fn contract_identity<T: InterfaceContract>() -> ContractIdentity {
 pub struct ManagedContractSchema {
     pub contract: ContractIdentity,
     pub rust_type: &'static str,
-    pub schema: Option<serde_json::Value>,
+    pub schema: Option<Arc<serde_json::Value>>,
 }
 fn managed_contract_schema<T: InterfaceContract>() -> ManagedContractSchema {
     ManagedContractSchema {
         contract: contract_identity::<T>(),
         rust_type: std::any::type_name::<T>(),
-        schema: T::managed_projection_schema(),
+        schema: T::managed_projection_schema().map(Arc::new),
     }
 }
 

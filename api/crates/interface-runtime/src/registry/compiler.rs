@@ -743,8 +743,14 @@ impl RegistryCompiler {
         }
 
         let mut managed_contracts = BTreeMap::new();
+        // Exact original bytes preserve insertion order in registry fingerprints.
+        // This assembly-only index releases its keys after publication.
+        let mut schemas = BTreeMap::<Vec<u8>, Arc<serde_json::Value>>::new();
         for (id, binding) in &effective_handler_bindings {
-            for descriptor in binding.managed_contracts() {
+            for mut descriptor in binding.managed_contracts() {
+                if let Some(schema) = &mut descriptor.schema {
+                    *schema = intern_schema(&mut schemas, schema.clone());
+                }
                 if self.managed_factory.is_some() && descriptor.schema.is_none() {
                     return Err(RegistryCompilationError::ManagedProjectionMismatch(
                         id.clone(),
@@ -979,7 +985,7 @@ impl RegistryCompiler {
             .map(|entry| {
                 serde_json::json!({
                     "id": entry.contract.contract_id(), "version": entry.contract.version(),
-                    "rust_type": entry.rust_type, "schema": entry.schema,
+                    "rust_type": entry.rust_type, "schema": entry.schema.as_deref(),
                 })
             })
             .collect::<Vec<_>>();
@@ -1167,3 +1173,15 @@ impl RegistryCompiler {
         Ok(())
     }
 }
+
+fn intern_schema(
+    schemas: &mut BTreeMap<Vec<u8>, Arc<serde_json::Value>>,
+    schema: Arc<serde_json::Value>,
+) -> Arc<serde_json::Value> {
+    let bytes = serde_json::to_vec(schema.as_ref()).expect("static projection schemas serialize");
+    schemas.entry(bytes).or_insert(schema).clone()
+}
+
+#[cfg(test)]
+#[path = "../_tests/registry_schema_sharing.rs"]
+mod schema_sharing_tests;

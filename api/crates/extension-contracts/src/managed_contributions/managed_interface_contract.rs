@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::{collections::BTreeMap, sync::Arc};
 use thiserror::Error;
 
 use crate::{
@@ -44,47 +45,106 @@ impl ManagedProjectionContract {
         &self,
         schema_limit: usize,
     ) -> ContractResult<CompiledManagedProjection> {
-        if !identity(&self.contract_id) || !identity(&self.contract_version) {
-            return Err(ManagedInterfaceContractError(
-                "invalid projection identity".into(),
-            ));
-        }
-        let schema_bytes = serde_json::to_vec(&self.schema)
-            .map_err(|_| schema_violation("$", "serialization failed"))?
-            .len();
-        if schema_bytes > schema_limit {
-            return Err(schema_violation(
-                "$",
-                &format!("serialized_bytes actual={schema_bytes} limit={schema_limit}"),
-            ));
-        }
-        validate_schema_shape(&self.schema, 0, "$")?;
-        let validator = jsonschema::options()
-            .with_draft(jsonschema::Draft::Draft202012)
-            .build(&self.schema)
-            .map_err(|_| schema_violation("$", "draft202012 compilation failed"))?;
-        let mut canonical = self.schema.clone();
-        canonical.sort_all_objects();
-        let fingerprint = format!(
-            "sha256:{:x}",
-            base16ct::HexDisplay(&Sha256::digest(
-                serde_json::to_vec(&(&self.contract_id, &self.contract_version, canonical,))
-                    .map_err(|_| invalid_schema())?
-            ))
-        );
-        Ok(CompiledManagedProjection {
-            validator,
-            fingerprint,
-            contract_id: self.contract_id.clone(),
-            contract_version: self.contract_version.clone(),
-        })
+        compile_projection(
+            &self.contract_id,
+            &self.contract_version,
+            &self.schema,
+            schema_limit,
+            None,
+        )
     }
+}
+
+/// A single registration batch owns this index. Published contracts share only
+/// immutable validation programs, while identity and references remain per contract.
+#[derive(Default)]
+pub struct ManagedProjectionCompiler {
+    validators: BTreeMap<Vec<u8>, Arc<jsonschema::Validator>>,
+}
+
+impl ManagedProjectionCompiler {
+    pub fn compile_for_registration(
+        &mut self,
+        contract_id: &str,
+        contract_version: &str,
+        schema: &Value,
+    ) -> ContractResult<CompiledManagedProjection> {
+        compile_projection(
+            contract_id,
+            contract_version,
+            schema,
+            crate::MANAGED_INTERFACE_MAX_REGISTRATION_SCHEMA_BYTES,
+            Some(&mut self.validators),
+        )
+    }
+}
+
+fn compile_projection(
+    contract_id: &str,
+    contract_version: &str,
+    schema: &Value,
+    schema_limit: usize,
+    validators: Option<&mut BTreeMap<Vec<u8>, Arc<jsonschema::Validator>>>,
+) -> ContractResult<CompiledManagedProjection> {
+    if !identity(contract_id) || !identity(contract_version) {
+        return Err(ManagedInterfaceContractError(
+            "invalid projection identity".into(),
+        ));
+    }
+    let schema_bytes =
+        serde_json::to_vec(schema).map_err(|_| schema_violation("$", "serialization failed"))?;
+    if schema_bytes.len() > schema_limit {
+        return Err(schema_violation(
+            "$",
+            &format!(
+                "serialized_bytes actual={} limit={schema_limit}",
+                schema_bytes.len()
+            ),
+        ));
+    }
+    validate_schema_shape(schema, 0, "$")?;
+    // Full original bytes are the key: no collision assumption or order mutation.
+    // A hit already passed the identical Draft202012 compilation, with the same
+    // options. Identity, budget and shape above are checked even on every hit.
+    let build = || {
+        jsonschema::options()
+            .with_draft(jsonschema::Draft::Draft202012)
+            .build(schema)
+            .map(Arc::new)
+            .map_err(|_| schema_violation("$", "draft202012 compilation failed"))
+    };
+    let validator = match validators {
+        Some(validators) => match validators.get(&schema_bytes) {
+            Some(validator) => validator.clone(),
+            None => {
+                let validator = build()?;
+                validators.insert(schema_bytes, validator.clone());
+                validator
+            }
+        },
+        None => build()?,
+    };
+    let mut canonical = schema.clone();
+    canonical.sort_all_objects();
+    let fingerprint = format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&Sha256::digest(
+            serde_json::to_vec(&(contract_id, contract_version, canonical))
+                .map_err(|_| invalid_schema())?
+        ))
+    );
+    Ok(CompiledManagedProjection {
+        validator,
+        fingerprint,
+        contract_id: contract_id.into(),
+        contract_version: contract_version.into(),
+    })
 }
 
 pub struct CompiledManagedProjection {
     contract_id: String,
     contract_version: String,
-    validator: jsonschema::Validator,
+    validator: Arc<jsonschema::Validator>,
     fingerprint: String,
 }
 
@@ -437,3 +497,7 @@ pub fn managed_interface_hook_point_id(interface_id: &str, phase: HookPhase) -> 
     };
     format!("1flowbase.interface.{interface_id}.{phase}")
 }
+
+#[cfg(test)]
+#[path = "../_tests/managed_contributions/schema_sharing_tests.rs"]
+mod schema_sharing_tests;
