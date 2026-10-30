@@ -835,7 +835,7 @@
       "agent_flow.http_node_proxy_options.list",
       "GET",
       "/api/console/network-center/http-node-proxy-options",
-      "List HTTP node proxy choices"
+      "List agent flow http node proxy options"
     ],
     [
       "network_egress_pools.list",
