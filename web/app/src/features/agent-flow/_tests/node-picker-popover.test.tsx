@@ -420,6 +420,31 @@ describe('NodePickerPopover', () => {
     expect(selectNode).toHaveBeenCalledTimes(1);
   });
 
+  test('preserves canvas dismissal and history shortcuts from picker controls', () => {
+    const canvasKeyDown = vi.fn();
+    render(
+      <div onKeyDown={canvasKeyDown}>
+        <NodePickerPopover
+          ariaLabel="新增节点"
+          open
+          options={agentBuiltinOptions}
+          onOpenChange={vi.fn()}
+          onPickNode={vi.fn()}
+        />
+      </div>
+    );
+    const tab = screen.getByRole('tab', { name: '内置' });
+    for (const key of ['Escape', 'Delete', 'Backspace', 'Tab', 'z', 'y', 'c', 'v']) {
+      expect(fireEvent.keyDown(tab, { key, ctrlKey: key.length === 1 })).toBe(true);
+      expect(canvasKeyDown).toHaveBeenLastCalledWith(expect.objectContaining({ key }));
+    }
+    expect(canvasKeyDown).toHaveBeenCalledTimes(8);
+    for (const key of ['Enter', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+      expect(fireEvent.keyDown(tab, { key })).toBe(true);
+    }
+    expect(canvasKeyDown).toHaveBeenCalledTimes(8);
+  });
+
   test('renders plugin contribution entries and disables missing dependencies', () => {
     render(
       <NodePickerPopover
