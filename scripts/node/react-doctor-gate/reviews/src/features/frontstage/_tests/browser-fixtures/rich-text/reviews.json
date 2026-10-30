@@ -7,22 +7,22 @@
     {
       "file": "web/app/src/features/frontstage/_tests/browser-fixtures/rich-text/fixture.tsx",
       "rule": "deslop/unused-file",
-      "sourceSha256": "ac939e714a709a65711b144399f894e0773ba52e19f3e4f4b8df722e5a78b02e",
-      "reason": "The adjacent HTML entry explicitly loads ./fixture.tsx as a module. It creates a standalone shadow root and createRoot mounts the local Fixture, so TypeScript import reachability is not its entry mechanism. It is an imperative browser test entry, not an exported production Fast Refresh component boundary.",
+      "sourceSha256": "abdb263be8a2fe666e407ddf9a654dc8f8fed1c6d19950369f68faceedae4a61",
+      "reason": "The adjacent HTML entry explicitly loads ./fixture.tsx as a module. It creates a standalone shadow root and createRoot mounts the local Fixture, so TypeScript import reachability is not its entry mechanism. It is an imperative browser test entry, not an exported production Fast Refresh component boundary. Reassessed P21 2026-10-30: The standalone HTML entry now exports its stable module-level Fixture component for Refresh; createRoot/shadow-root mounting and the four browser-driver button actions remain unchanged.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/_tests/browser-fixtures/rich-text/fixture.tsx",
       "rule": "react-doctor/only-export-components",
-      "sourceSha256": "ac939e714a709a65711b144399f894e0773ba52e19f3e4f4b8df722e5a78b02e",
-      "reason": "The adjacent HTML entry explicitly loads ./fixture.tsx as a module. It creates a standalone shadow root and createRoot mounts the local Fixture, so TypeScript import reachability is not its entry mechanism. It is an imperative browser test entry, not an exported production Fast Refresh component boundary.",
+      "sourceSha256": "abdb263be8a2fe666e407ddf9a654dc8f8fed1c6d19950369f68faceedae4a61",
+      "reason": "The adjacent HTML entry explicitly loads ./fixture.tsx as a module. It creates a standalone shadow root and createRoot mounts the local Fixture, so TypeScript import reachability is not its entry mechanism. It is an imperative browser test entry, not an exported production Fast Refresh component boundary. Reassessed P21 2026-10-30: The standalone HTML entry now exports its stable module-level Fixture component for Refresh; createRoot/shadow-root mounting and the four browser-driver button actions remain unchanged.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/_tests/browser-fixtures/rich-text/fixture.tsx",
       "rule": "react-doctor/button-has-type",
-      "sourceSha256": "ac939e714a709a65711b144399f894e0773ba52e19f3e4f4b8df722e5a78b02e",
-      "reason": "These four test-driver buttons live in the standalone main element inside a newly attached shadow root, with no form ancestor or form attribute. They cannot submit an app form: load/save/toggle actions only update fixture state for Vditor browser checks. The Load HTML button string is test content passed to the preview, not a containing form.",
+      "sourceSha256": "abdb263be8a2fe666e407ddf9a654dc8f8fed1c6d19950369f68faceedae4a61",
+      "reason": "These four test-driver buttons live in the standalone main element inside a newly attached shadow root, with no form ancestor or form attribute. They cannot submit an app form: load/save/toggle actions only update fixture state for Vditor browser checks. The Load HTML button string is test content passed to the preview, not a containing form. Reassessed P21 2026-10-30: The standalone HTML entry now exports its stable module-level Fixture component for Refresh; createRoot/shadow-root mounting and the four browser-driver button actions remain unchanged.",
       "evidenceSet": 0
     }
   ]

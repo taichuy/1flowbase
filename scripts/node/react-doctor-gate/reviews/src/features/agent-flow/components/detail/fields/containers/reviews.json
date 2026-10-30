@@ -1,0 +1,117 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
+      "rule": "react-doctor/no-adjust-state-on-prop-change",
+      "sourceSha256": "e619e22c6d0a5c7d6c5cbb8b0c35dc5c53f748811b4e1ced34a787c5bce4cd9c",
+      "reason": "StructuredConstant owns editable JSON text including incomplete/invalid JSON and a local validation status. Input.onChange always preserves the raw draft but calls its parent only after parsing and matching object/array type. Its value-dependent effect loads a replaced committed value and clears an error after an external document/type replacement; an input event alone cannot observe undo or another document update. Deriving text directly from value would erase unfinished JSON. The real panel regression asserts invalid text is not persisted, survives sibling deletion and rename with the same DOM input, then commits valid JSON and accepts a type-change array default. The two state fields belong to this one editor and must reset together when its committed value changes; they are not an unedited prop mirror. These assertions are authored for centralized QA; no packet-level test result is claimed.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
+          "sha256": "e619e22c6d0a5c7d6c5cbb8b0c35dc5c53f748811b4e1ced34a787c5bce4cd9c"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerFields.tsx",
+          "sha256": "0ec7eb4a2c3f7d6ea1a80a58ef0cfdf03e1d39ab62f37b4ed6043a0ede3daafc"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/schema/node-schema-adapter.ts",
+          "sha256": "2e26fe61936cb9890d129cdcb4b22fb9e884e58e6d6fc2f004fad98a73a8e5fa"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/hooks/interactions/use-stable-list-item-keys.ts",
+          "sha256": "e68e2e61cf653f6a640fb0194c0aba506c2b1c0279506d65b94ad4c338812ce6"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/containers/panels.test.tsx",
+          "sha256": "159fcbefd053f60a0148661fac1034818661096fcf0b8513cb158e56e6dfb801"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
+      "rule": "react-doctor/no-derived-state",
+      "sourceSha256": "e619e22c6d0a5c7d6c5cbb8b0c35dc5c53f748811b4e1ced34a787c5bce4cd9c",
+      "reason": "StructuredConstant owns editable JSON text including incomplete/invalid JSON and a local validation status. Input.onChange always preserves the raw draft but calls its parent only after parsing and matching object/array type. Its value-dependent effect loads a replaced committed value and clears an error after an external document/type replacement; an input event alone cannot observe undo or another document update. Deriving text directly from value would erase unfinished JSON. The real panel regression asserts invalid text is not persisted, survives sibling deletion and rename with the same DOM input, then commits valid JSON and accepts a type-change array default. The two state fields belong to this one editor and must reset together when its committed value changes; they are not an unedited prop mirror. These assertions are authored for centralized QA; no packet-level test result is claimed.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
+          "sha256": "e619e22c6d0a5c7d6c5cbb8b0c35dc5c53f748811b4e1ced34a787c5bce4cd9c"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerFields.tsx",
+          "sha256": "0ec7eb4a2c3f7d6ea1a80a58ef0cfdf03e1d39ab62f37b4ed6043a0ede3daafc"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/schema/node-schema-adapter.ts",
+          "sha256": "2e26fe61936cb9890d129cdcb4b22fb9e884e58e6d6fc2f004fad98a73a8e5fa"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/hooks/interactions/use-stable-list-item-keys.ts",
+          "sha256": "e68e2e61cf653f6a640fb0194c0aba506c2b1c0279506d65b94ad4c338812ce6"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/containers/panels.test.tsx",
+          "sha256": "159fcbefd053f60a0148661fac1034818661096fcf0b8513cb158e56e6dfb801"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
+      "rule": "react-doctor/no-derived-state-effect",
+      "sourceSha256": "e619e22c6d0a5c7d6c5cbb8b0c35dc5c53f748811b4e1ced34a787c5bce4cd9c",
+      "reason": "StructuredConstant owns editable JSON text including incomplete/invalid JSON and a local validation status. Input.onChange always preserves the raw draft but calls its parent only after parsing and matching object/array type. Its value-dependent effect loads a replaced committed value and clears an error after an external document/type replacement; an input event alone cannot observe undo or another document update. Deriving text directly from value would erase unfinished JSON. The real panel regression asserts invalid text is not persisted, survives sibling deletion and rename with the same DOM input, then commits valid JSON and accepts a type-change array default. The two state fields belong to this one editor and must reset together when its committed value changes; they are not an unedited prop mirror. These assertions are authored for centralized QA; no packet-level test result is claimed.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
+          "sha256": "e619e22c6d0a5c7d6c5cbb8b0c35dc5c53f748811b4e1ced34a787c5bce4cd9c"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerFields.tsx",
+          "sha256": "0ec7eb4a2c3f7d6ea1a80a58ef0cfdf03e1d39ab62f37b4ed6043a0ede3daafc"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/schema/node-schema-adapter.ts",
+          "sha256": "2e26fe61936cb9890d129cdcb4b22fb9e884e58e6d6fc2f004fad98a73a8e5fa"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/hooks/interactions/use-stable-list-item-keys.ts",
+          "sha256": "e68e2e61cf653f6a640fb0194c0aba506c2b1c0279506d65b94ad4c338812ce6"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/containers/panels.test.tsx",
+          "sha256": "159fcbefd053f60a0148661fac1034818661096fcf0b8513cb158e56e6dfb801"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
+      "rule": "react-doctor/no-reset-all-state-on-prop-change",
+      "sourceSha256": "e619e22c6d0a5c7d6c5cbb8b0c35dc5c53f748811b4e1ced34a787c5bce4cd9c",
+      "reason": "StructuredConstant owns editable JSON text including incomplete/invalid JSON and a local validation status. Input.onChange always preserves the raw draft but calls its parent only after parsing and matching object/array type. Its value-dependent effect loads a replaced committed value and clears an error after an external document/type replacement; an input event alone cannot observe undo or another document update. Deriving text directly from value would erase unfinished JSON. The real panel regression asserts invalid text is not persisted, survives sibling deletion and rename with the same DOM input, then commits valid JSON and accepts a type-change array default. The two state fields belong to this one editor and must reset together when its committed value changes; they are not an unedited prop mirror. These assertions are authored for centralized QA; no packet-level test result is claimed.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
+          "sha256": "e619e22c6d0a5c7d6c5cbb8b0c35dc5c53f748811b4e1ced34a787c5bce4cd9c"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerFields.tsx",
+          "sha256": "0ec7eb4a2c3f7d6ea1a80a58ef0cfdf03e1d39ab62f37b4ed6043a0ede3daafc"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/schema/node-schema-adapter.ts",
+          "sha256": "2e26fe61936cb9890d129cdcb4b22fb9e884e58e6d6fc2f004fad98a73a8e5fa"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/hooks/interactions/use-stable-list-item-keys.ts",
+          "sha256": "e68e2e61cf653f6a640fb0194c0aba506c2b1c0279506d65b94ad4c338812ce6"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/containers/panels.test.tsx",
+          "sha256": "159fcbefd053f60a0148661fac1034818661096fcf0b8513cb158e56e6dfb801"
+        }
+      ]
+    }
+  ]
+}

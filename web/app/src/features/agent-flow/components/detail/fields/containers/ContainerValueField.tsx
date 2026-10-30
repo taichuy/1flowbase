@@ -18,7 +18,7 @@ function StructuredConstant({
   label: string;
   onChange: (value: unknown) => void;
 }) {
-  const [draft, setDraft] = useState(JSON.stringify(value));
+  const [draft, setDraft] = useState(() => JSON.stringify(value));
   const [invalid, setInvalid] = useState(false);
   useEffect(() => {
     setDraft(JSON.stringify(value));

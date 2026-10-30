@@ -11,7 +11,7 @@ export interface ContainerRoundOption {
   children: ContainerRoundOption[];
 }
 
-export function containerRoundKey(path: ContainerRoundPath[]) {
+function containerRoundKey(path: ContainerRoundPath[]) {
   return path
     .map((entry) => `${entry.container_execution_id}:${entry.round_index}`)
     .join('/');
@@ -21,6 +21,8 @@ export function isWithinContainerRound(
   identity: NodeExecutionIdentity | null | undefined,
   path: ContainerRoundPath[]
 ) {
+  if (path.length === 0) return true;
+  if (!identity || identity.round_path.length < path.length) return false;
   return path.every(
     (entry, index) =>
       identity?.round_path[index]?.container_execution_id ===

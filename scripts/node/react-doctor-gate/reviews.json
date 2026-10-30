@@ -146,6 +146,8 @@
     "scripts/node/react-doctor-gate/reviews/src/features/settings/pages/notifications/communications/reviews.json",
     "scripts/node/react-doctor-gate/reviews/src/features/frontstage/_tests/browser-fixtures/rich-text/reviews.json",
     "scripts/node/react-doctor-gate/reviews/src/style-boundary/scene-fixtures/notifications/reviews.json",
-    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/debug-console/conversation/read-only/reviews.json"
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/debug-console/conversation/read-only/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/detail/fields/containers/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/lib/validation/reviews.json"
   ]
 }

@@ -5,7 +5,10 @@ import type {
 import { i18nText } from '../../../../shared/i18n/text';
 import { pushFieldIssue, type AgentFlowIssue } from './issues';
 import { listVisibleSelectorOptions } from '../selector-options';
-import { loopVariableDefinitions } from '../variables/container-variables';
+import {
+  loopVariableDefinitions,
+  type LoopVariableDefinition
+} from '../variables/container-variables';
 import { getNamedBindingExpression } from '../named-binding-expressions';
 import type { AgentFlowEnvironmentVariable } from '../variables/application-environment-variables';
 
@@ -70,15 +73,14 @@ export function validateContainerNode(
       );
       continue;
     }
+    const selectorKey = JSON.stringify(binding.value);
     const option = listVisibleSelectorOptions(
       document,
       node.id,
       environmentVariables,
       workflowTriggerContext,
       `bindings.${key}`
-    ).find(
-      (option) => JSON.stringify(option.value) === JSON.stringify(binding.value)
-    );
+    ).find((option) => JSON.stringify(option.value) === selectorKey);
     if (
       (key === 'items' || node.config.flatten_output === true) &&
       option &&
@@ -93,7 +95,10 @@ export function validateContainerNode(
   if (node.type !== 'loop') return;
   const variables = loopVariableDefinitions(node);
   const keys = new Set<string>();
+  const variablesByKey = new Map<string, LoopVariableDefinition>();
   for (const variable of variables) {
+    if (!variablesByKey.has(variable.key))
+      variablesByKey.set(variable.key, variable);
     if (
       !variable.key.trim() ||
       variable.key.startsWith('__') ||
@@ -113,9 +118,7 @@ export function validateContainerNode(
     const values = binding?.kind === 'named_bindings' ? binding.value : [];
     const names = new Set<string>();
     for (const entry of values) {
-      const variable = variables.find(
-        (variable) => variable.key === entry.name
-      );
+      const variable = variablesByKey.get(entry.name);
       const expression = getNamedBindingExpression(entry);
       if (
         !variable ||

@@ -96,6 +96,30 @@
       "sourceSha256": "92c93579c4b6adfba5c3f452a2d3e4734853160e5e11c0bb759b08883b518f23",
       "reason": "The two brush handles control the start/end of one custom time-domain selection with pointer capture and Arrow/Home/End handlers. Native input range would add a separate native track and input state rather than retain this paired-handle geometry. TrajectoryTimeline owns measured track geometry, pointer brushing, focus and dense/non-dense point selection. DenseTrajectoryPoints and range helpers own drawing/math; measured width and cursor are independent state, with ResizeObserver disconnected on cleanup.",
       "evidenceSet": 2
+    },
+    {
+      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/NativeTrajectoryWorkspace.tsx",
+      "rule": "react-doctor/no-adjust-state-on-prop-change",
+      "sourceSha256": "9b43960f81c60aa390c9faa8515eaa192b91e6bae2f07c3c5518180a54aa9139",
+      "reason": "roundFilter is a user-selected TreeSelect key into the current run's canonical container execution/round paths, not a projection of runId. Changing runId is an external resource-identity change and must clear a key belonging to the prior run, even without a local click. The effect resets only that round selection; category, collapsed groups and geometry remain separate owners. containerRoundOptions keys include container_execution_id plus round_index, and the trace-identity regression asserts parent-prefix nesting, sibling round isolation and no match for missing identity. Moving this reset into TreeSelect.onChange would miss parent navigation to another run. This review covers that explicit runId-owned reset; it does not exempt new unrelated state synchronization.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/NativeTrajectoryWorkspace.tsx",
+          "sha256": "9b43960f81c60aa390c9faa8515eaa192b91e6bae2f07c3c5518180a54aa9139"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/workflow/container-rounds.ts",
+          "sha256": "ea6528fa265b3b65927ec89cc27fb5c976f6decc274cf3770905046e80dec0a1"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/containers/trace-identity.test.ts",
+          "sha256": "0053c24d51fff037cf58538b37816f978941351ec4ed7adac3c7b20e5726e9f4"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx",
+          "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"
+        }
+      ]
     }
   ]
 }

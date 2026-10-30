@@ -38,8 +38,7 @@ export {
   validateAuthoringDocument,
   type FlowAuthoringIssue
 } from './authoring/validation';
-export {
-  listAuthoringVariableOptions,
-  type AuthoringVariableOption,
-  type AuthoringVariableSource
+export type {
+  AuthoringVariableOption,
+  AuthoringVariableSource
 } from './authoring/variables';

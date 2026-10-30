@@ -1,10 +1,15 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test } from 'vitest';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
+import { AgentFlowEditorShell } from '../../components/editor/AgentFlowEditorShell';
+import { renderReactFlowSceneSettled } from '../../../../test/renderers/render-react-flow-scene';
+import { createApplicationNodeCatalog } from '../fixtures/application-node-catalog';
 import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
 import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
 import {
   DocumentObserver,
+  openSelect,
+  selectOption,
   SelectionSeed,
   renderWithProviders,
   setupNodeInspectorTest
@@ -83,10 +88,147 @@ describe('container configuration panels', () => {
         round_timeout_ms: 500
       })
     );
-    expect(screen.getByRole('switch', { name: '启用并行' })).toHaveAttribute(
-      'aria-checked',
-      'true'
-    );
+    expect(screen.getByRole('switch', { name: '启用并行' })).toBeChecked();
     expect(screen.queryByText('Policy')).not.toBeInTheDocument();
+  });
+
+  test('keeps an invalid structured draft attached to its variable through sibling deletion and rename, then resets it for a new type', async () => {
+    const document = containerDocument();
+    const outer = document.graph.nodes.find((node) => node.id === 'outer')!;
+    outer.config.loop_variables = [
+      { key: 'first', value_type: 'object' },
+      { key: 'second', value_type: 'object' }
+    ];
+    outer.bindings.variables = {
+      kind: 'named_bindings',
+      value: [
+        { name: 'first', value: { kind: 'constant', value: { first: true } } },
+        { name: 'second', value: { kind: 'constant', value: { second: true } } }
+      ]
+    };
+    let saved: FlowAuthoringDocument = document;
+    await renderWithProviders(
+      <AgentFlowEditorStoreProvider initialState={state(document)}>
+        <SelectionSeed nodeId="outer" />
+        <DocumentObserver
+          onChange={(next) => {
+            saved = next;
+          }}
+        />
+        <NodeConfigTab />
+      </AgentFlowEditorStoreProvider>
+    );
+    const draft = await screen.findByRole('textbox', { name: '初始值 second' });
+    fireEvent.change(draft, { target: { value: '{"unfinished":' } });
+    expect(draft).toHaveValue('{"unfinished":');
+    expect(
+      saved.graph.nodes.find((node) => node.id === 'outer')!.bindings.variables
+    ).toMatchObject({
+      value: [
+        expect.anything(),
+        { name: 'second', value: { value: { second: true } } }
+      ]
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '删除变量 1' }));
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: '初始值 second' })).toBe(draft)
+    );
+    expect(draft).toHaveValue('{"unfinished":');
+    const name = screen.getByRole('textbox', { name: '变量名称 1' });
+    name.focus();
+    fireEvent.change(name, { target: { value: 'renamed' } });
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: '初始值 renamed' })).toBe(
+        draft
+      )
+    );
+    expect(name).toHaveFocus();
+    expect(draft).toHaveValue('{"unfinished":');
+
+    // A valid edit commits the real binding; a type change replaces its default
+    // instead of leaving the old object draft attached to an array declaration.
+    fireEvent.change(draft, { target: { value: '{"kept":2}' } });
+    await waitFor(() =>
+      expect(
+        saved.graph.nodes.find((node) => node.id === 'outer')!.bindings
+          .variables
+      ).toEqual({
+        kind: 'named_bindings',
+        value: [
+          { name: 'renamed', value: { kind: 'constant', value: { kept: 2 } } }
+        ]
+      })
+    );
+    await openSelect('变量类型 1');
+    await selectOption('数组');
+    await waitFor(() => {
+      expect(
+        screen.getByRole('textbox', { name: '初始值 renamed' })
+      ).toHaveValue('[]');
+      expect(
+        saved.graph.nodes.find((node) => node.id === 'outer')!.config
+          .loop_variables
+      ).toEqual([{ key: 'renamed', value_type: 'array' }]);
+      expect(
+        saved.graph.nodes.find((node) => node.id === 'outer')!.bindings
+          .variables
+      ).toEqual({
+        kind: 'named_bindings',
+        value: [{ name: 'renamed', value: { kind: 'constant', value: [] } }]
+      });
+    });
+  });
+
+  test('selects a container through the delegated body click and separate native selection controls', async () => {
+    const document = containerDocument();
+    document.graph.nodes.find((node) => node.id === 'outer-start')!.alias =
+      'Internal start';
+    const outerAlias = document.graph.nodes.find(
+      (node) => node.id === 'outer'
+    )!.alias;
+    const startAlias = document.graph.nodes.find(
+      (node) => node.id === 'outer-start'
+    )!.alias;
+    const view = await renderReactFlowSceneSettled(
+      <AgentFlowEditorShell
+        applicationId="app-containers"
+        applicationName="Containers"
+        initialState={state(document)}
+        nodeCatalog={createApplicationNodeCatalog([])}
+      />
+    );
+    const body = view.container.querySelector<HTMLElement>(
+      '[data-container-id="outer"] .agent-flow-container__body'
+    )!;
+    fireEvent.click(body);
+    expect(
+      await screen.findByRole('textbox', { name: '节点别名' })
+    ).toHaveValue(outerAlias);
+
+    const start = view.container.querySelector<HTMLButtonElement>(
+      '.react-flow__node[data-id="outer-start"] .agent-flow-container-start__select'
+    )!;
+    expect(start.tagName).toBe('BUTTON');
+    expect(start).toHaveAttribute('type', 'button');
+    expect(start.querySelector('button, [role="button"]')).toBeNull();
+    fireEvent.click(start);
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: '节点别名' })).toHaveValue(
+        'Container start'
+      )
+    );
+
+    const header = view.container.querySelector<HTMLButtonElement>(
+      '[data-container-id="outer"] .agent-flow-container__select'
+    )!;
+    expect(header.tagName).toBe('BUTTON');
+    expect(header.querySelector('button, [role="button"]')).toBeNull();
+    fireEvent.click(header);
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: '节点别名' })).toHaveValue(
+        'Loop'
+      )
+    );
   });
 });

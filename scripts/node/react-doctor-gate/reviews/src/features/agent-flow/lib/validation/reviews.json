@@ -1,0 +1,53 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/agent-flow/lib/validation/containers.ts",
+      "rule": "react-doctor/js-index-maps",
+      "sourceSha256": "01c64853297de37ddf479bd9b73b853a7841daa5e98c2f0a4f0b196740dd154b",
+      "reason": "The flagged .find probes one newly derived field-specific selector list once. The enclosing field list is exactly items/output for iteration or output for loop (at most two), and each call receives a different bindings field key because visibility differs between pre-body input and body output. A shared index would conflate those scopes; building a Map separately for a single lookup still scans every option and allocates an extra index. The current first matching selector preserves producer order and type semantics. Repeated variable-declaration lookup later in this validator has instead been indexed with first-match preservation. Container authoring and Workflow boundary tests assert immediate-body export, nested non-leakage and scalar input rejection.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/agent-flow/lib/validation/containers.ts",
+          "sha256": "01c64853297de37ddf479bd9b73b853a7841daa5e98c2f0a4f0b196740dd154b"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/lib/selector-options.ts",
+          "sha256": "2e965fd7d2c915d0f4eeac31c653dc3d24890b08dd99d9042f772b81f478e9e3"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/containers/authoring.test.ts",
+          "sha256": "f9df567e31aeda5ce272b4768098a7f1a95c11a0dc246dbb2d9119c4fd57d5e0"
+        },
+        {
+          "file": "web/app/src/features/workflow/_tests/workflow-authoring-boundary.test.ts",
+          "sha256": "ee4784f3e407d00c5a9c9af5de05f661fedc44b9f692d8924826ebc7843e3a03"
+        }
+      ]
+    },
+    {
+      "file": "web/app/src/features/agent-flow/lib/validation/containers.ts",
+      "rule": "react-doctor/js-set-map-lookups",
+      "sourceSha256": "01c64853297de37ddf479bd9b73b853a7841daa5e98c2f0a4f0b196740dd154b",
+      "reason": "The membership arrays at issue are fixed language/domain enums: exactly string/number/boolean/object/array for loop value types, and fail/break/continue for error policy. Neither collection grows with variables or graph size, so each includes check has a fixed bound of five or three comparisons and allocates no per-variable Set. Variable-name uniqueness already uses Set, and the repeated declaration lookup now uses a first-entry Map. Container contract declarations, typed editor options and authoring validation tests bind these exact field/type/error semantics; this review does not cover unbounded array membership.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/agent-flow/lib/validation/containers.ts",
+          "sha256": "01c64853297de37ddf479bd9b73b853a7841daa5e98c2f0a4f0b196740dd154b"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/lib/node-definitions/nodes/containers/contracts.ts",
+          "sha256": "57f1101793c258c41a7ccb867120506af01e7be7e62e88dcfc4f28ddd726d551"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerFields.tsx",
+          "sha256": "0ec7eb4a2c3f7d6ea1a80a58ef0cfdf03e1d39ab62f37b4ed6043a0ede3daafc"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/containers/authoring.test.ts",
+          "sha256": "f9df567e31aeda5ce272b4768098a7f1a95c11a0dc246dbb2d9119c4fd57d5e0"
+        }
+      ]
+    }
+  ]
+}

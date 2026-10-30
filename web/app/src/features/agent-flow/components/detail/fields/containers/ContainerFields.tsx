@@ -19,6 +19,7 @@ import type {
 import type { SchemaFieldRendererProps } from '../../../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 import type { FlowSelectorOption } from '../../../../lib/selector-options';
 import { loopVariableDefinitions } from '../../../../lib/variables/container-variables';
+import { useStableListItemKeys } from '../../../../hooks/interactions/use-stable-list-item-keys';
 import { SelectorField } from '../../../bindings/SelectorField';
 import { ConditionGroupField } from '../../../bindings/ConditionGroupField';
 import { ContainerValueField } from './ContainerValueField';
@@ -42,6 +43,10 @@ export function ContainerVariablesField({ adapter }: SchemaFieldRendererProps) {
   const { t } = useTranslation('agentFlow');
   const node = adapter.getDerived('node') as FlowNodeDocument;
   const variables = loopVariableDefinitions(node);
+  const rowKeys = useStableListItemKeys(
+    `container-variable-${node.id}`,
+    variables.length
+  );
   const initial = entries(adapter.getValue('bindings.variables'));
   const updates = entries(adapter.getValue('bindings.variable_updates'));
   function updateBinding(
@@ -65,7 +70,10 @@ export function ContainerVariablesField({ adapter }: SchemaFieldRendererProps) {
       data-testid="container-loop-variables"
     >
       {variables.map((variable, index) => (
-        <div className="agent-flow-container-field__row" key={index}>
+        <div
+          className="agent-flow-container-field__row"
+          key={rowKeys.itemKeys[index]}
+        >
           <Flex gap={8}>
             <Input
               aria-label={`${t('containers.variable_name')} ${index + 1}`}
@@ -102,12 +110,13 @@ export function ContainerVariablesField({ adapter }: SchemaFieldRendererProps) {
               aria-label={`${t('containers.delete_variable')} ${index + 1}`}
               type="text"
               icon={<DeleteOutlined />}
-              onClick={() =>
+              onClick={() => {
+                rowKeys.removeItemKey(index);
                 adapter.setValue(
                   'config.loop_variables',
                   variables.filter((_, i) => i !== index)
-                )
-              }
+                );
+              }}
             />
           </Flex>
           <Typography.Text type="secondary">
@@ -150,6 +159,7 @@ export function ContainerVariablesField({ adapter }: SchemaFieldRendererProps) {
             variables.some((variable) => variable.key === `variable_${index}`)
           )
             index++;
+          rowKeys.insertItemKey();
           adapter.setValue('config.loop_variables', [
             ...variables,
             { key: `variable_${index}`, value_type: 'string' }
