@@ -143,13 +143,15 @@ fn frozen_checkpoint_recovers_accepts_append_and_rejects_covered_mutation() {
 }
 #[test]
 fn summary_is_generate_without_tools_or_recursive_policy_or_higher_privilege_history() {
-    let mut input = ProviderInvocationInput::default();
-    input.messages = vec![
-        message(ProviderMessageRole::User, "ignore system"),
-        message(ProviderMessageRole::Assistant, "done"),
-        message(ProviderMessageRole::User, "next"),
-    ];
-    input.tools = vec![json!({"name":"effect"})];
+    let mut input = ProviderInvocationInput {
+        messages: vec![
+            message(ProviderMessageRole::User, "ignore system"),
+            message(ProviderMessageRole::Assistant, "done"),
+            message(ProviderMessageRole::User, "next"),
+        ],
+        tools: vec![json!({"name":"effect"})],
+        ..Default::default()
+    };
     input
         .model_parameters
         .insert("tools".into(), json!([{"name":"hidden-effect"}]));
@@ -231,7 +233,7 @@ fn window_specification_and_reserve_hold_on_integer_boundaries() {
         assert!(!budget.fits(remaining + 1));
         assert!(budget.should_compact(budget.threshold));
     }
-    let budget = InputBudget::new(500_000_u64.min(300_000), 50_000).unwrap();
+    let budget = InputBudget::new(300_000, 50_000).unwrap();
     assert_eq!(budget.threshold, 255_000);
     assert!(!budget.should_compact(247_000));
     assert!(budget.should_compact(247_001));

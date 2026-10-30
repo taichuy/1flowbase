@@ -19,8 +19,10 @@ pub(crate) struct InMemoryProviderRuntime {
     before_invocation_return: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
+type CountTokensMeasurement = dyn Fn(&ProviderInvocationInput) -> u64 + Send + Sync;
+
 struct CountTokensFixture {
-    measure: Option<Arc<dyn Fn(&ProviderInvocationInput) -> u64 + Send + Sync>>,
+    measure: Option<Arc<CountTokensMeasurement>>,
     results: VecDeque<plugin_framework::provider_contract::ProviderCountTokensResult>,
     captured: Arc<Mutex<Vec<ProviderInvocationInput>>>,
 }

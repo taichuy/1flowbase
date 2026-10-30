@@ -214,7 +214,7 @@ pub(in super::super) async fn commit_wait_with_tool_calls(
 }
 
 pub(super) fn exact_payload(index: usize) -> Value {
-    let mut item = if index % 2 == 0 {
+    let mut item = if index.is_multiple_of(2) {
         json!({"id":format!("ctc-{index}"),"type":"custom_tool_call", "call_id":format!("call-{index}"),
             "name":"exec","input":"  exact\nbytes\r\n\"quoted\"  "})
     } else {

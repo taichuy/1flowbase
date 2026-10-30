@@ -97,10 +97,10 @@ impl ExecutionLifecycle for StrictLifecycle {
                         }
                     }
                 }
-                ContainerTransitionKind::Resumed => {
-                    if terminal.get(&event.identity.execution_id) != Some(&false) {
-                        bail!("cannot resume an already terminal receipt");
-                    }
+                ContainerTransitionKind::Resumed
+                    if terminal.get(&event.identity.execution_id) != Some(&false) =>
+                {
+                    bail!("cannot resume an already terminal receipt");
                 }
                 _ => {}
             }

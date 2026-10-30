@@ -1376,7 +1376,8 @@ async fn completed_a_waiting_b_no_execution_keeps_ordinary_scoped_projection() {
     )
     .await;
     let payload = super::delivery_proof::exact_payload(900);
-    let next = super::delivery_proof::commit_wait(&state, &run, &[payload.clone()]).await;
+    let next =
+        super::delivery_proof::commit_wait(&state, &run, std::slice::from_ref(&payload)).await;
     let actual = ApplicationNativeRunService::new(state.store.clone())
         .get_native_run_for_actor(actor, run.id)
         .await

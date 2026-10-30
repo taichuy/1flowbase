@@ -4,6 +4,8 @@ use control_plane::ports::{
     PutCanonicalRuntimeContentInput,
 };
 
+type RecoveryHistoryRow = (i64, Uuid, Option<Uuid>, i64, i64, i32, i64, i64);
+
 /// Real repository anchors, including human/non-native stops. Unlike a diagnostic
 /// waiting copy these rows are the immutable business history used by production.
 pub(super) async fn seed_scope_boundary(
@@ -18,7 +20,7 @@ pub(super) async fn seed_scope_boundary(
         .unwrap();
     // This helper models recovery history only, not callback execution. Keep
     // the preceding immutable context/coordinates when appending its Running hop.
-    let previous: Option<(i64,Uuid,Option<Uuid>,i64,i64,i32,i64,i64)> = sqlx::query_as(
+    let previous: Option<RecoveryHistoryRow> = sqlx::query_as(
         "select sequence,context_version_id,recovery_content_id,node_sequence,iteration_index,attempt_index,resume_sequence,event_sequence from flow_run_recovery_history where flow_run_id=$1 order by sequence desc limit 1",
     ).bind(run.id).fetch_optional(state.store.pool()).await.unwrap();
     if let Some((
@@ -435,7 +437,7 @@ async fn scope_identity_is_explicit_and_human_wait_closes_initial_delivery_inter
         &run,
         selected_delivery_scope(&run),
         3,
-        &[first.payload.clone()],
+        std::slice::from_ref(&first.payload),
     )
     .await;
     assert_protocol_failure(

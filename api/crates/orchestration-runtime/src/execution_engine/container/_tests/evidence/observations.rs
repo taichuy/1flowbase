@@ -20,6 +20,8 @@ struct Observed {
     outputs: Vec<u8>,
     propagated: bool,
 }
+type ObservedTransition = (ContainerTransitionKind, String, Option<u64>);
+
 pub struct Observer {
     pub ledger: Ledger,
     pub metrics: Mutex<Metrics>,
@@ -27,9 +29,7 @@ pub struct Observer {
     pub generation: AtomicU8,
     pub target: &'static str,
     pub spec: Spec,
-    pub transitions: Mutex<
-        Option<tokio::sync::mpsc::UnboundedSender<(ContainerTransitionKind, String, Option<u64>)>>,
-    >,
+    pub transitions: Mutex<Option<tokio::sync::mpsc::UnboundedSender<ObservedTransition>>>,
 }
 impl Observer {
     pub fn new(target: &'static str, spec: Spec) -> Self {

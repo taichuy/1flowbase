@@ -502,7 +502,7 @@ fn persisted_managed_wrappers_keep_edits_but_follow_current_activation_and_role(
     let mut actor = domain::ActorContext::root(Uuid::nil(), instance.workspace_id, "root");
     filter_persisted_operations(
         &mut catalog,
-        &[installed.clone()],
+        std::slice::from_ref(&installed),
         &[&service],
         &actor,
         &[],
@@ -517,7 +517,7 @@ fn persisted_managed_wrappers_keep_edits_but_follow_current_activation_and_role(
     let mut denied = edited.clone();
     filter_persisted_operations(
         &mut denied,
-        &[installed.clone()],
+        std::slice::from_ref(&installed),
         &[&service],
         &actor,
         &[],
@@ -534,7 +534,7 @@ fn persisted_managed_wrappers_keep_edits_but_follow_current_activation_and_role(
     let mut granted = edited.clone();
     filter_persisted_operations(
         &mut granted,
-        &[installed.clone()],
+        std::slice::from_ref(&installed),
         &[&service],
         &actor,
         &policies,
@@ -545,7 +545,7 @@ fn persisted_managed_wrappers_keep_edits_but_follow_current_activation_and_role(
     let mut disabled = edited.clone();
     filter_persisted_operations(
         &mut disabled,
-        &[installed.clone()],
+        std::slice::from_ref(&installed),
         &[],
         &actor,
         &policies,

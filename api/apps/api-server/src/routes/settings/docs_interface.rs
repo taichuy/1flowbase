@@ -271,7 +271,7 @@ impl DocsAdapter {
                     ));
                 }
                 if let Some(spec) = self.0.api_docs.cached_category_spec(&category_id).await {
-                    return Ok(DocsOutput::OpenApi(spec.into()));
+                    return Ok(DocsOutput::OpenApi(spec));
                 }
                 let extension_docs = self.extension_docs().await?;
                 let spec = extension_docs
@@ -301,7 +301,7 @@ impl DocsAdapter {
                     return Ok(DocsOutput::OpenApi(spec.into()));
                 }
                 if let Some(spec) = self.0.api_docs.cached_operation_spec(&operation_id).await {
-                    return Ok(DocsOutput::OpenApi(spec.into()));
+                    return Ok(DocsOutput::OpenApi(spec));
                 }
                 let extension_docs = self.extension_docs().await?;
                 let spec = extension_docs

@@ -19,7 +19,7 @@ pub(super) async fn append_tool_wait_round(
         )
         .await;
     }
-    super::delivery_proof::commit_wait(state, run, &[tool.clone()]).await
+    super::delivery_proof::commit_wait(state, run, std::slice::from_ref(tool)).await
 }
 
 #[tokio::test]

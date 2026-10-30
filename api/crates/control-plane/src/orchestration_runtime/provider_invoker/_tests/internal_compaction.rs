@@ -686,46 +686,48 @@ async fn real_engine_compacts_then_executes_one_new_tool_and_retains_its_receipt
     assert_eq!(execution.metrics_payload["internal_tool_call_count"], 1);
     assert_eq!(lifecycle.started.lock().unwrap().len(), 1);
     assert_eq!(lifecycle.started.lock().unwrap()[0]["id"], "new-write");
-    let receipts = lifecycle.finished.lock().unwrap();
-    assert_eq!(receipts.len(), 1);
-    assert_eq!(receipts[0]["tool_call_id"], "new-write");
-    assert_eq!(receipts[0]["execution_status"], "succeeded");
-    assert_eq!(receipts[0]["content"], "new-write-committed-receipt");
-    drop(receipts);
+    {
+        let receipts = lifecycle.finished.lock().unwrap();
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0]["tool_call_id"], "new-write");
+        assert_eq!(receipts[0]["execution_status"], "succeeded");
+        assert_eq!(receipts[0]["content"], "new-write-committed-receipt");
+    }
     assert_eq!(
         execution.debug_payload["runtime_internal_tool_events"][0]["tool_call_id"],
         "new-write"
     );
-    let generated = fixture.generated.lock().unwrap();
-    assert_eq!(
-        generated.len(),
-        3,
-        "one summary and two actual inference rounds"
-    );
-    assert!(generated[0].tools.is_empty());
-    for invocation in &generated[1..] {
+    {
+        let generated = fixture.generated.lock().unwrap();
         assert_eq!(
-            invocation
-                .messages
-                .iter()
-                .filter(|m| m.role == ProviderMessageRole::User && m.content == RAW_USER)
-                .count(),
-            1
+            generated.len(),
+            3,
+            "one summary and two actual inference rounds"
         );
-        assert!(!serde_json::to_string(&invocation.messages)
-            .unwrap()
-            .contains("old-write"));
+        assert!(generated[0].tools.is_empty());
+        for invocation in &generated[1..] {
+            assert_eq!(
+                invocation
+                    .messages
+                    .iter()
+                    .filter(|m| m.role == ProviderMessageRole::User && m.content == RAW_USER)
+                    .count(),
+                1
+            );
+            assert!(!serde_json::to_string(&invocation.messages)
+                .unwrap()
+                .contains("old-write"));
+        }
+        let resumed = &generated[2].messages;
+        assert!(resumed.iter().any(|message| message
+            .tool_calls
+            .as_ref()
+            .is_some_and(|calls| calls.to_string().contains("new-write"))));
+        assert!(resumed.iter().any(
+            |message| message.tool_call_id.as_deref() == Some("new-write")
+                && message.content.contains("new-write-committed-receipt")
+        ));
     }
-    let resumed = &generated[2].messages;
-    assert!(resumed.iter().any(|message| message
-        .tool_calls
-        .as_ref()
-        .is_some_and(|calls| calls.to_string().contains("new-write"))));
-    assert!(resumed.iter().any(
-        |message| message.tool_call_id.as_deref() == Some("new-write")
-            && message.content.contains("new-write-committed-receipt")
-    ));
-    drop(generated);
     let events = fixture
         .repository
         .list_runtime_events(fixture.run_id, 0)
