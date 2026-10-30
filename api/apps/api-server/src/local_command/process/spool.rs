@@ -89,3 +89,7 @@ pub(super) fn capture(mut reader: impl Read, mut spool: Spool) -> io::Result<Spo
     spool.file.flush()?;
     Ok(spool)
 }
+
+#[cfg(test)]
+#[path = "_tests/spool.rs"]
+mod tests;

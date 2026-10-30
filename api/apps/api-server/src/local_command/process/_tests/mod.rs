@@ -201,7 +201,7 @@ fn local_command_spool_carrier_is_private_and_deleted_on_close() {
             },
             0
         );
-        assert_ne!(info.DeletePending, 0);
+        assert!(info.DeletePending);
     }
     drop(file);
 }
