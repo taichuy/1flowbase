@@ -2,12 +2,13 @@ import {
   Handle,
   NodeResizeControl,
   Position,
+  useUpdateNodeInternals,
   type NodeProps
 } from '@xyflow/react';
 import HomeFilled from '@ant-design/icons/es/icons/HomeFilled';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import { Button, theme } from 'antd';
-import type { CSSProperties } from 'react';
+import { useEffect, type CSSProperties } from 'react';
 import type {
   AgentFlowCanvasNode,
   AgentFlowCanvasNodeData
@@ -162,9 +163,13 @@ export function ContainerStart({
   selected
 }: NodeProps<AgentFlowCanvasNode>) {
   const style = useContainerTheme();
+  const updateNodeInternals = useUpdateNodeInternals();
+  useEffect(() => {
+    updateNodeInternals(data.nodeId);
+  }, [data.nodeId, data.emptyContainer, updateNodeInternals]);
   return (
     <div
-      className={`agent-flow-container-start${selected ? ' agent-flow-container-start--selected' : ''}`}
+      className={`agent-flow-container-start${data.emptyContainer ? ' agent-flow-container-start--empty' : ''}${selected ? ' agent-flow-container-start--selected' : ''}`}
       role="button"
       style={style}
       tabIndex={0}
@@ -183,7 +188,16 @@ export function ContainerStart({
       <span className="agent-flow-container-start__icon">
         <HomeFilled />
       </span>
-      <Source data={data} />
+      {data.emptyContainer ? (
+        <Source data={data} />
+      ) : (
+        <Handle
+          type="source"
+          position={Position.Right}
+          id={MAIN_SOURCE_HANDLE_ID}
+          className="agent-flow-container-start__anchor nodrag nopan"
+        />
+      )}
     </div>
   );
 }

@@ -30,10 +30,10 @@ describe('container configuration panels', () => {
       </AgentFlowEditorStoreProvider>
     );
     const timeout = await screen.findByRole('spinbutton', {
-      name: '每轮期限（毫秒）'
+      name: '单次最大循环（分钟）'
     });
     expect(timeout).toHaveDisplayValue('');
-    fireEvent.change(timeout, { target: { value: '2500' } });
+    fireEvent.change(timeout, { target: { value: '1.5' } });
     fireEvent.change(
       await screen.findByRole('spinbutton', { name: '初始值 count' }),
       { target: { value: '3' } }
@@ -43,7 +43,7 @@ describe('container configuration panels', () => {
     });
     await waitFor(() => {
       const loop = saved.graph.nodes.find((node) => node.id === 'outer')!;
-      expect(loop.config.round_timeout_ms).toBe(2500);
+      expect(loop.config.round_timeout_ms).toBe(90000);
       expect(loop.config.loop_variables).toEqual([
         { key: 'total', value_type: 'number' }
       ]);
@@ -52,6 +52,46 @@ describe('container configuration panels', () => {
         value: [{ name: 'total', value: { kind: 'constant', value: 3 } }]
       });
     });
+  });
+
+  test('preserves legacy milliseconds on display and clears the optional timeout', async () => {
+    const document = containerDocument();
+    document.graph.nodes.find(
+      (node) => node.id === 'outer'
+    )!.config.round_timeout_ms = 2500;
+    let saved = document;
+    await renderWithProviders(
+      <AgentFlowEditorStoreProvider initialState={state(document)}>
+        <SelectionSeed nodeId="outer" />
+        <DocumentObserver
+          onChange={(document) => {
+            saved = document;
+          }}
+        />
+        <NodeConfigTab />
+      </AgentFlowEditorStoreProvider>
+    );
+    const timeout = await screen.findByRole('spinbutton', {
+      name: '单次最大循环（分钟）'
+    });
+    expect(Number((timeout as HTMLInputElement).value)).toBeCloseTo(
+      2500 / 60000,
+      12
+    );
+    fireEvent.focus(timeout);
+    fireEvent.blur(timeout);
+    expect(
+      saved.graph.nodes.find((node) => node.id === 'outer')!.config
+        .round_timeout_ms
+    ).toBe(2500);
+    fireEvent.change(timeout, { target: { value: '' } });
+    fireEvent.blur(timeout);
+    await waitFor(() =>
+      expect(
+        saved.graph.nodes.find((node) => node.id === 'outer')!.config
+          .round_timeout_ms
+      ).toBeNull()
+    );
   });
 
   test('saves parallelism and flattening on iteration without exposing the ordinary node policy', async () => {

@@ -73,5 +73,43 @@
 }
 
 .agent-flow-container-start .agent-flow-node-handle--source.react-flow__handle {
-  right: -16px;
+  right: -40px;
+  width: 32px;
+  height: 32px;
+}
+
+/* Keep the start marker and its add/connection control visibly separate. */
+.agent-flow-container-start--empty::after {
+  content: '';
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  width: 40px;
+  height: 2px;
+  transform: translateY(-50%);
+  background: var(--container-selection);
+  pointer-events: none;
+}
+
+.agent-flow-container-start .agent-flow-node-handle__icon {
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+  opacity: 1;
+}
+
+.agent-flow-container-start
+  .agent-flow-node-handle--source.react-flow__handle:hover,
+.agent-flow-container-start
+  .agent-flow-node-handle--source.react-flow__handle:focus-visible,
+.agent-flow-container-start
+  .agent-flow-node-handle--source.react-flow__handle[aria-expanded='true'] {
+  width: 40px;
+  height: 40px;
+}
+
+.agent-flow-container-start__anchor.react-flow__handle {
+  right: 0;
+  transform: translate(50%, -50%);
+  opacity: 0;
 }

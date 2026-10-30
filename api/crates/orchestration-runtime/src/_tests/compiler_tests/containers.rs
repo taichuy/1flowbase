@@ -50,6 +50,9 @@ fn container_compiler_accepts_lexical_inputs_and_delayed_body_bindings() {
 fn container_compiler_rejects_missing_or_unbounded_config() {
     for key in ["max_rounds", "round_timeout_ms"] {
         for value in [Value::Null, json!(0), json!(-1), json!(1.5), json!("3")] {
+            if key == "round_timeout_ms" && value.is_null() {
+                continue;
+            }
             let mut doc = document();
             doc["graph"]["nodes"][1]["config"][key] = value;
             assert!(compile(&doc).is_err(), "{key}");
@@ -163,4 +166,25 @@ fn container_compiler_accepts_nested_iteration_without_exposing_grandchildren() 
     ensure_plan_execution_contract(&compile(&doc).unwrap()).unwrap();
     doc["graph"]["nodes"][1]["bindings"]["output"]["value"] = json!(["leaf", "result"]);
     assert!(ensure_plan_execution_contract(&compile(&doc).unwrap()).is_err());
+}
+
+#[test]
+fn container_compiler_accepts_missing_and_null_round_timeout() {
+    for missing in [true, false] {
+        let mut doc = document();
+        let config = doc["graph"]["nodes"][1]["config"].as_object_mut().unwrap();
+        if missing {
+            config.remove("round_timeout_ms");
+        } else {
+            config.insert("round_timeout_ms".into(), Value::Null);
+        }
+        let plan = compile(&doc).unwrap();
+        ensure_plan_execution_contract(&plan).unwrap();
+        assert_eq!(
+            crate::container_contract::ContainerConfig::from_node(&plan.nodes["loop"])
+                .unwrap()
+                .round_timeout_ms,
+            None
+        );
+    }
 }

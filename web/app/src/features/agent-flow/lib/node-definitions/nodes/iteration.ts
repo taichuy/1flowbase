@@ -18,7 +18,7 @@ export const iterationNodeDefinition: NodeDefinition = {
           key: 'config.round_timeout_ms',
           label: i18nText('agentFlow', 'containers.round_timeout_ms'),
           editor: 'number',
-          required: true
+          required: false
         },
         {
           key: 'bindings.output',

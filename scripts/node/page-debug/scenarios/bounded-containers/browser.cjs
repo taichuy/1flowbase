@@ -86,8 +86,8 @@ async function runBrowserScene({
     await number(page, /^(最大轮数|Maximum number of rounds)$/, 2);
     await number(
       page,
-      /^(每轮期限（毫秒）|Round deadline \(milliseconds\))$/,
-      30000,
+      /^(单次最大循环（分钟）|Maximum time per round \(minutes\))$/,
+      0.5,
     );
     state = await save(
       page,
@@ -134,16 +134,16 @@ async function runBrowserScene({
     await number(page, /^(最大轮数|Maximum number of rounds)$/, 2);
     await number(
       page,
-      /^(每轮期限（毫秒）|Round deadline \(milliseconds\))$/,
-      30000,
+      /^(单次最大循环（分钟）|Maximum time per round \(minutes\))$/,
+      0.5,
     );
     await errorPolicy(page, /^(继续下一轮|Continue with the next round)$/);
     await screenshot(page, outputDir, "02a-loop-settings.png");
     await selectNode(page, ids.iteration, "BC Iteration", receipt, true);
     await number(
       page,
-      /^(每轮期限（毫秒）|Round deadline \(milliseconds\))$/,
-      15000,
+      /^(单次最大循环（分钟）|Maximum time per round \(minutes\))$/,
+      0.25,
     );
     await errorPolicy(
       page,

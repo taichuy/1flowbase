@@ -10,6 +10,7 @@ use std::sync::{
 
 #[derive(Default)]
 struct Probe {
+    expected_timeout_ms: Option<u64>,
     calls: AtomicUsize,
     live: AtomicUsize,
     peak: AtomicUsize,
@@ -46,10 +47,13 @@ impl CapabilityInvoker for Probe {
 impl CodeInvoker for Probe {
     async fn invoke_code_node(
         &self,
-        _: &CompiledCodeRuntime,
+        runtime: &CompiledCodeRuntime,
         config: Value,
         input: Value,
     ) -> Result<CodeInvocationOutput> {
+        if let Some(expected) = self.expected_timeout_ms {
+            assert_eq!(runtime.isolation_profile.timeout_ms, expected);
+        }
         let identity_before = scoped_execution_identity();
         if let Some(identity) = &identity_before {
             self.identities.lock().unwrap().push(identity.clone());
@@ -514,7 +518,7 @@ async fn expired_wait_is_failed_before_callback_payload_is_admitted() {
         .values_mut()
     {
         for round in frame.rounds.values_mut() {
-            round.deadline_unix_ms = 0;
+            round.deadline_unix_ms = Some(0);
         }
     }
     let done = resume_scoped_container_with_runtime_context_and_lifecycle(
@@ -543,3 +547,5 @@ mod deadline_rejection;
 mod durable_lifecycle;
 
 mod evidence;
+
+mod optional_deadline;

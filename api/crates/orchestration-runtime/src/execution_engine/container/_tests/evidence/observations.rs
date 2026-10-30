@@ -10,7 +10,7 @@ pub struct Metrics {
     pub execution_ids: BTreeSet<uuid::Uuid>,
     pub round_commits: usize,
     pub round_admissions: BTreeMap<String, usize>,
-    frozen_deadlines: BTreeMap<uuid::Uuid, (i64, uuid::Uuid)>,
+    frozen_deadlines: BTreeMap<uuid::Uuid, (Option<i64>, Option<uuid::Uuid>)>,
 }
 #[derive(Default)]
 struct Observed {
@@ -199,7 +199,7 @@ impl ExecutionLifecycle for Observer {
                                 if timeout {
                                     state.events.push(Event::Expire(index));
                                     let ancestor = round.deadline_owner_execution_id
-                                        != frame.identity.execution_id;
+                                        != Some(frame.identity.execution_id);
                                     state.propagated = ancestor;
                                     Event::Timeout { index, ancestor }
                                 } else {
