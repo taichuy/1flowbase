@@ -1013,6 +1013,26 @@
         "managed-table-scope-time-index",
         "managed-table-created-at"
       ]
+    },
+    "flow_container_control_failures": {
+      "kind": "flow_run_owned_container_control_failures",
+      "reason": "Control failures are immutable facts keyed by run, execution and after-round position; authorization and cascade follow the execution owner rather than independent workspace chronology.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "flow_container_observations": {
+      "kind": "flow_run_owned_container_observations",
+      "reason": "Observation receipts are mutable pending-to-completed execution-owned work; sequence orders pending payload delivery and completion clears payloads without ordinary creation or update chronology.",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
     }
   },
   "ownedTableContracts": {
@@ -2052,6 +2072,248 @@
         [
           "checkpoint_content_id"
         ]
+      ]
+    },
+    "flow_container_checkpoints": {
+      "primaryKey": [
+        "flow_run_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "flow_run_id"
+          ],
+          "table": "flow_runs",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "requiredColumns": [
+        "checkpoint",
+        "raw_json_payloads",
+        "revision",
+        "native_recovery_execution_id",
+        "native_recovery_started",
+        "updated_at"
+      ],
+      "indexes": [
+        [
+          "flow_run_id"
+        ]
+      ]
+    },
+    "flow_container_executions": {
+      "primaryKey": [
+        "flow_run_id",
+        "execution_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "flow_run_id"
+          ],
+          "table": "flow_runs",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        },
+        {
+          "columns": [
+            "node_run_id"
+          ],
+          "table": "node_runs",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "nullableOwnerColumns": [
+        "node_run_id"
+      ],
+      "ownerColumns": [
+        "execution_id",
+        "node_id",
+        "round_path"
+      ],
+      "requiredColumns": [
+        "parent_execution_id",
+        "node_run_id",
+        "last_observation_sequence"
+      ],
+      "indexes": [
+        [
+          "flow_run_id",
+          "execution_id"
+        ],
+        [
+          "flow_run_id",
+          "parent_execution_id"
+        ],
+        [
+          "node_run_id"
+        ]
+      ],
+      "uniqueIndexes": [
+        [
+          "node_run_id"
+        ]
+      ]
+    },
+    "flow_container_rounds": {
+      "primaryKey": [
+        "flow_run_id",
+        "execution_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "flow_run_id"
+          ],
+          "table": "flow_runs",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "ownerColumns": [
+        "execution_id",
+        "container_execution_id",
+        "round_index"
+      ],
+      "requiredColumns": [
+        "deadline_unix_ms",
+        "started_at",
+        "finished_at",
+        "status",
+        "error_payload",
+        "output_payload",
+        "variables",
+        "raw_json_payloads"
+      ],
+      "indexes": [
+        [
+          "flow_run_id",
+          "execution_id"
+        ],
+        [
+          "flow_run_id",
+          "container_execution_id",
+          "round_index"
+        ]
+      ],
+      "uniqueIndexes": [
+        [
+          "flow_run_id",
+          "container_execution_id",
+          "round_index"
+        ]
+      ]
+    },
+    "flow_container_control_failures": {
+      "primaryKey": [
+        "flow_run_id",
+        "execution_id",
+        "after_round_index"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "flow_run_id",
+            "execution_id"
+          ],
+          "table": "flow_container_executions",
+          "references": [
+            "flow_run_id",
+            "execution_id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "routingColumns": [
+        "flow_run_id",
+        "execution_id",
+        "after_round_index"
+      ],
+      "requiredColumns": [
+        "error_payload",
+        "raw_json_payloads",
+        "created_at"
+      ],
+      "indexes": [
+        [
+          "flow_run_id",
+          "execution_id",
+          "after_round_index"
+        ]
+      ]
+    },
+    "flow_container_observations": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "flow_run_id",
+            "execution_id"
+          ],
+          "table": "flow_container_executions",
+          "references": [
+            "flow_run_id",
+            "execution_id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "routingColumns": [
+        "flow_run_id",
+        "execution_id",
+        "observation_key"
+      ],
+      "requiredColumns": [
+        "id",
+        "sequence",
+        "trace_payload",
+        "raw_json_payloads",
+        "completed_at"
+      ],
+      "indexes": [
+        [
+          "sequence"
+        ],
+        [
+          "flow_run_id",
+          "execution_id",
+          "observation_key"
+        ],
+        [
+          "flow_run_id",
+          "sequence"
+        ]
+      ],
+      "uniqueIndexes": [
+        [
+          "sequence"
+        ],
+        [
+          "flow_run_id",
+          "execution_id",
+          "observation_key"
+        ]
+      ],
+      "partialIndexes": [
+        {
+          "columns": [
+            "flow_run_id",
+            "sequence"
+          ],
+          "predicate": "completed_at is null"
+        }
       ]
     }
   }

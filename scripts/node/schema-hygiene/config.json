@@ -7,7 +7,10 @@
     "provider_protocol_trajectory_events": "flow_run_owned_table",
     "provider_semantic_trajectory_steps": "flow_run_owned_table",
     "retired_host_infrastructure_settings": "retired_archive_table",
-    "provider_protocol_capsules": "flow_run_owned_table"
+    "provider_protocol_capsules": "flow_run_owned_table",
+    "flow_container_checkpoints": "flow_run_owned_table",
+    "flow_container_executions": "flow_run_owned_table",
+    "flow_container_rounds": "flow_run_owned_table"
   },
   "dynamicModelTablePatterns": [],
   "registeredSystemTables": [
@@ -890,6 +893,16 @@
       "category": "session_owned_internal_compaction",
       "scopeGenerationSource": "authenticated scope_id and application_id reference applications(id, scope_id); canonical content references bind the same scope and application",
       "writePathSource": "orchestration_runtime_repository/context_storage/internal_compaction_methods.rs archives canonical bodies before locking and publishing the composite scope/application/session head"
+    },
+    "flow_container_control_failures": {
+      "category": "flow_run_owned_container_control_failures",
+      "scopeGenerationSource": "flow_run_id + execution_id -> flow_container_executions -> flow_runs.id",
+      "writePathSource": "Control evaluation failure facts inherit run ownership through the exact execution composite foreign key and retain their committed round position."
+    },
+    "flow_container_observations": {
+      "category": "flow_run_owned_container_observations",
+      "scopeGenerationSource": "flow_run_id + execution_id -> flow_container_executions -> flow_runs.id",
+      "writePathSource": "Pending observation receipts inherit run ownership through the exact execution composite foreign key and are drained by sequence before completion clears their payloads."
     }
   },
   "needsOwnerReviewTables": {},

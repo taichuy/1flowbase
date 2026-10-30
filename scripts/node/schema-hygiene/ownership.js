@@ -50,6 +50,24 @@ function ownedTableFindings(table, contract, tables = [table]) {
       report('owned-table-lookup-index', `required unfiltered lookup index (${columns.join(', ')}) is missing`);
     }
   }
+  // ON CONFLICT identities require an unfiltered unique key over exactly these
+  // columns; a longer unique key does not establish uniqueness of its prefix.
+  const uniqueKeys = [table.primaryKey, ...table.uniqueConstraints,
+    ...table.indexes.filter((index) => index.unique)].filter(Boolean);
+  for (const columns of contract.uniqueIndexes || []) {
+    if (!uniqueKeys.some((index) => !index.predicate
+      && sameColumns([...index.columns].sort(), [...columns].sort()))) {
+      report('owned-table-lookup-index', `required unique identity (${columns.join(', ')}) is missing`);
+    }
+  }
+  // Predicates are the parser's SQL text, including literal case. Never fold
+  // case or remove quotes: that could accept a different pending-row set.
+  for (const required of contract.partialIndexes || []) {
+    if (!indexes.some((index) => sameColumns(index.columns.slice(0, required.columns.length), required.columns)
+      && index.predicate === required.predicate)) {
+      report('owned-table-lookup-index', `required filtered lookup (${required.columns.join(', ')}) is missing or changed`);
+    }
+  }
   for (const required of contract.triggers || []) {
     const target = tables.find((candidate) => candidate.name === required.table);
     const present = (target?.triggers || []).some((trigger) => trigger.name === required.name
