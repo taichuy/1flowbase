@@ -501,27 +501,66 @@ describe('SystemRuntimePanel', () => {
     });
   });
 
-  test('stops polling after three consecutive collection failures', async () => {
-    vi.useFakeTimers();
-    systemRuntimeApi.fetchSettingsSystemRuntimeProfile.mockRejectedValue(
-      new Error('runtime unavailable')
-    );
-    renderPanel();
-
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    for (let interval = 0; interval < 5; interval += 1) {
+  test.each(['profile', 'processes', 'both'] as const)(
+    'keeps polling and recovers after four consecutive %s failures',
+    async (failingStream) => {
+      vi.useFakeTimers();
+      let profileCalls = 0;
+      let processCalls = 0;
+      systemRuntimeApi.fetchSettingsSystemRuntimeProfile.mockImplementation(
+        async () => {
+          profileCalls += 1;
+          if (failingStream !== 'processes' && profileCalls <= 4) {
+            throw new Error('runtime unavailable');
+          }
+          return runtimeProfile();
+        }
+      );
+      const processData =
+        await systemRuntimeApi.fetchSettingsSystemRuntimeProcesses();
+      systemRuntimeApi.fetchSettingsSystemRuntimeProcesses.mockClear();
+      systemRuntimeApi.fetchSettingsSystemRuntimeProcesses.mockImplementation(
+        async () => {
+          processCalls += 1;
+          if (failingStream !== 'profile' && processCalls <= 4) {
+            throw new Error('processes unavailable');
+          }
+          return processData;
+        }
+      );
+      const { unmount } = renderPanel();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      for (let interval = 0; interval < 3; interval += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2000);
+        });
+      }
+      expect(profileCalls).toBe(4);
+      expect(processCalls).toBe(4);
+      if (failingStream !== 'processes') {
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+      }
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2000);
       });
+      expect(profileCalls).toBe(5);
+      expect(processCalls).toBe(5);
+      expect(screen.getByText('12.5%')).toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(profileCalls).toBe(6);
+      expect(processCalls).toBe(6);
+      unmount();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4000);
+      });
+      expect(profileCalls).toBe(6);
+      expect(processCalls).toBe(6);
     }
-
-    expect(
-      systemRuntimeApi.fetchSettingsSystemRuntimeProfile
-    ).toHaveBeenCalledTimes(3);
-  });
+  );
 
   test('updates the live chart without recreating its canvas on every sample', async () => {
     vi.useFakeTimers();

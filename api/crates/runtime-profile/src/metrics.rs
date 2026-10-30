@@ -206,9 +206,10 @@ impl RuntimeMetricSampler {
         if self.process_metadata_current {
             return false;
         }
-        let pids = self.system.processes().keys().copied().collect::<Vec<_>>();
         self.metadata_system.refresh_processes_specifics(
-            ProcessesToUpdate::Some(&pids),
+            // Some(primary PIDs) never revisits exited PIDs, so their command
+            // lines can remain retained across refreshes. All also removes those dead entries.
+            ProcessesToUpdate::All,
             true,
             ProcessRefreshKind::nothing()
                 .without_tasks()
@@ -720,3 +721,7 @@ fn read_limit(path: &Path) -> Option<u64> {
 #[cfg(all(test, target_os = "linux"))]
 #[path = "_tests/metrics_process_scope_tests.rs"]
 mod process_scope_tests;
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "_tests/metadata_lifecycle_tests.rs"]
+mod metadata_lifecycle_tests;

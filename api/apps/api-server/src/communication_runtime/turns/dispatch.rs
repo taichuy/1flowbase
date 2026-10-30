@@ -41,7 +41,14 @@ pub(super) async fn create(
             request,
         })
         .await
-        .map_err(|_| anyhow::anyhow!("communication_run_invalid"))?;
+        .map_err(|error| match error {
+            control_plane::application_public_api::native::NativeRunError::Service(source) => {
+                source
+            }
+            control_plane::application_public_api::native::NativeRunError::Validation(_) => {
+                anyhow::anyhow!("communication_run_invalid")
+            }
+        })?;
     // Linking checks every admitted attachment. A member arriving while the request was
     // created is imported before retrying the same linkage, never by creating another run.
     while !state

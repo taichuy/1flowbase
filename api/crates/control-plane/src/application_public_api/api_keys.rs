@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use rand::rngs::SysRng;
 use rand_core::{Rng, UnwrapErr};
 use serde_json::json;
@@ -185,35 +185,35 @@ where
 
     pub async fn authenticate_bearer_token(&self, token: &str) -> Result<ApplicationApiKeyActor> {
         if !token.starts_with("sk-") {
-            return Err(anyhow!("not_authenticated"));
+            return Err(ControlPlaneError::NotAuthenticated.into());
         }
 
         let api_key = self
             .repository
             .find_api_key_by_token_hash(&hash_api_key_token(token))
             .await?
-            .ok_or_else(|| anyhow!("not_authenticated"))?;
+            .ok_or(ControlPlaneError::NotAuthenticated)?;
         if api_key.key_kind != domain::ApiKeyKind::ApplicationApiKey
             || !api_key.enabled
             || api_key
                 .expires_at
                 .is_some_and(|expires_at| expires_at <= OffsetDateTime::now_utc())
         {
-            return Err(anyhow!("not_authenticated"));
+            return Err(ControlPlaneError::NotAuthenticated.into());
         }
         let application_id = api_key
             .application_id
-            .ok_or_else(|| anyhow!("not_authenticated"))?;
+            .ok_or(ControlPlaneError::NotAuthenticated)?;
         let application = self
             .repository
             .get_application(api_key.scope_id, application_id)
             .await?
-            .ok_or_else(|| anyhow!("not_authenticated"))?;
+            .ok_or(ControlPlaneError::NotAuthenticated)?;
         if !matches!(
             application.application_type,
             domain::ApplicationType::AgentFlow | domain::ApplicationType::AgentLogs
         ) {
-            return Err(anyhow!("not_authenticated"));
+            return Err(ControlPlaneError::NotAuthenticated.into());
         }
         self.record_api_key_used(&api_key).await;
         let actor = domain::ActorContext::scoped_in_scope(

@@ -71,6 +71,10 @@ impl ApplicationRepository for ApplicationPublicApiTestRepository {
         workspace_id: Uuid,
         application_id: Uuid,
     ) -> Result<Option<domain::ApplicationRecord>> {
+        self.check_native_repository_failure("get_application")?;
+        if let Some(unavailable) = self.inner.lock().unwrap().application_lookup_failure {
+            return Err(authentication_lookup_error(unavailable));
+        }
         Ok(self
             .inner
             .lock()
@@ -116,6 +120,7 @@ impl ApplicationRepository for ApplicationPublicApiTestRepository {
         workspace_id: Uuid,
         application_id: Uuid,
     ) -> Result<Vec<domain::ApplicationEnvironmentVariable>> {
+        self.check_native_repository_failure("list_application_environment_variables")?;
         let inner = self
             .inner
             .lock()

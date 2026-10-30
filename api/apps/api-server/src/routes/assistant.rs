@@ -823,7 +823,10 @@ pub(super) async fn prepare_assistant_execution(
             },
         })
         .await
-        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("assistant_run"))?;
+        .map_err(|error| match error {
+            control_plane::application_public_api::native::NativeRunError::Service(source) => ApiError::from(source),
+            control_plane::application_public_api::native::NativeRunError::Validation(_) => ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput("assistant_run")),
+        })?;
 
     Ok(PreparedAssistantExecution {
         application_id,

@@ -772,7 +772,7 @@ async fn start_native_run_returns_application_not_published_for_unpublished_or_d
                 bearer_token: token,
                 request: native_request("blocking", None),
             })
-            .await
+            .await.map_err(crate::_tests::application_public_api::expect_validation_error)
             .unwrap_err();
 
         assert_eq!(error, NativeRunValidationError::ApplicationNotPublished);

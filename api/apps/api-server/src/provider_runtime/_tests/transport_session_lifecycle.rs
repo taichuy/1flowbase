@@ -366,7 +366,10 @@ async fn invocation_transport_outcomes_preserve_missing_stale_fault_and_http_fal
     assert!(reason(stale_error).contains("provider_transport_stale_generation"));
     let after_stale = stale_coordinator.safe_snapshot().await;
     assert_eq!(after_stale.sessions.len(), 1);
-    assert_eq!(after_stale.sessions[0].state, TransportSessionState::Faulted);
+    assert_eq!(
+        after_stale.sessions[0].state,
+        TransportSessionState::Faulted
+    );
     assert!(!after_stale.sessions[0].inflight);
     assert!(after_stale.sessions[0]
         .closure_evidence
@@ -1060,3 +1063,6 @@ mod http_delivery;
 mod connection_scope;
 #[path = "transport_session_lifecycle/successors.rs"]
 mod successors;
+
+#[path = "transport_session_lifecycle/hard_max_rollover.rs"]
+mod hard_max_rollover;

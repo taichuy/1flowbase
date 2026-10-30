@@ -658,3 +658,5 @@ fn assert_released_fault_delayed_successor(delay: u64) {
 }
 #[path = "physical_lifecycle.rs"]
 mod physical_lifecycle;
+
+mod hard_max;

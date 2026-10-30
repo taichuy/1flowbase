@@ -40,6 +40,22 @@ pub enum NativeRunValidationError {
     IdempotencyConflict,
 }
 
+/// Dependency failures are independent of business validation. Preserve their
+/// source chain through authenticated and credential-bearing service entry points.
+#[derive(Debug, thiserror::Error)]
+pub enum NativeRunError {
+    #[error("native run validation failed: {0:?}")]
+    Validation(NativeRunValidationError),
+    #[error(transparent)]
+    Service(anyhow::Error),
+}
+
+impl From<NativeRunValidationError> for NativeRunError {
+    fn from(error: NativeRunValidationError) -> Self {
+        Self::Validation(error)
+    }
+}
+
 pub struct ApplicationNativeRunService<R> {
     repository: R,
     last_used_cache: Option<Arc<dyn CacheStore>>,
@@ -98,7 +114,7 @@ where
     pub async fn create_native_run(
         &self,
         command: CreateNativeRunCommand,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+    ) -> std::result::Result<NativeRunResult, NativeRunError> {
         let run = self
             .published_run_service()
             .start_native_run(command)
@@ -112,7 +128,7 @@ where
         actor: super::super::api_keys::ApplicationApiKeyActor,
         request: NativeRunRequest,
         protocol: TranslationProtocol,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+    ) -> std::result::Result<NativeRunResult, NativeRunError> {
         self.published_run_service()
             .start_native_run_for_actor(actor, request, protocol)
             .await
@@ -121,12 +137,12 @@ where
     pub async fn get_native_run(
         &self,
         command: GetNativeRunCommand,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+    ) -> std::result::Result<NativeRunResult, NativeRunError> {
         let actor = self
             .api_key_service()
             .authenticate_bearer_token(&command.bearer_token)
             .await
-            .map_err(|_| NativeRunValidationError::NotAuthenticated)?;
+            .map_err(NativeRunError::Service)?;
         self.get_native_run_for_actor(actor, command.run_id).await
     }
 
@@ -134,16 +150,16 @@ where
         &self,
         actor: super::super::api_keys::ApplicationApiKeyActor,
         run_id: Uuid,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+    ) -> std::result::Result<NativeRunResult, NativeRunError> {
         let flow_run = self
             .repository
             .get_published_flow_run(run_id)
             .await
-            .map_err(|_| NativeRunValidationError::NotFound)?
+            .map_err(NativeRunError::Service)?
             .ok_or(NativeRunValidationError::NotFound)?;
 
         if !published_run_belongs_to_actor(&flow_run, actor.application_id, actor.api_key_id) {
-            return Err(NativeRunValidationError::Forbidden);
+            return Err(NativeRunValidationError::Forbidden.into());
         }
 
         self.project_published_native_run(actor.application_id, flow_run)
@@ -153,12 +169,12 @@ where
     pub async fn get_native_run_by_provider_response_id(
         &self,
         command: GetNativeRunByProviderResponseIdCommand,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+    ) -> std::result::Result<NativeRunResult, NativeRunError> {
         let actor = self
             .api_key_service()
             .authenticate_bearer_token(&command.bearer_token)
             .await
-            .map_err(|_| NativeRunValidationError::NotAuthenticated)?;
+            .map_err(NativeRunError::Service)?;
         self.get_native_run_by_provider_response_id_for_actor(actor, &command.provider_response_id)
             .await
     }
@@ -167,10 +183,10 @@ where
         &self,
         actor: super::super::api_keys::ApplicationApiKeyActor,
         provider_response_id: &str,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+    ) -> std::result::Result<NativeRunResult, NativeRunError> {
         let provider_response_id = provider_response_id.trim();
         if provider_response_id.is_empty() {
-            return Err(NativeRunValidationError::NotFound);
+            return Err(NativeRunValidationError::NotFound.into());
         }
         let flow_run = self
             .repository
@@ -180,7 +196,7 @@ where
                 provider_response_id,
             )
             .await
-            .map_err(|_| NativeRunValidationError::NotFound)?
+            .map_err(NativeRunError::Service)?
             .ok_or(NativeRunValidationError::NotFound)?;
         self.project_published_native_run(actor.application_id, flow_run)
             .await
@@ -190,7 +206,7 @@ where
         &self,
         application_id: Uuid,
         flow_run: domain::FlowRunRecord,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+    ) -> std::result::Result<NativeRunResult, NativeRunError> {
         let metadata = durable_metadata_from_flow_run(&flow_run);
         let initial_run =
             super::super::run_service::native_result_from_flow_run(&flow_run, metadata);
@@ -198,7 +214,7 @@ where
             .repository
             .get_published_run_stream_state(application_id, flow_run.id)
             .await
-            .map_err(|_| NativeRunValidationError::NotFound)?
+            .map_err(NativeRunError::Service)?
         {
             return Ok(
                 super::super::run_service::native_result_from_run_stream_state(
@@ -214,12 +230,12 @@ where
     pub async fn cancel_native_run(
         &self,
         command: CancelNativeRunCommand,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+    ) -> std::result::Result<NativeRunResult, NativeRunError> {
         let actor = self
             .api_key_service()
             .authenticate_bearer_token(&command.bearer_token)
             .await
-            .map_err(|_| NativeRunValidationError::NotAuthenticated)?;
+            .map_err(NativeRunError::Service)?;
 
         self.cancel_native_run_for_actor(actor, command.run_id)
             .await
@@ -229,15 +245,15 @@ where
         &self,
         actor: super::super::api_keys::ApplicationApiKeyActor,
         run_id: Uuid,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+    ) -> std::result::Result<NativeRunResult, NativeRunError> {
         let flow_run = self
             .repository
             .get_published_flow_run(run_id)
             .await
-            .map_err(|_| NativeRunValidationError::NotFound)?
+            .map_err(NativeRunError::Service)?
             .ok_or(NativeRunValidationError::NotFound)?;
         if !published_run_belongs_to_actor(&flow_run, actor.application_id, actor.api_key_id) {
-            return Err(NativeRunValidationError::Forbidden);
+            return Err(NativeRunValidationError::Forbidden.into());
         }
 
         let cancelled = self
@@ -254,7 +270,7 @@ where
                 .repository
                 .cancel_published_pending_callback_tasks_for_run(cancelled.id, completed_at)
                 .await
-                .map_err(|_| NativeRunValidationError::InvalidState)?;
+                .map_err(NativeRunError::Service)?;
             for callback_task in cancelled_callback_tasks {
                 self.repository
                     .append_published_run_event(&crate::ports::AppendRunEventInput {
@@ -267,13 +283,13 @@ where
                         }),
                     })
                     .await
-                    .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+                    .map_err(NativeRunError::Service)?;
             }
             let cancelled_attempts = self
                 .repository
                 .cancel_published_callback_resume_attempts_for_run(cancelled.id, completed_at)
                 .await
-                .map_err(|_| NativeRunValidationError::InvalidState)?;
+                .map_err(NativeRunError::Service)?;
             for attempt in cancelled_attempts {
                 self.repository
                     .append_published_run_event(&crate::ports::AppendRunEventInput {
@@ -286,7 +302,7 @@ where
                         }),
                     })
                     .await
-                    .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+                    .map_err(NativeRunError::Service)?;
             }
         }
 

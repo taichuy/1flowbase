@@ -127,6 +127,19 @@ pub enum TerminationKind {
     Shutdown,
 }
 
+impl TerminationKind {
+    /// Eligible for a new invocation after the old lease and physical transport settle.
+    /// Admission must still enforce owner, provider, recovery and release evidence.
+    pub const fn allows_settled_successor(self) -> bool {
+        matches!(
+            self,
+            Self::DeadlineExceeded(DeadlineKind::LogicalAbsolute | DeadlineKind::PhysicalHard)
+                | Self::OwnerOrphaned
+                | Self::ProviderHardMax
+        )
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TerminationReceipt {
     /// Registry dispatch owner fenced this generation before any runtime handoff.

@@ -60,7 +60,6 @@ import './system-runtime/system-runtime-panel.css';
 const POLL_INTERVAL_MILLISECONDS = 2_000;
 const HISTORY_WINDOW_MILLISECONDS = 120_000;
 const MAX_HISTORY_POINTS = 60;
-const MAX_CONSECUTIVE_FAILURES = 3;
 const PRIMARY_SERVICE_TARGET_ID = 'api-server';
 const PROCESS_TABLE_PAGE_SIZE = 50;
 
@@ -408,38 +407,21 @@ export function SystemRuntimePanel() {
   }, []);
   const queryClient = useQueryClient();
   const { message } = App.useApp();
-  const consecutiveFailuresRef = useRef(0);
-  const [pollingStopped, setPollingStopped] = useState(false);
   const runtimeQuery = useQuery({
     queryKey: settingsSystemRuntimeQueryKey,
-    queryFn: async () => {
-      try {
-        const profile = await fetchSettingsSystemRuntimeProfile();
-        consecutiveFailuresRef.current = 0;
-        setPollingStopped(false);
-        return profile;
-      } catch (error) {
-        consecutiveFailuresRef.current += 1;
-        if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
-          setPollingStopped(true);
-        }
-        throw error;
-      }
-    },
-    enabled: pageVisible && !pollingStopped,
+    queryFn: fetchSettingsSystemRuntimeProfile,
+    enabled: pageVisible,
     retry: false,
-    refetchInterval:
-      pageVisible && !pollingStopped ? POLL_INTERVAL_MILLISECONDS : false,
+    refetchInterval: pageVisible ? POLL_INTERVAL_MILLISECONDS : false,
     refetchIntervalInBackground: false
   });
   const profile = runtimeQuery.data;
   const processesQuery = useQuery({
     queryKey: settingsSystemRuntimeProcessesQueryKey,
     queryFn: fetchSettingsSystemRuntimeProcesses,
-    enabled: pageVisible && !pollingStopped,
+    enabled: pageVisible,
     retry: false,
-    refetchInterval:
-      pageVisible && !pollingStopped ? POLL_INTERVAL_MILLISECONDS : false,
+    refetchInterval: pageVisible ? POLL_INTERVAL_MILLISECONDS : false,
     refetchIntervalInBackground: false
   });
   const [activeTab, setActiveTab] = useState<SystemRuntimeTab>('resources');
@@ -638,9 +620,7 @@ export function SystemRuntimePanel() {
     : null;
   const liveStatus = !pageVisible
     ? i18nText('settings', 'auto.runtime_collection_paused')
-    : pollingStopped
-      ? i18nText('settings', 'auto.runtime_collection_stopped')
-      : i18nText('settings', 'auto.runtime_collecting');
+    : i18nText('settings', 'auto.runtime_collecting');
 
   const processTreeSection = (
     <section
@@ -803,7 +783,7 @@ export function SystemRuntimePanel() {
         <Flex align="center" gap={8}>
           <DashboardOutlined className="system-runtime-panel__section-icon" />
           <Badge
-            color={pageVisible && !pollingStopped ? '#00ab73' : '#7b8982'}
+            color={pageVisible ? '#00ab73' : '#7b8982'}
             text={liveStatus}
           />
         </Flex>

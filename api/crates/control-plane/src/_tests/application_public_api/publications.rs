@@ -45,7 +45,10 @@ async fn unpublish_reverts_active_publication_and_allows_republish() {
         })
         .await
         .unwrap_err();
-    assert_eq!(load_error.to_string(), "application_not_published");
+    assert!(matches!(
+        load_error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::NotFound("application_not_published"))
+    ));
 
     let republished = service
         .publish_active_version(PublishApplicationCommand {

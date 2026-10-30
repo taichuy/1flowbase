@@ -286,3 +286,5 @@ mod native_start;
 mod publication_guards;
 
 mod published_effort;
+
+mod dependency_failures;

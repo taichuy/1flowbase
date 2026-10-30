@@ -318,17 +318,14 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 }
             } else {
                 if let Some(receipt) = registry.tombstone(&session_id) {
-                    // A disconnected delivery and an elapsed logical lifetime can
-                    // both be followed by a new bounded generation, but only after
+                    // Delivery loss and elapsed logical or physical lifetimes can
+                    // be followed by a new bounded generation, but only after
                     // the old invocation and physical transport are fenced out.
-                    if !matches!(
-                        receipt.kind,
-                        TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
-                            | TerminationKind::OwnerOrphaned
-                    ) || receipt
-                        .unsettled_invocation
-                        .as_ref()
-                        .is_some_and(|lease| now < lease.deadline())
+                    if !receipt.kind.allows_settled_successor()
+                        || receipt
+                            .unsettled_invocation
+                            .as_ref()
+                            .is_some_and(|lease| now < lease.deadline())
                     {
                         return Err(self.recovery_admission_error(
                             &receipt.fence,

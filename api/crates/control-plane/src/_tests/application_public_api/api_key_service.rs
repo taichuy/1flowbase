@@ -87,7 +87,10 @@ async fn ac_004_application_api_keys_fail_closed_for_workflows() {
         .authenticate_bearer_token(legacy_token)
         .await
         .unwrap_err();
-    assert!(auth_error.to_string().contains("not_authenticated"));
+    assert!(matches!(
+        auth_error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::NotAuthenticated)
+    ));
 }
 
 #[tokio::test]
@@ -233,7 +236,10 @@ async fn application_public_api_delete_removes_key_and_makes_token_unusable() {
 
     assert!(!harness.repository().contains_api_key(created.api_key.id));
     assert!(listed.is_empty());
-    assert!(auth_error.to_string().contains("not_authenticated"));
+    assert!(matches!(
+        auth_error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::NotAuthenticated)
+    ));
 }
 
 #[tokio::test]

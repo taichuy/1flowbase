@@ -9,7 +9,7 @@ use control_plane::application_public_api::{
 };
 use control_plane::ports::RecordFlowRunCallbackResumeAttemptInput;
 
-fn responses_request_for_turn(
+pub(super) fn responses_request_for_turn(
     thread_id: &str,
     turn_id: &str,
     request_kind: &str,
@@ -567,7 +567,7 @@ async fn start_native_run_rejects_unknown_public_model_before_creating_a_run() {
                 }),
             ),
         })
-        .await
+        .await.map_err(crate::_tests::application_public_api::expect_validation_error)
         .unwrap_err();
     assert_eq!(result, NativeRunValidationError::UnknownModel);
     assert_eq!(repository.flow_run_count(), 0);
@@ -807,7 +807,7 @@ async fn same_idempotency_key_cannot_replay_a_run_created_through_another_protoc
             bearer_token: token,
             request,
         })
-        .await
+        .await.map_err(crate::_tests::application_public_api::expect_validation_error)
         .expect_err("a different trusted protocol must change the fingerprint");
 
     assert_eq!(error, NativeRunValidationError::IdempotencyConflict);
@@ -857,7 +857,7 @@ async fn typed_reasoning_effort_preserves_exact_intent_and_idempotency() {
             bearer_token: token,
             request: request_with_effort("normal-effort", "low"),
         })
-        .await
+        .await.map_err(crate::_tests::application_public_api::expect_validation_error)
         .unwrap_err();
 
     assert_eq!(conflict, NativeRunValidationError::IdempotencyConflict);
@@ -903,7 +903,7 @@ async fn start_native_run_rejects_same_idempotency_key_with_different_request() 
             bearer_token: token,
             request: changed_request,
         })
-        .await
+        .await.map_err(crate::_tests::application_public_api::expect_validation_error)
         .unwrap_err();
 
     assert_eq!(error, NativeRunValidationError::IdempotencyConflict);

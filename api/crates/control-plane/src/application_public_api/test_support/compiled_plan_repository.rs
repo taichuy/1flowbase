@@ -138,6 +138,7 @@ impl ApplicationCompiledPlanRepository for ApplicationPublicApiTestRepository {
         &self,
         compiled_plan_id: Uuid,
     ) -> Result<Option<domain::CompiledPlanRecord>> {
+        self.check_native_repository_failure("get_application_compiled_plan")?;
         Ok(self
             .inner
             .lock()

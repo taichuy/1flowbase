@@ -216,8 +216,7 @@ pub async fn ingest_events(
                 bearer_token: token,
             },
         )
-        .await
-        .map_err(|_| control_plane::errors::ControlPlaneError::NotAuthenticated)?;
+        .await?;
     let result = InterfaceInvocationKernel::new(Arc::new(Authorization))
         .invoke::<Input, Output, TargetError>(snapshot, authenticated.into_envelope(Input(batch)))
         .await

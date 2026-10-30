@@ -1,6 +1,13 @@
 use super::*;
 
-pub(crate) fn native_error(error: NativeRunValidationError) -> NativeApiError {
+pub(crate) fn native_error(
+    error: impl Into<control_plane::application_public_api::native::NativeRunError>,
+) -> NativeApiError {
+    use control_plane::application_public_api::native::NativeRunError;
+    let error = match error.into() {
+        NativeRunError::Validation(error) => error,
+        NativeRunError::Service(error) => return service_error(error),
+    };
     match error {
         NativeRunValidationError::NotAuthenticated => NativeApiError::new(
             StatusCode::UNAUTHORIZED,
