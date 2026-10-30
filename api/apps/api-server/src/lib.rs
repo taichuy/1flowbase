@@ -469,11 +469,6 @@ fn console_router_with_assembly(
 }
 
 pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Router {
-    let owner = state.extension_boot_snapshot.as_ref().map(|snapshot| {
-        snapshot
-            .publish_complete_catalog(&state)
-            .expect("complete interface catalog must publish before router construction")
-    });
     let interface_snapshot = state
         .extension_boot_snapshot
         .as_ref()
@@ -483,6 +478,11 @@ pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Ro
         interface_snapshot.as_deref(),
         config.plugin_upload_max_bytes,
     );
+    let owner = state.extension_boot_snapshot.as_ref().map(|snapshot| {
+        snapshot
+            .publish_complete_catalog_with_route_assembly(&state, assembly.clone())
+            .expect("complete interface catalog must publish before router construction")
+    });
     let openapi_document = serde_json::to_value(openapi::ApiDoc::openapi())
         .expect("static OpenAPI document must serialize");
     let router = app_with_state_and_config_and_console_route_assembly(

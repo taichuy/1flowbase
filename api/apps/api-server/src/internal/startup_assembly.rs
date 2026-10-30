@@ -464,7 +464,10 @@ pub(super) async fn app_and_runtime_host_from_config(
         bootstrap_workspace_id: bootstrap_result.workspace_id,
         bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
     });
-    let generation_owner = extension_boot_snapshot.publish_complete_catalog(&state)?;
+    let generation_owner = extension_boot_snapshot.publish_complete_catalog_with_route_assembly(
+        &state,
+        compiled_console_plan.route_assembly.clone(),
+    )?;
     managed_composition.refresh_boot_snapshots().await?;
     extension_boot_snapshot.set_pinned_managed_snapshots(managed_composition.current_snapshots().await)?;
     let builtin_mcp_interfaces =

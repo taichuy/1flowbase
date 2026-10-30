@@ -243,6 +243,28 @@ impl ExtensionBootSnapshot {
         &self,
         state: &Arc<crate::app_state::ApiState>,
     ) -> anyhow::Result<Arc<crate::generation_dispatch::GenerationDispatch>> {
+        self.publish_complete_catalog_inner(state, None)
+    }
+
+    pub(crate) fn publish_complete_catalog_with_route_assembly(
+        &self,
+        state: &Arc<crate::app_state::ApiState>,
+        assembly: crate::routes::console_route_assembly::ConsoleRouteAssembly<
+            Arc<crate::app_state::ApiState>,
+        >,
+    ) -> anyhow::Result<Arc<crate::generation_dispatch::GenerationDispatch>> {
+        self.publish_complete_catalog_inner(state, Some(assembly))
+    }
+
+    fn publish_complete_catalog_inner(
+        &self,
+        state: &Arc<crate::app_state::ApiState>,
+        assembly: Option<
+            crate::routes::console_route_assembly::ConsoleRouteAssembly<
+                Arc<crate::app_state::ApiState>,
+            >,
+        >,
+    ) -> anyhow::Result<Arc<crate::generation_dispatch::GenerationDispatch>> {
         let _publication = self
             .publication
             .lock()
@@ -293,7 +315,7 @@ impl ExtensionBootSnapshot {
         self.authentication_factories
             .validate_registry(&candidate)?;
         owner
-            .compile_router(state, &candidate)
+            .compile_router(state, &candidate, assembly)
             .map_err(|error| error.0)?;
         self.console_operation_snapshot
             .set(Arc::new(console_operation_snapshot))

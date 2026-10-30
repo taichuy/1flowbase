@@ -234,7 +234,8 @@ impl ManagedGenerationPublisher {
             .with_default_cache()?,
         );
         let state = Arc::new(state);
-        let owner = boot.publish_complete_catalog(&state)?;
+        let owner =
+            boot.publish_complete_catalog_with_route_assembly(&state, plan.route_assembly.clone())?;
         let document = crate::openapi::dynamic_openapi_document(&state)
             .await
             .map_err(|error| error.0)?;

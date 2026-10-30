@@ -814,6 +814,8 @@ fn project_stream_invocation(
     projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
     recorder: Option<ClientTrajectoryRecorder>,
 ) -> Result<Response, NativeApiError> {
+    let owner = crate::generation_dispatch::GenerationDispatch::acquire(&state)
+        .map_err(|error| native::service_error(error.0))?;
     let (sender, receiver) = tokio::sync::mpsc::channel(32);
     let sse_activity = state.runtime_activity.start(
         application_id,
@@ -822,8 +824,10 @@ fn project_stream_invocation(
     tokio::spawn(async move {
         let _sse_activity = sse_activity;
         let (events, completion) = invocation.into_parts();
-        project_observed_compatibility_stream(events, completion, projection, sender, recorder)
-            .await;
+        project_observed_compatibility_stream(
+            events, completion, projection, sender, recorder, owner,
+        )
+        .await;
     });
     Ok(
         Sse::new(tokio_stream::wrappers::ReceiverStream::new(receiver))
@@ -843,8 +847,10 @@ pub(super) async fn project_compatibility_stream(
     >,
     projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
     sender: tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>,
+    owner: Arc<crate::generation_dispatch::GenerationDispatch>,
 ) {
-    project_observed_compatibility_stream(events, completion, projection, sender, None).await;
+    project_observed_compatibility_stream(events, completion, projection, sender, None, owner)
+        .await;
 }
 
 async fn project_observed_compatibility_stream(
@@ -856,8 +862,11 @@ async fn project_observed_compatibility_stream(
     mut projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
     sender: tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>,
     recorder: Option<ClientTrajectoryRecorder>,
+    owner: Arc<crate::generation_dispatch::GenerationDispatch>,
 ) {
-    let completion = tokio::spawn(completion.complete());
+    let completion =
+        crate::generation_dispatch::spawn_with_lease(owner.clone(), completion.complete());
+    let _projection_owner = owner;
     let mut projection_open = true;
     while let Some(event) = events.recv().await {
         let (run, envelope, mut delivery) = event.into_parts();

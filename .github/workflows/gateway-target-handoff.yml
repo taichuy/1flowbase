@@ -26,7 +26,7 @@ on:
         type: boolean
         default: false
       verify_generation_ownership:
-        description: Run the complete host library once for catalogue lifetime and protocol continuity
+        description: Verify catalogue lifetime and its direct protocol and execution regressions once
         type: boolean
         default: false
       build_history_maintenance:
@@ -107,11 +107,45 @@ jobs:
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib provider_runtime::transport_session_lifecycle > tmp/test-governance/gateway-target-handoff/ci/coordinator.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/coordinator.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/coordinator.log
-      - name: Complete host library including generation ownership and protocol continuity
+      - name: Production catalogue generation ownership (default lane)
+        if: ${{ !inputs.verify_generation_ownership }}
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib _tests::extension_bus::boot_snapshot_tests -- --nocapture > tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log
+      - name: Catalogue lifetime and directly affected host contracts
         if: ${{ inputs.verify_generation_ownership }}
         run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib > tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log; exit 1; }
+          # libtest combines filters with OR and executes overlapping matches only once.
+          selectors=(
+            generation
+            _tests::extension_bus::boot_snapshot_tests
+            provider_runtime::transport_session_lifecycle
+            routes::application_public_api::compat_sse::tests::forwarding
+            _tests::runtime_event_stream
+            interface_contribution_collector
+            interface_route_equivalence
+            native_read_interface_tests
+            public_residual_interface_tests
+            mcp_protocol_routes
+            managed_services
+            responses_websocket::tests
+            native_websocket::tests
+            catalog_admission_tests
+            _tests::route_docs
+            external_auth
+            _tests::webmcp_routes
+            workflow_schedule_worker
+            communication_runtime
+            _tests::assistant::stream_routes
+            native_streaming
+            _tests::application_public_api::native_routes
+            _tests::application_public_api::compat_routes::streaming
+            managed_snapshot_tests
+            managed_activation_tests
+          )
+          /usr/bin/time -v -o tmp/test-governance/gateway-target-handoff/ci/catalog-resources.log cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib -- "${selectors[@]}" > tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log 2>&1 || { tail -c 16000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log
+          node -e 'const fs=require("node:fs");const file=process.argv[1];const lines=fs.readFileSync(file,"utf8").split("\n").filter(l=>l.startsWith("test ") && / \.\.\. ok$/.test(l));const selectors=process.argv.slice(2).map(selector=>({selector,passed:lines.filter(l=>l.includes(selector)).length}));fs.writeFileSync(file.replace(/\.log$/,"-selection.json"),JSON.stringify({unique_passes:lines.length,selectors},null,2));if(selectors.some(s=>s.passed===0))throw new Error("a required contract selected zero passing tests");' tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log "${selectors[@]}"
       - name: Callback admission ownership and recovery regressions
         if: ${{ !cancelled() && inputs.verify_callback_attachment }}
         run: |

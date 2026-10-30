@@ -663,6 +663,7 @@ pub async fn start_run_stream(
     >,
     ApiError,
 > {
+    let owner = crate::generation_dispatch::GenerationDispatch::acquire(&state)?;
     let stream = crate::routes::console_interface::invoke_server_stream::<
         interface::AssistantRunInput,
         interface::AssistantRunStreamEvent,
@@ -679,14 +680,16 @@ pub async fn start_run_stream(
     .await?;
     let (sender, receiver) = mpsc::channel(32);
     let (mut events, completion) = stream.into_parts();
+    let projection_owner = owner.clone();
     tokio::spawn(async move {
+        let _projection_owner = projection_owner;
         while let Some(interface::AssistantRunStreamEvent(event)) = events.recv().await {
             if sender.send(event).await.is_err() {
                 return;
             }
         }
     });
-    tokio::spawn(async move {
+    crate::generation_dispatch::spawn_with_lease(owner, async move {
         let _ = completion.complete().await;
     });
 

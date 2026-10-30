@@ -90,6 +90,8 @@ pub(super) async fn open_compatible_turn_with_invoker(
     >,
 ) -> Result<OpenedCompatibleTurn, NativeApiError> {
     let turn_action = action.name();
+    // Retain the invoker's generation through recovery/terminal writes after business return.
+    let execution_invoker = mcp_runtime_invoker.clone();
     let ignored_waiting_callback_task_id = action.resumed_callback_task_id();
     let fresh_acquisition = matches!(&action,
         CompatibleTurnAction::ResumeForActor { reservation: Some(reservation), .. } if reservation.is_acquired());
@@ -296,6 +298,7 @@ pub(super) async fn open_compatible_turn_with_invoker(
     let background_dependencies = dependencies.clone();
     let background_run = initial_run.clone();
     let execution = tokio::spawn(async move {
+        let _execution_invoker = execution_invoker;
         match action {
             CompatibleTurnAction::Start {
                 transport_connection_scope,

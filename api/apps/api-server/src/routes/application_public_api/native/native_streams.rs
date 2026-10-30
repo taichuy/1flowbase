@@ -122,9 +122,12 @@ pub(super) async fn start_native_run_event_channel_with_dependencies(
             background_run.application_id,
             ApplicationActivityKind::ApplicationExecution,
         );
-        let runtime_service =
-            native_runtime_service(&background_dependencies, runtime_internal_tool_invoker)
-                .with_runtime_event_stream(background_dependencies.runtime_event_stream.clone());
+        let runtime_service = native_runtime_service(
+            &background_dependencies,
+            runtime_internal_tool_invoker.clone(),
+        )
+        .with_runtime_event_stream(background_dependencies.runtime_event_stream.clone());
+        let _execution_invoker = runtime_internal_tool_invoker;
         if let Err(runtime_error) = scope_application_activity(
             background_run.application_id,
             runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {

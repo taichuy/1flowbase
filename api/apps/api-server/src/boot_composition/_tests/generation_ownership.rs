@@ -466,3 +466,116 @@ async fn failed_candidate_catalog_releases_partial_assembly_and_preserves_servin
     ));
     dispatch_public(&serving_owner).await;
 }
+
+#[tokio::test]
+async fn nondefault_upload_limit_is_identical_for_published_http_and_callable_multipart() {
+    use crate::_tests::support::login_and_capture_cookie;
+    use axum::http::StatusCode;
+
+    let (state, _) = test_api_state_with_database_url().await;
+    let mut config = default_test_config();
+    config.plugin_upload_max_bytes = 128 * 1024;
+    let initial = crate::app_with_state_and_config(state.clone(), &config);
+    let publisher =
+        ManagedGenerationPublisher::new(&state, config.clone(), vec![], initial).unwrap();
+    let ingress = publisher.ingress();
+    let (cookie, csrf) = login_and_capture_cookie(&ingress, "root", "change-me").await;
+    // Exercise managed candidate publication, not just the initial convenience router.
+    publisher.publish(publisher.prepare(vec![], BTreeMap::new()).await.unwrap());
+    let selected = publisher.current_generation().unwrap();
+    let boot = selected.state.extension_boot_snapshot.as_ref().unwrap();
+    assert_eq!(boot.dispatch_assembly_count(), 1);
+
+    let mut entry = public_entry();
+    entry.operation_id = "plugin_install_upload".into();
+    entry.method = "POST".into();
+    entry.path = "/api/console/plugins/install-upload".into();
+    entry.request_media_type = Some("multipart/form-data".into());
+    entry.request_schema = json!({
+        "type": "object", "properties": {"body": {
+            "type": "object", "properties": {"probe": {"type": "string"}},
+            "required": ["probe"]
+        }}, "required": ["body"]
+    });
+    // Callable encoder uses a random UUID with this fixed boundary length.
+    let boundary = format!("1flowbase-{}", "0".repeat(32));
+    let prefix = format!("--{boundary}\r\nContent-Disposition: form-data; name=\"probe\"\r\n\r\n");
+    let suffix = format!("\r\n--{boundary}--\r\n");
+    for total in [
+        config.plugin_upload_max_bytes - 1,
+        config.plugin_upload_max_bytes,
+        config.plugin_upload_max_bytes + 1,
+    ] {
+        let probe = "x".repeat(total - prefix.len() - suffix.len());
+        let body = format!("{prefix}{probe}{suffix}");
+        assert_eq!(body.len(), total);
+        // Within the limit, the real multipart handler rejects the absent file (400).
+        // Capacity rejection must instead be 413, including exactly one byte over.
+        let expected = if total <= config.plugin_upload_max_bytes {
+            StatusCode::BAD_REQUEST
+        } else {
+            StatusCode::PAYLOAD_TOO_LARGE
+        };
+        let response = ingress
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&entry.path)
+                    .header("cookie", &cookie)
+                    .header("x-csrf-token", &csrf)
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected, "HTTP total={total}");
+        if total <= config.plugin_upload_max_bytes {
+            let error: serde_json::Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                    .unwrap();
+            assert_eq!(
+                error["code"], "plugin_file",
+                "must reach real multipart handler"
+            );
+        }
+        let result = selected
+            .owner
+            .dispatch(
+                &entry,
+                DispatchArguments {
+                    body: json!({"probe": probe}),
+                    ..Default::default()
+                },
+                BTreeMap::new(),
+                CallableDispatchForwarding {
+                    cookie: Some(cookie.as_bytes().to_vec()),
+                    csrf_token: Some(csrf.as_bytes().to_vec()),
+                    ..Default::default()
+                },
+            )
+            .await;
+        match result {
+            Err(CallableDispatchError::Target(response)) => {
+                assert_eq!(response.status, expected.as_u16(), "callable total={total}");
+                if total <= config.plugin_upload_max_bytes {
+                    let error: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+                    assert_eq!(
+                        error["code"], "plugin_file",
+                        "callable must reach real multipart handler"
+                    );
+                }
+            }
+            _ => panic!("real upload route must reject missing file or oversized multipart"),
+        }
+    }
+    assert_eq!(
+        boot.dispatch_assembly_count(),
+        1,
+        "requests must reuse the compiled router"
+    );
+}

@@ -324,6 +324,15 @@ struct PreclaimInvokerFailure {
 impl crate::routes::application_public_api::native_read_interface::NativeRuntimeInvokerFactory
     for PreclaimInvokerFailure
 {
+    fn without_mcp(
+        &self,
+    ) -> Result<
+        Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
+        NativeApiError,
+    > {
+        panic!("callback resume must use the actor factory")
+    }
+
     fn for_actor<'a>(
         &'a self,
         _: &'a ApplicationApiKeyActor,

@@ -66,6 +66,9 @@ impl GenerationDispatch {
         &self,
         state: &Arc<ApiState>,
         registry: &interface_runtime::CompiledInterfaceRegistry,
+        assembly: Option<
+            crate::routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>,
+        >,
     ) -> Result<(), ApiError> {
         if self.ports.get().is_some()
             || state
@@ -77,7 +80,16 @@ impl GenerationDispatch {
             return Err(unavailable());
         }
         // Never wrap this internal router with serving_router: that would create O -> R -> O.
-        let router = crate::console_router_for_registry(state.clone(), true, Some(registry));
+        let router = match assembly {
+            Some(assembly) => {
+                #[cfg(test)]
+                if let Some(boot) = &state.extension_boot_snapshot {
+                    boot.record_dispatch_assembly();
+                }
+                crate::console_router_with_assembly(state.clone(), true, assembly).0
+            }
+            None => crate::console_router_for_registry(state.clone(), true, Some(registry)),
+        };
         self.ports
             .set(DispatchPorts {
                 callable: openapi_interface::console_router_callable_dispatch_port(router.clone()),
@@ -97,7 +109,7 @@ impl GenerationDispatch {
             .ok_or_else(unavailable)?
             .snapshot();
         let owner = Self::new(boot.generation_id());
-        owner.compile_router(state, &registry)?;
+        owner.compile_router(state, &registry, None)?;
         Ok(owner)
     }
 
@@ -121,6 +133,21 @@ impl GenerationDispatch {
         }
         Ok(owner)
     }
+}
+
+/// The completion task owns its lease independently of the HTTP projection task.
+pub(crate) fn spawn_with_lease<F>(
+    owner: Arc<GenerationDispatch>,
+    future: F,
+) -> tokio::task::JoinHandle<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(async move {
+        let _owner = owner;
+        future.await
+    })
 }
 
 impl CallableDispatchPort for GenerationDispatch {

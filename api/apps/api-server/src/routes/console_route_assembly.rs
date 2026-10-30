@@ -158,6 +158,7 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct ConsoleRouteAssembly<S> {
     router: Router<S>,
     bindings: Vec<ConsoleRouteAssemblyBinding>,
