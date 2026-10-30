@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { AgentFlowEditorShell } from '../../components/editor/AgentFlowEditorShell';
 import { renderReactFlowSceneSettled } from '../../../../test/renderers/render-react-flow-scene';
@@ -244,6 +244,9 @@ describe('container configuration panels', () => {
       '[data-container-id="outer"] .agent-flow-container__body'
     )!;
     fireEvent.click(body);
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
     expect(
       await screen.findByRole('textbox', { name: '节点别名' })
     ).toHaveValue(outerAlias);
