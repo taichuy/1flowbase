@@ -77,17 +77,16 @@ pub(super) fn validate_containers(
                 "container_start requires a parent container",
             ));
         }
-        if node.node_type == CONTAINER_START_NODE_TYPE {
-            if !node.bindings.is_empty()
+        if node.node_type == CONTAINER_START_NODE_TYPE
+            && (!node.bindings.is_empty()
                 || !node.outputs.is_empty()
-                || !node.dependency_node_ids.is_empty()
-            {
-                return Err(invalid(
-                    node,
-                    "/bindings",
-                    "container_start cannot have inputs, outputs, or incoming edges",
-                ));
-            }
+                || !node.dependency_node_ids.is_empty())
+        {
+            return Err(invalid(
+                node,
+                "/bindings",
+                "container_start cannot have inputs, outputs, or incoming edges",
+            ));
         }
         if is_container_type(&node.node_type) {
             validate_settings(node)?;

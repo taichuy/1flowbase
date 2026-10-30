@@ -315,9 +315,11 @@ where
         index,
         pool,
         Some(active),
-        runtime,
-        invoker,
-        lifecycle,
+        ExecutionServices {
+            runtime,
+            invoker,
+            lifecycle,
+        },
         Some(session),
     ))
     .await
@@ -392,9 +394,11 @@ where
         index,
         pool,
         Some(active),
-        runtime,
-        invoker,
-        lifecycle,
+        ExecutionServices {
+            runtime,
+            invoker,
+            lifecycle,
+        },
         Some(session),
     ))
     .await

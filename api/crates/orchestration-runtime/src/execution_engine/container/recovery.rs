@@ -58,14 +58,17 @@ pub(crate) async fn execute_root<I>(
     index: usize,
     pool: Map<String, Value>,
     active: Option<BTreeSet<String>>,
-    runtime: &ExecutionRuntimeContext,
-    invoker: &I,
-    lifecycle: &dyn ExecutionLifecycle,
+    services: ExecutionServices<'_, I>,
     restored: Option<Session>,
 ) -> Result<FlowDebugExecutionOutcome>
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    let ExecutionServices {
+        runtime,
+        invoker,
+        lifecycle,
+    } = services;
     let active = active.unwrap_or_else(|| initial_active_node_ids(plan));
     let session = match restored {
         Some(session) => session,
@@ -121,9 +124,11 @@ where
                 index,
                 pool,
                 Some(active),
-                runtime,
-                invoker,
-                &root_lifecycle,
+                ExecutionServices {
+                    runtime,
+                    invoker,
+                    lifecycle: &root_lifecycle,
+                },
                 None,
                 Some(&session),
             )),
@@ -436,9 +441,11 @@ where
         index,
         pool,
         Some(active),
-        &runtime_context,
-        invoker,
-        lifecycle,
+        ExecutionServices {
+            runtime: &runtime_context,
+            invoker,
+            lifecycle,
+        },
         Some(session),
     )
     .await
@@ -600,9 +607,11 @@ where
         index,
         pool,
         Some(active),
-        runtime_context,
-        invoker,
-        lifecycle,
+        ExecutionServices {
+            runtime: runtime_context,
+            invoker,
+            lifecycle,
+        },
         Some(session),
     )
     .await
@@ -635,9 +644,11 @@ where
         index,
         pool,
         Some(active),
-        &runtime_context,
-        invoker,
-        lifecycle,
+        ExecutionServices {
+            runtime: &runtime_context,
+            invoker,
+            lifecycle,
+        },
         Some(session),
     )
     .await
@@ -702,9 +713,11 @@ where
         index,
         pool,
         Some(active),
-        runtime,
-        invoker,
-        lifecycle,
+        ExecutionServices {
+            runtime,
+            invoker,
+            lifecycle,
+        },
         Some(session),
     ))
     .await

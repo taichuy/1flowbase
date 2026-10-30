@@ -5,15 +5,18 @@ pub(super) async fn execute_from_scoped<I>(
     next_node_index: usize,
     mut variable_pool: Map<String, Value>,
     active_node_ids: Option<BTreeSet<String>>,
-    runtime_context: &ExecutionRuntimeContext,
-    invoker: &I,
-    lifecycle: &dyn ExecutionLifecycle,
+    services: ExecutionServices<'_, I>,
     scope: Option<&container::Scope>,
     session: Option<&container::Session>,
 ) -> Result<FlowDebugExecutionOutcome>
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    let ExecutionServices {
+        runtime: runtime_context,
+        invoker,
+        lifecycle,
+    } = services;
     if scope.is_none() {
         normalize_plan_variable_pool(plan, &mut variable_pool);
         synchronize_runtime_global_variables(plan, &mut variable_pool, runtime_context);
@@ -187,14 +190,18 @@ where
             let execution = Box::pin(container::execute_container(
                 plan,
                 node,
-                &variable_pool,
-                index,
-                &active_node_ids,
+                container::ContainerEntryPosition {
+                    pool: &variable_pool,
+                    index,
+                    active: &active_node_ids,
+                },
                 scope,
                 session,
-                &runtime_context,
-                invoker,
-                lifecycle,
+                ExecutionServices {
+                    runtime: &runtime_context,
+                    invoker,
+                    lifecycle,
+                },
             ))
             .await?;
             node_traces.extend(execution.traces);
@@ -1046,9 +1053,11 @@ where
                     next_node_index,
                     variable_pool,
                     active_node_ids,
-                    runtime_context,
-                    invoker,
-                    lifecycle,
+                    ExecutionServices {
+                        runtime: runtime_context,
+                        invoker,
+                        lifecycle,
+                    },
                     None,
                     None,
                 ),
@@ -1060,9 +1069,11 @@ where
         next_node_index,
         variable_pool,
         active_node_ids,
-        runtime_context,
-        invoker,
-        lifecycle,
+        ExecutionServices {
+            runtime: runtime_context,
+            invoker,
+            lifecycle,
+        },
         None,
     )
     .await
