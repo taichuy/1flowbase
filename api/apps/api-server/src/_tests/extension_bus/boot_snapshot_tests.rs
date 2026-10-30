@@ -50,7 +50,7 @@ async fn publisher_rebuild_releases_each_retired_catalog_generation() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let boot = state.extension_boot_snapshot.as_ref().unwrap().clone();
     let empty = boot.interface_registry().unwrap().snapshot();
-    boot.publish_complete_catalog(&state).unwrap();
+    let owner = boot.publish_complete_catalog(&state).unwrap();
     let mut probes = vec![GenerationWeakProbe::new(&state)];
     let publisher = crate::managed_publication::ManagedGenerationPublisher::new(
         &state,
@@ -59,6 +59,7 @@ async fn publisher_rebuild_releases_each_retired_catalog_generation() {
         crate::console_router(state.clone(), true),
     )
     .unwrap();
+    drop(owner);
     drop(boot);
     drop(state);
 
@@ -123,7 +124,8 @@ async fn production_catalog_releases_generation_after_external_roots_drop() {
     let weak_boot = Arc::downgrade(&boot);
     let weak_registry = Arc::downgrade(&registry);
 
-    boot.publish_complete_catalog(&state)
+    let owner = boot
+        .publish_complete_catalog(&state)
         .expect("production interface catalogue must compile before testing ownership");
     let compiled = registry.snapshot();
     assert!(
@@ -134,6 +136,7 @@ async fn production_catalog_releases_generation_after_external_roots_drop() {
     );
     let weak_compiled = Arc::downgrade(&compiled);
     drop(compiled);
+    drop(owner);
     drop(registry);
     drop(boot);
     drop(state);

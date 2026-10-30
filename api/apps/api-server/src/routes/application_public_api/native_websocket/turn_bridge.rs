@@ -306,6 +306,11 @@ impl NativeTurnBridge {
         emit_accepted: bool,
     ) -> Result<(), NativeTurnBridgeError> {
         let (mut events, completion) = invocation.into_parts();
+        let generation = self.authorization._generation.clone();
+        let completion = tokio::spawn(async move {
+            let _generation = generation;
+            completion.complete().await
+        });
         let mut projector = NativeWebSocketProjector::new(request_id.clone(), visibility);
         let mut accepted = false;
         while let Some(input) = events.recv().await {
@@ -342,8 +347,8 @@ impl NativeTurnBridge {
             }
             if projector.has_terminal() {
                 let terminal = completion
-                    .complete()
                     .await
+                    .map_err(|error| Self::rejected("interface_completion", error.to_string()))?
                     .map_err(|error| Self::rejected("interface_terminal", format!("{error:?}")))?;
                 let _receipt = terminal.receipt().clone().projected();
                 return Ok(());

@@ -5,6 +5,7 @@ use crate::extension_bus::{production_interface_contributions, InterfaceContribu
 #[tokio::test]
 async fn eil_f03_production_modules_publish_additive_registry_contributions() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let owner = crate::generation_dispatch::GenerationDispatch::compile(&state).unwrap();
     let graph_fingerprint = state
         .extension_boot_snapshot
         .as_ref()
@@ -12,7 +13,7 @@ async fn eil_f03_production_modules_publish_additive_registry_contributions() {
         .fingerprint();
     let mut collector =
         InterfaceContributionCollector::new(GraphFingerprint::new(graph_fingerprint).unwrap());
-    for contribution in production_interface_contributions(&state).unwrap() {
+    for contribution in production_interface_contributions(&state, &owner).unwrap() {
         collector.add(contribution).unwrap();
     }
 
@@ -25,7 +26,8 @@ async fn eil_f03_production_modules_publish_additive_registry_contributions() {
 #[tokio::test]
 async fn eil_f03_duplicate_module_contribution_fails_before_registry_publish() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
-    let contribution = production_interface_contributions(&state).unwrap()[0].clone();
+    let owner = crate::generation_dispatch::GenerationDispatch::compile(&state).unwrap();
+    let contribution = production_interface_contributions(&state, &owner).unwrap()[0].clone();
     let graph_fingerprint = state
         .extension_boot_snapshot
         .as_ref()
@@ -45,7 +47,8 @@ async fn eil_f03_duplicate_module_contribution_fails_before_registry_publish() {
 #[tokio::test]
 async fn eil_f03_conflicting_compiled_snapshot_fails_closed() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
-    let contribution = production_interface_contributions(&state).unwrap()[0].clone();
+    let owner = crate::generation_dispatch::GenerationDispatch::compile(&state).unwrap();
+    let contribution = production_interface_contributions(&state, &owner).unwrap()[0].clone();
     let graph_fingerprint = state
         .extension_boot_snapshot
         .as_ref()

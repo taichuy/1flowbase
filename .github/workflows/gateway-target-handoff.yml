@@ -25,6 +25,10 @@ on:
         description: Verify callback attachment live and durable delivery before building the candidate
         type: boolean
         default: false
+      verify_generation_ownership:
+        description: Run the complete host library once for catalogue lifetime and protocol continuity
+        type: boolean
+        default: false
       build_history_maintenance:
         description: Verify changed offline storage and build its maintenance artifact in the narrow lane
         type: boolean
@@ -99,12 +103,14 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p orchestration-runtime transport_session > tmp/test-governance/gateway-target-handoff/ci/registry.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/registry.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/registry.log
       - name: Coordinator target handoff and existing lifecycle regressions
+        if: ${{ !inputs.verify_generation_ownership }}
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib provider_runtime::transport_session_lifecycle > tmp/test-governance/gateway-target-handoff/ci/coordinator.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/coordinator.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/coordinator.log
-      - name: Production catalogue generation ownership
+      - name: Complete host library including generation ownership and protocol continuity
+        if: ${{ inputs.verify_generation_ownership }}
         run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib _tests::extension_bus::boot_snapshot_tests -- --nocapture > tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log; exit 1; }
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib > tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log
       - name: Callback admission ownership and recovery regressions
         if: ${{ !cancelled() && inputs.verify_callback_attachment }}
@@ -127,12 +133,12 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib orchestration_runtime::callback_predecessor_receipt_tests > tmp/test-governance/gateway-target-handoff/ci/callback-carrier.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-carrier.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/callback-carrier.log
       - name: Callback attachment live and durable delivery regressions
-        if: ${{ !cancelled() && inputs.verify_callback_attachment }}
+        if: ${{ !cancelled() && inputs.verify_callback_attachment && !inputs.verify_generation_ownership }}
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib routes::application_public_api::compat_sse::tests::forwarding > tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log
       - name: Runtime event generation retirement regressions
-        if: ${{ !cancelled() && inputs.verify_callback_attachment }}
+        if: ${{ !cancelled() && inputs.verify_callback_attachment && !inputs.verify_generation_ownership }}
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib _tests::runtime_event_stream > tmp/test-governance/gateway-target-handoff/ci/runtime-event-stream.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/runtime-event-stream.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/runtime-event-stream.log

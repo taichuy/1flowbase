@@ -26,6 +26,7 @@ use transport::WebSocketUpgrade;
 
 /// Authentication context handed to the connection owner after HTTP upgrade.
 pub(crate) struct ResponsesWebSocketAuthorization {
+    pub(crate) _generation: Arc<crate::generation_dispatch::GenerationDispatch>,
     pub(crate) principal: interface_runtime::ApplicationPrincipal,
     pub(crate) handshake_headers: HeaderMap,
     pub(crate) transport_scope: Arc<crate::provider_runtime::TransportConnectionScope>,
@@ -53,7 +54,10 @@ pub(crate) async fn upgrade(
     // Validate the logical session identity independently of socket ownership.
     openai::responses_transport_owner_id(&principal, &handshake_headers)?;
     let transport_scope = state.provider_runtime.open_transport_connection_scope();
+    let generation = crate::generation_dispatch::GenerationDispatch::acquire(&state)
+        .map_err(|error| crate::routes::application_public_api::native::service_error(error.0))?;
     let authorization = ResponsesWebSocketAuthorization {
+        _generation: generation,
         principal,
         handshake_headers,
         transport_scope,

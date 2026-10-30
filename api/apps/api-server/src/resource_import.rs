@@ -99,8 +99,8 @@ impl ApiFileImportPort {
             .set(Arc::downgrade(publisher))
             .map_err(|_| anyhow::anyhow!("file import host already bound"))
     }
-    pub(crate) fn current_state(&self) -> Option<Arc<ApiState>> {
-        self.publisher.get()?.upgrade()?.current_state()
+    pub(crate) fn current_generation(&self) -> Option<crate::generation_dispatch::GenerationLease> {
+        self.publisher.get()?.upgrade()?.current_generation()
     }
     pub(crate) async fn current_caller(
         &self,
@@ -228,7 +228,7 @@ impl FileImportPort for ApiFileImportPort {
         Box::pin(async move {
             request.validate()?;
             let state = self
-                .current_state()
+                .current_generation()
                 .ok_or_else(|| FileImportError::new("file_import_host_unavailable"))?;
             let (actor, user) = self.current_caller(&state, binding).await?;
             // Check the explicit opt-in before replay, but do not hold the same authority lock
@@ -314,7 +314,7 @@ impl runtime_core::runtime_backend::FileReadPort for ApiFileImportPort {
         binding: &'a runtime_core::runtime_backend::FileReadBinding,
     ) -> runtime_core::runtime_backend::FileReadFuture<'a, ()> {
         Box::pin(async move {
-            let state = self.current_state().ok_or_else(|| {
+            let state = self.current_generation().ok_or_else(|| {
                 extension_contracts::FileReadError::new("file_read_host_unavailable")
             })?;
             self.current_caller(&state, binding)
@@ -346,7 +346,7 @@ impl runtime_core::runtime_backend::FileReadPort for ApiFileImportPort {
             use extension_contracts::FileReadError;
             let denied = || FileReadError::new("file_read_permission_denied");
             let state = self
-                .current_state()
+                .current_generation()
                 .ok_or_else(|| FileReadError::new("file_read_host_unavailable"))?;
             let (actor, _) = self
                 .current_caller(&state, binding)

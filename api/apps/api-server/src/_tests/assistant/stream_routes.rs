@@ -765,3 +765,114 @@ async fn assistant_settings_persist_model_override_for_the_current_session_user(
     assert_eq!(response.status(), StatusCode::OK);
     assert!(response_json(response).await["data"]["preference"]["model"].is_null());
 }
+
+#[tokio::test]
+async fn generation_assistant_ws_first_command_keeps_old_owner_after_publication() {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state.clone());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let application_id = create_published_agent_flow(&app, &cookie, &csrf).await;
+    select_assistant_application(&app, &cookie, &csrf, &application_id).await;
+    let ticket = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/assistant/runs/websocket-ticket")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("origin", "http://console.test")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"application_id":application_id}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(ticket.status(), StatusCode::OK);
+    let ticket = response_json(ticket).await["data"]["ticket"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let owner = crate::generation_dispatch::GenerationDispatch::acquire(&state).unwrap();
+    let probe = std::sync::Arc::downgrade(&owner);
+    let retired = owner.retirement_notification();
+    let boot = std::sync::Arc::downgrade(state.extension_boot_snapshot.as_ref().unwrap());
+    let publisher = crate::managed_publication::ManagedGenerationPublisher::new(
+        &state,
+        crate::_tests::support::test_config(),
+        vec![],
+        app,
+    )
+    .unwrap();
+    let ingress = publisher.ingress();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, ingress).await.unwrap();
+    });
+    let mut request = format!("ws://{address}/api/console/assistant/runs/websocket")
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("cookie", cookie.parse().unwrap());
+    request
+        .headers_mut()
+        .insert("origin", "http://console.test".parse().unwrap());
+    request.headers_mut().insert(
+        "sec-websocket-protocol",
+        format!("1flowbase.assistant.v1, 1flowbase.assistant.ticket.{ticket}")
+            .parse()
+            .unwrap(),
+    );
+    let (mut socket, response) = tokio_tungstenite::connect_async(request).await.unwrap();
+    assert_eq!(response.status().as_u16(), 101);
+    let ready = socket.next().await.unwrap().unwrap();
+    assert!(ready.to_text().unwrap().contains("connection.ready"));
+    drop(owner);
+    drop(state);
+    publisher.publish(
+        publisher
+            .prepare(vec![], std::collections::BTreeMap::new())
+            .await
+            .unwrap(),
+    );
+    assert!(
+        probe.upgrade().is_some(),
+        "authorization/turn owner must outlive HTTP upgrade"
+    );
+    socket
+        .send(Message::Text(
+            json!({"type":"run.attach","request_id":"late-attach","run_id":uuid::Uuid::now_v7()})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    let frame = tokio::time::timeout(std::time::Duration::from_secs(5), socket.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+    assert_eq!(value["request_id"], "late-attach");
+    assert!(
+        !value
+            .to_string()
+            .contains("selected host generation is unavailable"),
+        "{value}"
+    );
+    assert_eq!(boot.upgrade().unwrap().dispatch_assembly_count(), 1);
+    socket.close(None).await.unwrap();
+    drop(socket);
+    tokio::time::timeout(std::time::Duration::from_secs(5), retired.notified())
+        .await
+        .unwrap();
+    assert!(probe.upgrade().is_none());
+    server.abort();
+    let _ = server.await;
+}

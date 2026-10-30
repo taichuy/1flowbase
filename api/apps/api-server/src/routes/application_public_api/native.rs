@@ -773,7 +773,10 @@ pub async fn create_native_run(
             .await
             .map_err(|failure| native_interface_error(failure.into_error()))?;
         let (events, completion) = invocation.into_parts();
+        let generation = crate::generation_dispatch::GenerationDispatch::acquire(&state)
+            .map_err(|error| service_error(error.0))?;
         tokio::spawn(async move {
+            let _generation = generation;
             if let Ok(terminal) = completion.complete().await {
                 let _receipt = terminal.receipt().clone().projected();
             }

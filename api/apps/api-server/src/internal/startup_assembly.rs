@@ -464,7 +464,7 @@ pub(super) async fn app_and_runtime_host_from_config(
         bootstrap_workspace_id: bootstrap_result.workspace_id,
         bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
     });
-    extension_boot_snapshot.publish_complete_catalog(&state)?;
+    let generation_owner = extension_boot_snapshot.publish_complete_catalog(&state)?;
     managed_composition.refresh_boot_snapshots().await?;
     extension_boot_snapshot.set_pinned_managed_snapshots(managed_composition.current_snapshots().await)?;
     let builtin_mcp_interfaces =
@@ -491,7 +491,7 @@ pub(super) async fn app_and_runtime_host_from_config(
             tracing::error!(error = ?error, "application template discovery failed; retry on next startup");
         }
     }
-    crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone());
+    crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone(), generation_owner.clone());
     crate::workers::provider_request_logs::spawn_provider_request_log_worker(state.clone());
     crate::workers::trace_projection::spawn_trace_projection_worker(state.clone());
     crate::workers::application_log_deletion::spawn(state.clone());
@@ -516,7 +516,7 @@ pub(super) async fn app_and_runtime_host_from_config(
     )?;
     file_import_port.bind(&generation_publisher)?;
     managed_composition.attach_generation_publisher(Arc::downgrade(&generation_publisher))?;
-    let communication_worker = crate::communication_runtime::CommunicationWorker::spawn(state.clone());
+    let communication_worker = crate::communication_runtime::CommunicationWorker::spawn(state.clone(), generation_owner);
     Ok((
         generation_publisher.ingress(),
         ApiRuntimeShutdown {

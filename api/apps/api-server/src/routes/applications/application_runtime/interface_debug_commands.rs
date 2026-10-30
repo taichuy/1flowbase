@@ -120,7 +120,7 @@ pub(crate) trait RuntimeDebugMcpFactory: Send + Sync + 'static {
 }
 
 struct StateRuntimeDebugMcpFactory {
-    state: Arc<ApiState>,
+    state: std::sync::Weak<ApiState>,
 }
 
 impl RuntimeDebugMcpFactory for StateRuntimeDebugMcpFactory {
@@ -134,10 +134,13 @@ impl RuntimeDebugMcpFactory for StateRuntimeDebugMcpFactory {
                 + 'a,
         >,
     > {
-        Box::pin(crate::runtime_internal_tool_invoker_factory(
-            &self.state,
-            actor,
-        ))
+        Box::pin(async move {
+            let state = self
+                .state
+                .upgrade()
+                .ok_or_else(crate::generation_dispatch::unavailable)?;
+            crate::runtime_internal_tool_invoker_factory(&state, actor).await
+        })
     }
 }
 
@@ -183,7 +186,9 @@ pub(crate) fn dependencies(state: Arc<ApiState>) -> RuntimeDebugCommandDependenc
         task_queue: state.infrastructure.task_queue(),
         runtime_event_stream: state.runtime_event_stream.clone(),
         assistant_executions: state.assistant_executions.clone(),
-        mcp_factory: Arc::new(StateRuntimeDebugMcpFactory { state }),
+        mcp_factory: Arc::new(StateRuntimeDebugMcpFactory {
+            state: Arc::downgrade(&state),
+        }),
     }
 }
 
@@ -1194,3 +1199,7 @@ impl StartFlowDebugRunBody {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/generation_factory.rs"]
+mod generation_factory_tests;

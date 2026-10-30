@@ -227,12 +227,13 @@ fn console_bindings_from_registry(
 
 pub(crate) fn production_interface_contributions(
     state: &Arc<crate::app_state::ApiState>,
+    owner: &Arc<crate::generation_dispatch::GenerationDispatch>,
 ) -> Result<Vec<InterfaceRegistryContribution>, RegistryCompilationError> {
-    let console_frontstage_callable_dispatch =
-        crate::openapi_interface::console_router_callable_dispatch_port(crate::console_router(
-            Arc::clone(state),
-            true,
-        ));
+    let console_frontstage_callable_dispatch: Arc<
+        dyn crate::openapi_interface::CallableDispatchPort,
+    > = Arc::new(crate::generation_dispatch::WeakGenerationDispatch(
+        Arc::downgrade(owner),
+    ));
     let public_login_entries = crate::routes::auth::public_login_entries_port(
         state.store.clone(),
         Arc::clone(&state.authenticator_registry),
@@ -371,14 +372,13 @@ pub(crate) fn production_interface_contributions(
         };
     let mcp_interface_dispatch: Arc<
         dyn crate::routes::mcp_protocol::virtual_ui::McpInterfaceDispatchPort,
-    > = Arc::new(
-        crate::routes::mcp_protocol::virtual_ui::ConsoleRouterMcpInterfaceDispatchPort::new(
-            crate::console_router(Arc::clone(state), true),
-        ),
-    );
+    > = Arc::new(crate::generation_dispatch::WeakGenerationDispatch(
+        Arc::downgrade(owner),
+    ));
     let native_runtime_invoker_factory =
         crate::routes::application_public_api::native::native_runtime_invoker_factory(
             crate::routes::application_public_api::native::NativeRuntimeInvokerFactoryDependencies {
+                generation: Arc::downgrade(owner),
                 runtime_dependencies: runtime_tool_invoker_dependencies.clone(),
                 interface_catalog: mcp_interface_catalog_dependencies.clone(),
                 interface_registry: Arc::new(
@@ -386,7 +386,6 @@ pub(crate) fn production_interface_contributions(
                         Arc::clone(&native_interface_registry),
                     ),
                 ),
-                interface_dispatch: Arc::clone(&mcp_interface_dispatch),
             },
         );
     let webmcp_port = crate::routes::webmcp::port(

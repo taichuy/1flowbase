@@ -1,6 +1,8 @@
 #![recursion_limit = "256"]
 
 extern crate self as api_server;
+#[path = "boot_composition/generation_dispatch.rs"]
+mod generation_dispatch;
 #[path = "boot_composition/managed_publication.rs"]
 mod managed_publication;
 mod managed_service_mcp;
@@ -12,6 +14,7 @@ pub mod app_state;
 pub(crate) mod application_log_exchange;
 pub mod application_public_docs;
 mod authentication_runtime;
+mod communication_runtime;
 pub mod config;
 #[path = "console_contracts/console_operation_compilation.rs"]
 pub(crate) mod console_operation_compilation;
@@ -40,7 +43,6 @@ pub(crate) mod model_pricing_catalog;
 pub mod network_egress_client;
 pub mod network_egress_probe;
 mod notification_runtime;
-mod communication_runtime;
 #[path = "catalog_sources/official_extension_catalog.rs"]
 pub mod official_extension_catalog;
 #[path = "catalog_sources/official_i18n_catalog_seed.rs"]
@@ -114,6 +116,7 @@ pub(crate) async fn runtime_internal_tool_invoker_factory(
     routes::mcp_protocol::virtual_ui::RuntimeInternalToolInvokerFactory,
     error_response::ApiError,
 > {
+    let owner = generation_dispatch::GenerationDispatch::acquire(state)?;
     let interface_catalog =
         routes::mcp_management::mcp_interface_catalog_entries(state.as_ref(), actor).await?;
     Ok(
@@ -129,11 +132,7 @@ pub(crate) async fn runtime_internal_tool_invoker_factory(
                     interface_catalog,
                 ),
             ),
-            Arc::new(
-                routes::mcp_protocol::virtual_ui::ConsoleRouterMcpInterfaceDispatchPort::new(
-                    console_router(state.clone(), true),
-                ),
-            ),
+            owner,
         ),
     )
 }
@@ -346,11 +345,11 @@ pub fn app() -> Router {
 }
 
 pub fn app_with_state(state: Arc<ApiState>) -> Router {
-    if let Some(snapshot) = &state.extension_boot_snapshot {
+    let owner = state.extension_boot_snapshot.as_ref().map(|snapshot| {
         snapshot
             .publish_complete_catalog(&state)
-            .expect("complete interface catalog must publish before router construction");
-    }
+            .expect("complete interface catalog must publish before router construction")
+    });
     let interface_snapshot = state
         .extension_boot_snapshot
         .as_ref()
@@ -364,19 +363,36 @@ pub fn app_with_state(state: Arc<ApiState>) -> Router {
     let (router, mounted) = console_router_with_assembly(state.clone(), true, assembly);
     publish_external_endpoint_catalog(&state, &mounted, true, &openapi_document)
         .expect("external endpoint catalog must publish before router construction");
+    let router = match owner {
+        Some(owner) => generation_dispatch::serving_router(router, owner),
+        None => router,
+    };
     router
         .layer(development_cors_layer())
         .layer(TraceLayer::new_for_http().make_span_with(safe_http_trace_span))
 }
 
+#[cfg(test)]
 fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
     let interface_snapshot = state
         .extension_boot_snapshot
         .as_ref()
         .and_then(|snapshot| snapshot.interface_registry())
         .map(|registry| registry.snapshot());
+    console_router_for_registry(state, include_openapi, interface_snapshot.as_deref())
+}
+
+fn console_router_for_registry(
+    state: Arc<ApiState>,
+    include_openapi: bool,
+    interface_registry: Option<&interface_runtime::CompiledInterfaceRegistry>,
+) -> Router {
+    #[cfg(test)]
+    if let Some(boot) = &state.extension_boot_snapshot {
+        boot.record_dispatch_assembly();
+    }
     let assembly = routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
-        interface_snapshot.as_deref(),
+        interface_registry,
     );
     let assembly = assembly.merge(crate::managed_services::route_assembly(
         state.console_surface_registry.managed_services(),
@@ -453,11 +469,11 @@ fn console_router_with_assembly(
 }
 
 pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Router {
-    if let Some(snapshot) = &state.extension_boot_snapshot {
+    let owner = state.extension_boot_snapshot.as_ref().map(|snapshot| {
         snapshot
             .publish_complete_catalog(&state)
-            .expect("complete interface catalog must publish before router construction");
-    }
+            .expect("complete interface catalog must publish before router construction")
+    });
     let interface_snapshot = state
         .extension_boot_snapshot
         .as_ref()
@@ -469,7 +485,16 @@ pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Ro
     );
     let openapi_document = serde_json::to_value(openapi::ApiDoc::openapi())
         .expect("static OpenAPI document must serialize");
-    app_with_state_and_config_and_console_route_assembly(state, config, assembly, &openapi_document)
+    let router = app_with_state_and_config_and_console_route_assembly(
+        state,
+        config,
+        assembly,
+        &openapi_document,
+    );
+    match owner {
+        Some(owner) => generation_dispatch::serving_router(router, owner),
+        None => router,
+    }
 }
 
 fn app_with_state_and_config_and_console_route_assembly(

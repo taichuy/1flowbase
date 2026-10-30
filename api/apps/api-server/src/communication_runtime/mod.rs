@@ -1,7 +1,7 @@
 //! Host lifecycle for durable communication receive and execution. Provider credentials stay here.
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use control_plane::ports::{NotificationRepository, WorkspaceRepository};
 use domain::{
     ActorContext, CommunicationBindingRecord, NotificationInstanceRecord,
@@ -37,11 +37,14 @@ pub(crate) struct CommunicationWorker {
     task: tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 impl CommunicationWorker {
-    pub(crate) fn spawn(state: Arc<ApiState>) -> Self {
+    pub(crate) fn spawn(
+        state: Arc<ApiState>,
+        owner: Arc<crate::generation_dispatch::GenerationDispatch>,
+    ) -> Self {
         let (stop, signal) = watch::channel(false);
         Self {
             stop,
-            task: tokio::sync::Mutex::new(Some(tokio::spawn(supervise(state, signal)))),
+            task: tokio::sync::Mutex::new(Some(tokio::spawn(supervise(state, owner, signal)))),
         }
     }
     #[cfg(test)]
@@ -60,7 +63,11 @@ impl CommunicationWorker {
     }
 }
 
-async fn supervise(state: Arc<ApiState>, mut stop: watch::Receiver<bool>) {
+async fn supervise(
+    state: Arc<ApiState>,
+    owner: Arc<crate::generation_dispatch::GenerationDispatch>,
+    mut stop: watch::Receiver<bool>,
+) {
     let mut workers = HashMap::<(Uuid, Uuid), watch::Sender<bool>>::new();
     let mut tasks = JoinSet::new();
     loop {
@@ -79,7 +86,9 @@ async fn supervise(state: Arc<ApiState>, mut stop: watch::Receiver<bool>) {
                         let (signal, receiver) = watch::channel(false);
                         workers.insert(key, signal);
                         let state = state.clone();
+                        let generation = owner.clone();
                         tasks.spawn(async move {
+                            let _generation = generation;
                             tokio::join!(
                                 receive::run(state.clone(), key, receiver.clone()),
                                 commands::run(state.clone(), key, receiver.clone()),

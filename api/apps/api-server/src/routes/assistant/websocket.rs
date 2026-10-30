@@ -45,6 +45,7 @@ pub struct AssistantWebSocketTicketResponse {
 
 #[derive(Clone)]
 struct AssistantWebSocketAuthorization {
+    _generation: Arc<crate::generation_dispatch::GenerationDispatch>,
     context: RequestContext,
     application_id: Uuid,
     request_headers: HeaderMap,
@@ -133,6 +134,7 @@ pub async fn upgrade(
         request_headers.remove(name);
     }
     let authorization = AssistantWebSocketAuthorization {
+        _generation: crate::generation_dispatch::GenerationDispatch::acquire(&state)?,
         context,
         application_id: ticket.application_id,
         request_headers,

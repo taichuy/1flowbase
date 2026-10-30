@@ -703,6 +703,118 @@ async fn ac_001_runtime_mcp_write_uses_server_delegation_without_browser_csrf() 
     );
 }
 
+/// The real runtime factory must own both dispatch ports before detached execution starts.
+#[tokio::test]
+async fn generation_runtime_invoker_first_and_nested_callable_tools_survive_body_drop_and_publication(
+) {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state.clone());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_mcp_instance(&app, &cookie, &csrf).await;
+    create_model_probe_tool(&app, &cookie, &csrf).await;
+    create_interface_tool_and_binding(
+        &app,
+        &cookie,
+        &csrf,
+        "nested_debug_probe",
+        "execute_mcp_debug",
+        json!({"mappings":[
+            {"interface_param":"interface_id","mcp_param":"interface_id","required":true},
+            {"interface_param":"mcp_arguments","mcp_param":"mcp_arguments","required":true},
+            {"interface_param":"input_mapping","mcp_param":"input_mapping","required":true},
+            {"interface_param":"output_mapping","mcp_param":"output_mapping","required":true}
+        ]}),
+    )
+    .await;
+    let invoker = runtime_mcp_invoker(state.clone(), &cookie).await;
+    let boot = std::sync::Arc::downgrade(state.extension_boot_snapshot.as_ref().unwrap());
+    let old_id = state
+        .extension_boot_snapshot
+        .as_ref()
+        .unwrap()
+        .generation_id();
+    let state_probe = std::sync::Arc::downgrade(&state);
+    assert_eq!(boot.upgrade().unwrap().dispatch_assembly_count(), 1);
+    let publisher = crate::managed_publication::ManagedGenerationPublisher::new(
+        &state,
+        crate::_tests::support::test_config(),
+        vec![],
+        app,
+    )
+    .unwrap();
+    let response = publisher
+        .ingress()
+        .oneshot(
+            Request::builder()
+                .uri("/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    publisher.publish(publisher.prepare(vec![], BTreeMap::new()).await.unwrap());
+    assert_ne!(
+        publisher
+            .current_generation()
+            .unwrap()
+            .owner
+            .generation_id(),
+        old_id
+    );
+    drop(response); // Neither HTTP nor body is an execution root anymore.
+    drop(state);
+    assert!(state_probe.upgrade().is_some());
+    let output = invoke_runtime_create_model(&invoker, "generation_late_first").await;
+    assert!(!output.is_error, "{}", output.content);
+    assert_eq!(
+        output.content["structuredContent"]["code"],
+        "generation_late_first"
+    );
+    let node = runtime_mcp_test_node();
+    let registration = invoker
+        .registrations_for_node(&node)
+        .into_iter()
+        .find(|registration| registration.provider_name == "taichuy_mcp_call")
+        .unwrap();
+    let mapping = [
+        "code",
+        "title",
+        "scope_kind",
+        "template_provider",
+        "template_code",
+        "template_version",
+    ]
+    .into_iter()
+    .map(|key| json!({"interface_param":key,"mcp_param":key,"required":true}))
+    .collect::<Vec<_>>();
+    // MCP -> old internal Router -> canonical debug handler -> weak Callable port -> same Router.
+    let output = invoker.invoke_runtime_internal_tool(&node, &registration, json!({
+        "tool_id":"nested_debug_probe", "max_inline_chars":12000,
+        "arguments":{
+            "interface_id":"create_model",
+            "mcp_arguments":{"code":"generation_late_nested","title":"Nested","scope_kind":"workspace","template_provider":"core","template_code":"general","template_version":"v1"},
+            "input_mapping":{"mappings":mapping}, "output_mapping":{}
+        }
+    })).await.unwrap();
+    assert!(!output.is_error, "{}", output.content);
+    assert!(
+        output
+            .content
+            .to_string()
+            .contains("generation_late_nested"),
+        "{}",
+        output.content
+    );
+    assert_eq!(
+        boot.upgrade().unwrap().dispatch_assembly_count(),
+        1,
+        "factory and first/nested tools must reuse the precompiled Router"
+    );
+    drop(invoker);
+    assert!(state_probe.upgrade().is_none());
+    assert!(boot.upgrade().is_none());
+}
+
 #[tokio::test]
 async fn ac_002_runtime_mcp_write_keeps_console_operation_authorization() {
     let (state, _) = test_api_state_with_database_url().await;

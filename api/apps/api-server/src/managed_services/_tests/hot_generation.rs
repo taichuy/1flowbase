@@ -233,6 +233,12 @@ async fn hot_generation_same_ingress_swaps_routes_navigation_docs_and_mcp_atomic
 #[tokio::test]
 async fn hot_generation_admitted_http_request_keeps_selected_router_until_completion() {
     let (state, _) = test_api_state_with_database_url().await;
+    let _owner = state
+        .extension_boot_snapshot
+        .as_ref()
+        .unwrap()
+        .publish_complete_catalog(&state)
+        .unwrap();
     let entered = Arc::new(tokio::sync::Notify::new());
     let release = Arc::new(tokio::sync::Notify::new());
     let initial = Router::new().route(

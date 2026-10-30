@@ -96,6 +96,7 @@ impl ResponsesTurnBridge {
             ResponsesWebSocketProjector::with_mode(model, previous_response_id, projection_mode),
             frames,
             recorder,
+            Some(self.authorization._generation.clone()),
         )
         .await
     }
@@ -111,7 +112,7 @@ pub(super) async fn project_turn(
     projector: ResponsesWebSocketProjector,
     frames: mpsc::Sender<String>,
 ) -> Result<(), ResponsesTurnBridgeError> {
-    project_observed_turn(events, completion, projector, frames, None).await
+    project_observed_turn(events, completion, projector, frames, None, None).await
 }
 
 async fn project_observed_turn(
@@ -123,11 +124,15 @@ async fn project_observed_turn(
     mut projector: ResponsesWebSocketProjector,
     frames: mpsc::Sender<String>,
     recorder: Option<ClientTrajectoryRecorder>,
+    generation: Option<Arc<crate::generation_dispatch::GenerationDispatch>>,
 ) -> Result<(), ResponsesTurnBridgeError> {
     // The socket actor may abort this task or projection/writing may fail.
     // Detaching this handle preserves the sole Kernel finalization owner;
     // transport shutdown must not drop hooks/receipt or cancel the business run.
-    let completion = tokio::spawn(completion.complete());
+    let completion = tokio::spawn(async move {
+        let _generation = generation;
+        completion.complete().await
+    });
     let mut heartbeat = tokio::time::interval(Duration::from_secs(30));
     heartbeat.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let mut last_run: Option<Arc<control_plane::application_public_api::native::NativeRunResult>> =
