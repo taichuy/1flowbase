@@ -212,7 +212,27 @@ fn local_command_spool_carrier_is_private_and_deleted_on_close() {
             !path.exists(),
             "delete-on-close must actually remove the carrier"
         );
-        return;
     }
+    #[cfg(unix)]
     drop(file);
+}
+
+#[cfg(windows)]
+#[test]
+fn local_command_windows_payload_is_interpreted_once() {
+    let value = body("echo literal! & echo ^&^|^>^< & echo %COMSPEC%");
+    let output = value["data"]["stdout"].as_str().unwrap();
+    let lines: Vec<_> = output.lines().map(str::trim).collect();
+    assert_eq!(lines[0], "literal!", "{value}");
+    assert_eq!(lines[1], "&|><", "{value}");
+    assert!(
+        lines[2].to_ascii_lowercase().ends_with("cmd.exe"),
+        "{value}"
+    );
+    let unicode = body("echo 你好 世界");
+    assert_eq!(
+        unicode["data"]["stdout"].as_str().unwrap().trim(),
+        "你好 世界",
+        "{unicode}"
+    );
 }

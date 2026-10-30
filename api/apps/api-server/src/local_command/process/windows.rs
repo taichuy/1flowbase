@@ -1,3 +1,4 @@
+mod environment;
 use super::{collect, Cancellation, Collected, Spool};
 use std::{
     ffi::OsString,
@@ -190,12 +191,16 @@ pub(super) fn run(
     attributes.set(PROC_THREAD_ATTRIBUTE_JOB_LIST, &mut jobs)?;
     let executable = cmd_path()?;
     let executable_wide = wide(&executable);
-    // A private hidden console makes chcp local to this invocation. Legacy external
-    // programs that ignore UTF-8 are still reported via encoding_lossy, never guessed.
+    // cmd caches a redirected-output code page at startup. Initialize a private
+    // console first, then start the user interpreter with that UTF-8 code page.
+    // Delayed expansion inserts the command only after the bootstrap has parsed
+    // its own metacharacters; %, !, ^ and quotes are interpreted once by the inner cmd.
+    let (environment, shell_key, command_key) = environment::with_command(&executable, command)?;
     let command_line = format!(
-        "\"{}\" /D /S /C \"chcp 65001>nul & {}\"",
+        "\"{}\" /D /V:ON /S /C \"chcp 65001>nul && \"!{}!\" /D /V:OFF /S /C \"!{}!\"\"",
         executable.to_string_lossy(),
-        command
+        shell_key,
+        command_key,
     );
     let mut command_line = wide(std::ffi::OsStr::new(&command_line));
     let mut startup: STARTUPINFOEXW = unsafe { zeroed() };
@@ -214,8 +219,8 @@ pub(super) fn run(
             null(),
             null(),
             1,
-            EXTENDED_STARTUPINFO_PRESENT | CREATE_NEW_CONSOLE,
-            null(),
+            EXTENDED_STARTUPINFO_PRESENT | CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT,
+            environment.as_ptr().cast(),
             null(),
             &startup.StartupInfo,
             &mut info,
