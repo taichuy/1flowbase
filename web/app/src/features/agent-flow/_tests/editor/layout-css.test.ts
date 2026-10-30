@@ -30,10 +30,13 @@ describe('AgentFlow editor layout CSS', () => {
       'utf8'
     );
     const sourceBlock = controlsCss.match(
-      /\.agent-flow-node-handle--source\.react-flow__handle\s*\{[\s\S]*?\n\}/
+      /^\.agent-flow-node-handle--source\.react-flow__handle\s*\{[^}]*\}/m
+    )?.[0];
+    const activeSourceBlock = controlsCss.match(
+      /^\.react-flow__node\.selected \.agent-flow-node-handle--source\.react-flow__handle,[^{]*\{[^}]*\}/m
     )?.[0];
     const branchBlock = controlsCss.match(
-      /\.agent-flow-node-handle--branch\.react-flow__handle\s*\{[\s\S]*?\n\}/
+      /^\.react-flow__node\s+\.agent-flow-node-handle--source\.agent-flow-node-handle--branch\.react-flow__handle\s*\{[^}]*\}/m
     )?.[0];
     const branchRules = Array.from(
       controlsCss.matchAll(
@@ -43,12 +46,20 @@ describe('AgentFlow editor layout CSS', () => {
       .map((match) => match[0])
       .join('\n');
 
-    expect(sourceBlock).toContain('right: -7px;');
+    expect(sourceBlock).toContain('width: 32px;');
+    expect(sourceBlock).toContain('height: 32px;');
+    expect(sourceBlock).toContain('right: 0;');
     expect(sourceBlock).toContain('transform: translate(50%, -50%);');
-    expect(branchBlock ?? '').not.toContain('right:');
-    expect(branchBlock ?? '').not.toContain('transform:');
+    expect(activeSourceBlock).toContain('width: 40px;');
+    expect(activeSourceBlock).toContain('height: 40px;');
+    expect(activeSourceBlock).toContain('right: 0;');
+    expect(activeSourceBlock).not.toContain('transform:');
+    expect(branchBlock).toContain('width: 28px;');
+    expect(branchBlock).toContain('height: 28px;');
+    expect(branchBlock).not.toContain('right:');
+    expect(branchBlock).not.toContain('transform:');
     expect(branchRules).not.toMatch(
-      /\b(?:bottom|height|left|right|top|transform|width)\s*:/
+      /\b(?:bottom|left|right|top|transform)\s*:/
     );
   });
 
