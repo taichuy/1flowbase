@@ -1,3 +1,4 @@
+import '@testing-library/jest-dom/vitest';
 import {
   act,
   fireEvent,
@@ -260,9 +261,9 @@ describe('Vditor frame lifecycle', () => {
     await waitFor(() => expect(pending).toHaveLength(2));
     await act(async () => pending[0]());
     expect(screen.getByRole('status')).toBeInTheDocument();
-    expect(frame.contentDocument?.body).not.toHaveTextContent('old');
+    expect(frame.contentDocument?.body?.textContent).not.toContain('old');
     view.unmount();
     await act(async () => pending[1]());
-    expect(frame.contentDocument?.body).not.toHaveTextContent('new');
+    expect(frame.contentDocument?.body?.textContent).not.toContain('new');
   });
 });

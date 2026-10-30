@@ -1,5 +1,6 @@
 //! Selectable row backups, deliberately separate from whole-database disaster recovery.
 mod archive;
+mod identity;
 mod inventory;
 mod key_index;
 mod plugin_identity;
@@ -333,6 +334,7 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
         sqlx::query("set constraints all deferred")
             .execute(&mut *tx)
             .await?;
+        let identities = identity::prepare(&mut tx, &header.tables).await?;
         let tables: BTreeMap<_, _> = header.tables.iter().map(|t| (t.name.as_str(), t)).collect();
         let statements = tables
             .iter()
@@ -433,6 +435,7 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
         sqlx::query("set constraints all immediate")
             .execute(&mut *tx)
             .await?;
+        identity::finish(&mut tx, identities).await?;
         let storages =
             sqlx::query("select id,driver_type,config_json from file_storages order by id")
                 .fetch_all(&mut *tx)

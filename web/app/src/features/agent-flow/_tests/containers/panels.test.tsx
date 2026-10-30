@@ -227,7 +227,7 @@ describe('container configuration panels', () => {
     fireEvent.click(header);
     await waitFor(() =>
       expect(screen.getByRole('textbox', { name: '节点别名' })).toHaveValue(
-        'Loop'
+        outerAlias
       )
     );
   });

@@ -201,7 +201,19 @@ impl CommunicationRepository for PgControlPlaneStore {
         p: Option<Uuid>,
         l: u32,
     ) -> Result<CommunicationPage<CommunicationMessage>> {
-        history::timeline(self, w, None, None, c, p, l, false).await
+        history::timeline(
+            self,
+            history::TimelineScope {
+                workspace_id: w,
+                instance_id: None,
+                external_identity: None,
+            },
+            c,
+            p,
+            l,
+            false,
+        )
+        .await
     }
     async fn communication_management_conversations(
         &self,
