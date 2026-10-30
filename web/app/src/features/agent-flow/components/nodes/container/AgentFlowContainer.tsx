@@ -13,6 +13,7 @@ import type {
   AgentFlowCanvasNodeData
 } from '../../canvas/node-types';
 import { NodePickerPopover } from '../../node-picker/NodePickerPopover';
+import { ConnectorAddIcon } from '../../canvas/ConnectorAddIcon';
 import { getAgentFlowNodeTypeIcon } from '../../../lib/node-type-icons';
 import { MAIN_SOURCE_HANDLE_ID } from '../../../lib/canvas/handle-ids';
 import { i18nText } from '../../../../../shared/i18n/text';
@@ -37,33 +38,42 @@ function Source({
   top?: number;
 }) {
   return (
-    <>
+    <NodePickerPopover
+      ariaLabel={i18nText('agentFlow', 'auto.add_node_after', {
+        value1: data.alias
+      })}
+      open={data.pickerOpen}
+      options={data.nodePickerOptions}
+      onOpenChange={(open) =>
+        open ? data.onOpenPicker(data.nodeId) : data.onClosePicker()
+      }
+      onPickNode={(option) => data.onInsertNode(data.nodeId, option)}
+    >
       <Handle
         type="source"
         position={Position.Right}
         id={MAIN_SOURCE_HANDLE_ID}
         style={top ? { top } : undefined}
-        className="agent-flow-node-handle"
-      />
-      <div
-        className="agent-flow-container__add nodrag nopan"
-        style={top ? { top } : undefined}
+        className="agent-flow-node-handle agent-flow-node-handle--source nodrag nopan"
+        role="button"
+        tabIndex={0}
+        aria-label={i18nText('agentFlow', 'auto.add_node_after', {
+          value1: data.alias
+        })}
+        aria-expanded={data.pickerOpen}
+        aria-haspopup="menu"
         onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (data.pickerOpen) data.onClosePicker();
+          else data.onOpenPicker(data.nodeId);
+        }}
       >
-        <NodePickerPopover
-          ariaLabel={i18nText(
-            'agentFlow',
-            'auto.insert_node_connection_position'
-          )}
-          open={data.pickerOpen}
-          options={data.nodePickerOptions}
-          onOpenChange={(open) =>
-            open ? data.onOpenPicker(data.nodeId) : data.onClosePicker()
-          }
-          onPickNode={(option) => data.onInsertNode(data.nodeId, option)}
-        />
-      </div>
-    </>
+        <ConnectorAddIcon className="agent-flow-node-handle__icon" />
+      </Handle>
+    </NodePickerPopover>
   );
 }
 

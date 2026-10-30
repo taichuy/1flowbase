@@ -312,7 +312,7 @@ function useNodeCardInteractionController({
               className={[
                 'agent-flow-node-handle',
                 'agent-flow-node-handle--source',
-                handle.id ? 'agent-flow-node-handle--branch' : null
+                sourceHandles.length > 1 ? 'agent-flow-node-handle--branch' : null
               ]
                 .filter(Boolean)
                 .join(' ')}
