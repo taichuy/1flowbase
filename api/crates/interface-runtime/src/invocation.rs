@@ -1000,16 +1000,21 @@ impl ReceiptBuilder {
         self.receipt(InterfaceInvocationTerminal::Completed)
     }
 
-    async fn fail(
+    fn fail(
         mut self,
         error: InterfaceInvocationError,
         terminal: InterfaceInvocationTerminal,
-    ) -> InterfaceInvocationFailure {
-        self.finalize(terminal).await;
-        InterfaceInvocationFailure {
-            error: Box::new(error),
-            receipt: Box::new(self.receipt(terminal)),
-        }
+    ) -> Pin<Box<impl Future<Output = InterfaceInvocationFailure> + Send>> {
+        // Unary preparation has many mutually exclusive rejection branches.
+        // Keep their finalization state out of its poll frame, including when
+        // preparation is reached through a same-task MCP callable invocation.
+        Box::pin(async move {
+            self.finalize(terminal).await;
+            InterfaceInvocationFailure {
+                error: Box::new(error),
+                receipt: Box::new(self.receipt(terminal)),
+            }
+        })
     }
 
     async fn finalize(&mut self, terminal: InterfaceInvocationTerminal) {

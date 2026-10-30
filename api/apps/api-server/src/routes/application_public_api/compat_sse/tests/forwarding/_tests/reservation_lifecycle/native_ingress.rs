@@ -216,12 +216,10 @@ async fn public_native_partial_duplicate_and_c2_reach_compiled_binding_and_singl
         assert!(parked.2 > acquired.2);
         if let Some(original) = &first_receipt {
             assert_eq!(receipt.attempt_id(), original.attempt_id());
-            assert!(
-                !service
-                    .release_unstarted_native_callback(original)
-                    .await
-                    .unwrap()
-            );
+            assert!(!service
+                .release_unstarted_native_callback(original)
+                .await
+                .unwrap());
         }
         first_receipt = Some(receipt);
         prior_version = Some(parked.2);
@@ -362,12 +360,10 @@ async fn public_native_partial_duplicate_and_c2_reach_compiled_binding_and_singl
             .unwrap(),
         "active execution owns admission"
     );
-    assert!(
-        !service
-            .release_unstarted_native_callback(first_receipt.as_ref().unwrap())
-            .await
-            .unwrap()
-    );
+    assert!(!service
+        .release_unstarted_native_callback(first_receipt.as_ref().unwrap())
+        .await
+        .unwrap());
     assert_eq!(stream.open_attempts.load(Ordering::SeqCst), 1);
     assert_eq!(
         producer_facts(&state, run.id).await,

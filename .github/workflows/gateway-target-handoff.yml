@@ -99,6 +99,7 @@ jobs:
           jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
           echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
       - name: Registry settlement, fencing and existing transport invariants
+        if: ${{ !inputs.verify_generation_ownership }}
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p orchestration-runtime transport_session > tmp/test-governance/gateway-target-handoff/ci/registry.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/registry.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/registry.log
@@ -128,6 +129,9 @@ jobs:
         if: ${{ inputs.verify_generation_ownership }}
         env:
           API_AUTH_PUBLIC_ORIGIN: https://auth-fixture.example
+          # Keep application test threads at the ordinary 2 MiB without
+          # constraining rustc's compilation threads.
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "env RUST_MIN_STACK=2097152"
         run: |
           # libtest combines filters with OR and executes overlapping matches only once.
           selectors=(
@@ -157,8 +161,27 @@ jobs:
             managed_snapshot_tests
             managed_activation_tests
             local_command
+            transport_session
+            routes::application_public_api::compat_sse::event_forwarding::committed_event_index_tests
+            application_public_api::resume
+            application_public_api::native_tool_resume
+            application_public_api::callback_resume::prepared::tests
+            orchestration_runtime::callback_completion
+            orchestration_runtime::callback_predecessor_receipt_tests
+            nullable_previous_response_id
+            _tests::invocation_tests
+            _tests::review_remediation_tests
           )
-          /usr/bin/time -v -o tmp/test-governance/gateway-target-handoff/ci/catalog-resources.log cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib -- "${selectors[@]}" > tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log 2>&1 || { tail -c 16000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log; exit 1; }
+          command=(cargo test --locked --manifest-path api/Cargo.toml -p api-server -p control-plane -p orchestration-runtime -p interface-runtime --lib -- "${selectors[@]}")
+          printf '%q ' "${command[@]}" > tmp/test-governance/gateway-target-handoff/ci/catalog-command.txt
+          printf '\n' >> tmp/test-governance/gateway-target-handoff/ci/catalog-command.txt
+          status=0
+          /usr/bin/time -v -o tmp/test-governance/gateway-target-handoff/ci/catalog-resources.log "${command[@]}" > tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log 2>&1 || status=$?
+          printf '%s\n' "$status" > tmp/test-governance/gateway-target-handoff/ci/catalog-exit.txt
+          if [ "$status" -ne 0 ]; then
+            tail -c 16000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log
+            exit "$status"
+          fi
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log
           node -e 'const fs=require("node:fs");const file=process.argv[1];const lines=fs.readFileSync(file,"utf8").split("\n").filter(l=>l.startsWith("test ") && / \.\.\. ok$/.test(l));const selectors=process.argv.slice(2).map(selector=>({selector,passed:lines.filter(l=>l.includes(selector)).length}));fs.writeFileSync(file.replace(/\.log$/,"-selection.json"),JSON.stringify({unique_passes:lines.length,selectors},null,2));if(selectors.some(s=>s.passed===0))throw new Error("a required contract selected zero passing tests");' tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log "${selectors[@]}"
       - name: Callback admission ownership and recovery regressions
@@ -199,7 +222,7 @@ jobs:
           cp api/target/debug/api-server tmp/test-governance/gateway-target-handoff/ci/api-server
           sha256sum tmp/test-governance/gateway-target-handoff/ci/api-server > tmp/test-governance/gateway-target-handoff/ci/api-server.sha256
       - name: Nullable Responses continuation cursor contract
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.verify_generation_ownership }}
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane nullable_previous_response_id > tmp/test-governance/gateway-target-handoff/ci/nullable-cursor.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/nullable-cursor.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/nullable-cursor.log
