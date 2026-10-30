@@ -9,7 +9,7 @@
       "evidence": [
         {
           "file": "web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx",
-          "sha256": "8e4d13ddd509072e526a3f84ce87e68e7eccd838bd0c5f3ef403dc6114642f85"
+          "sha256": "75c01544b924244a0e37cc4ebcb956061e200a35345d51d445b77638f86fa789"
         },
         {
           "file": "web/app/src/style-boundary/scene-fixtures/notifications/data.ts",

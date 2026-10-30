@@ -33,7 +33,27 @@ function setup(...args: Parameters<typeof setupCommunicationBinding>) {
 }
 const commandSwitch = (name: string) =>
   screen.getByRole('switch', { name: `Enable ${name}` });
-const settle = () => waitFor(() => expect(client.isFetching()).toBe(0));
+const settle = (
+  state: 'ready' | 'options-error' | 'binding-error' = 'ready'
+) =>
+  waitFor(() => {
+    // Query completion precedes the observer's React render. Wait for the
+    // command catalogue (or its load error) to reach the form as well.
+    expect(client.isFetching()).toBe(0);
+    if (state === 'ready') {
+      expect(commandSwitch('new')).toBeEnabled();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    } else {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not load channel settings.'
+      );
+      if (state === 'binding-error') {
+        expect(commandSwitch('new')).toBeDisabled();
+      } else {
+        expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+      }
+    }
+  });
 
 test('new binding requires an application and saves backend command defaults with tools, prompt and nullable table', async () => {
   const { ref, writes, optionRequests } = setup();
@@ -329,7 +349,7 @@ test.each(['options', 'binding'] as const)(
       failOptions: source === 'options',
       failBinding: source === 'binding'
     });
-    await settle();
+    await settle(`${source}-error`);
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Could not load channel settings.'
     );

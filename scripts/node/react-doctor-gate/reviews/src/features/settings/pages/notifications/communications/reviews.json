@@ -9,14 +9,14 @@
       "rule": "react-doctor/no-chain-state-updates",
       "sourceSha256": "35c8898ad38157238bbc55a872e421a86fd7535d6e1368771bd30bb4effd3529",
       "reason": "The one binding effect initializes an editable draft from async backend binding/default/plugin-tool data only while dirty is false. User edits set dirty and the draft together; once dirty, refreshed catalogue/binding data cannot overwrite unsaved settings. There is no chain of effects depending on each other setters. Binding tests cover reopened persisted values, application changes retaining toggles, missing declarations and rejected save draft retention.",
-      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx","sha256":"8e4d13ddd509072e526a3f84ce87e68e7eccd838bd0c5f3ef403dc6114642f85"}]
+      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx","sha256":"75c01544b924244a0e37cc4ebcb956061e200a35345d51d445b77638f86fa789"}]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/communications/CommunicationBindingForm.tsx",
       "rule": "react-doctor/no-react19-deprecated-apis",
       "sourceSha256": "35c8898ad38157238bbc55a872e421a86fd7535d6e1368771bd30bb4effd3529",
       "reason": "React 19 still supports forwardRef; this typed form exposes validate/save via useImperativeHandle to the parent channel drawer, which persists the instance before saving its binding. Replacing forwardRef with a ref prop is an optional representation change, not a repair to the imperative protocol. The parent validates and awaits the same handle, and binding tests cover its canonical saved fields.",
-      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx","sha256":"8e4d13ddd509072e526a3f84ce87e68e7eccd838bd0c5f3ef403dc6114642f85"},{"file":"web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx","sha256":"4223c595138d26face4414db0c792452fb7e4b16deb08268d896c89bc59d222a"}]
+      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx","sha256":"75c01544b924244a0e37cc4ebcb956061e200a35345d51d445b77638f86fa789"},{"file":"web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx","sha256":"4223c595138d26face4414db0c792452fb7e4b16deb08268d896c89bc59d222a"}]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/communications/CommunicationHistory.tsx",
