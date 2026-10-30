@@ -5,13 +5,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use plugin_framework::{
     provider_contract::{ProviderInvocationInput, ProviderModelDescriptor, ProviderStreamEvent},
     provider_package::ProviderPackage,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -20,12 +20,12 @@ pub use extension_contracts::semantic_terminal::count_tokens_input_tokens_from_o
 
 use crate::{
     application::{
-        ApplicationNonCrudConsoleOperation, ensure_existing_application_non_crud_console_operation,
+        ensure_existing_application_non_crud_console_operation, ApplicationNonCrudConsoleOperation,
     },
     audit::audit_log,
     capability_plugin_runtime::{CapabilityPluginRuntimePort, ExecuteCapabilityNodeInput},
     errors::ControlPlaneError,
-    model_provider::failover_queue::{FailoverQueueSnapshotItem, freeze_queue_items},
+    model_provider::failover_queue::{freeze_queue_items, FailoverQueueSnapshotItem},
     plugin_management::ready_current_node_plugin_installation,
     ports::{
         AcquireResumeClaimInput, AppendRunEventInput, ApplicationJsDependencySelectionRepository,
@@ -91,13 +91,13 @@ use self::{
     },
     payloads::persisted_node_output_payload,
     persistence::{
-        PersistFlowDebugOutcomeInput, PreparedNodeRuns, WaitingNodeResumeUpdate,
         checkpoint_node_id, checkpoint_snapshot_from_record_with_context, next_node_started_at,
-        persist_flow_debug_outcome, persist_preview_events,
+        persist_flow_debug_outcome, persist_preview_events, PersistFlowDebugOutcomeInput,
+        PreparedNodeRuns, WaitingNodeResumeUpdate,
     },
     provider_invoker::{
-        DebugDeltaKind, ThinkTagStreamSplitter, freeze_failover_queue_routes,
-        is_expected_runtime_event_stream_closed_error,
+        freeze_failover_queue_routes, is_expected_runtime_event_stream_closed_error,
+        DebugDeltaKind, ThinkTagStreamSplitter,
     },
 };
 pub struct StartNodeDebugPreviewCommand {
@@ -669,9 +669,7 @@ where
         };
         // Check the host response ID before bind_openai_continuation rewrites it
         // to the upstream cursor. The checkpoint is already owned by this resume.
-        let predecessor_recovery_receipt = input
-            .snapshot
-            .variable_pool
+        let predecessor_recovery_receipt = waiting_variable_pool
             .get(input.waiting_node_id)
             .and_then(|node| node.get("__llm_tool_callback"))
             .map(|callback| callback_predecessor_receipt(input.native_transport.as_ref(), callback))
@@ -1237,18 +1235,14 @@ mod callback_predecessor_receipt_tests {
             .as_object_mut()
             .unwrap()
             .remove("1flowbase_provider_recovery");
-        assert!(
-            callback_predecessor_receipt(Some(&owned()), &legacy)
-                .unwrap()
-                .is_none()
-        );
+        assert!(callback_predecessor_receipt(Some(&owned()), &legacy)
+            .unwrap()
+            .is_none());
         let full =
             crate::ports::ProviderTransportPayload::openai_responses(json!({"input": []})).unwrap();
-        assert!(
-            callback_predecessor_receipt(Some(&full), &evidence())
-                .unwrap()
-                .is_none()
-        );
+        assert!(callback_predecessor_receipt(Some(&full), &evidence())
+            .unwrap()
+            .is_none());
     }
 
     #[test]
