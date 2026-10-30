@@ -12,7 +12,7 @@ async fn db_now(store: &PgControlPlaneStore) -> i64 {
 }
 
 fn admit(input: &mut CommitContainerTransitionInput, deadline: i64) {
-    input.rounds[0].deadline_unix_ms = deadline;
+    input.rounds[0].deadline_unix_ms = Some(deadline);
     input.admission = ContainerCommitAdmission::AdmitWork {
         effective_deadline: Some(ContainerCommitDeadline {
             deadline_unix_ms: deadline,
@@ -189,7 +189,7 @@ async fn container_expired_closure_and_historical_facts_do_not_block_new_round()
             closure.rounds[0].execution_id = Uuid::now_v7();
             closure.rounds[0].round_index = 1;
         }
-        closure.rounds[0].deadline_unix_ms = 1;
+        closure.rounds[0].deadline_unix_ms = Some(1);
         closure.rounds[0].status = status.into();
         closure.rounds[0].error_payload = Some(json!({"code":"container_round_admission_timeout"}));
         closure.admission = ContainerCommitAdmission::ClosureOrObservation;

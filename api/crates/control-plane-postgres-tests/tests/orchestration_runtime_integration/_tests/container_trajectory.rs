@@ -74,7 +74,7 @@ async fn container_trajectory_preserves_round_facts_identity_and_application_sco
             execution_id: round_id,
             container_execution_id: frame,
             round_index: 0,
-            deadline_unix_ms: 2000000000000,
+            deadline_unix_ms: Some(2000000000000),
             status: "running".into(),
             error_payload: None,
             output_payload: None,

@@ -29,7 +29,7 @@ impl ExecutionLifecycle for RejectAdmission {
                 let mut rejected = self.rejected.lock().unwrap();
                 if !*rejected {
                     *rejected = true;
-                    return Err(deadline_expired(round.deadline_owner_execution_id));
+                    return Err(deadline_expired(round.deadline_owner_execution_id.unwrap()));
                 }
             }
         }

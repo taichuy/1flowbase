@@ -173,6 +173,15 @@ async fn barriers_order_success_before_and_after_parallel_break_stop() {
 
 #[tokio::test(start_paused = true)]
 async fn virtual_ancestor_deadline_cancels_child_despite_continue_policy() {
+    ancestor_deadline_cancels_child(json!(1000)).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn virtual_ancestor_deadline_cancels_unlimited_child() {
+    ancestor_deadline_cancels_child(Value::Null).await;
+}
+
+async fn ancestor_deadline_cancels_child(child_timeout: Value) {
     let mut outer = container("outer", "loop", None, 1);
     outer.config["round_timeout_ms"] = json!(100);
     outer.config["error_policy"] = json!("continue");
@@ -180,7 +189,7 @@ async fn virtual_ancestor_deadline_cancels_child_despite_continue_policy() {
         .bindings
         .insert("output".into(), selector(&["inner", "result"]));
     let mut inner = container("inner", "loop", Some("outer"), 3);
-    inner.config["round_timeout_ms"] = json!(1000);
+    inner.config["round_timeout_ms"] = child_timeout;
     inner.config["error_policy"] = json!("continue");
     inner
         .bindings
@@ -271,10 +280,15 @@ impl ExecutionLifecycle for DeadlineObserver {
                         .rounds
                         .get(&path.round_index)
                 })
+                .filter(|round| round.deadline_unix_ms.is_some())
                 .min_by_key(|round| round.deadline_unix_ms);
-            if let Some(round) = deadline.filter(|round| round.deadline_unix_ms <= unix_ms()) {
+            if let Some(round) = deadline.filter(|round| {
+                round
+                    .deadline_unix_ms
+                    .is_some_and(|deadline| deadline <= unix_ms())
+            }) {
                 self.rejected.fetch_add(1, Ordering::SeqCst);
-                return Err(deadline_expired(round.deadline_owner_execution_id));
+                return Err(deadline_expired(round.deadline_owner_execution_id.unwrap()));
             }
         }
         self.observer.commit_container_transition(event).await
@@ -342,7 +356,7 @@ async fn callback_and_absolute_timeout_both_orders_and_commit_lock_crossing_keep
             let checkpoint = first.checkpoint_snapshot.unwrap();
             let before = checkpoint.container_state.as_ref().unwrap().clone();
             let frame = before.frames.values().next().unwrap();
-            let deadline = frame.rounds[&0].deadline_unix_ms;
+            let deadline = frame.rounds[&0].deadline_unix_ms.unwrap();
             let execution_id = before.waiting_execution_id.unwrap();
             if order == "timeout_first" {
                 after_absolute_deadline(deadline).await;
@@ -495,9 +509,9 @@ async fn expired_nested_callback_closes_ancestor_without_inner_continue_or_paylo
         .unwrap();
     assert_eq!(
         child.rounds[&0].deadline_owner_execution_id,
-        parent.identity.execution_id
+        Some(parent.identity.execution_id)
     );
-    after_absolute_deadline(parent.rounds[&0].deadline_unix_ms).await;
+    after_absolute_deadline(parent.rounds[&0].deadline_unix_ms.unwrap()).await;
     let outcome = resume_scoped_container_with_runtime_context_and_lifecycle(
         &plan,
         &checkpoint,

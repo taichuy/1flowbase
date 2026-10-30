@@ -881,9 +881,13 @@ where
             }
             "code" => {
                 let mut bounded_node;
-                let execution_node = if let Some(scope) = scope {
-                    let (_, owner) = scope.deadline().await;
-                    let remaining = scope.remaining_ms();
+                let execution_node = if let Some((scope, remaining)) =
+                    scope.and_then(|scope| scope.remaining_ms().map(|remaining| (scope, remaining)))
+                {
+                    let (_, owner) = scope
+                        .deadline()
+                        .await
+                        .ok_or_else(|| anyhow!("finite deadline missing owner"))?;
                     if remaining == 0 {
                         return Err(container::DeadlineExpired(owner).into());
                     }

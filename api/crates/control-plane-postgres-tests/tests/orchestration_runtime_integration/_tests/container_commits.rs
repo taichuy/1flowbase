@@ -40,7 +40,7 @@ pub(super) fn start(
             execution_id: Uuid::now_v7(),
             container_execution_id: frame_id,
             round_index,
-            deadline_unix_ms: 2000000000000,
+            deadline_unix_ms: Some(2000000000000),
             status: "running".into(),
             error_payload: None,
             output_payload: None,
@@ -127,7 +127,7 @@ async fn container_commit_keeps_repeated_node_ids_and_rolls_back_node_round_and_
         .await
         .unwrap();
     let mut expired = terminal.clone();
-    expired.rounds[0].deadline_unix_ms = 1;
+    expired.rounds[0].deadline_unix_ms = Some(1);
     expired.admission = ContainerCommitAdmission::AdmitWork {
         effective_deadline: Some(ContainerCommitDeadline {
             deadline_unix_ms: 1,
@@ -144,7 +144,9 @@ async fn container_commit_keeps_repeated_node_ids_and_rolls_back_node_round_and_
         Some(second.checkpoint.clone())
     );
     let mut extended = terminal.clone();
-    extended.rounds[0].deadline_unix_ms += 1;
+    extended.rounds[0].deadline_unix_ms = extended.rounds[0]
+        .deadline_unix_ms
+        .map(|deadline| deadline + 1);
     assert!(
         store.commit_container_transition(&extended).await.is_err(),
         "recovery cannot renew a round deadline"
@@ -427,8 +429,46 @@ async fn native_container_successor_maps_receipts_without_changing_logical_paren
 fn initial_admission(input: &CommitContainerTransitionInput) -> ContainerCommitAdmission {
     ContainerCommitAdmission::AdmitWork {
         effective_deadline: Some(ContainerCommitDeadline {
-            deadline_unix_ms: input.rounds[0].deadline_unix_ms,
+            deadline_unix_ms: input.rounds[0].deadline_unix_ms.unwrap(),
             owner_execution_id: input.rounds[0].container_execution_id,
         }),
     }
+}
+
+#[tokio::test]
+async fn container_round_null_deadline_is_durable_and_can_only_be_tightened() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run(&store, &seeded, &compiled, OffsetDateTime::now_utc()).await;
+    let mut input = start(run.id, Uuid::now_v7(), 0);
+    input.admission = ContainerCommitAdmission::AdmitWork {
+        effective_deadline: None,
+    };
+    input.rounds[0].deadline_unix_ms = None;
+    store.commit_container_transition(&input).await.unwrap();
+    input.node = None;
+    store.commit_container_transition(&input).await.unwrap();
+    let read = || {
+        sqlx::query_scalar::<_, Option<i64>>("select deadline_unix_ms from flow_container_rounds where flow_run_id=$1 and execution_id=$2").bind(run.id).bind(input.rounds[0].execution_id)
+    };
+    assert_eq!(read().fetch_one(store.pool()).await.unwrap(), None);
+    let mut tightened = input.clone();
+    tightened.rounds[0].deadline_unix_ms = Some(2000000000000);
+    store.commit_container_transition(&tightened).await.unwrap();
+    assert_eq!(
+        read().fetch_one(store.pool()).await.unwrap(),
+        Some(2000000000000)
+    );
+    assert!(store.commit_container_transition(&input).await.is_err());
+    tightened.rounds[0].deadline_unix_ms = Some(2000000000001);
+    assert!(store.commit_container_transition(&tightened).await.is_err());
+    tightened.rounds[0].deadline_unix_ms = Some(1999999999999);
+    store.commit_container_transition(&tightened).await.unwrap();
+    assert_eq!(
+        read().fetch_one(store.pool()).await.unwrap(),
+        Some(1999999999999)
+    );
 }

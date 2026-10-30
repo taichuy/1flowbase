@@ -56,8 +56,8 @@ pub struct ContainerRound {
     pub execution_id: Uuid,
     pub round_index: u64,
     /// Absolute Unix milliseconds; never renewed on resume.
-    pub deadline_unix_ms: i64,
-    pub deadline_owner_execution_id: Uuid,
+    pub deadline_unix_ms: Option<i64>,
+    pub deadline_owner_execution_id: Option<Uuid>,
     pub status: ContainerRoundStatus,
     pub next_node_index: usize,
     pub variable_pool: Map<String, Value>,

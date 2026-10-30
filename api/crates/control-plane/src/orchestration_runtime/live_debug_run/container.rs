@@ -193,10 +193,15 @@ where
         let effective_deadline = if admits_round {
             let round = selected_round
                 .ok_or_else(|| anyhow::anyhow!("container round admission missing round"))?;
-            Some(ContainerCommitDeadline {
-                deadline_unix_ms: round.deadline_unix_ms,
-                owner_execution_id: round.deadline_owner_execution_id,
-            })
+            round
+                .deadline_unix_ms
+                .zip(round.deadline_owner_execution_id)
+                .map(
+                    |(deadline_unix_ms, owner_execution_id)| ContainerCommitDeadline {
+                        deadline_unix_ms,
+                        owner_execution_id,
+                    },
+                )
         } else if admits_node {
             logical_identity
                 .round_path
@@ -210,13 +215,19 @@ where
                         .ok_or_else(|| {
                             anyhow::anyhow!("container work admission missing ancestor round")
                         })?;
-                    Ok(ContainerCommitDeadline {
-                        deadline_unix_ms: round.deadline_unix_ms,
-                        owner_execution_id: round.deadline_owner_execution_id,
-                    })
+                    Ok(round
+                        .deadline_unix_ms
+                        .zip(round.deadline_owner_execution_id)
+                        .map(
+                            |(deadline_unix_ms, owner_execution_id)| ContainerCommitDeadline {
+                                deadline_unix_ms,
+                                owner_execution_id,
+                            },
+                        ))
                 })
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
+                .flatten()
                 .min_by_key(|deadline| deadline.deadline_unix_ms)
         } else {
             None
