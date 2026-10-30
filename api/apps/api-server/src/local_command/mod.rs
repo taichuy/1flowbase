@@ -1,69 +1,34 @@
-//! API-host process owner. No remote target, session, PTY, or command retry.
-use control_plane::local_command::{LocalCommandExecutor, LocalCommandFuture, LocalCommandPolicy};
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
-
-#[cfg(unix)]
-mod unix;
-
+//! API-host adapter for the native one-shot execution module.
+use control_plane::local_command::{LocalCommandExecutor, LocalCommandFuture, LocalCommandOutcome};
+use std::sync::Arc;
+pub(crate) mod process;
 pub(crate) struct HostCommandExecutor;
 
+impl LocalCommandOutcome for process::CompletedCommand {
+    fn audit_payload(&self) -> serde_json::Value {
+        serde_json::to_value(&self.metadata).expect("command metadata has no fallible serializer")
+    }
+}
 impl LocalCommandExecutor for HostCommandExecutor {
-    fn execute(&self, command: String, policy: LocalCommandPolicy) -> LocalCommandFuture<'_> {
+    type Output = process::CompletedCommand;
+    fn execute(&self, command: String) -> LocalCommandFuture<'_, Self::Output> {
         Box::pin(async move {
-            #[cfg(unix)]
-            {
-                // The task owns kill/wait and both pipes even if its caller disappears.
-                tokio::spawn(unix::execute(command, policy)).await?
+            struct CancelOnDrop(process::Cancellation);
+            impl Drop for CancelOnDrop {
+                fn drop(&mut self) {
+                    self.0.cancel();
+                }
             }
-            #[cfg(not(unix))]
-            {
-                let _ = (command, policy);
-                anyhow::bail!("local command execution requires a Unix process-group owner")
-            }
+            let cancellation = process::Cancellation::default();
+            let guard = CancelOnDrop(cancellation.clone());
+            let result =
+                tokio::task::spawn_blocking(move || process::execute(&command, &cancellation))
+                    .await?;
+            drop(guard);
+            Ok(result?)
         })
     }
 }
-
-pub(crate) fn executor() -> Arc<dyn LocalCommandExecutor> {
+pub(crate) fn executor() -> Arc<HostCommandExecutor> {
     Arc::new(HostCommandExecutor)
 }
-
-pub(crate) fn policy_from_env(
-    map: &BTreeMap<String, String>,
-) -> anyhow::Result<Option<LocalCommandPolicy>> {
-    const TIMEOUT: &str = "API_LOCAL_COMMAND_TIMEOUT_MS";
-    const OUTPUT: &str = "API_LOCAL_COMMAND_MAX_OUTPUT_BYTES";
-    match (map.get(TIMEOUT), map.get(OUTPUT)) {
-        (None, None) => Ok(None),
-        (Some(timeout), Some(output)) => {
-            anyhow::ensure!(
-                cfg!(unix),
-                "local command execution is not supported on this platform"
-            );
-            let timeout_ms: u64 = timeout
-                .parse()
-                .map_err(|_| anyhow::anyhow!("invalid {TIMEOUT}"))?;
-            let max_output_bytes: usize = output
-                .parse()
-                .map_err(|_| anyhow::anyhow!("invalid {OUTPUT}"))?;
-            let timeout = Duration::from_millis(timeout_ms);
-            anyhow::ensure!(
-                timeout_ms > 0 && std::time::Instant::now().checked_add(timeout).is_some(),
-                "invalid {TIMEOUT}"
-            );
-            anyhow::ensure!(
-                max_output_bytes > 0 && max_output_bytes <= isize::MAX as usize,
-                "invalid {OUTPUT}"
-            );
-            Ok(Some(LocalCommandPolicy {
-                timeout,
-                max_output_bytes,
-            }))
-        }
-        _ => anyhow::bail!("configure both {TIMEOUT} and {OUTPUT} to enable local commands"),
-    }
-}
-
-#[cfg(test)]
-#[path = "_tests/mod.rs"]
-mod tests;

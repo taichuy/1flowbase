@@ -5,9 +5,14 @@ use super::{
     },
     console_route_assembly::{console_post, ConsoleRouteAssembly},
 };
-use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
-use axum::{extract::State, http::HeaderMap, Json};
-use control_plane::local_command::{LocalCommandOutput, LocalCommandService};
+use crate::{
+    app_state::ApiState,
+    error_response::ApiError,
+    local_command::{process::CompletedCommand, HostCommandExecutor},
+};
+use axum::{extract::State, http::HeaderMap, response::Response, Json};
+mod response;
+use control_plane::local_command::LocalCommandService;
 use interface_runtime::InterfaceContract;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -24,7 +29,7 @@ pub struct LocalCommandBody {
 pub struct LocalCommandResponse {
     pub stdout: String,
     pub stderr: String,
-    pub exit_code: Option<i32>,
+    pub exit_code: Option<i64>,
     pub signal: Option<i32>,
     pub duration_ms: u64,
     pub timed_out: bool,
@@ -35,36 +40,7 @@ pub struct LocalCommandResponse {
     pub cleanup_complete: bool,
 }
 
-impl From<LocalCommandOutput> for LocalCommandResponse {
-    fn from(value: LocalCommandOutput) -> Self {
-        let LocalCommandOutput {
-            stdout,
-            stderr,
-            exit_code,
-            signal,
-            duration_ms,
-            timed_out,
-            truncated,
-            discarded_bytes,
-            encoding_lossy,
-            output_complete,
-            cleanup_complete,
-        } = value;
-        Self {
-            stdout,
-            stderr,
-            exit_code,
-            signal,
-            duration_ms,
-            timed_out,
-            truncated,
-            discarded_bytes,
-            encoding_lossy,
-            output_complete,
-            cleanup_complete,
-        }
-    }
-}
+pub(crate) struct LocalCommandExecution(CompletedCommand);
 
 impl InterfaceContract for LocalCommandBody {
     const CONTRACT_ID: &'static str = "console-local-command-input";
@@ -80,7 +56,7 @@ impl InterfaceContract for LocalCommandBody {
     }
 }
 
-impl InterfaceContract for LocalCommandResponse {
+impl InterfaceContract for LocalCommandExecution {
     const CONTRACT_ID: &'static str = "console-local-command-output";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -94,33 +70,33 @@ impl InterfaceContract for LocalCommandResponse {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         Some(
-            serde_json::json!({"duration_ms": self.duration_ms, "timed_out": self.timed_out,
-            "truncated": self.truncated, "cleanup_complete": self.cleanup_complete}),
+            serde_json::json!({"duration_ms": self.0.metadata.duration_ms, "timed_out": self.0.metadata.timed_out,
+            "truncated": self.0.metadata.truncated, "cleanup_complete": self.0.metadata.cleanup_complete}),
         )
     }
 }
 
-struct LocalCommandAdapter<R>(LocalCommandService<R>);
+struct LocalCommandAdapter<R>(LocalCommandService<R, HostCommandExecutor>);
 impl<R: control_plane::ports::AuthRepository + 'static>
-    ConsoleInterfacePort<LocalCommandBody, LocalCommandResponse> for LocalCommandAdapter<R>
+    ConsoleInterfacePort<LocalCommandBody, LocalCommandExecution> for LocalCommandAdapter<R>
 {
     fn execute<'a>(
         &'a self,
         principal: &'a interface_runtime::UserPrincipal,
         input: LocalCommandBody,
-    ) -> ConsoleInterfaceFuture<'a, LocalCommandResponse> {
+    ) -> ConsoleInterfaceFuture<'a, LocalCommandExecution> {
         Box::pin(async move {
             self.0
                 .execute(principal.actor(), input.command)
                 .await
-                .map(LocalCommandResponse::from)
+                .map(LocalCommandExecution)
                 .map_err(|error| ConsoleInterfaceTargetError(error.into()))
         })
     }
 }
 
 pub(crate) fn compile_registry<R: control_plane::ports::AuthRepository + 'static>(
-    service: LocalCommandService<R>,
+    service: LocalCommandService<R, HostCommandExecutor>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
@@ -152,7 +128,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 }
 
 /// Execute one local shell command.
-/// System root only. Requires deployment configuration. Uses the backend OS account and does not retry.
+/// Requires the local command operation permission. Uses the backend OS account, with no deployment opt-in or automatic retry.
 #[utoipa::path(post, path = "/api/console/local-commands/execute", request_body = LocalCommandBody,
     responses((status = 200, body = LocalCommandResponse),
         (status = 400, body = crate::error_response::ErrorBody),
@@ -163,10 +139,10 @@ pub async fn execute_local_command(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(body): Json<LocalCommandBody>,
-) -> Result<Json<ApiSuccess<LocalCommandResponse>>, ApiError> {
+) -> Result<Response, ApiError> {
     // Disconnecting HTTP does not abandon the Kernel's completion/audit owner.
     let output = tokio::spawn(async move {
-        console_interface::invoke::<_, LocalCommandResponse>(
+        console_interface::invoke::<_, LocalCommandExecution>(
             Arc::clone(&state),
             "http.console.local-commands.execute.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -179,7 +155,7 @@ pub async fn execute_local_command(
     })
     .await
     .map_err(anyhow::Error::from)??;
-    Ok(Json(ApiSuccess::new(output)))
+    Ok(response::response(output.0)?)
 }
 
 #[cfg(test)]

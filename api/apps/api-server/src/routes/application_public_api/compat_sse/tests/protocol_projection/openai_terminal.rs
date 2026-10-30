@@ -103,7 +103,6 @@ async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_projects
         ),
     );
     let state = Arc::new(ApiState {
-        local_command_policy: None,
         test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
         console_policy_reader: Arc::clone(&base_state.console_policy_reader),

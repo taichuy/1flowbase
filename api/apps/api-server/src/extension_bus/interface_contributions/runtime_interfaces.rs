@@ -12,7 +12,6 @@ pub(super) fn contributions(
                 control_plane::local_command::LocalCommandService::new(
                     state.store.clone(),
                     crate::local_command::executor(),
-                    state.local_command_policy,
                 ),
             )?,
         ),
