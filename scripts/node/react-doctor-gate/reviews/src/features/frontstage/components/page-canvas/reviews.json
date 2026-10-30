@@ -1,19 +1,22 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/frontstage/_tests/PageCanvas.test.tsx","sha256":"f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"},{"file":"web/app/src/features/frontstage/_tests/isolated-frontend-block/PageCanvas-isolated-frontend-block.test.tsx","sha256":"805af8203aa334f7d686f6fb50d5a8bd6817590cd1904224d7ae355399173d82"},{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx","sha256":"43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"},{"file":"web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx","sha256":"f5d883f799e6710fbb088a1e2bf6f656353995c9862ed4fc76778239c5761785"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/frontstage/components/page-canvas/NativeRuntimeSlotSurface.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
       "sourceSha256": "18551cd227ff3cd3dbfb029a5490aad6ad462bb311cb9f5de79d49e7b2f65d97",
-      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. NativeRuntimeSlotSurface projects an externally recreated renderIdentity into error state. A retry/identity change must clear only the prior runtime error; busy/error/last-ready content have separate ownership and must retain last good DOM during preparation.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/PageCanvas.test.tsx", "sha256": "f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"}, {"file": "web/app/src/features/frontstage/_tests/isolated-frontend-block/PageCanvas-isolated-frontend-block.test.tsx", "sha256": "805af8203aa334f7d686f6fb50d5a8bd6817590cd1904224d7ae355399173d82"}, {"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx", "sha256": "43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx", "sha256": "4bb72768ee19af4621fcfffa34465601372bb683a97b02a49019af6c1d79933b"}]
+      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. NativeRuntimeSlotSurface projects an externally recreated renderIdentity into error state. A retry/identity change must clear only the prior runtime error; busy/error/last-ready content have separate ownership and must retain last good DOM during preparation. Reassessed 2026-10-29: The delta gives one automatic block an explicit viewport height and overflow contract, bypassing intrinsic measurement only in that mode. Width-lifecycle tests now assert viewport resizing, design footer allowance, fixed/free/multiple-block fallback and restoration. Page/session identities and runtime-error reset ownership remain unchanged.",
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/components/page-canvas/NativeRuntimeSlotSurface.tsx",
       "rule": "react-doctor/prefer-useReducer",
       "sourceSha256": "18551cd227ff3cd3dbfb029a5490aad6ad462bb311cb9f5de79d49e7b2f65d97",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. NativeRuntimeSlotSurface projects an externally recreated renderIdentity into error state. A retry/identity change must clear only the prior runtime error; busy/error/last-ready content have separate ownership and must retain last good DOM during preparation.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/PageCanvas.test.tsx", "sha256": "f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"}, {"file": "web/app/src/features/frontstage/_tests/isolated-frontend-block/PageCanvas-isolated-frontend-block.test.tsx", "sha256": "805af8203aa334f7d686f6fb50d5a8bd6817590cd1904224d7ae355399173d82"}, {"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx", "sha256": "43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx", "sha256": "4bb72768ee19af4621fcfffa34465601372bb683a97b02a49019af6c1d79933b"}]
+      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. NativeRuntimeSlotSurface projects an externally recreated renderIdentity into error state. A retry/identity change must clear only the prior runtime error; busy/error/last-ready content have separate ownership and must retain last good DOM during preparation. Reassessed 2026-10-29: The delta gives one automatic block an explicit viewport height and overflow contract, bypassing intrinsic measurement only in that mode. Width-lifecycle tests now assert viewport resizing, design footer allowance, fixed/free/multiple-block fallback and restoration. Page/session identities and runtime-error reset ownership remain unchanged.",
+      "evidenceSet": 0
     }
   ]
 }

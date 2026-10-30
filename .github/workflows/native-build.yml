@@ -179,4 +179,3 @@ jobs:
             tmp/test-governance/native-release/**/command-*.log
             tmp/test-governance/native-release/**/startup-*.log
           if-no-files-found: ignore
-

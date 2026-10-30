@@ -8,7 +8,7 @@ pub(crate) async fn execute_compatible_resume_for_actor(
     mut reservation: Option<CompatibleCallbackReservation>,
     consumer: CompatibleResumeConsumer,
 ) -> Result<NativeRunResult, NativeApiError> {
-    let round_id = Some(callback_task_id_from_resume_command(&command));
+    let round_id = callback_task_id_from_resume_command(&command);
     let runtime_internal_tool_invoker = match dependencies
         .native
         .runtime_invoker_factory
@@ -72,7 +72,7 @@ pub(crate) async fn execute_compatible_resume_for_actor(
                     consumer,
                     actor.application_id,
                     run_id,
-                    round_id.expect("resume round"),
+                    round_id,
                 )
             }
             None => service
@@ -81,10 +81,8 @@ pub(crate) async fn execute_compatible_resume_for_actor(
                 .map_err(service_error),
         };
         result.map(|mut result| {
-            if let Some(round_id) = round_id {
-                if result.run.metadata["native_inference_recovery_replay"] != true {
-                    result.run.metadata["response_round_id"] = json!(round_id);
-                }
+            if result.run.metadata["native_inference_recovery_replay"] != true {
+                result.run.metadata["response_round_id"] = json!(round_id);
             }
             result.run
         })

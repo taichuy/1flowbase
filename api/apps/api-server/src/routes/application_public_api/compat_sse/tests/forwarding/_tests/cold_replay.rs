@@ -562,7 +562,10 @@ async fn assert_cold_callback_scope(delayed_identity: bool, missing_marker: bool
         append_attached_callback_round_events(&state, run.id, &reasoning, &message).await;
     }
     let waiting = if tool_wait {
-        Some(super::delivery_proof::commit_wait(&state, &run, &[tool_payload.clone()]).await)
+        Some(
+            super::delivery_proof::commit_wait(&state, &run, std::slice::from_ref(&tool_payload))
+                .await,
+        )
     } else {
         None
     };

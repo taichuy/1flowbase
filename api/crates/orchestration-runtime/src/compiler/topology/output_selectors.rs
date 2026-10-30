@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn output_for_selector(
+pub(in crate::compiler) fn output_for_selector(
     nodes: &BTreeMap<String, CompiledNode>,
     selector: &[String],
 ) -> Option<CompiledOutput> {

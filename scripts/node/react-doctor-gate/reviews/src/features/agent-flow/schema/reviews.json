@@ -1,26 +1,29 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/agent-flow/_tests/node-schema-registry.test.tsx","sha256":"fef65840a0c5879ee25b7b996e1c258052ece0956f3951dd518d695c056bf09c"},{"file":"web/app/src/features/agent-flow/schema/agent-flow-renderer-registry.ts","sha256":"9ff12126210dc5f67829bd28d8cf1967c74abf42cef08e56a50f4ddb54df2f10"},{"file":"web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx","sha256":"9428c383e9e4662f04a04f468e76513924e0dcd27d054edb6a93772eb9032afc"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx",
       "rule": "react-doctor/no-giant-component",
       "sourceSha256": "9428c383e9e4662f04a04f468e76513924e0dcd27d054edb6a93772eb9032afc",
-      "reason": "web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx:243（react-doctor/no-giant-component）：PolicyGroupView 拥有当前 node adapter 的 error/retry/timeout 单一策略区；JSON 默认输出编辑草稿和保存回调局部封装，没有跨 feature 请求或状态 owner。应修明确交互缺口，不按306行数强制拆分。",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/node-schema-registry.test.tsx", "sha256": "4c484add2ce74ce0bb56dd14d8b7560ef65968b873bf1568911362750fe4f00b"}, {"file": "web/app/src/features/agent-flow/schema/agent-flow-renderer-registry.ts", "sha256": "9ff12126210dc5f67829bd28d8cf1967c74abf42cef08e56a50f4ddb54df2f10"}, {"file": "web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx", "sha256": "9428c383e9e4662f04a04f468e76513924e0dcd27d054edb6a93772eb9032afc"}]
+      "reason": "web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx:243（react-doctor/no-giant-component）：PolicyGroupView 拥有当前 node adapter 的 error/retry/timeout 单一策略区；JSON 默认输出编辑草稿和保存回调局部封装，没有跨 feature 请求或状态 owner。应修明确交互缺口，不按306行数强制拆分。 Reassessed 2026-10-30: Registry oracle now requires container_break_condition at bindings.break_condition and the HTTP network_egress contract; fixed schema ownership remains.",
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx",
       "rule": "react-doctor/only-export-components",
       "sourceSha256": "9428c383e9e4662f04a04f468e76513924e0dcd27d054edb6a93772eb9032afc",
-      "reason": "web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx:163（react-doctor/only-export-components）：这些组件是 schema renderer/native overlay runtime 的模块内实现或独立浏览器 fixture，实际入口由 registry/factory 或 createRoot 调用，type 在模块级稳定。Fast Refresh 的导出启发式不定义生产 registry ABI；为热更新任意导出会扩张私有 surface，不能证明现有生产组件不渲染。 web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx:243（react-doctor/only-export-components）：这些组件是 schema renderer/native overlay runtime 的模块内实现或独立浏览器 fixture，实际入口由 registry/factory 或 createRoot 调用，type 在模块级稳定。Fast Refresh 的导出启发式不定义生产 registry ABI；为热更新任意导出会扩张私有 surface，不能证明现有生产组件不渲染。",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/node-schema-registry.test.tsx", "sha256": "4c484add2ce74ce0bb56dd14d8b7560ef65968b873bf1568911362750fe4f00b"}, {"file": "web/app/src/features/agent-flow/schema/agent-flow-renderer-registry.ts", "sha256": "9ff12126210dc5f67829bd28d8cf1967c74abf42cef08e56a50f4ddb54df2f10"}, {"file": "web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx", "sha256": "9428c383e9e4662f04a04f468e76513924e0dcd27d054edb6a93772eb9032afc"}]
+      "reason": "web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx:163（react-doctor/only-export-components）：这些组件是 schema renderer/native overlay runtime 的模块内实现或独立浏览器 fixture，实际入口由 registry/factory 或 createRoot 调用，type 在模块级稳定。Fast Refresh 的导出启发式不定义生产 registry ABI；为热更新任意导出会扩张私有 surface，不能证明现有生产组件不渲染。 web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx:243（react-doctor/only-export-components）：这些组件是 schema renderer/native overlay runtime 的模块内实现或独立浏览器 fixture，实际入口由 registry/factory 或 createRoot 调用，type 在模块级稳定。Fast Refresh 的导出启发式不定义生产 registry ABI；为热更新任意导出会扩张私有 surface，不能证明现有生产组件不渲染。 Reassessed 2026-10-30: Registry oracle now requires container_break_condition at bindings.break_condition and the HTTP network_egress contract; fixed schema ownership remains.",
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx",
       "rule": "react-doctor/prefer-module-scope-static-value",
       "sourceSha256": "9428c383e9e4662f04a04f468e76513924e0dcd27d054edb6a93772eb9032afc",
-      "reason": "web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx:293（react-doctor/prefer-module-scope-static-value）：errorPolicyOptions 内每项 label/description 调用 i18nText，在组件 render 时读取当前语言；提升为 module-scope static value 会冻结切换语言前的文本。数组 identity 没有被用作业务键或 effect dependency，不能为了静态化改变 locale 合同。",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/node-schema-registry.test.tsx", "sha256": "4c484add2ce74ce0bb56dd14d8b7560ef65968b873bf1568911362750fe4f00b"}, {"file": "web/app/src/features/agent-flow/schema/agent-flow-renderer-registry.ts", "sha256": "9ff12126210dc5f67829bd28d8cf1967c74abf42cef08e56a50f4ddb54df2f10"}, {"file": "web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx", "sha256": "9428c383e9e4662f04a04f468e76513924e0dcd27d054edb6a93772eb9032afc"}]
+      "reason": "web/app/src/features/agent-flow/schema/agent-flow-view-renderers.tsx:293（react-doctor/prefer-module-scope-static-value）：errorPolicyOptions 内每项 label/description 调用 i18nText，在组件 render 时读取当前语言；提升为 module-scope static value 会冻结切换语言前的文本。数组 identity 没有被用作业务键或 effect dependency，不能为了静态化改变 locale 合同。 Reassessed 2026-10-30: Registry oracle now requires container_break_condition at bindings.break_condition and the HTTP network_egress contract; fixed schema ownership remains.",
+      "evidenceSet": 0
     }
   ]
 }

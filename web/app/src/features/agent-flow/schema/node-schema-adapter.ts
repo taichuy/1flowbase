@@ -408,22 +408,32 @@ export function createAgentFlowNodeSchemaAdapter({
               if (previous[index].key !== definition.key)
                 renames.set(previous[index].key, definition.key);
             });
+          const oldKeyByNewKey = new Map<string, string>();
+          for (const [oldKey, newKey] of renames) {
+            if (!oldKeyByNewKey.has(newKey)) oldKeyByNewKey.set(newKey, oldKey);
+          }
+          const previousByKey = new Map<string, LoopVariableDefinition>();
+          for (const definition of previous) {
+            if (!previousByKey.has(definition.key))
+              previousByKey.set(definition.key, definition);
+          }
           const bindings = { ...original.bindings };
           for (const key of ['variables', 'variable_updates']) {
             const binding = bindings[key];
             const entries =
               binding?.kind === 'named_bindings' ? binding.value : [];
+            const entriesByName = new Map<string, NamedBindingEntry>();
+            for (const entry of entries) {
+              if (!entriesByName.has(entry.name))
+                entriesByName.set(entry.name, entry);
+            }
             bindings[key] = {
               kind: 'named_bindings',
               value: definitions.flatMap((definition) => {
                 const oldKey =
-                  [...renames].find(
-                    ([, name]) => name === definition.key
-                  )?.[0] ?? definition.key;
-                const oldDefinition = previous.find(
-                  (item) => item.key === oldKey
-                );
-                const entry = entries.find((item) => item.name === oldKey);
+                  oldKeyByNewKey.get(definition.key) ?? definition.key;
+                const oldDefinition = previousByKey.get(oldKey);
+                const entry = entriesByName.get(oldKey);
                 const typeChanged =
                   oldDefinition &&
                   oldDefinition.value_type !== definition.value_type;

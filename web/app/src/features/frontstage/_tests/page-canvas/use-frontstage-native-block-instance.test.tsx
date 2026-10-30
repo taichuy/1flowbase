@@ -246,7 +246,9 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     );
 
     await waitFor(() => expect(reportFirstHeight).toBeTypeOf('function'));
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
     const secondBlockCountBeforeCommit = secondInvocationCount;
     act(() => reportFirstHeight?.({ height: 500 }));
     await waitFor(() =>

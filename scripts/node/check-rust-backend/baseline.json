@@ -151,7 +151,7 @@
         },
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
-          "sha256": "bf7be8e2ef22ec9b004c096c5d9e954032c71a23ed87de70230930349aa2f168",
+          "sha256": "3d61f1843966634b5d7b45e1a277944a39f73103da125424be4e28284a1d4d5e",
           "reason": "RuntimeExtensionHost constructs and stores a collector at host construction, rather than constructing per profile request."
         },
         {
@@ -167,11 +167,11 @@
       "file": "api/crates/runtime-extension-host/src/managed_worker/binding.rs",
       "snippet": "let bytes = match std::fs::read(&self.runtime_executable) {",
       "reason": "LoadedManagedBinding::verify_executable performs a blocking immutable-artifact read and fingerprint check. RuntimeExtensionHost::verify_managed_executable moves the owned binding into spawn_blocking under the existing hash-budget permit before managed admission.",
-      "source_sha256": "4c619fcf07baaf1c7b83b89485e3be77c141825aac8a57360da5f5f807ace55e",
+      "source_sha256": "7ee5c343212a2313106f9e2269145785a8632b3f4f14686ab5f06daa93cd1808",
       "evidence": [
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
-          "sha256": "bf7be8e2ef22ec9b004c096c5d9e954032c71a23ed87de70230930349aa2f168",
+          "sha256": "3d61f1843966634b5d7b45e1a277944a39f73103da125424be4e28284a1d4d5e",
           "reason": "verify_managed_executable obtains the hash permit, resolves the frozen binding, then calls binding.verify_executable only inside tokio::task::spawn_blocking; managed calls await it."
         },
         {
@@ -191,7 +191,7 @@
       "evidence": [
         {
           "file": "api/crates/control-plane/src/plugin_management/install.rs",
-          "sha256": "934c6dceb9f98536645414f51a398332124144d9e5c00dbdd8415990242aeb69",
+          "sha256": "4915c1078ed4147998e5ac396e647cd302df3de042bb7e08be2fbc6adef4e31a",
           "reason": "Seven install call sites await the async preparation wrapper; the private blocking body calls prepare_settings_templates and only constructs owned commit input before publish_installation."
         },
         {

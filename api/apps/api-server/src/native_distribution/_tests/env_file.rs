@@ -24,7 +24,7 @@ fn dotenv_reads_literals_quotes_comments_and_rejects_ambiguous_keys() {
 fn user_configuration_wins_and_generated_secrets_persist_in_env_only() {
     let directory = std::env::temp_dir().join(format!("native-env-{}", uuid::Uuid::now_v7()));
     std::fs::create_dir(&directory).unwrap();
-    let result = (|| {
+    {
         let text = "# keep my comment\nAPI_ENV=production\nAPI_SERVER_ADDR=127.0.0.1:17800\nAPI_DATABASE_URL=postgres://postgres:__GENERATE__@127.0.0.1:45432/1flowbase\nAPI_PROVIDER_SECRET_MASTER_KEY=__GENERATE__\nFLOWBASE_DATA_DIR=custom data\nBOOTSTRAP_ROOT_ACCOUNT=custom-root\nBOOTSTRAP_ROOT_EMAIL=custom@example.com\nBOOTSTRAP_ROOT_PASSWORD='custom # password'\nBOOTSTRAP_WORKSPACE_NAME=custom workspace\nAPI_WORKSPACE_ROOT=api\nAPI_MODEL_PRICING_BOOTSTRAP_ROOT=api/resources/model-pricing\nAPI_APPLICATION_TEMPLATE_ROOT=api/resources/application-templates\nAPI_POSTGRES_PG_DUMP_PATH=postgres/bin/pg_dump\nAPI_POSTGRES_PG_RESTORE_PATH=postgres/bin/pg_restore\nAPI_BUSINESS_FILE_LOCAL_ROOT=custom data/api/storage\nAPI_PROVIDER_INSTALL_ROOT=custom data/api/plugins\nAPI_HOST_EXTENSION_DROPIN_ROOT=custom data/api/dropins\nAPI_MCP_TEMPLATE_LIBRARY_ROOT=custom data/api/mcp\nAPI_SYSTEM_BACKUP_REPOSITORY_ROOT=custom data/backups\n";
         std::fs::write(directory.join(".env"), text).unwrap();
         let first = Settings::load(&directory).unwrap();
@@ -52,7 +52,6 @@ fn user_configuration_wins_and_generated_secrets_persist_in_env_only() {
             Settings::load(&directory).is_err(),
             "existing data must never receive new secrets"
         );
-    })();
+    }
     std::fs::remove_dir_all(directory).unwrap();
-    result
 }

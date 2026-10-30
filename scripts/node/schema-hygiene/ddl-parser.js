@@ -689,6 +689,16 @@ function parseAlterTableRenameTable({ context, table, tableName, action }) {
   context.tables.delete(tableName);
   table.name = renamedTableName;
   context.tables.set(renamedTableName, table);
+  // PostgreSQL binds existing foreign keys to the relation identity. Move
+  // inbound references now, including self references, before an old name can
+  // be reused by a later CREATE TABLE in the migration history.
+  for (const candidate of context.tables.values()) {
+    for (const foreignKey of candidate.foreignKeys) {
+      if (foreignKey.references.table === tableName) {
+        foreignKey.references.table = renamedTableName;
+      }
+    }
+  }
   return true;
 }
 

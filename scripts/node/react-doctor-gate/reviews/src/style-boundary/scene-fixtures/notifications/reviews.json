@@ -1,0 +1,21 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/style-boundary/scene-fixtures/notifications/command-binding.ts",
+      "rule": "react-doctor/js-combine-iterations",
+      "sourceSha256": "fd20d7ae7a2110310c061ad97e5a2fcf1371dba81f4642afdf90dea0fe5cc5cb",
+      "reason": "The style-only command catalogue filters a missing declaration for new-channel requests, then overlays persisted enabled flags and model availability on retained declarations. This deliberate two-stage fixture projection preserves declarations and source metadata; it is not production per-row I/O or a repeated whole-catalogue lookup for rendering.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx",
+          "sha256": "75c01544b924244a0e37cc4ebcb956061e200a35345d51d445b77638f86fa789"
+        },
+        {
+          "file": "web/app/src/style-boundary/scene-fixtures/notifications/data.ts",
+          "sha256": "16632214299b5b396a40df4c97c7c4589a8dad0eff04d17e44928bfc70a3b092"
+        }
+      ]
+    }
+  ]
+}

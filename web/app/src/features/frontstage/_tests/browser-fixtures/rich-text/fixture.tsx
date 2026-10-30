@@ -11,7 +11,7 @@ const sample =
 const scrollSample = new URLSearchParams(location.search).has('scroll')
   ? Array.from({ length: 35 }, (_, index) => `Line ${index + 1}`).join('\n\n')
   : null;
-function Fixture() {
+export function Fixture() {
   const [value, setValue] = useState('');
   const [saved, setSaved] = useState('');
   const [editor, setEditor] = useState<VditorEditorHandle | null>(null);

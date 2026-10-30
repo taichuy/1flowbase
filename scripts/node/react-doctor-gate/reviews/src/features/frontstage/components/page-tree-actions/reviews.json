@@ -1,26 +1,81 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/frontstage/components/page-tree-actions/_tests/MovePageModal.test.tsx","sha256":"b0dfae6c685541ee4c5b77dbeda3bac20616bbe1a06573e35c712e52ca9fb4a7"}],
+    [{"file":"web/app/src/features/frontstage/components/page-tree-actions/_tests/NavigationMoveTree.test.tsx","sha256":"809fe8b13445dbf73740c599a9efe0bb246bfac55ef3a730f5d29ec39b3d1b7b"}],
+    [{"file":"web/app/src/features/frontstage/components/page-tree-actions/_tests/NavigationMoveTree.test.tsx","sha256":"809fe8b13445dbf73740c599a9efe0bb246bfac55ef3a730f5d29ec39b3d1b7b"},{"file":"web/app/src/features/settings/_tests/ui-management/ui-management-routes.test.tsx","sha256":"596579bb7cd80d95607df52dcc97f53ec5586d2ada7aff5e9a17a622f42a678e"}],
+    [{"file":"web/app/src/features/settings/_tests/ui-management/ui-management-routes.test.tsx","sha256":"596579bb7cd80d95607df52dcc97f53ec5586d2ada7aff5e9a17a622f42a678e"}]
+  ],
   "reviews": [
     {
-      "file": "web/app/src/features/frontstage/components/page-tree-actions/MovePageModal.tsx",
+      "file": "web/app/src/features/frontstage/components/page-tree-actions/NavigationMoveTree.tsx",
+      "rule": "react-doctor/js-combine-iterations",
+      "sourceSha256": "577329e4c0f588fab75e6c8b4fbafefd10b7c0c02ab42c937eaecaf50936bdd1",
+      "reason": "Initial expandedKeys filters top-level groups then projects their IDs once in a lazy state initializer. This separates eligible group selection from ID projection, preserves input order and is not a per-render repeated traversal of descendants.",
+      "evidenceSet": 1
+    },
+    {
+      "file": "web/app/src/features/frontstage/components/page-tree-actions/NavigationMoveTree.tsx",
+      "rule": "react-doctor/no-derived-state",
+      "sourceSha256": "577329e4c0f588fab75e6c8b4fbafefd10b7c0c02ab42c937eaecaf50936bdd1",
+      "reason": "expandedKeys is a user-editable expansion history, not a pure projection of pageTree. The locate effect merges ancestors for externally supplied locateNodeId after query refresh; Tree.onExpand also changes that history. setExpandedKeys is this component own setter, not a parent data callback. The separate scroll effect must wait until expanded descendants have been materialized before calling the Tree scrollTo imperative API. A click-only handler would miss restored/externally selected nodes.",
+      "evidenceSet": 2
+    },
+    {
+      "file": "web/app/src/features/frontstage/components/page-tree-actions/NavigationMoveTree.tsx",
+      "rule": "react-doctor/no-event-handler",
+      "sourceSha256": "577329e4c0f588fab75e6c8b4fbafefd10b7c0c02ab42c937eaecaf50936bdd1",
+      "reason": "expandedKeys is a user-editable expansion history, not a pure projection of pageTree. The locate effect merges ancestors for externally supplied locateNodeId after query refresh; Tree.onExpand also changes that history. setExpandedKeys is this component own setter, not a parent data callback. The separate scroll effect must wait until expanded descendants have been materialized before calling the Tree scrollTo imperative API. A click-only handler would miss restored/externally selected nodes.",
+      "evidenceSet": 2
+    },
+    {
+      "file": "web/app/src/features/frontstage/components/page-tree-actions/NavigationMoveTree.tsx",
+      "rule": "react-doctor/no-pass-data-to-parent",
+      "sourceSha256": "577329e4c0f588fab75e6c8b4fbafefd10b7c0c02ab42c937eaecaf50936bdd1",
+      "reason": "expandedKeys is a user-editable expansion history, not a pure projection of pageTree. The locate effect merges ancestors for externally supplied locateNodeId after query refresh; Tree.onExpand also changes that history. setExpandedKeys is this component own setter, not a parent data callback. The separate scroll effect must wait until expanded descendants have been materialized before calling the Tree scrollTo imperative API. A click-only handler would miss restored/externally selected nodes.",
+      "evidenceSet": 2
+    },
+    {
+      "file": "web/app/src/features/frontstage/components/page-tree-actions/NavigationMoveTree.tsx",
+      "rule": "react-doctor/no-effect-chain",
+      "sourceSha256": "577329e4c0f588fab75e6c8b4fbafefd10b7c0c02ab42c937eaecaf50936bdd1",
+      "reason": "The locate effect opens ancestors in controlled expandedKeys; the subsequent scrollTo is a DOM/virtual Tree operation after expanded rows commit, not a second state derivation. It never sets expandedKeys or feeds back to the first effect. Search-location tests retain all original nodes while locating a descendant.",
+      "evidenceSet": 3
+    },
+    {
+      "file": "web/app/src/features/frontstage/components/page-tree-actions/NavigationMoveTree.tsx",
       "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "3ab43ea4883663a23c2d4c8d2721154ea4222ec6ec4c2a1957c5cf780f6dfb96",
-      "reason": "web/app/src/features/frontstage/components/page-tree-actions/MovePageModal.tsx:37（react-doctor/no-giant-component）：MovePageModal 的展开目标、projection、pending 与选择是一个受控树移动 dialog 的交互状态；mutation 写入口已外置。状态个数不等于额外渲染轮数，跨项合并 reducer 不自动减少 render；可见树 membership 的效率单独审查。",
-      "evidence": [{"file":"web/app/src/features/frontstage/components/page-tree-actions/_tests/MovePageModal.test.tsx","sha256":"1b59e7715a6eb82790ce62d120ee0cfcf0300fa8a1af8b63ebeb0f9ba229e012"}]
+      "sourceSha256": "577329e4c0f588fab75e6c8b4fbafefd10b7c0c02ab42c937eaecaf50936bdd1",
+      "reason": "NavigationMoveTree is the shared move-projection/expanded Tree owner. Drag source, user expansion history, staged move, hover projection and drag activity have separate lifetimes. resolveNavigationMove owns move validity, projectNavigationPosition owns geometry, and parent mutation owners save the result. Existing tests cover immediate drops, repeated independent sources, invalid descendant/self destinations, cancel and disabled writes; a reducer or file split alone does not repair an identified transition.",
+      "evidenceSet": 2
     },
     {
-      "file": "web/app/src/features/frontstage/components/page-tree-actions/MovePageModal.tsx",
-      "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "3ab43ea4883663a23c2d4c8d2721154ea4222ec6ec4c2a1957c5cf780f6dfb96",
-      "reason": "web/app/src/features/frontstage/components/page-tree-actions/MovePageModal.tsx:151（react-doctor/prefer-tag-over-role）：role=status 为 runtime 状态/拖动投影提示/移动目标提示/加载状态提供 live announcement，不是表单计算结果。<output> 的计算输出语义不适用；当前元素不会因使用标准 status role 失去屏幕阅读器语义。",
-      "evidence": [{"file":"web/app/src/features/frontstage/components/page-tree-actions/_tests/MovePageModal.test.tsx","sha256":"1b59e7715a6eb82790ce62d120ee0cfcf0300fa8a1af8b63ebeb0f9ba229e012"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/page-tree-actions/MovePageModal.tsx",
+      "file": "web/app/src/features/frontstage/components/page-tree-actions/NavigationMoveTree.tsx",
       "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "3ab43ea4883663a23c2d4c8d2721154ea4222ec6ec4c2a1957c5cf780f6dfb96",
-      "reason": "web/app/src/features/frontstage/components/page-tree-actions/MovePageModal.tsx:49（react-doctor/prefer-useReducer）：MovePageModal 的展开目标、projection、pending 与选择是一个受控树移动 dialog 的交互状态；mutation 写入口已外置。状态个数不等于额外渲染轮数，跨项合并 reducer 不自动减少 render；可见树 membership 的效率单独审查。",
-      "evidence": [{"file":"web/app/src/features/frontstage/components/page-tree-actions/_tests/MovePageModal.test.tsx","sha256":"1b59e7715a6eb82790ce62d120ee0cfcf0300fa8a1af8b63ebeb0f9ba229e012"}]
+      "sourceSha256": "577329e4c0f588fab75e6c8b4fbafefd10b7c0c02ab42c937eaecaf50936bdd1",
+      "reason": "NavigationMoveTree is the shared move-projection/expanded Tree owner. Drag source, user expansion history, staged move, hover projection and drag activity have separate lifetimes. resolveNavigationMove owns move validity, projectNavigationPosition owns geometry, and parent mutation owners save the result. Existing tests cover immediate drops, repeated independent sources, invalid descendant/self destinations, cancel and disabled writes; a reducer or file split alone does not repair an identified transition.",
+      "evidenceSet": 2
+    },
+    {
+      "file": "web/app/src/features/frontstage/components/page-tree-actions/NavigationMoveTree.tsx",
+      "rule": "react-doctor/rerender-state-only-in-handlers",
+      "sourceSha256": "577329e4c0f588fab75e6c8b4fbafefd10b7c0c02ab42c937eaecaf50936bdd1",
+      "reason": "isDragging is read by render-created dragOver/drop/projection handlers; the committed drag-start render gives subsequent event handlers the active session flag. It gates hover projection and accepted drops alongside dragSource, which is itself rendered in the projection label. It is not an unused write-only state; retaining these callback closures without rerendering would leave the initial false guard active.",
+      "evidenceSet": 1
+    },
+    {
+      "file": "web/app/src/features/frontstage/components/page-tree-actions/NavigationMoveTree.tsx",
+      "rule": "react-doctor/prefer-tag-over-role",
+      "sourceSha256": "577329e4c0f588fab75e6c8b4fbafefd10b7c0c02ab42c937eaecaf50936bdd1",
+      "reason": "The projection is a draggable live status describing a proposed destination and before/inside/after position. role=status supplies that live-region contract. It is not a form calculation result; replacing the div with output is not required to announce this status and would not fix a missing accessible label.",
+      "evidenceSet": 1
+    },
+    {
+      "file": "web/app/src/features/frontstage/components/page-tree-actions/NavigationMoveTree.tsx",
+      "rule": "react-doctor/no-render-in-render",
+      "sourceSha256": "577329e4c0f588fab75e6c8b4fbafefd10b7c0c02ab42c937eaecaf50936bdd1",
+      "reason": "renderActions is a ReactNode-returning slot callback passed by RouteManagementContent. It is invoked as a normal function; returned Space/Button types are stable module imports, not an inline component mounted with a new type. Row identities remain backend item.id keys. Route tests exercise row action, readonly and visibility behavior.",
+      "evidenceSet": 3
     }
   ]
 }

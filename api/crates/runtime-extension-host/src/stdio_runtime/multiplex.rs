@@ -252,6 +252,7 @@ impl MultiplexProviderWorker {
             .await
     }
 
+    #[cfg(all(test, unix))]
     pub(crate) async fn call_json(
         &self,
         request: Value,

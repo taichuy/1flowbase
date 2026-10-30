@@ -238,19 +238,20 @@ where
             ContainerCommitAdmission::ClosureOrObservation
         };
         let deadline_owner = effective_deadline.map(|deadline| deadline.owner_execution_id);
-        let observation = if transition.trace.is_some()
-            && (transition.kind != ContainerTransitionKind::ScopeSuspended
-                || suspended_node.is_some())
-        {
-            let trace_payload = serde_json::to_value(transition.trace.expect("checked"))?;
-            Some(crate::ports::ContainerObservationInput {
-                observation_key: crate::runtime_observability::projection::model_input_hash(
-                    &trace_payload,
-                ),
-                trace_payload,
-            })
-        } else {
-            None
+        let observation = match transition.trace {
+            Some(trace)
+                if transition.kind != ContainerTransitionKind::ScopeSuspended
+                    || suspended_node.is_some() =>
+            {
+                let trace_payload = serde_json::to_value(trace)?;
+                Some(crate::ports::ContainerObservationInput {
+                    observation_key: crate::runtime_observability::projection::model_input_hash(
+                        &trace_payload,
+                    ),
+                    trace_payload,
+                })
+            }
+            _ => None,
         };
         let record = self
             .service
@@ -387,10 +388,10 @@ pub(in crate::orchestration_runtime) async fn waiting_execution_id<
     Err(anyhow::anyhow!("container waiting execution mismatch"))
 }
 
-pub(in crate::orchestration_runtime) fn waiting_variable_pool<'a>(
-    snapshot: &'a orchestration_runtime::execution_state::CheckpointSnapshot,
+pub(in crate::orchestration_runtime) fn waiting_variable_pool(
+    snapshot: &orchestration_runtime::execution_state::CheckpointSnapshot,
     execution_id: Option<uuid::Uuid>,
-) -> Result<&'a serde_json::Map<String, Value>> {
+) -> Result<&serde_json::Map<String, Value>> {
     if let Some(execution_id) = execution_id {
         if let Some(state) = snapshot.container_state.as_ref() {
             if state

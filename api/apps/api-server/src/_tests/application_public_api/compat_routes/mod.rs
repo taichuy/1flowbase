@@ -1,10 +1,11 @@
 use crate::{
     _tests::{
-        ProviderInvocationGate, create_gated_provider_instance,
-        create_marker_output_provider_instance, create_ready_provider_instance,
+        create_gated_provider_instance, create_marker_output_provider_instance,
+        create_ready_provider_instance,
         support::{
             login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config,
         },
+        ProviderInvocationGate,
     },
     app_state::ApiState,
     host_infrastructure::LocalRuntimeEventStream,
@@ -12,25 +13,25 @@ use crate::{
 };
 use async_trait::async_trait;
 use axum::{
-    Router,
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
+    Router,
 };
 use control_plane::ports::{
     AppendTerminalIfMissingAndCloseOutcome, RuntimeEventCloseReason, RuntimeEventEnvelope,
     RuntimeEventPayload, RuntimeEventStream, RuntimeEventStreamPolicy, RuntimeEventSubscription,
     RuntimeEventTrimPolicy,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     future::Future,
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
+        Arc,
     },
 };
 use time::OffsetDateTime;
-use tokio::time::{Duration, timeout};
+use tokio::time::{timeout, Duration};
 use tower::ServiceExt;
 
 const COMPAT_ROUTE_PROVIDER_MODEL: &str = "fixture_chat";

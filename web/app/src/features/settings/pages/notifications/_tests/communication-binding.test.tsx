@@ -33,7 +33,27 @@ function setup(...args: Parameters<typeof setupCommunicationBinding>) {
 }
 const commandSwitch = (name: string) =>
   screen.getByRole('switch', { name: `Enable ${name}` });
-const settle = () => waitFor(() => expect(client.isFetching()).toBe(0));
+const settle = (
+  state: 'ready' | 'options-error' | 'binding-error' = 'ready'
+) =>
+  waitFor(() => {
+    // Query completion precedes the observer's React render. Wait for the
+    // command catalogue (or its load error) to reach the form as well.
+    expect(client.isFetching()).toBe(0);
+    if (state === 'ready') {
+      expect(commandSwitch('new')).toBeEnabled();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    } else {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not load channel settings.'
+      );
+      if (state === 'binding-error') {
+        expect(commandSwitch('new')).toBeDisabled();
+      } else {
+        expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+      }
+    }
+  });
 
 test('new binding requires an application and saves backend command defaults with tools, prompt and nullable table', async () => {
   const { ref, writes, optionRequests } = setup();
@@ -87,7 +107,7 @@ test('source metadata and availability come from the catalogue; only built-in de
       'Summarize records using installed reporting settings.'
     )
   ).toBeInTheDocument();
-  expect(commandSwitch('summary')).not.toBeDisabled();
+  expect(commandSwitch('summary')).toBeEnabled();
   expect(commandSwitch('audit')).toBeDisabled();
   expect(
     screen.getByText('Unavailable: The command plugin is unavailable')
@@ -165,7 +185,7 @@ test('unavailable enabled commands remain disableable and saved missing declarat
   await screen.findByDisplayValue('Custom prompt');
   await settle();
   expect(commandSwitch('archive')).toBeChecked();
-  expect(commandSwitch('archive')).not.toBeDisabled();
+  expect(commandSwitch('archive')).toBeEnabled();
   expect(
     screen.getByText(
       'Unavailable: The command declaration is no longer installed'
@@ -206,10 +226,10 @@ test('changing the application keeps unsaved toggles and requests the saved-chan
   expect(commandSwitch('new')).not.toBeChecked();
   expect(commandSwitch('help')).toBeChecked();
   expect(commandSwitch('model')).toBeChecked();
-  expect(commandSwitch('model')).not.toBeDisabled();
+  expect(commandSwitch('model')).toBeEnabled();
   // The general model selector is enabled in this fixture. The command's own
   // backend availability must still govern its switch and reason.
-  expect(screen.getByRole('combobox', { name: 'Model' })).not.toBeDisabled();
+  expect(screen.getByRole('combobox', { name: 'Model' })).toBeEnabled();
   expect(
     screen.getByText(
       'Unavailable: This application does not allow model selection'
@@ -244,7 +264,7 @@ test('an unavailable bound application stays readable and displays its backend c
     )
   ).toBeInTheDocument();
   expect(commandSwitch('model')).toBeChecked();
-  expect(commandSwitch('model')).not.toBeDisabled();
+  expect(commandSwitch('model')).toBeEnabled();
   expect(commandSwitch('summary')).toBeChecked();
   fireEvent.click(commandSwitch('model'));
   expect(commandSwitch('model')).toBeDisabled();
@@ -305,7 +325,7 @@ test('failed save rejects without losing command, MCP, prompt or model drafts', 
   expect(screen.getByText('Model One')).toBeInTheDocument();
   expect(
     screen.getByRole('combobox', { name: 'Reasoning effort' })
-  ).not.toBeDisabled();
+  ).toBeEnabled();
   await act(async () => {
     await expect(ref.current?.save('channel-1')).rejects.toThrow();
   });
@@ -329,7 +349,7 @@ test.each(['options', 'binding'] as const)(
       failOptions: source === 'options',
       failBinding: source === 'binding'
     });
-    await settle();
+    await settle(`${source}-error`);
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Could not load channel settings.'
     );

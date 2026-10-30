@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use axum::{
     body::Body,
     extract::Request,
-    http::{header, Method, StatusCode},
+    http::{header, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
     Router,
 };
@@ -104,13 +104,11 @@ async fn serve(root: PathBuf, request: Request) -> Response {
             let mut response = response.map(Body::new);
             response.headers_mut().insert(
                 header::CACHE_CONTROL,
-                if html {
+                HeaderValue::from_static(if html {
                     "no-cache"
                 } else {
                     "public, max-age=0, must-revalidate"
-                }
-                .parse()
-                .unwrap(),
+                }),
             );
             response
         }

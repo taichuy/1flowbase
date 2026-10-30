@@ -995,6 +995,44 @@
         "managed-table-id",
         "managed-table-scope-time-index"
       ]
+    },
+    "runtime_internal_compaction_contents": {
+      "kind": "session_owned_internal_compaction",
+      "reason": "Internal compaction retains canonical bodies and a mutable head by authenticated scope, application and session identity; repository lookups and retention use composite owner keys rather than independent row ids or chronological pagination.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-time-index",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "runtime_internal_compaction_heads": {
+      "kind": "session_owned_internal_compaction",
+      "reason": "Internal compaction retains canonical bodies and a mutable head by authenticated scope, application and session identity; repository lookups and retention use composite owner keys rather than independent row ids or chronological pagination.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-time-index",
+        "managed-table-created-at"
+      ]
+    },
+    "flow_container_control_failures": {
+      "kind": "flow_run_owned_container_control_failures",
+      "reason": "Control failures are immutable facts keyed by run, execution and after-round position; authorization and cascade follow the execution owner rather than independent workspace chronology.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "flow_container_observations": {
+      "kind": "flow_run_owned_container_observations",
+      "reason": "Observation receipts are mutable pending-to-completed execution-owned work; sequence orders pending payload delivery and completion clears payloads without ordinary creation or update chronology.",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
     }
   },
   "ownedTableContracts": {
@@ -1632,94 +1670,51 @@
       "primaryKey": [
         "id"
       ],
-      "foreignKeys": [
-        {
-          "columns": [
-            "scope_id",
-            "instance_id",
-            "external_identity",
-            "conversation_id"
-          ],
-          "table": "communication_conversations",
-          "references": [
-            "scope_id",
-            "instance_id",
-            "external_identity",
-            "id"
-          ]
-        }
-      ],
       "ownerColumns": [
         "scope_id",
         "instance_id",
-        "external_identity"
+        "external_identity",
+        "conversation_id",
+        "input_id"
       ],
       "requiredColumns": [
         "created_at",
         "updated_at",
-        "processing_status",
-        "send_status",
-        "claim_expires_at"
-      ],
-      "unconditionalIndexes": [
-        [
-          "scope_id",
-          "created_at",
-          "id"
-        ]
-      ],
-      "triggers": [
-        {
-          "table": "communication_messages",
-          "name": "communication_messages_updated_at",
-          "timing": "before",
-          "events": [
-            {
-              "event": "update",
-              "columns": []
-            }
-          ],
-          "function": "communication_touch_updated_at"
-        }
-      ]
-    },
-    "communication_attachments": {
-      "primaryKey": [
-        "id"
-      ],
-      "foreignKeys": [
-        {
-          "columns": [
-            "scope_id",
-            "message_id"
-          ],
-          "table": "communication_messages",
-          "references": [
-            "scope_id",
-            "id"
-          ]
-        }
-      ],
-      "ownerColumns": [
-        "scope_id"
-      ],
-      "requiredColumns": [
-        "created_at",
-        "updated_at",
+        "type",
+        "direction",
+        "occurred_at_ms",
+        "content",
+        "provider_attachment_id",
+        "file_name",
+        "media_type",
+        "size_bytes",
         "encrypted_reference",
-        "status"
+        "status",
+        "file_table_id",
+        "file_record_id",
+        "failure_code"
       ],
       "unconditionalIndexes": [
         [
           "scope_id",
           "created_at",
           "id"
+        ],
+        [
+          "scope_id",
+          "conversation_id",
+          "occurred_at_ms",
+          "id"
+        ],
+        [
+          "input_id",
+          "id"
         ]
       ],
       "triggers": [
         {
-          "table": "communication_attachments",
-          "name": "communication_attachments_updated_at",
+          "table": "communication_messages",
+          "name": "communication_timeline_updated_at",
           "timing": "before",
           "events": [
             {
@@ -1900,6 +1895,424 @@
             }
           ],
           "function": "communication_touch_updated_at"
+        }
+      ]
+    },
+    "communication_inputs": {
+      "primaryKey": [
+        "id"
+      ],
+      "ownerColumns": [
+        "scope_id",
+        "instance_id",
+        "external_identity",
+        "conversation_id",
+        "external_message_key"
+      ],
+      "requiredColumns": [
+        "created_at",
+        "updated_at",
+        "processing_status",
+        "send_status",
+        "claim_expires_at",
+        "received_at_ms",
+        "admission_status",
+        "turn_id",
+        "turn_sequence"
+      ],
+      "unconditionalIndexes": [
+        [
+          "scope_id",
+          "created_at",
+          "id"
+        ]
+      ],
+      "triggers": [
+        {
+          "table": "communication_inputs",
+          "name": "communication_messages_updated_at",
+          "timing": "before",
+          "events": [
+            {
+              "event": "update",
+              "columns": []
+            }
+          ],
+          "function": "communication_touch_updated_at"
+        }
+      ],
+      "indexes": [
+        [
+          "scope_id",
+          "instance_id",
+          "conversation_id",
+          "id"
+        ]
+      ]
+    },
+    "runtime_internal_compaction_contents": {
+      "primaryKey": [
+        "scope_id",
+        "application_id",
+        "session_key",
+        "content_id",
+        "content_kind"
+      ],
+      "routingColumns": [
+        "scope_id",
+        "application_id",
+        "session_key"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "application_id",
+            "scope_id"
+          ],
+          "table": "applications",
+          "references": [
+            "id",
+            "scope_id"
+          ],
+          "onDelete": "cascade"
+        },
+        {
+          "columns": [
+            "content_id",
+            "scope_id",
+            "application_id"
+          ],
+          "table": "runtime_canonical_contents",
+          "references": [
+            "id",
+            "scope_id",
+            "application_id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "ownerColumns": [
+        "content_kind"
+      ],
+      "requiredColumns": [
+        "created_at"
+      ],
+      "indexes": [
+        [
+          "content_id"
+        ]
+      ]
+    },
+    "runtime_internal_compaction_heads": {
+      "primaryKey": [
+        "scope_id",
+        "application_id",
+        "session_key"
+      ],
+      "routingColumns": [
+        "scope_id",
+        "application_id",
+        "session_key"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "application_id",
+            "scope_id"
+          ],
+          "table": "applications",
+          "references": [
+            "id",
+            "scope_id"
+          ],
+          "onDelete": "cascade"
+        },
+        {
+          "columns": [
+            "source_content_id",
+            "scope_id",
+            "application_id"
+          ],
+          "table": "runtime_canonical_contents",
+          "references": [
+            "id",
+            "scope_id",
+            "application_id"
+          ],
+          "onDelete": "no action"
+        },
+        {
+          "columns": [
+            "checkpoint_content_id",
+            "scope_id",
+            "application_id"
+          ],
+          "table": "runtime_canonical_contents",
+          "references": [
+            "id",
+            "scope_id",
+            "application_id"
+          ],
+          "onDelete": "no action"
+        }
+      ],
+      "requiredColumns": [
+        "source_hashes",
+        "prefix_hash",
+        "checkpoint_content_id",
+        "updated_at"
+      ],
+      "nullableOwnerColumns": [
+        "checkpoint_content_id"
+      ],
+      "indexes": [
+        [
+          "source_content_id"
+        ],
+        [
+          "checkpoint_content_id"
+        ]
+      ]
+    },
+    "flow_container_checkpoints": {
+      "primaryKey": [
+        "flow_run_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "flow_run_id"
+          ],
+          "table": "flow_runs",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "requiredColumns": [
+        "checkpoint",
+        "raw_json_payloads",
+        "revision",
+        "native_recovery_execution_id",
+        "native_recovery_started",
+        "updated_at"
+      ],
+      "indexes": [
+        [
+          "flow_run_id"
+        ]
+      ]
+    },
+    "flow_container_executions": {
+      "primaryKey": [
+        "flow_run_id",
+        "execution_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "flow_run_id"
+          ],
+          "table": "flow_runs",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        },
+        {
+          "columns": [
+            "node_run_id"
+          ],
+          "table": "node_runs",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "nullableOwnerColumns": [
+        "node_run_id"
+      ],
+      "ownerColumns": [
+        "execution_id",
+        "node_id",
+        "round_path"
+      ],
+      "requiredColumns": [
+        "parent_execution_id",
+        "node_run_id",
+        "last_observation_sequence"
+      ],
+      "indexes": [
+        [
+          "flow_run_id",
+          "execution_id"
+        ],
+        [
+          "flow_run_id",
+          "parent_execution_id"
+        ],
+        [
+          "node_run_id"
+        ]
+      ],
+      "uniqueIndexes": [
+        [
+          "node_run_id"
+        ]
+      ]
+    },
+    "flow_container_rounds": {
+      "primaryKey": [
+        "flow_run_id",
+        "execution_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "flow_run_id"
+          ],
+          "table": "flow_runs",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "ownerColumns": [
+        "execution_id",
+        "container_execution_id",
+        "round_index"
+      ],
+      "requiredColumns": [
+        "deadline_unix_ms",
+        "started_at",
+        "finished_at",
+        "status",
+        "error_payload",
+        "output_payload",
+        "variables",
+        "raw_json_payloads"
+      ],
+      "indexes": [
+        [
+          "flow_run_id",
+          "execution_id"
+        ],
+        [
+          "flow_run_id",
+          "container_execution_id",
+          "round_index"
+        ]
+      ],
+      "uniqueIndexes": [
+        [
+          "flow_run_id",
+          "container_execution_id",
+          "round_index"
+        ]
+      ]
+    },
+    "flow_container_control_failures": {
+      "primaryKey": [
+        "flow_run_id",
+        "execution_id",
+        "after_round_index"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "flow_run_id",
+            "execution_id"
+          ],
+          "table": "flow_container_executions",
+          "references": [
+            "flow_run_id",
+            "execution_id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "routingColumns": [
+        "flow_run_id",
+        "execution_id",
+        "after_round_index"
+      ],
+      "requiredColumns": [
+        "error_payload",
+        "raw_json_payloads",
+        "created_at"
+      ],
+      "indexes": [
+        [
+          "flow_run_id",
+          "execution_id",
+          "after_round_index"
+        ]
+      ]
+    },
+    "flow_container_observations": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "flow_run_id",
+            "execution_id"
+          ],
+          "table": "flow_container_executions",
+          "references": [
+            "flow_run_id",
+            "execution_id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "routingColumns": [
+        "flow_run_id",
+        "execution_id",
+        "observation_key"
+      ],
+      "requiredColumns": [
+        "id",
+        "sequence",
+        "trace_payload",
+        "raw_json_payloads",
+        "completed_at"
+      ],
+      "indexes": [
+        [
+          "sequence"
+        ],
+        [
+          "flow_run_id",
+          "execution_id",
+          "observation_key"
+        ],
+        [
+          "flow_run_id",
+          "sequence"
+        ]
+      ],
+      "uniqueIndexes": [
+        [
+          "sequence"
+        ],
+        [
+          "flow_run_id",
+          "execution_id",
+          "observation_key"
+        ]
+      ],
+      "partialIndexes": [
+        {
+          "columns": [
+            "flow_run_id",
+            "sequence"
+          ],
+          "predicate": "completed_at is null"
         }
       ]
     }

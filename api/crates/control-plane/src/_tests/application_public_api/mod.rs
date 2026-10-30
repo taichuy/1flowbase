@@ -298,7 +298,9 @@ impl TaskQueue for RecordingTaskQueue {
     }
 }
 
+#[path = "auth/api_key_service.rs"]
 mod api_key_service;
+#[path = "auth/authentication_failures.rs"]
 mod authentication_failures;
 mod mapping_and_publication;
 mod operation_permissions;

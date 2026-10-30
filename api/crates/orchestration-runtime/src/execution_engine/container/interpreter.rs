@@ -16,18 +16,24 @@ pub(crate) struct ContainerExecution {
 pub(crate) async fn execute_container<I>(
     plan: &CompiledPlan,
     node: &CompiledNode,
-    pool: &Map<String, Value>,
-    index: usize,
-    active: &BTreeSet<String>,
+    position: ContainerEntryPosition<'_>,
     parent: Option<&Scope>,
     restored_session: Option<&Session>,
-    runtime: &ExecutionRuntimeContext,
-    invoker: &I,
-    lifecycle: &dyn ExecutionLifecycle,
+    services: ExecutionServices<'_, I>,
 ) -> Result<ContainerExecution>
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    let ContainerEntryPosition {
+        pool,
+        index,
+        active,
+    } = position;
+    let ExecutionServices {
+        runtime,
+        invoker,
+        lifecycle,
+    } = services;
     let config = ContainerConfig::from_node(node)?;
     let session = match parent.map(|scope| &scope.session).or(restored_session) {
         Some(session) => session.clone(),
@@ -277,8 +283,10 @@ where
                     node,
                     &config,
                     pool,
-                    &session,
-                    frame_id,
+                    ContainerFrameRef {
+                        session: &session,
+                        frame_id,
+                    },
                     inherited_deadline,
                     lifecycle,
                 )
@@ -321,31 +329,35 @@ where
             }
             Err(error) => return Err(error),
         };
-        match outcome {
-            RoundOutcome::Waiting(mut round_traces) => {
-                traces.append(&mut round_traces);
+        let RoundOutcome {
+            mut node_traces,
+            terminal,
+        } = outcome;
+        match terminal {
+            None => {
+                traces.append(&mut node_traces);
                 suspended = true;
             }
-            RoundOutcome::Terminal {
+            Some(RoundTerminal {
                 already_committed,
-                output,
-                variables,
-                mut error,
-                mut node_traces,
-            } => {
-                if error.is_none() {
-                    if scope.expired() {
-                        let (_, owner) = scope
-                            .deadline()
-                            .await
-                            .ok_or_else(|| anyhow!("finite deadline missing owner"))?;
-                        if owner != frame_id {
-                            return Err(DeadlineExpired(owner).into());
-                        }
-                        error = Some(
-                            json!({"error_code":"container_round_timeout","message":"Round deadline expired before its result commit"}),
-                        );
+                result,
+            }) => {
+                let RoundTerminalResult {
+                    output,
+                    variables,
+                    error_payload: mut error,
+                } = result;
+                if error.is_none() && scope.expired() {
+                    let (_, owner) = scope
+                        .deadline()
+                        .await
+                        .ok_or_else(|| anyhow!("finite deadline missing owner"))?;
+                    if owner != frame_id {
+                        return Err(DeadlineExpired(owner).into());
                     }
+                    error = Some(
+                        json!({"error_code":"container_round_timeout","message":"Round deadline expired before its result commit"}),
+                    );
                 }
                 traces.append(&mut node_traces);
                 let mut state = session.state.lock().await;
@@ -359,9 +371,11 @@ where
                         scope.round_index,
                         node,
                         &config,
-                        output,
-                        variables,
-                        error,
+                        RoundTerminalResult {
+                            output,
+                            variables,
+                            error_payload: error,
+                        },
                         lifecycle,
                     )
                     .await?;
@@ -483,16 +497,22 @@ where
     })
 }
 
+/// A frame is located by its session and stable execution identity before admission.
+struct ContainerFrameRef<'a> {
+    session: &'a Session,
+    frame_id: Uuid,
+}
+
 async fn start_round(
     plan: &CompiledPlan,
     node: &CompiledNode,
     config: &ContainerConfig,
     parent_pool: &Map<String, Value>,
-    session: &Session,
-    frame_id: Uuid,
+    frame: ContainerFrameRef<'_>,
     inherited: Option<(i64, Uuid)>,
     lifecycle: &dyn ExecutionLifecycle,
 ) -> Result<Option<u64>> {
+    let ContainerFrameRef { session, frame_id } = frame;
     let mut state = session.state.lock().await;
     let frame = state.frames.get_mut(&frame_id).expect("active frame");
     if frame.closed || frame.started_rounds >= frame.frozen_limit {
@@ -601,9 +621,11 @@ async fn start_round(
                 index,
                 node,
                 config,
-                Value::Null,
-                Map::new(),
-                failure,
+                RoundTerminalResult {
+                    output: Value::Null,
+                    variables: Map::new(),
+                    error_payload: failure,
+                },
                 lifecycle,
             )
             .await?;
@@ -614,15 +636,14 @@ async fn start_round(
     Ok(Some(index))
 }
 
-enum RoundOutcome {
-    Waiting(Vec<NodeExecutionTrace>),
-    Terminal {
-        already_committed: bool,
-        output: Value,
-        variables: Map<String, Value>,
-        error: Option<Value>,
-        node_traces: Vec<NodeExecutionTrace>,
-    },
+struct RoundOutcome {
+    node_traces: Vec<NodeExecutionTrace>,
+    terminal: Option<RoundTerminal>,
+}
+
+struct RoundTerminal {
+    already_committed: bool,
+    result: RoundTerminalResult,
 }
 
 async fn execute_round<I>(
@@ -652,11 +673,15 @@ where
     if let Some(error) = condition_error {
         return Ok((
             scope,
-            RoundOutcome::Terminal {
-                already_committed,
-                output: Value::Null,
-                variables: Map::new(),
-                error: Some(error),
+            RoundOutcome {
+                terminal: Some(RoundTerminal {
+                    already_committed,
+                    result: RoundTerminalResult {
+                        output: Value::Null,
+                        variables: Map::new(),
+                        error_payload: Some(error),
+                    },
+                }),
                 node_traces: Vec::new(),
             },
         ));
@@ -666,7 +691,13 @@ where
         let (_, owner) = deadline.ok_or_else(|| anyhow!("finite deadline missing owner"))?;
         Err(anyhow::Error::new(DeadlineExpired(owner)))
     } else if waiting.is_some() {
-        return Ok((scope, RoundOutcome::Waiting(Vec::new())));
+        return Ok((
+            scope,
+            RoundOutcome {
+                node_traces: Vec::new(),
+                terminal: None,
+            },
+        ));
     } else {
         let scoped_lifecycle = ScopedLifecycle {
             scope: scope.clone(),
@@ -679,9 +710,11 @@ where
                 index,
                 pool,
                 Some(active),
-                runtime,
-                invoker,
-                &scoped_lifecycle,
+                ExecutionServices {
+                    runtime,
+                    invoker,
+                    lifecycle: &scoped_lifecycle,
+                },
                 Some(&scope),
                 None,
             )),
@@ -711,13 +744,17 @@ where
             }
             return Ok((
                 scope,
-                RoundOutcome::Terminal {
-                    already_committed: false,
-                    output: Value::Null,
-                    variables: Map::new(),
-                    error: Some(
-                        json!({"error_code": if error.is::<DeadlineExpired>() {"container_round_timeout"} else {"container_round_failed"}, "message": error.to_string()}),
-                    ),
+                RoundOutcome {
+                    terminal: Some(RoundTerminal {
+                        already_committed: false,
+                        result: RoundTerminalResult {
+                            output: Value::Null,
+                            variables: Map::new(),
+                            error_payload: Some(
+                                json!({"error_code": if error.is::<DeadlineExpired>() {"container_round_timeout"} else {"container_round_failed"}, "message": error.to_string()}),
+                            ),
+                        },
+                    }),
                     node_traces: Vec::new(),
                 },
             ));
@@ -773,15 +810,25 @@ where
             )
             .await?;
             drop(state);
-            Ok((scope, RoundOutcome::Waiting(traces)))
+            Ok((
+                scope,
+                RoundOutcome {
+                    node_traces: traces,
+                    terminal: None,
+                },
+            ))
         }
         ExecutionStopReason::Failed(failure) => Ok((
             scope,
-            RoundOutcome::Terminal {
-                already_committed: false,
-                output: Value::Null,
-                variables: Map::new(),
-                error: Some(failure.error_payload),
+            RoundOutcome {
+                terminal: Some(RoundTerminal {
+                    already_committed: false,
+                    result: RoundTerminalResult {
+                        output: Value::Null,
+                        variables: Map::new(),
+                        error_payload: Some(failure.error_payload),
+                    },
+                }),
                 node_traces: traces,
             },
         )),
@@ -822,11 +869,15 @@ where
             };
             Ok((
                 scope,
-                RoundOutcome::Terminal {
-                    already_committed: false,
-                    output,
-                    variables,
-                    error,
+                RoundOutcome {
+                    terminal: Some(RoundTerminal {
+                        already_committed: false,
+                        result: RoundTerminalResult {
+                            output,
+                            variables,
+                            error_payload: error,
+                        },
+                    }),
                     node_traces: traces,
                 },
             ))

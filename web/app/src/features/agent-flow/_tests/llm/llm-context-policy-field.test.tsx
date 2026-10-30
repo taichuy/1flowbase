@@ -39,7 +39,9 @@ function ContextPolicyHarness({
   const [value, setValue] = useState(initialValue);
   const adapter: SchemaAdapter = {
     getValue: (path) =>
-      path === 'config.context_policy.auto_compact' ? value.auto_compact : value,
+      path === 'config.context_policy.auto_compact'
+        ? value.auto_compact
+        : value,
     setValue: (path, nextValue) => {
       if (path === 'config.context_policy.auto_compact') {
         setValue((current) => ({ ...current, auto_compact: nextValue }));
@@ -47,7 +49,8 @@ function ContextPolicyHarness({
         setValue(nextValue as Record<string, unknown>);
       }
     },
-    getDerived: (path) => (path === 'selectorOptions' ? contextOptions : null),
+    getDerived: (path) =>
+      path === 'selectorOptions:config.context_policy' ? contextOptions : null,
     dispatch: vi.fn()
   };
   const contract = getBuiltinNodeRuntimeContract('llm');
@@ -82,13 +85,17 @@ function ContextPolicyHarness({
           renderer: field.renderer
         }}
       />
-      <output data-testid="context-policy-value">{JSON.stringify(value)}</output>
+      <output data-testid="context-policy-value">
+        {JSON.stringify(value)}
+      </output>
     </>
   );
 }
 
 function currentPolicy() {
-  return JSON.parse(screen.getByTestId('context-policy-value').textContent ?? '{}');
+  return JSON.parse(
+    screen.getByTestId('context-policy-value').textContent ?? '{}'
+  );
 }
 
 describe('LLM context policy fields', () => {
@@ -140,7 +147,9 @@ describe('LLM context policy fields', () => {
       />
     );
 
-    expect(screen.getByRole('switch', { name: '自动压缩上下文' })).toBeChecked();
+    expect(
+      screen.getByRole('switch', { name: '自动压缩上下文' })
+    ).toBeChecked();
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '上下文变量' }));
     fireEvent.click(await screen.findByText('Code history'));
 
@@ -149,6 +158,8 @@ describe('LLM context policy fields', () => {
       context_selector: ['node-code', 'history'],
       auto_compact: true
     });
-    expect(screen.getByRole('switch', { name: '自动压缩上下文' })).toBeChecked();
+    expect(
+      screen.getByRole('switch', { name: '自动压缩上下文' })
+    ).toBeChecked();
   });
 });

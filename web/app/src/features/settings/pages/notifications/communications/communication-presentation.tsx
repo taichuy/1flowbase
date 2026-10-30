@@ -156,7 +156,7 @@ export function CommunicationFile({
   );
 }
 
-export function failureLabel(code: string, t: (key: string) => string) {
+function failureLabel(code: string, t: (key: string) => string) {
   switch (code) {
     case 'run_interrupted':
       return t('failure_run_interrupted');

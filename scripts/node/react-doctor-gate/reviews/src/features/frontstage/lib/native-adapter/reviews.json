@@ -1,33 +1,36 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx","sha256":"43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"},{"file":"web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx","sha256":"34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx",
       "rule": "react-doctor/exhaustive-deps",
       "sourceSha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337",
       "reason": "Contribution mount/dispose captures root/contribution. mountedRenderInput is updated separately through lifecycle.update; adding renderInput/renderEpoch would remount native contribution DOM and lose drafts. Native portal host deliberately separates surface mount/disposal from lifecycle.update and advanceLayoutEpoch. renderInput updates a retained contribution; layout epochs advance the existing runtime. useContext is supported in React 19. Async antd-style loading errors are resource completion failures and must be stored after the promise settles. Runtime-host lifetime is plan.blockId/surface. surfaceLayoutEpoch is applied by advanceLayoutEpoch in its own layout effect, so it must not recreate runtime/host on every layout change. Native portal host deliberately separates surface mount/disposal from lifecycle.update and advanceLayoutEpoch. renderInput updates a retained contribution; layout epochs advance the existing runtime. useContext is supported in React 19. Async antd-style loading errors are resource completion failures and must be stored after the promise settles.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx", "sha256": "43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"}, {"file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx", "sha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
       "sourceSha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337",
       "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. Native portal host deliberately separates surface mount/disposal from lifecycle.update and advanceLayoutEpoch. renderInput updates a retained contribution; layout epochs advance the existing runtime. useContext is supported in React 19. Async antd-style loading errors are resource completion failures and must be stored after the promise settles.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx", "sha256": "43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"}, {"file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx", "sha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx",
       "rule": "react-doctor/no-react19-deprecated-apis",
       "sourceSha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337",
       "reason": "The installed rule labels this a migration hint. The API remains supported; ref/context ABI is intentional. Native portal host deliberately separates surface mount/disposal from lifecycle.update and advanceLayoutEpoch. renderInput updates a retained contribution; layout epochs advance the existing runtime. useContext is supported in React 19. Async antd-style loading errors are resource completion failures and must be stored after the promise settles.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx", "sha256": "43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"}, {"file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx", "sha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx",
       "rule": "react-doctor/rerender-state-only-in-handlers",
       "sourceSha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337",
       "reason": "The error arrives from an asynchronous external module-loading promise, so an event-only state setter would hide resource failures. Native portal host deliberately separates surface mount/disposal from lifecycle.update and advanceLayoutEpoch. renderInput updates a retained contribution; layout epochs advance the existing runtime. useContext is supported in React 19. Async antd-style loading errors are resource completion failures and must be stored after the promise settles.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx", "sha256": "43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"}, {"file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx", "sha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337"}]
+      "evidenceSet": 0
     }
   ]
 }

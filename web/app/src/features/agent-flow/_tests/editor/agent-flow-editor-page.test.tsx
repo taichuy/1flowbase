@@ -987,6 +987,14 @@ describe('AgentFlowEditorShell', () => {
     expect(
       await screen.findByRole('menuitem', { name: /OpenAI Prompt/i })
     ).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('tab', { name: '扩展' }), { key: 'Escape' });
+    await waitFor(() =>
+      expect(screen.queryByRole('menuitem', { name: /OpenAI Prompt/i })).not.toBeInTheDocument()
+    );
+    expect(screen.getByRole('button', { name: '在 LLM 后新增节点' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
     expect(screen.queryByText('请使用桌面端编辑')).not.toBeInTheDocument();
     expect(
       nodeContributionsApi.fetchApplicationNodeCatalog

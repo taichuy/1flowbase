@@ -1,40 +1,43 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/applications/components/logs/exchange/_tests/AgentLogsExchange.test.tsx","sha256":"46092936fa743c14b99f9ce7d7ddc4c015de3f07eb0e22dd3060c25f3241bf23"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/applications/components/logs/exchange/AgentLogsExchange.tsx",
       "rule": "react-doctor/async-await-in-loop",
       "sourceSha256": "d469a0d46171c1b13cb012c4e8b5ceacac1c42bc8d27434dd7e1df25d426bf01",
       "reason": "The loop intentionally serializes browser archive downloads and their per-owner success/failure progression. AgentLogsExchange owns separate export selection, import files/target, archive receipts and in-flight statuses. Export download awaits each selected application archive/save in order. File.text must finish before JSON inspection and import contract validation.",
-      "evidence": [{"file": "web/app/src/features/applications/components/logs/exchange/_tests/AgentLogsExchange.test.tsx", "sha256": "46092936fa743c14b99f9ce7d7ddc4c015de3f07eb0e22dd3060c25f3241bf23"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/applications/components/logs/exchange/AgentLogsExchange.tsx",
       "rule": "react-doctor/async-defer-await",
       "sourceSha256": "d469a0d46171c1b13cb012c4e8b5ceacac1c42bc8d27434dd7e1df25d426bf01",
       "reason": "The awaited result is consumed by the immediately following validation/preparation step; it is a data dependency. AgentLogsExchange owns separate export selection, import files/target, archive receipts and in-flight statuses. Export download awaits each selected application archive/save in order. File.text must finish before JSON inspection and import contract validation.",
-      "evidence": [{"file": "web/app/src/features/applications/components/logs/exchange/_tests/AgentLogsExchange.test.tsx", "sha256": "46092936fa743c14b99f9ce7d7ddc4c015de3f07eb0e22dd3060c25f3241bf23"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/applications/components/logs/exchange/AgentLogsExchange.tsx",
       "rule": "react-doctor/no-derived-useState",
       "sourceSha256": "d469a0d46171c1b13cb012c4e8b5ceacac1c42bc8d27434dd7e1df25d426bf01",
       "reason": "The incoming value initializes a locally navigable/editable view rather than a continuously controlled value. AgentLogsExchange owns separate export selection, import files/target, archive receipts and in-flight statuses. Export download awaits each selected application archive/save in order. File.text must finish before JSON inspection and import contract validation.",
-      "evidence": [{"file": "web/app/src/features/applications/components/logs/exchange/_tests/AgentLogsExchange.test.tsx", "sha256": "46092936fa743c14b99f9ce7d7ddc4c015de3f07eb0e22dd3060c25f3241bf23"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/applications/components/logs/exchange/AgentLogsExchange.tsx",
       "rule": "react-doctor/no-giant-component",
       "sourceSha256": "d469a0d46171c1b13cb012c4e8b5ceacac1c42bc8d27434dd7e1df25d426bf01",
       "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. AgentLogsExchange owns separate export selection, import files/target, archive receipts and in-flight statuses. Export download awaits each selected application archive/save in order. File.text must finish before JSON inspection and import contract validation.",
-      "evidence": [{"file": "web/app/src/features/applications/components/logs/exchange/_tests/AgentLogsExchange.test.tsx", "sha256": "46092936fa743c14b99f9ce7d7ddc4c015de3f07eb0e22dd3060c25f3241bf23"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/applications/components/logs/exchange/AgentLogsExchange.tsx",
       "rule": "react-doctor/prefer-useReducer",
       "sourceSha256": "d469a0d46171c1b13cb012c4e8b5ceacac1c42bc8d27434dd7e1df25d426bf01",
       "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. AgentLogsExchange owns separate export selection, import files/target, archive receipts and in-flight statuses. Export download awaits each selected application archive/save in order. File.text must finish before JSON inspection and import contract validation.",
-      "evidence": [{"file": "web/app/src/features/applications/components/logs/exchange/_tests/AgentLogsExchange.test.tsx", "sha256": "46092936fa743c14b99f9ce7d7ddc4c015de3f07eb0e22dd3060c25f3241bf23"}]
+      "evidenceSet": 0
     }
   ]
 }

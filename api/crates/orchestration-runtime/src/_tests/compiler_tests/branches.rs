@@ -527,3 +527,78 @@ fn compile_visible_tool_index_preserves_duplicate_agent_and_complete_branch_issu
         }
     }
 }
+
+// Relationship uniqueness must not collapse the multigraph used by Kahn's queue.
+#[test]
+fn compile_duplicate_branch_edges_preserves_handles_input_rank_and_queue_order() {
+    let flow_id = Uuid::nil();
+    let mut document = branch_document(flow_id);
+    document["graph"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .rotate_right(1);
+    let mut duplicate = document["graph"]["edges"][1].clone();
+    duplicate["id"] = json!("edge-else-same-answer");
+    duplicate["sourceHandle"] = json!("else");
+    duplicate["targetHandle"] = json!("alternate");
+    document["graph"]["edges"]
+        .as_array_mut()
+        .unwrap()
+        .push(duplicate);
+
+    let plan = FlowCompiler::compile(flow_id, "duplicate-branches", &document, &compile_context())
+        .expect("parallel branch edges should compile");
+    assert_eq!(
+        plan.topological_order,
+        vec![
+            "node-start",
+            "node-if",
+            "node-answer-else",
+            "node-answer-if"
+        ]
+    );
+    assert_eq!(
+        plan.nodes["node-if"].downstream_node_ids,
+        vec!["node-answer-else", "node-answer-if"]
+    );
+    assert_eq!(
+        plan.nodes["node-answer-if"].dependency_node_ids,
+        vec!["node-if"]
+    );
+    assert_eq!(
+        plan.edges
+            .iter()
+            .map(|edge| (
+                edge.edge_id.as_str(),
+                edge.source.as_str(),
+                edge.target.as_str(),
+                edge.source_handle.as_deref(),
+                edge.target_handle.as_deref(),
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            ("edge-start-if", "node-start", "node-if", None, None),
+            (
+                "edge-if-answer",
+                "node-if",
+                "node-answer-if",
+                Some("if"),
+                None
+            ),
+            (
+                "edge-else-answer",
+                "node-if",
+                "node-answer-else",
+                Some("else"),
+                None
+            ),
+            (
+                "edge-else-same-answer",
+                "node-if",
+                "node-answer-if",
+                Some("else"),
+                Some("alternate")
+            ),
+        ]
+    );
+}

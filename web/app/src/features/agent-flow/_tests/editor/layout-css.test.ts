@@ -21,7 +21,7 @@ describe('AgentFlow editor layout CSS', () => {
     expect(editorBlock).not.toContain('min-height: calc(100vh');
   });
 
-  test('keeps source connector geometry in the shared source handle rule', () => {
+  test('expands only the active connector without shifting its shared anchor', () => {
     const controlsCss = fs.readFileSync(
       path.resolve(
         import.meta.dirname,
@@ -30,10 +30,10 @@ describe('AgentFlow editor layout CSS', () => {
       'utf8'
     );
     const sourceBlock = controlsCss.match(
-      /\.agent-flow-node-handle--source\.react-flow__handle\s*\{[\s\S]*?\n\}/
+      /^\.agent-flow-node-handle--source\.react-flow__handle\s*\{[^}]*\}/m
     )?.[0];
-    const branchBlock = controlsCss.match(
-      /\.agent-flow-node-handle--branch\.react-flow__handle\s*\{[\s\S]*?\n\}/
+    const activeSourceBlock = controlsCss.match(
+      /^\.agent-flow-node-handle--source\.react-flow__handle:hover,[^{]*\{[^}]*\}/m
     )?.[0];
     const branchRules = Array.from(
       controlsCss.matchAll(
@@ -43,12 +43,21 @@ describe('AgentFlow editor layout CSS', () => {
       .map((match) => match[0])
       .join('\n');
 
-    expect(sourceBlock).toContain('right: -7px;');
+    expect(sourceBlock).toContain('width: 14px;');
+    expect(sourceBlock).toContain('height: 14px;');
+    expect(sourceBlock).toContain('right: 0;');
     expect(sourceBlock).toContain('transform: translate(50%, -50%);');
-    expect(branchBlock ?? '').not.toContain('right:');
-    expect(branchBlock ?? '').not.toContain('transform:');
+    expect(activeSourceBlock).toContain('width: 24px;');
+    expect(activeSourceBlock).toContain('height: 24px;');
+    expect(activeSourceBlock).not.toContain('right:');
+    expect(activeSourceBlock).not.toContain('transform:');
+    expect(activeSourceBlock).toContain(':focus-visible');
+    expect(activeSourceBlock).toContain("[aria-expanded='true']");
+    expect(controlsCss).not.toMatch(
+      /\.react-flow__node(?::hover|\.selected)\s+\.agent-flow-node-handle--(?:source|tool)/
+    );
     expect(branchRules).not.toMatch(
-      /\b(?:bottom|height|left|right|top|transform|width)\s*:/
+      /\b(?:bottom|left|right|top|transform)\s*:/
     );
   });
 

@@ -5,13 +5,13 @@ use crate::{
     response::ApiSuccess,
     routes::{
         console_interface,
-        console_route_assembly::{ConsoleRouteAssembly, console_get, console_post},
+        console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
     },
 };
 use axum::{
-    Json,
     extract::{Path, Query, State},
     http::HeaderMap,
+    Json,
 };
 use serde::Deserialize;
 use serde_json::Value;

@@ -30,12 +30,14 @@ pub(crate) use cold_replay::{cold_runtime_event_subscription, durable_round_pref
 
 use crate::provider_runtime::{ApiProviderRuntime, ApiRuntimeServices};
 
+#[cfg(test)]
+type DeliveryReadSamples = Arc<std::sync::Mutex<Vec<(bool, usize, usize, usize)>>>;
+
 #[derive(Clone)]
 pub(crate) struct NativeRunTerminalDependencies {
     published_plan_cache: Option<Arc<dyn control_plane::ports::PublishedPlanCache>>,
     #[cfg(test)]
-    pub(crate) delivery_read_samples:
-        Option<Arc<std::sync::Mutex<Vec<(bool, usize, usize, usize)>>>>,
+    pub(crate) delivery_read_samples: Option<DeliveryReadSamples>,
     #[cfg(test)]
     pub(crate) delivery_read_attempts: Option<Arc<std::sync::atomic::AtomicUsize>>,
     store: storage_durable_postgres::MainDurableStore,

@@ -116,6 +116,13 @@ use variable_aggregator::{execute_variable_aggregator_node, variable_aggregator_
 pub(crate) use variable_assignment::execute_variable_assignment_node;
 use visible_internal_llm_tools::*;
 
+/// Borrowed execution service endpoints; this carries no runtime state ownership.
+pub(crate) struct ExecutionServices<'a, I: ?Sized> {
+    runtime: &'a ExecutionRuntimeContext,
+    invoker: &'a I,
+    lifecycle: &'a dyn ExecutionLifecycle,
+}
+
 const LLM_TOOL_CALLBACK_KIND: &str = "llm_tool_calls";
 const LLM_TOOL_CALLBACK_STATE_KEY: &str = "__llm_tool_callback";
 const RESPONSES_WEBSOCKET_TRANSPORT: &str = "responses_websocket";

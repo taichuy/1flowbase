@@ -1,19 +1,22 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/frontstage/_tests/browser-fixtures/native-react-trial/NativeReactTrialFixture.tsx","sha256":"ede050d8a370a2c905c25359df38d8e4de419ce3366c76df6508820a452877fb"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/frontstage/_tests/browser-fixtures/native-react-trial/NativeReactTrialFixture.tsx",
       "rule": "react-doctor/no-giant-component",
       "sourceSha256": "ede050d8a370a2c905c25359df38d8e4de419ce3366c76df6508820a452877fb",
       "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. NativeReactTrialFixture is an explicit browser integration harness for native component lifecycle/style/overlay scenarios. Independent fixture switches and logs expose observations for browser automation; they are not a production component or a single coupled state machine.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/browser-fixtures/native-react-trial/NativeReactTrialFixture.tsx", "sha256": "ede050d8a370a2c905c25359df38d8e4de419ce3366c76df6508820a452877fb"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/_tests/browser-fixtures/native-react-trial/NativeReactTrialFixture.tsx",
       "rule": "react-doctor/prefer-useReducer",
       "sourceSha256": "ede050d8a370a2c905c25359df38d8e4de419ce3366c76df6508820a452877fb",
       "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. NativeReactTrialFixture is an explicit browser integration harness for native component lifecycle/style/overlay scenarios. Independent fixture switches and logs expose observations for browser automation; they are not a production component or a single coupled state machine.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/browser-fixtures/native-react-trial/NativeReactTrialFixture.tsx", "sha256": "ede050d8a370a2c905c25359df38d8e4de419ce3366c76df6508820a452877fb"}]
+      "evidenceSet": 0
     }
   ]
 }

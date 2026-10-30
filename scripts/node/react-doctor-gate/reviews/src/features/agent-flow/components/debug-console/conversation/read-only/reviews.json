@@ -1,0 +1,17 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/ReadOnlyConversationInput.tsx",
+      "rule": "react-doctor/no-uncontrolled-input",
+      "sourceSha256": "54e3796863f62c0ad830c0b565a050c966cccd1da16b7a5a6b69ff8e6bd2616c",
+      "reason": "This textarea is deliberately disabled with an empty controlled value in the shared read-only conversation-history surface. It has no editable draft or submit path; native disabled semantics intentionally prevent typing. The warning assumes users should be able to edit the field, which conflicts with this component contract. Conversation-management tests mount the history shell with the read-only input, while this source fixes disabled/value explicitly.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/pages/notifications/_tests/communication-management.test.tsx",
+          "sha256": "51c7d7d1105d02df6ec5c8c4a83e7b2c3df0a4a35696168d55fa71c32066a1af"
+        }
+      ]
+    }
+  ]
+}

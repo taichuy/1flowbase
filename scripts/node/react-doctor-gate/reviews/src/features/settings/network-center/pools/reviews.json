@@ -1,26 +1,29 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/settings/network-center/pools/NetworkEgressPoolsPanel.tsx","sha256":"6460701b5d35579c000bea19ab3a32e5d5a80af7bf561fdda91d2dff2f7b7304"},{"file":"web/app/src/features/settings/network-center/pools/_tests/network-center-pools-layout.test.ts","sha256":"d6b9450ab27c4d73dbab4a6680a7694e95235eff45956834c7285513b2be26ed"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/settings/network-center/pools/NetworkEgressPoolsPanel.tsx",
       "rule": "react-doctor/jsx-no-jsx-as-prop",
       "sourceSha256": "6460701b5d35579c000bea19ab3a32e5d5a80af7bf561fdda91d2dff2f7b7304",
       "reason": "The receiving DataTable/DataTableLayout/filter API defines this named ReactNode slot. It places filters/expanded fields/empty state in a different region from ordinary children. NetworkEgressPoolsPanel separates filter draft/applied filters/page, member edit selection and active test ids. invalidate() refreshes settingsNetworkEgressPoolsQueryKey. update/remove/single-test call it onSuccess, batch test calls it onSettled even when some tests reject. DataTableLayout.filters and DataTable.emptyText are explicit ReactNode slots.",
-      "evidence": [{"file": "web/app/src/features/settings/network-center/pools/NetworkEgressPoolsPanel.tsx", "sha256": "6460701b5d35579c000bea19ab3a32e5d5a80af7bf561fdda91d2dff2f7b7304"}, {"file": "web/app/src/features/settings/network-center/pools/_tests/network-center-pools-layout.test.ts", "sha256": "d6b9450ab27c4d73dbab4a6680a7694e95235eff45956834c7285513b2be26ed"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/network-center/pools/NetworkEgressPoolsPanel.tsx",
       "rule": "react-doctor/prefer-useReducer",
       "sourceSha256": "6460701b5d35579c000bea19ab3a32e5d5a80af7bf561fdda91d2dff2f7b7304",
       "reason": "The concrete independently edited axes below do not require one shared transition invariant; changing useState to a reducer would not fix a demonstrated defect. NetworkEgressPoolsPanel separates filter draft/applied filters/page, member edit selection and active test ids. invalidate() refreshes settingsNetworkEgressPoolsQueryKey. update/remove/single-test call it onSuccess, batch test calls it onSettled even when some tests reject. DataTableLayout.filters and DataTable.emptyText are explicit ReactNode slots.",
-      "evidence": [{"file": "web/app/src/features/settings/network-center/pools/NetworkEgressPoolsPanel.tsx", "sha256": "6460701b5d35579c000bea19ab3a32e5d5a80af7bf561fdda91d2dff2f7b7304"}, {"file": "web/app/src/features/settings/network-center/pools/_tests/network-center-pools-layout.test.ts", "sha256": "d6b9450ab27c4d73dbab4a6680a7694e95235eff45956834c7285513b2be26ed"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/network-center/pools/NetworkEgressPoolsPanel.tsx",
       "rule": "react-doctor/query-mutation-missing-invalidation",
       "sourceSha256": "6460701b5d35579c000bea19ab3a32e5d5a80af7bf561fdda91d2dff2f7b7304",
       "reason": "The mutation success handler calls invalidate(), or sets onSuccess:invalidate; invalidate refreshes settingsNetworkEgressPoolsQueryKey, the same key used by pools. The rule does not follow this helper. NetworkEgressPoolsPanel separates filter draft/applied filters/page, member edit selection and active test ids. invalidate() refreshes settingsNetworkEgressPoolsQueryKey. update/remove/single-test call it onSuccess, batch test calls it onSettled even when some tests reject. DataTableLayout.filters and DataTable.emptyText are explicit ReactNode slots. testCurrentPage awaits invalidate() in onSettled, so pool status refresh occurs even when some member probes reject; it intentionally is not success-only. NetworkEgressPoolsPanel separates filter draft/applied filters/page, member edit selection and active test ids. invalidate() refreshes settingsNetworkEgressPoolsQueryKey. update/remove/single-test call it onSuccess, batch test calls it onSettled even when some tests reject. DataTableLayout.filters and DataTable.emptyText are explicit ReactNode slots.",
-      "evidence": [{"file": "web/app/src/features/settings/network-center/pools/NetworkEgressPoolsPanel.tsx", "sha256": "6460701b5d35579c000bea19ab3a32e5d5a80af7bf561fdda91d2dff2f7b7304"}, {"file": "web/app/src/features/settings/network-center/pools/_tests/network-center-pools-layout.test.ts", "sha256": "d6b9450ab27c4d73dbab4a6680a7694e95235eff45956834c7285513b2be26ed"}]
+      "evidenceSet": 0
     }
   ]
 }

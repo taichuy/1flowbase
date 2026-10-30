@@ -96,7 +96,7 @@ async fn console_navigation_route_returns_root_registry_with_separated_arrays() 
             "settings.applications",
             "settings.mcp-management",
             "settings.members",
-            "settings.notifications",
+            "settings.communications",
             "settings.ui-management",
             "settings.backups",
             "settings.roles",

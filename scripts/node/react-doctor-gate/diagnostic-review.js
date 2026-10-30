@@ -23,7 +23,18 @@ function loadReviews(repoRoot, toolPackage) {
       }
       const group = JSON.parse(fs.readFileSync(path.join(repoRoot, file), 'utf8'));
       if (group.toolPackage !== toolPackage || !Array.isArray(group.reviews)) throw new Error('invalid review group');
-      return group.reviews;
+      if (group.evidenceSets !== undefined && !Array.isArray(group.evidenceSets)) {
+        throw new Error('invalid shared evidence inventory');
+      }
+      return group.reviews.map((review) => {
+        if (review.evidenceSet === undefined) return review;
+        if (review.evidence !== undefined || !Number.isInteger(review.evidenceSet)
+            || review.evidenceSet < 0 || !Array.isArray(group.evidenceSets?.[review.evidenceSet])) {
+          throw new Error('invalid or ambiguous shared evidence reference');
+        }
+        const { evidenceSet, ...resolved } = review;
+        return { ...resolved, evidence: group.evidenceSets[evidenceSet] };
+      });
     });
   } catch {
     return [];

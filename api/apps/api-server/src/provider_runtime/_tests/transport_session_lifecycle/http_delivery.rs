@@ -376,10 +376,8 @@ async fn detached_http_waiter_is_woken_without_dispatch_while_predecessor_is_liv
     let successor = coordinator.open_http_connection_scope();
     let waiting = waiter(&coordinator, &successor.scope).await;
     drop(successor);
-    assert!(
-        reason(waiter_result(waiting).await.err().unwrap())
-            .contains("transport_session_scope_unknown")
-    );
+    assert!(reason(waiter_result(waiting).await.err().unwrap())
+        .contains("transport_session_scope_unknown"));
     let snapshot = coordinator.safe_snapshot().await;
     assert_eq!(snapshot.sessions[0].state, TransportSessionState::Active);
     assert!(snapshot.sessions[0].inflight);

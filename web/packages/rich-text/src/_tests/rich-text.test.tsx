@@ -1,3 +1,4 @@
+import '@testing-library/jest-dom/vitest';
 import {
   act,
   fireEvent,
@@ -81,12 +82,12 @@ describe('Vditor frame lifecycle', () => {
     const view = render(
       <VditorEditor value="" onChange={vi.fn()} ariaLabel="editor" />
     );
-    expect(screen.getByRole('status').textContent).toContain('编辑器加载中');
+    expect(screen.getByRole('status')).toHaveTextContent('编辑器加载中');
     await mountFrame();
-    expect(screen.getByRole('status')).toBeTruthy();
+    expect(screen.getByRole('status')).toBeInTheDocument();
     await act(async () => reject(new Error('Resource unavailable')));
-    expect(screen.queryByRole('status')).toBeNull();
-    expect(screen.getByRole('alert').textContent).toContain('加载失败');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('加载失败');
     view.unmount();
   });
 
@@ -94,9 +95,11 @@ describe('Vditor frame lifecycle', () => {
     const view = render(
       <VditorEditor value="" onChange={vi.fn()} ariaLabel="editor" />
     );
-    expect(screen.getByRole('status')).toBeTruthy();
+    expect(screen.getByRole('status')).toBeInTheDocument();
     await mountFrame();
-    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    );
     view.unmount();
   });
 
@@ -253,14 +256,14 @@ describe('Vditor frame lifecycle', () => {
     );
     const view = render(<VditorPreview value="old" ariaLabel="reader" />);
     const frame = await mountFrame('reader');
-    expect(screen.getByRole('status').textContent).toContain('正文加载中');
+    expect(screen.getByRole('status')).toHaveTextContent('正文加载中');
     view.rerender(<VditorPreview value="new" ariaLabel="reader" />);
     await waitFor(() => expect(pending).toHaveLength(2));
     await act(async () => pending[0]());
-    expect(screen.getByRole('status')).toBeTruthy();
-    expect(frame.contentDocument?.body.textContent).not.toContain('old');
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(frame.contentDocument?.body?.textContent).not.toContain('old');
     view.unmount();
     await act(async () => pending[1]());
-    expect(frame.contentDocument?.body.textContent ?? '').not.toContain('new');
+    expect(frame.contentDocument?.body?.textContent).not.toContain('new');
   });
 });

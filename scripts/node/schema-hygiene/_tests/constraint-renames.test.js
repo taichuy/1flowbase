@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { collectSchemaInventory } = require('../core.js');
+const { collectSchemaInventory, evaluateSchemaHygiene } = require('../core.js');
 
 function inventory(t, sql) {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'schema-constraint-rename-'));
@@ -72,4 +72,56 @@ test('malformed rename syntax and unrelated unsupported actions remain errors', 
     'unsupported-alter-table-action',
   ]);
   assert.equal(result.tables.find((entry) => entry.name === 'event_rows').primaryKey.name, 'event_pk');
+});
+
+
+test('table rename moves existing inbound and self foreign keys before the old name is reused', (t) => {
+  const result = inventory(t, `
+    create table parent_rows (
+      id uuid primary key,
+      scope_id uuid not null,
+      predecessor_id uuid references parent_rows(id),
+      unique(scope_id, id)
+    );
+    create table child_rows (
+      id uuid primary key,
+      scope_id uuid not null,
+      parent_id uuid not null,
+      constraint child_parent foreign key(scope_id, parent_id)
+        references parent_rows(scope_id, id) on delete cascade
+    );
+    alter table parent_rows rename to retained_parents;
+    create table parent_rows (id uuid primary key);
+    create table later_rows (id uuid primary key, parent_id uuid references parent_rows(id));
+    alter table retained_parents rename to "archived_parents";
+  `);
+  assert.deepEqual(result.parseErrors, []);
+  const child = result.tables.find((table) => table.name === 'child_rows');
+  const archived = result.tables.find((table) => table.name === 'archived_parents');
+  const later = result.tables.find((table) => table.name === 'later_rows');
+  assert.ok(result.tables.some((table) => table.name === 'parent_rows'));
+  assert.deepEqual(child.foreignKeys[0], {
+    name: 'child_parent', columns: ['scope_id', 'parent_id'],
+    references: { table: 'archived_parents', columns: ['scope_id', 'id'] },
+    onDelete: 'cascade', source: 'table',
+  });
+  assert.equal(archived.foreignKeys[0].references.table, 'archived_parents');
+  assert.equal(later.foreignKeys[0].references.table, 'parent_rows');
+
+  const config = { ownedTableContracts: { child_rows: {
+    primaryKey: ['id'], foreignKeys: [{
+      columns: ['scope_id', 'parent_id'], table: 'archived_parents',
+      references: ['scope_id', 'id'], onDelete: 'cascade',
+    }],
+  } } };
+  const ownerErrors = (candidate) => evaluateSchemaHygiene({ inventory: candidate, config })
+    .findings.filter((finding) => finding.table === 'child_rows'
+      && finding.rule === 'owned-table-foreign-key' && finding.severity === 'error');
+  assert.deepEqual(ownerErrors(result), []);
+  // Rebinding the old FK to the new, unrelated relation must be rejected even
+  // though that relation exists under the original SQL name.
+  const wrongOwner = structuredClone(result);
+  wrongOwner.tables.find((table) => table.name === 'child_rows')
+    .foreignKeys[0].references.table = 'parent_rows';
+  assert.equal(ownerErrors(wrongOwner).length, 1);
 });

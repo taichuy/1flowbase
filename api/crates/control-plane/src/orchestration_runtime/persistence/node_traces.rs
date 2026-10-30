@@ -73,10 +73,9 @@ where
             if matches!(
                 node_run.status,
                 domain::NodeRunStatus::WaitingHuman | domain::NodeRunStatus::WaitingCallback
-            ) {
-                if selected_wait == Some(identity.execution_id) {
-                    waiting_node_run = Some(node_run);
-                }
+            ) && selected_wait == Some(identity.execution_id)
+            {
+                waiting_node_run = Some(node_run);
             }
             continue;
         }

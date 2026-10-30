@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 431,
+  "projected_interface_count": 444,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -44,6 +44,12 @@
       "DELETE",
       "/api/console/applications/:id/orchestration/debug-variable-cache",
       "Delete debug variable cache entries"
+    ],
+    [
+      "notifications.instances.delete",
+      "DELETE",
+      "/api/console/communications/instances/:instance_id",
+      "Delete notification instance"
     ],
     [
       "frontstage.pages.delete",
@@ -128,12 +134,6 @@
       "DELETE",
       "/api/console/network-center/routes/:route_id",
       "Delete network egress routes"
-    ],
-    [
-      "notifications.instances.delete",
-      "DELETE",
-      "/api/console/communications/instances/:instance_id",
-      "Delete notification instance"
     ],
     [
       "plugins.families.delete",
@@ -604,6 +604,90 @@
       "Get workflow schedule trigger"
     ],
     [
+      "communications.management.conversations.list",
+      "GET",
+      "/api/console/communications/conversations",
+      "List workspace communication conversations"
+    ],
+    [
+      "communications.management.conversations.messages.list",
+      "GET",
+      "/api/console/communications/conversations/:conversation_id/messages",
+      "Read chronological conversation messages"
+    ],
+    [
+      "notifications.instances.list",
+      "GET",
+      "/api/console/communications/instances",
+      "List notification instances"
+    ],
+    [
+      "notifications.instances.get",
+      "GET",
+      "/api/console/communications/instances/:instance_id",
+      "Get notification instance"
+    ],
+    [
+      "communications.binding.get",
+      "GET",
+      "/api/console/communications/instances/:instance_id/binding",
+      "Read communication binding"
+    ],
+    [
+      "communications.conversations.list",
+      "GET",
+      "/api/console/communications/instances/:instance_id/conversations",
+      "List communication conversations"
+    ],
+    [
+      "communications.files.list",
+      "GET",
+      "/api/console/communications/instances/:instance_id/conversations/:conversation_id/files",
+      "List received communication files"
+    ],
+    [
+      "communications.messages.list",
+      "GET",
+      "/api/console/communications/instances/:instance_id/conversations/:conversation_id/messages",
+      "Read communication history"
+    ],
+    [
+      "communications.files.get",
+      "GET",
+      "/api/console/communications/instances/:instance_id/files/:message_id",
+      "Read a received communication file"
+    ],
+    [
+      "notifications.logs.list",
+      "GET",
+      "/api/console/communications/logs",
+      "List notification send logs"
+    ],
+    [
+      "notifications.logs.get",
+      "GET",
+      "/api/console/communications/logs/:log_id",
+      "Get notification send log"
+    ],
+    [
+      "communications.management.messages.list",
+      "GET",
+      "/api/console/communications/messages",
+      "List workspace received messages"
+    ],
+    [
+      "communications.management.messages.get",
+      "GET",
+      "/api/console/communications/messages/:message_id",
+      "Read a workspace received message"
+    ],
+    [
+      "communications.options.get",
+      "GET",
+      "/api/console/communications/options",
+      "List communication execution options"
+    ],
+    [
       "agent_flow.data_source_options.list",
       "GET",
       "/api/console/data-sources/agent-flow-options",
@@ -751,7 +835,7 @@
       "agent_flow.http_node_proxy_options.list",
       "GET",
       "/api/console/network-center/http-node-proxy-options",
-      "List HTTP node proxy choices"
+      "List agent flow http node proxy options"
     ],
     [
       "network_egress_pools.list",
@@ -776,30 +860,6 @@
       "GET",
       "/api/console/node-contributions",
       "View node contributions"
-    ],
-    [
-      "notifications.instances.list",
-      "GET",
-      "/api/console/communications/instances",
-      "List notification instances"
-    ],
-    [
-      "notifications.instances.get",
-      "GET",
-      "/api/console/communications/instances/:instance_id",
-      "Get notification instance"
-    ],
-    [
-      "notifications.logs.list",
-      "GET",
-      "/api/console/communications/logs",
-      "List notification send logs"
-    ],
-    [
-      "notifications.logs.get",
-      "GET",
-      "/api/console/communications/logs/:log_id",
-      "Get notification send log"
     ],
     [
       "plugins.catalog.view",
@@ -1330,6 +1390,12 @@
       "Update version"
     ],
     [
+      "notifications.instances.update",
+      "PATCH",
+      "/api/console/communications/instances/:instance_id",
+      "Update notification instance"
+    ],
+    [
       "frontstage.pages.update",
       "PATCH",
       "/api/console/frontstage/pages/:page_id",
@@ -1364,12 +1430,6 @@
       "PATCH",
       "/api/console/network-center/routes/:route_id",
       "Update network egress routes"
-    ],
-    [
-      "notifications.instances.update",
-      "PATCH",
-      "/api/console/communications/instances/:instance_id",
-      "Update notification instance"
     ],
     [
       "billing.pricing_rules.update",
@@ -1600,6 +1660,30 @@
       "Restore applications orchestration version"
     ],
     [
+      "notifications.instances.create",
+      "POST",
+      "/api/console/communications/instances",
+      "Create notification instance"
+    ],
+    [
+      "notifications.instances.authorization",
+      "POST",
+      "/api/console/communications/instances/:instance_id/authorization",
+      "Authorize notification instance"
+    ],
+    [
+      "communications.messages.retry",
+      "POST",
+      "/api/console/communications/instances/:instance_id/messages/:message_id/retry",
+      "Retry failed communication processing"
+    ],
+    [
+      "notifications.instances.send",
+      "POST",
+      "/api/console/communications/instances/:instance_id/send",
+      "Send notification"
+    ],
+    [
       "data_sources.secret.rotate",
       "POST",
       "/api/console/data-sources/:data_source_id/secret/rotate",
@@ -1628,6 +1712,12 @@
       "POST",
       "/api/console/frontstage/pages/:page_id/tabs",
       "Create frontstage tabs"
+    ],
+    [
+      "local_commands.execute",
+      "POST",
+      "/api/console/local-commands/execute",
+      "Execute one local shell command"
     ],
     [
       "export_mcp_bundle",
@@ -1826,24 +1916,6 @@
       "POST",
       "/api/console/network-center/routes",
       "Create network egress routes"
-    ],
-    [
-      "notifications.instances.create",
-      "POST",
-      "/api/console/communications/instances",
-      "Create notification instance"
-    ],
-    [
-      "notifications.instances.authorization",
-      "POST",
-      "/api/console/communications/instances/:instance_id/authorization",
-      "Authorize notification instance"
-    ],
-    [
-      "notifications.instances.send",
-      "POST",
-      "/api/console/communications/instances/:instance_id/send",
-      "Send notification"
     ],
     [
       "plugins.families.switch",
@@ -2434,6 +2506,12 @@
       "Replace workflow schedule trigger"
     ],
     [
+      "communications.binding.update",
+      "PUT",
+      "/api/console/communications/instances/:instance_id/binding",
+      "Save communication binding"
+    ],
+    [
       "frontstage.tabs.document.save",
       "PUT",
       "/api/console/frontstage/pages/:page_id/tabs/:tab_id/document",
@@ -2602,5 +2680,5 @@
       "UI management templates default set"
     ]
   ],
-  "evidence": "Six source-proven additions to the prior exact projection: notification send-log list/get from 15c076df491d88bf9824d07232b09ef5475622df and OTLP/Langfuse import/export from 900a2adca9adecfaa26b1bbbc7618883cdb4fd3e. Operation/method/path come from owner route declarations and core_console_operation_specs; summary values remain the static English API-owner values in console_route_assembly. Recipient channel/read-state operations are Authenticated and do not enter this role-configurable projection. Bounded dev merge a72190c9 includes f88bd597c8cfa122e1b79dcc39b58a05f583f51a: the two host-owned Langfuse rows added by f8a779ca1 are now removed, leaving four surviving source-proven additions and exactly 419 role-configurable interfaces. Langfuse export/import belong to managed-plugin contributions and are not core Console projection entries. Frozen official i18n seed bytes and product text remain unchanged. Existing system.branding.get/save declarations add GET/PUT /api/console/settings/system with API-owner summaries Read system settings and Save system settings; pinned official seed bytes remain unchanged."
+  "evidence": "Six source-proven additions to the prior exact projection: notification send-log list/get from 15c076df491d88bf9824d07232b09ef5475622df and OTLP/Langfuse import/export from 900a2adca9adecfaa26b1bbbc7618883cdb4fd3e. Operation/method/path come from owner route declarations and core_console_operation_specs; summary values remain the static English API-owner values in console_route_assembly. Recipient channel/read-state operations are Authenticated and do not enter this role-configurable projection. Bounded dev merge a72190c9 includes f88bd597c8cfa122e1b79dcc39b58a05f583f51a: the two host-owned Langfuse rows added by f8a779ca1 are now removed, leaving four surviving source-proven additions and exactly 419 role-configurable interfaces. Langfuse export/import belong to managed-plugin contributions and are not core Console projection entries. Frozen official i18n seed bytes and product text remain unchanged. Existing system.branding.get/save declarations add GET/PUT /api/console/settings/system with API-owner summaries Read system settings and Save system settings; pinned official seed bytes remain unchanged. 2026-10-30: exact merged registry additionally contains the existing local_commands.execute and agent_flow.http_node_proxy_options.list owner routes; retain all 12 communications contracts, including immutable official-catalog pending coverage."
 }

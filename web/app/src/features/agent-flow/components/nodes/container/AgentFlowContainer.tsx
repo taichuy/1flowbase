@@ -110,30 +110,25 @@ export function AgentFlowContainer({
         style={{ top: 28 }}
         className="agent-flow-node-handle"
       />
-      <div
-        className="agent-flow-container__header"
-        role="button"
-        tabIndex={0}
-        onClick={(event) => {
-          event.stopPropagation();
-          data.onSelectNode(data.nodeId);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
+      <div className="agent-flow-container__header">
+        <button
+          type="button"
+          className="agent-flow-container__select"
+          onClick={(event) => {
+            event.stopPropagation();
             data.onSelectNode(data.nodeId);
-          }
-        }}
-      >
-        <span className="agent-flow-container__icon">
-          {getAgentFlowNodeTypeIcon(data.nodeType)}
-        </span>
-        <span className="agent-flow-container__title">{data.alias}</span>
-        {data.issueCount > 0 ? (
-          <span className="agent-flow-container__issues">
-            {data.issueCount}
+          }}
+        >
+          <span className="agent-flow-container__icon">
+            {getAgentFlowNodeTypeIcon(data.nodeType)}
           </span>
-        ) : null}
+          <span className="agent-flow-container__title">{data.alias}</span>
+          {data.issueCount > 0 ? (
+            <span className="agent-flow-container__issues">
+              {data.issueCount}
+            </span>
+          ) : null}
+        </button>
         <Button
           type="text"
           size="small"
@@ -146,13 +141,7 @@ export function AgentFlowContainer({
           }}
         />
       </div>
-      <div
-        className="agent-flow-container__body"
-        onClick={(event) => {
-          event.stopPropagation();
-          data.onSelectNode(data.nodeId);
-        }}
-      />
+      <div className="agent-flow-container__body" />
       <Source data={data} top={28} />
     </div>
   );
@@ -170,24 +159,21 @@ export function ContainerStart({
   return (
     <div
       className={`agent-flow-container-start${data.emptyContainer ? ' agent-flow-container-start--empty' : ''}${selected ? ' agent-flow-container-start--selected' : ''}`}
-      role="button"
       style={style}
-      tabIndex={0}
-      aria-label={data.alias}
-      onClick={(event) => {
-        event.stopPropagation();
-        data.onSelectNode(data.nodeId);
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          data.onSelectNode(data.nodeId);
-        }
-      }}
     >
-      <span className="agent-flow-container-start__icon">
-        <HomeFilled />
-      </span>
+      <button
+        type="button"
+        className="agent-flow-container-start__select"
+        aria-label={data.alias}
+        onClick={(event) => {
+          event.stopPropagation();
+          data.onSelectNode(data.nodeId);
+        }}
+      >
+        <span className="agent-flow-container-start__icon">
+          <HomeFilled />
+        </span>
+      </button>
       {data.emptyContainer ? (
         <Source data={data} />
       ) : (

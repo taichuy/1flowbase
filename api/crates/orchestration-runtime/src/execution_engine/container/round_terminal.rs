@@ -13,11 +13,14 @@ pub(super) async fn commit_round_terminal(
     index: u64,
     node: &CompiledNode,
     config: &ContainerConfig,
-    output: Value,
-    variables: Map<String, Value>,
-    error_payload: Option<Value>,
+    result: RoundTerminalResult,
     lifecycle: &dyn ExecutionLifecycle,
 ) -> Result<()> {
+    let RoundTerminalResult {
+        output,
+        variables,
+        error_payload,
+    } = result;
     let success = error_payload.is_none();
     let frame = state.frames.get_mut(&frame_id).expect("active frame");
     let identity = frame.identity.clone();
@@ -107,7 +110,23 @@ pub(super) async fn commit_round_terminal(
                 .is_some_and(|expired| expired.0 == frame_id)
         {
             // The failed closure is not admission and remains legal after expiry.
-            return Box::pin(commit_round_terminal(state,frame_id,index,node,config,Value::Null,Map::new(),Some(json!({"error_code":"container_round_timeout","message":"Round deadline expired while awaiting durable result commit"})),lifecycle)).await;
+            return Box::pin(commit_round_terminal(
+                state,
+                frame_id,
+                index,
+                node,
+                config,
+                RoundTerminalResult {
+                    output: Value::Null,
+                    variables: Map::new(),
+                    error_payload: Some(json!({
+                        "error_code": "container_round_timeout",
+                        "message": "Round deadline expired while awaiting durable result commit"
+                    })),
+                },
+                lifecycle,
+            ))
+            .await;
         }
         return Err(error);
     }

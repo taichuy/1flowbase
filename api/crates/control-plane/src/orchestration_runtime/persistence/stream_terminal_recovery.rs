@@ -120,7 +120,7 @@ where
                 return Ok(flow_run);
             }
             domain::FlowRunStatus::WaitingCallback | domain::FlowRunStatus::WaitingHuman => {
-                return Ok(flow_run)
+                return Ok(flow_run);
             }
             domain::FlowRunStatus::Paused => {
                 return Err(anyhow!(

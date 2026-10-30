@@ -55,7 +55,7 @@ L1 复用定向模块测试，L2 复用相关契约/集成与相同构建产物�
 |---|---|
 | `RetainedRuntimeEvents` | 拥有事件队列、字节数、terminal 元数据及派生索引状态；定义于 `api/apps/api-server/src/host_infrastructure/local_runtime_event_stream.rs`。 |
 | `LocalRunEventStream` | 以 ring 锁串行化追加、关闭、裁剪与退休；保留策略及分页位于 `api/apps/api-server/src/host_infrastructure/local_runtime_event_stream/run_event_retention.rs`。 |
-| `RuntimeEventPersistenceBatch` | 拥有待持久化事件和批量字节计数；位于 `api/crates/control-plane/src/orchestration_runtime/runtime_event_persister.rs`。 |
+| `RuntimeEventPersistenceBatch` | 拥有待持久化事件和批量字节计数；位于 `api/crates/control-plane/src/orchestration_runtime/persistence/runtime_event_persister.rs`。 |
 | 定时任务 consumer | 拥有领取后的任务与解析结果，维持执行及 ACK 顺序；位于 `api/apps/api-server/src/workers/workflow_schedule.rs`。 |
 
 `RetainedRuntimeEvents::push` 集中维护追加产生的 bytes、terminal、ephemeral 数量和排序标志，再把事件放入队列。

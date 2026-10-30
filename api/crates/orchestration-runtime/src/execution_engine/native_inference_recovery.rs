@@ -3,13 +3,24 @@ use super::*;
 
 /// Validates the complete possible tail, including error edges, before any invocation.
 pub fn validate_native_inference_recovery_scope(plan: &CompiledPlan, node_id: &str) -> Result<()> {
-    if let Some(node) = plan.nodes.get(node_id).filter(|node| node.container_id.is_some()) {
-        if node.node_type != "llm" || node.llm_runtime.is_none() { bail!("native_recovery_scope_unsupported"); }
+    if let Some(node) = plan
+        .nodes
+        .get(node_id)
+        .filter(|node| node.container_id.is_some())
+    {
+        if node.node_type != "llm" || node.llm_runtime.is_none() {
+            bail!("native_recovery_scope_unsupported");
+        }
         let mut visited = BTreeSet::new();
         let mut owner = node.container_id.as_deref();
         while let Some(id) = owner {
-            if !visited.insert(id) { bail!("native_recovery_scope_invalid"); }
-            let parent = plan.nodes.get(id).ok_or_else(|| anyhow!("native_recovery_scope_invalid"))?;
+            if !visited.insert(id) {
+                bail!("native_recovery_scope_invalid");
+            }
+            let parent = plan
+                .nodes
+                .get(id)
+                .ok_or_else(|| anyhow!("native_recovery_scope_invalid"))?;
             crate::container_contract::ContainerConfig::from_node(parent)?;
             owner = parent.container_id.as_deref();
         }
@@ -103,7 +114,15 @@ where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
     if checkpoint.container_state.is_some() {
-        return container::recover_native_container(plan, checkpoint, node_id, &runtime_context, invoker, lifecycle).await;
+        return container::recover_native_container(
+            plan,
+            checkpoint,
+            node_id,
+            &runtime_context,
+            invoker,
+            lifecycle,
+        )
+        .await;
     }
     let scope = recovery_scope(plan, node_id)?;
     if plan

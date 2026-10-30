@@ -1,0 +1,29 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/agent-flow/components/node-picker/NodePickerPopover.tsx",
+      "rule": "react-doctor/no-static-element-interactions",
+      "sourceSha256": "fbe611acf3d543f6c2c758fc675bade20c5ce9eae38cb9b6589d96f78eccb480",
+      "reason": "The div is a portal event-propagation boundary, not an actionable control: it has no own selection, activation or tab stop. Native button descendants own tab and option actions; wrapping them in a button would create invalid nested controls, and an extra interactive role/tabIndex would add a false focus target. Bubble handlers run after child handlers: click stops only ancestor canvas selection; keydown stops only Enter/Space/four arrows reaching XYFlow selection or movement. Escape and other shortcuts continue to the existing window owner, with its editable-target guard; the boundary never prevents native default actions. The picker test preserves child activation and key routing, the real editor regression proves Escape dismissal, and shortcut tests bind the unchanged window owner. A blanket-keydown variant fails the two preservation regressions.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/agent-flow/_tests/node-picker-popover.test.tsx",
+          "sha256": "2ebdbf9c570122a7b1d28efb0692c6e6ce9685e7a046d9c443b6a797772ea014"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/editor/agent-flow-editor-page.test.tsx",
+          "sha256": "f9200e58b0635a7ddcf51cf476f0071bf5d0c58fc217bf8339b41c31efa2d9de"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/editor/editor-shortcuts.test.tsx",
+          "sha256": "8d088e4428217fdbb5a0f009be9b1918b8e7ff5f99b0f791175b132d0f8482ce"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/hooks/interactions/use-editor-shortcuts.ts",
+          "sha256": "7709d506d810a87fe1c9c78412a487aef2168d7da074a55ed27230f2ed17f5d9"
+        }
+      ]
+    }
+  ]
+}

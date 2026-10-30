@@ -25,3 +25,17 @@ use frame_terminal::commit_frame_terminal;
 
 mod round_terminal;
 use round_terminal::commit_round_terminal;
+
+/// The borrowed checkpoint cursor at entry to a container node.
+pub(crate) struct ContainerEntryPosition<'a> {
+    pub(super) pool: &'a serde_json::Map<String, serde_json::Value>,
+    pub(super) index: usize,
+    pub(super) active: &'a std::collections::BTreeSet<String>,
+}
+
+/// Fields staged together by the round terminal transaction owner.
+struct RoundTerminalResult {
+    output: serde_json::Value,
+    variables: serde_json::Map<String, serde_json::Value>,
+    error_payload: Option<serde_json::Value>,
+}

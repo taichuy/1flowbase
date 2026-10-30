@@ -311,7 +311,7 @@ fn apply_from(
         "New package overlaps reserved update workspace"
     );
     files::require_space(
-        target.parent().unwrap(),
+        target.parent().context("Invalid installation location")?,
         files::size(&source)?.saturating_mul(2),
     )?;
     fresh_workspace(&work)?;

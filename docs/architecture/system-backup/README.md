@@ -10,6 +10,12 @@
 
 供应商会话归属 `model_provider_session_bindings` 是 `system.model-providers` 的持久运行数据，不属于配置。仅配置备份不包含它；选择数据时保存和恢复精确 scope、实例归属及创建时间。实例已删除时仍保留归属，不因缺实例而丢弃；恢复保留目标独有绑定并支持 rollback，后续正常 get-or-bind 仍不能覆盖恢复的原实例。
 
+## Identity 列恢复
+
+`selective/identity.rs` 从目标 PostgreSQL catalog 发现本次选择表的 identity 列和所属序列。恢复事务锁定表与序列，临时将 ALWAYS 列切为 BY DEFAULT，沿用原 upsert 恢复精确列值；延迟约束完成检查后恢复原生成模式。Prepared 的 commit / rollback 同时决定行、生成模式与序列状态，不能提前提交模式变更或用非事务性的 setval 替代。
+
+序列恢复按增量方向取现有分配高水位与完整目标表极值的较大进度，再约束到原序列边界。事务内 RESTART 配合临时 CACHE 1 标记已占用边界，随后恢复原 CACHE，避免重放不断预留新批次。保留正负增量、原生 CYCLE / exhaustion 与目标独有行，不重编号归档身份、不扩大归档格式。非循环序列的后续分配越过已恢复极值或正常耗尽；循环序列保留原有回绕及唯一约束行为，不承诺无间隙或并发任意显式 identity / schema DDL 的序列化结果。
+
 ## 历史迁移验收
 
 历史迁移 fixture 固定迁移前的 schema，使用当时存在的 workspace 行契约建立初始数据。当前 bootstrap 会为新增 feature 建默认实例，因此不能用于通知表尚不存在的历史数据库；测试通过 `postgres-test-support::insert_historical_workspace` 只插入基础行，不补未来 migration、不放宽 rollback 断言。正式 migrations 的版本、顺序和内容保持不变。

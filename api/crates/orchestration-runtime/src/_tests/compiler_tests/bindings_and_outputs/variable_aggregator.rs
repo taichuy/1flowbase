@@ -483,3 +483,133 @@ fn answer_aggregator_stream_sources_preserve_branch_reachability_and_exclusivity
             .any(|issue| issue.code == CompileIssueCode::InvalidAnswerPresentationOrder));
     }
 }
+
+#[test]
+fn compile_aggregator_declarations_are_exact_and_only_validate_references() {
+    let flow_id = Uuid::nil();
+    let mut document = sample_document(flow_id);
+    document["variables"] = json!({"conversation": [
+        {"name": "unused"}, {"name": "unused", "valueType": "unknown"},
+        {"name": "approved", "valueType": "boolean"}, null, {"name": 42}
+    ]});
+    set_variable_aggregator_fixture(
+        &mut document,
+        json!([
+            {"key": "value", "valueType": "string", "candidates": [
+                ["sys", "nested", "value"], ["sys", "nested", "value"]
+            ]},
+            {"key": "approved", "valueType": "boolean", "candidates": [
+                ["conversation", "approved"], ["conversation", "approved"]
+            ]}
+        ]),
+        json!([
+            {"key": "value", "title": "value", "valueType": "string"},
+            {"key": "approved", "title": "approved", "valueType": "boolean"}
+        ]),
+    );
+    let mut context = compile_context();
+    context.run_level_variables = vec![
+        FlowCompileRunLevelVariable {
+            selector: vec!["sys".into(), "unused".into()],
+            value_type: "".into(),
+        },
+        FlowCompileRunLevelVariable {
+            selector: vec!["sys".into(), "unused".into()],
+            value_type: "unknown".into(),
+        },
+        FlowCompileRunLevelVariable {
+            selector: vec!["sys".into(), "nested".into()],
+            value_type: "number".into(),
+        },
+        FlowCompileRunLevelVariable {
+            selector: vec!["sys".into(), "nested".into(), "value".into()],
+            value_type: "string".into(),
+        },
+    ];
+    let plan = FlowCompiler::compile(flow_id, "declarations", &document, &context)
+        .expect("unreferenced bad declarations must not reject valid exact selectors");
+    assert_eq!(
+        plan.nodes["node-aggregator"].bindings["groups"].selector_paths,
+        vec![
+            vec!["sys", "nested", "value"],
+            vec!["sys", "nested", "value"],
+            vec!["conversation", "approved"],
+            vec!["conversation", "approved"],
+        ]
+    );
+    assert_eq!(
+        plan.nodes["node-aggregator"]
+            .outputs
+            .iter()
+            .map(|output| (
+                output.key.as_str(),
+                output.value_type.as_str(),
+                output.selector.clone()
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            ("value", "string", vec!["value".to_string()]),
+            ("approved", "boolean", vec!["approved".to_string()]),
+        ]
+    );
+}
+
+#[test]
+fn compile_aggregator_declaration_diagnostics_preserve_duplicate_and_candidate_priority() {
+    let cases = [
+        (json!(["sys", "nested", "value"]), json!([]),
+            vec!["", "number"], "run-level selector sys.nested.value has duplicate backend type declarations"),
+        (json!(["conversation", "value"]), json!([
+            {"name": "value"}, {"name": "value", "valueType": "string"}
+        ]), vec![], "conversation selector conversation.value has duplicate type declarations"),
+        (json!(["conversation", "value"]), json!([
+            {"name": "value", "valueType": "   "}
+        ]), vec![], "conversation selector conversation.value is missing its declared valueType"),
+        (json!(["conversation", "value", "child"]), json!([
+            {"name": "value", "valueType": "string"}, {"name": "value"}
+        ]), vec![], "conversation selector conversation.value.child must reference one declared variable"),
+        (json!(["sys", "nested", "value", "child"]), json!([]),
+            vec!["string"], "run-level selector sys.nested.value.child is not declared by the backend compile context"),
+    ];
+    for (selector, conversation, types, reason) in cases {
+        let flow_id = Uuid::nil();
+        let mut document = sample_document(flow_id);
+        document["variables"] = json!({"conversation": conversation});
+        set_variable_aggregator_fixture(
+            &mut document,
+            json!([{
+                "key": "value", "valueType": "string", "candidates": [selector, ["env", "later_missing"]]
+            }]),
+            json!([{"key": "value", "title": "value", "valueType": "string"}]),
+        );
+        let mut context = compile_context();
+        context.run_level_variables = types
+            .into_iter()
+            .map(|value_type| FlowCompileRunLevelVariable {
+                selector: vec!["sys".into(), "nested".into(), "value".into()],
+                value_type: value_type.into(),
+            })
+            .collect();
+        let error = FlowCompiler::compile(flow_id, "declarations", &document, &context)
+            .expect_err("first candidate declaration error must win");
+        let diagnostics = &error
+            .downcast_ref::<orchestration_runtime::compiler::FlowValidationError>()
+            .expect("compiler must retain structured diagnostics")
+            .diagnostics;
+        let selector_name = selector
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|part| part.as_str().unwrap())
+            .collect::<Vec<_>>()
+            .join(".");
+        assert_eq!(
+            serde_json::to_value(diagnostics).unwrap(),
+            json!([{
+                "node_id": "node-aggregator", "code": "invalid_node_configuration",
+                "field_path": "/bindings/groups/value/0/candidates/0",
+                "message": format!("node node-aggregator variable_aggregator group value selector {selector_name} has no valid declared type: {reason}")
+            }])
+        );
+    }
+}

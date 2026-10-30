@@ -860,8 +860,34 @@ describe('AgentFlowCanvas interactions', () => {
     );
   });
 
-  test('does not close node detail when clicking the pane after a node is selected', () => {
-    renderCanvas();
+  test('clears the selected edge when clicking the pane', () => {
+    const { getState } = renderCanvas();
+
+    act(() => {
+      latestReactFlowProps?.onEdgeClick?.(null, {
+        id: 'edge-llm-answer'
+      });
+    });
+    expect(getState().selectedEdgeId).toBe('edge-llm-answer');
+    expect(latestReactFlowProps?.onPaneClick).toBeTypeOf('function');
+
+    act(() => {
+      latestReactFlowProps?.onPaneClick?.();
+    });
+
+    expect(getState().selectedEdgeId).toBeNull();
+    expect(latestReactFlowProps?.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'edge-llm-answer',
+          selected: false
+        })
+      ])
+    );
+  });
+
+  test('clears the selected node when clicking the pane', () => {
+    const { getState } = renderCanvas();
 
     const llmNode = latestReactFlowProps?.nodes?.find(
       (node) => node.id === 'node-llm'
@@ -872,6 +898,15 @@ describe('AgentFlowCanvas interactions', () => {
       llmNode?.data?.onSelectNode?.('node-llm');
     });
 
-    expect(latestReactFlowProps?.onPaneClick).toBeUndefined();
+    expect(getState().selectedNodeId).toBe('node-llm');
+    expect(latestReactFlowProps?.onPaneClick).toBeTypeOf('function');
+
+    act(() => {
+      latestReactFlowProps?.onPaneClick?.();
+    });
+
+    expect(getState().selectedNodeId).toBeNull();
+    expect(getState().selectedEdgeId).toBeNull();
+    expect(getState().nodePickerState.open).toBe(false);
   });
 });

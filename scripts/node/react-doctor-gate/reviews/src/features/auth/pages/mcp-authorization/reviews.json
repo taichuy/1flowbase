@@ -1,19 +1,22 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/auth/_tests/mcp-authorization/mcp-authorize-page.test.tsx","sha256":"9cc54e1c689e096a59dfb8324a7dd55cd8adedbb81fffabdc0c369679856587e"},{"file":"web/app/src/features/auth/api/mcp-oauth.ts","sha256":"4a8ca6fb7f88a88d63da9c4043865de073082645b77ff2d93f460fe4696ef333"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/auth/pages/mcp-authorization/McpAuthorizePage.tsx",
       "rule": "react-doctor/no-cascading-set-state",
       "sourceSha256": "c3ac864bf1f05aaf1fe892b39268763b3daab168666f073ba9c1d211a1c65d21",
       "reason": "McpAuthorizePage 加载由 requestId/origin 驱动，AbortController+active guard；批准/拒绝独立事件用 busy/submitting。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。",
-      "evidence": [{"file":"web/app/src/features/auth/_tests/mcp-authorization/mcp-authorize-page.test.tsx","sha256":"9cc54e1c689e096a59dfb8324a7dd55cd8adedbb81fffabdc0c369679856587e"}, {"file":"web/app/src/features/auth/api/mcp-oauth.ts","sha256":"4a8ca6fb7f88a88d63da9c4043865de073082645b77ff2d93f460fe4696ef333"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/auth/pages/mcp-authorization/McpAuthorizePage.tsx",
       "rule": "react-doctor/prefer-useReducer",
       "sourceSha256": "c3ac864bf1f05aaf1fe892b39268763b3daab168666f073ba9c1d211a1c65d21",
       "reason": "McpAuthorizePage 加载由 requestId/origin 驱动，AbortController+active guard；批准/拒绝独立事件用 busy/submitting。 职责属于同一资源或组件生命周期，独立草稿/异步状态没有应合为单一字段的不变量；同步 setters 由 React19 batching，行数或 setter 数本身不能证明额外 render。",
-      "evidence": [{"file":"web/app/src/features/auth/_tests/mcp-authorization/mcp-authorize-page.test.tsx","sha256":"9cc54e1c689e096a59dfb8324a7dd55cd8adedbb81fffabdc0c369679856587e"}, {"file":"web/app/src/features/auth/api/mcp-oauth.ts","sha256":"4a8ca6fb7f88a88d63da9c4043865de073082645b77ff2d93f460fe4696ef333"}]
+      "evidenceSet": 0
     }
   ]
 }

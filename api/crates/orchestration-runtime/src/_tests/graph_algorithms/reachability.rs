@@ -32,11 +32,21 @@ fn borrowed_reachability_matches_non_reflexive_transitive_closure() {
                     }
                 }
             }
-            for i in 0..=n {
-                for j in 0..=n {
+            let missing_row = vec![false; n];
+            for (i, row) in closure
+                .iter()
+                .chain(std::iter::once(&missing_row))
+                .enumerate()
+            {
+                for (j, reachable) in row
+                    .iter()
+                    .copied()
+                    .chain(std::iter::once(false))
+                    .enumerate()
+                {
                     assert_eq!(
                         node_depends_on(&nodes, &i.to_string(), &j.to_string()),
-                        i < n && j < n && closure[i][j],
+                        reachable,
                         "n={n} edges={bits:b} query={i}->{j}",
                     );
                     checks += 1;

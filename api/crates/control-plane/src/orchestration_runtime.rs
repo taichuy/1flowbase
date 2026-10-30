@@ -69,9 +69,11 @@ mod payloads;
 mod persistence;
 mod provider_invoker;
 mod provider_transport;
+#[path = "orchestration_runtime/persistence/runtime_event_persister.rs"]
 mod runtime_event_persister;
 pub(crate) use runtime_event_persister::RUNTIME_EVENT_BATCH_MAX_DELAY;
 pub mod scheduler_admission;
+#[path = "orchestration_runtime/persistence/stream_terminal_recovery.rs"]
 mod stream_terminal_recovery;
 pub mod trace_projection;
 

@@ -752,6 +752,24 @@ fn readable_resource_catalog() -> domain::McpCatalogSnapshot {
     catalog
 }
 
+// Full dispatch refreshes package activation and role authorization from the durable store.
+// Keep the managed test host alive; the lazy media fixture only supports direct `call` tests.
+async fn resource_dispatch_fixture() -> (
+    Arc<crate::app_state::ApiState>,
+    RuntimeInternalToolInvokerDependencies,
+) {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let dependencies = RuntimeInternalToolInvokerDependencies::new(
+        state.store.clone(),
+        Arc::new(storage_ephemeral::MokaCacheStore::new(
+            "mcp-resource-dispatch-fixture",
+            1024,
+        )),
+        String::new(),
+    );
+    (state, dependencies)
+}
+
 #[tokio::test]
 async fn resource_read_dispatch_reexecutes_once_and_retains_requested_uri_and_complete_blob() {
     use base64::Engine;
@@ -761,7 +779,7 @@ async fn resource_read_dispatch_reexecutes_once_and_retains_requested_uri_and_co
         value: json!({"uri":"file:///tmp/file.bin","name":"file.bin","mime":"application/octet-stream","blob":data,"metadata":{"size":300000}}),
         calls: Default::default(),
     };
-    let dependencies = media_fixture_dependencies();
+    let (_state, dependencies) = resource_dispatch_fixture().await;
     let interfaces = media_fixture_interfaces();
     let actor =
         domain::ActorContext::root(uuid::Uuid::from_u128(10), uuid::Uuid::from_u128(10), "root");
@@ -877,7 +895,7 @@ async fn stale_or_unauthorized_resource_reads_reject_before_interface_dispatch()
         resource_uri: "file:///tmp/file.bin".into(),
     });
     let uri = reference.encode().unwrap();
-    let dependencies = media_fixture_dependencies();
+    let (_state, dependencies) = resource_dispatch_fixture().await;
     let interfaces = media_fixture_interfaces();
     let dispatch_port = MediaFixtureDispatch {
         value: json!({}),

@@ -1,33 +1,36 @@
 {
   "toolPackage": "react-doctor@0.2.16",
+  "evidenceSets": [
+    [{"file":"web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx","sha256":"962dc07ae4252746628694d67d9913de3c84c2754c72b9e8eb805b59c4a19207"},{"file":"web/app/src/features/settings/components/model-provider-request-logs/_tests/ModelProviderRequestLogsPanel.test.tsx","sha256":"753d0e249027e6c4ab61c89cb7c08d967809e5f323ae8885d05103a4c7afdb81"},{"file":"web/app/src/features/settings/pages/settings-page/ModelProviderSettingsTabs.tsx","sha256":"789c8a6b0bf1c7f1c636fdf47decff9200ceb33ce11432dd5f8ff8980395d54e"}]
+  ],
   "reviews": [
     {
       "file": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx",
       "rule": "react-doctor/jsx-no-jsx-as-prop",
       "sourceSha256": "962dc07ae4252746628694d67d9913de3c84c2754c72b9e8eb805b59c4a19207",
       "reason": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx:480（react-doctor/jsx-no-jsx-as-prop）：JSX 作为 antd/共享布局的 title/toolbar/emptyText/indicator slot 是该组件的公开 ReactNode 合同。节点被 React 正常按 type/key 对账，创建 element 不等于重挂载或完整子树重算；调用方本次状态改变本来也要更新 slot 内容，不能无依赖地 hoist 活数据。 web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx:493（react-doctor/jsx-no-jsx-as-prop）：JSX 作为 antd/共享布局的 title/toolbar/emptyText/indicator slot 是该组件的公开 ReactNode 合同。节点被 React 正常按 type/key 对账，创建 element 不等于重挂载或完整子树重算；调用方本次状态改变本来也要更新 slot 内容，不能无依赖地 hoist 活数据。",
-      "evidence": [{"file": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx", "sha256": "962dc07ae4252746628694d67d9913de3c84c2754c72b9e8eb805b59c4a19207"}, {"file": "web/app/src/features/settings/components/model-provider-request-logs/_tests/ModelProviderRequestLogsPanel.test.tsx", "sha256": "753d0e249027e6c4ab61c89cb7c08d967809e5f323ae8885d05103a4c7afdb81"}, {"file": "web/app/src/features/settings/pages/settings-page/ModelProviderSettingsTabs.tsx", "sha256": "789c8a6b0bf1c7f1c636fdf47decff9200ceb33ce11432dd5f8ff8980395d54e"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx",
       "rule": "react-doctor/no-giant-component",
       "sourceSha256": "962dc07ae4252746628694d67d9913de3c84c2754c72b9e8eb805b59c4a19207",
       "reason": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx:109（react-doctor/no-giant-component）：ModelProviderRequestLogsPanel 管理一个 request logs 查询的分页/过滤草稿、详情 dialog 与展示开关，各状态具有独立用户事件；不存在串行 effect 导致14轮 render 的证据。query/client 和详情组件已分离，规则计数不能要求合并成一个不可区分的 state object。",
-      "evidence": [{"file": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx", "sha256": "962dc07ae4252746628694d67d9913de3c84c2754c72b9e8eb805b59c4a19207"}, {"file": "web/app/src/features/settings/components/model-provider-request-logs/_tests/ModelProviderRequestLogsPanel.test.tsx", "sha256": "753d0e249027e6c4ab61c89cb7c08d967809e5f323ae8885d05103a4c7afdb81"}, {"file": "web/app/src/features/settings/pages/settings-page/ModelProviderSettingsTabs.tsx", "sha256": "789c8a6b0bf1c7f1c636fdf47decff9200ceb33ce11432dd5f8ff8980395d54e"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx",
       "rule": "react-doctor/no-inline-exhaustive-style",
       "sourceSha256": "962dc07ae4252746628694d67d9913de3c84c2754c72b9e8eb805b59c4a19207",
       "reason": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx:674（react-doctor/no-inline-exhaustive-style）：inline style 用于本页面单个预览/日志布局的具体样式，未作为 useMemo/useEffect dependency，也未定义跨主题或 .ant-* 递归覆盖；属性数量不证明组件重挂载或渲染错误。共享 token/样式归属仍由现有 feature owner 控制，不能仅凭9项计数要求全局 CSS 改动。",
-      "evidence": [{"file": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx", "sha256": "962dc07ae4252746628694d67d9913de3c84c2754c72b9e8eb805b59c4a19207"}, {"file": "web/app/src/features/settings/components/model-provider-request-logs/_tests/ModelProviderRequestLogsPanel.test.tsx", "sha256": "753d0e249027e6c4ab61c89cb7c08d967809e5f323ae8885d05103a4c7afdb81"}, {"file": "web/app/src/features/settings/pages/settings-page/ModelProviderSettingsTabs.tsx", "sha256": "789c8a6b0bf1c7f1c636fdf47decff9200ceb33ce11432dd5f8ff8980395d54e"}]
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx",
       "rule": "react-doctor/prefer-useReducer",
       "sourceSha256": "962dc07ae4252746628694d67d9913de3c84c2754c72b9e8eb805b59c4a19207",
       "reason": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx:109（react-doctor/prefer-useReducer）：ModelProviderRequestLogsPanel 管理一个 request logs 查询的分页/过滤草稿、详情 dialog 与展示开关，各状态具有独立用户事件；不存在串行 effect 导致14轮 render 的证据。query/client 和详情组件已分离，规则计数不能要求合并成一个不可区分的 state object。",
-      "evidence": [{"file": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx", "sha256": "962dc07ae4252746628694d67d9913de3c84c2754c72b9e8eb805b59c4a19207"}, {"file": "web/app/src/features/settings/components/model-provider-request-logs/_tests/ModelProviderRequestLogsPanel.test.tsx", "sha256": "753d0e249027e6c4ab61c89cb7c08d967809e5f323ae8885d05103a4c7afdb81"}, {"file": "web/app/src/features/settings/pages/settings-page/ModelProviderSettingsTabs.tsx", "sha256": "789c8a6b0bf1c7f1c636fdf47decff9200ceb33ce11432dd5f8ff8980395d54e"}]
+      "evidenceSet": 0
     }
   ]
 }

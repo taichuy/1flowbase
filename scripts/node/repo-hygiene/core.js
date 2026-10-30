@@ -493,14 +493,12 @@ function scanSourceFile({ relativePath, content, today = new Date().toISOString(
   const lines = content.split(/\r?\n/u);
   const findings = [];
   const testPath = isTestPath(relativePath);
-  const structuralLines = testPath
-    ? lines.map((line) => stripStringLiterals(line))
-    : [];
+  const structuralLines = testPath ? lines.map(stripStringLiterals) : [];
   let debtMarkerCommentState = { inBlockComment: false };
 
   lines.forEach((line, index) => {
     const lineNumber = index + 1;
-    const strippedLine = stripStringLiterals(line);
+    const strippedLine = testPath ? structuralLines[index] : stripStringLiterals(line);
     const debtScanText = extractDebtMarkerScanText({
       line,
       strippedLine,

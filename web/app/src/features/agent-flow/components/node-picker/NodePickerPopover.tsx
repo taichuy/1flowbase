@@ -180,7 +180,21 @@ export function NodePickerPopover({
       placement={placement}
       onOpenChange={onOpenChange}
       content={
-        <div className="agent-flow-node-picker">
+        <div
+          className="agent-flow-node-picker"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            switch (event.key) {
+              case 'Enter':
+              case ' ':
+              case 'ArrowUp':
+              case 'ArrowDown':
+              case 'ArrowLeft':
+              case 'ArrowRight':
+                event.stopPropagation();
+            }
+          }}
+        >
           <div className="agent-flow-node-picker__header">
             <div
               aria-label={i18nText('agentFlow', 'auto.node_source')}

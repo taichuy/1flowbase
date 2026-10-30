@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 import { NodePickerPopover } from '../components/node-picker/NodePickerPopover';
@@ -365,6 +365,84 @@ describe('NodePickerPopover', () => {
     fireEvent.click(screen.getByRole('button', { name: '在 LLM 后新增节点' }));
 
     expect(handleClick).not.toHaveBeenCalled();
+  });
+
+  test('owns portal interactions without selecting the surrounding canvas node', async () => {
+    const selectNode = vi.fn();
+    const canvasKeyDown = vi.fn();
+    const onOpenChange = vi.fn();
+    const onPickNode = vi.fn();
+    render(
+      <div onClick={selectNode} onKeyDown={canvasKeyDown}>
+        <NodePickerPopover
+          ariaLabel="新增节点"
+          open
+          options={[...agentBuiltinOptions, ...pluginOptions]}
+          onOpenChange={onOpenChange}
+          onPickNode={onPickNode}
+        />
+        <button type="button">画布节点</button>
+      </div>
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: '扩展' }));
+    await waitFor(() =>
+      expect(screen.getByRole('menuitem', { name: 'OpenAI Prompt' })).toBeVisible()
+    );
+    const search = screen.getByRole('textbox', { name: '搜索节点' });
+    fireEvent.click(search);
+    fireEvent.change(search, { target: { value: 'OpenAI' } });
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(selectNode).not.toHaveBeenCalled();
+
+    const builtinTab = screen.getByRole('tab', { name: '内置' });
+    await act(async () => builtinTab.focus());
+    expect(fireEvent.keyDown(builtinTab, { key: 'Enter' })).toBe(true);
+    fireEvent.click(builtinTab, { detail: 0 });
+    expect(builtinTab).toHaveAttribute('aria-selected', 'true');
+    const pluginTab = screen.getByRole('tab', { name: '扩展' });
+    await act(async () => pluginTab.focus());
+    expect(fireEvent.keyDown(pluginTab, { key: ' ' })).toBe(true);
+    fireEvent.click(pluginTab, { detail: 0 });
+    expect(pluginTab).toHaveAttribute('aria-selected', 'true');
+    expect(fireEvent.keyDown(pluginTab, { key: 'ArrowRight' })).toBe(true);
+    expect(canvasKeyDown).not.toHaveBeenCalled();
+    expect(selectNode).not.toHaveBeenCalled();
+
+    const item = screen.getByRole('menuitem', { name: 'OpenAI Prompt' });
+    expect(fireEvent.keyDown(item, { key: 'Enter' })).toBe(true);
+    fireEvent.click(item, { detail: 0 });
+    expect(onPickNode).toHaveBeenCalledExactlyOnceWith(pluginOptions[0]);
+    expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+    expect(selectNode).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '画布节点' }));
+    expect(selectNode).toHaveBeenCalledTimes(1);
+  });
+
+  test('preserves canvas dismissal and history shortcuts from picker controls', () => {
+    const canvasKeyDown = vi.fn();
+    render(
+      <div onKeyDown={canvasKeyDown}>
+        <NodePickerPopover
+          ariaLabel="新增节点"
+          open
+          options={agentBuiltinOptions}
+          onOpenChange={vi.fn()}
+          onPickNode={vi.fn()}
+        />
+      </div>
+    );
+    const tab = screen.getByRole('tab', { name: '内置' });
+    for (const key of ['Escape', 'Delete', 'Backspace', 'Tab', 'z', 'y', 'c', 'v']) {
+      expect(fireEvent.keyDown(tab, { key, ctrlKey: key.length === 1 })).toBe(true);
+      expect(canvasKeyDown).toHaveBeenLastCalledWith(expect.objectContaining({ key }));
+    }
+    expect(canvasKeyDown).toHaveBeenCalledTimes(8);
+    for (const key of ['Enter', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+      expect(fireEvent.keyDown(tab, { key })).toBe(true);
+    }
+    expect(canvasKeyDown).toHaveBeenCalledTimes(8);
   });
 
   test('renders plugin contribution entries and disables missing dependencies', () => {

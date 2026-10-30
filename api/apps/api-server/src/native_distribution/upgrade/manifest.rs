@@ -67,7 +67,8 @@ impl Manifest {
                 Path::new(name)
                     .components()
                     .all(|p| matches!(p, Component::Normal(_)))
-                    && ROOTS.contains(&name.split('/').next().unwrap()),
+                    && ROOTS
+                        .contains(&name.split_once('/').map_or(name.as_str(), |(root, _)| root)),
                 "Unmanaged manifest path: {name}"
             );
             ensure!(
@@ -96,7 +97,11 @@ impl Manifest {
     pub fn roots(&self) -> BTreeSet<String> {
         self.files
             .keys()
-            .map(|name| name.split('/').next().unwrap().to_owned())
+            .map(|name| {
+                name.split_once('/')
+                    .map_or(name.as_str(), |(root, _)| root)
+                    .to_owned()
+            })
             .chain([NAME.to_owned()])
             .collect()
     }
@@ -108,7 +113,7 @@ impl Manifest {
                 "Not a regular package file: {name}"
             );
             // Checking ancestors also prevents an apparently regular file under a symlink.
-            let mut ancestor = file.parent().unwrap();
+            let mut ancestor = file.parent().context("Invalid package file path")?;
             while ancestor != root {
                 ensure!(
                     !fs::symlink_metadata(ancestor)?.file_type().is_symlink(),

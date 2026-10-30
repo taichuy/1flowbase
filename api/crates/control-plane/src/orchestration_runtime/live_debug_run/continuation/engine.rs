@@ -73,7 +73,7 @@ where
             .container_native_recovery_started(flow_run.id)
             .await?;
     let mut recovery_snapshot =
-        super::native_recovery::load_snapshot(&service.repository, &flow_run, &mut compiled_plan)
+        super::native_recovery::load_snapshot(&service.repository, flow_run, &mut compiled_plan)
             .await?;
     if has_containers && (recovery_snapshot.is_none() || native_recovery_started) {
         if let Some(state) = service
@@ -105,7 +105,7 @@ where
     }
     inject_system_variables(
         &mut variable_pool,
-        &flow_run,
+        flow_run,
         application.application_type,
         compiled_plan_start_node_id(&compiled_plan),
     );
@@ -147,7 +147,7 @@ where
         None => service.runtime_invoker(application.workspace_id),
     }
     .for_flow_run(flow_run.id)
-    .with_provider_session_scope(&flow_run)
+    .with_provider_session_scope(flow_run)
     .with_flow_execution_context(flow_execution_context.clone())
     .with_provider_transport_payload(provider_transport_payload)
     .with_transport_connection_scope_override(transport_connection_scope)

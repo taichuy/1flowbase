@@ -9,9 +9,9 @@ import {
 
 export const CONTAINER_PADDING = 32;
 export const CONTAINER_CONTENT_TOP = 88;
-export const CONTAINER_MIN_WIDTH = 560;
-export const CONTAINER_MIN_HEIGHT = 280;
-export const CONTAINER_START_SIZE = 40;
+const CONTAINER_MIN_WIDTH = 560;
+const CONTAINER_MIN_HEIGHT = 280;
+const CONTAINER_START_SIZE = 40;
 
 export function isContainerNode(node: Pick<FlowNodeDocument, 'type'>) {
   return node.type === 'loop' || node.type === 'iteration';

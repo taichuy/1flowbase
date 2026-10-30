@@ -98,6 +98,7 @@ where
 }
 
 #[cfg(test)]
+#[path = "../_tests/application_public_api/test_support/mod.rs"]
 mod test_support;
 
 #[cfg(test)]

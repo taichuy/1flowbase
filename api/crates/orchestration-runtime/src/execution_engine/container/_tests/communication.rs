@@ -174,18 +174,20 @@ async fn communication_body_llms_complete_per_round_and_only_root_is_retained() 
         outcome.variable_pool["loop"]["result"],
         json!(["round-0", "round-1"])
     );
-    let completed = ledger.completed.lock().unwrap();
-    assert_eq!(
-        completed
-            .iter()
-            .filter(|id| id.node_id == "body_llm")
-            .count(),
-        2
-    );
-    assert!(
-        !completed.iter().any(|id| id.node_id == "final_llm"),
-        "root final candidate keeps its existing terminal owner"
-    );
+    {
+        let completed = ledger.completed.lock().unwrap();
+        assert_eq!(
+            completed
+                .iter()
+                .filter(|id| id.node_id == "body_llm")
+                .count(),
+            2
+        );
+        assert!(
+            !completed.iter().any(|id| id.node_id == "final_llm"),
+            "root final candidate keeps its existing terminal owner"
+        );
+    }
     let checkpoint = turn.checkpoint.lock().unwrap().clone().unwrap();
     assert_eq!(checkpoint["main_node_id"], json!("final_llm"));
     assert_eq!(

@@ -25,7 +25,7 @@ mod runtime_events;
 mod session_binding;
 mod stream_timing;
 pub(super) use failover_queue::freeze_failover_queue_routes;
-use stream_timing::{ProviderStreamTiming, serialized_frame_size};
+use stream_timing::{serialized_frame_size, ProviderStreamTiming};
 
 const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 const RESPONSES_WEBSOCKET_PREWARM_MAX_MS: i64 = 30_000;
@@ -649,7 +649,7 @@ where
         input: &mut ProviderInvocationInput,
     ) -> Result<()> {
         use orchestration_runtime::execution_engine::internal_compaction::{
-            POLICY_KEY, SUMMARY_KEY, policy_enabled,
+            policy_enabled, POLICY_KEY, SUMMARY_KEY,
         };
         if input.run_context.get(SUMMARY_KEY).and_then(Value::as_bool) == Some(true) {
             // A host summary is a new semantic Generate, never a replay of the

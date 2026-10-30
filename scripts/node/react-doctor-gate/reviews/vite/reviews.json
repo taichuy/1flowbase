@@ -5,8 +5,8 @@
       "file": "web/app/vite/dev-runtime.ts",
       "rule": "react-doctor/async-await-in-loop",
       "sourceSha256": "ce4f288569437405cd9b1becdb2b80d17e14e9573534a8262e47ae422e496bef",
-      "reason": "web/app/vite/dev-runtime.ts:244（react-doctor/async-await-in-loop）：while 中 await 是限时租约等待/开发缓存 ready 重试；下一轮条件依赖上一轮等待后时间或 cache 状态，存在 abort/generation/timeout 边界。并行 Promise.all 无法表达该轮询与等待顺序，可能忙循环或突破超时资源控制。",
-      "evidence": [{"file": "web/app/vite.config.ts", "sha256": "0f7aef66fae010dba23916b38dcb4f1eada1b917d5b2385db7067cb19871666f"}, {"file": "web/app/vite/_tests/dev-generation-cache.test.ts", "sha256": "0f767f71fba7f2e4d307dfcc286be90fde4ce1df893d21f9c78255e062e6d0ed"}, {"file": "web/app/vite/_tests/dev-runtime.test.ts", "sha256": "ee3cc6f4ee80d0741aa881a68d6409f9f9e85d1ff9c6539b5771cf43d646013b"}, {"file": "web/app/vite/dev-runtime.ts", "sha256": "ce4f288569437405cd9b1becdb2b80d17e14e9573534a8262e47ae422e496bef"}]
+      "reason": "web/app/vite/dev-runtime.ts:244（react-doctor/async-await-in-loop）：while 中 await 是限时租约等待/开发缓存 ready 重试；下一轮条件依赖上一轮等待后时间或 cache 状态，存在 abort/generation/timeout 边界。并行 Promise.all 无法表达该轮询与等待顺序，可能忙循环或突破超时资源控制。 Reassessed 2026-10-29: The delta registers VditorPreview and the Vditor assets plugin; existing controlled module inventory, build sorting and runtime registration contracts remain.",
+      "evidence": [{"file": "web/app/vite.config.ts", "sha256": "3795cbe7d9549c4e8e9eb556f3f8fb7f0c4e8656e0ded4772342c6676b1868a8"}, {"file": "web/app/vite/_tests/dev-generation-cache.test.ts", "sha256": "0f767f71fba7f2e4d307dfcc286be90fde4ce1df893d21f9c78255e062e6d0ed"}, {"file": "web/app/vite/_tests/dev-runtime.test.ts", "sha256": "ee3cc6f4ee80d0741aa881a68d6409f9f9e85d1ff9c6539b5771cf43d646013b"}, {"file": "web/app/vite/dev-runtime.ts", "sha256": "ce4f288569437405cd9b1becdb2b80d17e14e9573534a8262e47ae422e496bef"}]
     }
   ]
 }

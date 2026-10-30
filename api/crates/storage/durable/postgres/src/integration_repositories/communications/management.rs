@@ -16,7 +16,7 @@ pub(super) async fn conversations(
     q: &CommunicationManagementQuery,
 ) -> Result<CommunicationManagementPage<CommunicationConversationListItem>> {
     let (page, page_size, offset) = pagination(q);
-    let filter="c.scope_id=$1 AND ($2::uuid IS NULL OR c.instance_id=$2) AND ($3::uuid IS NULL OR c.id=$3)";
+    let filter = "c.scope_id=$1 AND ($2::uuid IS NULL OR c.instance_id=$2) AND ($3::uuid IS NULL OR c.id=$3)";
     let sql = format!("SELECT count(*) FROM communication_conversations c WHERE {filter}");
     let total = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(w)
@@ -24,7 +24,9 @@ pub(super) async fn conversations(
         .bind(q.conversation_id)
         .fetch_one(store.pool())
         .await?;
-    let sql=format!("SELECT c.*,n.display_name AS instance_display_name FROM communication_conversations c LEFT JOIN notification_instances n ON n.id=c.instance_id AND n.workspace_id=c.scope_id WHERE {filter} ORDER BY c.id DESC LIMIT $4 OFFSET $5");
+    let sql = format!(
+        "SELECT c.*,n.display_name AS instance_display_name FROM communication_conversations c LEFT JOIN notification_instances n ON n.id=c.instance_id AND n.workspace_id=c.scope_id WHERE {filter} ORDER BY c.id DESC LIMIT $4 OFFSET $5"
+    );
     let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(w)
         .bind(q.instance_id)
@@ -59,7 +61,7 @@ pub(super) async fn messages(
     let send = status(&q.send_status)?;
     let direction = status(&q.direction)?;
     let kind = status(&q.message_type)?;
-    let filter="t.scope_id=$1 AND ($2::uuid IS NULL OR t.instance_id=$2) AND ($3::uuid IS NULL OR t.conversation_id=$3) AND ($4::text IS NULL OR m.processing_status=$4) AND ($5::text IS NULL OR m.send_status=$5) AND ($6::text IS NULL OR t.direction=$6) AND ($7::text IS NULL OR t.type=$7)";
+    let filter = "t.scope_id=$1 AND ($2::uuid IS NULL OR t.instance_id=$2) AND ($3::uuid IS NULL OR t.conversation_id=$3) AND ($4::text IS NULL OR m.processing_status=$4) AND ($5::text IS NULL OR m.send_status=$5) AND ($6::text IS NULL OR t.direction=$6) AND ($7::text IS NULL OR t.type=$7)";
     let sql = format!(
         "SELECT count(*) FROM communication_messages t {} WHERE {filter}",
         history::JOINS
@@ -74,7 +76,11 @@ pub(super) async fn messages(
         .bind(&kind)
         .fetch_one(store.pool())
         .await?;
-    let sql=format!("SELECT {} FROM communication_messages t {} WHERE {filter} ORDER BY t.occurred_at_ms DESC,t.id DESC LIMIT $8 OFFSET $9",history::columns(),history::JOINS);
+    let sql = format!(
+        "SELECT {} FROM communication_messages t {} WHERE {filter} ORDER BY t.occurred_at_ms DESC,t.id DESC LIMIT $8 OFFSET $9",
+        history::columns(),
+        history::JOINS
+    );
     let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(w)
         .bind(q.instance_id)

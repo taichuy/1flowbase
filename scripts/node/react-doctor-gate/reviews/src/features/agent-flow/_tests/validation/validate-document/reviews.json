@@ -5,7 +5,7 @@
       "file": "web/app/src/features/agent-flow/_tests/validation/validate-document/branch-tool-cases.ts",
       "rule": "react-doctor/js-combine-iterations",
       "sourceSha256": "1fd166676e9975cd997154d12d7d979824e74d9da51a06632398a7789ab70b82",
-      "reason": "测试先按fieldKey选取工具分支诊断，再将title投影为完整有序oracle；filter与map分别选择断言范围和比较字段，保留多个工具的诊断次数与顺序。这是直接调用validateDocument的回归证据，不能用更弱的存在性断言替代。",
+      "reason": "测试先按fieldKey选取工具分支诊断，再将title投影为完整有序oracle；filter与map分别选择断言范围和比较字段，保留多个工具的诊断次数与顺序。这是直接调用validateDocument的回归证据，不能用更弱的存在性断言替代。 Reassessed 2026-10-30: Validation invokes validateContainerNode and passes bindings field key to selector visibility; existing diagnostic field ownership and ordered branch-tool assertions remain.",
       "evidence": [
         {
           "file": "web/app/src/features/agent-flow/_tests/validation/validate-document/branch-tool-cases.ts",
@@ -13,7 +13,7 @@
         },
         {
           "file": "web/app/src/features/agent-flow/lib/validate-document.ts",
-          "sha256": "fb83293780e9504ac72b0b705986188ac2a03acbc2085d578f07678157917ab9"
+          "sha256": "96c2035a5c404fc9755a1e5a23d699059e5da55ca13bdab18c43ba16a38148ce"
         }
       ]
     }
