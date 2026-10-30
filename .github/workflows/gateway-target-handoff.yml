@@ -142,6 +142,7 @@ jobs:
             _tests::application_public_api::compat_routes::streaming
             managed_snapshot_tests
             managed_activation_tests
+            local_command
           )
           /usr/bin/time -v -o tmp/test-governance/gateway-target-handoff/ci/catalog-resources.log cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib -- "${selectors[@]}" > tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log 2>&1 || { tail -c 16000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log
