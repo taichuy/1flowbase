@@ -62,6 +62,7 @@ fn other_policy_group_displays() -> Vec<ConsoleOtherPolicyGroupDisplay> {
         "other.frontstage",
         "other.i18n-catalog",
         "other.js-dependencies",
+        "other.local-commands",
         "other.model-providers",
         "other.node-contributions",
         "other.plugins",
@@ -105,6 +106,10 @@ fn other_policy_group_keys(group_id: &str) -> (&'static str, &'static str) {
         "other.js-dependencies" => (
             "JavaScript dependencies",
             "Registered JavaScript dependency operations",
+        ),
+        "other.local-commands" => (
+            "Local commands",
+            "Run one-shot commands on the backend host as system root",
         ),
         "other.model-providers" => (
             "Model provider utilities",
