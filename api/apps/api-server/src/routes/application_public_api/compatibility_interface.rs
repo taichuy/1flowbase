@@ -821,13 +821,13 @@ fn project_stream_invocation(
         application_id,
         crate::runtime_activity::ApplicationActivityKind::SseConnection,
     );
+    let (events, completion) = invocation.into_parts();
+    let projection = project_observed_compatibility_stream(
+        events, completion, projection, sender, recorder, owner,
+    );
     tokio::spawn(async move {
         let _sse_activity = sse_activity;
-        let (events, completion) = invocation.into_parts();
-        project_observed_compatibility_stream(
-            events, completion, projection, sender, recorder, owner,
-        )
-        .await;
+        projection.await;
     });
     Ok(
         Sse::new(tokio_stream::wrappers::ReceiverStream::new(receiver))
@@ -839,7 +839,7 @@ fn project_stream_invocation(
 /// The protocol terminal ends delivery; the independent Kernel owner still
 /// settles the invocation even when the client has stopped reading.
 #[cfg(test)]
-pub(super) async fn project_compatibility_stream(
+pub(super) fn project_compatibility_stream(
     events: tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
     completion: interface_runtime::InterfaceStreamCompletion<
         CompatibilityBlockingOutput,
@@ -848,12 +848,11 @@ pub(super) async fn project_compatibility_stream(
     projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
     sender: tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>,
     owner: Arc<crate::generation_dispatch::GenerationDispatch>,
-) {
+) -> impl std::future::Future<Output = ()> + Send + 'static {
     project_observed_compatibility_stream(events, completion, projection, sender, None, owner)
-        .await;
 }
 
-async fn project_observed_compatibility_stream(
+fn project_observed_compatibility_stream(
     mut events: tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
     completion: interface_runtime::InterfaceStreamCompletion<
         CompatibilityBlockingOutput,
@@ -863,48 +862,52 @@ async fn project_observed_compatibility_stream(
     sender: tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>,
     recorder: Option<ClientTrajectoryRecorder>,
     owner: Arc<crate::generation_dispatch::GenerationDispatch>,
-) {
+) -> impl std::future::Future<Output = ()> + Send + 'static {
+    // Transfer finalization and its generation lease before returning a
+    // cancellable projection future. Even an unpolled consumer can be aborted.
     let completion =
         crate::generation_dispatch::spawn_with_lease(owner.clone(), completion.complete());
-    let _projection_owner = owner;
-    let mut projection_open = true;
-    while let Some(event) = events.recv().await {
-        let (run, envelope, mut delivery) = event.into_parts();
-        if let Some(recorder) = recorder.as_ref() {
-            recorder.bind_run(run.id, None);
-            if envelope.source == control_plane::ports::RuntimeEventSource::Provider {
-                if let Some(node_run_id) = envelope.node_run_id {
-                    recorder.link_llm_node(run.id, node_run_id);
+    async move {
+        let _projection_owner = owner;
+        let mut projection_open = true;
+        while let Some(event) = events.recv().await {
+            let (run, envelope, mut delivery) = event.into_parts();
+            if let Some(recorder) = recorder.as_ref() {
+                recorder.bind_run(run.id, None);
+                if envelope.source == control_plane::ports::RuntimeEventSource::Provider {
+                    if let Some(node_run_id) = envelope.node_run_id {
+                        recorder.link_llm_node(run.id, node_run_id);
+                    }
                 }
             }
-        }
-        let terminal = super::sse::is_public_terminal_runtime_event(&envelope.event_type);
-        let frames = projection.runtime_event_to_sse(&run, envelope);
-        if projection_open {
-            if let Some(delivery) = delivery.as_mut() {
-                delivery.begin_write();
-            }
-            for frame in frames {
-                if sender.send(frame).await.is_err() {
-                    projection_open = false;
-                    break;
+            let terminal = super::sse::is_public_terminal_runtime_event(&envelope.event_type);
+            let frames = projection.runtime_event_to_sse(&run, envelope);
+            if projection_open {
+                if let Some(delivery) = delivery.as_mut() {
+                    delivery.begin_write();
+                }
+                for frame in frames {
+                    if sender.send(frame).await.is_err() {
+                        projection_open = false;
+                        break;
+                    }
                 }
             }
-        }
-        if projection_open {
-            if let Some(delivery) = delivery.take() {
-                delivery.projected();
+            if projection_open {
+                if let Some(delivery) = delivery.take() {
+                    delivery.projected();
+                }
+            }
+            // A closed projection drops the receipt: released when no write
+            // started, uncertain when the transport failed mid-write.
+            drop(delivery);
+            if terminal {
+                break;
             }
         }
-        // A closed projection drops the receipt: released when no write
-        // started, uncertain when the transport failed mid-write.
-        drop(delivery);
-        if terminal {
-            break;
+        if let Ok(Ok(terminal)) = completion.await {
+            let _receipt = terminal.receipt().clone().projected();
         }
-    }
-    if let Ok(Ok(terminal)) = completion.await {
-        let _receipt = terminal.receipt().clone().projected();
     }
 }
 

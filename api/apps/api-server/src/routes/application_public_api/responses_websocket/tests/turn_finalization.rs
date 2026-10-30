@@ -87,6 +87,7 @@ impl InterfaceAuthorizationPort for Authorization {
 struct CompletionBarrier {
     entered: tokio::sync::Notify,
     release: tokio::sync::Notify,
+    exited: tokio::sync::Notify,
 }
 
 struct CompletionObserver {
@@ -106,6 +107,7 @@ impl InterfaceCompletionHook for CompletionObserver {
             if let Some(barrier) = &self.barrier {
                 barrier.entered.notify_one();
                 barrier.release.notified().await;
+                barrier.exited.notify_one();
             }
         })
     }
@@ -869,9 +871,16 @@ async fn sse_independent_completion_keeps_g2_through_hook_after_publish_body_dro
         let g2_id = g2.owner.generation_id();
         let probe = Arc::downgrade(&g2.owner);
         let retired = g2.owner.retirement_notification();
+        // Candidate assembly can exceed the Kernel's one-second observer
+        // budget. Do it before entering the hook; publish still happens inside.
+        let next = generations
+            .prepare(vec![], Default::default())
+            .await
+            .unwrap();
         let barrier = Arc::new(CompletionBarrier {
             entered: tokio::sync::Notify::new(),
             release: tokio::sync::Notify::new(),
+            exited: tokio::sync::Notify::new(),
         });
         let (publisher, invocation, observed) =
             invocation_with_completion_barrier(Some(barrier.clone())).await;
@@ -909,12 +918,7 @@ async fn sse_independent_completion_keeps_g2_through_hook_after_publish_body_dro
             .await
             .unwrap();
         drop(g2);
-        generations.publish(
-            generations
-                .prepare(vec![], Default::default())
-                .await
-                .unwrap(),
-        );
+        generations.publish(next);
         assert_ne!(
             generations
                 .current_generation()
@@ -933,6 +937,9 @@ async fn sse_independent_completion_keeps_g2_through_hook_after_publish_body_dro
             "only independent completion holds G2 during the hook"
         );
         barrier.release.notify_one();
+        tokio::time::timeout(Duration::from_secs(5), barrier.exited.notified())
+            .await
+            .expect("the hook must return through release, not budget expiry");
         tokio::time::timeout(Duration::from_secs(5), retired.notified())
             .await
             .unwrap();
@@ -942,6 +949,107 @@ async fn sse_independent_completion_keeps_g2_through_hook_after_publish_body_dro
         );
         completed_once(observed, InterfaceInvocationTerminal::Completed).await;
     }
+}
+
+#[tokio::test]
+async fn sse_completion_keeps_generation_when_projection_aborts_before_first_poll_and_terminal() {
+    use crate::{
+        _tests::support::{default_test_config, test_api_state_with_database_url},
+        generation_dispatch::bind_response,
+        routes::application_public_api::{
+            compat_sse::openai_responses_interface_projection,
+            compatibility_interface::project_compatibility_stream,
+        },
+    };
+    use axum::response::{sse::Sse, IntoResponse};
+
+    let (state, _) = test_api_state_with_database_url().await;
+    let config = default_test_config();
+    let initial = crate::app_with_state_and_config(state.clone(), &config);
+    let generations = crate::managed_publication::ManagedGenerationPublisher::new(
+        &state,
+        config,
+        vec![],
+        initial,
+    )
+    .unwrap();
+    generations.publish(
+        generations
+            .prepare(vec![], Default::default())
+            .await
+            .unwrap(),
+    );
+    let g2 = generations.current_generation().unwrap();
+    let probe = Arc::downgrade(&g2.owner);
+    let retired = g2.owner.retirement_notification();
+    let next = generations
+        .prepare(vec![], Default::default())
+        .await
+        .unwrap();
+    let barrier = Arc::new(CompletionBarrier {
+        entered: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+        exited: tokio::sync::Notify::new(),
+    });
+    let (publisher, invocation, observed) =
+        invocation_with_completion_barrier(Some(barrier.clone())).await;
+    let (frames, received) =
+        mpsc::channel::<Result<axum::response::sse::Event, std::convert::Infallible>>(4);
+    let body = bind_response(
+        Sse::new(tokio_stream::wrappers::ReceiverStream::new(received)).into_response(),
+        g2.owner.clone(),
+    );
+    let (events, completion) = invocation.into_parts();
+    let projection = project_compatibility_stream(
+        events,
+        completion,
+        openai_responses_interface_projection("model".into(), None),
+        frames,
+        g2.owner.clone(),
+    );
+    let waiting = Arc::new(tokio::sync::Notify::new());
+    let task_waiting = waiting.clone();
+    let (allow_first_poll, first_poll) = tokio::sync::oneshot::channel::<()>();
+    let consumer = tokio::spawn(async move {
+        task_waiting.notify_one();
+        first_poll.await.expect("test retains the first-poll gate");
+        projection.await;
+    });
+    tokio::time::timeout(Duration::from_secs(5), waiting.notified())
+        .await
+        .unwrap();
+    drop(g2);
+    generations.publish(next);
+    drop(body);
+    consumer.abort();
+    assert!(consumer.await.unwrap_err().is_cancelled());
+    drop(allow_first_poll);
+    assert!(
+        probe.upgrade().is_some(),
+        "independent completion must own G2 before producer terminal and without a projection poll"
+    );
+    publisher
+        .finish(InterfaceStreamTerminal::Completed(
+            CompatibilityBlockingOutput(run()),
+        ))
+        .await
+        .expect("aborting an unpolled consumer must preserve the Kernel terminal receiver");
+    tokio::time::timeout(Duration::from_secs(5), barrier.entered.notified())
+        .await
+        .unwrap();
+    assert!(
+        probe.upgrade().is_some(),
+        "completion owns G2 through hooks"
+    );
+    barrier.release.notify_one();
+    tokio::time::timeout(Duration::from_secs(5), barrier.exited.notified())
+        .await
+        .expect("the hook must return through release, not budget expiry");
+    tokio::time::timeout(Duration::from_secs(5), retired.notified())
+        .await
+        .unwrap();
+    assert!(probe.upgrade().is_none(), "completed hook must retire G2");
+    completed_once(observed, InterfaceInvocationTerminal::Completed).await;
 }
 
 // AC-002 (SSE lane): the SSE writer ACKs a tool delivery only after the

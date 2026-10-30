@@ -853,19 +853,32 @@ async fn generation_assistant_ws_first_command_keeps_old_owner_after_publication
         ))
         .await
         .unwrap();
-    let frame = tokio::time::timeout(std::time::Duration::from_secs(5), socket.next())
-        .await
-        .unwrap()
-        .unwrap()
-        .unwrap();
-    let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
-    assert_eq!(value["request_id"], "late-attach");
-    assert!(
-        !value
-            .to_string()
-            .contains("selected host generation is unavailable"),
-        "{value}"
+    let value: Value = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            match socket.next().await.unwrap().unwrap() {
+                Message::Ping(payload) => socket.send(Message::Pong(payload)).await.unwrap(),
+                Message::Pong(_) => {}
+                Message::Text(text) => break serde_json::from_str(text.as_str()).unwrap(),
+                frame => panic!("expected the first command's business result, got {frame:?}"),
+            }
+        }
+    })
+    .await
+    .unwrap();
+    // Attach reaches the real frozen command handler, whose store lookup rejects
+    // the missing run. Turn errors have no request_id in this protocol.
+    assert_eq!(
+        value,
+        json!({
+            "type": "error",
+            "request_id": null,
+            "error": {
+                "code": "assistant_run_failed",
+                "message": "resource not found: flow_run"
+            }
+        })
     );
+    assert!(probe.upgrade().is_some(), "the open socket still owns G1");
     assert_eq!(boot.upgrade().unwrap().dispatch_assembly_count(), 1);
     socket.close(None).await.unwrap();
     drop(socket);

@@ -105,8 +105,12 @@ async fn fixture(
     ResumePublishedCallbackCommand,
     Arc<callback_reservation::CallbackService>,
     Arc<PreparationStream>,
+    axum::Router,
 ) {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    // Real ingress upgrades the generation's Weak edge. Keep the external
+    // serving root alive for the entire reservation/retry fixture lifetime.
+    let app = crate::app_with_state(state.clone());
     let mut run = native_run();
     seed_flow_run_for_compat_sse_test(&state, &run).await;
     sqlx::query("update flow_runs set api_key_id=$2 where id=$1")
@@ -270,7 +274,16 @@ async fn fixture(
         ),
         "an old unowned anchor/host failure cannot supply callback identity"
     );
-    (state, dependencies, run, actor, command, service, stream)
+    (
+        state,
+        dependencies,
+        run,
+        actor,
+        command,
+        service,
+        stream,
+        app,
+    )
 }
 
 async fn await_received(state: &ApiState, id: Uuid) {
@@ -350,7 +363,8 @@ impl crate::routes::application_public_api::native_read_interface::NativeRuntime
 
 #[tokio::test]
 async fn callback_preclaim_invoker_failure_retries_through_ingress_prepare() {
-    let (state, mut dependencies, run, actor, mut command, service, _) = fixture("open").await;
+    let (state, mut dependencies, run, actor, mut command, service, _, _app) =
+        fixture("open").await;
     let failure = Arc::new(PreclaimInvokerFailure {
         entered: tokio::sync::Notify::new(),
         release: tokio::sync::Notify::new(),
@@ -424,7 +438,7 @@ async fn callback_preclaim_invoker_failure_retries_through_ingress_prepare() {
 #[tokio::test]
 async fn callback_open_and_subscribe_failure_release_own_receipt_for_immediate_retry() {
     for failure in ["open", "subscribe"] {
-        let (state, dependencies, run, actor, mut command, service, stream) =
+        let (state, dependencies, run, actor, mut command, service, stream, _app) =
             fixture(failure).await;
         let obsolete_generation = stream
             .local
@@ -492,7 +506,8 @@ async fn callback_open_and_subscribe_failure_release_own_receipt_for_immediate_r
 
 #[tokio::test]
 async fn cancelled_callback_preparation_releases_receipt_but_handoff_disarms_drop() {
-    let (state, dependencies, run, actor, mut command, service, stream) = fixture("cancel").await;
+    let (state, dependencies, run, actor, mut command, service, stream, _app) =
+        fixture("cancel").await;
     let acquired = service
         .reserve_native_callback_reservation_for_actor(actor.clone(), &command)
         .await
@@ -562,7 +577,8 @@ async fn cancelled_callback_preparation_releases_receipt_but_handoff_disarms_dro
 
 #[tokio::test]
 async fn partial_tool_results_keep_waiting_receipt_without_opening_or_execution() {
-    let (state, dependencies, run, actor, mut command, service, stream) = fixture("open").await;
+    let (state, dependencies, run, actor, mut command, service, stream, _app) =
+        fixture("open").await;
     // Partial native-agent deliveries retain their existing API semantics;
     // native Responses correlation above requires the complete owned call set.
     command.source = PublishedCallbackResumeSource::NativeAgent;
