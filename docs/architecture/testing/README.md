@@ -14,7 +14,7 @@
 
 ## 门禁执行与结果复用
 
-React Doctor 的 source/rule 审阅仍逐项绑定源码哈希、理由与全部契约证据。同一 owner 分组可用 `evidenceSets` 保存重复的完整证据数组，记录通过整数 `evidenceSet` 引用；加载器展开为独立的原有完整有序数组。证据变更仍使所有引用它的审阅失效；缺失、越界或与直接 `evidence` 并存的引用拒绝验收。完整诊断库存、工具版本和禁止 suppression 的规则不变。
+React Doctor 的 source/rule 审阅仍逐项绑定源码哈希、理由与全部契约证据。同一 owner 分组可用 `evidenceSets` 保存重复的完整证据数组，记录通过整数 `evidenceSet` 引用；私有加载器还原原有完整有序值，验收消费者只读共享证据数组，避免重复复制。证据变更仍使所有引用它的审阅失效；缺失、越界或与直接 `evidence` 并存的引用拒绝验收。完整诊断库存、工具版本和禁止 suppression 的规则不变。
 
 [English](gate-execution.en.md)
 

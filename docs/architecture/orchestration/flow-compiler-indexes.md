@@ -27,3 +27,5 @@ Level 1 复用局部格式、静态规则、变更模块测试；Level 2 复用 
 量化样本、精确版本、CPU/RSS、故障检测与线上收据由 [Root #2700](https://github.com/taichuy/1flowbase/issues/2700) 及 `tmp/test-governance/optimization-20261029/` 留档。最新实际发布基线为 v0.5.8-native.2（原生分发预发布，a69128c52），正式版对照为 v0.5.8；另列本轮相对 beta 起始 614217824 的增量。v0.5.8-native.2 与原始探针 current 47bdb3fb7 的编译器、依赖锁和扫描器源码一致时，复用相同源码的测量，不将不相关版本变化算作优化收益。
 
 2026-10-30 整合保留 `beta` 新增的循环容器节点、edge container ownership 与 selector visibility；关系判重不替代这些校验。最终候选的行为与性能以候选 SHA 绑定的新 receipt 为准。
+
+容器执行入口将服务借用、执行位置、round terminal 写集按现有领域对象收纳，解构后执行顺序不变；round outcome 共享 trace 字段并用 `Option` 表达 terminal payload，新旧实际类型均为 248 字节，无额外堆分配。容器执行事实随应用 data 选择备份；configuration-only 不包含运行态行。
