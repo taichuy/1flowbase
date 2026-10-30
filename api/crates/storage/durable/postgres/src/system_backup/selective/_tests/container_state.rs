@@ -78,7 +78,7 @@ async fn selective_container_execution_data_roundtrips_and_configuration_exclude
         execution_id: Uuid::now_v7(),
         container_execution_id: execution,
         round_index: 0,
-        deadline_unix_ms: 2_000_000_000_000,
+        deadline_unix_ms: Some(2_000_000_000_000),
         status: "succeeded".into(),
         error_payload: None,
         output_payload: Some(json!({"text":"value\u{0000}suffix"})),

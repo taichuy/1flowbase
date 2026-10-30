@@ -347,19 +347,17 @@ where
                     variables,
                     error_payload: mut error,
                 } = result;
-                if error.is_none() {
-                    if scope.expired() {
-                        let (_, owner) = scope
-                            .deadline()
-                            .await
-                            .ok_or_else(|| anyhow!("finite deadline missing owner"))?;
-                        if owner != frame_id {
-                            return Err(DeadlineExpired(owner).into());
-                        }
-                        error = Some(
-                            json!({"error_code":"container_round_timeout","message":"Round deadline expired before its result commit"}),
-                        );
+                if error.is_none() && scope.expired() {
+                    let (_, owner) = scope
+                        .deadline()
+                        .await
+                        .ok_or_else(|| anyhow!("finite deadline missing owner"))?;
+                    if owner != frame_id {
+                        return Err(DeadlineExpired(owner).into());
                     }
+                    error = Some(
+                        json!({"error_code":"container_round_timeout","message":"Round deadline expired before its result commit"}),
+                    );
                 }
                 traces.append(&mut node_traces);
                 let mut state = session.state.lock().await;
