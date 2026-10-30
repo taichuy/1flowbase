@@ -89,6 +89,15 @@ const nodes = [
 ];
 const row = (id: string) =>
   document.querySelector<HTMLElement>(`[data-node-id="${id}"]`)!;
+async function findReportsTabPanel() {
+  const tabsPanel = within(
+    await screen.findByRole('tabpanel', { name: '页面 Tabs' })
+  );
+  // The panel mounts before its query resolves. Wait for the data with a
+  // lightweight query before looking up accessible actions in this panel.
+  await tabsPanel.findByText('Reports');
+  return tabsPanel;
+}
 async function dragAfter() {
   await screen.findByText('Page A');
   const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
@@ -445,9 +454,8 @@ test('tab rename and reorder share the existing tab contract; delete refreshes t
   );
   fireEvent.click(await screen.findByRole('button', { name: '编辑 Page A' }));
   fireEvent.click(screen.getByRole('tab', { name: '页面 Tabs' }));
-  fireEvent.click(
-    await screen.findByRole('button', { name: '重命名 Reports' })
-  );
+  const tabsPanel = await findReportsTabPanel();
+  fireEvent.click(tabsPanel.getByRole('button', { name: '重命名 Reports' }));
   const rename = await screen.findByRole('dialog', { name: '重命名' });
   fireEvent.change(within(rename).getByLabelText('名称'), {
     target: { value: 'Insights' }
@@ -467,7 +475,10 @@ test('tab rename and reorder share the existing tab contract; delete refreshes t
       screen.queryByRole('dialog', { name: '重命名' })
     ).not.toBeInTheDocument()
   );
-  fireEvent.click(screen.getByRole('button', { name: '上移 Reports' }));
+  await waitFor(() =>
+    expect(tabsPanel.getByRole('button', { name: '上移 Reports' })).toBeEnabled()
+  );
+  fireEvent.click(tabsPanel.getByRole('button', { name: '上移 Reports' }));
   await waitFor(() =>
     expect(api.updateTab).toHaveBeenCalledWith(
       'a',
@@ -561,7 +572,8 @@ test('a partially rejected tab reorder stays locked until all writes settle, the
   );
   fireEvent.click(await screen.findByRole('button', { name: '编辑 Page A' }));
   fireEvent.click(screen.getByRole('tab', { name: '页面 Tabs' }));
-  fireEvent.click(await screen.findByRole('button', { name: '上移 Reports' }));
+  const tabsPanel = await findReportsTabPanel();
+  fireEvent.click(tabsPanel.getByRole('button', { name: '上移 Reports' }));
   await waitFor(() => expect(api.updateTab).toHaveBeenCalledTimes(2));
   await waitFor(() =>
     expect(screen.getByRole('button', { name: '上移 Reports' })).toBeDisabled()
