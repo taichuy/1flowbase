@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test } from 'vitest';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { AgentFlowEditorShell } from '../../components/editor/AgentFlowEditorShell';
@@ -136,7 +136,9 @@ describe('container configuration panels', () => {
     );
     expect(draft).toHaveValue('{"unfinished":');
     const name = screen.getByRole('textbox', { name: '变量名称 1' });
-    name.focus();
+    await act(async () => {
+      name.focus();
+    });
     fireEvent.change(name, { target: { value: 'renamed' } });
     await waitFor(() =>
       expect(screen.getByRole('textbox', { name: '初始值 renamed' })).toBe(
