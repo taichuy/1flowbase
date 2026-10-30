@@ -14,11 +14,11 @@ function fixture(t, releaseVersion) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'application-template-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const source = path.join(root, 'source');
-  const template = path.join(source, 'applications-demo/@test/demo');
+  const template = path.join(source, 'applications-demo/@taichuy/gateway-demo');
   fs.mkdirSync(template, { recursive: true });
   const artifact = {
     schema_version: '1flowbase.portable-template/v1',
-    release: { template_id: '@test/demo', release_version: releaseVersion, name: 'Demo' },
+    release: { template_id: '@taichuy/gateway-demo', release_version: releaseVersion, name: 'Demo' },
     pages: [], applications: [], data_models: [], plugins: [],
   };
   const bytes = `${JSON.stringify(artifact, null, 2)}\n`;
@@ -33,6 +33,9 @@ function fixture(t, releaseVersion) {
     export async function readPackage(root) { return JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'))); }
     export async function buildArchive(root) { return fs.readFileSync(path.join(root, 'manifest.json')); }
   `);
+  const optional = path.join(source, 'applications-demo/@taichuy/wiki');
+  fs.mkdirSync(optional, { recursive: true });
+  fs.writeFileSync(path.join(optional, 'manifest.json'), JSON.stringify({ ...artifact, release: { ...artifact.release, template_id: '@taichuy/wiki', release_version: 1 } }));
   assert.equal(run('git', ['init', '-q'], source).status, 0);
   assert.equal(run('git', ['add', '.'], source).status, 0);
   assert.equal(run('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
@@ -44,13 +47,15 @@ function fixture(t, releaseVersion) {
 test('image packager copies the immutable committed artifact, preserving bytes', (t) => {
   const f = fixture(t, 1);
   // Uncommitted source changes cannot silently alter an image release.
-  fs.writeFileSync(path.join(f.source, 'applications-demo/@test/demo/manifest.json'), '{}');
+  fs.writeFileSync(path.join(f.source, 'applications-demo/@taichuy/gateway-demo/manifest.json'), '{}');
   const result = run('sh', [packager, f.source, f.sha, f.output], repoRoot);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(fs.readFileSync(path.join(f.output, '@test/demo/template.zip'), 'utf8'), f.bytes);
+  assert.equal(fs.readFileSync(path.join(f.output, '@taichuy/gateway-demo/template.zip'), 'utf8'), f.bytes);
   const receipt = JSON.parse(fs.readFileSync(path.join(f.output, 'receipt.json'), 'utf8'));
   assert.equal(receipt.resolved_commit, f.sha);
   assert.equal(receipt.source_file_count, 1);
+  assert.equal(fs.existsSync(path.join(f.output, '@taichuy/wiki')), false, 'on-demand Wiki must not be bundled');
+  assert.deepEqual(receipt.packages.map(item => item.template_id), ['@taichuy/gateway-demo']);
 });
 
 test('image packager rejects an invalid release and mutable references', (t) => {

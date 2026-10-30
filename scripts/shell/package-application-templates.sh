@@ -47,6 +47,8 @@ for (const namespace of fs.readdirSync(path.join(checkout, 'applications-demo'))
     const source = path.join(checkout, 'applications-demo', namespace, name);
     if (!fs.statSync(source).isDirectory()) continue;
     const identity = `${namespace}/${name}`;
+    // Catalog templates are installed on demand; only Gateway Demo is built in.
+    if (identity !== '@taichuy/gateway-demo') continue;
     const pkg = await readPackage(source);
     if (pkg.release?.template_id !== identity || !Number.isSafeInteger(pkg.release.release_version) || pkg.release.release_version < 1) throw new Error(`invalid application template: ${identity}`);
     const bytes = await buildArchive(source);
