@@ -222,7 +222,7 @@ describe('container authoring contract', () => {
     ).toEqual([]);
   });
 
-  test('reports missing deadlines, scalar inputs and mismatched constants without fabricating values', () => {
+  test('accepts absent deadlines but reports scalar inputs and mismatched constants without fabricating values', () => {
     const document = containerDocument();
     const loop = document.graph.nodes.find((node) => node.id === 'outer')!;
     const iteration = document.graph.nodes.find((node) => node.id === 'inner')!;
@@ -241,12 +241,42 @@ describe('container authoring contract', () => {
     validateContainerNode(issues, iteration, document, [], null);
     expect(issues.map((issue) => issue.fieldKey)).toEqual(
       expect.arrayContaining([
-        'config.round_timeout_ms',
         'bindings.variables',
         'bindings.items',
         'config.parallelism'
       ])
     );
+    expect(issues.map((issue) => issue.fieldKey)).not.toContain(
+      'config.round_timeout_ms'
+    );
     expect(loop.config.round_timeout_ms).toBeUndefined();
   });
+
+  test.each([null, undefined, 1, 2500])(
+    'accepts optional or positive timeout %s',
+    (value) => {
+      const document = containerDocument();
+      const loop = document.graph.nodes.find((node) => node.id === 'outer')!;
+      loop.config.round_timeout_ms = value;
+      const issues: AgentFlowIssue[] = [];
+      validateContainerNode(issues, loop, document, [], null);
+      expect(issues.map((issue) => issue.fieldKey)).not.toContain(
+        'config.round_timeout_ms'
+      );
+    }
+  );
+
+  test.each([0, -1, 0.5, '1', Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid explicit timeout %s',
+    (value) => {
+      const document = containerDocument();
+      const loop = document.graph.nodes.find((node) => node.id === 'outer')!;
+      loop.config.round_timeout_ms = value;
+      const issues: AgentFlowIssue[] = [];
+      validateContainerNode(issues, loop, document, [], null);
+      expect(issues.map((issue) => issue.fieldKey)).toContain(
+        'config.round_timeout_ms'
+      );
+    }
+  );
 });

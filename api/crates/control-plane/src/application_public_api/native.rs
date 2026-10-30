@@ -67,8 +67,8 @@ use wire_types::{native_attachments, native_history};
 pub use input_mapping::{NativeInputMapper, NativeInputMappingError};
 pub use run_lifecycle::{
     ApplicationNativeRunService, CancelNativeRunCommand, CreateNativeRunCommand,
-    GetNativeRunByProviderResponseIdCommand, GetNativeRunCommand, NativeRunRepository,
-    NativeRunValidationError,
+    GetNativeRunByProviderResponseIdCommand, GetNativeRunCommand, NativeRunError,
+    NativeRunRepository, NativeRunValidationError,
 };
 pub use wire_types::{
     NativeAttachment, NativeAttachmentSource, NativeError, NativeMappedInput, NativeObject,

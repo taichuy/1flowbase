@@ -77,6 +77,9 @@ mod response_projection;
 pub(crate) use response_projection::{blocking_run_projection_error, native_error, service_error};
 
 #[cfg(test)]
+#[path = "native/_tests/authentication_failures.rs"]
+mod authentication_failure_tests;
+#[cfg(test)]
 #[path = "native/_tests/catalog_admission.rs"]
 mod catalog_admission_tests;
 
@@ -743,7 +746,7 @@ pub async fn create_native_run(
             },
         )
         .await
-        .map_err(|_| native_error(NativeRunValidationError::NotAuthenticated))?;
+        .map_err(service_error)?;
     let application_id = authenticated.principal().application_id();
     let _http_activity = state
         .runtime_activity
@@ -921,7 +924,7 @@ async fn authenticate_native_binding(
             },
         )
         .await
-        .map_err(|_| native_error(NativeRunValidationError::NotAuthenticated))?;
+        .map_err(service_error)?;
     Ok((snapshot, authenticated))
 }
 

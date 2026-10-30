@@ -1,0 +1,39 @@
+[package]
+name = "transport-session-lifecycle-evidence"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+[lib]
+path = "lib.rs"
+
+# Compile the exact production host owner and its fixtures without api-server's monolithic lib.
+[dependencies]
+access-control = { path = "../../../../crates/access-control" }
+domain = { path = "../../../../crates/domain" }
+control-plane-contracts = { path = "../../../../crates/control-plane-contracts" }
+extension-contracts = { path = "../../../../crates/extension-contracts" }
+time = "=0.3.55"
+control-plane = { path = "../../../../crates/control-plane" }
+orchestration-runtime = { path = "../../../../crates/orchestration-runtime" }
+plugin-framework = { path = "../../../../crates/plugin-framework" }
+runtime-core = { path = "../../../../crates/runtime-core" }
+axum = "=0.8.9"
+http-body = "=1.1.0"
+futures-util = "=0.3.34"
+base16ct = "=1.0.0"
+anyhow = "=1.0.104"
+async-trait = "=0.1.92"
+serde = { version = "=1.0.229", features = ["derive"] }
+utoipa = "=6.0.0"
+serde_json = { version = "=1.0.154", features = ["preserve_order"] }
+sha2 = "=0.11.1"
+tokio = { version = "=1.53.3", features = ["full", "test-util"] }
+tracing = "=0.1.44"
+uuid = { version = "=1.28.0", features = ["v7"] }
+
+[profile.test]
+debug = 1
+[profile.test.package.sha2]
+opt-level = 3

@@ -390,16 +390,17 @@ pub(crate) async fn invoke_models(
         )
     })?;
     let authenticated = boot_snapshot
-        .authenticate_invocation::<_, ApplicationPrincipal>(Arc::clone(&snapshot), &binding_id, InterfaceProtocol::Http, ApplicationApiKeyAuthenticationCredential {
+        .authenticate_invocation::<_, ApplicationPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
+            ApplicationApiKeyAuthenticationCredential {
                 state: Arc::clone(&state),
                 bearer_token,
-            })
+            },
+        )
         .await
-        .map_err(|_| {
-            native::native_error(
-                control_plane::application_public_api::native::NativeRunValidationError::NotAuthenticated,
-            )
-        })?;
+        .map_err(native::service_error)?;
     let outcome = interface_runtime::InterfaceInvocationKernel::new(Arc::new(
         CompatibilityBlockingAuthorization,
     ))

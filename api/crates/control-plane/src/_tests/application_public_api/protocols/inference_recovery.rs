@@ -694,7 +694,7 @@ async fn assert_recovery_successor_context(current_context: Option<ProtocolConte
     while let Some(result) = tasks.join_next().await {
         match result.expect("create task must not panic") {
             Ok(run) => winners.push(run),
-            Err(crate::application_public_api::native::NativeRunValidationError::IdempotencyConflict) => losers += 1,
+            Err(crate::application_public_api::native::NativeRunError::Validation(crate::application_public_api::native::NativeRunValidationError::IdempotencyConflict)) => losers += 1,
             Err(error) => panic!("unexpected admission failure: {error:?}"),
         }
     }

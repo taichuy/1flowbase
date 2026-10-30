@@ -34,7 +34,7 @@ pub struct LoopVariableDefinition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContainerConfig {
     pub max_rounds: Option<u64>,
-    pub round_timeout_ms: u64,
+    pub round_timeout_ms: Option<u64>,
     pub parallelism: usize,
     pub flatten_output: bool,
     pub error_policy: ContainerErrorPolicy,
@@ -50,8 +50,10 @@ impl ContainerConfig {
             .config
             .as_object()
             .context("container config must be an object")?;
-        let round_timeout_ms =
-            positive_integer(config.get("round_timeout_ms"), "round_timeout_ms")?;
+        let round_timeout_ms = match config.get("round_timeout_ms") {
+            None | Some(Value::Null) => None,
+            value => Some(positive_integer(value, "round_timeout_ms")?),
+        };
         let max_rounds = if node.node_type == "loop" {
             Some(positive_integer(config.get("max_rounds"), "max_rounds")?)
         } else {

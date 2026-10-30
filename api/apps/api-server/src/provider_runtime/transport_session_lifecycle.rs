@@ -33,6 +33,7 @@ use tokio::sync::{broadcast, Mutex, Notify};
 
 use super::ProviderRuntimeExecutionContext;
 
+#[path = "transport_session_lifecycle/admission.rs"]
 mod admission;
 
 const CONTROL_DEADLINE: Duration = Duration::from_secs(5);
@@ -150,10 +151,10 @@ struct LifecycleCommand {
     command: ProviderTransportSessionCommand,
     termination: Option<TransportTerminationNotice>,
     terminal_close: bool,
+    /// Valid after the first eligible control attempt is claimed (attempts > 0).
     overall_deadline: TransportInstant,
     next_due: TransportInstant,
     attempts: u8,
-    deferred_while_inflight: bool,
     state: CloseTaskState,
     last_blocker: Option<&'static str>,
     first_control_failure: Option<&'static str>,
@@ -620,13 +621,6 @@ fn lifecycle_command(
     };
     let snapshot = registry.safe_snapshot();
     let now = snapshot.observed_at;
-    let overall_deadline = snapshot
-        .sessions
-        .iter()
-        .find(|session| session.fence == fence)
-        .map_or(transport_add(now, CONTROL_OVERALL_DEADLINE), |session| {
-            transport_add(now, CONTROL_OVERALL_DEADLINE.min(session.logical_ttl))
-        });
     let task_id = hash_identity(&[
         fence.session_id.as_str(),
         &fence.generation.get().to_string(),
@@ -637,21 +631,16 @@ fn lifecycle_command(
             generation: fence.generation.get(),
             worker_incarnation: None,
             action,
-            deadline_unix_ms: i64::try_from(
-                transport_add(now, CONTROL_DEADLINE)
-                    .min(overall_deadline)
-                    .as_millis(),
-            )
-            .unwrap_or(i64::MAX),
+            // Dispatch fills the wire deadline only after eligibility checks.
+            deadline_unix_ms: 0,
         },
         fence,
         target_id,
         terminal_close: termination.is_some(),
         termination,
-        overall_deadline,
+        overall_deadline: now,
         next_due: now,
         attempts: 0,
-        deferred_while_inflight: false,
         state: CloseTaskState::Pending,
         last_blocker: None,
         first_control_failure: None,

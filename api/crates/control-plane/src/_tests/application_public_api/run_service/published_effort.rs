@@ -27,7 +27,8 @@ async fn run(
             protocol: TranslationProtocol::OpenAiResponses,
             request,
         })
-        .await?;
+        .await
+        .map_err(crate::_tests::application_public_api::expect_validation_error)?;
     Ok(repository
         .get_flow_run(result.application_id, result.id)
         .await

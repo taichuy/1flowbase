@@ -35,6 +35,9 @@ impl ApiKeyRepository for ApplicationPublicApiTestRepository {
         &self,
         token_hash: &str,
     ) -> Result<Option<domain::ApiKeyRecord>> {
+        if let Some(unavailable) = self.inner.lock().unwrap().api_key_lookup_failure {
+            return Err(authentication_lookup_error(unavailable));
+        }
         Ok(self
             .inner
             .lock()

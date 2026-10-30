@@ -194,7 +194,7 @@ impl PgControlPlaneStore {
             }
         }
         // Binding moves the pre-bound durable capture into the run deletion scope.
-        sqlx::query("update client_trajectory_archive_heads set flow_run_id=$2 where request_id=$1 and (flow_run_id is null or flow_run_id=$2)")
+        sqlx::query("update client_trajectory_archive_heads set flow_run_id=$2 where request_id=$1 and flow_run_id is null")
             .bind(input.request_id).bind(input.flow_run_id).execute(&mut *tx).await?;
         if matches!(&input.fact, ClientTrajectoryFact::Section { section, .. } if section == "result")
         {

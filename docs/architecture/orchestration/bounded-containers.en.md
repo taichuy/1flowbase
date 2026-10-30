@@ -11,7 +11,7 @@ Loops and iterations display their children on the same canvas and may nest. Eac
 | Setting | Loop | Iteration |
 | --- | --- | --- |
 | Bound | Required positive integer `max_rounds`, initially 10 | A snapshot of `bindings.items`; an empty array runs zero rounds |
-| Per-round deadline | Required positive integer `round_timeout_ms` | Same |
+| Per-round deadline | Optional positive integer `round_timeout_ms` (milliseconds); missing / null means no local round deadline | Same |
 | Error handling | `error_policy`: `fail`, `break`, or `continue`; default `fail` | Same |
 | State | `loop_variables`, initial `bindings.variables`, successful-round `bindings.variable_updates` | Isolated `item` and `index` per item |
 | Condition | Optional `bindings.break_condition` | Array length determines the bound |
@@ -19,7 +19,7 @@ Loops and iterations display their children on the same canvas and may nest. Eac
 | Concurrency | Serial because state passes between rounds | User-configured positive `parallelism`; default 1 |
 | Flattening | Preserve the explicitly selected output structure | `flatten_output` expands one level when enabled; disabled by default |
 
-Users configure deadlines; defaults are not guessed from the development machine. Concurrency has no arbitrary business cap based on assumed client behavior. Integer, clock and semaphore representation limits still apply. An upstream Code node can supply an array without pretending that it is a file input.
+There is no default round timeout. Missing or null creates no local round deadline; explicit positive integer milliseconds remain compatible. Zero, negative numbers, fractions and strings are rejected. The UI edits minutes while the API and persisted field remain `round_timeout_ms`. Concurrency has no arbitrary business cap based on assumed client behavior. Integer, clock and semaphore representation limits still apply. An upstream Code node can supply an array without pretending that it is a file input.
 
 ## Execution
 
@@ -46,11 +46,11 @@ Confirmed durable completions are not replayed. An external request may have suc
 
 ## Time and termination
 
-Round deadlines persist as absolute times and are not renewed on recovery. Effective deadlines cannot exceed an ancestor deadline; process-local scheduling uses monotonic time. A code invocation's isolation budget is narrowed to its remaining deadline without changing the saved configuration.
+Optional absolute round deadlines and their owners persist without renewal on recovery; historical numeric checkpoint deadlines still decode as finite values. The earliest finite local or ancestor deadline wins: finite parents constrain unlimited children, and unlimited parents allow finite child deadlines. Without a finite deadline, execution creates no timeout timer and waiting/recovery invents no deadline. Database NULL means unlimited; updates may tighten NULL to finite or shorten a finite deadline, but cannot clear or extend a finite deadline. Finite process-local deadlines use monotonic time. Code isolation budgets narrow only when an effective round deadline exists; otherwise the node's own timeout remains intact. Expiry cancels the round, records timeout and applies the existing fail / break / continue policy. Round counts and input-array bounds remain unchanged.
 
 A Tokio timeout does not forcibly stop every task. Verification distinguishes admission stopping, bounded local cleanup, and remote effects. A stopped service cannot promise an on-time database transition; recovery first handles expired work. Remote effects are not reported as rolled back merely because a local deadline expired.
 
-The termination argument assumes finite leaf completion, finite scope DAGs and ownership depth, finite admitted rounds, progressing scheduling, and recovery that does not reset budgets. Structural induction over nesting depth then establishes finite execution in that model. It does not prove that the Rust implementation, database or remote services are fault-free.
+An unlimited round does not guarantee wall-clock termination. The termination argument assumes finite leaf completion, finite scope DAGs and ownership depth, finite admitted rounds, progressing scheduling, and recovery that does not reset budgets. Structural induction over nesting depth then establishes finite execution in that model. It does not prove that the Rust implementation, database or remote services are fault-free.
 
 ## Evidence
 

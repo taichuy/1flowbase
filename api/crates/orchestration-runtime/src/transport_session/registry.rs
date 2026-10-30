@@ -816,11 +816,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                     .is_some_and(|lease| now < lease.deadline())
                 // Recoverable tombstones cannot disappear while their old
                 // physical generation might still accept work.
-                || (matches!(
-                    receipt.kind,
-                    TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
-                        | TerminationKind::OwnerOrphaned
-                ) && !(receipt.never_dispatched_settled || receipt
+                || (receipt.kind.allows_settled_successor() && !(receipt.never_dispatched_settled || receipt
                     .closure_evidence
                     .as_ref()
                     .is_some_and(|evidence| evidence.local_released)))

@@ -53,7 +53,7 @@ pub struct ContainerRoundFact {
     pub execution_id: Uuid,
     pub container_execution_id: Uuid,
     pub round_index: u64,
-    pub deadline_unix_ms: i64,
+    pub deadline_unix_ms: Option<i64>,
     pub status: String,
     pub error_payload: Option<serde_json::Value>,
     pub output_payload: Option<serde_json::Value>,

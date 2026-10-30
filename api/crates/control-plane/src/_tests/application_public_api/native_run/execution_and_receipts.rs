@@ -57,7 +57,7 @@ async fn native_run_returns_application_not_published_when_key_application_has_n
             bearer_token: token,
             request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
         })
-        .await
+        .await.map_err(crate::_tests::application_public_api::expect_validation_error)
         .unwrap_err();
 
     assert_eq!(error, NativeRunValidationError::ApplicationNotPublished);
@@ -100,6 +100,7 @@ async fn native_run_read_rejects_run_created_by_different_application_api_key() 
             run_id: run.id,
         })
         .await
+        .map_err(crate::_tests::application_public_api::expect_validation_error)
         .unwrap_err();
 
     assert_eq!(error, NativeRunValidationError::Forbidden);
@@ -188,6 +189,7 @@ async fn native_run_read_resolves_provider_response_id_within_api_key_scope() {
             provider_response_id: "resp_provider_owned".to_string(),
         })
         .await
+        .map_err(crate::_tests::application_public_api::expect_validation_error)
         .unwrap_err();
     assert_eq!(error, NativeRunValidationError::NotFound);
 }
@@ -238,6 +240,7 @@ async fn native_run_cancel_verifies_ownership_and_marks_published_run_cancelled(
             run_id: run.id,
         })
         .await
+        .map_err(crate::_tests::application_public_api::expect_validation_error)
         .unwrap_err();
     assert_eq!(forbidden, NativeRunValidationError::Forbidden);
 

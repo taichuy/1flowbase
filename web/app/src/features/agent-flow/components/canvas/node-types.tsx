@@ -20,6 +20,7 @@ export interface AgentFlowCanvasNodeData extends Record<string, unknown> {
   config: Record<string, unknown>;
   issueCount: number;
   canEnterContainer: boolean;
+  emptyContainer?: boolean;
   minimumContainerSize?: { width: number; height: number };
   onResizeContainer?: (
     nodeId: string,

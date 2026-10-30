@@ -704,19 +704,22 @@ pub(crate) async fn authenticate_application_principal(
     })?;
     boot_snapshot
         .authenticate_invocation::<_, ApplicationPrincipal>(
-            Arc::clone(&snapshot), &binding_id, InterfaceProtocol::Http,
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
             ApplicationApiKeyAuthenticationCredential {
                 state: Arc::clone(&state),
                 bearer_token,
             },
         )
         .await
-        .map(|authenticated| ApplicationInvocationAuthentication::Authenticated { snapshot, authenticated: Box::new(authenticated) })
-        .map_err(|_| {
-            native::native_error(
-                control_plane::application_public_api::native::NativeRunValidationError::NotAuthenticated,
-            )
-        })
+        .map(
+            |authenticated| ApplicationInvocationAuthentication::Authenticated {
+                snapshot,
+                authenticated: Box::new(authenticated),
+            },
+        )
+        .map_err(native::service_error)
 }
 
 pub(crate) async fn invoke_typed_stream_with_principal(
@@ -955,16 +958,17 @@ pub(crate) async fn invoke_blocking(
         )
     })?;
     let authenticated = boot_snapshot
-        .authenticate_invocation::<_, ApplicationPrincipal>(Arc::clone(&snapshot), &binding_id, InterfaceProtocol::Http, ApplicationApiKeyAuthenticationCredential {
+        .authenticate_invocation::<_, ApplicationPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
+            ApplicationApiKeyAuthenticationCredential {
                 state: Arc::clone(&state),
                 bearer_token,
-            })
+            },
+        )
         .await
-        .map_err(|_| {
-            native::native_error(
-                control_plane::application_public_api::native::NativeRunValidationError::NotAuthenticated,
-            )
-        })?;
+        .map_err(native::service_error)?;
     let application_id = authenticated.principal().application_id();
     let dispatch_target = native::application_runtime_target(
         state.as_ref(),

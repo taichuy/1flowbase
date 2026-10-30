@@ -180,3 +180,132 @@ async fn observed_nodes_are_deduplicated_without_reassigning_the_client_capture(
     assert!(records.iter().all(|r| r.node_run_id.is_none()));
     assert_eq!(raw(&records, "submitted"), b"{}");
 }
+
+#[tokio::test]
+async fn owned_request_overview_preserves_original_content_allocation_and_full_text() {
+    let content = "owned-content-".to_owned() + &"x".repeat(2 * 1024 * 1024);
+    let request = json!({"input":[{"role":"user","content":content}]});
+    let original_pointer = request["input"][0]["content"].as_str().unwrap().as_ptr() as usize;
+    let mut classifier = classify::Classifier::new(
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        None,
+        ClientTrajectoryTransport::Http,
+    );
+    let mut facts = Vec::new();
+    classifier
+        .observe_into(
+            ClientTrajectoryFrameKind::Request,
+            request,
+            "2026-10-30T00:00:00Z",
+            &mut facts,
+        )
+        .await;
+    let overview = facts
+        .iter()
+        .find_map(|fact| match fact {
+            ClientTrajectoryFact::Section { section, value, .. }
+                if section == "overview" && value["role"] == "user" =>
+            {
+                Some(value)
+            }
+            _ => None,
+        })
+        .unwrap();
+    let actual = overview["content"].as_str().unwrap();
+    assert_eq!(actual, content);
+    assert_eq!(
+        actual.as_ptr() as usize,
+        original_pointer,
+        "the owned item must move into its overview, without cloning the original allocation"
+    );
+    let result = facts
+        .iter()
+        .find_map(|fact| match fact {
+            ClientTrajectoryFact::Section { section, value, .. } if section == "result" => {
+                value.as_str()
+            }
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(result, content);
+    let step = facts
+        .iter()
+        .find_map(|fact| match fact {
+            ClientTrajectoryFact::Step { step } if step.category == "user" => Some(step),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        step.available_sections,
+        ["overview", "result", "timing", "raw"]
+    );
+    assert!(!classifier.incomplete);
+}
+
+#[tokio::test]
+async fn duplicate_outputs_keep_first_id_or_index_and_terminal_usage_link() {
+    let mut classifier = classify::Classifier::new(
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        None,
+        ClientTrajectoryTransport::Http,
+    );
+    let at = "2026-10-30T00:00:00Z";
+    let mut facts = Vec::new();
+    let accepted = [
+        json!({"id":"A","role":"assistant","content":"first-A"}),
+        json!({"id":"B","role":"assistant","content":"first-B"}),
+        json!({"id":"","role":"assistant","content":"empty-id-indexed"}),
+        json!({"id":7,"role":"assistant","content":"nonstring-id-indexed"}),
+    ];
+    for (item, index) in [
+        (accepted[0].clone(), Some(0)),
+        (
+            json!({"id":"A","content":"id-conflict-does-not-reserve-index-1"}),
+            Some(1),
+        ),
+        (
+            json!({"id":"B","content":"index-conflict-does-not-reserve-id-B"}),
+            Some(0),
+        ),
+        (accepted[1].clone(), Some(1)),
+        (accepted[2].clone(), Some(2)),
+        (accepted[3].clone(), Some(3)),
+        (json!({"id":"","content":"empty-id-conflict"}), None),
+        (json!({"id":7,"content":"no-string-identity"}), None),
+        (json!({"content":"no-id-or-index"}), None),
+    ] {
+        let mut event = json!({"type":"response.output_item.done", "item":item});
+        if let Some(index) = index {
+            event["output_index"] = json!(index);
+        }
+        classifier
+            .observe_into(
+                ClientTrajectoryFrameKind::ResponseSse,
+                event,
+                at,
+                &mut facts,
+            )
+            .await;
+    }
+    classifier.observe_into(ClientTrajectoryFrameKind::ResponseSse, json!({"type":"response.completed","response":{"id":"response-link-kept","output":accepted,"usage":{"output_tokens":4}}}), at, &mut facts).await;
+    let overview: Vec<_> = facts
+        .iter()
+        .filter_map(|fact| match fact {
+            ClientTrajectoryFact::Section { section, value, .. } if section == "overview" => {
+                Some(value.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(overview, accepted);
+    assert_eq!(facts.iter().filter(|fact| matches!(fact, ClientTrajectoryFact::Step { step } if step.category == "assistant")).count(), 4);
+    assert!(facts.iter().any(|fact| matches!(fact, ClientTrajectoryFact::Section { section, value, .. } if section == "usage" && value["output_tokens"] == 4)));
+    assert!(facts.iter().any(|fact| matches!(fact, ClientTrajectoryFact::ResponseLink { response_id } if response_id == "response-link-kept")));
+    assert!(
+        classifier.incomplete,
+        "unidentified output retains the original incomplete semantics"
+    );
+    assert!(classifier.completed);
+}

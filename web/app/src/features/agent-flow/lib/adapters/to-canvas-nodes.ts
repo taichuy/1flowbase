@@ -76,6 +76,11 @@ export function toCanvasNodes(
   const nodesById = new Map(
     sizedDocument.graph.nodes.map((node) => [node.id, node])
   );
+  const populatedContainers = new Set(
+    sizedDocument.graph.nodes
+      .filter((node) => node.containerId && node.type !== 'container_start')
+      .map((node) => node.containerId)
+  );
   return parentFirstNodes(sizedDocument.graph.nodes).map((node) => {
     const flowRole = getNodeFlowRole(node.type);
     const branchSourceHandles =
@@ -136,6 +141,8 @@ export function toCanvasNodes(
         config: node.config,
         issueCount: issueCountByNodeId[node.id] ?? 0,
         canEnterContainer: false,
+        emptyContainer:
+          internalStart && !populatedContainers.has(node.containerId),
         minimumContainerSize: container
           ? getContainerMinimumSize(sizedDocument.graph.nodes, node.id)
           : undefined,

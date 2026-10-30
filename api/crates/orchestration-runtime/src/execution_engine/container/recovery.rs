@@ -320,13 +320,17 @@ where
         bail!("container is already closed");
     }
     let round = frame.rounds.get_mut(&round_index).expect("selected round");
-    let expired = round.deadline_unix_ms <= unix_ms();
+    let expired = round
+        .deadline_unix_ms
+        .is_some_and(|deadline| deadline <= unix_ms());
     if expired {
         return recover_callback_deadline(
             plan,
             checkpoint,
             &identity,
-            round.deadline_owner_execution_id,
+            round
+                .deadline_owner_execution_id
+                .ok_or_else(|| anyhow!("finite deadline missing owner"))?,
             &runtime_context,
             invoker,
             lifecycle,
@@ -533,7 +537,12 @@ where
             .get("absolute_deadline_unix_ms")
             .and_then(Value::as_i64)
         {
-            round.deadline_unix_ms = round.deadline_unix_ms.min(deadline);
+            round.deadline_unix_ms = Some(
+                round
+                    .deadline_unix_ms
+                    .map_or(deadline, |existing| existing.min(deadline)),
+            );
+            round.deadline_owner_execution_id.get_or_insert(*frame_id);
         }
     }
     round.variable_pool.remove(node_id);

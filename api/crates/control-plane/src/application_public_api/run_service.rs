@@ -14,8 +14,8 @@ use super::{
         ListApplicationPublicConversationMessagesInput,
     },
     native::{
-        CreateNativeRunCommand, NativeInputMapper, NativeRunRequest, NativeRunResult,
-        NativeRunValidationError,
+        CreateNativeRunCommand, NativeInputMapper, NativeRunError, NativeRunRequest,
+        NativeRunResult, NativeRunValidationError,
     },
     protocol_translation::TranslationProtocol,
     publications::ApplicationPublicationVersionRecord,
@@ -141,7 +141,7 @@ where
     pub async fn start_native_run(
         &self,
         command: CreateNativeRunCommand,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+    ) -> std::result::Result<NativeRunResult, NativeRunError> {
         let mut api_key_service = ApplicationApiKeyService::new(self.repository.clone());
         if let Some(cache) = &self.last_used_cache {
             api_key_service = api_key_service.with_last_used_cache(cache.clone());
@@ -149,7 +149,7 @@ where
         let actor = api_key_service
             .authenticate_bearer_token(&command.bearer_token)
             .await
-            .map_err(|_| NativeRunValidationError::NotAuthenticated)?;
+            .map_err(NativeRunError::Service)?;
         self.start_native_run_for_actor(actor, command.request, command.protocol)
             .await
     }
@@ -159,14 +159,14 @@ where
         actor: ApplicationApiKeyActor,
         request: NativeRunRequest,
         protocol: TranslationProtocol,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+    ) -> std::result::Result<NativeRunResult, NativeRunError> {
         self.start_agentflow_run(actor, request, protocol).await
     }
 
     pub async fn create_assistant_run(
         &self,
         command: CreateAssistantRunCommand,
-    ) -> std::result::Result<domain::FlowRunRecord, NativeRunValidationError> {
+    ) -> std::result::Result<domain::FlowRunRecord, NativeRunError> {
         self.create_console_run(command, ConsoleRunPrompt::Assistant)
             .await
     }
@@ -176,7 +176,7 @@ where
     pub async fn create_communication_run(
         &self,
         command: CreateAssistantRunCommand,
-    ) -> std::result::Result<domain::FlowRunRecord, NativeRunValidationError> {
+    ) -> std::result::Result<domain::FlowRunRecord, NativeRunError> {
         self.create_console_run(command, ConsoleRunPrompt::Communication)
             .await
     }
@@ -185,12 +185,12 @@ where
         &self,
         mut command: CreateAssistantRunCommand,
         prompt: ConsoleRunPrompt,
-    ) -> std::result::Result<domain::FlowRunRecord, NativeRunValidationError> {
+    ) -> std::result::Result<domain::FlowRunRecord, NativeRunError> {
         let application = self
             .repository
             .get_application(command.workspace_id, command.application_id)
             .await
-            .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
+            .map_err(NativeRunError::Service)?
             .filter(|application| {
                 application.application_type == domain::ApplicationType::AgentFlow
             })
@@ -201,7 +201,7 @@ where
             command.application_id,
         )
         .await
-        .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
+        .map_err(NativeRunError::Service)?
         .ok_or(NativeRunValidationError::ApplicationNotPublished)?
         .snapshot;
         let compiled_plan = load_published_plan(
@@ -210,7 +210,7 @@ where
             publication.compiled_plan_id,
         )
         .await
-        .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
+        .map_err(NativeRunError::Service)?
         .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
         let user_message =
             AssistantUserMessage::new(command.request.query.clone(), command.page_references);
@@ -232,7 +232,7 @@ where
             .repository
             .list_application_environment_variables(command.workspace_id, command.application_id)
             .await
-            .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+            .map_err(NativeRunError::Service)?;
         let started_at = OffsetDateTime::now_utc();
         let mut input_payload = freeze_run_input_environment(
             mapped.node_input_payload,
@@ -286,7 +286,7 @@ where
                 idempotency_key: None,
             })
             .await
-            .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+            .map_err(NativeRunError::Service)?;
         let flow_run = created.flow_run;
         let _ = ApplicationRepository::append_audit_log(
             &self.repository,
@@ -312,7 +312,7 @@ where
         actor: ApplicationApiKeyActor,
         client_request: NativeRunRequest,
         protocol: TranslationProtocol,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+    ) -> std::result::Result<NativeRunResult, NativeRunError> {
         self.ensure_application_exists(&actor).await?;
 
         let publication = self.load_enabled_publication(&actor).await?;
@@ -330,7 +330,7 @@ where
                 || (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64
                     >= grant.absolute_deadline_unix_ms
             {
-                return Err(NativeRunValidationError::InvalidState);
+                return Err(NativeRunValidationError::InvalidState.into());
             }
         }
         let idempotency_key = recovery
@@ -348,7 +348,7 @@ where
                 .as_deref()
                 .is_some_and(|key| key.starts_with("native-inference-recovery:"))
         {
-            return Err(NativeRunValidationError::IdempotencyConflict);
+            return Err(NativeRunValidationError::IdempotencyConflict.into());
         }
         let idempotency_fingerprint = idempotency_key
             .as_ref()
@@ -388,7 +388,7 @@ where
             publication.compiled_plan_id,
         )
         .await
-        .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
+        .map_err(NativeRunError::Service)?
         .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
         if let Some(grant) = &recovery {
             let plan: orchestration_runtime::compiled_plan::CompiledPlan =
@@ -413,11 +413,11 @@ where
                     idempotency_key,
                 )
                 .await
-                .map_err(|_| NativeRunValidationError::InvalidMapping)?
+                .map_err(NativeRunError::Service)?
             {
                 if recovery.is_some() {
                     // The create winner alone may stage/open/execute a recovery stream.
-                    return Err(NativeRunValidationError::IdempotencyConflict);
+                    return Err(NativeRunValidationError::IdempotencyConflict.into());
                 }
                 ensure_idempotency_fingerprint_matches(
                     &flow_run,
@@ -452,7 +452,7 @@ where
                 .repository
                 .list_application_environment_variables(actor.workspace_id, actor.application_id)
                 .await
-                .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+                .map_err(NativeRunError::Service)?;
             freeze_run_input_environment(
                 mapped.node_input_payload,
                 &environment_variables,
@@ -534,11 +534,11 @@ where
                 .create_published_flow_run(&create_input)
                 .await
         }
-        .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+        .map_err(NativeRunError::Service)?;
         let flow_run = created.flow_run;
         if !created.created {
             if recovery.is_some() {
-                return Err(NativeRunValidationError::IdempotencyConflict);
+                return Err(NativeRunValidationError::IdempotencyConflict.into());
             }
             ensure_idempotency_fingerprint_matches(&flow_run, idempotency_fingerprint.as_deref())?;
             return Ok(native_result_from_flow_run(&flow_run, metadata));
@@ -554,7 +554,7 @@ where
         &self,
         actor: &ApplicationApiKeyActor,
         flow_run: &domain::FlowRunRecord,
-    ) -> std::result::Result<domain::FlowRunRecord, NativeRunValidationError> {
+    ) -> std::result::Result<domain::FlowRunRecord, NativeRunError> {
         ensure_flow_run_transition(
             flow_run.status,
             domain::FlowRunStatus::Cancelled,
@@ -584,7 +584,7 @@ where
                 finished_at: OffsetDateTime::now_utc(),
             })
             .await
-            .map_err(|_| NativeRunValidationError::InvalidState)?;
+            .map_err(NativeRunError::Service)?;
         let (cancelled, cancellation_won) = match cancelled {
             crate::ports::CommitFlowRunTerminalReceipt::Winner(cancelled) => (cancelled, true),
             crate::ports::CommitFlowRunTerminalReceipt::WinnerWithPostCommitProjectionWarning(
@@ -601,7 +601,7 @@ where
                 self.repository
                     .get_published_flow_run(flow_run.id)
                     .await
-                    .map_err(|_| NativeRunValidationError::InvalidState)?
+                    .map_err(NativeRunError::Service)?
                     .ok_or(NativeRunValidationError::InvalidState)?,
                 false,
             ),
@@ -617,11 +617,11 @@ where
     async fn ensure_application_exists(
         &self,
         actor: &ApplicationApiKeyActor,
-    ) -> std::result::Result<(), NativeRunValidationError> {
+    ) -> std::result::Result<(), NativeRunError> {
         self.repository
             .get_application(actor.workspace_id, actor.application_id)
             .await
-            .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
+            .map_err(NativeRunError::Service)?
             .filter(|application| {
                 application.application_type == domain::ApplicationType::AgentFlow
             })
@@ -632,19 +632,18 @@ where
     async fn load_enabled_publication(
         &self,
         actor: &ApplicationApiKeyActor,
-    ) -> std::result::Result<Arc<ApplicationPublicationVersionRecord>, NativeRunValidationError>
-    {
+    ) -> std::result::Result<Arc<ApplicationPublicationVersionRecord>, NativeRunError> {
         let publication = load_active_publication(
             &self.repository,
             self.published_publication_cache.as_ref(),
             actor.application_id,
         )
         .await
-        .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?;
+        .map_err(NativeRunError::Service)?;
         let Some(publication) = publication.filter(|publication| publication.api_enabled) else {
             self.append_denied_audit(actor, "application_not_published")
                 .await;
-            return Err(NativeRunValidationError::ApplicationNotPublished);
+            return Err(NativeRunValidationError::ApplicationNotPublished.into());
         };
         Ok(publication.snapshot)
     }
@@ -762,7 +761,7 @@ where
         application_id: Uuid,
         api_key_id: Uuid,
         mut request: NativeRunRequest,
-    ) -> std::result::Result<NativeRunRequest, NativeRunValidationError> {
+    ) -> std::result::Result<NativeRunRequest, NativeRunError> {
         let Some(external_user) = request
             .expand_id
             .clone()
@@ -788,7 +787,7 @@ where
                 external_conversation_id: external_conversation_id.clone(),
             })
             .await
-            .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+            .map_err(NativeRunError::Service)?;
         if request.history.is_empty() {
             let messages = self
                 .repository
@@ -802,7 +801,7 @@ where
                     },
                 )
                 .await
-                .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+                .map_err(NativeRunError::Service)?;
             request.history = application_public_conversation_messages_to_native_history(messages);
         }
         Ok(request)

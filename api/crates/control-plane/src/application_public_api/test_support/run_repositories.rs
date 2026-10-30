@@ -70,6 +70,7 @@ impl conversations::ApplicationPublicConversationRepository for ApplicationPubli
         &self,
         input: &conversations::BindApplicationPublicConversationInput,
     ) -> Result<conversations::ApplicationPublicConversationRecord> {
+        self.check_native_repository_failure("bind_application_public_conversation")?;
         let mut inner = self
             .inner
             .lock()
@@ -103,6 +104,7 @@ impl conversations::ApplicationPublicConversationRepository for ApplicationPubli
         &self,
         _input: &conversations::ListApplicationPublicConversationMessagesInput,
     ) -> Result<Vec<conversations::ApplicationPublicConversationMessageRecord>> {
+        self.check_native_repository_failure("list_application_public_conversation_messages")?;
         Ok(Vec::new())
     }
 }
@@ -113,6 +115,7 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
         &self,
         input: &CreateFlowRunInput,
     ) -> Result<run_service::CreatePublishedFlowRunResult> {
+        self.check_native_repository_failure("create_published_flow_run")?;
         let record = domain::FlowRunRecord {
             id: Uuid::now_v7(),
             application_id: input.application_id,
@@ -203,6 +206,9 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
         &self,
         input: &CreateFlowRunInput,
     ) -> Result<run_service::CreatePublishedFlowRunResult> {
+        self.check_native_repository_failure(
+            "create_published_flow_run_superseding_callback_predecessors",
+        )?;
         let created = self.create_published_flow_run(input).await?;
         if !created.created {
             return Ok(created);
@@ -308,6 +314,7 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
         api_key_id: Option<Uuid>,
         idempotency_key: &str,
     ) -> Result<Option<domain::FlowRunRecord>> {
+        self.check_native_repository_failure("find_published_flow_run_by_idempotency_key")?;
         Ok(self
             .inner
             .lock()
@@ -331,6 +338,7 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
         &self,
         input: &AppendRunEventInput,
     ) -> Result<domain::RunEventRecord> {
+        self.check_native_repository_failure("append_published_run_event")?;
         let mut inner = self
             .inner
             .lock()
@@ -442,6 +450,7 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
         &self,
         flow_run_id: Uuid,
     ) -> Result<Option<domain::FlowRunRecord>> {
+        self.check_native_repository_failure("get_published_flow_run")?;
         Ok(self
             .inner
             .lock()
@@ -458,6 +467,7 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
         api_key_id: Uuid,
         provider_response_id: &str,
     ) -> Result<Option<domain::FlowRunRecord>> {
+        self.check_native_repository_failure("find_published_flow_run_by_provider_response_id")?;
         let inner = self
             .inner
             .lock()
@@ -491,6 +501,7 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
         &self,
         input: &run_service::CancelPublishedFlowRunInput,
     ) -> Result<crate::ports::CommitFlowRunTerminalReceipt> {
+        self.check_native_repository_failure("cancel_published_flow_run")?;
         let mut inner = self
             .inner
             .lock()
@@ -534,6 +545,7 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
         flow_run_id: Uuid,
         completed_at: OffsetDateTime,
     ) -> Result<Vec<domain::CallbackTaskRecord>> {
+        self.check_native_repository_failure("cancel_published_pending_callback_tasks_for_run")?;
         let mut inner = self
             .inner
             .lock()
@@ -780,6 +792,7 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> Result<Option<run_service::PublishedRunStreamState>> {
+        self.check_native_repository_failure("get_published_run_stream_state")?;
         let inner = self
             .inner
             .lock()
@@ -1043,6 +1056,7 @@ impl callback_resume::ApplicationPublishedCallbackAttemptRepository
         flow_run_id: Uuid,
         completed_at: OffsetDateTime,
     ) -> Result<Vec<domain::FlowRunCallbackResumeAttemptRecord>> {
+        self.check_native_repository_failure("cancel_published_callback_resume_attempts_for_run")?;
         let mut inner = self
             .inner
             .lock()

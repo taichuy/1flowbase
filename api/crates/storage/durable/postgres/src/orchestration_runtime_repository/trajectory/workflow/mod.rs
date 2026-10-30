@@ -392,7 +392,7 @@ impl PgControlPlaneStore {
                 .bind(source_run).bind(source_id).fetch_one(self.pool()).await?;
             let mut sections = vec![WorkflowEventSection {
                 kind: "round".into(),
-                value: serde_json::json!({"round_index":row.get::<i64,_>("round_index"),"deadline_unix_ms":row.get::<i64,_>("deadline_unix_ms"),"status":row.get::<String,_>("status")}),
+                value: serde_json::json!({"round_index":row.get::<i64,_>("round_index"),"deadline_unix_ms":row.get::<Option<i64>,_>("deadline_unix_ms"),"status":row.get::<String,_>("status")}),
             }];
             if event_id.starts_with("round_finished:") {
                 sections.push(WorkflowEventSection { kind: "output".into(), value: serde_json::json!({"result":row.get::<Option<Value>,_>("output_payload"),"variables":row.get::<Option<Value>,_>("variables")}) });

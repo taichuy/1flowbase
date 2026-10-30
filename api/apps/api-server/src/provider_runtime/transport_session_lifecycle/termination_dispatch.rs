@@ -128,74 +128,31 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 self.invocation_changed.notify_waiters();
             }
             let snapshot = self.registry.lock().await.safe_snapshot();
-            if task.command.action == ProviderTransportSessionAction::Close {
-                // A queued Close may outlive confirmation that its exact physical
-                // generation was released. Consume that proof before retry/exhaustion
-                // checks; terminal notification above remains independently owned.
-                let evidence = snapshot
-                    .sessions
-                    .iter()
-                    .find(|session| session.fence == task.fence)
-                    .and_then(|session| session.closure_evidence.as_ref())
-                    .or_else(|| {
-                        snapshot
-                            .tombstones
-                            .iter()
-                            .find(|receipt| receipt.fence == task.fence)
-                            .and_then(|receipt| receipt.closure_evidence.as_ref())
-                    });
-                if let Some(evidence) = evidence.filter(|evidence| evidence.local_released) {
-                    task.command.worker_incarnation = Some(evidence.identity.worker_incarnation);
-                    task.state = CloseTaskState::Released;
-                    task.last_blocker = None;
-                }
+            // Queued control may outlive confirmation that its exact physical
+            // generation was released. Consume that proof before retry/exhaustion
+            // checks; terminal notification above remains independently owned.
+            let evidence = snapshot
+                .sessions
+                .iter()
+                .find(|session| session.fence == task.fence)
+                .and_then(|session| session.closure_evidence.as_ref())
+                .or_else(|| {
+                    snapshot
+                        .tombstones
+                        .iter()
+                        .find(|receipt| receipt.fence == task.fence)
+                        .and_then(|receipt| receipt.closure_evidence.as_ref())
+                });
+            if let Some(evidence) = evidence.filter(|evidence| evidence.local_released) {
+                task.command.worker_incarnation = Some(evidence.identity.worker_incarnation);
+                task.state = CloseTaskState::Released;
+                task.last_blocker = None;
             }
             if task.state != CloseTaskState::Pending {
                 retained.push_back(task);
                 continue;
             }
             let now = snapshot.observed_at;
-            if !task.terminal_close
-                && task.command.action == ProviderTransportSessionAction::Drain
-                && task.attempts == 0
-            {
-                match drain_disposition(&snapshot, &task.fence) {
-                    DrainDisposition::Stale => continue,
-                    DrainDisposition::Defer => {
-                        // No control command can run while the current invocation owns
-                        // the socket. Start its bounded close budget once it finishes.
-                        task.deferred_while_inflight = true;
-                        retained.push_back(task);
-                        continue;
-                    }
-                    DrainDisposition::Ready => {}
-                }
-            }
-            if task.deferred_while_inflight && task.attempts == 0 {
-                let logical_ttl = snapshot
-                    .sessions
-                    .iter()
-                    .find(|session| session.fence == task.fence)
-                    .map(|session| session.logical_ttl)
-                    .unwrap_or(CONTROL_OVERALL_DEADLINE);
-                task.overall_deadline =
-                    transport_add(now, CONTROL_OVERALL_DEADLINE.min(logical_ttl));
-                task.deferred_while_inflight = false;
-            }
-            if now >= task.overall_deadline || task.attempts >= CONTROL_MAX_ATTEMPTS {
-                task.state = CloseTaskState::Exhausted;
-                task.last_blocker = Some("provider_physical_connection_close_exhausted");
-                tracing::warn!(
-                    task_id = %task.task_id, primary = ?task.primary_failure,
-                    first_control_failure = task.first_control_failure,
-                    generation = task.fence.generation.get(),
-                    attempts = task.attempts,
-                    overall_deadline_ms = task.overall_deadline.as_millis(),
-                    "provider close task exhausted"
-                );
-                retained.push_back(task);
-                continue;
-            }
             if now < task.next_due {
                 retained.push_back(task);
                 continue;
@@ -225,6 +182,28 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                         }
                     }
                 }
+            }
+            if (task.attempts > 0 && now >= task.overall_deadline)
+                || task.attempts >= CONTROL_MAX_ATTEMPTS
+            {
+                task.state = CloseTaskState::Exhausted;
+                task.last_blocker = Some("provider_physical_connection_close_exhausted");
+                tracing::warn!(
+                    task_id = %task.task_id, primary = ?task.primary_failure,
+                    first_control_failure = task.first_control_failure,
+                    generation = task.fence.generation.get(),
+                    attempts = task.attempts,
+                    overall_deadline_ms = task.overall_deadline.as_millis(),
+                    "provider close task exhausted"
+                );
+                retained.push_back(task);
+                continue;
+            }
+            if task.attempts == 0 {
+                // Queue time and inflight deferral spend no control budget. Cleanup
+                // has its own fixed window even after logical/physical business expiry.
+                // No await separates this initialization from claiming the first attempt.
+                task.overall_deadline = transport_add(now, CONTROL_OVERALL_DEADLINE);
             }
             task.command.deadline_unix_ms = i64::try_from(
                 transport_add(now, CONTROL_DEADLINE)
@@ -339,7 +318,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     "kind": failure.kind, "code": failure.code, "invocation_sequence": failure.invocation_sequence,
                 })),
                 "first_control_failure": task.first_control_failure, "recovery_blocker": task.last_blocker,
-                "attempts": task.attempts, "overall_deadline_unix_ms": task.overall_deadline.as_millis(),
+                "attempts": task.attempts, "overall_deadline_unix_ms": (task.attempts > 0).then(|| task.overall_deadline.as_millis()),
             }
         }));
         PluginFrameworkError::runtime(error).into()

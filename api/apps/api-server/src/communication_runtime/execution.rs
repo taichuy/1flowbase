@@ -268,7 +268,14 @@ async fn start_new(
             request: request::request(input, files)?,
         })
         .await
-        .map_err(|_| anyhow::anyhow!("communication_run_invalid"))?;
+        .map_err(|error| match error {
+            control_plane::application_public_api::native::NativeRunError::Service(source) => {
+                source
+            }
+            control_plane::application_public_api::native::NativeRunError::Validation(_) => {
+                anyhow::anyhow!("communication_run_invalid")
+            }
+        })?;
     stage.store(1, Ordering::SeqCst);
     progress(
         state,

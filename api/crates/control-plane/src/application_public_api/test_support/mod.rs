@@ -64,6 +64,9 @@ struct ApplicationPublicApiTestRepositoryInner {
     next_workflow_schedule_ordinal: u128,
     api_key_last_used_write_counts: HashMap<Uuid, usize>,
     fail_mark_api_key_used: bool,
+    api_key_lookup_failure: Option<bool>,
+    application_lookup_failure: Option<bool>,
+    native_repository_failure: Option<(&'static str, bool)>,
     seal_terminal_run_events: bool,
     published_generate_manifest_capabilities: Option<BTreeSet<ProviderInvocationCapability>>,
     published_generate_capability_checks: usize,
@@ -82,6 +85,33 @@ pub struct ApplicationPublicApiTestRepository {
 }
 
 impl ApplicationPublicApiTestRepository {
+    /// Inject a dependency fault after authentication, at a real native-run repository port.
+    pub fn set_native_repository_failure(
+        &self,
+        operation: Option<&'static str>,
+        unavailable: bool,
+    ) {
+        self.inner.lock().unwrap().native_repository_failure =
+            operation.map(|op| (op, unavailable));
+    }
+
+    fn check_native_repository_failure(&self, operation: &'static str) -> Result<()> {
+        if let Some((selected, unavailable)) = self.inner.lock().unwrap().native_repository_failure
+        {
+            if selected == operation {
+                let source =
+                    anyhow::Error::new(std::io::Error::other("isolated native repository failure"));
+                let source = if unavailable {
+                    source.context(ControlPlaneError::UpstreamUnavailable("native_repository"))
+                } else {
+                    source
+                };
+                return Err(source.context(operation));
+            }
+        }
+        Ok(())
+    }
+
     fn with_permissions(permissions: Vec<&str>) -> Self {
         Self::with_access(permissions, Vec::new())
     }
@@ -223,6 +253,17 @@ impl ApplicationPublicApiTestRepository {
             .lock()
             .expect("application public api test repo mutex poisoned")
             .seal_terminal_run_events = seal;
+    }
+
+    /// Fault only this isolated fixture; Some(true) is classified unavailable,
+    /// Some(false) retains an internal I/O error, None restores the repository.
+    pub fn set_authentication_lookup_failure(&self, application: bool, failure: Option<bool>) {
+        let mut inner = self.inner.lock().unwrap();
+        if application {
+            inner.application_lookup_failure = failure;
+        } else {
+            inner.api_key_lookup_failure = failure;
+        }
     }
 
     pub fn fail_mark_api_key_used(&self, fail: bool) {
@@ -776,3 +817,17 @@ mod flow_repository;
 mod publication_repository;
 mod repository_seeders;
 mod run_repositories;
+
+fn authentication_lookup_error(unavailable: bool) -> anyhow::Error {
+    let error = anyhow::Error::new(std::io::Error::other(
+        "isolated authentication dependency failure",
+    ));
+    let error = if unavailable {
+        error.context(ControlPlaneError::UpstreamUnavailable(
+            "authentication_dependency",
+        ))
+    } else {
+        error
+    };
+    error.context("application authentication repository lookup")
+}

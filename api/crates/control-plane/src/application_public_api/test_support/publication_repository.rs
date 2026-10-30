@@ -107,6 +107,7 @@ impl ApplicationPublicationRepository for ApplicationPublicApiTestRepository {
         &self,
         application_id: Uuid,
     ) -> Result<Option<publications::ApplicationPublicationVersionRecord>> {
+        self.check_native_repository_failure("load_active_application_publication")?;
         Ok(self
             .inner
             .lock()

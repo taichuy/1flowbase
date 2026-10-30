@@ -299,7 +299,19 @@ impl TaskQueue for RecordingTaskQueue {
 }
 
 mod api_key_service;
+mod authentication_failures;
 mod mapping_and_publication;
 mod operation_permissions;
 mod workflow_http_operation;
 mod workflow_schedule;
+
+fn expect_validation_error(
+    error: control_plane::application_public_api::native::NativeRunError,
+) -> control_plane::application_public_api::native::NativeRunValidationError {
+    match error {
+        control_plane::application_public_api::native::NativeRunError::Validation(error) => error,
+        control_plane::application_public_api::native::NativeRunError::Service(error) => {
+            panic!("expected business validation, received service failure: {error:#}")
+        }
+    }
+}

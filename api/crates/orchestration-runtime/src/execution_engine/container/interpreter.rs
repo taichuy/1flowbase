@@ -249,7 +249,7 @@ where
         return Err(GlobalFailure(error).into());
     }
     let inherited_deadline = match parent {
-        Some(scope) => Some(scope.deadline().await),
+        Some(scope) => scope.deadline().await,
         None => None,
     };
     let mut futures = FuturesUnordered::new();
@@ -299,7 +299,7 @@ where
                 session.clone(),
                 frame_id,
                 round_index,
-                parent.map(|scope| scope.expires_at),
+                parent.and_then(|scope| scope.expires_at),
             )
             .await?;
             futures.push(Box::pin(execute_round(
@@ -348,8 +348,11 @@ where
                     error_payload: mut error,
                 } = result;
                 if error.is_none() {
-                    let (_, owner) = scope.deadline().await;
                     if scope.expired() {
+                        let (_, owner) = scope
+                            .deadline()
+                            .await
+                            .ok_or_else(|| anyhow!("finite deadline missing owner"))?;
                         if owner != frame_id {
                             return Err(DeadlineExpired(owner).into());
                         }
@@ -546,15 +549,23 @@ async fn start_round(
             }
         }
     }
-    let own_deadline = unix_ms()
-        .checked_add(
-            i64::try_from(config.round_timeout_ms)
-                .map_err(|_| anyhow!("round deadline overflow"))?,
-        )
-        .ok_or_else(|| anyhow!("round deadline overflow"))?;
-    let (deadline, deadline_owner) = inherited
-        .filter(|(deadline, _)| *deadline <= own_deadline)
-        .unwrap_or((own_deadline, frame_id));
+    let own_deadline = config
+        .round_timeout_ms
+        .map(|timeout| {
+            unix_ms()
+                .checked_add(
+                    i64::try_from(timeout).map_err(|_| anyhow!("round deadline overflow"))?,
+                )
+                .ok_or_else(|| anyhow!("round deadline overflow"))
+        })
+        .transpose()?
+        .map(|deadline| (deadline, frame_id));
+    let effective = inherited
+        .into_iter()
+        .chain(own_deadline)
+        .min_by_key(|(deadline, _)| *deadline);
+    let deadline = effective.map(|(deadline, _)| deadline);
+    let deadline_owner = effective.map(|(_, owner)| owner);
     // The count, identity and deadline become visible in one durable transition.
     frame.started_rounds = frame
         .started_rounds
@@ -677,8 +688,9 @@ where
             },
         ));
     }
-    let (_, owner) = scope.deadline().await;
+    let deadline = scope.deadline().await;
     let result = if scope.expired() {
+        let (_, owner) = deadline.ok_or_else(|| anyhow!("finite deadline missing owner"))?;
         Err(anyhow::Error::new(DeadlineExpired(owner)))
     } else if waiting.is_some() {
         return Ok((
@@ -693,27 +705,30 @@ where
             scope: scope.clone(),
             owner: lifecycle,
         };
-        tokio::time::timeout_at(
-            scope.expires_at,
-            CURRENT_EXECUTION.scope(
-                scope.current_identity.clone(),
-                Box::pin(super::super::scheduler::execute_from_scoped(
-                    plan,
-                    index,
-                    pool,
-                    Some(active),
-                    ExecutionServices {
-                        runtime,
-                        invoker,
-                        lifecycle: &scoped_lifecycle,
-                    },
-                    Some(&scope),
-                    None,
-                )),
-            ),
-        )
-        .await
-        .unwrap_or_else(|_| Err(DeadlineExpired(owner).into()))
+        let execution = CURRENT_EXECUTION.scope(
+            scope.current_identity.clone(),
+            Box::pin(super::super::scheduler::execute_from_scoped(
+                plan,
+                index,
+                pool,
+                Some(active),
+                ExecutionServices {
+                    runtime,
+                    invoker,
+                    lifecycle: &scoped_lifecycle,
+                },
+                Some(&scope),
+                None,
+            )),
+        );
+        if let Some(expires_at) = scope.expires_at {
+            let (_, owner) = deadline.ok_or_else(|| anyhow!("finite deadline missing owner"))?;
+            tokio::time::timeout_at(expires_at, execution)
+                .await
+                .unwrap_or_else(|_| Err(DeadlineExpired(owner).into()))
+        } else {
+            execution.await
+        }
     };
     let outcome = match result {
         Ok(outcome) => outcome,

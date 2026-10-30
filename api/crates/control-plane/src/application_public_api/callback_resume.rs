@@ -181,8 +181,7 @@ where
         let actor = self
             .api_key_service()
             .authenticate_bearer_token(&command.bearer_token)
-            .await
-            .map_err(|_| ControlPlaneError::NotAuthenticated)?;
+            .await?;
         self.prepare_callback_resume_for_actor(actor, command).await
     }
 
@@ -518,8 +517,7 @@ where
         let actor = self
             .api_key_service()
             .authenticate_bearer_token(&command.bearer_token)
-            .await
-            .map_err(|_| ControlPlaneError::NotAuthenticated)?;
+            .await?;
         self.resume_callback_for_actor(actor, command).await
     }
 

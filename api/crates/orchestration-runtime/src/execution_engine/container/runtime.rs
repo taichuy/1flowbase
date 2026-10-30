@@ -16,7 +16,7 @@ pub(crate) struct Scope {
     pub session: Session,
     pub frame_id: Uuid,
     pub round_index: u64,
-    pub expires_at: tokio::time::Instant,
+    pub expires_at: Option<tokio::time::Instant>,
     pub current_identity: CurrentIdentity,
 }
 
@@ -102,6 +102,11 @@ impl Session {
             {
                 bail!("invalid container checkpoint round budget");
             }
+            for round in frame.rounds.values() {
+                if round.deadline_unix_ms.is_some() != round.deadline_owner_execution_id.is_some() {
+                    bail!("container checkpoint deadline and owner must both be present or absent");
+                }
+            }
             if recovering {
                 for round in frame.rounds.values() {
                     recovered_nodes
@@ -124,33 +129,38 @@ impl Scope {
         round_index: u64,
         ancestor_deadline: Option<tokio::time::Instant>,
     ) -> Result<Self> {
-        let remaining = {
+        let deadline = {
             let state = session.state.lock().await;
-            state.frames[&frame_id].rounds[&round_index]
-                .deadline_unix_ms
-                .saturating_sub(unix_ms())
-                .max(0) as u64
+            state.frames[&frame_id].rounds[&round_index].deadline_unix_ms
         };
-        let own = tokio::time::Instant::now()
-            .checked_add(std::time::Duration::from_millis(remaining))
-            .ok_or_else(|| anyhow!("container monotonic deadline overflow"))?;
+        let own = deadline
+            .map(|deadline| {
+                let remaining = deadline.saturating_sub(unix_ms()).max(0) as u64;
+                tokio::time::Instant::now()
+                    .checked_add(std::time::Duration::from_millis(remaining))
+                    .ok_or_else(|| anyhow!("container monotonic deadline overflow"))
+            })
+            .transpose()?;
         Ok(Self {
             session,
             frame_id,
             round_index,
-            expires_at: ancestor_deadline.map_or(own, |ancestor| ancestor.min(own)),
+            expires_at: own.into_iter().chain(ancestor_deadline).min(),
             current_identity: Arc::default(),
         })
     }
     pub fn expired(&self) -> bool {
-        tokio::time::Instant::now() >= self.expires_at
-    }
-    pub fn remaining_ms(&self) -> u64 {
         self.expires_at
-            .saturating_duration_since(tokio::time::Instant::now())
-            .as_millis()
-            .try_into()
-            .unwrap_or(u64::MAX)
+            .is_some_and(|deadline| tokio::time::Instant::now() >= deadline)
+    }
+    pub fn remaining_ms(&self) -> Option<u64> {
+        self.expires_at.map(|deadline| {
+            deadline
+                .saturating_duration_since(tokio::time::Instant::now())
+                .as_millis()
+                .try_into()
+                .unwrap_or(u64::MAX)
+        })
     }
 
     pub async fn advance(
@@ -222,10 +232,12 @@ impl Scope {
             })
     }
 
-    pub async fn deadline(&self) -> (i64, Uuid) {
+    pub async fn deadline(&self) -> Option<(i64, Uuid)> {
         let state = self.session.state.lock().await;
         let round = &state.frames[&self.frame_id].rounds[&self.round_index];
-        (round.deadline_unix_ms, round.deadline_owner_execution_id)
+        round
+            .deadline_unix_ms
+            .zip(round.deadline_owner_execution_id)
     }
 }
 
@@ -274,7 +286,12 @@ impl ExecutionLifecycle for ScopedLifecycle<'_> {
             .get_mut(&self.scope.round_index)
             .ok_or_else(|| anyhow!("container round missing"))?;
         if self.scope.expired() {
-            return Err(DeadlineExpired(round.deadline_owner_execution_id).into());
+            return Err(DeadlineExpired(
+                round
+                    .deadline_owner_execution_id
+                    .ok_or_else(|| anyhow!("finite deadline missing owner"))?,
+            )
+            .into());
         }
         let existing = round.nodes.contains_key(&node.node_id);
         let identity = round
@@ -425,7 +442,12 @@ impl ScopedLifecycle<'_> {
         let mut state = self.scope.session.state.lock().await;
         let round = &state.frames[&self.scope.frame_id].rounds[&self.scope.round_index];
         if self.scope.expired() {
-            return Err(DeadlineExpired(round.deadline_owner_execution_id).into());
+            return Err(DeadlineExpired(
+                round
+                    .deadline_owner_execution_id
+                    .ok_or_else(|| anyhow!("finite deadline missing owner"))?,
+            )
+            .into());
         }
         if let Some(pool) = variable_pool {
             state

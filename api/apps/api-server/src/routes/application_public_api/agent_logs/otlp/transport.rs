@@ -103,17 +103,7 @@ pub async fn ingest_traces(
                     bearer_token: token,
                 },
             )
-            .await
-            .map_err(|error| {
-                if error
-                    .chain()
-                    .any(|cause| cause.to_string() == "not_authenticated")
-                {
-                    ApiError::from(ControlPlaneError::NotAuthenticated)
-                } else {
-                    ApiError::from(error)
-                }
-            })?;
+            .await?;
         let encoding = match headers.get(axum::http::header::CONTENT_ENCODING) {
             Some(header) => header
                 .to_str()
