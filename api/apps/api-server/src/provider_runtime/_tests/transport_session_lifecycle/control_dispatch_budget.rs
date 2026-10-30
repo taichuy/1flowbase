@@ -123,10 +123,11 @@ async fn deferred_drain_with_zero_logical_ttl_gets_independent_cleanup_budget() 
     let before = coordinator.safe_snapshot().await;
     assert_eq!(before.sessions[0].logical_ttl, Duration::ZERO);
     coordinator.dispatch_pending_events().await;
-    let tasks = coordinator.pending_commands.lock().unwrap();
-    assert_eq!(tasks[0].attempts, 1);
-    assert_eq!(tasks[0].overall_deadline.as_millis(), 2_060_000);
-    drop(tasks);
+    {
+        let tasks = coordinator.pending_commands.lock().unwrap();
+        assert_eq!(tasks[0].attempts, 1);
+        assert_eq!(tasks[0].overall_deadline.as_millis(), 2_060_000);
+    }
     assert_eq!(runtime.commands()[0].deadline_unix_ms, 2_035_000);
     let mut registry = coordinator.registry.lock().await;
     assert_eq!(
@@ -157,16 +158,17 @@ async fn physical_and_logical_expiry_while_queued_still_allow_fenced_cleanup() {
             .unwrap();
         clock.advance(Duration::from_secs(30));
         coordinator.maintain_and_dispatch().await;
-        let tasks = coordinator.pending_commands.lock().unwrap();
-        assert!(tasks[0].terminal_close);
-        assert_eq!(tasks[0].attempts, 1);
-        assert_eq!(tasks[0].overall_deadline.as_millis(), 2_060_000);
-        assert_eq!(
-            runtime.commands()[0].action,
-            ProviderTransportSessionAction::Close
-        );
-        assert_eq!(runtime.commands()[0].deadline_unix_ms, 2_035_000);
-        drop(tasks);
+        {
+            let tasks = coordinator.pending_commands.lock().unwrap();
+            assert!(tasks[0].terminal_close);
+            assert_eq!(tasks[0].attempts, 1);
+            assert_eq!(tasks[0].overall_deadline.as_millis(), 2_060_000);
+            assert_eq!(
+                runtime.commands()[0].action,
+                ProviderTransportSessionAction::Close
+            );
+            assert_eq!(runtime.commands()[0].deadline_unix_ms, 2_035_000);
+        }
         assert_eq!(hard.as_millis(), 2_020_000);
         let snapshot = coordinator.safe_snapshot().await;
         assert!(snapshot.sessions.is_empty());
@@ -262,12 +264,13 @@ async fn started_drain_upgrade_retries_and_exhaustion_keep_original_window() {
     );
     clock.advance(Duration::from_secs(30));
     coordinator.maintain_and_dispatch().await;
-    let tasks = coordinator.pending_commands.lock().unwrap();
-    assert!(tasks[0].terminal_close);
-    assert_eq!(tasks[0].attempts, 1);
-    assert_eq!(tasks[0].state, CloseTaskState::Exhausted);
-    assert_eq!(tasks[0].overall_deadline, deadline);
-    drop(tasks);
+    {
+        let tasks = coordinator.pending_commands.lock().unwrap();
+        assert!(tasks[0].terminal_close);
+        assert_eq!(tasks[0].attempts, 1);
+        assert_eq!(tasks[0].state, CloseTaskState::Exhausted);
+        assert_eq!(tasks[0].overall_deadline, deadline);
+    }
     coordinator.maintain_and_dispatch().await;
     assert_eq!(runtime.commands().len(), 1);
 }
