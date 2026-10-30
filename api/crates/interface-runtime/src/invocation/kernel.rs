@@ -1025,6 +1025,10 @@ where
     E: InterfaceContract,
     P: InvocationPrincipal,
 {
+    #[expect(
+        clippy::boxed_local,
+        reason = "The prepare/execute handoff stays pointer-sized in the driver poll frame for unbounded input I."
+    )]
     fn execute(
         self: Box<Self>,
     ) -> Pin<Box<impl Future<Output = InterfaceInvocationResult<O>> + Send>> {

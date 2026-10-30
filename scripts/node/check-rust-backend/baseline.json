@@ -151,7 +151,7 @@
         },
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
-          "sha256": "bf7be8e2ef22ec9b004c096c5d9e954032c71a23ed87de70230930349aa2f168",
+          "sha256": "3d61f1843966634b5d7b45e1a277944a39f73103da125424be4e28284a1d4d5e",
           "reason": "RuntimeExtensionHost constructs and stores a collector at host construction, rather than constructing per profile request."
         },
         {
@@ -171,7 +171,7 @@
       "evidence": [
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
-          "sha256": "bf7be8e2ef22ec9b004c096c5d9e954032c71a23ed87de70230930349aa2f168",
+          "sha256": "3d61f1843966634b5d7b45e1a277944a39f73103da125424be4e28284a1d4d5e",
           "reason": "verify_managed_executable obtains the hash permit, resolves the frozen binding, then calls binding.verify_executable only inside tokio::task::spawn_blocking; managed calls await it."
         },
         {

@@ -215,7 +215,7 @@ describe('container configuration panels', () => {
     fireEvent.click(start);
     await waitFor(() =>
       expect(screen.getByRole('textbox', { name: '节点别名' })).toHaveValue(
-        'Container start'
+        startAlias
       )
     );
 
