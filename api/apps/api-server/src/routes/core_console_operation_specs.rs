@@ -94,6 +94,8 @@ const fn resource_action(
 /// here with an explicit policy group and authorization contract.
 pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     authenticated_routes("core.authenticated", "core.authenticated"),
+    // Authentication is shared; the service enforces non-delegable system-root access.
+    authenticated_operation("local_commands.execute", "other.local-commands"),
     settings(
         "communications.management.conversations.messages.list",
         "system.notifications",

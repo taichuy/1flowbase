@@ -414,6 +414,7 @@ pub(super) async fn app_and_runtime_host_from_config(
     runtime_extension_host.mark_ready()?;
 
     let state = Arc::new(ApiState {
+        local_command_policy: config.local_command_policy,
         #[cfg(test)]
         test_resources: None,
         console_policy_reader: Arc::new(store.clone()),

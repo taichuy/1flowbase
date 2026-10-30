@@ -67,6 +67,8 @@ pub mod system_branding;
 pub mod system_metadata;
 pub mod system_recovery;
 pub mod system_runtime;
+#[path = "system_services/local_command.rs"]
+pub mod local_command;
 #[path = "presentation_catalogs/ui_component_catalog.rs"]
 pub mod ui_component_catalog;
 #[path = "presentation_catalogs/ui_management.rs"]

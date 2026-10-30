@@ -33,6 +33,7 @@ pub mod host_extension_boot;
 pub mod host_extension_loader;
 pub mod host_extensions;
 pub mod host_infrastructure;
+mod local_command;
 #[path = "boot_composition/host_route_registry.rs"]
 pub mod host_route_registry;
 #[path = "boot_composition/host_worker_registry.rs"]
