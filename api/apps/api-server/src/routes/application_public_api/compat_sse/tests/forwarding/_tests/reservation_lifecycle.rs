@@ -37,7 +37,7 @@ impl crate::routes::application_public_api::native_read_interface::NativeRuntime
     for NoToolsFactory
 {
     fn without_mcp(&self) -> Result<Arc<dyn RuntimeInternalToolInvoker>, NativeApiError> {
-        panic!("callback resume must use the actor factory")
+        Ok(Arc::new(NoTools) as Arc<dyn RuntimeInternalToolInvoker>)
     }
 
     fn for_actor<'a>(
