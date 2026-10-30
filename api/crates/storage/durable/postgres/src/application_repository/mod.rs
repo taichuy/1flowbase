@@ -706,6 +706,22 @@ impl ApplicationRepository for PgControlPlaneStore {
         .execute(&mut *tx)
         .await?;
 
+        // Runtime event reclamation is deferred until commit. Remove manifests
+        // first so their references cannot block the application's item cascade.
+        sqlx::query(
+            r#"
+            delete from runtime_native_snapshot_manifests manifest
+            using applications application
+            where manifest.application_id = application.id
+              and application.id = $1
+              and application.workspace_id = $2
+            "#,
+        )
+        .bind(input.application_id)
+        .bind(input.workspace_id)
+        .execute(&mut *tx)
+        .await?;
+
         let deleted_rows = sqlx::query(
             r#"
             delete from applications

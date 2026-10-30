@@ -160,3 +160,137 @@ async fn native_snapshot_history_switch_is_exact_idempotent_and_preserves_generi
         "a pre-existing generic canonical value is not owned by observation migration"
     );
 }
+
+#[tokio::test]
+async fn application_delete_reclaims_native_snapshots_without_touching_other_applications() {
+    let (store, run, application, _) = seed().await;
+    let (workspace_id, actor_user_id): (Uuid, Uuid) =
+        sqlx::query_as("select workspace_id, created_by from applications where id=$1")
+            .bind(application)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    let body = r#"{"messages":[{"role":"user","content":"keep exact history"}]}"#;
+    let first = store.append_runtime_event(&event(run, body)).await.unwrap();
+    store.append_runtime_event(&event(run, body)).await.unwrap();
+    let manifest: Uuid =
+        sqlx::query_scalar("select observation_body_manifest_id from runtime_events where id=$1")
+            .bind(first.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+
+    // A second application owns identical content under independent identities.
+    let retained = ApplicationRepository::create_application(
+        &store,
+        &CreateApplicationInput {
+            actor_user_id,
+            workspace_id,
+            application_type: domain::ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
+            workflow_trigger_config: None,
+            name: "Retained snapshot owner".into(),
+            description: String::new(),
+            icon: None,
+            icon_type: None,
+            icon_background: None,
+        },
+    )
+    .await
+    .unwrap();
+    let retained_manifest = Uuid::now_v7();
+    sqlx::query("insert into runtime_native_snapshot_items(id,scope_id,application_id,content_hash,body,byte_size) select gen_random_uuid(),scope_id,$2,content_hash,body,byte_size from runtime_native_snapshot_items where application_id=$1")
+        .bind(application).bind(retained.id).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into runtime_native_snapshot_manifests(id,scope_id,application_id,content_hash,byte_size,layout) select $2,m.scope_id,$3,m.content_hash,m.byte_size,replace(m.layout::text,original.id::text,retained.id::text)::jsonb from runtime_native_snapshot_manifests m join runtime_native_snapshot_references r on r.manifest_id=m.id join runtime_native_snapshot_items original on original.id=r.item_id join runtime_native_snapshot_items retained on retained.application_id=$3 and retained.content_hash=original.content_hash where m.id=$1")
+        .bind(manifest).bind(retained_manifest).bind(retained.id).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into runtime_native_snapshot_references(manifest_id,item_id) select $1,id from runtime_native_snapshot_items where application_id=$2")
+        .bind(retained_manifest).bind(retained.id).execute(store.pool()).await.unwrap();
+
+    let command = DeleteApplicationInput {
+        actor_user_id,
+        workspace_id,
+        application_id: application,
+    };
+    assert!(ApplicationRepository::delete_application(
+        &store,
+        &DeleteApplicationInput {
+            workspace_id: Uuid::now_v7(),
+            ..command.clone()
+        },
+    )
+    .await
+    .is_err());
+    let preserved: Value = sqlx::query_scalar("select runtime_native_snapshot_body($1,$2)")
+        .bind(manifest)
+        .bind(run)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        preserved,
+        json!(body),
+        "wrong workspace must roll back all cleanup"
+    );
+
+    // A late failure must restore runs, manifests and references together.
+    sqlx::raw_sql("create function reject_fixture_application_delete() returns trigger language plpgsql as $$ begin raise exception 'fixture delete blocked'; end; $$; create trigger reject_fixture_application_delete before delete on applications for each row execute function reject_fixture_application_delete();")
+        .execute(store.pool()).await.unwrap();
+    assert!(ApplicationRepository::delete_application(&store, &command)
+        .await
+        .is_err());
+    let restored: Value = sqlx::query_scalar("select runtime_native_snapshot_body($1,$2)")
+        .bind(manifest)
+        .bind(run)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        restored,
+        json!(body),
+        "late failure must restore exact history"
+    );
+    sqlx::raw_sql("drop trigger reject_fixture_application_delete on applications; drop function reject_fixture_application_delete();")
+        .execute(store.pool()).await.unwrap();
+
+    ApplicationRepository::delete_application(&store, &command)
+        .await
+        .unwrap();
+    for table in [
+        "applications",
+        "flow_runs",
+        "runtime_native_snapshot_manifests",
+        "runtime_native_snapshot_items",
+    ] {
+        let column = if table == "applications" {
+            "id"
+        } else {
+            "application_id"
+        };
+        let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "select count(*) from {table} where {column}=$1"
+        )))
+        .bind(application)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(count, 0, "deleted application's {table} must be reclaimed");
+    }
+    let remaining: (i64, i64, i64) = sqlx::query_as("select (select count(*) from runtime_native_snapshot_manifests where application_id=$1),(select count(*) from runtime_native_snapshot_items where application_id=$1),(select count(*) from runtime_native_snapshot_references where manifest_id=$2)")
+        .bind(retained.id).bind(retained_manifest).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(
+        remaining,
+        (1, 1, 1),
+        "other application's snapshot must survive"
+    );
+    assert!(
+        sqlx::query("delete from runtime_native_snapshot_items where application_id=$1")
+            .bind(retained.id)
+            .execute(store.pool())
+            .await
+            .is_err(),
+        "retained references must still protect their bodies"
+    );
+    assert!(ApplicationRepository::delete_application(&store, &command)
+        .await
+        .is_err());
+}
