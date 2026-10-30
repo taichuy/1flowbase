@@ -46,12 +46,9 @@ async fn identity_restore_replays_and_rolls_back_modes_cache_and_exhausted_bound
             feature_id: "system.data-models".into(),
             data: true,
             prerequisite: false,
-            columns: schema::columns(
-                &mut *db.acquire().await.unwrap(),
-                "identity_restore_fixture",
-            )
-            .await
-            .unwrap(),
+            columns: schema::columns(&mut db.acquire().await.unwrap(), "identity_restore_fixture")
+                .await
+                .unwrap(),
             primary_key: vec!["id".into()],
             plugin_owners: vec![],
             prerequisites: vec![],

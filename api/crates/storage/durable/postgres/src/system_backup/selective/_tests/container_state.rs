@@ -195,6 +195,10 @@ async fn selective_container_execution_data_roundtrips_and_configuration_exclude
         .await
         .unwrap();
     assert_eq!(container_rows(&db).await, original);
+    // Append an observation through the real writer without re-closing a terminal node.
+    transition.node = None;
+    transition.rounds.clear();
+    transition.control_failure = None;
     transition.observation.as_mut().unwrap().observation_key = "after-restore".into();
     store
         .commit_container_transition(&transition)
