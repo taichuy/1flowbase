@@ -211,7 +211,7 @@ async fn release_never_dispatched_stale_and_next_due_do_not_start_cleanup_budget
         assert_eq!(tasks[0].overall_deadline, before);
         assert!(runtime.commands().is_empty());
     }
-    let (coordinator, clock, runtime, lease) = fixture(0, false, true, config()).await;
+    let (coordinator, _clock, runtime, lease) = fixture(0, false, true, config()).await;
     {
         let mut registry = coordinator.registry.lock().await;
         registry.record_closure_evidence(&lease.fence, &ProviderTransportClosureEvidence {
