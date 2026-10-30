@@ -109,7 +109,7 @@ fn other_policy_group_keys(group_id: &str) -> (&'static str, &'static str) {
         ),
         "other.local-commands" => (
             "Local commands",
-            "Run one-shot commands on the backend host as system root",
+            "Run one-shot commands on the backend host",
         ),
         "other.model-providers" => (
             "Model provider utilities",

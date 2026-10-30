@@ -117,7 +117,7 @@ pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
         "UI navigation, page configuration, code template and persisted component record management operations"
     ),
     policy!("Local commands"),
-    policy!("Run one-shot commands on the backend host as system root"),
+    policy!("Run one-shot commands on the backend host"),
     policy!("Signed-in console"),
     policy!("Console routes available to every signed-in user"),
     policy!("Agent Flow"),

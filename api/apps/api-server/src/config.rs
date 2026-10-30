@@ -37,7 +37,6 @@ impl ApiEnvironment {
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
-    pub local_command_policy: Option<control_plane::local_command::LocalCommandPolicy>,
     pub env: ApiEnvironment,
     pub database_url: String,
     pub database_pool_max_connections: u32,
@@ -322,7 +321,6 @@ impl ApiConfig {
             ));
         }
         Ok(Self {
-            local_command_policy: crate::local_command::policy_from_env(&map)?,
             env,
             database_url: get("API_DATABASE_URL")?,
             database_pool_max_connections: parse_positive_u32(

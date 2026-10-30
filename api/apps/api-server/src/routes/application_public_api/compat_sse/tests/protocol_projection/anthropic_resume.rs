@@ -97,7 +97,6 @@ async fn anthropic_resume_replay_terminal_returns_explicit_unsupported() {
         ),
     );
     let state = Arc::new(ApiState {
-        local_command_policy: None,
         test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
         console_policy_reader: Arc::clone(&base_state.console_policy_reader),

@@ -2,51 +2,56 @@
 
 [English](README.en.md)
 
-`POST /api/console/local-commands/execute` 在接收请求的后端实例中执行一个 shell 命令字符串，等待结束后返回输出。请求体只有一个字段：
+`POST /api/console/local-commands/execute` 接收一个命令字符串，在接收请求的后端环境中执行，等待结束后返回普通 JSON 响应：
 
 ```json
 {"command":"pwd && ls -la"}
 ```
 
-沿用 1flowbase 认证；Cookie 请求需要现有的 `x-csrf-token`。仅系统 root 可以执行，普通角色的接口权限不能授予操作系统访问。这里的 root 是 1flowbase 身份；进程使用后端服务的操作系统账号、工作目录和环境变量，不自动提权。
+## 权限与部署
 
-## 启用
+使用现有 1flowbase 认证。Cookie 请求需要现有 `x-csrf-token`。在角色的「其他权限 → Local commands」中选择执行接口即可授权；取消选择或关闭权限组后拒绝执行。`full/custom` 沿用既有规则，关闭组不会清空自定义选择。root 沿用系统超级管理员规则，接口内部没有额外 root-only 判断。
 
-默认关闭。在后端部署环境中同时设置以下两个正整数，再通过正常部署流程启动后端：
+无需启用配置或环境变量。旧的 `API_LOCAL_COMMAND_TIMEOUT_MS`、`API_LOCAL_COMMAND_MAX_OUTPUT_BYTES` 已删除，不再影响启动或执行。接口不设置独立的命令时长上限或输出总量上限，也不截断输出。没有调用期限时等待命令结束；一次性不表示任意命令必定快速结束。
 
-- `API_LOCAL_COMMAND_TIMEOUT_MS`：命令执行期限，单位毫秒。
-- `API_LOCAL_COMMAND_MAX_OUTPUT_BYTES`：stdout 与 stderr 共享的原始输出字节预算。
+命令使用后端服务的操作系统账号、工作目录和环境变量，不自动提权，不执行在浏览器所在电脑：
 
-没有内置的业务容量默认值。部署方按需要选择；只设置一个、填入无效值或在不支持的平台启用，启动配置检查会报错。当前实现支持具有 `/bin/sh` 和 POSIX 进程组的 Unix 环境；Windows 尚未实现，不会退化为缺少进程组回收的执行方式。
+| 后端环境 | 命令解释器 | 示例 |
+| --- | --- | --- |
+| Linux / macOS 原生 | `/bin/sh -c` | `pwd && ls -la` |
+| Windows 10+ / Server 2016+ 原生 | 系统 `cmd.exe /D /S /C` | `cd && dir` |
+| Linux Docker 容器 | 容器内部的 `/bin/sh -c` | `pwd && ls -la` |
 
-例如，一次需要最多运行 30 秒、接收 1 MiB 原始输出的部署可以配置 `30000` 和 `1048576`。这些是示例，不是默认或固定上限。预算约束保留的原始输出字节，不是进程 RSS、JSON 编码后的响应大小或并发总内存限制。
+Windows/macOS 主机上的 Linux 容器仍执行 Linux 命令。命令所需程序必须安装在实际执行环境里。Windows 需要 PowerShell 时可在 command 字符串中显式调用 `powershell.exe`；接口不会把不同系统的命令语法互相翻译。
 
-## 返回
+## 结果与输出
 
-正常 HTTP 响应沿用 `{ "data": { ... }, "meta": null }`：
+响应仍为 `{ "data": { ... }, "meta": null }`，data 包含：
 
 | 字段 | 含义 |
 | --- | --- |
-| `stdout` / `stderr` | 标准输出与标准错误；两路分别保持各自顺序，不提供两路全局时间顺序 |
-| `exit_code` | shell 的退出码；非零仍是有效命令结果；被信号终止时可为 null |
-| `signal` | Unix 终止信号编号；普通退出时为 null |
-| `duration_ms` | 本次执行及清理耗时 |
-| `timed_out` | 是否达到执行期限 |
-| `truncated` / `discarded_bytes` | 输出预算超限时是否截断及丢弃的原始字节数 |
-| `encoding_lossy` | 输出含无效 UTF-8（也可能因预算切断多字节字符），已用替代字符表示 |
-| `output_complete` | 两路管道是否都读取到 EOF 且没有读取/保留错误；不代表没有预算截断 |
-| `cleanup_complete` | 是否已回收直接子进程并确认本次进程组消失 |
+| `stdout` / `stderr` | 两路文本输出，各自保持顺序，不提供两路全局时间顺序 |
+| `exit_code` | shell 的退出码；非零也是有效结果；Unix 信号终止时可为 null |
+| `signal` | Unix 终止信号编号，其他情况为 null |
+| `duration_ms` | 命令执行、采集和回收耗时，不含 HTTP 发送 |
+| `timed_out` | 当前接口没有专属超时，正常返回为 false |
+| `truncated` / `discarded_bytes` | 当前不做预算截断，分别为 false / 0 |
+| `encoding_lossy` | 存在无效 UTF-8，以替代字符表示 |
+| `output_complete` | 两路输出完整采集后才返回 true；读取、写入失败返回错误 |
+| `cleanup_complete` | Windows 确认 Job 无活动进程；Unix 确认进程组消失。未确认则为 false |
 
-后端并行读取两路输出。预算用尽后继续读取并丢弃额外数据，避免管道阻塞。普通命令错误由退出码和输出表达；无效命令输入为 400，未认证或缺少 CSRF header 为 401，非 root、CSRF token 不匹配或未启用为 403，启动/基础设施失败为 500。无效 JSON 类型或额外字段由现有 JSON 提取器拒绝。
+Windows 为每次调用创建私有隐藏控制台并将代码页设置为 UTF-8，不修改后端或用户终端的代码页。无视该代码页的旧程序可能仍输出非 UTF-8 字节，此时按同一规则报告 `encoding_lossy`；接口不猜测未知程序的编码。
 
-命令正文与输出不写入审计日志或普通插件观察投影。审计记录调用者、执行标识和终态元数据。终态审计写失败只记录服务端错误，不把已执行的命令伪装成未执行。
+两路输出边读边写到本次调用的临时文件。文件保存按块转义后的 JSON 字符串内容；命令结束后，HTTP 按块读取并返回，保持普通 JSON 契约，不使用 SSE、WebSocket 或会话 ID。内存只保留处理块及元数据，临时磁盘随实际输出增长；不把全部文件再次读入内存。Unix 文件创建后立即 unlink（权限 0600），Windows 使用 delete-on-close；响应结束或放弃发送时关闭句柄并回收，不提供历史查询，不进入 ephemeral。
 
-## 生命周期边界
+磁盘满、进程启动或读取失败明确报错；不伪装为成功截断。响应发送阶段的读取或网络失败会使响应不完整，不能当作成功 JSON。非零退出码不等同于 HTTP 失败。无效命令为 400；未认证或缺少 CSRF header 为 401；权限不足或 CSRF 不匹配为 403；执行设施失败为 500。
 
-每次请求启动独立 `/bin/sh -c`，stdin 为 EOF；可以使用管道、重定向、引号及组合命令。不提供交互终端、SSH、会话 ID 或后续输入；`cd`、shell 变量不跨调用共享。文件等外部副作用可以跨调用保留。
+## 生命周期与证据
 
-达到执行期限或 shell 退出时，后端向本次进程组发送 SIGKILL，继续读取剩余输出并等待回收。清理最多再使用一个配置的执行期限，因此 HTTP 等待可能超过 `API_LOCAL_COMMAND_TIMEOUT_MS`；反向代理的超时应覆盖执行和清理。无法确认回收时返回 `cleanup_complete=false`，管道未读完时返回 `output_complete=false`，不会把“已发信号”当作“已清理”。
+每次执行新 shell，stdin 为 EOF，`cd` 和 shell 变量不跨调用共享。Unix 使用独立进程组；Windows 使用 Job Object，在创建进程时即纳管，并只继承本次标准输入输出句柄，避免并发调用互相持有管道。shell 结束后终止其受管后台进程，再收集尾部输出。Windows 由 Job 回收其受管进程；Unix 中尚未被系统回收的后代也可能使 cleanup_complete 暂时为 false。
 
-HTTP 断连不会主动取消命令；独立执行 owner 继续运行到结束或到期。后端不重试；客户端在断连后自行重试可能重复产生副作用。没有持久任务、输出缓存或断点恢复。
+HTTP 断连不会主动取消业务，完整调用由独立任务持有；内部执行 Future 被取消时触发本次进程清理。后端不重试，客户端自行重试可能重复产生文件等外部副作用。命令正文与输出不写入普通审计或插件观察投影，审计只保留调用者、执行标识和结果元数据。
 
-“本地”指执行位置。容器部署时命令运行在容器里；多实例部署时运行在接收请求的实例里。此接口不是沙箱，不限制命令利用该 OS 账号权限访问文件或网络，不承诺主动脱离进程组的进程、后端被强杀后仍能回收，也不会回滚已经发生的副作用。
+这不是沙箱，不保证终止主动逃离管理边界的进程，也不回滚命令副作用。反向代理自身超时仍可能先于命令结束。
+
+`.github/workflows/local-command.yml` 在 Windows、Linux、macOS 原生 runner 上直接编译并测试生产执行模块。Linux 的 API 测试另验证真实认证、角色授权、撤销与完整响应。轻量原生测试不等于整个原生发行包已经验证；每次交付以实际 Actions 结果和候选 SHA 为准。
