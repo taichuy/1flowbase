@@ -39,6 +39,7 @@ export function validateContainerNode(
     ...(node.type === 'loop' ? ['max_rounds'] : ['parallelism'])
   ]) {
     const value = node.config[key];
+    if (key === 'round_timeout_ms' && value == null) continue;
     if (!Number.isSafeInteger(value) || Number(value) < 1)
       report(
         `config.${key}`,

@@ -109,7 +109,7 @@ export function createContainerContract(
           title: i18nText('agentFlow', 'containers.round_timeout_ms'),
           renderer: 'container_positive_integer',
           valueType: 'number',
-          required: true,
+          required: false,
           min: 1,
           step: 1
         }),

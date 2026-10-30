@@ -230,15 +230,26 @@ export function ContainerPositiveIntegerField({
 }: SchemaFieldRendererProps) {
   const { t } = useTranslation('agentFlow');
   const value = adapter.getValue(block.path);
+  const timeout = block.path === 'config.round_timeout_ms';
   return (
     <div className="agent-flow-container-field">
       <InputNumber
         aria-label={block.label}
-        min={1}
+        min={timeout ? undefined : 1}
         step={1}
-        precision={0}
-        value={typeof value === 'number' ? value : null}
-        onChange={(value) => adapter.setValue(block.path, value)}
+        precision={timeout ? undefined : 0}
+        placeholder={timeout ? t('containers.timeout_optional') : undefined}
+        value={
+          typeof value === 'number' ? (timeout ? value / 60000 : value) : null
+        }
+        onChange={(value) =>
+          adapter.setValue(
+            block.path,
+            timeout && value !== null
+              ? Math.round(Number(value) * 60000)
+              : value
+          )
+        }
       />
       {block.path === 'config.round_timeout_ms' && (
         <Typography.Text type="secondary">
