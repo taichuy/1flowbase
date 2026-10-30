@@ -11,6 +11,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         &["system.branding.get", "system.branding.save"],
     ),
     core_authenticated_other("core.authenticated", &["core.authenticated"]),
+    // New, non-delegable system-root action. No historical role grant can enable execution.
+    core_authenticated_other("other.local-commands", &["local_commands.execute"]),
     core_authenticated_other(
         "core.authenticated",
         &[

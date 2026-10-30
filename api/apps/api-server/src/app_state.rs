@@ -393,6 +393,7 @@ fn validate_linked_host_console_route_assembly(
 
 #[derive(Clone)]
 pub struct ApiState {
+    pub local_command_policy: Option<control_plane::local_command::LocalCommandPolicy>,
     #[cfg(test)]
     pub(crate) test_resources: Option<Arc<TestResources>>,
     pub store: MainDurableStore,

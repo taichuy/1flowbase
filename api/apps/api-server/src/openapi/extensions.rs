@@ -3,6 +3,7 @@ use utoipa::OpenApi;
 #[derive(OpenApi)]
 #[openapi(
     paths(
+        crate::routes::local_commands::execute_local_command,
         crate::routes::plugins::list_catalog,
         crate::routes::plugins::extension_center::list_local_extension_inventory,
         crate::routes::plugins::extension_center::select_local_extension_installation,
@@ -179,6 +180,8 @@ use utoipa::OpenApi;
         crate::routes::network_center::delete_network_egress_route,
     ),
     components(schemas(
+        crate::routes::local_commands::LocalCommandBody,
+        crate::routes::local_commands::LocalCommandResponse,
         crate::routes::plugins::InstallPluginBody,
         crate::routes::plugins::InstallOfficialPluginBody,
         crate::routes::plugins::InstallPluginResponse,

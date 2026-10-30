@@ -84,6 +84,7 @@ async fn anthropic_live_flow_started_is_not_duplicated_before_waiting_tool_use()
         ),
     );
     let state = Arc::new(ApiState {
+        local_command_policy: None,
         test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
         console_policy_reader: Arc::clone(&base_state.console_policy_reader),
@@ -204,6 +205,7 @@ async fn anthropic_same_answer_presentation_from_live_and_durable_is_emitted_onc
         ),
     );
     let state = Arc::new(ApiState {
+        local_command_policy: None,
         test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
         console_policy_reader: Arc::clone(&base_state.console_policy_reader),

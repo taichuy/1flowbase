@@ -320,6 +320,7 @@ async fn test_state_with_runtime_profile_state(
     );
     notification_service.bootstrap().await.unwrap();
     let state = Arc::new(ApiState {
+        local_command_policy: config.local_command_policy,
         test_resources: Some(Arc::new(crate::app_state::TestResources::new(
             database,
             vec![

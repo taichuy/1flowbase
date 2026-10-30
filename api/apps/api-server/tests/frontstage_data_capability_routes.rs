@@ -224,6 +224,7 @@ async fn fixture_state() -> (
     );
     notification_service.bootstrap().await.unwrap();
     let state = Arc::new(ApiState {
+        local_command_policy: config.local_command_policy,
         store: store.clone(),
         console_policy_reader: Arc::new(store.clone()),
         system_backup,

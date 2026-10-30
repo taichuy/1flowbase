@@ -1,3 +1,4 @@
+pub mod local_commands;
 pub mod application_public_api;
 #[path = "applications/mod.rs"]
 mod applications_group;
