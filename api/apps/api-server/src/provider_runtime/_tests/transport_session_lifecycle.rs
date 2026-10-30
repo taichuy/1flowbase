@@ -1066,3 +1066,6 @@ mod successors;
 
 #[path = "transport_session_lifecycle/hard_max_rollover.rs"]
 mod hard_max_rollover;
+
+#[path = "transport_session_lifecycle/control_dispatch_budget.rs"]
+mod control_dispatch_budget;

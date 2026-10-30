@@ -130,7 +130,7 @@ impl Classifier {
             "response.output_item.done" => {
                 if let Some(item) = value.get("item") {
                     self.output(
-                        item.clone(),
+                        item,
                         value["output_index"].as_u64().map(|n| n as usize),
                         at,
                         facts,
@@ -301,7 +301,7 @@ impl Classifier {
         }
         if let Some(items) = value["output"].as_array() {
             for (index, item) in items.iter().enumerate() {
-                self.output(item.clone(), Some(index), at, facts).await;
+                self.output(item, Some(index), at, facts).await;
             }
         }
         if !value["usage"].is_null() && !self.usage_seen {
@@ -333,7 +333,7 @@ impl Classifier {
     }
     async fn output(
         &mut self,
-        item: Value,
+        item: &Value,
         index: Option<usize>,
         at: &str,
         facts: &mut impl FactSink,
@@ -355,7 +355,7 @@ impl Classifier {
             return;
         }
         self.output_seen.extend(id_key.into_iter().chain(index_key));
-        self.item(item, "emitted", at, facts).await;
+        self.item(item.clone(), "emitted", at, facts).await;
     }
     async fn item(&mut self, item: Value, origin: &str, at: &str, facts: &mut impl FactSink) {
         let kind = item["type"].as_str().unwrap_or("");
@@ -416,7 +416,7 @@ impl Classifier {
         step.namespace = namespace.clone();
         step.call_id = call_id.clone();
         step.item_id = item["id"].as_str().and_then(bounded_id);
-        let mut sections = vec![("overview", item.clone())];
+        let mut sections = Vec::new();
         if is_call {
             if let Some(args) = item.get("arguments").or_else(|| item.get("input")) {
                 step.parameters_preview = Some(preview(args));
@@ -445,6 +445,7 @@ impl Classifier {
         if category == "error" {
             step.status = "failed".into();
         }
+        sections.insert(0, ("overview", item));
         self.emit(step, sections, at, facts).await;
     }
     fn step(
