@@ -716,6 +716,7 @@ describe('FrontStagePage - routing fallback', () => {
                     {
                       id: 'page-1',
                       title: '页面 内页',
+                      show_title: true,
                       kind: 'page'
                     }
                   ]

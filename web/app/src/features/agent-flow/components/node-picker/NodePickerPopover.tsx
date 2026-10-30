@@ -180,7 +180,11 @@ export function NodePickerPopover({
       placement={placement}
       onOpenChange={onOpenChange}
       content={
-        <div className="agent-flow-node-picker">
+        <div
+          className="agent-flow-node-picker"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
           <div className="agent-flow-node-picker__header">
             <div
               aria-label={i18nText('agentFlow', 'auto.node_source')}

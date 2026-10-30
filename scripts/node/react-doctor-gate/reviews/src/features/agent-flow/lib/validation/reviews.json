@@ -4,12 +4,12 @@
     {
       "file": "web/app/src/features/agent-flow/lib/validation/containers.ts",
       "rule": "react-doctor/js-index-maps",
-      "sourceSha256": "01c64853297de37ddf479bd9b73b853a7841daa5e98c2f0a4f0b196740dd154b",
-      "reason": "The flagged .find probes one newly derived field-specific selector list once. The enclosing field list is exactly items/output for iteration or output for loop (at most two), and each call receives a different bindings field key because visibility differs between pre-body input and body output. A shared index would conflate those scopes; building a Map separately for a single lookup still scans every option and allocates an extra index. The current first matching selector preserves producer order and type semantics. Repeated variable-declaration lookup later in this validator has instead been indexed with first-match preservation. Container authoring and Workflow boundary tests assert immediate-body export, nested non-leakage and scalar input rejection.",
+      "sourceSha256": "12fff9e11ac4862a5b475ec9511d2cf2b16f9d816c9305b2583fef6daa3d35b5",
+      "reason": "The flagged .find probes one newly derived field-specific selector list once. The enclosing field list is exactly items/output for iteration or output for loop (at most two), and each call receives a different bindings field key because visibility differs between pre-body input and body output. A shared index would conflate those scopes; building a Map separately for a single lookup still scans every option and allocates an extra index. The current first matching selector preserves producer order and type semantics. Repeated variable-declaration lookup later in this validator has instead been indexed with first-match preservation. Container authoring and Workflow boundary tests assert immediate-body export, nested non-leakage and scalar input rejection. R46 reassessed 2026-10-30 against assembly 0dbfeafe8 and current frozen source: Container authoring accepts null/absent deadlines and positive safe integers, while rejecting explicit invalid deadlines; scalar/type/scope rejection assertions remain. Validation skips only null/absent round_timeout_ms; explicit values still require positive safe integers. Field-scoped selector lookup and fixed enum memberships are unchanged. Assertions are source evidence; centralized QA owns execution results.",
       "evidence": [
         {
           "file": "web/app/src/features/agent-flow/lib/validation/containers.ts",
-          "sha256": "01c64853297de37ddf479bd9b73b853a7841daa5e98c2f0a4f0b196740dd154b"
+          "sha256": "12fff9e11ac4862a5b475ec9511d2cf2b16f9d816c9305b2583fef6daa3d35b5"
         },
         {
           "file": "web/app/src/features/agent-flow/lib/selector-options.ts",
@@ -17,7 +17,7 @@
         },
         {
           "file": "web/app/src/features/agent-flow/_tests/containers/authoring.test.ts",
-          "sha256": "f9df567e31aeda5ce272b4768098a7f1a95c11a0dc246dbb2d9119c4fd57d5e0"
+          "sha256": "9f2f613fe294564915473e84e6d8915961c51c84caa74dce957e2dbbcee47819"
         },
         {
           "file": "web/app/src/features/workflow/_tests/workflow-authoring-boundary.test.ts",
@@ -28,24 +28,24 @@
     {
       "file": "web/app/src/features/agent-flow/lib/validation/containers.ts",
       "rule": "react-doctor/js-set-map-lookups",
-      "sourceSha256": "01c64853297de37ddf479bd9b73b853a7841daa5e98c2f0a4f0b196740dd154b",
-      "reason": "The membership arrays at issue are fixed language/domain enums: exactly string/number/boolean/object/array for loop value types, and fail/break/continue for error policy. Neither collection grows with variables or graph size, so each includes check has a fixed bound of five or three comparisons and allocates no per-variable Set. Variable-name uniqueness already uses Set, and the repeated declaration lookup now uses a first-entry Map. Container contract declarations, typed editor options and authoring validation tests bind these exact field/type/error semantics; this review does not cover unbounded array membership.",
+      "sourceSha256": "12fff9e11ac4862a5b475ec9511d2cf2b16f9d816c9305b2583fef6daa3d35b5",
+      "reason": "The membership arrays at issue are fixed language/domain enums: exactly string/number/boolean/object/array for loop value types, and fail/break/continue for error policy. Neither collection grows with variables or graph size, so each includes check has a fixed bound of five or three comparisons and allocates no per-variable Set. Variable-name uniqueness already uses Set, and the repeated declaration lookup now uses a first-entry Map. Container contract declarations, typed editor options and authoring validation tests bind these exact field/type/error semantics; this review does not cover unbounded array membership. R46 reassessed 2026-10-30 against assembly 0dbfeafe8 and current frozen source: Container authoring accepts null/absent deadlines and positive safe integers, while rejecting explicit invalid deadlines; scalar/type/scope rejection assertions remain. Timeout editor converts minutes to round_timeout_ms and supports null without rounding untouched legacy milliseconds; existing field-path and structured draft ownership remain. Container timeout contract becomes optional; existing binding and error-policy fields retain their paths and enum semantics. Validation skips only null/absent round_timeout_ms; explicit values still require positive safe integers. Field-scoped selector lookup and fixed enum memberships are unchanged. Assertions are source evidence; centralized QA owns execution results.",
       "evidence": [
         {
           "file": "web/app/src/features/agent-flow/lib/validation/containers.ts",
-          "sha256": "01c64853297de37ddf479bd9b73b853a7841daa5e98c2f0a4f0b196740dd154b"
+          "sha256": "12fff9e11ac4862a5b475ec9511d2cf2b16f9d816c9305b2583fef6daa3d35b5"
         },
         {
           "file": "web/app/src/features/agent-flow/lib/node-definitions/nodes/containers/contracts.ts",
-          "sha256": "57f1101793c258c41a7ccb867120506af01e7be7e62e88dcfc4f28ddd726d551"
+          "sha256": "348d085d76b09c64e5f4ab435b5f975c52187efe05d190c03382b54a41155c47"
         },
         {
           "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerFields.tsx",
-          "sha256": "0ec7eb4a2c3f7d6ea1a80a58ef0cfdf03e1d39ab62f37b4ed6043a0ede3daafc"
+          "sha256": "5f5b528a0ade981b34fd62da25612f4d35629e8cccea654cc616711ef001a79d"
         },
         {
           "file": "web/app/src/features/agent-flow/_tests/containers/authoring.test.ts",
-          "sha256": "f9df567e31aeda5ce272b4768098a7f1a95c11a0dc246dbb2d9119c4fd57d5e0"
+          "sha256": "9f2f613fe294564915473e84e6d8915961c51c84caa74dce957e2dbbcee47819"
         }
       ]
     }

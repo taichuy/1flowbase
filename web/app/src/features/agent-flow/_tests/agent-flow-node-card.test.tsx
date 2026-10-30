@@ -556,17 +556,17 @@ describe('AgentFlowNodeCard', () => {
     expect(canvasControlStyles).toMatch(
       /\.agent-flow-node-handle--tool\.react-flow__handle\s*\{[^}]*pointer-events:\s*auto;/s
     );
-    expect(canvasControlStyles).toContain(
-      '.react-flow__node:hover .agent-flow-node-handle--tool.react-flow__handle'
+    expect(canvasControlStyles).not.toContain(
+      '.react-flow__node:hover .agent-flow-node-handle--tool'
     );
     expect(canvasControlStyles).toMatch(
-      /\.react-flow__node:hover\s+\.agent-flow-node-handle--tool\.react-flow__handle,[^{]*\.agent-flow-node-handle--tool\.react-flow__handle:focus-visible\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;/s
+      /\.agent-flow-node-handle--tool\.react-flow__handle:hover,[^{]*\.agent-flow-node-handle--tool\.react-flow__handle:focus-visible\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;/s
     );
     expect(canvasControlStyles).toMatch(
       /\.agent-flow-node-handle__tool-icon\s*\{[^}]*opacity:\s*0;/s
     );
     expect(canvasControlStyles).toMatch(
-      /\.react-flow__node:hover\s+\.agent-flow-node-handle--tool\s+\.agent-flow-node-handle__tool-icon,[^{]*\.agent-flow-node-handle--tool\.react-flow__handle:focus-visible\s+\.agent-flow-node-handle__tool-icon\s*\{[^}]*opacity:\s*1;/s
+      /\.agent-flow-node-handle--tool:hover\s+\.agent-flow-node-handle__tool-icon,[^{]*\.agent-flow-node-handle--tool\.react-flow__handle:focus-visible\s+\.agent-flow-node-handle__tool-icon\s*\{[^}]*opacity:\s*1;/s
     );
     expect(canvasControlStyles).toContain('rgba(22, 119, 255, 0.18)');
     expect(within(card).getByTestId('agent-flow-node-tool-handle-0')).toBe(

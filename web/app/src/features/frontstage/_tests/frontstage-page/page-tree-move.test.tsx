@@ -82,6 +82,7 @@ type TestFrontStageTreeNode = {
   icon?: string | null;
   tooltip?: string | null;
   is_hidden?: boolean;
+  placement: 'topbar' | 'sidebar';
   kind: 'group' | 'page';
   children?: TestFrontStageTreeNode[];
 };
@@ -119,10 +120,14 @@ function authenticate(permissions: string[]) {
   });
 }
 
-function createBackendPage(pageId: string): TestFrontStageTreeNode {
+function createBackendPage(
+  pageId: string,
+  placement: TestFrontStageTreeNode['placement'] = 'sidebar'
+): TestFrontStageTreeNode {
   return {
     id: pageId,
     title: `页面 ${pageId}`,
+    placement,
     kind: 'page'
   };
 }
@@ -268,6 +273,7 @@ describe('FrontStagePage - page tree move', () => {
             {
               id: 'group-1',
               title: '分组 1',
+              placement: 'topbar',
               kind: 'group',
               children: [
                 createBackendPage('page-1'),
@@ -277,11 +283,13 @@ describe('FrontStagePage - page tree move', () => {
             {
               id: 'group-2',
               title: '分组 2',
+              placement: 'topbar',
               kind: 'group',
               children: [
                 {
                   id: 'group-3',
                   title: '嵌套分组',
+                  placement: 'sidebar',
                   kind: 'group',
                   children: [createBackendPage('page-3')]
                 }
@@ -373,6 +381,7 @@ describe('FrontStagePage - page tree move', () => {
     await waitFor(() =>
       expect(onMovePageNode).toHaveBeenCalledWith('page-2', {
         parentId: null,
+        placement: 'topbar',
         after_id: 'group-2'
       })
     );
@@ -433,12 +442,14 @@ describe('FrontStagePage - page tree move', () => {
             {
               id: 'route-1',
               title: '当前路由分组',
+              placement: 'topbar',
               kind: 'group',
               children: [page]
             },
             {
               id: 'route-2',
               title: '其他路由分组',
+              placement: 'topbar',
               kind: 'group',
               children: [createBackendPage('page-2')]
             }
@@ -468,6 +479,7 @@ describe('FrontStagePage - page tree move', () => {
     );
     expect(onMovePageNode).toHaveBeenLastCalledWith('page-1', {
       parentId: null,
+      placement: 'topbar',
       after_id: 'route-2'
     });
   });
@@ -484,10 +496,11 @@ describe('FrontStagePage - page tree move', () => {
             {
               id: 'group-1',
               title: '分组 group-1',
+              placement: 'topbar',
               kind: 'group',
               children: []
             },
-            createBackendPage('page-1')
+            createBackendPage('page-1', 'topbar')
           ]}
           onMovePageNode={onMovePageNode}
         />
