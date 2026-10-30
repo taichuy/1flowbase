@@ -109,35 +109,35 @@
     {
       "file": "web/app/src/features/settings/components/SystemRuntimePanel.tsx",
       "rule": "react-doctor/no-derived-state",
-      "sourceSha256": "2d7571d2cd842a2be936fb2be5881b678917df9e4fd30830099ba77c9c49307b",
+      "sourceSha256": "2cd6525cc88ef7a281ed6584a0a8099916cb5558ed114dd375ecec0518f29e51",
       "reason": "History retains a rolling window across query samples; the current profile cannot recreate prior points. The topology effect reconciles user-expanded keys and selected PID while retaining valid choices; those are editable UI history, not a pure profile projection. R46 reassessed 2026-10-30 against assembly 0dbfeafe8 and current frozen source: Runtime removes the shared terminal failure counter/stopped flag; both queries continue visible-page polling independently. Fixtures cover recovery after four profile/process/both failures and cleanup on unmount. Assertions are source evidence; centralized QA owns execution results.",
       "evidenceSet": 3
     },
     {
       "file": "web/app/src/features/settings/components/SystemRuntimePanel.tsx",
       "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "2d7571d2cd842a2be936fb2be5881b678917df9e4fd30830099ba77c9c49307b",
+      "sourceSha256": "2cd6525cc88ef7a281ed6584a0a8099916cb5558ed114dd375ecec0518f29e51",
       "reason": "The panel composes one runtime resource/process workspace. Polling queries, chart sample history and process selection have distinct lifecycles; file length alone does not establish an incorrect state owner or extra render. R46 reassessed 2026-10-30 against assembly 0dbfeafe8 and current frozen source: Runtime removes the shared terminal failure counter/stopped flag; both queries continue visible-page polling independently. Fixtures cover recovery after four profile/process/both failures and cleanup on unmount. Assertions are source evidence; centralized QA owns execution results.",
       "evidenceSet": 3
     },
     {
       "file": "web/app/src/features/settings/components/SystemRuntimePanel.tsx",
       "rule": "react-doctor/no-initialize-state",
-      "sourceSha256": "2d7571d2cd842a2be936fb2be5881b678917df9e4fd30830099ba77c9c49307b",
+      "sourceSha256": "2cd6525cc88ef7a281ed6584a0a8099916cb5558ed114dd375ecec0518f29e51",
       "reason": "narrow uses lazy useState reading matchMedia. The mount effect closes the gap before subscription and registers/cleans up change events; it does not initialize an empty narrow value. R46 reassessed 2026-10-30 against assembly 0dbfeafe8 and current frozen source: Runtime removes the shared terminal failure counter/stopped flag; both queries continue visible-page polling independently. Fixtures cover recovery after four profile/process/both failures and cleanup on unmount. Assertions are source evidence; centralized QA owns execution results.",
       "evidenceSet": 3
     },
     {
       "file": "web/app/src/features/settings/components/SystemRuntimePanel.tsx",
       "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "2d7571d2cd842a2be936fb2be5881b678917df9e4fd30830099ba77c9c49307b",
+      "sourceSha256": "2cd6525cc88ef7a281ed6584a0a8099916cb5558ed114dd375ecec0518f29e51",
       "reason": "role=status announces runtime collection/loading state rather than a form calculation. The named role=group groups process details rather than contact/address information. The suggested output/address elements do not match these semantics. R46 reassessed 2026-10-30 against assembly 0dbfeafe8 and current frozen source: Runtime removes the shared terminal failure counter/stopped flag; both queries continue visible-page polling independently. Fixtures cover recovery after four profile/process/both failures and cleanup on unmount. Assertions are source evidence; centralized QA owns execution results.",
       "evidenceSet": 3
     },
     {
       "file": "web/app/src/features/settings/components/SystemRuntimePanel.tsx",
       "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "2d7571d2cd842a2be936fb2be5881b678917df9e4fd30830099ba77c9c49307b",
+      "sourceSha256": "2cd6525cc88ef7a281ed6584a0a8099916cb5558ed114dd375ecec0518f29e51",
       "reason": "The seven panel states cover independent tab/metric/filter choices, a retained sample window, splitter preference and editable process expansion/selection. They do not share one atomic update invariant; React batching handles synchronous updates. R46 reassessed 2026-10-30 against assembly 0dbfeafe8 and current frozen source: Runtime removes the shared terminal failure counter/stopped flag; both queries continue visible-page polling independently. Fixtures cover recovery after four profile/process/both failures and cleanup on unmount. Assertions are source evidence; centralized QA owns execution results.",
       "evidenceSet": 3
     },

@@ -12,7 +12,7 @@ fn between<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
 fn main() {
     let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let fixture = root
-        .join("../../../../crates/control-plane/src/application_public_api/test_support/mod.rs")
+        .join("../../../../crates/control-plane/src/_tests/application_public_api/test_support/mod.rs")
         .canonicalize()
         .unwrap();
     println!(
