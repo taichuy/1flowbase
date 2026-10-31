@@ -87,6 +87,40 @@ async fn has_grant(
     }
 }
 
+// Public callback reads intentionally omit private continuation evidence. Use the
+// existing owned correlation query when asserting the entire stored receipt.
+async fn owned_receipt(
+    semantic: bool,
+    repository: &ApplicationPublicApiTestRepository,
+    actor: &ApplicationApiKeyActor,
+) -> CallbackTaskRecord {
+    let receipts = if semantic {
+        repository
+            .find_semantic_responses_callbacks_by_response_id(
+                actor.workspace_id,
+                actor.application_id,
+                actor.api_key_id,
+                actor.creator_user_id,
+                "resp_latest",
+            )
+            .await
+            .unwrap()
+    } else {
+        repository
+            .find_native_responses_callbacks_by_response_id(
+                actor.workspace_id,
+                actor.application_id,
+                actor.api_key_id,
+                actor.creator_user_id,
+                "resp_latest",
+            )
+            .await
+            .unwrap()
+    };
+    assert_eq!(receipts.len(), 1);
+    receipts.into_iter().next().unwrap()
+}
+
 #[tokio::test]
 async fn pruned_owned_history_starts_sampling_without_mutating_receipts() {
     for semantic in [false, true] {
@@ -95,11 +129,7 @@ async fn pruned_owned_history_starts_sampling_without_mutating_receipts() {
             if completed {
                 repository.complete_callback_task_for_test(callback.id);
             }
-            let stored = repository
-                .get_published_callback_task(callback.id)
-                .await
-                .unwrap()
-                .unwrap();
+            let stored = owned_receipt(semantic, &repository, &actor).await;
             let attempts = repository.callback_resume_attempts();
             let history = if semantic {
                 &stored.request_payload["responses_round"]["history"]
@@ -144,14 +174,7 @@ async fn pruned_owned_history_starts_sampling_without_mutating_receipts() {
                     );
                 }
             }
-            assert_eq!(
-                repository
-                    .get_published_callback_task(callback.id)
-                    .await
-                    .unwrap()
-                    .unwrap(),
-                stored
-            );
+            assert_eq!(owned_receipt(semantic, &repository, &actor).await, stored);
             for mutation in ["user", "latest_arguments"] {
                 let mut candidate = full.clone();
                 if mutation == "user" {
@@ -167,14 +190,7 @@ async fn pruned_owned_history_starts_sampling_without_mutating_receipts() {
                     .await
                     .unwrap());
             }
-            assert_eq!(
-                repository
-                    .get_published_callback_task(callback.id)
-                    .await
-                    .unwrap()
-                    .unwrap(),
-                stored
-            );
+            assert_eq!(owned_receipt(semantic, &repository, &actor).await, stored);
             assert_eq!(repository.callback_resume_attempts(), attempts);
         }
     }
@@ -184,11 +200,7 @@ async fn pruned_owned_history_starts_sampling_without_mutating_receipts() {
 async fn pruned_history_does_not_relax_cursor_configuration_or_round_guards() {
     for semantic in [false, true] {
         let (repository, actor, callback, full) = historical_round(semantic).await;
-        let stored = repository
-            .get_published_callback_task(callback.id)
-            .await
-            .unwrap()
-            .unwrap();
+        let stored = owned_receipt(semantic, &repository, &actor).await;
         let attempts = repository.callback_resume_attempts();
         let mut delta = full.clone();
         delta["input"] = json!([full["input"][53].clone()]);
@@ -251,14 +263,7 @@ async fn pruned_history_does_not_relax_cursor_configuration_or_round_guards() {
             has_grant(semantic, &repository, &other, &pruned).await,
             Ok(true)
         ));
-        assert_eq!(
-            repository
-                .get_published_callback_task(callback.id)
-                .await
-                .unwrap()
-                .unwrap(),
-            stored
-        );
+        assert_eq!(owned_receipt(semantic, &repository, &actor).await, stored);
         assert_eq!(repository.callback_resume_attempts(), attempts);
         repository.seed_pending_llm_tool_callback_task(
             callback.flow_run_id,
@@ -288,14 +293,7 @@ async fn closed_pruned_history_does_not_hide_missing_or_duplicate_owned_calls() 
             assert!(has_grant(semantic, &repository, &actor, &pruned)
                 .await
                 .is_err());
-            assert_eq!(
-                repository
-                    .get_published_callback_task(callback.id)
-                    .await
-                    .unwrap()
-                    .unwrap(),
-                callback
-            );
+            assert_eq!(owned_receipt(semantic, &repository, &actor).await, callback);
             assert!(repository.callback_resume_attempts().is_empty());
         }
     }
