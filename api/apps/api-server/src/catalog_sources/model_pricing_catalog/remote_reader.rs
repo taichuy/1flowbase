@@ -1,5 +1,6 @@
 use super::{validate_catalog_rules, ApiError, PricingRuleBody};
 use control_plane::errors::ControlPlaneError;
+use futures_util::StreamExt;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -13,6 +14,8 @@ struct Index {
     total_rules: usize,
     pages: Vec<PageReference>,
     search_index: Option<SearchReference>,
+    #[serde(default)]
+    search_shards: Vec<SearchShardReference>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,6 +32,14 @@ struct SearchReference {
     entry_count: usize,
     checksum: String,
     locator: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchShardReference {
+    #[serde(flatten)]
+    document: SearchReference,
+    provider_codes: Vec<String>,
+    pages: Vec<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,6 +121,38 @@ impl RemotePricingCatalogReader {
         if total != index.total_rules {
             return Err(invalid("pricing_catalog_rule_count"));
         }
+        if !index.search_shards.is_empty() {
+            let mut expected_page = 1usize;
+            let mut shard_total = 0usize;
+            for (position, shard) in index.search_shards.iter().enumerate() {
+                if shard.document.schema_version != "1flowbase.model-pricing-search/v2"
+                    || shard.document.locator != format!("{prefix}search/{}.json", position + 1)
+                    || shard.pages.is_empty()
+                    || shard.provider_codes.is_empty()
+                {
+                    return Err(invalid("pricing_catalog_search_shard"));
+                }
+                let mut count = 0usize;
+                for number in &shard.pages {
+                    if *number != expected_page {
+                        return Err(invalid("pricing_catalog_search_shard"));
+                    }
+                    let page = index
+                        .pages
+                        .get(number - 1)
+                        .ok_or_else(|| invalid("pricing_catalog_search_shard"))?;
+                    count += page.rule_count;
+                    expected_page += 1;
+                }
+                if count != shard.document.entry_count {
+                    return Err(invalid("pricing_catalog_search_shard"));
+                }
+                shard_total += count;
+            }
+            if expected_page != index.pages.len() + 1 || shard_total != index.total_rules {
+                return Err(invalid("pricing_catalog_search_shard"));
+            }
+        }
         Ok(Self {
             client: client.clone(),
             index_url: index_url.to_owned(),
@@ -148,24 +191,12 @@ impl RemotePricingCatalogReader {
         Ok(page.rules)
     }
 
-    async fn search_index(&self) -> Result<SearchIndex, ApiError> {
-        let reference = self
-            .index
-            .search_index
-            .as_ref()
-            .ok_or_else(|| invalid("pricing_catalog_search_index"))?;
-        let prefix = self
-            .index_url
-            .strip_suffix("index.json")
-            .ok_or_else(|| invalid("pricing_catalog_index_url"))?;
-        if reference.schema_version != "1flowbase.model-pricing-search/v2"
-            || reference.entry_count != self.index.total_rules
-            || reference.locator != format!("{prefix}search-index.json")
-        {
-            return Err(invalid("pricing_catalog_search_index"));
-        }
-        // Metadata only: the publisher's maximum index cardinality bounds this document.
-        let bytes = fetch_document(&self.client, &reference.locator, 64 * 1024 * 1024).await?;
+    async fn read_search_document(
+        &self,
+        reference: &SearchReference,
+        limit: usize,
+    ) -> Result<SearchIndex, ApiError> {
+        let bytes = fetch_document(&self.client, &reference.locator, limit).await?;
         verify_checksum(
             &bytes,
             &reference.checksum,
@@ -178,6 +209,89 @@ impl RemotePricingCatalogReader {
         {
             return Err(invalid("pricing_catalog_search_index"));
         }
+        Ok(search)
+    }
+
+    async fn search_index(&self, provider: Option<&str>) -> Result<SearchIndex, ApiError> {
+        let (search, expected_pages) = if self.index.search_shards.is_empty() {
+            // A v2 source may still publish only the original complete metadata snapshot.
+            let reference = self
+                .index
+                .search_index
+                .as_ref()
+                .ok_or_else(|| invalid("pricing_catalog_search_index"))?;
+            let prefix = self
+                .index_url
+                .strip_suffix("index.json")
+                .ok_or_else(|| invalid("pricing_catalog_index_url"))?;
+            if reference.schema_version != "1flowbase.model-pricing-search/v2"
+                || reference.entry_count != self.index.total_rules
+                || reference.locator != format!("{prefix}search-index.json")
+            {
+                return Err(invalid("pricing_catalog_search_index"));
+            }
+            (
+                self.read_search_document(reference, 64 * 1024 * 1024)
+                    .await?,
+                (1..=self.page_count()).collect::<HashSet<_>>(),
+            )
+        } else {
+            let shards: Vec<_> = self
+                .index
+                .search_shards
+                .iter()
+                .filter(|shard| {
+                    provider.is_none_or(|filter| {
+                        shard
+                            .provider_codes
+                            .iter()
+                            .any(|code| code.to_lowercase().contains(filter))
+                    })
+                })
+                .collect();
+            let expected_pages = shards
+                .iter()
+                .flat_map(|shard| shard.pages.iter().copied())
+                .collect::<HashSet<_>>();
+            let mut stream = futures_util::stream::iter(shards)
+                .map(|shard| async move {
+                    let search = self
+                        .read_search_document(&shard.document, 2 * 1024 * 1024)
+                        .await?;
+                    let providers: std::collections::BTreeSet<_> = search
+                        .entries
+                        .iter()
+                        .map(|entry| entry.provider_code.to_lowercase())
+                        .collect();
+                    let declared: std::collections::BTreeSet<_> = shard
+                        .provider_codes
+                        .iter()
+                        .map(|code| code.to_lowercase())
+                        .collect();
+                    if providers != declared
+                        || search
+                            .entries
+                            .iter()
+                            .any(|entry| !shard.pages.contains(&entry.catalog_page.page))
+                    {
+                        return Err(invalid("pricing_catalog_search_shard"));
+                    }
+                    Ok::<_, ApiError>(search.entries)
+                })
+                .buffered(4);
+            let mut entries = Vec::new();
+            while let Some(result) = stream.next().await {
+                entries.extend(result?);
+            }
+            (
+                SearchIndex {
+                    schema_version: "1flowbase.model-pricing-search/v2".to_owned(),
+                    catalog_version: self.index.catalog_version.clone(),
+                    entries,
+                },
+                expected_pages,
+            )
+        };
         let mut ids = HashSet::new();
         let mut page_counts = vec![0usize; self.page_count()];
         let mut previous_page = 0;
@@ -198,12 +312,14 @@ impl RemotePricingCatalogReader {
             previous_page = page.page;
             page_counts[page.page - 1] += 1;
         }
-        if self
-            .index
-            .pages
-            .iter()
-            .any(|page| page_counts[page.page - 1] != page.rule_count)
-        {
+        if self.index.pages.iter().any(|page| {
+            page_counts[page.page - 1]
+                != if expected_pages.contains(&page.page) {
+                    page.rule_count
+                } else {
+                    0
+                }
+        }) {
             return Err(invalid("pricing_catalog_search_count"));
         }
         Ok(search)
@@ -259,7 +375,7 @@ impl RemotePricingCatalogReader {
             return Ok(self.index.total_rules);
         }
         Ok(self
-            .search_index()
+            .search_index(provider.as_deref())
             .await?
             .entries
             .iter()
@@ -301,7 +417,7 @@ impl RemotePricingCatalogReader {
             validate_catalog_rules(&selected)?;
             return Ok((selected, self.index.total_rules));
         }
-        let search = self.search_index().await?;
+        let search = self.search_index(provider.as_deref()).await?;
         let matches: Vec<_> = search
             .entries
             .iter()
@@ -320,7 +436,7 @@ impl RemotePricingCatalogReader {
         if ids.is_empty() {
             return Ok(Vec::new());
         }
-        let search = self.search_index().await?;
+        let search = self.search_index(None).await?;
         let selected: Vec<_> = search
             .entries
             .iter()

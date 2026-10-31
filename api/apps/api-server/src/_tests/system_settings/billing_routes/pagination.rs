@@ -396,3 +396,61 @@ async fn pricing_reader_retries_an_interrupted_body_and_bounds_persistent_failur
         assert_eq!(hits.load(Ordering::SeqCst), 2);
     }
 }
+
+#[tokio::test]
+async fn pricing_sharded_search_skips_unrelated_metadata_and_keeps_exact_counts() {
+    let f = fixture().await;
+    {
+        let mut docs = f.documents.lock().unwrap();
+        let search = docs.remove("/search-index.json").unwrap();
+        let mut shards = Vec::new();
+        for (number, (start, end, pages, providers)) in [
+            (0, 4, vec![1, 2], vec!["provider-a", "provider-b"]),
+            (4, 6, vec![3], vec!["provider-a"]),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut document = search.clone();
+            document["entries"] = json!(&search["entries"].as_array().unwrap()[start..end]);
+            let name = format!("/search/{}.json", number + 1);
+            shards.push(json!({"schema_version":"1flowbase.model-pricing-search/v2",
+                "entry_count": end - start, "checksum":checksum(&document),
+                "locator":format!("{}search/{}.json", f.url.strip_suffix("index.json").unwrap(), number + 1),
+                "pages":pages,"provider_codes":providers}));
+            docs.insert(name, document);
+        }
+        docs.get_mut("/index.json").unwrap()["search_shards"] = json!(shards);
+        // The other provider's metadata endpoint is unavailable.
+        docs.remove("/search/2.json");
+    }
+    let reader = RemotePricingCatalogReader::open(&reqwest::Client::new(), &f.url)
+        .await
+        .unwrap();
+    assert_eq!(
+        reader
+            .count(Some(" PROVIDER-B "), Some("MODEL"))
+            .await
+            .unwrap(),
+        2
+    );
+    assert_eq!(*f.hits.lock().unwrap(), ["/index.json", "/search/1.json"]);
+    f.hits.lock().unwrap().clear();
+    let (rules, count) = reader
+        .query(Some("provider-b"), Some("MODEL"), 2, 1)
+        .await
+        .unwrap();
+    assert_eq!(count, 2);
+    assert_eq!(rules[0].id, Some(f.ids[3]));
+    assert_eq!(*f.hits.lock().unwrap(), ["/search/1.json", "/pages/2.json"]);
+    // A broad query cannot claim a complete count when a required shard is missing.
+    assert!(reader.count(None, Some("Model")).await.is_err());
+    // Malformed partition ownership fails before requesting metadata.
+    f.documents.lock().unwrap().get_mut("/index.json").unwrap()["search_shards"][1]["pages"] =
+        json!([2]);
+    assert!(
+        RemotePricingCatalogReader::open(&reqwest::Client::new(), &f.url)
+            .await
+            .is_err()
+    );
+}
