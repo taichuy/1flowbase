@@ -248,10 +248,13 @@ async fn pricing_sync_later_page_failure_installs_no_earlier_page() {
         .await
         .unwrap();
     assert!(!response.status().is_success());
-    assert_eq!(
-        *f.hits.lock().unwrap(),
-        ["/index.json", "/pages/1.json", "/pages/2.json"]
-    );
+    {
+        let hits = f.hits.lock().unwrap();
+        assert_eq!(hits.first().unwrap(), "/index.json");
+        assert!(hits.iter().any(|path| path == "/pages/2.json"));
+        assert!(hits.iter().skip(1).all(|path| path.starts_with("/pages/")));
+        assert!(hits.len() <= 4);
+    }
     let listed = app
         .oneshot(
             Request::builder()

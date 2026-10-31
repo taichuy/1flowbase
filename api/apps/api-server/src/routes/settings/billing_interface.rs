@@ -266,14 +266,19 @@ impl BillingAdapter {
                     ApiError,
                 > = async {
                     let mut session = self.0.store.begin_official_pricing_sync().await?;
-                    for number in 1..=catalog.page_count() {
-                        let rules = catalog
-                            .read_page(number)
-                            .await?
-                            .into_iter()
-                            .map(|body| body_to_rule(body, actor.user_id, None))
-                            .collect::<Result<Vec<_>, _>>()?;
-                        session.stage(&rules).await?;
+                    for first in (1..=catalog.page_count()).step_by(4) {
+                        let mut requests = Vec::new();
+                        for number in first..=first.saturating_add(3).min(catalog.page_count()) {
+                            requests.push(catalog.read_page(number));
+                        }
+                        // Keep at most four remote pages in flight and stage each independently.
+                        for page in futures_util::future::try_join_all(requests).await? {
+                            let rules = page
+                                .into_iter()
+                                .map(|body| body_to_rule(body, actor.user_id, None))
+                                .collect::<Result<Vec<_>, _>>()?;
+                            session.stage(&rules).await?;
+                        }
                     }
                     Ok(session)
                 }
