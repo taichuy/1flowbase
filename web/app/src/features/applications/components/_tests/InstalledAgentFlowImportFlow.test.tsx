@@ -114,7 +114,9 @@ function mount(installationId: string | null = 'installation-a') {
 async function confirm() {
   const input = await screen.findByRole('textbox', { name: '应用名称' });
   fireEvent.change(input, { target: { value: '  Edited name  ' } });
-  fireEvent.click(screen.getByRole('button', { name: '导入应用' }));
+  const button = screen.getByRole('button', { name: '导入应用' });
+  fireEvent.click(button);
+  return button;
 }
 
 describe('installed template import through the real Modal', () => {
@@ -256,8 +258,7 @@ describe('installed template import through the real Modal', () => {
     api.importInstalledApplicationExtension.mockReturnValue(request.promise);
     const mounted = mount();
     mounted.onImported.mockReturnValue(callback.promise);
-    await confirm();
-    const button = screen.getByRole('button', { name: '导入应用' });
+    const button = await confirm();
     expect(button).toHaveClass('ant-btn-loading');
     expect(mounted.onImported).not.toHaveBeenCalled();
     await act(async () => {
