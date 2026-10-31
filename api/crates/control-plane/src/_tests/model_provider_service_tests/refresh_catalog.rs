@@ -262,6 +262,10 @@ async fn model_provider_service_refresh_failure_does_not_clear_enabled_model_ids
         .await
         .unwrap();
 
+    service
+        .refresh_models(repository.actor.user_id, created.instance.id)
+        .await
+        .expect("seed prior catalog through a successful refresh");
     let old_cache = repository
         .get_catalog_cache(created.instance.id)
         .await
@@ -424,6 +428,10 @@ async fn model_provider_service_refresh_models_blocks_when_current_node_artifact
         })
         .await
         .unwrap();
+    bootstrap_service
+        .refresh_models(repository.actor.user_id, created.instance.id)
+        .await
+        .expect("seed prior catalog before switching to the missing-artifact node");
     let current_node_root =
         std::env::temp_dir().join(format!("provider-refresh-node-missing-{}", Uuid::now_v7()));
     let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key")

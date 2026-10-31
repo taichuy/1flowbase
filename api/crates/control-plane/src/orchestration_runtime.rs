@@ -79,6 +79,49 @@ pub mod trace_projection;
 
 pub use stream_terminal_recovery::FinalizePublishedRunMissingStreamTerminalCommand;
 
+fn map_llm_distribution_rule(
+    rule: domain::ModelProviderDistributionRule,
+) -> orchestration_runtime::compiled_plan::LlmDistributionRule {
+    match rule {
+        domain::ModelProviderDistributionRule::None => {
+            orchestration_runtime::compiled_plan::LlmDistributionRule::None
+        }
+        domain::ModelProviderDistributionRule::RoundRobin => {
+            orchestration_runtime::compiled_plan::LlmDistributionRule::RoundRobin
+        }
+        domain::ModelProviderDistributionRule::RetryRoundRobin => {
+            orchestration_runtime::compiled_plan::LlmDistributionRule::RetryRoundRobin
+        }
+        domain::ModelProviderDistributionRule::Dynamic {
+            rule_id,
+            rule_version,
+            contract_version,
+            config,
+        } => orchestration_runtime::compiled_plan::LlmDistributionRule::Dynamic {
+            rule_id,
+            rule_version,
+            contract_version,
+            config: config
+                .into_iter()
+                .map(|(key, value)| {
+                    let value = match value {
+                        domain::ModelProviderDistributionConfigValue::String(value) => {
+                            extension_contracts::ProviderDistributionConfigValue::String(value)
+                        }
+                        domain::ModelProviderDistributionConfigValue::Integer(value) => {
+                            extension_contracts::ProviderDistributionConfigValue::Integer(value)
+                        }
+                        domain::ModelProviderDistributionConfigValue::Boolean(value) => {
+                            extension_contracts::ProviderDistributionConfigValue::Boolean(value)
+                        }
+                    };
+                    (key, value)
+                })
+                .collect(),
+        },
+    }
+}
+
 #[cfg(test)]
 pub(crate) use provider_invoker::test_support;
 #[cfg(test)]
@@ -1271,48 +1314,5 @@ mod callback_predecessor_receipt_tests {
                 extension_contracts::provider_contract::RecoveryTransport::ProviderHttp
             );
         }
-    }
-}
-
-fn map_llm_distribution_rule(
-    rule: domain::ModelProviderDistributionRule,
-) -> orchestration_runtime::compiled_plan::LlmDistributionRule {
-    match rule {
-        domain::ModelProviderDistributionRule::None => {
-            orchestration_runtime::compiled_plan::LlmDistributionRule::None
-        }
-        domain::ModelProviderDistributionRule::RoundRobin => {
-            orchestration_runtime::compiled_plan::LlmDistributionRule::RoundRobin
-        }
-        domain::ModelProviderDistributionRule::RetryRoundRobin => {
-            orchestration_runtime::compiled_plan::LlmDistributionRule::RetryRoundRobin
-        }
-        domain::ModelProviderDistributionRule::Dynamic {
-            rule_id,
-            rule_version,
-            contract_version,
-            config,
-        } => orchestration_runtime::compiled_plan::LlmDistributionRule::Dynamic {
-            rule_id,
-            rule_version,
-            contract_version,
-            config: config
-                .into_iter()
-                .map(|(key, value)| {
-                    let value = match value {
-                        domain::ModelProviderDistributionConfigValue::String(value) => {
-                            extension_contracts::ProviderDistributionConfigValue::String(value)
-                        }
-                        domain::ModelProviderDistributionConfigValue::Integer(value) => {
-                            extension_contracts::ProviderDistributionConfigValue::Integer(value)
-                        }
-                        domain::ModelProviderDistributionConfigValue::Boolean(value) => {
-                            extension_contracts::ProviderDistributionConfigValue::Boolean(value)
-                        }
-                    };
-                    (key, value)
-                })
-                .collect(),
-        },
     }
 }

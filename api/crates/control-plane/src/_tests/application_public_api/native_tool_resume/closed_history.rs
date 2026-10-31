@@ -44,7 +44,7 @@ fn closed_history_matches_the_pair_count_oracle_for_all_small_sequences() {
             let expected = sequence.iter().any(|symbol| symbol % 2 == 1)
                 && (0..2).all(|id| {
                     let calls: Vec<usize> = (0..sequence.len())
-                        .filter(|&p| sequence[p] / 4 == id && sequence[p] % 2 == 0)
+                        .filter(|&p| sequence[p] / 4 == id && sequence[p].is_multiple_of(2))
                         .collect();
                     let outputs: Vec<usize> = (0..sequence.len())
                         .filter(|&p| sequence[p] / 4 == id && sequence[p] % 2 == 1)
@@ -177,7 +177,7 @@ fn closed_history_requires_unique_ordered_same_family_pairs_over_the_whole_input
         json!({"type":"function_call_output","output":"context"}),
         json!({"type":"function_call_output","call_id":null,"output":"context"}),
     ] {
-        assert!(!is_closed_tool_history(&[notice.clone()]));
+        assert!(!is_closed_tool_history(std::slice::from_ref(&notice)));
         assert!(!is_closed_tool_history(&[c.clone(), notice.clone()]));
         assert!(is_closed_tool_history(&[c.clone(), notice, o.clone()]));
     }
