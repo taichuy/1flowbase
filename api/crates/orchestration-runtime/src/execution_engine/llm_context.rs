@@ -1148,6 +1148,9 @@ pub(super) fn provider_tool_payload(tool: &Value) -> Value {
     if let Some(input_schema) = object.get("input_schema") {
         function.insert("parameters".to_string(), input_schema.clone());
     }
+    if let Some(strict) = object.get("strict").and_then(Value::as_bool) {
+        function.insert("strict".to_string(), Value::Bool(strict));
+    }
 
     json!({
         "type": "function",

@@ -955,3 +955,6 @@ fn semantic_previous_response_id_requires_verified_predecessor_proof() {
 mod chat_reasoning_content;
 #[path = "tests/continuation_identity.rs"]
 mod continuation_identity;
+
+#[path = "_tests/tool_strictness.rs"]
+mod tool_strictness;
