@@ -52,7 +52,8 @@ jobs:
         with:
           node-version-file: web/.nvmrc
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
+        id: rust-cache
         with:
           path: |
             ~/.cargo/registry
@@ -77,6 +78,9 @@ jobs:
             shift
             if "$@" > "$evidence/$label.log" 2>&1; then
               tail -n 8 "$evidence/$label.log"
+              if [ "$label" != consumers ]; then
+                python3 -c 'import re,sys; assert re.search(r"test result: ok\. [1-9][0-9]* passed;", open(sys.argv[1]).read()), "target executed zero tests"' "$evidence/$label.log"
+              fi
             else
               tail -c 12000 "$evidence/$label.log"
               exit 1
@@ -85,7 +89,15 @@ jobs:
           run_evidence contracts cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts --lib
           run_evidence consumers cargo check --locked --manifest-path api/Cargo.toml -p control-plane --tests
           run_evidence repository cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib official_pricing_sync -- --test-threads=1
-          run_evidence http cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib _tests::system_settings::billing_routes -- --test-threads=1
+          run_evidence http cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib _tests::billing_routes -- --test-threads=1
+      - uses: actions/cache/save@v5
+        if: always() && steps.rust-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            api/target
+          key: ${{ steps.rust-cache.outputs.cache-primary-key }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

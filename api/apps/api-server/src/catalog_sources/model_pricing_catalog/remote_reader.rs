@@ -215,12 +215,20 @@ impl RemotePricingCatalogReader {
             .iter()
             .map(|entry| entry.catalog_page.page)
             .collect();
-        let selected_ids: HashSet<_> = selected.iter().map(|entry| entry.id).collect();
+        let selected_pages: HashMap<_, _> = selected
+            .iter()
+            .map(|entry| (entry.id, entry.catalog_page.page))
+            .collect();
         for number in pages {
             for rule in self.read_page(number).await? {
                 let id = rule.id.ok_or_else(|| invalid("pricing_catalog_id"))?;
-                if selected_ids.contains(&id) && rules.insert(id, rule).is_some() {
-                    return Err(invalid("pricing_catalog_duplicate_standard"));
+                if let Some(expected_page) = selected_pages.get(&id) {
+                    if *expected_page != number {
+                        return Err(invalid("pricing_catalog_search_page"));
+                    }
+                    if rules.insert(id, rule).is_some() {
+                        return Err(invalid("pricing_catalog_duplicate_standard"));
+                    }
                 }
             }
         }

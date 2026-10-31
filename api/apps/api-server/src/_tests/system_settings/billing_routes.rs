@@ -1,3 +1,4 @@
+#[path = "billing_routes/pagination.rs"]
 mod pagination;
 
 use crate::_tests::support::{

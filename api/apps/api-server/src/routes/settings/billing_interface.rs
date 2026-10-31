@@ -251,7 +251,10 @@ impl BillingAdapter {
                 let (catalog, request) = self
                     .open_pricing_catalog(actor.current_workspace_id)
                     .await?;
-                let staged: Result<_, ApiError> = async {
+                let staged: Result<
+                    Box<dyn control_plane::ports::OfficialPricingCatalogSync>,
+                    ApiError,
+                > = async {
                     let mut session = self.0.store.begin_official_pricing_sync().await?;
                     for number in 1..=catalog.page_count() {
                         let rules = catalog

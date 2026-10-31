@@ -265,3 +265,23 @@ async fn pricing_sync_later_page_failure_installs_no_earlier_page() {
     assert_eq!(listed.status(), StatusCode::OK);
     assert_eq!(response_json(listed).await["data"]["total_count"], 0);
 }
+
+#[tokio::test]
+async fn pricing_search_rejects_identities_swapped_between_two_selected_pages() {
+    let f = fixture().await;
+    {
+        let mut docs = f.documents.lock().unwrap();
+        let search = docs.get_mut("/search-index.json").unwrap();
+        for field in ["id", "upstream_model_id"] {
+            let first = search["entries"][0][field].clone();
+            search["entries"][0][field] = search["entries"][4][field].clone();
+            search["entries"][4][field] = first;
+        }
+        let hash = checksum(search);
+        docs.get_mut("/index.json").unwrap()["search_index"]["checksum"] = json!(hash);
+    }
+    let reader = RemotePricingCatalogReader::open(&reqwest::Client::new(), &f.url)
+        .await
+        .unwrap();
+    assert!(reader.query(Some("provider-a"), None, 1, 4).await.is_err());
+}

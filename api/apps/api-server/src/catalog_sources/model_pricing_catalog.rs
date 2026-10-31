@@ -19,6 +19,7 @@ struct CatalogSourceMetadata {
     catalog_version: String,
 }
 
+#[path = "model_pricing_catalog/remote_reader.rs"]
 mod remote_reader;
 pub(crate) use remote_reader::RemotePricingCatalogReader;
 
