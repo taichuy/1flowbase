@@ -1,7 +1,6 @@
 import '../../../test/fixtures/rc-util-unique-ids';
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -240,26 +239,28 @@ describe('billing settings panels', () => {
         ['en_US', 'Mon, Wed, Sun'],
         ['zh_Hans', '周一, 周三, 周日']
       ] as const) {
-        cleanup();
         window.localStorage.setItem('1flowbase.ui.locale_preference', locale);
         await act(async () => { await appI18n.changeLanguage(locale); });
-        await renderWithProviders(<PricingRulesPanel canManage />);
-        await screen.findByText('gpt-test');
-        fireEvent.click(screen.getByRole('button', {
-          name: appI18n.t('auto.field_configuration', { ns: 'sharedUi' })
-        }));
-        const panel = await screen.findByRole('dialog', {
-          name: appI18n.t('table.customize', { ns: 'sharedUi' })
-        });
-        const checkbox = within(panel).getByRole('checkbox', {
-          name: appI18n.t('auto.billing_weekday_mask', { ns: 'settings' })
-        });
-        if (!checkbox.matches(':checked')) fireEvent.click(checkbox);
-        fireEvent.keyDown(panel, { key: 'Escape' });
-        expect(await screen.findByText(expected)).toBeInTheDocument();
+        const view = await renderWithProviders(<PricingRulesPanel canManage />);
+        try {
+          await screen.findByText('gpt-test');
+          fireEvent.click(screen.getByRole('button', {
+            name: appI18n.t('auto.field_configuration', { ns: 'sharedUi' })
+          }));
+          const panel = await screen.findByRole('dialog', {
+            name: appI18n.t('table.customize', { ns: 'sharedUi' })
+          });
+          const checkbox = within(panel).getByRole('checkbox', {
+            name: appI18n.t('auto.billing_weekday_mask', { ns: 'settings' })
+          });
+          if (!checkbox.matches(':checked')) fireEvent.click(checkbox);
+          fireEvent.keyDown(panel, { key: 'Escape' });
+          expect(await screen.findByText(expected)).toBeInTheDocument();
+        } finally {
+          view.unmount();
+        }
       }
     } finally {
-      cleanup();
       window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
       await act(async () => { await appI18n.changeLanguage('zh_Hans'); });
     }

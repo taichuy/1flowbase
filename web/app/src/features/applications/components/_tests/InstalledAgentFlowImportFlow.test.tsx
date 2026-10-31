@@ -2,13 +2,12 @@ import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 import type { ConsoleInstalledApplicationExtensionPreview } from '@1flowbase/api-client';
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
   waitFor
 } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({
   previewInstalledApplicationExtension: vi.fn(),
@@ -102,12 +101,12 @@ function mount(installationId: string | null = 'installation-a') {
       />
     </AppProviders>
   );
-  const result = render(element(installationId));
+  const view = render(element(installationId));
   return {
-    ...result,
+    ...view,
     onClose,
     onImported,
-    switchTo: (id: string | null) => result.rerender(element(id))
+    switchTo: (id: string | null) => view.rerender(element(id))
   };
 }
 
@@ -126,7 +125,6 @@ describe('installed template import through the real Modal', () => {
     api.previewInstalledApplicationExtension.mockResolvedValue(preview());
     api.importInstalledApplicationExtension.mockResolvedValue(imported());
   });
-  afterEach(cleanup);
 
   test.each([null, ''])(
     'I-01: inactive installation %s does not request or open',
@@ -303,6 +301,7 @@ describe('installed template import through the real Modal', () => {
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
+    const updateRoot = root.render.bind(root);
     const observed = deferred<void>();
     const onClose = vi.fn();
     const onImported = vi.fn().mockResolvedValue(undefined);
@@ -372,7 +371,7 @@ describe('installed template import through the real Modal', () => {
     const originalActEnvironment = environment.IS_REACT_ACT_ENVIRONMENT;
     try {
       await act(async () => {
-        root.render(element('installation-a'));
+        updateRoot(element('installation-a'));
       });
       expect(screen.getByRole('button', { name: '导入应用' })).not.toHaveClass(
         'ant-btn-loading'
@@ -380,7 +379,7 @@ describe('installed template import through the real Modal', () => {
       // Do not wrap B in act: it would eagerly flush the very pending-commit
       // window under test. No scheduler mocks, forced lanes or retained callback.
       environment.IS_REACT_ACT_ENVIRONMENT = false;
-      root.render(element('installation-b'));
+      updateRoot(element('installation-b'));
       await observed.promise;
     } finally {
       environment.IS_REACT_ACT_ENVIRONMENT = true;
