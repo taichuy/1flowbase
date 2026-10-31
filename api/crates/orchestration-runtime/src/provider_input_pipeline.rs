@@ -294,10 +294,17 @@ impl ProviderInputPipeline {
             // metadata, so these host-owned fields cannot be mistaken for plugin rewrites.
             input = validated_candidate;
         }
+        // An empty graph is an identity transform, including its audit digests.
+        // Avoid encoding and hashing the same complete history a second time.
+        let pipeline_after = if self.contributions.is_empty() {
+            pipeline_before.clone()
+        } else {
+            model_visible_digest(&input)
+        };
         let receipt = build_receipt(
             &self.graph_fingerprint,
             pipeline_before,
-            model_visible_digest(&input),
+            pipeline_after,
             receipts,
         );
         Ok(ProviderInputPipelineOutput {
