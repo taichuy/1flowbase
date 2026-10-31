@@ -163,4 +163,4 @@ i18n 检查在一次运行内共享 locale 与前端源码文件清单；bootstr
 
 ## SDK worker fixture 构建
 
-需要受管 worker 的五个 CI step 各使用一次 Cargo build，显式列出 `managed_hook_worker`、`managed_event_worker`、`notification_worker` 和 `notification_authorization_worker`。条件、target-dir、strip 与路径导出仍归各 job；不跨 job 共享产物，不调整 Cargo 并发。配置测试按完整 example 集合、唯一构建和产物导出验证，不能只匹配命令文本或减少行为 fixture。构建启动数由每 step 三次降为一次；时长和峰值 RSS 必须按同负载实测，不能由启动计数推断。
+需要受管 worker 的五个 CI step 复用本仓 `build-sdk-worker-fixtures` composite action，各使用一次 Cargo build，显式列出 `managed_hook_worker`、`managed_event_worker`、`notification_worker` 和 `notification_authorization_worker`。条件和 target-dir 仍归各 job；共享 action 唯一维护 strip 与路径导出；不跨 job 共享产物，不调整 Cargo 并发。配置测试按完整 example 集合、唯一构建和产物导出验证，不能只匹配命令文本或减少行为 fixture。构建启动数由每 step 三次降为一次；时长和峰值 RSS 必须按同负载实测，不能由启动计数推断。

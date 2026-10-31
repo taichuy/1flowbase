@@ -766,60 +766,61 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
   assert.doesNotMatch(workflow, /test-binar(?:y|ies)/u);
 });
 
-test("API-server and Host quality-gate shards build and export the real SDK worker fixtures", () => {
+test("backend fixture callers keep their scope and target while sharing one SDK build", () => {
   const workflow = readQualityGateWorkflow();
-  const singleScope = workflow.slice(
-    workflow.indexOf("  single-scope-gate:\n"),
-    workflow.indexOf("  repo-tooling-gate:\n"),
-  );
-  const backendMatrix = workflow.slice(
-    workflow.indexOf("  repo-backend-gate:\n"),
-    workflow.indexOf("  coverage-frontend-gate:\n"),
-  );
-
-  for (const [job, scope, target] of [
-    [singleScope, "inputs.scope", "rust-single-backend/${{ inputs.scope }}/target"],
-    [backendMatrix, "matrix.scope", "rust-backend/${{ matrix.scope }}/target"],
+  const matches = [...workflow.matchAll(/^      - name: Build [^\n]*worker fixtures\n(?:(?!^      - ).*\n)*/gmu)];
+  const callers = matches.map((match) => match[0]);
+  assert.equal(callers.length, 5);
+  for (const [index, scope, target, condition] of [
+    [0, "inputs.scope", "rust-single-backend/${{ inputs.scope }}/target", "startsWith(inputs.scope, 'repo-backend-test-api-server-') || inputs.scope == 'repo-backend-test-runtime-storage-fast'"],
+    [1, "inputs.scope", "rust-single-coverage/${{ inputs.scope }}/target", "inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || inputs.scope == 'coverage-backend-api-server' || inputs.scope == 'coverage-backend-runtime-extension-host'"],
+    [2, "matrix.scope", "rust-backend/${{ matrix.scope }}/target", "startsWith(matrix.scope, 'repo-backend-test-api-server-') || matrix.scope == 'repo-backend-test-runtime-storage-fast'"],
+    [3, "matrix.scope", "rust-coverage/${{ matrix.scope }}/target", "matrix.scope == 'coverage-backend-runtime-extension-host'"],
+    [4, null, "rust-coverage/api-server-shadow/target", null],
   ]) {
-    const stepStart = job.indexOf("      - name: Build API server worker fixtures\n");
-    const actionStart = job.indexOf("      - uses: ./.github/actions/quality-gate\n", stepStart);
-    assert.ok(
-      stepStart >= 0 && actionStart > stepStart,
-      "fixture build must precede the quality gate action",
-    );
-
-    const step = job.slice(stepStart, actionStart);
-    assert.ok(
-      step.includes("if: ${{ startsWith(" + scope + ", 'repo-backend-test-api-server-') || " + scope + " == 'repo-backend-test-runtime-storage-fast' }}"),
-    );
-    assert.ok(
-      step.includes("CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/" + target),
-    );
-    assert.match(
-      step,
-      /cargo build --locked --manifest-path api\/Cargo\.toml -p runtime-extension-sdk --example managed_hook_worker[\s\S]*cargo build --locked --manifest-path api\/Cargo\.toml -p runtime-extension-sdk --example managed_event_worker/u,
-    );
-    assert.match(
-      step,
-      /strip --strip-debug "\$CARGO_TARGET_DIR\/debug\/examples\/managed_hook_worker"[\s\S]*strip --strip-debug "\$CARGO_TARGET_DIR\/debug\/examples\/managed_event_worker"[\s\S]*MANAGED_HOOK_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/managed_hook_worker[\s\S]*MANAGED_EVENT_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/managed_event_worker/u,
-    );
+    const step = callers[index];
+    const jobTail = workflow.slice(matches[index].index).split(/\n  [\w-]+:\n/u)[0];
+    assert.ok(jobTail.includes("      - uses: ./.github/actions/quality-gate\n"), "fixture action precedes its job gate");
+    assert.match(step, /uses: \.\/\.github\/actions\/build-sdk-worker-fixtures/u);
+    assert.ok(step.includes("CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/" + target));
+    if (scope) assert.ok(step.includes("if: ${{ " + condition + " }}"));
+    else assert.doesNotMatch(step, /if:/u);
+    assert.doesNotMatch(step, /run:|shell:|cargo build/u);
   }
 });
 
-test("API-server coverage shards build, strip and export managed SDK fixtures", () => {
-  const workflow = readQualityGateWorkflow();
-  const coverage = workflow.slice(
-    workflow.indexOf("  coverage-backend-api-server-sharded:\n"),
-    workflow.indexOf("  coverage-backend-api-server-sharded-merge:\n"),
-  );
-  const fixtureStart = coverage.indexOf("      - name: Build API server coverage worker fixtures\n");
-  const actionStart = coverage.indexOf("      - uses: ./.github/actions/quality-gate\n", fixtureStart);
-  assert.ok(fixtureStart >= 0 && actionStart > fixtureStart);
-  const step = coverage.slice(fixtureStart, actionStart);
-  assert.match(step, /CARGO_TARGET_DIR: \$\{\{ github\.workspace \}\}\/tmp\/quality-gate-cache\/rust-coverage\/api-server-shadow\/target/u);
-  assert.match(step, /cargo build[\s\S]*managed_hook_worker[\s\S]*cargo build[\s\S]*managed_event_worker/u);
-  assert.match(step, /strip --strip-debug[\s\S]*managed_hook_worker[\s\S]*strip --strip-debug[\s\S]*managed_event_worker/u);
-  assert.match(step, /MANAGED_HOOK_WORKER_FIXTURE=\$CARGO_TARGET_DIR[\s\S]*MANAGED_EVENT_WORKER_FIXTURE=\$CARGO_TARGET_DIR/u);
+test("shared SDK fixture action builds every worker once and exports only after all strips succeed", () => {
+  const { spawnSync } = require("node:child_process");
+  const os = require("node:os");
+  const action = fs.readFileSync(path.join(repoRoot, ".github/actions/build-sdk-worker-fixtures/action.yml"), "utf8");
+  assert.match(action, /using: composite/u);
+  assert.match(action, /shell: bash/u);
+  const script = action.split("      run: |\n")[1];
+  assert.ok(script);
+  const examples = ["managed_hook_worker", "managed_event_worker", "notification_worker", "notification_authorization_worker"];
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-worker-fixtures-"));
+  try {
+    for (const [cargoStatus, stripStatus] of [[0, 0], [9, 0], [0, 7]]) {
+      const envFile = path.join(dir, "env");
+      const logFile = path.join(dir, "commands");
+      fs.writeFileSync(envFile, "");
+      fs.writeFileSync(logFile, "");
+      const result = spawnSync("bash", ["-c", `
+        cargo() { printf 'cargo %s\\n' "$*" >> "$COMMAND_LOG"; return "$CARGO_STATUS"; }
+        strip() { printf 'strip %s\\n' "$*" >> "$COMMAND_LOG"; return "$STRIP_STATUS"; }
+        ${script}
+      `], { encoding: "utf8", env: { ...process.env, CARGO_TARGET_DIR: dir, GITHUB_ENV: envFile, COMMAND_LOG: logFile, CARGO_STATUS: String(cargoStatus), STRIP_STATUS: String(stripStatus) } });
+      assert.equal(result.status, cargoStatus || stripStatus, result.stderr);
+      const commands = fs.readFileSync(logFile, "utf8").trim().split("\n");
+      assert.equal(commands[0], "cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk " + examples.map((name) => "--example=" + name).join(" "));
+      assert.equal(commands.filter((line) => line.startsWith("cargo ")).length, 1);
+      assert.equal(commands.length, cargoStatus ? 1 : stripStatus ? 2 : 5);
+      assert.equal(fs.readFileSync(envFile, "utf8"), cargoStatus || stripStatus ? "" : examples.map((name) => `${name.toUpperCase()}_FIXTURE=${dir}/debug/examples/${name}\n`).join(""));
+      if (!cargoStatus && !stripStatus) assert.deepEqual(commands.slice(1), examples.map((name) => `strip --strip-debug ${dir}/debug/examples/${name}`));
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("container image workflows keep vulnerability findings as warnings", () => {
