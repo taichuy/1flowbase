@@ -18,7 +18,25 @@ vi.mock('../../api/applications', async (importOriginal) => ({
   ...api
 }));
 
-import { createRoot } from 'react-dom/client';
+// Observe the callback value forwarded to the actual Modal, without replacing
+// its DOM, loading, accessibility, form or event behavior with a test double.
+const modalObservation = vi.hoisted(() => ({
+  onImport: undefined as (() => void) | undefined
+}));
+vi.mock('../ApplicationTemplateImportModal', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../ApplicationTemplateImportModal')>();
+  const ActualModal = actual.ApplicationTemplateImportModal;
+  return {
+    ...actual,
+    ApplicationTemplateImportModal: function ObservedImportModal(
+      props: Parameters<typeof ActualModal>[0]
+    ) {
+      modalObservation.onImport = props.onImport;
+      return <ActualModal {...props} />;
+    }
+  };
+});
 
 import { AppProviders } from '../../../../app/AppProviders';
 import { InstalledAgentFlowImportFlow } from '../InstalledAgentFlowImportFlow';
@@ -120,6 +138,7 @@ async function confirm() {
 
 describe('installed template import through the real Modal', () => {
   beforeEach(() => {
+    modalObservation.onImport = undefined;
     api.previewInstalledApplicationExtension.mockReset();
     api.importInstalledApplicationExtension.mockReset();
     api.previewInstalledApplicationExtension.mockResolvedValue(preview());
@@ -276,13 +295,27 @@ describe('installed template import through the real Modal', () => {
   test.each(['request', 'callback'] as const)(
     'I-05: %s errors are displayed and release busy without retry',
     async (failure) => {
+      const request = deferred<ReturnType<typeof imported>>();
+      const callback = deferred<void>();
+      api.importInstalledApplicationExtension.mockReturnValue(request.promise);
       const mounted = mount();
-      if (failure === 'request')
-        api.importInstalledApplicationExtension.mockRejectedValue(
-          new Error('import failed')
-        );
-      else mounted.onImported.mockRejectedValue(new Error('import failed'));
+      mounted.onImported.mockReturnValue(callback.promise);
       await confirm();
+      if (failure === 'request') {
+        await act(async () => {
+          request.reject(new Error('import failed'));
+        });
+      } else {
+        await act(async () => {
+          request.resolve(imported());
+        });
+        expect(mounted.onImported).toHaveBeenCalledExactlyOnceWith(
+          'server-created-id'
+        );
+        await act(async () => {
+          callback.reject(new Error('import failed'));
+        });
+      }
       expect(await screen.findByText('import failed')).toBeInTheDocument();
       await waitFor(() =>
         expect(
@@ -297,98 +330,64 @@ describe('installed template import through the real Modal', () => {
     }
   );
 
-  test('I-06: current committed Modal confirmation uses its render acknowledgement before new preview commits', async () => {
-    const container = document.createElement('div');
-    document.body.append(container);
-    const root = createRoot(container);
-    const updateRoot = root.render.bind(root);
-    const observed = deferred<void>();
-    const onClose = vi.fn();
-    const onImported = vi.fn().mockResolvedValue(undefined);
-    const element = (id: string) => (
-      <AppProviders>
-        <InstalledAgentFlowImportFlow
-          installationId={id}
-          csrfToken="csrf-a"
-          onClose={onClose}
-          onImported={onImported}
-        />
-      </AppProviders>
-    );
-    const source = (id: string) => {
-      const result = preview(id);
-      result.required_integrity_override = {
-        warnings: [{ code: id, message: id, overridable: true }],
-        compatibility: null
-      };
-      return result;
-    };
+  test('I-06: an explicitly captured render callback keeps its preview acknowledgement after another preview commits', async () => {
     api.previewInstalledApplicationExtension.mockImplementation(
       (id: string) => {
-        if (id === 'installation-b') {
-          // Q1 is queued before Flow attaches then; Q2 runs after the entire
-          // successful preview projection, but before its queued state commits.
-          // This is a programmatic microtask event, NOT a physical-user race.
-          queueMicrotask(() =>
-            queueMicrotask(() => {
-              try {
-                expect(
-                  screen.getByDisplayValue('Template installation-a')
-                ).toBeInTheDocument();
-                screen.getByRole('button', { name: '导入应用' }).click();
-                expect(
-                  api.importInstalledApplicationExtension
-                ).toHaveBeenCalledExactlyOnceWith(
-                  'installation-b',
-                  {
-                    name: 'Template installation-a',
-                    description: 'Description installation-a',
-                    integrity_override: {
-                      reason: 'user_confirmed',
-                      acknowledged_warnings: ['installation-a']
-                    }
-                  },
-                  'csrf-a'
-                );
-                observed.resolve();
-              } catch (error) {
-                observed.reject(error);
-              }
-            })
-          );
-        }
-        return Promise.resolve(source(id));
+        const result = preview(id);
+        result.required_integrity_override = {
+          warnings: [{ code: id, message: id, overridable: true }],
+          compatibility: null
+        };
+        return Promise.resolve(result);
       }
     );
-    // Keep the import pending; this assertion concerns request construction,
-    // not a response/callback or a server-side cancellation contract.
-    api.importInstalledApplicationExtension.mockReturnValue(
-      new Promise(() => {})
-    );
-    const environment = globalThis as typeof globalThis & {
-      IS_REACT_ACT_ENVIRONMENT?: boolean;
-    };
-    const originalActEnvironment = environment.IS_REACT_ACT_ENVIRONMENT;
-    try {
-      await act(async () => {
-        updateRoot(element('installation-a'));
-      });
+    const mounted = mount();
+    expect(
+      await screen.findByDisplayValue('Template installation-a')
+    ).toBeInTheDocument();
+    await waitFor(() =>
       expect(screen.getByRole('button', { name: '导入应用' })).not.toHaveClass(
         'ant-btn-loading'
-      );
-      // Do not wrap B in act: it would eagerly flush the very pending-commit
-      // window under test. No scheduler mocks, forced lanes or retained callback.
-      environment.IS_REACT_ACT_ENVIRONMENT = false;
-      updateRoot(element('installation-b'));
-      await observed.promise;
-    } finally {
-      environment.IS_REACT_ACT_ENVIRONMENT = true;
-      await act(async () => {
-        root.unmount();
-      });
-      environment.IS_REACT_ACT_ENVIRONMENT = originalActEnvironment;
-      container.remove();
-    }
+      )
+    );
+    const confirmA = modalObservation.onImport;
+    expect(confirmA).toBeTypeOf('function');
+    mounted.switchTo('installation-b');
+    expect(
+      await screen.findByDisplayValue('Template installation-b')
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '导入应用' })).not.toHaveClass(
+        'ant-btn-loading'
+      )
+    );
+    expect(api.importInstalledApplicationExtension).not.toHaveBeenCalled();
+    // The TEST explicitly retains A's forwarded callback. We do not claim the
+    // actual Modal retains old callbacks, or depend on a physical/microtask race.
+    await act(async () => {
+      confirmA!();
+    });
+    expect(
+      api.importInstalledApplicationExtension
+    ).toHaveBeenCalledExactlyOnceWith(
+      'installation-a',
+      {
+        name: 'Template installation-a',
+        description: 'Description installation-a',
+        integrity_override: {
+          reason: 'user_confirmed',
+          acknowledged_warnings: ['installation-a']
+        }
+      },
+      'csrf-a'
+    );
+    expect(mounted.onImported).toHaveBeenCalledExactlyOnceWith(
+      'server-created-id'
+    );
+    expect(mounted.onClose).not.toHaveBeenCalled();
+    expect(
+      screen.getByDisplayValue('Template installation-b')
+    ).toBeInTheDocument();
   });
 
   test('I-06: the real Modal blocks an empty draft and cancel never imports', async () => {
