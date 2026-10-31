@@ -7,7 +7,8 @@ use std::time::Duration;
 async fn production_pool() -> Result<PgPool> {
     // One connection makes protocol recovery and reuse observable. This is only
     // a fixture setting; production settings are passed through unchanged.
-    let url = std::env::var("DATABASE_URL")?;
+    let url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into());
     connect_with_pool_settings(&url, PgPoolSettings::with_max_connections(1)).await
 }
 
