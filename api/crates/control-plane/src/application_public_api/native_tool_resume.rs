@@ -8,7 +8,7 @@ use domain::{CallbackTaskRecord, CallbackTaskStatus, FlowRunStatus};
 use serde_json::{json, Value};
 
 use super::api_keys::ApplicationApiKeyActor;
-use super::compat::openai::responses_index::native_tool_results;
+use super::compat::openai::responses_index::{is_closed_tool_history, native_tool_results};
 use super::compat::openai::OpenAiResponsesEnvelope;
 use crate::errors::ControlPlaneError;
 
@@ -107,6 +107,9 @@ where
     };
     let mut candidates = candidates.into_iter();
     let Some(callback) = candidates.next() else {
+        if previous_response_id.is_none() && is_closed_tool_history(input) {
+            return Ok(None);
+        }
         // A self-contained history can come from another session/key or provider.
         // Its past outputs are not submissions to an owned callback round.
         if previous_response_id.is_none() && index.has_assistant_message_after_tool_outputs() {

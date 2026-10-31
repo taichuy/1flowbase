@@ -9,6 +9,8 @@ use control_plane_contracts::{
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+#[path = "native_tool_resume/closed_history.rs"]
+mod closed_history;
 #[path = "native_tool_resume/multipart_outputs.rs"]
 mod multipart_outputs;
 #[path = "native_tool_resume/reservation_lifecycle.rs"]
@@ -758,6 +760,7 @@ async fn full_context_extension_configuration_refresh_keeps_pending_callback_own
     ]);
     body["tools"] = json!([{"type":"function","name":"fresh","parameters":{"type":"object"}}]);
     let original = body.clone();
+    assert!(is_closed_tool_history(body["input"].as_array().unwrap()));
     for mutation in 0..3 {
         let mut invalid = body.clone();
         match mutation {
