@@ -128,7 +128,9 @@ where
                 .insert(
                     policy.model_id,
                     orchestration_runtime::compiler::FlowCompileModelRoutingPolicy {
-                        distribution_rule: crate::orchestration_runtime::map_llm_distribution_rule(policy.distribution_rule),
+                        distribution_rule: crate::orchestration_runtime::map_llm_distribution_rule(
+                            policy.distribution_rule,
+                        ),
                         provider_instance_ids: policy
                             .provider_instance_ids
                             .into_iter()

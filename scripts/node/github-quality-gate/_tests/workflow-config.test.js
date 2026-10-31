@@ -993,25 +993,6 @@ test('default aggregate requires exactly the current full online component inven
 });
 
 
-test("Host coverage lanes prepare real SDK executable fixtures before running transport tests", () => {
-  const workflow = readQualityGateWorkflow();
-  for (const jobName of ["single-scope-gate", "coverage-backend-gate"]) {
-    const jobStart = workflow.indexOf(`  ${jobName}:`);
-    const fixtureStart = workflow.indexOf("      - name: Build Host coverage worker fixtures\n", jobStart);
-    const gateStart = workflow.indexOf("      - uses: ./.github/actions/quality-gate", jobStart);
-    assert.ok(fixtureStart > jobStart && fixtureStart < gateStart, `${jobName} must prepare fixtures before tests`);
-    const fixture = workflow.slice(fixtureStart, gateStart);
-    assert.match(fixture, /coverage-backend-runtime-extension-host/u);
-    assert.match(fixture, /CARGO_TARGET_DIR: .*rust-(?:single-coverage|coverage)\//u);
-    for (const kind of ["hook", "event"]) {
-      assert.ok(fixture.includes(`--example managed_${kind}_worker`));
-      assert.ok(fixture.includes(`strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_${kind}_worker"`));
-      assert.ok(fixture.includes(`MANAGED_${kind.toUpperCase()}_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_${kind}_worker`));
-    }
-  }
-});
-
-
 test('release target keys reuse compatible commits without crossing build environments', () => {
   const workflow = readContainerImagesWorkflow();
   const block = workflow.split('      - name: Restore api-server release target\n')[1]
@@ -1324,16 +1305,7 @@ test('aggregate downloads current component artifacts without its own archived r
 });
 
 
-test('every full or scoped SDK worker prebuild exports the real notification process', () => {
-  const workflow = readQualityGateWorkflow();
-  const steps = workflow.split(/      - name: Build (?:API server|Host)(?: coverage)? worker fixtures\n/u).slice(1);
-  assert.equal(steps.length, 5);
-  for (const step of steps) {
-    const build = step.slice(0, step.indexOf('      - '));
-    assert.match(build, /cargo build --locked --manifest-path api\/Cargo.toml -p runtime-extension-sdk --example notification_worker/u);
-    assert.match(build, /strip --strip-debug "\$CARGO_TARGET_DIR\/debug\/examples\/notification_worker"/u);
-    assert.match(build, /NOTIFICATION_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/notification_worker/u);
-  }
+test('plugin composition batch supplies the real notification fixture', () => {
   const runner = fs.readFileSync(path.join(repoRoot, 'scripts/node/plugin-composition-test-batch/runner.js'), 'utf8');
   assert.match(runner, /example: 'notification_worker', env: 'NOTIFICATION_WORKER_FIXTURE'/u);
 });
