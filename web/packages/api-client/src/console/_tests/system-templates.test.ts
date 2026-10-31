@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import * as transport from '../../transport';
 import {
+  downloadSystemTemplate,
   exportSystemTemplate,
   exportSystemTemplateArchive,
   getApplicationTemplateCatalog,
@@ -75,19 +76,14 @@ describe('portable template transport', () => {
       baseUrl: undefined
     });
     const reference = { catalog_id: 'official/demo', release_version: 7 };
-    for (const [call, endpoint] of [
-      [previewSystemTemplate, 'preview'],
-      [installSystemTemplate, 'install']
-    ] as const) {
-      await call(reference, 'csrf');
-      expect(fetch).toHaveBeenLastCalledWith({
-        path: `/api/console/settings/system-templates/${endpoint}`,
-        method: 'POST',
-        body: reference,
-        csrfToken: 'csrf',
-        baseUrl: undefined
-      });
-    }
+    await downloadSystemTemplate(reference, 'csrf');
+    expect(fetch).toHaveBeenLastCalledWith({
+      path: '/api/console/settings/system-templates/download',
+      method: 'POST',
+      body: reference,
+      csrfToken: 'csrf',
+      baseUrl: undefined
+    });
     fetch.mockRestore();
   });
   test('exports archives with the original selection and imports archive bytes', async () => {

@@ -1,4 +1,6 @@
 import {
+  downloadSystemTemplate,
+  type ApplicationTemplateReference,
   exportSystemTemplateArchive,
   getApplicationTemplateCatalog,
   type ApplicationTemplateCatalogQuery,
@@ -35,6 +37,11 @@ export function useSystemTemplates(exportOpen: boolean) {
     mutationFn: (selection: PortableTemplateSelection) =>
       exportSystemTemplateArchive(selection, csrfToken)
   });
+  const downloadMutation = useMutation({
+    mutationFn: (body: ApplicationTemplateReference) =>
+      downloadSystemTemplate(body, csrfToken),
+    gcTime: 0
+  });
   const previewMutation = useMutation({
     mutationFn: (body: PortableTemplatePackage) =>
       previewSystemTemplate(body, csrfToken)
@@ -46,5 +53,11 @@ export function useSystemTemplates(exportOpen: boolean) {
       void queryClient.invalidateQueries({ queryKey });
     }
   });
-  return { catalog, exportMutation, previewMutation, installMutation };
+  return {
+    catalog,
+    exportMutation,
+    downloadMutation,
+    previewMutation,
+    installMutation
+  };
 }
