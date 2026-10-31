@@ -1,4 +1,41 @@
-# 长历史网关内存排查候选结算
+# 最终S追加结算：H+C+S，可审阅、未合并
+
+S生产提交`76579b5e759774fbe0b9e18906c87568d3ee1f75`；测试URL兼容修正`34e43884abbb99fd8c579b4692392b5dfebac32c`。唯一新增业务点在`storage/durable/postgres/src/connection/mod.rs`：既有pool release callback依次`flush().await? → shrink_buffers() → Ok(true)`，再保留SQLx原ping。独立编辑前模型/源码顺序及Row共享证明见`modeling/packet-s-source-model.md`。不改连接数、TTL、容量、retry、schema、插件或依赖。
+
+下表是**原基线A对组合候选H+C+S的D**，不能称S单独百分比。固定同一20,232,417-byte历史，每进程6次，独立进程A→D→D→A，完成24/24；每侧2进程、同allocator/profile/toolchain/插件，普通测量不加载observer。预声明主idle为最后请求后10+20 s的`fixed-final-idle.after`，不是cleanup尾部；次40 s单列。bytes为原始单位。
+
+| 主指标 | A before | D after | 变化 |
+|---|---:|---:|---:|
+| 峰值RSS | 999,641,088 | 856,274,944 | −14.34% |
+| 初始idle RSS | 263,294,976 | 261,959,680 | −1,335,296 |
+| 主30 s idle RSS | 404,232,192 | 292,818,944 | **−111,413,248（−27.56%）** |
+| 主idle−初始RSS | 140,937,216 | 30,859,264 | **−78.10%** |
+| 次40 s idle RSS | 404,230,144 | 292,812,800 | −27.56% |
+| 主idle Pss_Anon / Pss_File | 226,199,552 / 175,101,952 | 115,142,656 / 174,743,552 | 收益主要来自匿名页 |
+| 6请求API CPU / wall，s | 70.365 / 87.277 | 68.725 / 83.003 | −2.33% / −4.90% |
+| PG block reads / bytes | 103,845.5 / 850,702,336 | 97,190.5 / 796,184,576 | 8KiB/block，非SQL次数/DB wire |
+
+峰值从bootstrap后100ms采样；wall含录制/身份查验。DB page计数与物理size波动不当作查询/存储优化；产品schema/索引/永久字段增量0。完整历史仍有Θ(H)瞬时成本，不能称O(1)或给n=2总体置信保证。旧H+C混合负载−2.08%峰RSS/CPU+0.878%仅是下方历史数据。
+
+**同V2的一请求诊断**（独立于普通性能）：A/D各1次完整请求、相同10+20 s主idle。按`fixed-final-idle-end`首条的锁内`large_snapshot_ns`精确重建：allocated181,269,640→63,407,016，active188,928,000→71,262,208，resident201,101,312→83,554,304 bytes；≥256KiB存活requested120,496,091/13块→2,230,304/4块（两边初始均4块/2,230,304）。符号化其中SQLx写侧94,066,966→0、接收侧24,198,821→0；候选剩余均启动对象。这确认S释放已定位的空闲缓冲，不承诺任意共享Row slab必释放。新一请求触达集合与旧六次115,022,042B写侧不同，不跨重复次数相减。
+
+代价单列：初始→主idle累计≥256KiB分配/扩容请求量3,601,228,191→3,875,838,516 bytes，约**+7.63%**（含realloc重复大小，非净保留/实际复制字节）。V2修正xallocx/原子替换/posix失败分支；两侧实际hook安装、epoch成功，xallocx/未知类型/overflow均0。最终helper源码SHA256`86021e8fe28c710fde9befc4048e2e9a77b83e2b1d54fb1ccca2c375ca8b28b0`，同shim SHA256`2bfe493916025fcd7c6d12914e812bb230539264cd9bff1da802fb56ee3201ac`。来源为最新allocation/resize栈，不是全堆可达性证明；retained不等于RSS。不以V1/V2 RSS相比较。
+
+限定验收通过：新增6个真实生产pool+锁定SQLx0.9+专用PG回归（Row/Value、事务commit/drop/savepoint、early stream、query-future timeout、SQL错误恢复），URL fallback修正后仅重跑6项；timeout不代表服务端CancelRequest。旧66用例与7/7有限语义缺陷保留证据复用，新增后72个目标生产用例，另有CI4个WS用例。每进程473 native body/hash/bytes、1个按typed item引用原序重构的manifest、473条edges、469 canonical原始前像、6 flow/18 node终态、6份cost/usage/attempt关系通过；24原始SSE全字段比对仅规范化两对id/time及7个已证明的顶层response_id引用。8个校验器反例在实际导出的内存副本上通过，独立tiny fixture8/8另列。未把opaque host context/config、完整canonical跨run、全部异步观测顺序或18表逐字全等设为门槛；没有所验业务合同差异。新候选gpt-6-luna/max真实tool→result两轮completed/零错误、同一succeeded Native flow，cleanup全true。
+
+构建/QA：既有CI[41164597765](https://github.com/taichuy/1flowbase/actions/runs/41164597765)，D二进制SHA256`470e407828c17127d844cbb1ce5a819e1f7954d1078a1506f820eba6067e5f0b`，API构建完整成功；本地只有直接导入生产模块的窄测试宿主，不代表全storage包测试。独立QA见`qa/packet-s/{QA.md,results.json,audit.json}`，无产品blocker、限定通过。历史PR P50/P95仍632/997s（27终态），历史runner1,134.2667min；S CI反馈240s、runner3.95min，本任务三条CI合计17.0667min，均非CI优化因果比较。
+
+资源/清理：整任务11个>60%样本=旧9+S的D2(65.92%)/六次diagA(69.46%)；S两轮均首次即停自身scope、原始部分数据保留并排除。D2用新标签补齐，诊断按最终授权各收窄1次；完成样本无超限，OOM0。142自有scope均inactive、21应用记录清理结算、临时DB0；7GiB硬限下历史task memory峰7,422,128,128 bytes。S无seed/完整API本地重编/共享target写入，必要依赖只读，复制缓存0；旧自有大cache已回收22.46GB，S再删重复CI zip回收85.10MB分配空间，保留全部原始证据及二进制，实测任务目录6,302,359,552 bytes。S生产净+13行、测试+165；全候选生产净+33、测试+393、治理代码0，文档另计。
+
+**最终环境纠正**：7600仍原PID3513173/原exe。7800旧PID2984417已退出，当前PID3845384、主项目debug API；本任务未重启/恢复它，Luna经该健康中继成功。主dev并发推进至`70bf12c0abd92bbf61643ae9a6821070c179d788`；S76579/测试34e438均不在其祖先中。冻结对照有效，不rebase/恢复他人状态。未合并、未推长期分支、未发布插件/PR/issue/他人消息。
+
+原始证据根仍为本机gitignored `tmp/test-governance/gateway-memory-deep/`：`profiles/packet-s-{ordinary-summary,diagnostic-summary,live-stacks,business-contract,cleanup,disk-summary,ci-cost}.json`，`root-{client-trace-path-audit,v2-primary-live-set-audit,s-real-luna-audit,final-resource-status,concurrent-development-status}.json`。完整9页PDF已由父workspace交付，其URL/SHA见`root-final-pdf-delivery.json`，无需在主机复制/重建。真实正文/key不提交。
+
+---
+
+# 原H+C阶段报告（历史快照）
+
+以下旧结论、待做S方案、进程/分支状态仅保留溯源；最终结果和环境以**上方S结算及最终审计**为准。旧完整报告也保存在`profiles/report-hc-preserved.md`。
 
 2026-10-31。输入 `7f3d67a0dc755b7a48e6f29f62cb459f9c27c2f1`，业务候选 `623d46152833ea586359f2e954332b1940144bc4`，分支 `codex/gateway-memory-deep-20261031`。
 
