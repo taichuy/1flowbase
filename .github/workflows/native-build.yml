@@ -58,6 +58,9 @@ jobs:
     needs: select
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
+    env:
+      RUSTUP_TOOLCHAIN: '1.99.0'
+      CARGO_INCREMENTAL: '0'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
@@ -72,13 +75,57 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.99.0'
-      - uses: Swatinem/rust-cache@v2
-        id: rust_cache
+      - name: Identify native compiler and build environment
+        id: compiler
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const os = require('node:os');
+          const { execFileSync } = require('node:child_process');
+          const { createHash } = require('node:crypto');
+          const command = (name, args) => execFileSync(name, args, { encoding: 'utf8' }).trim();
+          const compiler = { rustc: command('rustc', ['-vV']), cargo: command('cargo', ['-V']) };
+          if (process.platform === 'darwin') {
+            compiler.cc = command('xcrun', ['clang', '--version']);
+            compiler.sdk = command('xcrun', ['--show-sdk-version']);
+          } else if (process.platform === 'linux') {
+            compiler.cc = command('cc', ['--version']);
+          } else {
+            // MSVC is selected by rustc from the Runner's Visual Studio installation.
+            compiler.image = process.env.ImageVersion;
+          }
+          const names = /^(RUSTFLAGS|RUSTC.*|CARGO_ENCODED_RUSTFLAGS|CARGO_(PROFILE|TARGET|BUILD)_.*|CC|CXX|CFLAGS|CXXFLAGS|AR|SDKROOT|MACOSX_DEPLOYMENT_TARGET)$/;
+          compiler.flags = Object.fromEntries(Object.entries(process.env).filter(([key]) => names.test(key)).sort(([a], [b]) => a.localeCompare(b)));
+          const fingerprint = createHash('sha256').update(JSON.stringify(compiler)).digest('hex');
+          const root = 'tmp/test-governance/native-release/backend';
+          fs.mkdirSync(root, { recursive: true });
+          fs.writeFileSync(`${root}/compiler.json`, JSON.stringify({ compiler, fingerprint, cpus: os.availableParallelism(), memory_bytes: os.totalmem() }, null, 2) + '\n');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `fingerprint=${fingerprint}\n`);
+          console.log(JSON.stringify({ compiler, fingerprint, cpus: os.availableParallelism(), memory_bytes: os.totalmem() }));
+          NODE
+      - name: Restore native Cargo downloads
+        id: cargo_downloads
+        uses: actions/cache/restore@v5
         with:
-          workspaces: api
-          key: native-${{ matrix.target }}
-          cache-on-failure: true
-          cache-workspace-crates: true
+          path: |
+            ${{ env.CARGO_HOME }}/registry
+            ${{ env.CARGO_HOME }}/git
+          key: native-cargo-v1-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('api/Cargo.lock') }}
+          restore-keys: |
+            native-cargo-v1-${{ runner.os }}-${{ matrix.arch }}-
+      - name: Restore native release target
+        id: release_target
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            api/target/release
+            api/target/cargo-inputs.json
+          key: native-target-v1-${{ matrix.target }}-${{ steps.compiler.outputs.fingerprint }}-${{ hashFiles('scripts/node/container-image-security/restore-cargo-inputs.js', '.cargo/config*', 'api/.cargo/config*') }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml', 'api/rust-toolchain.toml') }}-${{ github.sha }}
+          restore-keys: |
+            native-target-v1-${{ matrix.target }}-${{ steps.compiler.outputs.fingerprint }}-${{ hashFiles('scripts/node/container-image-security/restore-cargo-inputs.js', '.cargo/config*', 'api/.cargo/config*') }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml', 'api/rust-toolchain.toml') }}-
+            native-target-v1-${{ matrix.target }}-${{ steps.compiler.outputs.fingerprint }}-${{ hashFiles('scripts/node/container-image-security/restore-cargo-inputs.js', '.cargo/config*', 'api/.cargo/config*') }}-
+      - name: Restore native checkout timestamps
+        run: node scripts/node/container-image-security/restore-cargo-inputs.js api/target/cargo-inputs.json | tee tmp/test-governance/native-release/backend/input-reuse.json
       - name: Fetch pinned PostgreSQL
         env:
           NATIVE_TARGET: ${{ matrix.target }}
@@ -94,18 +141,40 @@ jobs:
         run: |
           mkdir -p tmp/test-governance/native-release
           started=$(date +%s)
-          node --test scripts/node/native-release/_tests/*.test.js
-          cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution
+          export FLOWBASE_NATIVE_CACHE_EVIDENCE_ROOT=tmp/test-governance/native-release/backend
+          node --test scripts/node/native-release/_tests/*.test.js scripts/node/container-image-security/_tests/restore-cargo-inputs.test.js
+          # Profile the first compilation too: it dominates a cold release build.
+          node scripts/node/native-release/build/measure.js tmp/test-governance/native-release/backend/test-compile cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution --timings
+          cp api/target/cargo-timings/cargo-timing.html tmp/test-governance/native-release/backend/test-cargo-timing.html
           cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution::tests::bundled_postgres_uses_tcp_only -- --ignored --exact
           tested=$(date +%s)
           echo "test_seconds=$((tested - started))" >> "$GITHUB_OUTPUT"
-          cargo build --manifest-path api/Cargo.toml --locked --release -p api-server --bin api-server --bin system_recovery --timings
+          node scripts/node/native-release/build/measure.js tmp/test-governance/native-release/backend/build cargo build --manifest-path api/Cargo.toml --locked --release -p api-server --bin api-server --bin system_recovery --timings
+          cp api/target/cargo-timings/cargo-timing.html tmp/test-governance/native-release/backend/build-cargo-timing.html
           echo "build_seconds=$(($(date +%s) - tested))" >> "$GITHUB_OUTPUT"
+      - name: Save native Cargo downloads
+        if: ${{ !cancelled() && steps.cargo_downloads.outcome == 'success' && steps.cargo_downloads.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ env.CARGO_HOME }}/registry
+            ${{ env.CARGO_HOME }}/git
+          key: ${{ steps.cargo_downloads.outputs.cache-primary-key }}
+      - name: Save native release target
+        if: steps.backend.outcome == 'success' && steps.release_target.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            api/target/release
+            api/target/cargo-inputs.json
+          key: ${{ steps.release_target.outputs.cache-primary-key }}
       - name: Report native backend cache and build time
         if: always()
         env:
           NATIVE_TARGET: ${{ matrix.target }}
-          CACHE_EXACT_HIT: ${{ steps.rust_cache.outputs.cache-hit }}
+          CACHE_EXACT_HIT: ${{ steps.release_target.outputs.cache-hit }}
+          TARGET_CACHE_KEY: ${{ steps.release_target.outputs.cache-matched-key }}
+          DOWNLOAD_CACHE_KEY: ${{ steps.cargo_downloads.outputs.cache-matched-key }}
           TEST_SECONDS: ${{ steps.backend.outputs.test_seconds }}
           BUILD_SECONDS: ${{ steps.backend.outputs.build_seconds }}
           BUILD_OUTCOME: ${{ steps.backend.outcome }}
@@ -114,13 +183,17 @@ jobs:
           const fs = require('node:fs');
           const path = require('node:path');
           const { NATIVE_TARGET: target, GITHUB_SHA: commit, CACHE_EXACT_HIT: exactHit, TEST_SECONDS: tests, BUILD_SECONDS: build, BUILD_OUTCOME: outcome } = process.env;
-          const report = { target, commit, cache_exact_hit: exactHit === 'true', test_seconds: tests ? Number(tests) : null, build_seconds: build ? Number(build) : null, outcome };
+          const report = { target, commit, cache_exact_hit: exactHit === 'true', target_cache_key: process.env.TARGET_CACHE_KEY || null, download_cache_key: process.env.DOWNLOAD_CACHE_KEY || null, test_seconds: tests ? Number(tests) : null, build_seconds: build ? Number(build) : null, outcome };
           const root = 'tmp/test-governance/native-release/backend';
           fs.mkdirSync(root, { recursive: true });
+          report.phases = Object.fromEntries(['test-compile', 'build'].flatMap(name => {
+            const file = path.join(root, `${name}.json`);
+            if (!fs.existsSync(file)) return [];
+            const { wall_seconds, cpu_seconds, max_rss_bytes, rss_scope, exit_code, signal } = JSON.parse(fs.readFileSync(file, 'utf8'));
+            return [[name, { wall_seconds, cpu_seconds, max_rss_bytes, rss_scope, exit_code, signal }]];
+          }));
           fs.writeFileSync(path.join(root, 'result.json'), JSON.stringify(report, null, 2) + '\n');
-          const timing = 'api/target/cargo-timings/cargo-timing.html';
-          if (fs.existsSync(timing)) fs.copyFileSync(timing, path.join(root, 'cargo-timing.html'));
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Native backend (${target})\n\n\x60${JSON.stringify(report)}\x60\n\nA non-exact hit may be a partial restore or a miss; see the Rust cache step.\n`);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Native backend (${target})\n\n\x60${JSON.stringify(report)}\x60\n\nTarget and downloads report their matched keys; null means a cache miss.\n`);
           NODE
       - name: Preserve native backend artifacts
         uses: actions/upload-artifact@v4
@@ -207,5 +280,7 @@ jobs:
             tmp/test-governance/native-release/**/result.json
             tmp/test-governance/native-release/**/command-*.log
             tmp/test-governance/native-release/**/startup-*.log
-            tmp/test-governance/native-release/backend/cargo-timing.html
+            tmp/test-governance/native-release/backend/*.html
+            tmp/test-governance/native-release/backend/*.json
+            tmp/test-governance/native-release/backend/*.log
           if-no-files-found: ignore

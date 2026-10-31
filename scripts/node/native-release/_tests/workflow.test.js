@@ -123,3 +123,67 @@ test('shared web selection includes native releases and manual web rebuilds only
     }), expected);
   }
 });
+
+test('native release targets reuse compatible snapshots without depending on unrelated installed toolchains', () => {
+  const native = read('native-build.yml');
+  assert.match(native, /RUSTUP_TOOLCHAIN: '1\.99\.0'/);
+  assert.doesNotMatch(native, /Swatinem\/rust-cache|rustup toolchain list/);
+  assert.match(native, /rustc.*-vV/);
+  const block = native.split('      - name: Restore native release target\n')[1]
+    .split('      - name: Restore native checkout timestamps')[0];
+  const primary = block.match(/^          key: (.+)$/m)[1];
+  const prefixes = block.split('          restore-keys: |\n')[1].trim().split('\n').map(line => line.trim());
+  const render = (text, overrides = {}) => text.replace(/\$\{\{ (.*?) \}\}/g, (_, key) => ({
+    'matrix.target': 'macos-arm64', 'steps.compiler.outputs.fingerprint': 'compiler-a',
+    "hashFiles('scripts/node/container-image-security/restore-cargo-inputs.js', '.cargo/config*', 'api/.cargo/config*')": 'recipe-a',
+    "hashFiles('api/Cargo.lock', 'api/**/Cargo.toml', 'api/rust-toolchain.toml')": 'deps-a',
+    'github.sha': 'commit-a', ...overrides,
+  })[key] ?? assert.fail(`Unknown cache input ${key}`));
+  const previous = render(primary);
+  assert.notEqual(previous, render(primary, { 'github.sha': 'commit-b' }));
+  assert.ok(previous.startsWith(render(prefixes[0], { 'github.sha': 'commit-b' })));
+  for (const changes of [
+    { 'matrix.target': 'macos-x64' },
+    { 'steps.compiler.outputs.fingerprint': 'compiler-b' },
+    { "hashFiles('scripts/node/container-image-security/restore-cargo-inputs.js', '.cargo/config*', 'api/.cargo/config*')": 'recipe-b' },
+  ]) assert.ok(prefixes.every(prefix => !previous.startsWith(render(prefix, changes))));
+  assert.match(native, /node scripts\/node\/container-image-security\/restore-cargo-inputs.js api\/target\/cargo-inputs.json/);
+  assert.match(native, /name: Save native release target\n\s+if: steps\.backend\.outcome == 'success' && steps\.release_target\.outputs\.cache-hit != 'true'/);
+  assert.match(native, /native_distribution --timings/);
+  assert.match(native, /test-cargo-timing.html/);
+  assert.match(native, /build-cargo-timing.html/);
+});
+
+test('the actual native compiler fingerprint tracks compilers, SDK and flags rather than unrelated Runner software', () => {
+  const { runInNewContext } = require('node:vm');
+  const block = read('native-build.yml').split('      - name: Identify native compiler and build environment\n')[1]
+    .split('      - name: Restore native Cargo downloads')[0];
+  const script = block.split("node <<'NODE'\n")[1].split('\n          NODE')[0].replace(/^          /gm, '');
+  const evaluate = (env = {}, overrides = {}) => {
+    let receipt;
+    const values = { rustc: 'rustc 1.99.0 host=aarch64-apple-darwin', cargo: 'cargo 1.99.0', clang: 'Apple clang 17', sdk: '15.7', ...overrides };
+    runInNewContext(script, {
+      process: { platform: 'darwin', env }, console: { log() {} },
+      require(name) {
+        if (name === 'node:fs') return { mkdirSync() {}, appendFileSync() {}, writeFileSync(file, text) { receipt = JSON.parse(text); } };
+        if (name === 'node:os') return { availableParallelism: () => 3, totalmem: () => 7 * 1024 ** 3 };
+        if (name === 'node:child_process') return { execFileSync(command, args) {
+          if (command === 'rustc') return values.rustc;
+          if (command === 'cargo') return values.cargo;
+          if (command === 'xcrun') return args[0] === 'clang' ? values.clang : values.sdk;
+          assert.fail(`Unexpected compiler probe: ${command}`);
+        } };
+        return require(name);
+      },
+    });
+    return receipt.fingerprint;
+  };
+  const baseline = evaluate();
+  assert.equal(evaluate({ ImageVersion: 'new-image', UNRELATED_RUST_TOOLCHAIN: '1.100' }), baseline);
+  for (const env of [{ RUSTFLAGS: '-Ctarget-cpu=native' }, { CARGO_PROFILE_RELEASE_OPT_LEVEL: '2' }, { MACOSX_DEPLOYMENT_TARGET: '14.0' }]) {
+    assert.notEqual(evaluate(env), baseline);
+  }
+  for (const changed of [{ rustc: 'rustc 1.100.0' }, { clang: 'Apple clang 18' }, { sdk: '16.0' }]) {
+    assert.notEqual(evaluate({}, changed), baseline);
+  }
+});
