@@ -225,7 +225,10 @@ async fn model_provider_service_refresh_failure_does_not_clear_enabled_model_ids
         workspace_id,
         &["state_model.view.all", "state_model.manage.all"],
     ));
-    let runtime = MemoryProviderRuntime::default();
+    let runtime = MemoryProviderRuntime {
+        operation_trace: repository.operation_trace.clone(),
+        ..Default::default()
+    };
     let package_root =
         std::env::temp_dir().join(format!("provider-model-refresh-{}", Uuid::now_v7()));
     create_provider_fixture(&package_root);
@@ -259,15 +262,84 @@ async fn model_provider_service_refresh_failure_does_not_clear_enabled_model_ids
         .await
         .unwrap();
 
-    runtime
-        .set_list_models_error(Some("refresh failed for test"))
-        .await;
-    let error = service
-        .refresh_models(repository.actor.user_id, created.instance.id)
+    let old_cache = repository
+        .get_catalog_cache(created.instance.id)
         .await
-        .unwrap_err();
-
-    assert!(error.to_string().contains("refresh failed for test"));
+        .unwrap()
+        .unwrap();
+    let original_audits = repository.audit_events().await;
+    for (catalog_error, load_error, list_error, expected_trace, expected_error) in [
+        (
+            true,
+            false,
+            false,
+            vec!["get_secret_json", "get_catalog_cache"],
+            "catalog read failed for test",
+        ),
+        (
+            false,
+            true,
+            false,
+            vec![
+                "get_secret_json",
+                "get_catalog_cache",
+                "ensure_loaded",
+                "cache_failed",
+                "audit",
+            ],
+            "ensure loaded failed for test",
+        ),
+        (
+            false,
+            false,
+            true,
+            vec![
+                "get_secret_json",
+                "get_catalog_cache",
+                "ensure_loaded",
+                "list_models",
+                "cache_failed",
+                "audit",
+            ],
+            "refresh failed for test",
+        ),
+    ] {
+        *repository.catalog_read_error.write().await = catalog_error;
+        *runtime.ensure_loaded_error.write().await = load_error;
+        runtime
+            .set_list_models_error(list_error.then_some("refresh failed for test"))
+            .await;
+        repository.operation_trace.write().await.clear();
+        let list_count = runtime.list_model_call_count().await;
+        let error = service
+            .refresh_models(repository.actor.user_id, created.instance.id)
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), expected_error);
+        assert_eq!(*repository.operation_trace.read().await, expected_trace);
+        assert_eq!(runtime.list_model_call_count().await, list_count);
+        *repository.catalog_read_error.write().await = false;
+        let cache = repository
+            .get_catalog_cache(created.instance.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(cache.models_json, old_cache.models_json);
+        assert_eq!(cache.refreshed_at, old_cache.refreshed_at);
+        if catalog_error {
+            assert_eq!(cache.refresh_status, old_cache.refresh_status);
+            assert_eq!(repository.audit_events().await, original_audits);
+        } else {
+            assert_eq!(
+                cache.refresh_status,
+                ModelProviderCatalogRefreshStatus::Failed
+            );
+            assert_eq!(cache.last_error_message.as_deref(), Some(expected_error));
+        }
+    }
+    let mut expected_audits = original_audits;
+    expected_audits.extend(vec!["model_provider.models_refresh_failed".to_string(); 2]);
+    assert_eq!(repository.audit_events().await, expected_audits);
     assert_eq!(
         repository
             .get_instance(workspace_id, created.instance.id)
@@ -286,6 +358,31 @@ async fn model_provider_service_refresh_failure_does_not_clear_enabled_model_ids
             .refresh_status,
         ModelProviderCatalogRefreshStatus::Failed
     );
+    runtime.set_list_models_error(None).await;
+    repository.operation_trace.write().await.clear();
+    let list_count = runtime.list_model_call_count().await;
+    let refreshed = service
+        .refresh_models(repository.actor.user_id, created.instance.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        refreshed.refresh_status,
+        ModelProviderCatalogRefreshStatus::Ready
+    );
+    assert_eq!(runtime.list_model_call_count().await, list_count + 1);
+    assert_eq!(
+        *repository.operation_trace.read().await,
+        vec![
+            "get_secret_json",
+            "get_catalog_cache",
+            "ensure_loaded",
+            "list_models",
+            "cache_ready",
+            "audit",
+        ]
+    );
+    expected_audits.push("model_provider.models_refreshed".to_string());
+    assert_eq!(repository.audit_events().await, expected_audits);
 }
 
 #[tokio::test]
@@ -332,6 +429,13 @@ async fn model_provider_service_refresh_models_blocks_when_current_node_artifact
     let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key")
         .with_node_artifact_context("node-without-artifact", current_node_root);
 
+    let audits = repository.audit_events().await;
+    let cache = repository
+        .get_catalog_cache(created.instance.id)
+        .await
+        .unwrap()
+        .unwrap();
+    repository.operation_trace.write().await.clear();
     let error = service
         .refresh_models(repository.actor.user_id, created.instance.id)
         .await
@@ -341,6 +445,16 @@ async fn model_provider_service_refresh_models_blocks_when_current_node_artifact
         error.downcast_ref::<ControlPlaneError>(),
         Some(ControlPlaneError::PluginUnavailable)
     ));
+    assert!(repository.operation_trace.read().await.is_empty());
+    assert_eq!(repository.audit_events().await, audits);
+    let unchanged = repository
+        .get_catalog_cache(created.instance.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(unchanged.models_json, cache.models_json);
+    assert_eq!(unchanged.refreshed_at, cache.refreshed_at);
+    assert_eq!(unchanged.refresh_status, cache.refresh_status);
 }
 
 #[tokio::test]

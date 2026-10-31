@@ -14,13 +14,10 @@ use crate::{
     },
 };
 
-use super::{
-    instances::maintain_provider_runtime_config,
-    shared::{
-        empty_object, ensure_model_provider_permission, is_secret_field,
-        load_actor_context_for_user, map_catalog_source, map_model_discovery_mode,
-        ready_model_provider_installation, ModelProviderNodeArtifactContext,
-    },
+use super::shared::{
+    empty_object, ensure_model_provider_permission, is_secret_field, load_actor_context_for_user,
+    map_catalog_source, map_model_discovery_mode, ready_model_provider_installation,
+    ModelProviderNodeArtifactContext,
 };
 
 pub(super) async fn list_models<R>(
@@ -81,31 +78,21 @@ where
     R: AuthRepository + PluginRepository + ModelProviderRepository,
     H: ProviderRuntimePort,
 {
-    let actor = load_actor_context_for_user(repository, actor_user_id).await?;
-    ensure_model_provider_permission(&actor, "manage", &use_case).await?;
-    let instance = repository
-        .get_instance(actor.current_workspace_id, instance_id)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("model_provider_instance"))?;
-    let installation = ready_model_provider_installation(
-        repository,
-        node_artifact_context,
-        instance.installation_id,
-    )
-    .await?;
-    if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
-        return Err(ControlPlaneError::PluginUnavailable.into());
-    }
-    let package = load_installed_provider_package(&installation)?;
-    let provider_config = maintain_provider_runtime_config(
+    let target = super::account::resolve_provider_account_runtime_target(
         repository,
         runtime,
         provider_secret_master_key,
-        &package,
-        &installation,
-        &instance,
+        actor_user_id,
+        instance_id,
+        node_artifact_context,
+        use_case,
     )
     .await?;
+    let instance = target.instance;
+    let installation = target.installation;
+    let provider_config = target.provider_config;
+    let workspace_id = target.workspace_id;
+    let model_discovery_mode = target.model_discovery_mode;
     let existing_cache = repository.get_catalog_cache(instance.id).await?;
 
     let refresh_result = async {
@@ -114,11 +101,9 @@ where
         let cache = repository
             .upsert_catalog_cache(&UpsertModelProviderCatalogCacheInput {
                 provider_instance_id: instance.id,
-                model_discovery_mode: map_model_discovery_mode(
-                    package.provider.model_discovery_mode,
-                ),
+                model_discovery_mode: map_model_discovery_mode(model_discovery_mode),
                 refresh_status: domain::ModelProviderCatalogRefreshStatus::Ready,
-                source: map_catalog_source(package.provider.model_discovery_mode),
+                source: map_catalog_source(model_discovery_mode),
                 models_json: serde_json::to_value(&models)?,
                 last_error_message: None,
                 refreshed_at: Some(OffsetDateTime::now_utc()),
@@ -126,7 +111,7 @@ where
             .await?;
         repository
             .append_audit_log(&audit_log(
-                Some(actor.current_workspace_id),
+                Some(workspace_id),
                 Some(actor_user_id),
                 "model_provider_instance",
                 Some(instance.id),
@@ -154,11 +139,9 @@ where
             let _ = repository
                 .upsert_catalog_cache(&UpsertModelProviderCatalogCacheInput {
                     provider_instance_id: instance.id,
-                    model_discovery_mode: map_model_discovery_mode(
-                        package.provider.model_discovery_mode,
-                    ),
+                    model_discovery_mode: map_model_discovery_mode(model_discovery_mode),
                     refresh_status: domain::ModelProviderCatalogRefreshStatus::Failed,
-                    source: map_catalog_source(package.provider.model_discovery_mode),
+                    source: map_catalog_source(model_discovery_mode),
                     models_json: existing_cache
                         .as_ref()
                         .map(|cache| cache.models_json.clone())
@@ -169,7 +152,7 @@ where
                 .await;
             let _ = repository
                 .append_audit_log(&audit_log(
-                    Some(actor.current_workspace_id),
+                    Some(workspace_id),
                     Some(actor_user_id),
                     "model_provider_instance",
                     Some(instance.id),
