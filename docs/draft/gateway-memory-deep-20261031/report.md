@@ -78,6 +78,8 @@ hooks 跟踪请求大小 ≥256 KiB 的分配/扩容，记录真实栈和 free�
 
 最终 resident−allocated=22,263,104 bytes（初始23,938,536）；active−allocated=9,807,168，metadata=12,660,240。空闲页/碎片/元数据确实存在，**不能解释本轮约153 MB的 allocated 增长**。`retained=1,217,568,768` 是保留虚拟地址空间，不能算作 RSS。单独 smaps 快照中 executable mappings 的 RSS=197,246,976 bytes，含 COW Anonymous=9,953,280；文件映射和匿名页均已分列。
 
+最终交付前已全文回读独立 `root-source-review.md` 和 `root-passive-7600-observation.json`，并记录两者SHA256。原7600被动样本为00:31:08–00:31:31 UTC的12点：RSS426,380–468,412 KiB，Pss_Anon248,948–290,980 KiB，Pss_File174,611–174,619 KiB；threads26、fd155。这支持匿名页波动/文件页稳定的观察，但负载未受控，不能混入ABBA收益、证明泄漏或直接指定7600的allocator owner；没有为补充审查重新读取/attach该进程。
+
 所有6,794个被跟踪的大分配/扩容记录最终均有 free；上述13个在末尾 idle 取样约12.4–12.5 s后、关闭 API 时才释放。不能把 shutdown 归零当作请求结束清理已经完成。对象数13/14及最后三次波动支持连接缓冲高水位解释；**一个进程六次不能证明任意时长平台或全面无泄漏**。未 attach 原7600，故不声称已读取其 allocator owner；这是同输入基线完整 API 的可复现机制证据。
 
 ## 已完成的最小业务候选
@@ -91,6 +93,8 @@ hooks 跟踪请求大小 ≥256 KiB 的分配/扩容，记录真实栈和 free�
 | 两个 `_tests` 文件 | 完整帧/部分帧取消、Unicode/tool/reasoning/media/unknown、identity receipt 回归 | 53 Host +13 pipeline=66唯一用例 |
 
 组件都用实际生产函数，但 frame 探针是把完整历史装入确定性 worker response，不等于普通 API 默认 stdout 的真实字节路径。Pipeline 记 P 为 model-visible projection 大小，不是原 native 文档 H；只减少重复 Θ(P) 编码/哈希，不能声称 O(1)。完整推理/持久化所需 Θ(H) 成本仍存在。
+
+摘要护栏已对基线/候选实际源码机械核对：非空贡献循环和 `model_visible_digest` 函数逐字节未变。贡献receipt仍摘要同步前candidate，最终输入仍取同步后validated_candidate；C仅在零贡献分支复用before digest。没有引入streaming hash，原`serde_json::to_vec(...).unwrap_or_default()`及序列化错误时SHA256(empty)语义保留，也未实施clone优化。机器记录为`profiles/final-guardrail-review.json`；这项源码核对不冒充新的行为测试。
 
 H 的回收会增加重用大帧时重新分配：最大帧末次操作 requested allocation 约28,870,870→95,971,447 bytes（两侧各两个进程；计数含 realloc 新请求大小），并非全部维度下降。C 同点约23,411,707→11,710,072 bytes。二者是带计数/stats的组件结果，不能充当普通 API CPU 加速证据。未改 SDK/官方插件源码或版本，未重新发布已安装插件。
 
@@ -120,6 +124,10 @@ H 的回收会增加重用大帧时重新分配：最大帧末次操作 requeste
 | 测试净变化 / 治理代码净变化 | +228 / **0**行 | 两个测试文件；AGENTS/.agents/.github/scripts均0；报告文档另计 |
 
 资源偏差保留：早期原guard要求连续超限，漏停9个host CPU>60%采样（baseline-build4、seed-cache4、QA Host1），max77.31%。后来已改为**首次采样>60即停止自身scope**。正式组件/完整API ABBA及诊断均0个>60%样本；诊断max42.02%、task peak1,610,018,816 bytes。两次完整API本地构建接近预算被主动停止、exit143、OOM0，此后使用已有CI二进制。不能称全程守限。
+
+磁盘收尾：没有复制整个181 GB共享target。早期seed实际按后缀筛选9,027个依赖文件，记录logical bytes=18,783,489,203，另复制`.fingerprint/build`；**这比必要依赖闭包宽，不能称最小闭包**，初次copy的物理增量未单独采样。最终只清理本任务`artifacts/target`：清理前其分配22,723,751,936 bytes；移出并校验Host测试、两个SDK fixture的原始二进制后删除缓存。任务证据目录实测分配26,752,446,464→4,296,679,424 bytes，回收**22,455,767,040 bytes**；该读数不是历史磁盘峰值，后续少量报告/JSON另计。没有修改或清理他人target。
+
+两侧CI API/组件probe、原始trace/DB导出、QA结果及mutant二进制均保留。`profiles/disk-cleanup.json`记录回收口径、3个搬移后SHA256不变的执行文件及新路径；旧编译命令保留历史缓存路径，重编需重新准备必要闭包，不默认重跑宽泛seed。此补充未再构建、测试或推理；以后确需准备缓存，仅选择实际hash对应的Rust依赖闭包及必要native产物。
 
 ## 决策与后续方案
 
