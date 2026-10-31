@@ -160,7 +160,7 @@ async fn standalone_notification_after_an_answer_does_not_reopen_a_completed_rec
 #[tokio::test]
 async fn standalone_notifications_do_not_weaken_native_receipt_or_history_validation() {
     let (repository, actor, run) = fixture().await;
-    let (_, mut full) = seed_proven_full_round(&repository, run, true);
+    let (callback, mut full) = seed_proven_full_round(&repository, run, true);
     full["input"].as_array_mut().unwrap().push(notification());
     let mut incomplete = full.clone();
     incomplete["input"].as_array_mut().unwrap().remove(3);
@@ -193,10 +193,29 @@ async fn standalone_notifications_do_not_weaken_native_receipt_or_history_valida
     assert!(
         correlate_native_responses_callback(&repository, &other, &full)
             .await
-            .unwrap_err()
-            .to_string()
-            .contains("native_tool_output_unknown")
+            .expect(
+                "closed history under another key starts sampling without claiming the callback"
+            )
+            .is_none()
     );
+    let mut with_parent = full.clone();
+    with_parent["previous_response_id"] = json!("resp_round");
+    for body in [with_parent, request()] {
+        assert_eq!(
+            correlate_native_responses_callback(&repository, &other, &body)
+                .await
+                .unwrap_err()
+                .downcast_ref::<ControlPlaneError>(),
+            Some(&ControlPlaneError::Conflict("native_tool_output_unknown"))
+        );
+    }
+    let unchanged = repository
+        .get_published_callback_task(callback.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(unchanged.status, CallbackTaskStatus::Pending);
+    assert!(unchanged.response_payload.is_none());
     assert!(repository.callback_resume_attempts().is_empty());
 }
 
