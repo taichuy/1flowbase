@@ -73,6 +73,7 @@ jobs:
         with:
           toolchain: '1.99.0'
       - uses: Swatinem/rust-cache@v2
+        id: rust_cache
         with:
           workspaces: api
           key: native-${{ matrix.target }}
@@ -89,12 +90,38 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_ENV, `FLOWBASE_TEST_POSTGRES_ROOT=${root}\n`);
           NODE
       - name: Test native behavior and build backend
+        id: backend
         run: |
           mkdir -p tmp/test-governance/native-release
+          started=$(date +%s)
           node --test scripts/node/native-release/_tests/*.test.js
           cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution
           cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution::tests::bundled_postgres_uses_tcp_only -- --ignored --exact
-          cargo build --manifest-path api/Cargo.toml --locked --release -p api-server --bin api-server --bin system_recovery
+          tested=$(date +%s)
+          echo "test_seconds=$((tested - started))" >> "$GITHUB_OUTPUT"
+          cargo build --manifest-path api/Cargo.toml --locked --release -p api-server --bin api-server --bin system_recovery --timings
+          echo "build_seconds=$(($(date +%s) - tested))" >> "$GITHUB_OUTPUT"
+      - name: Report native backend cache and build time
+        if: always()
+        env:
+          NATIVE_TARGET: ${{ matrix.target }}
+          CACHE_EXACT_HIT: ${{ steps.rust_cache.outputs.cache-hit }}
+          TEST_SECONDS: ${{ steps.backend.outputs.test_seconds }}
+          BUILD_SECONDS: ${{ steps.backend.outputs.build_seconds }}
+          BUILD_OUTCOME: ${{ steps.backend.outcome }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { NATIVE_TARGET: target, GITHUB_SHA: commit, CACHE_EXACT_HIT: exactHit, TEST_SECONDS: tests, BUILD_SECONDS: build, BUILD_OUTCOME: outcome } = process.env;
+          const report = { target, commit, cache_exact_hit: exactHit === 'true', test_seconds: tests ? Number(tests) : null, build_seconds: build ? Number(build) : null, outcome };
+          const root = 'tmp/test-governance/native-release/backend';
+          fs.mkdirSync(root, { recursive: true });
+          fs.writeFileSync(path.join(root, 'result.json'), JSON.stringify(report, null, 2) + '\n');
+          const timing = 'api/target/cargo-timings/cargo-timing.html';
+          if (fs.existsSync(timing)) fs.copyFileSync(timing, path.join(root, 'cargo-timing.html'));
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Native backend (${target})\n\n\x60${JSON.stringify(report)}\x60\n\nA non-exact hit may be a partial restore or a miss; see the Rust cache step.\n`);
+          NODE
       - name: Preserve native backend artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -103,11 +130,13 @@ jobs:
             api/target/release/api-server${{ matrix.suffix }}
             api/target/release/system_recovery${{ matrix.suffix }}
           if-no-files-found: error
-      - name: Build web
-        run: |
-          npm install --global pnpm@12.11.2
-          pnpm --dir web install --frozen-lockfile
-          pnpm --dir web build
+      - name: Download shared web dist
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: tmp/shared-web
+      - name: Verify shared web dist
+        run: cd tmp/shared-web/dist && sha256sum --check ../web-dist.sha256
       - uses: actions/download-artifact@v4
         with:
           name: native-bootstrap-resources
@@ -124,7 +153,7 @@ jobs:
             --platform "$NATIVE_PLATFORM" --arch "$NATIVE_ARCH" \
             --api-binary "api/target/release/api-server$NATIVE_SUFFIX" \
             --recovery-binary "api/target/release/system_recovery$NATIVE_SUFFIX" \
-            --web-dir web/app/dist --postgres-dir "$FLOWBASE_TEST_POSTGRES_ROOT" --resources-dir tmp/native-resources --out tmp/native-release \
+            --web-dir tmp/shared-web/dist --postgres-dir "$FLOWBASE_TEST_POSTGRES_ROOT" --resources-dir tmp/native-resources --out tmp/native-release \
             --version "$(node -e 'const tag = process.env.NATIVE_RELEASE_TAG; console.log(tag ? tag.replace(/^v/, "") : require("./web/app/package.json").version)')"
       - name: Extract and verify the actual distribution archive
         env:
@@ -178,4 +207,5 @@ jobs:
             tmp/test-governance/native-release/**/result.json
             tmp/test-governance/native-release/**/command-*.log
             tmp/test-governance/native-release/**/startup-*.log
+            tmp/test-governance/native-release/backend/cargo-timing.html
           if-no-files-found: ignore

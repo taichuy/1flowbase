@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '../../../..');
-const read = name => fs.readFileSync(path.join(root, '.github/workflows', name), 'utf8');
+const read = name => fs.readFileSync(path.join(root, '.github/workflows', name), 'utf8').replace(/\r\n/g, '\n');
 function job(text, name) {
   const start = text.indexOf(`\n  ${name}:\n`);
   assert.ok(start >= 0, name);
@@ -78,4 +78,46 @@ test('publishers serialize the same tag across workflows without cancelling acti
   assert.equal(normalizedGroup(combined), normalizedGroup(native));
   for (const text of [combined, native]) assert.match(text, /      cancel-in-progress: false/);
   assert.match(docker.slice(0, docker.indexOf('jobs:')), /  cancel-in-progress: false/);
+});
+
+test('Docker and native packages consume one web build from the same run', () => {
+  const docker = read('container-images.yml');
+  const manual = read('native-release.yml');
+  const native = read('native-build.yml');
+  const web = read('web-build.yml');
+  for (const caller of [docker, manual]) {
+    const build = job(caller, 'build-web-dist');
+    assert.match(build, /uses: \.\/\.github\/workflows\/web-build.yml/);
+    assert.doesNotMatch(build, /matrix:/);
+    assert.match(caller === docker ? job(caller, 'build-native') : job(caller, 'build'), /- build-web-dist/);
+  }
+  assert.match(job(docker, 'build-web-dist'), /needs\.select-web\.outputs\.enabled == 'true' \|\| needs\.select-release\.outputs\.enabled == 'true'/);
+  assert.match(web, /cache: pnpm/);
+  assert.match(web, /cache-dependency-path: web\/pnpm-lock.yaml/);
+  assert.equal((web.match(/pnpm --dir web --filter @1flowbase\/web build/g) || []).length, 1);
+  assert.match(web, /name: web-dist\n/);
+  assert.doesNotMatch(native, /pnpm|name: Build web/);
+  assert.match(native, /name: web-dist\n\s+path: tmp\/shared-web/);
+  assert.match(native, /--web-dir tmp\/shared-web\/dist/);
+  const publish = job(docker, 'publish-web');
+  assert.match(publish, /name: web-dist\n\s+path: tmp\/shared-web/);
+  for (const arch of ['amd64', 'arm64']) {
+    assert.ok(publish.includes(`cp -a tmp/shared-web/dist tmp/web-dist/${arch}/dist`));
+  }
+  assert.doesNotMatch(docker, /pnpm --dir web .*build|pattern: web-dist-\*/);
+});
+
+test('shared web selection includes native releases and manual web rebuilds only', () => {
+  const build = job(read('container-images.yml'), 'build-web-dist');
+  const expression = build.match(/    if: (.+)/)[1].replace(/needs\.([\w-]+)/g, 'needs["$1"]');
+  const enabled = new Function('needs', `return (${expression});`);
+  for (const [web, release, expected] of [
+    ['true', 'true', true], ['false', 'true', true],
+    ['true', 'false', true], ['false', 'false', false],
+  ]) {
+    assert.equal(enabled({
+      'select-web': { outputs: { enabled: web } },
+      'select-release': { outputs: { enabled: release } },
+    }), expected);
+  }
 });

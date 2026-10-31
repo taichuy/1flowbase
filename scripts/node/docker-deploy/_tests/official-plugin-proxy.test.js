@@ -872,18 +872,22 @@ test('container image workflow publishes linux amd64 and arm64 manifests', () =>
   assert.match(workflow, /^\s+platforms:\s+linux\/amd64,linux\/arm64$/mu);
 });
 
-test('container image workflow builds web dist on native runners before publishing', () => {
+test('container image workflow shares one web dist with both image architectures', () => {
   const workflow = readRepoFile('.github', 'workflows', 'container-images.yml');
+  const webBuild = readRepoFile('.github', 'workflows', 'web-build.yml');
 
   assert.match(workflow, /select-web:/u);
   assert.match(workflow, /build-web-dist:/u);
   assert.match(workflow, /publish-web:/u);
-  assert.match(workflow, /- arch: amd64\n\s+runner: ubuntu-latest/u);
-  assert.match(workflow, /- arch: arm64\n\s+runner: ubuntu-24\.04-arm/u);
-  assert.match(workflow, /pnpm --dir web install --frozen-lockfile/u);
-  assert.match(workflow, /pnpm --dir web --filter @1flowbase\/web build/u);
-  assert.match(workflow, /name: web-dist-\$\{\{ matrix\.arch \}\}/u);
-  assert.match(workflow, /name: Download web dist artifacts/u);
+  assert.match(workflow, /uses: \.\/\.github\/workflows\/web-build.yml/u);
+  assert.match(webBuild, /pnpm --dir web install --frozen-lockfile/u);
+  assert.match(webBuild, /pnpm --dir web --filter @1flowbase\/web build/u);
+  assert.match(webBuild, /name: web-dist\n/u);
+  assert.match(workflow, /name: Download shared web dist/u);
+  for (const arch of ['amd64', 'arm64']) {
+    assert.ok(workflow.includes(`cp -a tmp/shared-web/dist tmp/web-dist/${arch}/dist`));
+  }
+  assert.match(workflow, /sha256sum --check \.\.\/web-dist.sha256/u);
   assert.match(workflow, /web_dist=\.\/tmp\/web-dist/u);
   assert.match(workflow, /target: runtime-prebuilt/u);
 });

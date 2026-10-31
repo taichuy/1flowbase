@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/container-images.yml"
       - ".github/workflows/native-build.yml"
+      - ".github/workflows/web-build.yml"
       - "scripts/node/native-release/**"
       - "VERSION"
       - "docker/api-server.Dockerfile"
@@ -182,7 +183,9 @@ jobs:
         run: node scripts/node/native-release/plan.js
 
   build-native:
-    needs: select-release
+    needs:
+      - select-release
+      - build-web-dist
     if: needs.select-release.outputs.enabled == 'true'
     uses: ./.github/workflows/native-build.yml
     with:
@@ -193,69 +196,8 @@ jobs:
     needs:
       - select-release
       - select-web
-    if: needs.select-web.outputs.enabled == 'true'
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-latest
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: pnpm/action-setup@v5
-        with:
-          package_json_file: web/package.json
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version-file: web/.nvmrc
-
-      - name: Verify Docker nginx configuration lifecycle
-        run: |
-          node --test docker/web/_tests/*.test.cjs scripts/node/docker-deploy/_tests/nginx-websocket.test.js
-          docker build --target runtime-base -f docker/web.Dockerfile -t flowbase-nginx-smoke .
-          FLOWBASE_NGINX_TEST_IMAGE=flowbase-nginx-smoke node docker/web/_tests/container-smoke.cjs
-
-      - name: Restore web pnpm store
-        uses: actions/cache@v5
-        with:
-          path: tmp/container-cache/web/${{ matrix.arch }}/pnpm-store
-          key: web-pnpm-store-${{ matrix.arch }}-${{ hashFiles('web/pnpm-lock.yaml', 'web/package.json', 'web/app/package.json', 'web/packages/*/package.json') }}
-          restore-keys: |
-            web-pnpm-store-${{ matrix.arch }}-${{ hashFiles('web/pnpm-lock.yaml') }}-
-            web-pnpm-store-${{ matrix.arch }}-
-
-      - name: Build web dist on native ${{ matrix.arch }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          cache_root="tmp/container-cache/web/${{ matrix.arch }}"
-          artifact_root="tmp/container-artifacts/web/${{ matrix.arch }}"
-          mkdir -p "$cache_root/pnpm-store" "$artifact_root"
-
-          pnpm config set store-dir "$PWD/$cache_root/pnpm-store"
-          pnpm config set package-import-method copy
-          pnpm --dir web install --frozen-lockfile
-          pnpm --dir web --filter @1flowbase/web build
-
-          rm -rf "$artifact_root/dist"
-          cp -a web/app/dist "$artifact_root/dist"
-          (cd "$artifact_root/dist" && find . -type f -print0 | sort -z | xargs -0 sha256sum) > "$artifact_root/web-dist.sha256"
-          du -sh "$artifact_root/dist"
-
-      - name: Upload web dist artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: web-dist-${{ matrix.arch }}
-          path: tmp/container-artifacts/web/${{ matrix.arch }}
-          if-no-files-found: error
+    if: needs.select-web.outputs.enabled == 'true' || needs.select-release.outputs.enabled == 'true'
+    uses: ./.github/workflows/web-build.yml
 
   publish-web:
     needs:
@@ -268,6 +210,10 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: web/.nvmrc
 
       - uses: docker/setup-qemu-action@v4
         with:
@@ -284,27 +230,28 @@ jobs:
       - name: Validate web version
         run: node scripts/node/container-image-security/verify-version.js web ${{ needs.select-web.outputs.image_tag }}
 
-      - name: Download web dist artifacts
+      - name: Verify Docker nginx configuration lifecycle
+        run: |
+          node --test docker/web/_tests/*.test.cjs scripts/node/docker-deploy/_tests/nginx-websocket.test.js
+          docker build --target runtime-base -f docker/web.Dockerfile -t flowbase-nginx-smoke .
+          FLOWBASE_NGINX_TEST_IMAGE=flowbase-nginx-smoke node docker/web/_tests/container-smoke.cjs
+
+      - name: Download shared web dist
         uses: actions/download-artifact@v8
         with:
-          pattern: web-dist-*
-          path: tmp/web-dist-artifacts
-          merge-multiple: false
+          name: web-dist
+          path: tmp/shared-web
 
       - name: Prepare web dist build context
         shell: bash
         run: |
           set -euo pipefail
-
+          (cd tmp/shared-web/dist && sha256sum --check ../web-dist.sha256)
           mkdir -p tmp/web-dist/amd64 tmp/web-dist/arm64
-          cp -a tmp/web-dist-artifacts/web-dist-amd64/dist tmp/web-dist/amd64/dist
-          cp -a tmp/web-dist-artifacts/web-dist-arm64/dist tmp/web-dist/arm64/dist
+          cp -a tmp/shared-web/dist tmp/web-dist/amd64/dist
+          cp -a tmp/shared-web/dist tmp/web-dist/arm64/dist
           test -f tmp/web-dist/amd64/dist/index.html
           test -f tmp/web-dist/arm64/dist/index.html
-          cat tmp/web-dist-artifacts/web-dist-amd64/web-dist.sha256
-          if ! diff -u tmp/web-dist-artifacts/web-dist-amd64/web-dist.sha256 tmp/web-dist-artifacts/web-dist-arm64/web-dist.sha256; then
-            echo "Web dist checksums differ across native runners; publishing per-arch dist artifacts."
-          fi
           du -sh tmp/web-dist/amd64/dist tmp/web-dist/arm64/dist
 
       - name: Prepare image references
