@@ -1,6 +1,5 @@
 use super::{validate_catalog_rules, ApiError, PricingRuleBody};
 use control_plane::errors::ControlPlaneError;
-use futures_util::StreamExt;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -212,6 +211,34 @@ impl RemotePricingCatalogReader {
         Ok(search)
     }
 
+    async fn read_search_shard(
+        &self,
+        shard: &SearchShardReference,
+    ) -> Result<Vec<SearchEntry>, ApiError> {
+        let search = self
+            .read_search_document(&shard.document, 2 * 1024 * 1024)
+            .await?;
+        let providers: std::collections::BTreeSet<_> = search
+            .entries
+            .iter()
+            .map(|entry| entry.provider_code.to_lowercase())
+            .collect();
+        let declared: std::collections::BTreeSet<_> = shard
+            .provider_codes
+            .iter()
+            .map(|code| code.to_lowercase())
+            .collect();
+        if providers != declared
+            || search
+                .entries
+                .iter()
+                .any(|entry| !shard.pages.contains(&entry.catalog_page.page))
+        {
+            return Err(invalid("pricing_catalog_search_shard"));
+        }
+        Ok(search.entries)
+    }
+
     async fn search_index(&self, provider: Option<&str>) -> Result<SearchIndex, ApiError> {
         let (search, expected_pages) = if self.index.search_shards.is_empty() {
             // A v2 source may still publish only the original complete metadata snapshot.
@@ -253,35 +280,15 @@ impl RemotePricingCatalogReader {
                 .iter()
                 .flat_map(|shard| shard.pages.iter().copied())
                 .collect::<HashSet<_>>();
-            let mut stream = futures_util::stream::iter(shards)
-                .map(|shard| async move {
-                    let search = self
-                        .read_search_document(&shard.document, 2 * 1024 * 1024)
-                        .await?;
-                    let providers: std::collections::BTreeSet<_> = search
-                        .entries
-                        .iter()
-                        .map(|entry| entry.provider_code.to_lowercase())
-                        .collect();
-                    let declared: std::collections::BTreeSet<_> = shard
-                        .provider_codes
-                        .iter()
-                        .map(|code| code.to_lowercase())
-                        .collect();
-                    if providers != declared
-                        || search
-                            .entries
-                            .iter()
-                            .any(|entry| !shard.pages.contains(&entry.catalog_page.page))
-                    {
-                        return Err(invalid("pricing_catalog_search_shard"));
-                    }
-                    Ok::<_, ApiError>(search.entries)
-                })
-                .buffered(4);
             let mut entries = Vec::new();
-            while let Some(result) = stream.next().await {
-                entries.extend(result?);
+            for batch in shards.chunks(4) {
+                let mut requests = Vec::with_capacity(batch.len());
+                for shard in batch {
+                    requests.push(self.read_search_shard(shard));
+                }
+                for result in futures_util::future::try_join_all(requests).await? {
+                    entries.extend(result);
+                }
             }
             (
                 SearchIndex {
