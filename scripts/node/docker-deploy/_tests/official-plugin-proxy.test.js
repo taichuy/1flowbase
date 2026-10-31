@@ -957,7 +957,9 @@ test('container image workflow scans temporary image tags before official promot
 test('container image workflow publishes one release after Docker and native validation', () => {
   const workflow = readRepoFile('.github', 'workflows', 'container-images.yml');
   const publication = workflow.slice(workflow.indexOf('  publish-release:'), workflow.indexOf('  report:'));
-  assert.match(publication, /github\.event_name == 'push' && github\.ref == 'refs\/heads\/latest'/u);
+  assert.match(publication, /github\.event_name == 'push' \|\| \(github\.event_name == 'workflow_dispatch'/u);
+  assert.match(publication, /inputs\.component == 'all'/u);
+  assert.match(publication, /github\.ref == 'refs\/heads\/latest'/u);
   assert.match(publication, /needs\.build-native\.result == 'success'/u);
   assert.match(publication, /needs\.publish-web\.result == 'success'/u);
   assert.match(publication, /needs\.publish-api-server\.result == 'success'/u);

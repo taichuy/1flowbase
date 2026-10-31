@@ -13,6 +13,16 @@ test('ordinary source pushes and manual component rebuilds do not publish anothe
   assert.equal(selectContainerRelease({ ...base, ref: 'refs/heads/dev' }).enabled, false);
   assert.equal(selectContainerRelease({ ...base, eventName: 'workflow_dispatch', apiTag: '' }).enabled, false);
 });
+test('explicit manual complete publication resumes the matching stable version on latest only', () => {
+  const manual = { ...base, eventName: 'workflow_dispatch', manualCombined: true, promoteOfficialTags: true };
+  assert.deepEqual(selectContainerRelease(manual), { enabled: true, tag: 'v0.5.9' });
+  assert.equal(selectContainerRelease({ ...manual, manualCombined: false }).enabled, false);
+  for (const change of [
+    { ref: 'refs/heads/beta' }, { ref: 'refs/tags/v0.5.9' },
+    { webEnabled: false }, { apiEnabled: false }, { promoteOfficialTags: false },
+    { webTag: 'v0.5.8' }, { version: '0.5.9-native.1' },
+  ]) assert.throws(() => selectContainerRelease({ ...manual, ...change }));
+});
 test('official versions cannot mix manifests or silently accept a VERSION-only bump', () => {
   for (const change of [{ apiTag: 'v0.5.8' }, { webTag: 'v0.5.8' }, { version: '0.6.0' }, { version: '0.5.9-beta.1' }, { webEnabled: false, apiEnabled: false, version: '0.6.0' }]) {
     assert.throws(() => selectContainerRelease({ ...base, ...change }), /versions to match/);

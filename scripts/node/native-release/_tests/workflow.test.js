@@ -46,7 +46,7 @@ test('the actual release condition blocks failed builds whose publish jobs were 
   const expression = publication.match(/    if: \$\{\{ (.+) \}\}/)[1]
     .replace(/needs\.([\w-]+)/g, 'needs["$1"]');
   // Evaluate this workflow's small expression vocabulary, not a duplicate implementation of its gate.
-  const gate = new Function('needs', 'github', 'always', `return (${expression});`);
+  const gate = new Function('needs', 'github', 'always', 'inputs', `return (${expression});`);
   const baseline = () => ({
     'select-web': { result: 'success', outputs: { enabled: 'true' } },
     'select-api-server': { result: 'success', outputs: { enabled: 'true' } },
@@ -67,6 +67,23 @@ test('the actual release condition blocks failed builds whose publish jobs were 
     assert.equal(gate(needs, github, () => true), false, dependency);
   }
   assert.equal(gate(baseline(), { ...github, ref: 'refs/heads/dev' }, () => true), false);
+  const manual = { ...github, event_name: 'workflow_dispatch' };
+  assert.equal(gate(baseline(), manual, () => true, { component: 'all', promote_official_tags: true }), true);
+  assert.equal(gate(baseline(), manual, () => true, { component: 'all', promote_official_tags: false }), false);
+  for (const component of ['web', 'api-server']) {
+    assert.equal(gate(baseline(), manual, () => true, { component, promote_official_tags: true }), false);
+  }
+  assert.equal(gate(baseline(), { ...manual, ref: 'refs/heads/beta' }, () => true, { component: 'all', promote_official_tags: true }), false);
+});
+
+test('manual complete publication enables both selectors and supplies an explicit planner flag', () => {
+  const text = read('container-images.yml');
+  assert.match(text, /options:\n\s+- all\n/);
+  for (const name of ['select-web', 'select-api-server']) {
+    assert.match(job(text, name), /RELEASE_COMPONENT.*== "all"/);
+  }
+  assert.match(job(text, 'select-release'), /RELEASE_MANUAL_COMBINED: \$\{\{ github.event_name == 'workflow_dispatch' && inputs.component == 'all' \}\}/);
+  assert.match(job(text, 'select-release'), /RELEASE_PROMOTE_OFFICIAL_TAGS: \$\{\{ inputs.promote_official_tags \}\}/);
 });
 test('publishers serialize the same tag across workflows without cancelling active publication', () => {
   const docker = read('container-images.yml');
