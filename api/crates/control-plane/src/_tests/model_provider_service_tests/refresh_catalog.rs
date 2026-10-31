@@ -262,6 +262,26 @@ async fn model_provider_service_refresh_failure_does_not_clear_enabled_model_ids
         .await
         .unwrap();
 
+    runtime
+        .set_list_models_error(Some("cold catalog refresh failed"))
+        .await;
+    let cold_error = service
+        .refresh_models(repository.actor.user_id, created.instance.id)
+        .await
+        .unwrap_err();
+    assert_eq!(cold_error.to_string(), "cold catalog refresh failed");
+    let cold_cache = repository
+        .get_catalog_cache(created.instance.id)
+        .await
+        .unwrap()
+        .expect("cold failure still records its catalog state");
+    assert_eq!(
+        cold_cache.refresh_status,
+        ModelProviderCatalogRefreshStatus::Failed
+    );
+    assert_eq!(cold_cache.models_json, json!([]));
+    assert_eq!(cold_cache.refreshed_at, None);
+    runtime.set_list_models_error(None).await;
     service
         .refresh_models(repository.actor.user_id, created.instance.id)
         .await
