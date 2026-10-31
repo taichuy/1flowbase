@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::Result;
 use async_trait::async_trait;
+use extension_contracts::provider_contract::ProviderBalanceResult;
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -894,9 +895,9 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
         &self,
         _installation: &LocalPluginInstallationRecord,
         provider_config: Value,
-    ) -> Result<crate::ports::ProviderBalanceResult> {
+    ) -> Result<ProviderBalanceResult> {
         self.operation_trace.write().await.push("get_balance");
-        Ok(crate::ports::ProviderBalanceResult {
+        Ok(ProviderBalanceResult {
             is_available: true,
             balance_infos: Vec::new(),
             provider_metadata: json!({"echo": provider_config}),

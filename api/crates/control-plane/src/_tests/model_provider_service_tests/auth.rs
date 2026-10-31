@@ -31,14 +31,14 @@ fn authorized_patch(key: &str, value: &str) -> ProviderAuthResult {
     }
 }
 
-#[tokio::test]
-async fn a_ac_02_authentication_patches_instance_secret_without_exposing_it_and_maintains_before_validate(
+async fn create_auth_instance(
+    repository: &MemoryModelProviderRepository,
+    runtime: MemoryProviderRuntime,
+    display_name: &str,
+) -> (
+    ModelProviderService<MemoryModelProviderRepository, MemoryProviderRuntime>,
+    crate::model_provider::ModelProviderInstanceView,
 ) {
-    let workspace_id = Uuid::now_v7();
-    let repository = MemoryModelProviderRepository::new(actor_with_permissions(
-        workspace_id,
-        &["state_model.view.all", "state_model.manage.all"],
-    ));
     let package_root = std::env::temp_dir().join(format!("provider-auth-{}", Uuid::now_v7()));
     create_provider_fixture(&package_root);
     enable_fixture_provider_auth(&package_root);
@@ -49,23 +49,12 @@ async fn a_ac_02_authentication_patches_instance_secret_without_exposing_it_and_
             true,
         )
         .await;
-    let runtime = MemoryProviderRuntime::default();
-    runtime
-        .push_auth_result(authorized_patch("access_token", "initial-access-token"))
-        .await;
-    runtime
-        .push_auth_result(authorized_patch("access_token", "rotated-access-token"))
-        .await;
-    let service = model_provider_service(
-        repository.clone(),
-        runtime.clone(),
-        "provider-secret-master-key",
-    );
+    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key");
     let created = service
         .create_instance(CreateModelProviderInstanceCommand {
             actor_user_id: repository.actor.user_id,
             installation_id,
-            display_name: "Subscription fixture".to_string(),
+            display_name: display_name.to_string(),
             config_json: json!({
                 "base_url": "https://api.example.com",
                 "api_key": "configured-secret"
@@ -77,6 +66,26 @@ async fn a_ac_02_authentication_patches_instance_secret_without_exposing_it_and_
         })
         .await
         .expect("fixture instance should be created");
+    (service, created)
+}
+
+#[tokio::test]
+async fn a_ac_02_authentication_patches_instance_secret_without_exposing_it_and_maintains_before_validate(
+) {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryModelProviderRepository::new(actor_with_permissions(
+        workspace_id,
+        &["state_model.view.all", "state_model.manage.all"],
+    ));
+    let runtime = MemoryProviderRuntime::default();
+    runtime
+        .push_auth_result(authorized_patch("access_token", "initial-access-token"))
+        .await;
+    runtime
+        .push_auth_result(authorized_patch("access_token", "rotated-access-token"))
+        .await;
+    let (service, created) =
+        create_auth_instance(&repository, runtime.clone(), "Subscription fixture").await;
 
     let authentication = service
         .authenticate_instance(AuthenticateModelProviderInstanceCommand {
@@ -148,37 +157,12 @@ async fn a_ac_05_rejects_undeclared_auth_secret_keys_and_stale_secret_versions()
         workspace_id,
         &["state_model.view.all", "state_model.manage.all"],
     ));
-    let package_root = std::env::temp_dir().join(format!("provider-auth-{}", Uuid::now_v7()));
-    create_provider_fixture(&package_root);
-    enable_fixture_provider_auth(&package_root);
-    let installation_id = repository
-        .seed_installation(
-            &package_root.display().to_string(),
-            PluginDesiredState::ActiveRequested,
-            true,
-        )
-        .await;
     let runtime = MemoryProviderRuntime::default();
     runtime
         .push_auth_result(authorized_patch("undeclared_secret", "must-not-persist"))
         .await;
-    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key");
-    let created = service
-        .create_instance(CreateModelProviderInstanceCommand {
-            actor_user_id: repository.actor.user_id,
-            installation_id,
-            display_name: "Subscription fixture".to_string(),
-            config_json: json!({
-                "base_url": "https://api.example.com",
-                "api_key": "configured-secret"
-            }),
-            configured_models: Vec::new(),
-            enabled_model_ids: Vec::new(),
-            included_in_main: None,
-            preview_token: None,
-        })
-        .await
-        .expect("fixture instance should be created");
+    let (service, created) =
+        create_auth_instance(&repository, runtime, "Subscription fixture").await;
 
     let error = service
         .authenticate_instance(AuthenticateModelProviderInstanceCommand {
@@ -236,31 +220,8 @@ async fn balance_maintains_once_then_rereads_rotated_secrets_before_redaction() 
         operation_trace: repository.operation_trace.clone(),
         ..Default::default()
     };
-    let package_root = std::env::temp_dir().join(format!("provider-balance-{}", Uuid::now_v7()));
-    create_provider_fixture(&package_root);
-    enable_fixture_provider_auth(&package_root);
-    let installation_id = repository
-        .seed_installation(
-            &package_root.display().to_string(),
-            PluginDesiredState::ActiveRequested,
-            true,
-        )
-        .await;
-    let service = model_provider_service(
-        repository.clone(),
-        runtime.clone(),
-        "provider-secret-master-key",
-    );
-    let created = service.create_instance(CreateModelProviderInstanceCommand {
-        actor_user_id: repository.actor.user_id,
-        installation_id,
-        display_name: "Balance fixture".to_string(),
-        config_json: json!({"base_url": "https://api.example.com", "api_key": "configured-secret"}),
-        configured_models: Vec::new(),
-        enabled_model_ids: Vec::new(),
-        included_in_main: None,
-        preview_token: None,
-    }).await.unwrap();
+    let (service, created) =
+        create_auth_instance(&repository, runtime.clone(), "Balance fixture").await;
     runtime
         .push_auth_result(authorized_patch("access_token", "rotated-balance-secret"))
         .await;
