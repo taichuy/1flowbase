@@ -51,7 +51,9 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
-  group: container-images-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.component || github.ref }}
+  # Every official publisher holds the same lock until its full run finishes.
+  # Scan-only component runs have unique groups because they never promote tags.
+  group: container-images-${{ github.repository }}-${{ (github.event_name == 'workflow_dispatch' && inputs.promote_official_tags == false) && github.run_id || 'official' }}
   # Finish the active release instead of cancelling native validation or uploads on the next push.
   cancel-in-progress: false
 

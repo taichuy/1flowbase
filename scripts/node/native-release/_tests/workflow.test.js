@@ -97,6 +97,23 @@ test('publishers serialize the same tag across workflows without cancelling acti
   assert.match(docker.slice(0, docker.indexOf('jobs:')), /  cancel-in-progress: false/);
 });
 
+test('official image publishers serialize across events, components and branches', () => {
+  const header = read('container-images.yml').split('jobs:')[0];
+  const group = header.match(/^  group: (.+)$/m)[1];
+  const render = (github, inputs = {}) => group.replace(/\$\{\{ (.*?) \}\}/g, (_, expression) => new Function('github', 'inputs', `return (${expression});`)(github, inputs));
+  const github = { repository: 'taichuy/1flowbase', event_name: 'push', ref: 'refs/heads/latest', run_id: '123' };
+  const official = render(github);
+  for (const component of ['all', 'web', 'api-server']) {
+    for (const ref of ['refs/heads/latest', 'refs/heads/beta']) {
+      assert.equal(render({ ...github, event_name: 'workflow_dispatch', ref }, { component, promote_official_tags: true }), official);
+    }
+  }
+  const scan = { ...github, event_name: 'workflow_dispatch' };
+  assert.notEqual(render(scan, { component: 'web', promote_official_tags: false }), official);
+  assert.notEqual(render(scan, { component: 'web', promote_official_tags: false }), render({ ...scan, run_id: '124' }, { component: 'web', promote_official_tags: false }));
+  assert.match(header, /cancel-in-progress: false/);
+});
+
 test('Docker and native packages consume one web build from the same run', () => {
   const docker = read('container-images.yml');
   const manual = read('native-release.yml');
