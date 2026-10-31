@@ -99,6 +99,8 @@ test('Docker and native packages consume one web build from the same run', () =>
   assert.doesNotMatch(native, /pnpm|name: Build web/);
   assert.match(native, /name: web-dist\n\s+path: tmp\/shared-web/);
   assert.match(native, /--web-dir tmp\/shared-web\/dist/);
+  assert.match(native, /node scripts\/node\/native-release\/verify-web.js tmp\/shared-web/);
+  assert.doesNotMatch(native, /sha256sum/);
   const publish = job(docker, 'publish-web');
   assert.match(publish, /name: web-dist\n\s+path: tmp\/shared-web/);
   for (const arch of ['amd64', 'arm64']) {

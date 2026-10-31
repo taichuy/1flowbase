@@ -18,3 +18,9 @@ scope: native distribution and issue 2683
 CI 的 Linux x64/ARM64 与 macOS ARM64 已取得通过证据。完整资源版构建 https://github.com/taichuy/1flowbase/actions/runs/40358060543；Windows 修复构建 https://github.com/taichuy/1flowbase/actions/runs/40359104074。动态状态回到当前 run 核对，不从旧快照推断 Intel Mac/Windows 成功。工作流现为手动选择平台，避免每次推送都执行五套 Release 冷构建。
 
 Windows 网络出口插件当前只回收直接子进程，进程树退出收据保留未验证；Job Object、Windows 控制台关闭行为、签名/公证与全部插件支持仍须分别验收。Issue 保持开放，由用户验收。
+
+## 2026-10-31 08 共享 Web 构建方向
+
+用户在排查 Actions run 41146645075 后确认按平衡方案实施：Root 调整发布编排，一次构建 Web，并用同一次 run 的 artifact 供 Docker 双架构与全部五个平台便携包消费；修复 Windows 检出 CRLF 导致的工作流断言失败。动机是消除完整发行最多七次 Web 构建，而不只增加下载缓存。保留手动单平台验证入口、原有发行包与升级验证、发布失败门禁。
+
+Rust 暂时保留 Debian 容器与原生 Runner 的编译环境、target 缓存隔离，增加缓存命中和编译耗时证据；Linux 后端二进制统一复用不在本次授权范围。当前主工作树分支为 beta；在线验证使用不带 release_tag 的 Windows 手动构建。截止日期未设定，成功口径为共享产物消费关系与换行符回归通过，Windows 实际编译和包验证另以当前 run 结果结算，不从结构测试推断跨平台运行成功。

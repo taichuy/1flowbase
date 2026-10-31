@@ -246,7 +246,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          (cd tmp/shared-web/dist && sha256sum --check ../web-dist.sha256)
+          node scripts/node/native-release/verify-web.js tmp/shared-web
           mkdir -p tmp/web-dist/amd64 tmp/web-dist/arm64
           cp -a tmp/shared-web/dist tmp/web-dist/amd64/dist
           cp -a tmp/shared-web/dist tmp/web-dist/arm64/dist

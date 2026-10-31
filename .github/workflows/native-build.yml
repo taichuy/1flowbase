@@ -136,7 +136,7 @@ jobs:
           name: web-dist
           path: tmp/shared-web
       - name: Verify shared web dist
-        run: cd tmp/shared-web/dist && sha256sum --check ../web-dist.sha256
+        run: node scripts/node/native-release/verify-web.js tmp/shared-web
       - uses: actions/download-artifact@v4
         with:
           name: native-bootstrap-resources

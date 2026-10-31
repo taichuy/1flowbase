@@ -887,7 +887,7 @@ test('container image workflow shares one web dist with both image architectures
   for (const arch of ['amd64', 'arm64']) {
     assert.ok(workflow.includes(`cp -a tmp/shared-web/dist tmp/web-dist/${arch}/dist`));
   }
-  assert.match(workflow, /sha256sum --check \.\.\/web-dist.sha256/u);
+  assert.match(workflow, /node scripts\/node\/native-release\/verify-web.js tmp\/shared-web/u);
   assert.match(workflow, /web_dist=\.\/tmp\/web-dist/u);
   assert.match(workflow, /target: runtime-prebuilt/u);
 });
