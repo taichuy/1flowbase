@@ -1,5 +1,7 @@
 import '../../../test/fixtures/rc-util-unique-ids';
 import {
+  act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -47,7 +49,10 @@ vi.mock('../api/billing', () => billingApi);
 vi.mock('../api/identity-access/members', () => membersApi);
 
 import { AppProviders } from '../../../app/AppProviders';
-import { loadApplicationI18nResources } from '../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 import { CreditManagementPanel } from '../components/billing/CreditManagementPanel';
 import { PricingCatalogPanel } from '../components/billing/PricingCatalogPanel';
@@ -78,7 +83,9 @@ function authenticate() {
 }
 
 async function renderWithProviders(node: ReactNode) {
-  return render(<AppProviders>{await createTestMemoryRouter(node)}</AppProviders>);
+  return render(
+    <AppProviders>{await createTestMemoryRouter(node)}</AppProviders>
+  );
 }
 
 describe('billing settings panels', () => {
@@ -218,6 +225,34 @@ describe('billing settings panels', () => {
       '1M / 12.50$'
     ]) {
       expect(screen.getByText(rate)).toBeInTheDocument();
+    }
+  });
+
+  test('weekday projection keeps sparse Monday-first order and resolves the current locale per render', async () => {
+    const page = await billingApi.listSettingsPricingRules();
+    billingApi.listSettingsPricingRules.mockResolvedValue({
+      ...page,
+      items: [{ ...page.items[0]!, weekday_mask: 0b100_0101 }]
+    });
+    try {
+      await renderWithProviders(<PricingRulesPanel canManage />);
+      expect(await screen.findByText('周一, 周三, 周日')).toBeInTheDocument();
+      // Keep the same module loaded. An Intl instance created once at module load
+      // would retain Chinese even though subsequent renders use English.
+      cleanup();
+      window.localStorage.setItem('1flowbase.ui.locale_preference', 'en_US');
+      await act(async () => {
+        await appI18n.changeLanguage('en_US');
+      });
+      await renderWithProviders(<PricingRulesPanel canManage />);
+      expect(await screen.findByText('Mon, Wed, Sun')).toBeInTheDocument();
+      expect(screen.queryByText('周一, 周三, 周日')).not.toBeInTheDocument();
+    } finally {
+      cleanup();
+      window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
+      await act(async () => {
+        await appI18n.changeLanguage('zh_Hans');
+      });
     }
   });
 
@@ -401,32 +436,54 @@ describe('billing settings panels', () => {
   test('loads totals before rows and retains the successful page through paging and refresh failures', async () => {
     const first = await billingApi.getSettingsPricingCatalog();
     let rejectNext: ((error: Error) => void) | undefined;
-    billingApi.getSettingsPricingCatalog.mockReset().mockImplementation((filter) => {
-      if (filter.metadata_only) return Promise.resolve({ ...first, items: [], total_count: 41 });
-      if (filter.page === 2) return new Promise((_resolve, reject) => { rejectNext = reject; });
-      return Promise.resolve({ ...first, total_count: 41 });
-    });
+    billingApi.getSettingsPricingCatalog
+      .mockReset()
+      .mockImplementation((filter) => {
+        if (filter.metadata_only)
+          return Promise.resolve({ ...first, items: [], total_count: 41 });
+        if (filter.page === 2)
+          return new Promise((_resolve, reject) => {
+            rejectNext = reject;
+          });
+        return Promise.resolve({ ...first, total_count: 41 });
+      });
     await renderWithProviders(<PricingCatalogPanel />);
     expect(await screen.findByText('zero')).toBeInTheDocument();
     expect(screen.getByText('共 41 条 / 3 页，每页 20 条')).toBeInTheDocument();
-    expect(billingApi.getSettingsPricingCatalog.mock.calls[0][0]).toMatchObject({ metadata_only: true });
+    expect(billingApi.getSettingsPricingCatalog.mock.calls[0][0]).toMatchObject(
+      { metadata_only: true }
+    );
     fireEvent.click(screen.getByTitle('2'));
     await waitFor(() => expect(rejectNext).toBeDefined());
     expect(screen.getByText('zero')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /安装当前页/ })).toBeDisabled();
     rejectNext!(new Error('page unavailable'));
-    expect(await screen.findByText('加载失败，保留上次成功加载的第 1 页；请重试。')).toBeInTheDocument();
+    expect(
+      await screen.findByText('加载失败，保留上次成功加载的第 1 页；请重试。')
+    ).toBeInTheDocument();
     expect(screen.getByText('zero')).toBeInTheDocument();
     expect(screen.getByText('共 41 条 / 3 页，每页 20 条')).toBeInTheDocument();
-    billingApi.getSettingsPricingCatalog.mockRejectedValue(new Error('offline'));
+    billingApi.getSettingsPricingCatalog.mockRejectedValue(
+      new Error('offline')
+    );
     fireEvent.click(screen.getByRole('button', { name: /刷新远程目录/ }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /刷新远程目录/ })).not.toHaveClass('ant-btn-loading'));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /刷新远程目录/ })
+      ).not.toHaveClass('ant-btn-loading')
+    );
     expect(screen.getByText('zero')).toBeInTheDocument();
     expect(screen.getByText('共 41 条 / 3 页，每页 20 条')).toBeInTheDocument();
-    billingApi.getSettingsPricingCatalog.mockImplementation((filter) => Promise.resolve({
-      ...first, page: filter.page ?? 1, total_count: 41,
-      items: filter.metadata_only ? [] : [{ ...first.items[0], upstream_model_id: 'recovered-page-two' }]
-    }));
+    billingApi.getSettingsPricingCatalog.mockImplementation((filter) =>
+      Promise.resolve({
+        ...first,
+        page: filter.page ?? 1,
+        total_count: 41,
+        items: filter.metadata_only
+          ? []
+          : [{ ...first.items[0], upstream_model_id: 'recovered-page-two' }]
+      })
+    );
     fireEvent.click(screen.getByRole('button', { name: /刷新远程目录/ }));
     expect(await screen.findByText('recovered-page-two')).toBeInTheDocument();
     expect(screen.queryByText('any')).not.toBeInTheDocument();
@@ -434,15 +491,25 @@ describe('billing settings panels', () => {
 
   test('keeps totals when the first rule page fails and does not call an error an empty catalog', async () => {
     const first = await billingApi.getSettingsPricingCatalog();
-    billingApi.getSettingsPricingCatalog.mockReset().mockImplementation((filter) =>
-      filter.metadata_only
-        ? Promise.resolve({ ...first, items: [], total_count: 2442 })
-        : Promise.reject(new Error('page offline'))
-    );
+    billingApi.getSettingsPricingCatalog
+      .mockReset()
+      .mockImplementation((filter) =>
+        filter.metadata_only
+          ? Promise.resolve({ ...first, items: [], total_count: 2442 })
+          : Promise.reject(new Error('page offline'))
+      );
     await renderWithProviders(<PricingCatalogPanel />);
-    expect(await screen.findByText('共 2442 条 / 123 页，每页 20 条')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getAllByText('远程计费目录暂时不可用').length).toBeGreaterThan(0));
-    expect(screen.queryByText(/当前内置目录没有可导入规则/)).not.toBeInTheDocument();
+    expect(
+      await screen.findByText('共 2442 条 / 123 页，每页 20 条')
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getAllByText('远程计费目录暂时不可用').length
+      ).toBeGreaterThan(0)
+    );
+    expect(
+      screen.queryByText(/当前内置目录没有可导入规则/)
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /安装当前页/ })).toBeDisabled();
   });
 

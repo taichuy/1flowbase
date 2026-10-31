@@ -19,6 +19,8 @@ vi.mock('../../api/applications', async (importOriginal) => ({
   ...api
 }));
 
+import { createRoot } from 'react-dom/client';
+
 import { AppProviders } from '../../../../app/AppProviders';
 import { InstalledAgentFlowImportFlow } from '../InstalledAgentFlowImportFlow';
 
@@ -295,6 +297,99 @@ describe('installed template import through the real Modal', () => {
       expect(mounted.onClose).not.toHaveBeenCalled();
     }
   );
+
+  test('I-06: current committed Modal confirmation uses its render acknowledgement before new preview commits', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const observed = deferred<void>();
+    const onClose = vi.fn();
+    const onImported = vi.fn().mockResolvedValue(undefined);
+    const element = (id: string) => (
+      <AppProviders>
+        <InstalledAgentFlowImportFlow
+          installationId={id}
+          csrfToken="csrf-a"
+          onClose={onClose}
+          onImported={onImported}
+        />
+      </AppProviders>
+    );
+    const source = (id: string) => {
+      const result = preview(id);
+      result.required_integrity_override = {
+        warnings: [{ code: id, message: id, overridable: true }],
+        compatibility: null
+      };
+      return result;
+    };
+    api.previewInstalledApplicationExtension.mockImplementation(
+      (id: string) => {
+        if (id === 'installation-b') {
+          // Q1 is queued before Flow attaches then; Q2 runs after the entire
+          // successful preview projection, but before its queued state commits.
+          // This is a programmatic microtask event, NOT a physical-user race.
+          queueMicrotask(() =>
+            queueMicrotask(() => {
+              try {
+                expect(
+                  screen.getByDisplayValue('Template installation-a')
+                ).toBeInTheDocument();
+                screen.getByRole('button', { name: '导入应用' }).click();
+                expect(
+                  api.importInstalledApplicationExtension
+                ).toHaveBeenCalledExactlyOnceWith(
+                  'installation-b',
+                  {
+                    name: 'Template installation-a',
+                    description: 'Description installation-a',
+                    integrity_override: {
+                      reason: 'user_confirmed',
+                      acknowledged_warnings: ['installation-a']
+                    }
+                  },
+                  'csrf-a'
+                );
+                observed.resolve();
+              } catch (error) {
+                observed.reject(error);
+              }
+            })
+          );
+        }
+        return Promise.resolve(source(id));
+      }
+    );
+    // Keep the import pending; this assertion concerns request construction,
+    // not a response/callback or a server-side cancellation contract.
+    api.importInstalledApplicationExtension.mockReturnValue(
+      new Promise(() => {})
+    );
+    const environment = globalThis as typeof globalThis & {
+      IS_REACT_ACT_ENVIRONMENT?: boolean;
+    };
+    const originalActEnvironment = environment.IS_REACT_ACT_ENVIRONMENT;
+    try {
+      await act(async () => {
+        root.render(element('installation-a'));
+      });
+      expect(screen.getByRole('button', { name: '导入应用' })).not.toHaveClass(
+        'ant-btn-loading'
+      );
+      // Do not wrap B in act: it would eagerly flush the very pending-commit
+      // window under test. No scheduler mocks, forced lanes or retained callback.
+      environment.IS_REACT_ACT_ENVIRONMENT = false;
+      root.render(element('installation-b'));
+      await observed.promise;
+    } finally {
+      environment.IS_REACT_ACT_ENVIRONMENT = true;
+      await act(async () => {
+        root.unmount();
+      });
+      environment.IS_REACT_ACT_ENVIRONMENT = originalActEnvironment;
+      container.remove();
+    }
+  });
 
   test('I-06: the real Modal blocks an empty draft and cancel never imports', async () => {
     const mounted = mount();
