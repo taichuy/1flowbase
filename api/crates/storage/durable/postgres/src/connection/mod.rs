@@ -1,5 +1,5 @@
 use anyhow::Result;
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::{postgres::PgPoolOptions, Connection, PgPool};
 use std::time::Duration;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,7 +43,16 @@ pub async fn connect_with_pool_settings(
     let mut options = PgPoolOptions::new()
         .min_connections(0)
         .max_connections(settings.max_connections)
-        .acquire_timeout(settings.acquire_timeout);
+        .acquire_timeout(settings.acquire_timeout)
+        .after_release(|connection, _metadata| {
+            Box::pin(async move {
+                // SQLx calls this before its final ping. Drain pending results and
+                // queued rollbacks before returning unused buffer capacity.
+                connection.flush().await?;
+                connection.shrink_buffers();
+                Ok(true)
+            })
+        });
 
     if let Some(idle_timeout) = settings.idle_timeout {
         options = options.idle_timeout(idle_timeout);
@@ -57,3 +66,7 @@ pub async fn connect_with_pool_settings(
 
     Ok(pool)
 }
+
+#[cfg(test)]
+#[path = "_tests/mod.rs"]
+mod tests;
