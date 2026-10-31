@@ -205,6 +205,11 @@ where
             &call_id_list,
         )
         .is_ok();
+    if full_context_required && !full_context_proven && is_closed_tool_history(input) {
+        // A self-contained history may legitimately prune or rebuild old context.
+        // Failed predecessor proof cannot grant authority over the owned receipt.
+        return Ok(None);
+    }
     let digest = super::native::NativeExecutionModelParameters::
         configuration_digest_with_published_reasoning_default(&flow_run.input_payload, request)?;
     if metadata.get("configuration_digest").and_then(Value::as_str) != Some(digest.as_str()) {

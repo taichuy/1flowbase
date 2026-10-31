@@ -13,6 +13,8 @@ use uuid::Uuid;
 mod closed_history;
 #[path = "native_tool_resume/multipart_outputs.rs"]
 mod multipart_outputs;
+#[path = "native_tool_resume/pruned_history.rs"]
+mod pruned_history;
 #[path = "native_tool_resume/reservation_lifecycle.rs"]
 mod reservation_lifecycle;
 #[path = "native_tool_resume/session_history.rs"]
@@ -345,7 +347,12 @@ async fn native_admission_configuration_refresh_requires_frozen_route_and_proven
             _ => {}
         }
         let result = correlate_native_responses_callback(&repository, &actor, &body).await;
-        if scenario == "extra_history" {
+        if matches!(scenario, "missing_history" | "tampered_history") {
+            assert!(
+                result.unwrap().is_none(),
+                "{scenario} must not grant a callback"
+            );
+        } else if scenario == "extra_history" {
             let (admitted, outputs) = result
                 .expect("a proven full history permits appended context and refreshed instructions")
                 .expect("pending callback must retain its consumption owner");
@@ -601,12 +608,9 @@ async fn native_admission_proves_full_history_even_when_configuration_is_unchang
         if mutation == "equivalent" {
             assert_eq!(result.unwrap().unwrap().0.id, callback.id);
         } else {
-            assert_eq!(
-                result.unwrap_err().downcast_ref::<ControlPlaneError>(),
-                Some(&ControlPlaneError::Conflict(
-                    "native_tool_output_history_mismatch"
-                )),
-                "{mutation}"
+            assert!(
+                result.unwrap().is_none(),
+                "{mutation} must start new sampling"
             );
         }
         assert_eq!(

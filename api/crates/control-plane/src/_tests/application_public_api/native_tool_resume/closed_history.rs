@@ -209,7 +209,7 @@ async fn malformed_earlier_rounds_do_not_gain_admission_from_a_closed_final_suff
 }
 
 #[tokio::test]
-async fn closed_history_cannot_bypass_owned_pending_or_completed_round_checks() {
+async fn closed_history_only_resumes_proven_owned_pending_or_completed_rounds() {
     for completed in [false, true] {
         let (repository, actor, run) =
             fixture_with_input(json!({"sys":{"requested_model_id":"fixture"}})).await;
@@ -239,9 +239,27 @@ async fn closed_history_cannot_bypass_owned_pending_or_completed_round_checks() 
         parent["previous_response_id"] = json!("resp_other");
         let mut partial = body.clone();
         partial["input"].as_array_mut().unwrap().remove(3);
+        let stored = repository
+            .get_published_callback_task(callback.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            correlate_native_responses_callback(&repository, &actor, &history)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap(),
+            stored
+        );
         for (candidate, code) in [
             (configuration, "native_tool_output_configuration_mismatch"),
-            (history, "native_tool_output_history_mismatch"),
             (parent, "native_tool_output_response_mismatch"),
             (partial, "native_tool_output_incomplete_round"),
         ] {

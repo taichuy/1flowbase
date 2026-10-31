@@ -145,6 +145,11 @@ async fn semantic_new_session_history_does_not_mint_a_parent_continuation_grant(
 async fn native_new_session_history_keeps_existing_callback_proof_boundaries() {
     let (repository, actor, callback, full) = parent_round(false, false).await;
     repository.complete_callback_task_for_test(callback.id);
+    let stored = repository
+        .get_published_callback_task(callback.id)
+        .await
+        .unwrap()
+        .unwrap();
     let fork = fork_request(full.clone());
     for identity in [None, Some("parent-session")] {
         let mut body = fork.raw_body().clone();
@@ -153,16 +158,21 @@ async fn native_new_session_history_keeps_existing_callback_proof_boundaries() {
         if let Some(identity) = identity {
             envelope = envelope.with_session_identity(identity.into());
         }
-        let error =
+        assert!(
             correlate_native_responses_callback_from_envelope(&repository, &actor, &envelope)
                 .await
-                .unwrap_err();
-        assert_eq!(
-            error.downcast_ref::<ControlPlaneError>(),
-            Some(&ControlPlaneError::Conflict(
-                "native_tool_output_history_mismatch"
-            ))
+                .unwrap()
+                .is_none()
         );
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap(),
+            stored
+        );
+        assert!(repository.callback_resume_attempts().is_empty());
     }
     let mut delta = full.clone();
     delta["input"] = json!([full["input"].as_array().unwrap().last().unwrap()]);

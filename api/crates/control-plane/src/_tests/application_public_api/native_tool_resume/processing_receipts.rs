@@ -113,6 +113,18 @@ async fn identical_processing_native_callback_attaches_without_second_consumer()
     ));
     let mut changed_history = full_body;
     changed_history["input"][0]["content"] = json!("different predecessor");
+    let stored = repository
+        .get_published_callback_task(callback.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let attempts = repository.callback_resume_attempts();
+    assert!(
+        correlate_native_responses_callback(&repository, &actor, &changed_history)
+            .await
+            .unwrap()
+            .is_none()
+    );
     conflicting = command;
     conflicting.native_transport =
         Some(ProviderTransportPayload::openai_responses(changed_history).unwrap());
@@ -121,6 +133,15 @@ async fn identical_processing_native_callback_attaches_without_second_consumer()
         .await
         .is_err());
     assert!(consumer.calls.lock().unwrap().is_empty());
+    assert_eq!(
+        repository
+            .get_published_callback_task(callback.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        stored
+    );
+    assert_eq!(repository.callback_resume_attempts(), attempts);
 }
 
 #[tokio::test]
@@ -432,13 +453,28 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
     assert_eq!(grant.payload(), full_grant.payload());
     let mut changed = full.clone();
     changed["input"][0]["content"] = json!("edited history");
+    let stored = repository
+        .get_published_callback_task(callback.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(correlate_semantic_responses_callback(
         &repository,
         &actor,
         &OpenAiResponsesEnvelope::capture(changed).unwrap()
     )
     .await
-    .is_err());
+    .unwrap()
+    .is_none());
+    assert_eq!(
+        repository
+            .get_published_callback_task(callback.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        stored
+    );
+    assert!(repository.callback_resume_attempts().is_empty());
     let mut changed = delta.clone();
     changed["instructions"] = json!("new instructions");
     assert!(correlate_semantic_responses_callback(
@@ -587,9 +623,19 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
             &OpenAiResponsesEnvelope::capture(fork.clone()).unwrap(),
         )
         .await
-        .is_err(),
-        "an assistant message must not bypass a pending receipt"
+        .unwrap()
+        .is_none(),
+        "rebuilt closed history starts new sampling without a pending receipt grant"
     );
+    assert_eq!(
+        repository
+            .get_published_callback_task(callback.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        stored
+    );
+    assert!(repository.callback_resume_attempts().is_empty());
     repository.complete_callback_task_for_test(callback.id);
     let mut cursor_retry = fork.clone();
     cursor_retry["previous_response_id"] = json!(format!("resp_{run}"));

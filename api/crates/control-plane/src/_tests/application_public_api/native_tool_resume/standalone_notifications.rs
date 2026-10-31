@@ -177,7 +177,6 @@ async fn standalone_notifications_do_not_weaken_native_receipt_or_history_valida
         (incomplete, "native_tool_output_incomplete_round"),
         (duplicate, "native_tool_output_duplicate"),
         (unknown, "native_tool_output_incomplete_round"),
-        (tampered, "native_tool_output_history_mismatch"),
     ] {
         assert!(
             correlate_native_responses_callback(&repository, &actor, &body)
@@ -188,6 +187,12 @@ async fn standalone_notifications_do_not_weaken_native_receipt_or_history_valida
             "expected {code}"
         );
     }
+    assert!(
+        correlate_native_responses_callback(&repository, &actor, &tampered)
+            .await
+            .unwrap()
+            .is_none()
+    );
     let mut other = actor.clone();
     other.api_key_id = Uuid::now_v7();
     assert!(
