@@ -41,8 +41,14 @@ jobs:
           });
           NODE
 
-  build:
+  build-web-dist:
     needs: validate
+    uses: ./.github/workflows/web-build.yml
+
+  build:
+    needs:
+      - validate
+      - build-web-dist
     uses: ./.github/workflows/native-build.yml
     with:
       target: ${{ inputs.target }}

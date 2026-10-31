@@ -113,3 +113,42 @@ test('directory-watching build scripts rebuild for added and deleted inputs', t 
   assert.match(cargo(), /Compiling cache-fixture/);
   assert.equal(run(), '1');
 });
+
+test('a restored release snapshot reuses both test and production targets after a fresh checkout', t => {
+  const f = fixture(t);
+  f.write('api/src/main.rs', 'fn main() { println!("original"); }\n#[test] fn probe() { assert_eq!(2 + 2, 4); }\n');
+  const old = Date.now() / 1000 - 2;
+  fs.utimesSync(path.join(f.root, 'api/src/main.rs'), old, old);
+  f.restore();
+  const phase = () => {
+    const started = performance.now();
+    const logs = [];
+    for (const action of ['test', 'build']) {
+      const result = spawnSync('cargo', [action, '--release', '--offline', '--manifest-path', 'api/Cargo.toml'], {
+        cwd: f.root, encoding: 'utf8', env: { ...process.env, CARGO_INCREMENTAL: '0', CARGO_TARGET_DIR: path.join(f.root, 'target') },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      if (action === 'test') assert.match(result.stdout, /1 passed/);
+      logs.push(stripVTControlCharacters(result.stderr));
+    }
+    return { seconds: (performance.now() - started) / 1000, compilations: logs.filter(log => /Compiling cache-fixture/.test(log)).length };
+  };
+  const cold = phase();
+  assert.equal(cold.compilations, 2);
+  const snapshot = path.join(f.root, 'snapshot');
+  fs.cpSync(path.join(f.root, 'target'), snapshot, { recursive: true, preserveTimestamps: true });
+  f.touch('api/src/main.rs');
+  const checkoutWithoutRestore = phase();
+  assert.equal(checkoutWithoutRestore.compilations, 2);
+  fs.rmSync(path.join(f.root, 'target'), { recursive: true });
+  fs.cpSync(snapshot, path.join(f.root, 'target'), { recursive: true, preserveTimestamps: true });
+  f.restore();
+  const warm = phase();
+  assert.equal(warm.compilations, 0, 'restored unchanged inputs must reuse both executable types');
+  const result = { platform: process.platform, arch: process.arch, scope: 'dependency-free Cargo fixture, not application build speedup', cold, checkoutWithoutRestore, warm };
+  if (process.env.FLOWBASE_NATIVE_CACHE_EVIDENCE_ROOT) {
+    fs.mkdirSync(process.env.FLOWBASE_NATIVE_CACHE_EVIDENCE_ROOT, { recursive: true });
+    fs.writeFileSync(path.join(process.env.FLOWBASE_NATIVE_CACHE_EVIDENCE_ROOT, 'cache-fixture.json'), JSON.stringify(result, null, 2) + '\n');
+  }
+  console.log(JSON.stringify(result));
+});

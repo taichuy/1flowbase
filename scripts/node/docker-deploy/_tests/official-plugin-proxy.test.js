@@ -872,18 +872,22 @@ test('container image workflow publishes linux amd64 and arm64 manifests', () =>
   assert.match(workflow, /^\s+platforms:\s+linux\/amd64,linux\/arm64$/mu);
 });
 
-test('container image workflow builds web dist on native runners before publishing', () => {
+test('container image workflow shares one web dist with both image architectures', () => {
   const workflow = readRepoFile('.github', 'workflows', 'container-images.yml');
+  const webBuild = readRepoFile('.github', 'workflows', 'web-build.yml');
 
   assert.match(workflow, /select-web:/u);
   assert.match(workflow, /build-web-dist:/u);
   assert.match(workflow, /publish-web:/u);
-  assert.match(workflow, /- arch: amd64\n\s+runner: ubuntu-latest/u);
-  assert.match(workflow, /- arch: arm64\n\s+runner: ubuntu-24\.04-arm/u);
-  assert.match(workflow, /pnpm --dir web install --frozen-lockfile/u);
-  assert.match(workflow, /pnpm --dir web --filter @1flowbase\/web build/u);
-  assert.match(workflow, /name: web-dist-\$\{\{ matrix\.arch \}\}/u);
-  assert.match(workflow, /name: Download web dist artifacts/u);
+  assert.match(workflow, /uses: \.\/\.github\/workflows\/web-build.yml/u);
+  assert.match(webBuild, /pnpm --dir web install --frozen-lockfile/u);
+  assert.match(webBuild, /pnpm --dir web --filter @1flowbase\/web build/u);
+  assert.match(webBuild, /name: web-dist\n/u);
+  assert.match(workflow, /name: Download shared web dist/u);
+  for (const arch of ['amd64', 'arm64']) {
+    assert.ok(workflow.includes(`cp -a tmp/shared-web/dist tmp/web-dist/${arch}/dist`));
+  }
+  assert.match(workflow, /node scripts\/node\/native-release\/verify-web.js tmp\/shared-web/u);
   assert.match(workflow, /web_dist=\.\/tmp\/web-dist/u);
   assert.match(workflow, /target: runtime-prebuilt/u);
 });
@@ -953,7 +957,9 @@ test('container image workflow scans temporary image tags before official promot
 test('container image workflow publishes one release after Docker and native validation', () => {
   const workflow = readRepoFile('.github', 'workflows', 'container-images.yml');
   const publication = workflow.slice(workflow.indexOf('  publish-release:'), workflow.indexOf('  report:'));
-  assert.match(publication, /github\.event_name == 'push' && github\.ref == 'refs\/heads\/latest'/u);
+  assert.match(publication, /github\.event_name == 'push' \|\| \(github\.event_name == 'workflow_dispatch'/u);
+  assert.match(publication, /inputs\.component == 'all'/u);
+  assert.match(publication, /github\.ref == 'refs\/heads\/latest'/u);
   assert.match(publication, /needs\.build-native\.result == 'success'/u);
   assert.match(publication, /needs\.publish-web\.result == 'success'/u);
   assert.match(publication, /needs\.publish-api-server\.result == 'success'/u);
