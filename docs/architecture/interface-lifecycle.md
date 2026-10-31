@@ -154,6 +154,12 @@ SQL 节点唯一输入字段为 `bindings.sql`。`config.sql` 属于已退出支
 
 `api-server/resources/ctx/block-context.v1.json` 是供页面编写与 MCP discovery 消费的 Host ABI 描述；接口返回成员的类型与说明，不执行这些成员。前端 Block SDK 定义 `BlockContext`，Host facade 提供实际能力。`i18n` 描述包含 `locale`、`status` 和 `t`，语言状态与翻译 fallback 由前端 Host 提供；后端描述、SDK 类型和真实 facade 的一致性由 contract parity 测试检查。
 
+### Provider 管理目标与分配规则
+
+Provider 账户操作、余额查询和目录刷新共用 `model_provider::account` 的运行目标解析链，依次完成 actor、manage 授权、工作区实例、ready installation、可用性、package 和运行配置维护。解析结果只投影后续需要的值及 discovery mode，不缓存解析结果、不重复读取 package。余额仍在维护后读取 secret 并脱敏；刷新仍独自持有显式加载、失败缓存和审计边界。
+
+编译目录与运行时路由共用 `control-plane::orchestration_runtime` 内部的分配规则映射；它只转换四种规则和配置值，不读取状态。编译快照缓存与运行期当前配置的读取仍由原 owner 分别负责。
+
 ### 供应商会话归属
 
 认证后的协议入口将 Responses、Messages、Chat 的显式会话信号封装为宿主身份，经 Native metadata / input mapping 进入 FlowRun；不从消息正文猜测会话。无信号的独立请求不共享绑定；受信 Responses continuation 可以继承原身份。业务 conversation 字段仍保持原义。

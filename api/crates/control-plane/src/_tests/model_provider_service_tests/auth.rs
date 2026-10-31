@@ -31,14 +31,14 @@ fn authorized_patch(key: &str, value: &str) -> ProviderAuthResult {
     }
 }
 
-#[tokio::test]
-async fn a_ac_02_authentication_patches_instance_secret_without_exposing_it_and_maintains_before_validate(
+async fn create_auth_instance(
+    repository: &MemoryModelProviderRepository,
+    runtime: MemoryProviderRuntime,
+    display_name: &str,
+) -> (
+    ModelProviderService<MemoryModelProviderRepository, MemoryProviderRuntime>,
+    crate::model_provider::ModelProviderInstanceView,
 ) {
-    let workspace_id = Uuid::now_v7();
-    let repository = MemoryModelProviderRepository::new(actor_with_permissions(
-        workspace_id,
-        &["state_model.view.all", "state_model.manage.all"],
-    ));
     let package_root = std::env::temp_dir().join(format!("provider-auth-{}", Uuid::now_v7()));
     create_provider_fixture(&package_root);
     enable_fixture_provider_auth(&package_root);
@@ -49,23 +49,12 @@ async fn a_ac_02_authentication_patches_instance_secret_without_exposing_it_and_
             true,
         )
         .await;
-    let runtime = MemoryProviderRuntime::default();
-    runtime
-        .push_auth_result(authorized_patch("access_token", "initial-access-token"))
-        .await;
-    runtime
-        .push_auth_result(authorized_patch("access_token", "rotated-access-token"))
-        .await;
-    let service = model_provider_service(
-        repository.clone(),
-        runtime.clone(),
-        "provider-secret-master-key",
-    );
+    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key");
     let created = service
         .create_instance(CreateModelProviderInstanceCommand {
             actor_user_id: repository.actor.user_id,
             installation_id,
-            display_name: "Subscription fixture".to_string(),
+            display_name: display_name.to_string(),
             config_json: json!({
                 "base_url": "https://api.example.com",
                 "api_key": "configured-secret"
@@ -77,6 +66,26 @@ async fn a_ac_02_authentication_patches_instance_secret_without_exposing_it_and_
         })
         .await
         .expect("fixture instance should be created");
+    (service, created)
+}
+
+#[tokio::test]
+async fn a_ac_02_authentication_patches_instance_secret_without_exposing_it_and_maintains_before_validate(
+) {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryModelProviderRepository::new(actor_with_permissions(
+        workspace_id,
+        &["state_model.view.all", "state_model.manage.all"],
+    ));
+    let runtime = MemoryProviderRuntime::default();
+    runtime
+        .push_auth_result(authorized_patch("access_token", "initial-access-token"))
+        .await;
+    runtime
+        .push_auth_result(authorized_patch("access_token", "rotated-access-token"))
+        .await;
+    let (service, created) =
+        create_auth_instance(&repository, runtime.clone(), "Subscription fixture").await;
 
     let authentication = service
         .authenticate_instance(AuthenticateModelProviderInstanceCommand {
@@ -148,37 +157,12 @@ async fn a_ac_05_rejects_undeclared_auth_secret_keys_and_stale_secret_versions()
         workspace_id,
         &["state_model.view.all", "state_model.manage.all"],
     ));
-    let package_root = std::env::temp_dir().join(format!("provider-auth-{}", Uuid::now_v7()));
-    create_provider_fixture(&package_root);
-    enable_fixture_provider_auth(&package_root);
-    let installation_id = repository
-        .seed_installation(
-            &package_root.display().to_string(),
-            PluginDesiredState::ActiveRequested,
-            true,
-        )
-        .await;
     let runtime = MemoryProviderRuntime::default();
     runtime
         .push_auth_result(authorized_patch("undeclared_secret", "must-not-persist"))
         .await;
-    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key");
-    let created = service
-        .create_instance(CreateModelProviderInstanceCommand {
-            actor_user_id: repository.actor.user_id,
-            installation_id,
-            display_name: "Subscription fixture".to_string(),
-            config_json: json!({
-                "base_url": "https://api.example.com",
-                "api_key": "configured-secret"
-            }),
-            configured_models: Vec::new(),
-            enabled_model_ids: Vec::new(),
-            included_in_main: None,
-            preview_token: None,
-        })
-        .await
-        .expect("fixture instance should be created");
+    let (service, created) =
+        create_auth_instance(&repository, runtime, "Subscription fixture").await;
 
     let error = service
         .authenticate_instance(AuthenticateModelProviderInstanceCommand {
@@ -224,4 +208,78 @@ async fn a_ac_05_rejects_undeclared_auth_secret_keys_and_stale_secret_versions()
             "model_provider_secret_version_conflict"
         ))
     ));
+}
+
+#[tokio::test]
+async fn balance_maintains_once_then_rereads_rotated_secrets_before_redaction() {
+    let repository = MemoryModelProviderRepository::new(actor_with_permissions(
+        Uuid::now_v7(),
+        &["state_model.view.all", "state_model.manage.all"],
+    ));
+    let runtime = MemoryProviderRuntime {
+        operation_trace: repository.operation_trace.clone(),
+        ..Default::default()
+    };
+    let (service, created) =
+        create_auth_instance(&repository, runtime.clone(), "Balance fixture").await;
+    runtime
+        .push_auth_result(authorized_patch("access_token", "rotated-balance-secret"))
+        .await;
+    repository.operation_trace.write().await.clear();
+    let auth_count = runtime.auth_operations().await.len();
+    let audits = repository.audit_events().await;
+
+    let balance = service
+        .get_balance(repository.actor.user_id, created.instance.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        *repository.operation_trace.read().await,
+        vec![
+            "get_secret_json",
+            "authenticate",
+            "get_secret_json",
+            "get_balance",
+        ]
+    );
+    assert_eq!(runtime.auth_operations().await.len(), auth_count + 1);
+    assert_eq!(
+        runtime.auth_operations().await.last(),
+        Some(&ProviderAuthOperation::Maintain)
+    );
+    assert!(balance.is_available);
+    let echo = &balance.provider_metadata["echo"];
+    assert_eq!(echo["base_url"], "https://api.example.com");
+    assert_eq!(echo["api_key"], "***");
+    assert_eq!(echo["access_token"], "***");
+    assert_eq!(
+        repository.secret_json(created.instance.id).await["access_token"],
+        "rotated-balance-secret"
+    );
+    assert_eq!(repository.audit_events().await, audits);
+
+    runtime
+        .push_auth_result(ProviderAuthResult {
+            status: ProviderAuthStatus::Failed,
+            message: None,
+            user_action: None,
+            managed_secret_patch: Default::default(),
+        })
+        .await;
+    repository.operation_trace.write().await.clear();
+    let error = service
+        .get_balance(repository.actor.user_id, created.instance.id)
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::Conflict(
+            "provider_authentication_required"
+        ))
+    ));
+    assert_eq!(
+        *repository.operation_trace.read().await,
+        vec!["get_secret_json", "authenticate"]
+    );
+    assert_eq!(repository.audit_events().await, audits);
 }

@@ -97,6 +97,12 @@ Source entry points: [route assembly](../../api/apps/api-server/src/console_cont
 
 Responses ingress validates structure, field types, continuation identity, and callback correlation without imposing an input item-count ceiling independent of protocol and provider contracts. Ordinary requests and V2 compaction retain the complete input; existing protocol validation still requires a unique V2 trigger at the end.
 
+### Provider management targets and distribution rules
+
+Provider account operations, balance queries and catalog refresh share the runtime-target resolver in `model_provider::account`: actor, manage authorization, workspace instance, ready installation, availability, package, then runtime-configuration maintenance. The result projects only continuation inputs and discovery mode; it neither caches the target nor reloads the package. Balance still reads secrets after maintenance and redacts its output; refresh retains explicit loading, failure-cache and audit boundaries.
+
+Compile catalogs and runtime routing share the internal distribution-rule mapper in `control-plane::orchestration_runtime`. It only converts the four rules and their configuration values, without reading state. Compile-snapshot caching and current runtime-configuration reads remain with their respective owners.
+
 ### Provider session ownership
 
 Authenticated Responses, Messages and Chat ingress seals explicit session signals into Host identity and passes it through Native metadata/input mapping to FlowRun. Message bodies do not infer sessions. Independent requests without a signal do not share a binding; trusted Responses continuation may inherit its original identity. Business conversation fields retain their meaning.

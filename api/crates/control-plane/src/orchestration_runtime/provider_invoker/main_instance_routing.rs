@@ -19,7 +19,7 @@ where
                 .iter()
                 .find(|policy| policy.model_id == runtime.model)
         });
-        let distribution_rule = map_distribution_rule(
+        let distribution_rule = crate::orchestration_runtime::map_llm_distribution_rule(
             routing_policy
                 .map(|policy| policy.distribution_rule.clone())
                 .unwrap_or_default(),
@@ -271,47 +271,4 @@ fn no_runnable_main_instance(
         })),
     )
     .into()
-}
-
-fn map_distribution_rule(
-    value: domain::ModelProviderDistributionRule,
-) -> orchestration_runtime::compiled_plan::LlmDistributionRule {
-    match value {
-        domain::ModelProviderDistributionRule::None => {
-            orchestration_runtime::compiled_plan::LlmDistributionRule::None
-        }
-        domain::ModelProviderDistributionRule::RoundRobin => {
-            orchestration_runtime::compiled_plan::LlmDistributionRule::RoundRobin
-        }
-        domain::ModelProviderDistributionRule::RetryRoundRobin => {
-            orchestration_runtime::compiled_plan::LlmDistributionRule::RetryRoundRobin
-        }
-        domain::ModelProviderDistributionRule::Dynamic {
-            rule_id,
-            rule_version,
-            contract_version,
-            config,
-        } => orchestration_runtime::compiled_plan::LlmDistributionRule::Dynamic {
-            rule_id,
-            rule_version,
-            contract_version,
-            config: config
-                .into_iter()
-                .map(|(key, value)| {
-                    let value = match value {
-                        domain::ModelProviderDistributionConfigValue::String(value) => {
-                            extension_contracts::ProviderDistributionConfigValue::String(value)
-                        }
-                        domain::ModelProviderDistributionConfigValue::Integer(value) => {
-                            extension_contracts::ProviderDistributionConfigValue::Integer(value)
-                        }
-                        domain::ModelProviderDistributionConfigValue::Boolean(value) => {
-                            extension_contracts::ProviderDistributionConfigValue::Boolean(value)
-                        }
-                    };
-                    (key, value)
-                })
-                .collect(),
-        },
-    }
 }
