@@ -128,7 +128,7 @@ where
                 .insert(
                     policy.model_id,
                     orchestration_runtime::compiler::FlowCompileModelRoutingPolicy {
-                        distribution_rule: map_llm_distribution_rule(policy.distribution_rule),
+                        distribution_rule: crate::orchestration_runtime::map_llm_distribution_rule(policy.distribution_rule),
                         provider_instance_ids: policy
                             .provider_instance_ids
                             .into_iter()
@@ -149,47 +149,4 @@ where
         provider_instances,
         model_routing_policies,
     })
-}
-
-pub(super) fn map_llm_distribution_rule(
-    rule: domain::ModelProviderDistributionRule,
-) -> orchestration_runtime::compiled_plan::LlmDistributionRule {
-    match rule {
-        domain::ModelProviderDistributionRule::None => {
-            orchestration_runtime::compiled_plan::LlmDistributionRule::None
-        }
-        domain::ModelProviderDistributionRule::RoundRobin => {
-            orchestration_runtime::compiled_plan::LlmDistributionRule::RoundRobin
-        }
-        domain::ModelProviderDistributionRule::RetryRoundRobin => {
-            orchestration_runtime::compiled_plan::LlmDistributionRule::RetryRoundRobin
-        }
-        domain::ModelProviderDistributionRule::Dynamic {
-            rule_id,
-            rule_version,
-            contract_version,
-            config,
-        } => orchestration_runtime::compiled_plan::LlmDistributionRule::Dynamic {
-            rule_id,
-            rule_version,
-            contract_version,
-            config: config
-                .into_iter()
-                .map(|(key, value)| {
-                    let value = match value {
-                        domain::ModelProviderDistributionConfigValue::String(value) => {
-                            extension_contracts::ProviderDistributionConfigValue::String(value)
-                        }
-                        domain::ModelProviderDistributionConfigValue::Integer(value) => {
-                            extension_contracts::ProviderDistributionConfigValue::Integer(value)
-                        }
-                        domain::ModelProviderDistributionConfigValue::Boolean(value) => {
-                            extension_contracts::ProviderDistributionConfigValue::Boolean(value)
-                        }
-                    };
-                    (key, value)
-                })
-                .collect(),
-        },
-    }
 }
