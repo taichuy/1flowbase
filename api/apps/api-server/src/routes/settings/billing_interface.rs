@@ -117,8 +117,8 @@ impl BillingAdapter {
             .resolve_http_request_with_timeouts(
                 workspace_id,
                 domain::NetworkEgressConsumerSelector::GithubOfficialSources,
-                Duration::from_secs(2),
-                Duration::from_secs(8),
+                Duration::from_secs(5),
+                Duration::from_secs(20),
             )
             .await?;
         match RemotePricingCatalogReader::open(request.http_client(), &self.0.catalog_index_url)
@@ -228,14 +228,24 @@ impl BillingAdapter {
                     .await?;
                 let page = query.page.unwrap_or(1).max(1);
                 let page_size = query.page_size.unwrap_or(20).clamp(1, 100);
-                let result = catalog
-                    .query(
-                        query.provider_code.as_deref(),
-                        query.upstream_model_id.as_deref(),
-                        page,
-                        page_size,
-                    )
-                    .await;
+                let result = if query.metadata_only.unwrap_or(false) {
+                    catalog
+                        .count(
+                            query.provider_code.as_deref(),
+                            query.upstream_model_id.as_deref(),
+                        )
+                        .await
+                        .map(|total| (Vec::new(), total))
+                } else {
+                    catalog
+                        .query(
+                            query.provider_code.as_deref(),
+                            query.upstream_model_id.as_deref(),
+                            page,
+                            page_size,
+                        )
+                        .await
+                };
                 let (items, total_count) = request.finish(result).await?;
                 Ok(BillingOutput::PricingCatalog(PricingCatalogPageResponse {
                     schema_version: "1flowbase.model-pricing-page/v2",

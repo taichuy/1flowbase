@@ -248,6 +248,25 @@ impl RemotePricingCatalogReader {
         Ok(result)
     }
 
+    pub(crate) async fn count(
+        &self,
+        provider: Option<&str>,
+        model: Option<&str>,
+    ) -> Result<usize, ApiError> {
+        let provider = normalized_filter(provider);
+        let model = normalized_filter(model);
+        if provider.is_none() && model.is_none() {
+            return Ok(self.index.total_rules);
+        }
+        Ok(self
+            .search_index()
+            .await?
+            .entries
+            .iter()
+            .filter(|entry| matches_filters(entry, provider.as_deref(), model.as_deref()))
+            .count())
+    }
+
     pub(crate) async fn query(
         &self,
         provider: Option<&str>,
@@ -255,14 +274,8 @@ impl RemotePricingCatalogReader {
         page: usize,
         page_size: usize,
     ) -> Result<(Vec<PricingRuleBody>, usize), ApiError> {
-        let filter = |value: Option<&str>| {
-            value
-                .map(str::trim)
-                .filter(|v| !v.is_empty())
-                .map(str::to_lowercase)
-        };
-        let provider = filter(provider);
-        let model = filter(model);
+        let provider = normalized_filter(provider);
+        let model = normalized_filter(model);
         let page_size = page_size.clamp(1, 100);
         let offset = page.max(1).saturating_sub(1).saturating_mul(page_size);
         if provider.is_none() && model.is_none() {
@@ -292,14 +305,7 @@ impl RemotePricingCatalogReader {
         let matches: Vec<_> = search
             .entries
             .iter()
-            .filter(|entry| {
-                provider
-                    .as_ref()
-                    .is_none_or(|p| entry.provider_code.to_lowercase().contains(p))
-                    && model
-                        .as_ref()
-                        .is_none_or(|m| entry.upstream_model_id.to_lowercase().contains(m))
-            })
+            .filter(|entry| matches_filters(entry, provider.as_deref(), model.as_deref()))
             .collect();
         let total = matches.len();
         let selected: Vec<_> = matches.into_iter().skip(offset).take(page_size).collect();
@@ -327,7 +333,46 @@ impl RemotePricingCatalogReader {
     }
 }
 
+fn normalized_filter(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_lowercase)
+}
+
+fn matches_filters(entry: &SearchEntry, provider: Option<&str>, model: Option<&str>) -> bool {
+    provider.is_none_or(|p| entry.provider_code.to_lowercase().contains(p))
+        && model.is_none_or(|m| entry.upstream_model_id.to_lowercase().contains(m))
+}
+
 async fn fetch_document(
+    client: &reqwest::Client,
+    url: &str,
+    size_limit: usize,
+) -> Result<Vec<u8>, ApiError> {
+    let first = fetch_document_once(client, url, size_limit).await;
+    let retryable = first
+        .as_ref()
+        .err()
+        .and_then(|error| error.0.downcast_ref::<reqwest::Error>())
+        .is_some_and(|error| {
+            error.is_timeout()
+                || error.is_connect()
+                || error.is_body()
+                || error
+                    .status()
+                    .is_some_and(|status| matches!(status.as_u16(), 429 | 502 | 503 | 504))
+        });
+    if retryable {
+        // Retry the same bounded document once; never retry invalid data or a write/commit.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        fetch_document_once(client, url, size_limit).await
+    } else {
+        first
+    }
+}
+
+async fn fetch_document_once(
     client: &reqwest::Client,
     url: &str,
     size_limit: usize,

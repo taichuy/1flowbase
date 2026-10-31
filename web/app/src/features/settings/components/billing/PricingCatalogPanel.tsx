@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Empty, Flex, Input } from 'antd';
 import { Tabs } from 'antd';
@@ -46,10 +46,37 @@ export function PricingCatalogPanel() {
     () => ({ ...appliedFilters, page, page_size: PAGE_SIZE }),
     [appliedFilters, page]
   );
+  const metadataFilter = useMemo(
+    () => ({ ...appliedFilters, metadata_only: true }),
+    [appliedFilters]
+  );
+  const metadata = useQuery({
+    queryKey: settingsPricingCatalogQueryKey(metadataFilter),
+    queryFn: () => getSettingsPricingCatalog(metadataFilter),
+    staleTime: 60_000
+  });
+  const [lastSuccessful, setLastSuccessful] = useState<{
+    filters: typeof appliedFilters;
+    data: SettingsPricingCatalog;
+  }>();
   const catalog = useQuery({
     queryKey: settingsPricingCatalogQueryKey(filter),
-    queryFn: () => getSettingsPricingCatalog(filter)
+    queryFn: () => getSettingsPricingCatalog(filter),
+    enabled: metadata.data !== undefined,
+    staleTime: 60_000
   });
+  useEffect(() => {
+    if (catalog.data) setLastSuccessful({ filters: appliedFilters, data: catalog.data });
+  }, [catalog.data, appliedFilters]);
+  const displayed = catalog.data ?? lastSuccessful?.data;
+  const showingPreviousFilters = !catalog.data && lastSuccessful !== undefined
+    && lastSuccessful.filters !== appliedFilters;
+  const total = showingPreviousFilters
+    ? displayed?.total_count ?? 0
+    : catalog.data?.total_count ?? metadata.data?.total_count ?? 0;
+  const hasError = catalog.isError || metadata.isError;
+  const canInstall = Boolean(catalog.data) && !catalog.isFetching && !hasError;
+
   const importing = useMutation({
     mutationFn: () => {
       if (!csrf) throw new Error('missing csrf token');
@@ -158,7 +185,7 @@ export function PricingCatalogPanel() {
     columns,
     preferenceKey: 'settings.pricing_catalog'
   });
-  const rows = catalog.data?.items ?? [];
+  const rows = displayed?.items ?? [];
 
   function applyFilters() {
     setPage(1);
@@ -254,7 +281,7 @@ export function PricingCatalogPanel() {
             </DataTableFilterForm>
           }
         >
-          {catalog.isError ? (
+          {hasError ? (
             <Alert
               showIcon
               type="error"
@@ -262,6 +289,9 @@ export function PricingCatalogPanel() {
                 'settingsBilling',
                 'auto.billing_remote_catalog_unavailable'
               )}
+              description={displayed ? i18nText(
+                'settingsBilling', 'auto.billing_catalog_retained', { page: displayed.page }
+              ) : undefined}
             />
           ) : null}
           {syncing.isError ? (
@@ -312,11 +342,13 @@ export function PricingCatalogPanel() {
             dataSource={rows}
             emptyText={
               <Empty
-                description={i18nText('settings', 'auto.billing_catalog_empty')}
+                description={hasError
+                  ? i18nText('settingsBilling', 'auto.billing_remote_catalog_unavailable')
+                  : i18nText('settings', 'auto.billing_catalog_empty')}
               />
             }
-            loading={catalog.isLoading || catalog.isFetching}
-            page={page}
+            loading={metadata.isFetching || catalog.isFetching}
+            page={displayed?.page ?? page}
             pageSize={PAGE_SIZE}
             rowKey="id"
             toolbar={
@@ -333,10 +365,13 @@ export function PricingCatalogPanel() {
                   {i18nText('settingsBilling', 'auto.billing_catalog_sync')}
                 </Button>
                 <Button
-                  loading={catalog.isFetching}
+                  loading={catalog.isFetching || metadata.isFetching}
                   onClick={() => {
                     importing.reset();
-                    void catalog.refetch();
+                    void (async () => {
+                      const result = await metadata.refetch();
+                      if (result.isSuccess) await catalog.refetch();
+                    })();
                   }}
                 >
                   {i18nText(
@@ -345,7 +380,7 @@ export function PricingCatalogPanel() {
                   )}
                 </Button>
                 <Button
-                  disabled={rows.length === 0 || syncing.isPending}
+                  disabled={!canInstall || rows.length === 0 || syncing.isPending}
                   loading={importing.isPending}
                   onClick={() => importing.mutate()}
                 >
@@ -360,7 +395,10 @@ export function PricingCatalogPanel() {
                 />
               </Flex>
             }
-            total={catalog.data?.total_count ?? 0}
+            total={total}
+            showTotal={(count) => i18nText('settingsBilling', 'auto.billing_catalog_pagination', {
+              total: count, pages: Math.ceil(count / PAGE_SIZE), page_size: PAGE_SIZE
+            })}
             onPageChange={setPage}
           />
         </DataTableLayout>

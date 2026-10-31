@@ -285,3 +285,71 @@ async fn pricing_search_rejects_identities_swapped_between_two_selected_pages() 
         .unwrap();
     assert!(reader.query(Some("provider-a"), None, 1, 4).await.is_err());
 }
+
+#[tokio::test]
+async fn pricing_metadata_returns_counts_even_when_all_rule_pages_are_unavailable() {
+    let f = fixture().await;
+    f.documents
+        .lock()
+        .unwrap()
+        .retain(|path, _| !path.starts_with("/pages/"));
+    let app = test_app_with_model_pricing_catalog_url(f.url.clone()).await;
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    for (query, expected, hits) in [
+        ("metadata_only=true", 6, vec!["/index.json"]),
+        (
+            "metadata_only=true&provider_code=PROVIDER-A&upstream_model_id=model",
+            4,
+            vec!["/index.json", "/search-index.json"],
+        ),
+    ] {
+        f.hits.lock().unwrap().clear();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/api/console/settings/billing/pricing-catalog?{query}"
+                    ))
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let data = response_json(response).await;
+        assert_eq!(data["data"]["total_count"], expected);
+        assert_eq!(data["data"]["items"], json!([]));
+        assert_eq!(*f.hits.lock().unwrap(), hits);
+    }
+}
+
+#[tokio::test]
+async fn pricing_reader_retries_a_transient_unavailable_index_once() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let hits = Arc::new(AtomicUsize::new(0));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/index.json", listener.local_addr().unwrap());
+    let app = Router::new().fallback({
+        let hits = hits.clone();
+        move || {
+            let attempt = hits.fetch_add(1, Ordering::SeqCst);
+            async move {
+                if attempt == 0 {
+                    StatusCode::SERVICE_UNAVAILABLE.into_response()
+                } else {
+                    Json(json!({"schema_version":"1flowbase.model-pricing-index/v2",
+                        "catalog_version":"retry-fixture","currency_code":"USD",
+                        "total_rules":0,"pages":[]}))
+                    .into_response()
+                }
+            }
+        }
+    });
+    let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let result = RemotePricingCatalogReader::open(&reqwest::Client::new(), &url).await;
+    task.abort();
+    assert_eq!(result.unwrap().count(None, None).await.unwrap(), 0);
+    assert_eq!(hits.load(Ordering::SeqCst), 2);
+}

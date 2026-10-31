@@ -3,7 +3,7 @@ name: Model pricing pagination and batch sync
 on:
   workflow_dispatch:
   push:
-    branches: [dev, codex/model-pricing-paged-sync]
+    branches: [dev, codex/model-pricing-paged-sync, codex/pricing-catalog-recovery]
     paths:
       - 'api/apps/api-server/src/catalog_sources/model_pricing_catalog*'
       - 'api/apps/api-server/src/catalog_sources/model_pricing_catalog/**'
