@@ -131,6 +131,12 @@ impl BillingRepository for RecordingBillingRepository {
         unreachable!("credit command service fixture does not install pricing rules")
     }
 
+    async fn begin_official_pricing_sync(
+        &self,
+    ) -> anyhow::Result<Box<dyn control_plane_contracts::ports::OfficialPricingCatalogSync>> {
+        anyhow::bail!("official pricing staging is not used by this fixture")
+    }
+
     async fn sync_official_pricing_rules(
         &self,
         _: &[PricingRule],

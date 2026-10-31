@@ -47,6 +47,12 @@ impl crate::ports::BillingRepository for InMemoryOrchestrationRuntimeRepository 
         anyhow::bail!("pricing rule fixture is not implemented")
     }
 
+    async fn begin_official_pricing_sync(
+        &self,
+    ) -> anyhow::Result<Box<dyn control_plane_contracts::ports::OfficialPricingCatalogSync>> {
+        anyhow::bail!("official pricing staging is not used by this fixture")
+    }
+
     async fn sync_official_pricing_rules(
         &self,
         _rules: &[crate::billing::PricingRule],

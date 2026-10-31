@@ -3,7 +3,6 @@ use std::{collections::HashSet, fs, path::Path};
 use anyhow::{bail, Context, Result};
 use control_plane::ports::{BillingRepository, UpsertPricingRuleInput};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
@@ -12,8 +11,6 @@ use crate::{
 };
 
 const SOURCE_SCHEMA_VERSION: &str = "1flowbase.model-pricing-source/v2";
-const INDEX_SCHEMA_VERSION: &str = "1flowbase.model-pricing-index/v2";
-const PAGE_SCHEMA_VERSION: &str = "1flowbase.model-pricing-page/v2";
 const BUILTIN_ZERO_SOURCE: &[u8] =
     include_bytes!("../../resources/model-pricing/@zero/any/pricing.json");
 
@@ -22,37 +19,8 @@ struct CatalogSourceMetadata {
     catalog_version: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct RemotePricingCatalogIndex {
-    schema_version: String,
-    catalog_version: String,
-    currency_code: String,
-    total_rules: usize,
-    pages: Vec<RemotePricingCatalogPageReference>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RemotePricingCatalogPageReference {
-    page: usize,
-    rule_count: usize,
-    checksum: String,
-    locator: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct RemotePricingCatalogPage {
-    schema_version: String,
-    catalog_version: String,
-    currency_code: String,
-    page: usize,
-    rules: Vec<PricingRuleBody>,
-}
-
-#[derive(Debug)]
-pub(crate) struct RemotePricingCatalog {
-    pub(crate) catalog_version: String,
-    pub(crate) rules: Vec<PricingRuleBody>,
-}
+mod remote_reader;
+pub(crate) use remote_reader::RemotePricingCatalogReader;
 
 #[derive(Debug, Default, Serialize, PartialEq, Eq)]
 pub(crate) struct PricingRuleInstallSummary {
@@ -197,93 +165,4 @@ pub(crate) async fn install_pricing_rules_if_absent<R: BillingRepository>(
         }
     }
     Ok(summary)
-}
-
-pub(crate) async fn fetch_remote_pricing_catalog(
-    client: &reqwest::Client,
-    catalog_index_url: &str,
-) -> Result<RemotePricingCatalog, ApiError> {
-    let index_bytes = fetch_document(client, catalog_index_url, 512 * 1024).await?;
-    let index: RemotePricingCatalogIndex = serde_json::from_slice(&index_bytes)?;
-    if index.schema_version != INDEX_SCHEMA_VERSION
-        || index.currency_code != "USD"
-        || index.pages.len() > 1_000
-        || index.total_rules > 100_000
-    {
-        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "pricing_catalog_index",
-        )
-        .into());
-    }
-    let page_locator_prefix = catalog_index_url.strip_suffix("index.json").ok_or(
-        control_plane::errors::ControlPlaneError::InvalidInput("pricing_catalog_index_url"),
-    )?;
-    let mut rules = Vec::with_capacity(index.total_rules);
-    for (position, reference) in index.pages.into_iter().enumerate() {
-        let expected_page = position + 1;
-        let expected_locator = format!("{page_locator_prefix}pages/{expected_page}.json");
-        if reference.page != expected_page || reference.locator != expected_locator {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-                "pricing_catalog_page_locator",
-            )
-            .into());
-        }
-        let bytes = fetch_document(client, &reference.locator, 2 * 1024 * 1024).await?;
-        let actual_checksum = format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&bytes)));
-        if actual_checksum != reference.checksum {
-            return Err(control_plane::errors::ControlPlaneError::Conflict(
-                "pricing_catalog_page_checksum_mismatch",
-            )
-            .into());
-        }
-        let page: RemotePricingCatalogPage = serde_json::from_slice(&bytes)?;
-        if page.schema_version != PAGE_SCHEMA_VERSION
-            || page.catalog_version != index.catalog_version
-            || page.currency_code != "USD"
-            || page.page != reference.page
-            || page.rules.len() != reference.rule_count
-        {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-                "pricing_catalog_page",
-            )
-            .into());
-        }
-        rules.extend(page.rules);
-    }
-    if rules.len() != index.total_rules {
-        return Err(control_plane::errors::ControlPlaneError::Conflict(
-            "pricing_catalog_rule_count_mismatch",
-        )
-        .into());
-    }
-    validate_catalog_rules(&rules)?;
-    Ok(RemotePricingCatalog {
-        catalog_version: index.catalog_version,
-        rules,
-    })
-}
-
-async fn fetch_document(
-    client: &reqwest::Client,
-    url: &str,
-    size_limit: usize,
-) -> Result<Vec<u8>, ApiError> {
-    let response = client.get(url).send().await?.error_for_status()?;
-    if response
-        .content_length()
-        .is_some_and(|size| size > size_limit as u64)
-    {
-        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "pricing_catalog_too_large",
-        )
-        .into());
-    }
-    let bytes = response.bytes().await?;
-    if bytes.len() > size_limit {
-        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "pricing_catalog_too_large",
-        )
-        .into());
-    }
-    Ok(bytes.to_vec())
 }
