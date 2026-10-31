@@ -28,6 +28,10 @@ fn checksum(value: &Value) -> String {
 }
 
 async fn fixture() -> Fixture {
+    fixture_with_pages(3).await
+}
+
+async fn fixture_with_pages(page_count: usize) -> Fixture {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}/", listener.local_addr().unwrap());
     let mut documents = HashMap::new();
@@ -37,7 +41,7 @@ async fn fixture() -> Fixture {
     let template =
         serde_json::to_value(&crate::model_pricing_catalog::builtin_pricing_rules().unwrap()[0])
             .unwrap();
-    for number in 1..=3 {
+    for number in 1..=page_count {
         let mut rules = Vec::new();
         for position in 0..2 {
             let id = uuid::Uuid::now_v7();
@@ -63,7 +67,7 @@ async fn fixture() -> Fixture {
         documents.insert(format!("/pages/{number}.json"), page);
     }
     let search = json!({"schema_version":"1flowbase.model-pricing-search/v2", "catalog_version":"paged-fixture","entries":entries});
-    let index = json!({"schema_version":"1flowbase.model-pricing-index/v2", "catalog_version":"paged-fixture", "currency_code":"USD", "total_rules":6,"pages":references,"search_index":{"schema_version":"1flowbase.model-pricing-search/v2","entry_count":6,"checksum":checksum(&search),"locator":format!("{base}search-index.json")}});
+    let index = json!({"schema_version":"1flowbase.model-pricing-index/v2", "catalog_version":"paged-fixture", "currency_code":"USD", "total_rules":ids.len(),"pages":references,"search_index":{"schema_version":"1flowbase.model-pricing-search/v2","entry_count":ids.len(),"checksum":checksum(&search),"locator":format!("{base}search-index.json")}});
     documents.insert("/index.json".into(), index);
     documents.insert("/search-index.json".into(), search);
     let documents = Arc::new(Mutex::new(documents));
@@ -230,8 +234,9 @@ async fn pricing_search_rejects_inconsistent_snapshot_and_page_references() {
 
 #[tokio::test]
 async fn pricing_sync_later_page_failure_installs_no_earlier_page() {
-    let f = fixture().await;
-    f.documents.lock().unwrap().remove("/pages/2.json");
+    // One complete four-page batch stages before the next batch fails remotely.
+    let f = fixture_with_pages(5).await;
+    f.documents.lock().unwrap().remove("/pages/5.json");
     let app = test_app_with_model_pricing_catalog_url(f.url.clone()).await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let response = app
@@ -251,9 +256,13 @@ async fn pricing_sync_later_page_failure_installs_no_earlier_page() {
     {
         let hits = f.hits.lock().unwrap();
         assert_eq!(hits.first().unwrap(), "/index.json");
-        assert!(hits.iter().any(|path| path == "/pages/2.json"));
-        assert!(hits.iter().skip(1).all(|path| path.starts_with("/pages/")));
-        assert!(hits.len() <= 4);
+        assert_eq!(hits.len(), 6);
+        for number in 1..=5 {
+            assert!(hits
+                .iter()
+                .any(|path| path == &format!("/pages/{number}.json")));
+        }
+        assert_eq!(hits.last().unwrap(), "/pages/5.json");
     }
     let listed = app
         .oneshot(
