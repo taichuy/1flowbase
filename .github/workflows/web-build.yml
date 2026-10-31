@@ -1,0 +1,61 @@
+name: Shared web distribution build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v5
+        id: node
+        with:
+          node-version-file: web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Build shared web dist
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          started=$(date +%s)
+          pnpm --dir web install --frozen-lockfile
+          installed=$(date +%s)
+          echo "install_seconds=$((installed - started))" >> "$GITHUB_OUTPUT"
+          pnpm --dir web --filter @1flowbase/web build
+          echo "build_seconds=$(($(date +%s) - installed))" >> "$GITHUB_OUTPUT"
+          mkdir -p tmp/shared-web
+          cp -a web/app/dist tmp/shared-web/dist
+          (cd tmp/shared-web/dist && find . -type f -print0 | sort -z | xargs -0 sha256sum) > tmp/shared-web/web-dist.sha256
+      - name: Upload shared web dist
+        uses: actions/upload-artifact@v6
+        with:
+          name: web-dist
+          path: tmp/shared-web
+          if-no-files-found: error
+      - name: Report web cache and build time
+        if: always()
+        shell: bash
+        env:
+          CACHE_EXACT_HIT: ${{ steps.node.outputs.cache-hit }}
+          INSTALL_SECONDS: ${{ steps.build.outputs.install_seconds }}
+          BUILD_SECONDS: ${{ steps.build.outputs.build_seconds }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          {
+            echo '### Shared web distribution'
+            echo "Commit: $GITHUB_SHA"
+            echo "pnpm store exact cache hit: ${CACHE_EXACT_HIT:-false}"
+            echo "Install seconds: ${INSTALL_SECONDS:-unavailable}"
+            echo "Build seconds: ${BUILD_SECONDS:-unavailable}"
+            echo "Build outcome: $BUILD_OUTCOME"
+            echo 'One web-dist artifact is consumed by Docker and every native target.'
+          } >> "$GITHUB_STEP_SUMMARY"
