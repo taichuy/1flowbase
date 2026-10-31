@@ -93,6 +93,7 @@ test('Root 2014 retains legacy requirements and rejects missing new candidate ev
   assert.ok(inventory.approvedAddedDefinitions.includes('ui_management.plugin_settings_page.view'));
   for (const [definition, binding] of [
     ['applications.runtime.current-context.get', 'http.console.applications.runtime.current-context.get.v1'],
+    ['system_templates.download', 'http.console.settings.system-templates.download.v1'],
     ['application.logs.otlp.traces.ingest', 'http.application.logs.otlp.traces.ingest.v1'],
     ['applications.logs.otlp.export', 'http.console.applications.logs.otlp.export.v1'],
     ['applications.logs.otlp.import', 'http.console.applications.logs.otlp.import.v1'],
