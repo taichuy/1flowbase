@@ -200,7 +200,12 @@ async fn standalone_notifications_do_not_weaken_native_receipt_or_history_valida
     );
     let mut with_parent = full.clone();
     with_parent["previous_response_id"] = json!("resp_round");
-    for body in [with_parent, request()] {
+    let mut output_only = request();
+    output_only["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(notification());
+    for body in [with_parent, output_only] {
         assert_eq!(
             correlate_native_responses_callback(&repository, &other, &body)
                 .await
@@ -215,8 +220,9 @@ async fn standalone_notifications_do_not_weaken_native_receipt_or_history_valida
         .unwrap()
         .unwrap();
     assert_eq!(unchanged.status, CallbackTaskStatus::Pending);
-    assert!(unchanged.response_payload.is_none());
+    assert_eq!(unchanged.response_payload, callback.response_payload);
     assert!(repository.callback_resume_attempts().is_empty());
+    assert_eq!(repository.flow_run_count(), 1);
 }
 
 #[tokio::test]
