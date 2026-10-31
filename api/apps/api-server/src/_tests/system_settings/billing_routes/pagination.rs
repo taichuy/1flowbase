@@ -369,7 +369,7 @@ async fn pricing_reader_retries_an_interrupted_body_and_bounds_persistent_failur
                 async move {
                     if attempt == 0 || !recover {
                         let chunks = futures_util::stream::iter([
-                            Ok(bytes::Bytes::from_static(b"{")),
+                            Ok(axum::body::Bytes::from_static(b"{")),
                             Err(std::io::Error::new(
                                 std::io::ErrorKind::UnexpectedEof,
                                 "interrupted fixture",
