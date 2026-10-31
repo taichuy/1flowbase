@@ -359,6 +359,7 @@ async fn fetch_document(
             error.is_timeout()
                 || error.is_connect()
                 || error.is_body()
+                || error.is_decode()
                 || error
                     .status()
                     .is_some_and(|status| matches!(status.as_u16(), 429 | 502 | 503 | 504))

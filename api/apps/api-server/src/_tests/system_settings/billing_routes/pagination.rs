@@ -353,3 +353,46 @@ async fn pricing_reader_retries_a_transient_unavailable_index_once() {
     assert_eq!(result.unwrap().count(None, None).await.unwrap(), 0);
     assert_eq!(hits.load(Ordering::SeqCst), 2);
 }
+
+#[tokio::test]
+async fn pricing_reader_retries_an_interrupted_body_and_bounds_persistent_failures() {
+    use futures_util::StreamExt;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    for recover in [true, false] {
+        let hits = Arc::new(AtomicUsize::new(0));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/index.json", listener.local_addr().unwrap());
+        let app = Router::new().fallback({
+            let hits = hits.clone();
+            move || {
+                let attempt = hits.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if attempt == 0 || !recover {
+                        let chunks = futures_util::stream::iter([
+                            Ok(bytes::Bytes::from_static(b"{")),
+                            Err(std::io::Error::new(
+                                std::io::ErrorKind::UnexpectedEof,
+                                "interrupted fixture",
+                            )),
+                        ])
+                        .then(|chunk| async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                            chunk
+                        });
+                        axum::response::Response::new(Body::from_stream(chunks))
+                    } else {
+                        Json(json!({"schema_version":"1flowbase.model-pricing-index/v2",
+                            "catalog_version":"retry-fixture","currency_code":"USD",
+                            "total_rules":0,"pages":[]}))
+                        .into_response()
+                    }
+                }
+            }
+        });
+        let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let result = RemotePricingCatalogReader::open(&reqwest::Client::new(), &url).await;
+        task.abort();
+        assert_eq!(result.is_ok(), recover);
+        assert_eq!(hits.load(Ordering::SeqCst), 2);
+    }
+}
