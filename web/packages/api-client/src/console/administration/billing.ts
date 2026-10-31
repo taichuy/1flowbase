@@ -71,6 +71,7 @@ export interface ConsolePricingCatalog {
 }
 
 export interface ConsolePricingCatalogFilter {
+  metadata_only?: boolean;
   provider_code?: string;
   upstream_model_id?: string;
   page?: number;
@@ -218,6 +219,7 @@ export function getConsolePricingCatalog(
     search.set('upstream_model_id', filter.upstream_model_id);
   search.set('page', String(filter.page ?? 1));
   search.set('page_size', String(filter.page_size ?? 20));
+  if (filter.metadata_only) search.set('metadata_only', 'true');
   return apiFetch<ConsolePricingCatalog>({
     path: `/api/console/settings/billing/pricing-catalog?${search.toString()}`,
     baseUrl

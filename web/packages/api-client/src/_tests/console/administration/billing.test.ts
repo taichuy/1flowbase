@@ -44,6 +44,12 @@ describe('console billing client', () => {
     });
   });
 
+  test('requests metadata without rule bodies using the canonical filter', async () => {
+    await expect(getConsolePricingCatalog({ metadata_only: true })).resolves.toMatchObject({
+      path: '/api/console/settings/billing/pricing-catalog?page=1&page_size=20&metadata_only=true'
+    });
+  });
+
   test('sync sends no page or selected IDs and returns the backend merge summary', async () => {
     await expect(syncConsolePricingCatalog('csrf')).resolves.toEqual({
       path: '/api/console/settings/billing/pricing-catalog/sync',

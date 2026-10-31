@@ -172,6 +172,7 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "get_workflow_trajectory_body"
                     | "system_backups.catalog"
                     | "system_templates.catalog"
+                    | "system_templates.download"
                     | "system_templates.export"
                     | "system_templates.install"
                     | "system_templates.preview"

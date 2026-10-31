@@ -54,6 +54,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("GET", "/api/console/settings/system-backups/catalog"),
                 ("GET", "/api/console/settings/system-templates/catalog"),
                 ("POST", "/api/console/settings/system-templates/export"),
+                ("POST", "/api/console/settings/system-templates/download"),
                 ("POST", "/api/console/settings/system-templates/preview"),
                 ("POST", "/api/console/settings/system-templates/install"),
 

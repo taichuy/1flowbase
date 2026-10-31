@@ -17,6 +17,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 pub(crate) enum TemplateInput {
     Catalog,
+    Download(super::catalog::CatalogRequest),
     Library(super::catalog::CatalogQuery),
     ExportArchive(PortableTemplateSelection),
     ResolvePreview(super::catalog::TemplateRequest),
@@ -32,12 +33,12 @@ impl InterfaceContract for TemplateInput {
     fn managed_projection_schema() -> Option<Value> {
         Some(crate::extension_bus::managed_projection::object_schema([(
             "operation",
-            json!({"type":"string","maxLength":16,"enum":["catalog","export","preview","install"]}),
+            json!({"type":"string","maxLength":16,"enum":["catalog","download","export","preview","install"]}),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
-            json!({"operation": match self {Self::Catalog|Self::Library(_)=>"catalog",Self::Export(_)|Self::ExportArchive(_)=>"export",Self::Preview(_)|Self::ResolvePreview(_)=>"preview",Self::Install(_)|Self::ResolveInstall(_)=>"install"}}),
+            json!({"operation": match self {Self::Catalog|Self::Library(_)=>"catalog",Self::Download(_)=>"download",Self::Export(_)|Self::ExportArchive(_)=>"export",Self::Preview(_)|Self::ResolvePreview(_)=>"preview",Self::Install(_)|Self::ResolveInstall(_)=>"install"}}),
         )
     }
 }
@@ -61,12 +62,17 @@ impl TemplateAdapter {
         actor: &domain::ActorContext,
         input: TemplateInput,
     ) -> Result<TemplateOutput, ApiError> {
+        if let TemplateInput::Download(request) = input {
+            return Ok(TemplateOutput(serde_json::to_value(
+                super::catalog::download(&self.0, actor, request).await?,
+            )?));
+        }
         let input = match input {
             TemplateInput::ResolvePreview(request) => {
-                TemplateInput::Preview(super::catalog::resolve(&self.0, actor, request).await?)
+                TemplateInput::Preview(super::catalog::resolve(request).await?)
             }
             TemplateInput::ResolveInstall(request) => {
-                TemplateInput::Install(super::catalog::resolve(&self.0, actor, request).await?)
+                TemplateInput::Install(super::catalog::resolve(request).await?)
             }
             other => other,
         };
@@ -89,7 +95,9 @@ impl TemplateAdapter {
                 .await
                 .context("application_template_export_encode_task")??
             }
-            TemplateInput::ResolvePreview(_) | TemplateInput::ResolveInstall(_) => {
+            TemplateInput::Download(_)
+            | TemplateInput::ResolvePreview(_)
+            | TemplateInput::ResolveInstall(_) => {
                 unreachable!("resolved before dispatch")
             }
             TemplateInput::Export(selection) => {
@@ -366,6 +374,13 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         binding_id: "http.console.settings.system-templates.export.v1",
         method: "POST",
         path: "/api/console/settings/system-templates/export",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "system_templates.download",
+        binding_id: "http.console.settings.system-templates.download.v1",
+        method: "POST",
+        path: "/api/console/settings/system-templates/download",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {

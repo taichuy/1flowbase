@@ -22,7 +22,7 @@ use super::billing::{
 };
 use crate::{
     error_response::ApiError,
-    model_pricing_catalog::{fetch_remote_pricing_catalog, install_pricing_rules_if_absent},
+    model_pricing_catalog::{install_pricing_rules_if_absent, RemotePricingCatalogReader},
     routes::console_interface::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
         ConsoleInterfaceTargetError,
@@ -101,23 +101,32 @@ pub(crate) fn port(
 }
 
 impl BillingAdapter {
-    async fn fetch_pricing_catalog(
+    async fn open_pricing_catalog(
         &self,
         workspace_id: Uuid,
-    ) -> Result<crate::model_pricing_catalog::RemotePricingCatalog, ApiError> {
+    ) -> Result<
+        (
+            RemotePricingCatalogReader,
+            crate::network_egress_client::NetworkEgressHttpRequestScope,
+        ),
+        ApiError,
+    > {
         let request = self
             .0
             .network_egress
             .resolve_http_request_with_timeouts(
                 workspace_id,
                 domain::NetworkEgressConsumerSelector::GithubOfficialSources,
-                Duration::from_secs(2),
-                Duration::from_secs(8),
+                Duration::from_secs(5),
+                Duration::from_secs(20),
             )
             .await?;
-        let result =
-            fetch_remote_pricing_catalog(request.http_client(), &self.0.catalog_index_url).await;
-        request.finish(result).await
+        match RemotePricingCatalogReader::open(request.http_client(), &self.0.catalog_index_url)
+            .await
+        {
+            Ok(catalog) => Ok((catalog, request)),
+            Err(error) => request.finish(Err(error)).await,
+        }
     }
 
     async fn execute_credit_command(
@@ -214,45 +223,33 @@ impl BillingAdapter {
                 ))
             }
             BillingInput::GetPricingCatalog(query) => {
-                let catalog = self
-                    .fetch_pricing_catalog(actor.current_workspace_id)
+                let (catalog, request) = self
+                    .open_pricing_catalog(actor.current_workspace_id)
                     .await?;
-                let provider_filter = query
-                    .provider_code
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty());
-                let model_filter = query
-                    .upstream_model_id
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty());
-                let filtered = catalog
-                    .rules
-                    .into_iter()
-                    .filter(|rule| {
-                        provider_filter.is_none_or(|filter| {
-                            rule.provider_code
-                                .to_lowercase()
-                                .contains(&filter.to_lowercase())
-                        }) && model_filter.is_none_or(|filter| {
-                            rule.upstream_model_id
-                                .to_lowercase()
-                                .contains(&filter.to_lowercase())
-                        })
-                    })
-                    .collect::<Vec<_>>();
                 let page = query.page.unwrap_or(1).max(1);
                 let page_size = query.page_size.unwrap_or(20).clamp(1, 100);
-                let total_count = filtered.len();
-                let items = filtered
-                    .into_iter()
-                    .skip((page - 1) * page_size)
-                    .take(page_size)
-                    .collect();
+                let result = if query.metadata_only.unwrap_or(false) {
+                    catalog
+                        .count(
+                            query.provider_code.as_deref(),
+                            query.upstream_model_id.as_deref(),
+                        )
+                        .await
+                        .map(|total| (Vec::new(), total))
+                } else {
+                    catalog
+                        .query(
+                            query.provider_code.as_deref(),
+                            query.upstream_model_id.as_deref(),
+                            page,
+                            page_size,
+                        )
+                        .await
+                };
+                let (items, total_count) = request.finish(result).await?;
                 Ok(BillingOutput::PricingCatalog(PricingCatalogPageResponse {
                     schema_version: "1flowbase.model-pricing-page/v2",
-                    catalog_version: catalog.catalog_version,
+                    catalog_version: catalog.catalog_version().to_owned(),
                     currency_code: "USD",
                     items,
                     total_count,
@@ -261,15 +258,33 @@ impl BillingAdapter {
                 }))
             }
             BillingInput::SyncPricingCatalog => {
-                let catalog = self
-                    .fetch_pricing_catalog(actor.current_workspace_id)
+                let (catalog, request) = self
+                    .open_pricing_catalog(actor.current_workspace_id)
                     .await?;
-                let rules = catalog
-                    .rules
-                    .into_iter()
-                    .map(|body| body_to_rule(body, actor.user_id, None))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let summary = self.0.store.sync_official_pricing_rules(&rules).await?;
+                let staged: Result<
+                    Box<dyn control_plane::ports::OfficialPricingCatalogSync>,
+                    ApiError,
+                > = async {
+                    let mut session = self.0.store.begin_official_pricing_sync().await?;
+                    for first in (1..=catalog.page_count()).step_by(4) {
+                        let mut requests = Vec::new();
+                        for number in first..=first.saturating_add(3).min(catalog.page_count()) {
+                            requests.push(catalog.read_page(number));
+                        }
+                        // Keep at most four remote pages in flight and stage each independently.
+                        for page in futures_util::future::try_join_all(requests).await? {
+                            let rules = page
+                                .into_iter()
+                                .map(|body| body_to_rule(body, actor.user_id, None))
+                                .collect::<Result<Vec<_>, _>>()?;
+                            session.stage(&rules).await?;
+                        }
+                    }
+                    Ok(session)
+                }
+                .await;
+                // Release the egress owner before committing; release failures also discard staging.
+                let summary = request.finish(staged).await?.finish().await?;
                 // Also invalidate on a retry after a previous cache invalidation failure.
                 self.0
                     .cache_store
@@ -278,17 +293,12 @@ impl BillingAdapter {
                 Ok(BillingOutput::Imported(serde_json::to_value(summary)?))
             }
             BillingInput::ImportPricingCatalog(body) => {
-                let catalog = self
-                    .fetch_pricing_catalog(actor.current_workspace_id)
+                let (catalog, request) = self
+                    .open_pricing_catalog(actor.current_workspace_id)
                     .await?;
-                let selected = catalog
-                    .rules
-                    .into_iter()
-                    .filter(|rule| rule.id.is_some_and(|id| body.catalog_ids.contains(&id)))
-                    .collect::<Vec<_>>();
-                if selected.len() != body.catalog_ids.len() {
-                    return Err(ControlPlaneError::InvalidInput("pricing_catalog_id").into());
-                }
+                let selected = request
+                    .finish(catalog.select_ids(&body.catalog_ids).await)
+                    .await?;
                 let summary =
                     install_pricing_rules_if_absent(&self.0.store, actor.user_id, selected).await?;
                 if summary.inserted > 0 {

@@ -11,6 +11,100 @@ pub(super) async fn merge(
     pool: &PgPool,
     rules: &[PricingRule],
 ) -> Result<PricingCatalogSyncSummary> {
+    let mut session = begin(pool).await?;
+    session.stage(rules).await?;
+    session.finish().await
+}
+
+struct SyncSession {
+    transaction: sqlx::Transaction<'static, sqlx::Postgres>,
+    failed: bool,
+}
+
+pub(super) async fn begin(
+    pool: &PgPool,
+) -> Result<Box<dyn control_plane_contracts::ports::OfficialPricingCatalogSync>> {
+    let mut transaction = pool.begin().await?;
+    // A connection-local staging table avoids durable staging migrations and per-run cleanup jobs.
+    sqlx::query("create temporary table official_pricing_sync_stage (id uuid primary key, provider_code text not null, upstream_model_id text not null, payload jsonb not null, unique(provider_code, upstream_model_id)) on commit drop")
+        .execute(&mut *transaction).await?;
+    Ok(Box::new(SyncSession {
+        transaction,
+        failed: false,
+    }))
+}
+
+#[async_trait::async_trait]
+impl control_plane_contracts::ports::OfficialPricingCatalogSync for SyncSession {
+    async fn stage(&mut self, rules: &[PricingRule]) -> Result<()> {
+        if self.failed {
+            return Err(ControlPlaneError::InvalidInput("pricing_catalog_sync_failed").into());
+        }
+        self.failed = true;
+        for rule in rules {
+            rule.validate()?;
+            if rule.source_kind != "official"
+                || rule.source_catalog_id.as_deref() != Some(rule.id.to_string().as_str())
+            {
+                return Err(ControlPlaneError::InvalidInput("pricing_catalog_invalid").into());
+            }
+            let inserted = sqlx::query("insert into official_pricing_sync_stage(id, provider_code, upstream_model_id, payload) values ($1,$2,$3,$4)")
+                .bind(rule.id).bind(&rule.provider_code).bind(&rule.upstream_model_id).bind(serde_json::to_value(rule)?)
+                .execute(&mut *self.transaction).await;
+            match inserted {
+                Err(sqlx::Error::Database(error)) if error.is_unique_violation() => {
+                    return Err(ControlPlaneError::InvalidInput("pricing_catalog_invalid").into())
+                }
+                result => {
+                    result?;
+                }
+            }
+        }
+        self.failed = false;
+        Ok(())
+    }
+
+    async fn finish(mut self: Box<Self>) -> Result<PricingCatalogSyncSummary> {
+        if self.failed {
+            return Err(ControlPlaneError::InvalidInput("pricing_catalog_sync_failed").into());
+        }
+        // Serialize final catalog merges only; remote downloads never hold installed-row locks.
+        sqlx::query(
+            "select pg_advisory_xact_lock(hashtextextended('official-pricing-catalog-sync', 0))",
+        )
+        .execute(&mut *self.transaction)
+        .await?;
+        let mut cursor: Option<(String, String)> = None;
+        let mut summary = PricingCatalogSyncSummary::default();
+        loop {
+            // A keyset batch bounds deserialized bodies during installation as well as downloading.
+            let rows: Vec<(String, String, serde_json::Value)> = sqlx::query_as("select provider_code, upstream_model_id, payload from official_pricing_sync_stage where ($1::text is null or (provider_code, upstream_model_id) > ($1,$2)) order by provider_code, upstream_model_id limit 100")
+                .bind(cursor.as_ref().map(|key| key.0.as_str())).bind(cursor.as_ref().map(|key| key.1.as_str()))
+                .fetch_all(&mut *self.transaction).await?;
+            if rows.is_empty() {
+                break;
+            }
+            let last = rows.last().expect("nonempty staging batch");
+            cursor = Some((last.0.clone(), last.1.clone()));
+            let rules = rows
+                .into_iter()
+                .map(|(_, _, value)| serde_json::from_value(value))
+                .collect::<std::result::Result<Vec<PricingRule>, _>>()?;
+            let batch = merge_batch(&mut self.transaction, &rules).await?;
+            summary.inserted += batch.inserted;
+            summary.updated += batch.updated;
+            summary.unchanged += batch.unchanged;
+            summary.retired += batch.retired;
+        }
+        self.transaction.commit().await?;
+        Ok(summary)
+    }
+}
+
+async fn merge_batch(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    rules: &[PricingRule],
+) -> Result<PricingCatalogSyncSummary> {
     let mut targets = BTreeSet::new();
     let mut ids = BTreeSet::new();
     for rule in rules {
@@ -23,12 +117,11 @@ pub(super) async fn merge(
             return Err(ControlPlaneError::InvalidInput("pricing_catalog_invalid").into());
         }
     }
-    let mut transaction = pool.begin().await?;
     // Lock the finite catalog in a stable order before any row changes.
     for (provider, model) in targets {
         sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
             .bind(format!("{}:{}{}", provider.len(), provider, model))
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
     }
     let mut summary = PricingCatalogSyncSummary::default();
@@ -37,7 +130,7 @@ pub(super) async fn merge(
         let existing = sqlx::query(sqlx::AssertSqlSafe(PRICING_SELECT.to_owned() +
             " where source_kind='official' and provider_code=$1 and upstream_model_id=$2 order by (source_catalog_id=$3) desc nulls last, enabled desc, created_at, id for update"))
             .bind(&incoming.provider_code).bind(&incoming.upstream_model_id).bind(&incoming.source_catalog_id)
-            .fetch_all(&mut *transaction).await?
+            .fetch_all(&mut **transaction).await?
             .into_iter().map(pricing_rule).collect::<Result<Vec<_>>>()?;
         let mut rule = incoming.clone();
         // Compare at PostgreSQL's persisted precision so repeated pulls remain unchanged.
@@ -69,7 +162,7 @@ pub(super) async fn merge(
             rule.updated_at = previous.updated_at;
             summary.retired += sqlx::query("update model_pricing_rules set enabled=false, updated_at=now() where source_kind='official' and provider_code=$1 and upstream_model_id=$2 and id<>$3 and enabled")
                 .bind(&rule.provider_code).bind(&rule.upstream_model_id).bind(rule.id)
-                .execute(&mut *transaction).await?.rows_affected() as usize;
+                .execute(&mut **transaction).await?.rows_affected() as usize;
             if &rule == previous {
                 summary.unchanged += 1;
                 continue;
@@ -77,14 +170,13 @@ pub(super) async fn merge(
             summary.updated += 1;
         } else {
             // Insert-only keeps concurrent ID collisions from overwriting manual records.
-            validate_pricing_schedule(&mut transaction, &rule).await?;
-            insert_official_rule(&mut transaction, &rule).await?;
+            validate_pricing_schedule(transaction, &rule).await?;
+            insert_official_rule(transaction, &rule).await?;
             summary.inserted += 1;
             continue;
         }
-        write_pricing_rule(&mut transaction, &rule).await?;
+        write_pricing_rule(transaction, &rule).await?;
     }
-    transaction.commit().await?;
     Ok(summary)
 }
 

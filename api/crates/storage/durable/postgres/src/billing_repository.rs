@@ -730,6 +730,12 @@ impl BillingRepository for PgControlPlaneStore {
         row.map(pricing_rule).transpose()
     }
 
+    async fn begin_official_pricing_sync(
+        &self,
+    ) -> Result<Box<dyn control_plane_contracts::ports::OfficialPricingCatalogSync>> {
+        catalog_sync::begin(self.pool()).await
+    }
+
     async fn sync_official_pricing_rules(
         &self,
         rules: &[PricingRule],

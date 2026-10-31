@@ -1,3 +1,6 @@
+#[path = "billing_routes/pagination.rs"]
+mod pagination;
+
 use crate::_tests::support::{
     create_member, login_and_capture_cookie, test_app_with_model_pricing_catalog_url,
 };
@@ -15,6 +18,16 @@ use tower::ServiceExt;
 
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
+}
+
+async fn read_fixture_page(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<Vec<crate::routes::billing::PricingRuleBody>, crate::error_response::ApiError> {
+    crate::model_pricing_catalog::RemotePricingCatalogReader::open(client, url)
+        .await?
+        .read_page(1)
+        .await
 }
 
 async fn remote_model_pricing_fixture() -> (String, tokio::task::JoinHandle<()>) {
@@ -59,11 +72,21 @@ async fn remote_model_pricing_fixture() -> (String, tokio::task::JoinHandle<()>)
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base_url = format!("http://{}", listener.local_addr().unwrap());
     let page_url = format!("{base_url}/model-pricing/catalog/v1/pages/1.json");
+    let search = json!({
+        "schema_version": "1flowbase.model-pricing-search/v2",
+        "catalog_version": "2026-08-18.1",
+        "entries": [{"id":"10000000-0000-4000-8000-000000000001", "provider_code":"zero", "upstream_model_id":"any", "catalog_page":{"page":1,"checksum":page_checksum,"locator":page_url}}]
+    });
+    let search_checksum = format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&Sha256::digest(serde_json::to_vec(&search).unwrap()))
+    );
     let index = json!({
         "schema_version": "1flowbase.model-pricing-index/v2",
         "catalog_version": "2026-08-18.1",
         "currency_code": "USD",
         "total_rules": 1,
+        "search_index": {"schema_version":"1flowbase.model-pricing-search/v2", "entry_count":1,"checksum":search_checksum,"locator":format!("{base_url}/model-pricing/catalog/v1/search-index.json")},
         "pages": [{
             "page": 1,
             "rule_count": 1,
@@ -72,6 +95,13 @@ async fn remote_model_pricing_fixture() -> (String, tokio::task::JoinHandle<()>)
         }]
     });
     let app = Router::new()
+        .route(
+            "/model-pricing/catalog/v1/search-index.json",
+            get(move || {
+                let search = search.clone();
+                async move { Json(search) }
+            }),
+        )
         .route(
             "/model-pricing/catalog/v1/index.json",
             get({
@@ -475,11 +505,7 @@ async fn remote_pricing_catalog_validates_v2_rules_duplicates_and_checksums() {
                 }),
             );
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-        let result = crate::model_pricing_catalog::fetch_remote_pricing_catalog(
-            &reqwest::Client::new(),
-            &format!("{base}index.json"),
-        )
-        .await;
+        let result = read_fixture_page(&reqwest::Client::new(), &format!("{base}index.json")).await;
         server.abort();
         assert_eq!(
             result.is_ok(),
@@ -487,9 +513,9 @@ async fn remote_pricing_catalog_validates_v2_rules_duplicates_and_checksums() {
             "scenario {scenario}: {result:?}"
         );
         if let Ok(catalog) = result {
-            assert_eq!(catalog.rules.len(), 1);
-            assert_eq!(catalog.rules[0].rules, json!([]));
-            assert_eq!(catalog.rules[0].cache_write_token_unit_price, "0");
+            assert_eq!(catalog.len(), 1);
+            assert_eq!(catalog[0].rules, json!([]));
+            assert_eq!(catalog[0].cache_write_token_unit_price, "0");
         }
     }
 }
@@ -540,12 +566,9 @@ async fn pricing_catalog_sync_requires_auth_and_is_idempotent() {
 #[tokio::test]
 async fn pricing_catalog_sync_fetches_all_pages_and_rejects_ungranted_member() {
     let (source_url, source_server) = remote_model_pricing_fixture().await;
-    let template = crate::model_pricing_catalog::fetch_remote_pricing_catalog(
-        &reqwest::Client::new(),
-        &source_url,
-    )
-    .await
-    .unwrap();
+    let template = read_fixture_page(&reqwest::Client::new(), &source_url)
+        .await
+        .unwrap();
     source_server.abort();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!(
@@ -555,7 +578,7 @@ async fn pricing_catalog_sync_fetches_all_pages_and_rejects_ungranted_member() {
     let mut remote = Router::new();
     let mut references = Vec::new();
     for page_number in 1..=2 {
-        let mut rule = serde_json::to_value(&template.rules[0]).unwrap();
+        let mut rule = serde_json::to_value(&template[0]).unwrap();
         let id = uuid::Uuid::now_v7().to_string();
         rule["id"] = json!(id);
         rule["source_catalog_id"] = json!(id);

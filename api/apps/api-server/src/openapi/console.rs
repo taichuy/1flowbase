@@ -42,6 +42,7 @@ use utoipa::OpenApi;
         crate::routes::system::get_runtime_profile,
         crate::routes::system_templates::catalog,
         crate::routes::system_templates::export,
+        crate::routes::system_templates::download,
         crate::routes::system_templates::preview,
         crate::routes::system_templates::install,
         crate::routes::system_backups::get_catalog,

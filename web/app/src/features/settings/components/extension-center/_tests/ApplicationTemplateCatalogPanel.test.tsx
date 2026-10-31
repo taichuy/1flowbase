@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App } from 'antd';
@@ -6,6 +7,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const api = vi.hoisted(() => ({
   getSystemTemplateCatalog: vi.fn(),
   getApplicationTemplateCatalog: vi.fn(),
+  downloadSystemTemplate: vi.fn(),
   previewSystemTemplate: vi.fn(),
   installSystemTemplate: vi.fn()
 }));
@@ -23,6 +25,15 @@ import { useAuthStore } from '../../../../../state/auth-store';
 import { SettingsExtensionCenterSection } from '../../../pages/settings-page/SettingsExtensionCenterSection';
 
 const body = { catalog_id: 'official/gateway-demo', release_version: 2 };
+const downloadedPackage = {
+  schema_version: '1flowbase.portable-template/v2',
+  pages: [],
+  applications: [],
+  data_models: [],
+  plugins: [],
+  i18n_entries: [{ key: 'wiki.title', locale: 'en_US', translation: 'Wiki' }],
+  release: { template_id: '@taichuy/wiki', release_version: 2 }
+};
 const preview = {
   valid: true,
   counts: {
@@ -43,14 +54,16 @@ function setup(props: { cursor?: string; q?: string } = {}) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
   });
   const view = (route: { cursor?: string; q?: string }) => (
-    <App>
-      <QueryClientProvider client={client}>
-        <SettingsExtensionCenterSection
-          category="application-templates"
-          {...route}
-        />
-      </QueryClientProvider>
-    </App>
+    <StrictMode>
+      <App>
+        <QueryClientProvider client={client}>
+          <SettingsExtensionCenterSection
+            category="application-templates"
+            {...route}
+          />
+        </QueryClientProvider>
+      </App>
+    </StrictMode>
   );
   const utils = render(view(props));
   return {
@@ -61,10 +74,13 @@ function setup(props: { cursor?: string; q?: string } = {}) {
 }
 async function openPreview() {
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Preview installation' })
+    await screen.findByRole('button', { name: 'Install template' })
   );
   await waitFor(() =>
-    expect(api.previewSystemTemplate).toHaveBeenCalledWith(body, 'csrf-token')
+    expect(api.previewSystemTemplate).toHaveBeenCalledWith(
+      downloadedPackage,
+      'csrf-token'
+    )
   );
 }
 describe('application templates extension tab', () => {
@@ -96,6 +112,7 @@ describe('application templates extension tab', () => {
         }
       ]
     });
+    api.downloadSystemTemplate.mockResolvedValue(downloadedPackage);
     api.previewSystemTemplate.mockResolvedValue(preview);
     api.installSystemTemplate.mockResolvedValue({
       complete: true,
@@ -129,7 +146,14 @@ describe('application templates extension tab', () => {
     await waitFor(() => expect(install).toBeEnabled());
     fireEvent.click(install);
     expect(await screen.findByText('Template installed')).toBeInTheDocument();
-    expect(api.installSystemTemplate).toHaveBeenCalledWith(body, 'csrf-token');
+    expect(api.installSystemTemplate).toHaveBeenCalledWith(
+      downloadedPackage,
+      'csrf-token'
+    );
+    expect(api.downloadSystemTemplate).toHaveBeenCalledExactlyOnceWith(
+      body,
+      'csrf-token'
+    );
     const completedInstall = screen.getByRole('button', {
       name: 'Confirm installation'
     });
@@ -173,7 +197,14 @@ describe('application templates extension tab', () => {
         'Resources preserved and skipped: 1. Other eligible resources were processed.'
       )
     ).toBeInTheDocument();
-    expect(api.installSystemTemplate).toHaveBeenCalledWith(body, 'csrf-token');
+    expect(api.installSystemTemplate).toHaveBeenCalledWith(
+      downloadedPackage,
+      'csrf-token'
+    );
+    expect(api.downloadSystemTemplate).toHaveBeenCalledExactlyOnceWith(
+      body,
+      'csrf-token'
+    );
   });
   test('invalid preview surfaces failures and blocks installation', async () => {
     api.previewSystemTemplate.mockResolvedValue({
@@ -222,12 +253,66 @@ describe('application templates extension tab', () => {
     await openPreview();
     expect(
       await screen.findByText(
-        'Template preview failed. Close this preview and try again.'
+        'Could not check installation changes. Close this dialog and try again.'
       )
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Confirm installation' })
     ).toBeDisabled();
+  });
+  test('download failure cannot preview or install', async () => {
+    api.downloadSystemTemplate.mockRejectedValue(
+      new Error('upstream unavailable')
+    );
+    setup();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Install template' })
+    );
+    expect(
+      await screen.findByText(
+        'Could not download the template. Close this dialog and try again.'
+      )
+    ).toBeInTheDocument();
+    expect(api.downloadSystemTemplate).toHaveBeenCalledExactlyOnceWith(
+      body,
+      'csrf-token'
+    );
+    expect(api.previewSystemTemplate).not.toHaveBeenCalled();
+    expect(api.installSystemTemplate).not.toHaveBeenCalled();
+  });
+  test('download progress blocks confirmation and closing discards the package', async () => {
+    let finishDownload!: (value: typeof downloadedPackage) => void;
+    api.downloadSystemTemplate.mockReturnValue(
+      new Promise((resolve) => {
+        finishDownload = resolve;
+      })
+    );
+    setup();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Install template' })
+    );
+    expect(
+      await screen.findByText('Downloading template…')
+    ).toBeInTheDocument();
+    expect(api.previewSystemTemplate).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: 'Confirm installation' })
+    ).not.toBeInTheDocument();
+    finishDownload(downloadedPackage);
+    const confirm = await screen.findByRole('button', {
+      name: 'Confirm installation'
+    });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(screen.getAllByRole('button', { name: 'Close' }).at(-1)!);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Confirm installation' })
+      ).not.toBeInTheDocument()
+    );
+    expect(api.installSystemTemplate).not.toHaveBeenCalled();
+    api.downloadSystemTemplate.mockResolvedValue(downloadedPackage);
+    await openPreview();
+    expect(api.downloadSystemTemplate).toHaveBeenCalledTimes(2);
   });
   test('missing permission prevents catalog and installation requests', async () => {
     useAuthStore.setState({ me: null });
@@ -246,7 +331,7 @@ describe('application templates extension tab', () => {
     useAuthStore.setState({ csrfToken: null });
     setup();
     expect(
-      await screen.findByRole('button', { name: 'Preview installation' })
+      await screen.findByRole('button', { name: 'Install template' })
     ).toBeDisabled();
     expect(api.previewSystemTemplate).not.toHaveBeenCalled();
   });
