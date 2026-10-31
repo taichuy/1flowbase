@@ -4,9 +4,9 @@
     {
       "file": "web/app/src/features/settings/api/system-templates/useSystemTemplates.ts",
       "rule": "react-doctor/query-mutation-missing-invalidation",
-      "sourceSha256": "c86958ffa24aa8dd1c60ea955240abf0c9d7ae166af7ff16c62d054d63ea5711",
-      "reason": "web/app/src/features/settings/api/system-templates/useSystemTemplates.ts:34（react-doctor/query-mutation-missing-invalidation）：导出 archive 与 preview archive/package 是读取/预检，返回结果分别下载或存为本地 preview；没有完成后应失效的持久化资源变更。实际 import/create mutation 才承担 query 更新，不能给导出人为 invalidation。 web/app/src/features/settings/api/system-templates/useSystemTemplates.ts:38（react-doctor/query-mutation-missing-invalidation）：导出 archive 与 preview archive/package 是读取/预检，返回结果分别下载或存为本地 preview；没有完成后应失效的持久化资源变更。实际 import/create mutation 才承担 query 更新，不能给导出人为 invalidation。",
-      "evidence": [{"file": "web/app/src/features/settings/api/system-templates/useSystemTemplates.ts", "sha256": "c86958ffa24aa8dd1c60ea955240abf0c9d7ae166af7ff16c62d054d63ea5711"}, {"file": "web/app/src/features/settings/components/extension-center/ApplicationTemplateCatalogPanel.tsx", "sha256": "4c540b9409ce4d65749323f5255d7138968205e3470a7220bebac036c85ecde2"}, {"file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx", "sha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112"}, {"file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx", "sha256": "b7a62fe78b72f3f7e3b7a7e3d03f870717d6e8a8cb4403fb9bc630f1eb46e51d"}]
+      "sourceSha256": "90d7c7d455323766da26cc1098abf07ae0d584d81ee47d00a0ec9694c52c56d9",
+      "reason": "useSystemTemplates.ts:36–54 的 exportMutation 生成下载、downloadMutation 读取指定 catalog_id/release_version 的包且 gcTime:0、previewMutation 仅预检，都未完成资源安装；真正 installMutation.onSuccess 才 invalidate catalog queryKey 前缀。ApplicationTemplateCatalogPanel.test.tsx 的 exact previewed version 场景断言精确 reference 下载一次并以同一完整包 preview/install，download failure 场景断言不 preview/install；SystemTemplateDialog.test.tsx 的 ZIP export 与 opaque archive 场景断言后端字节/文件名及预检安装同包。不能因为 API 使用 useMutation 就给下载/预检虚构持久化变更和 invalidation。",
+      "evidence": [{"file":"web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx","sha256":"f0da474aff042dcde306aab485e116695d1d5f30a1bea899bdfeda8101870686"}, {"file":"web/app/src/features/settings/components/extension-center/_tests/ApplicationTemplateCatalogPanel.test.tsx","sha256":"d5840b1bb689d72969fa587c3ff1cc02df695c8afb3f6a0eb00db53b566776f9"}]
     }
   ]
 }

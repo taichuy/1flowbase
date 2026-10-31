@@ -1,50 +1,50 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx","sha256":"a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112"},{"file":"web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx","sha256":"b7a62fe78b72f3f7e3b7a7e3d03f870717d6e8a8cb4403fb9bc630f1eb46e51d"}],
-    [{"file":"web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx","sha256":"b7a62fe78b72f3f7e3b7a7e3d03f870717d6e8a8cb4403fb9bc630f1eb46e51d"}]
+    [{"file":"web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx","sha256":"5f8046dc7c2b358854bcd2f97f8b070e5ae94804ebb4eb329a22ac9f8ceefd1c"},{"file":"web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx","sha256":"f0da474aff042dcde306aab485e116695d1d5f30a1bea899bdfeda8101870686"}],
+    [{"file":"web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx","sha256":"f0da474aff042dcde306aab485e116695d1d5f30a1bea899bdfeda8101870686"}]
   ],
   "reviews": [
     {
       "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
-      "reason": "The external owner/identity changed, so previous draft/error/resource state is explicitly invalidated; the nearest fixture/source demonstrates that lifecycle. SystemTemplateDialog owns an asynchronous selected-file read. Input change clears previous error/busy/importFile before starting the new read; each completion checks cancelled. The nearest tests explicitly cover failed-read→preloaded-template and pending-read→preloaded-template. Removing the input synchronization would restore the stale error/busy defect.",
+      "sourceSha256": "5f8046dc7c2b358854bcd2f97f8b070e5ae94804ebb4eb329a22ac9f8ceefd1c",
+      "reason": "SystemTemplateDialog.tsx:108–154 以外部 file/template 身份重置旧 error/importFile 和 mutation 结果，再异步 read/download→preview；cleanup 的 cancelled 限定完成结果归属。SystemTemplateDialog.test.tsx 的 clears a failed file read when a new template is selected in the same dialog 用同一 mounted dialog rerender 断言旧 invalid_file 消失及 Confirm installation 启用；cancels a pending read when switching to a preloaded template 在原 read 永不完成时仍断言新 template 可确认。只靠最初 click handler 不能处理这些外部输入替换。",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
       "rule": "react-doctor/no-array-index-as-key",
-      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
-      "reason": "The list identity and mutable state contract are described in the file-specific rationale; a data-text key would not uniquely identify repeated entries. SystemTemplateDialog owns import-file reading/preview/install and export selection. Read completion is asynchronous and cancelled on input switch. Failure/warning alerts render immutable backend message snapshots with no row-local state; index keys distinguish duplicate messages and lists are not interactively sorted or edited.",
+      "sourceSha256": "5f8046dc7c2b358854bcd2f97f8b070e5ae94804ebb4eb329a22ac9f8ceefd1c",
+      "reason": "SystemTemplateDialog.tsx:243–259,337–345 的 no-array-index-as-key 与 no-array-index-key 指向同三组只读后端消息 Alert，不是可重排或编辑实体列表；failure-i/warning-i 在每个不可编辑结果快照内区分位置及重复文本。SystemTemplateDialog.test.tsx 的 server rejection 断言失败可见、换文件清旧消息，partial outcome 断言真实 publish failure、禁重复安装和 close 清理。该 alias 复用相同消息快照合同，未虚构重复消息或 row-state 专项测试。",
       "evidenceSet": 1
     },
     {
       "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
       "rule": "react-doctor/no-array-index-key",
-      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
-      "reason": "Alias of no-array-index-as-key; the same source-level list identity analysis applies. SystemTemplateDialog owns import-file reading/preview/install and export selection. Read completion is asynchronous and cancelled on input switch. Failure/warning alerts render immutable backend message snapshots with no row-local state; index keys distinguish duplicate messages and lists are not interactively sorted or edited.",
+      "sourceSha256": "5f8046dc7c2b358854bcd2f97f8b070e5ae94804ebb4eb329a22ac9f8ceefd1c",
+      "reason": "SystemTemplateDialog.tsx:243–259,337–345 的三个 index-key 命中只渲染 backend preview failures/warnings 或 install failures 的只读 Alert 字符串快照，没有可编辑行状态、用户排序或过滤；index 还可区分重复消息文本。SystemTemplateDialog.test.tsx 的 server rejection 场景断言 Route already exists 随换文件清除且不安装，partial outcome 场景断言 Application publish failed 与禁重复安装/close 清结果。此消息列表不发生可编辑实体 state 转移；未声称已有重复 warning 专项测试。",
       "evidenceSet": 1
     },
     {
       "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
       "rule": "react-doctor/no-cascading-set-state",
-      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
-      "reason": "These setters apply the same external lifecycle transition to separate state axes; there is no self-triggering feedback loop. SystemTemplateDialog owns an asynchronous selected-file read. Input change clears previous error/busy/importFile before starting the new read; each completion checks cancelled. The nearest tests explicitly cover failed-read→preloaded-template and pending-read→preloaded-template. Removing the input synchronization would restore the stale error/busy defect.",
+      "sourceSha256": "5f8046dc7c2b358854bcd2f97f8b070e5ae94804ebb4eb329a22ac9f8ceefd1c",
+      "reason": "SystemTemplateDialog.tsx:108–154 的 setters 清理 fileError/prepareError/reading/importFile 与旧 mutation 结果后启动外部 Promise；这些被写状态不在 effect 依赖里形成反馈，cancelled 阻止失效读取的完成写回。SystemTemplateDialog.test.tsx 的 failed-read→new-template 与 pending-read→preloaded-template 两个同 mounted rerender 场景断言旧错误清理、新 Confirm installation 启用。这里是一个外部文件生命周期的阶段转换，不从 setter 个数推断额外提交，未做 render-count 测试。",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
       "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. SystemTemplateDialog owns import-file reading/preview/install and export selection. Read completion is asynchronous and cancelled on input switch. Failure/warning alerts render immutable backend message snapshots with no row-local state; index keys distinguish duplicate messages and lists are not interactively sorted or edited.",
+      "sourceSha256": "5f8046dc7c2b358854bcd2f97f8b070e5ae94804ebb4eb329a22ac9f8ceefd1c",
+      "reason": "SystemTemplateDialog.tsx:32–44,77–172,175+ 是单一 portable package 转移会话：export selection、file/remote 准备、preview、install outcome；API lifecycle 已由 useSystemTemplates 管理、归档读写复用 archive helper，显示复用 Antd Form/Table。SystemTemplateDialog.test.tsx 的同 mounted dialog failed/pending read→template 场景断言清旧状态并启确认，v2/opaque ZIP 场景断言 preview/install 完整同包，ZIP export 断言后端字节与文件名。长度没有显示第二资源 owner，这些具体阶段合同支持当前组合边界。",
       "evidenceSet": 1
     },
     {
       "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
       "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. SystemTemplateDialog owns import-file reading/preview/install and export selection. Read completion is asynchronous and cancelled on input switch. Failure/warning alerts render immutable backend message snapshots with no row-local state; index keys distinguish duplicate messages and lists are not interactively sorted or edited.",
+      "sourceSha256": "5f8046dc7c2b358854bcd2f97f8b070e5ae94804ebb4eb329a22ac9f8ceefd1c",
+      "reason": "SystemTemplateDialog.tsx:79–98,108–172 的 selection、importFile、reading 和 file/download/prepare 错误位分别由 export 选择、外部读取、下载及失败阶段驱动，preview/install 的请求状态由 query mutation 持有，不是六份互相派生的业务值。SystemTemplateDialog.test.tsx 的 failed/pending read→template 场景断言清错并重新启确认，server rejection 场景断言失败禁安装且换文件清旧预览，partial outcome 场景断言失败提示及禁重复安装。state 计数不证明非法转换或逐 setter 提交；未测 render-count。",
       "evidenceSet": 1
     }
   ]
