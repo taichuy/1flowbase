@@ -163,14 +163,54 @@ async fn pruned_owned_history_starts_sampling_without_mutating_receipts() {
                         .await
                         .unwrap());
                     let mut translated = translate_response_request(candidate.clone()).unwrap();
+                    assert!(translated.request.query.is_empty());
+                    assert_eq!(
+                        translated.request.model.as_deref(),
+                        candidate["model"].as_str()
+                    );
+                    let expected_outputs: Vec<Value> = candidate["input"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .filter(|item| item["type"] == "function_call_output")
+                        .map(|item| json!({
+                            "role":"tool", "tool_call_id":item["call_id"], "content":item["output"]
+                        }))
+                        .collect();
+                    let actual_outputs: Vec<Value> = translated
+                        .request
+                        .history
+                        .iter()
+                        .filter(|message| message["role"] == "tool")
+                        .cloned()
+                        .collect();
+                    assert_eq!(expected_outputs.len(), 18);
+                    assert_eq!(actual_outputs, expected_outputs);
+                    assert!(translated
+                        .request
+                        .metadata
+                        .take_provider_transport_payload()
+                        .is_none());
+
+                    // Semantic input retains its pruned tool messages above. When
+                    // transport is preferred, retain the complete wire body too.
+                    let mut transport_candidate = candidate.clone();
+                    transport_candidate["text"] = json!({"format":{"type":"text"}});
+                    assert!(
+                        !has_grant(semantic, &repository, &actor, &transport_candidate)
+                            .await
+                            .unwrap()
+                    );
+                    let mut translated =
+                        translate_response_request(transport_candidate.clone()).unwrap();
                     assert_eq!(
                         translated
                             .request
                             .metadata
                             .take_provider_transport_payload()
-                            .unwrap()
+                            .expect("explicit Responses text format prefers original transport")
                             .wire_body(),
-                        &candidate
+                        &transport_candidate
                     );
                 }
             }
