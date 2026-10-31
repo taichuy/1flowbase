@@ -958,3 +958,6 @@ mod continuation_identity;
 
 #[path = "_tests/tool_strictness.rs"]
 mod tool_strictness;
+
+#[path = "_tests/inline_function_replay.rs"]
+mod inline_function_replay;

@@ -701,9 +701,26 @@ pub(super) fn responses_input_item_requires_native_passthrough(item: &Value) -> 
                     .get("content")
                     .is_some_and(responses_content_requires_native_passthrough)
         }
-        Some("function_call") => item
-            .keys()
-            .any(|field| !matches!(field.as_str(), "type" | "call_id" | "name" | "arguments")),
+        Some("function_call") => {
+            // A complete inline call is not a persisted-item reference. In
+            // semantic mode call_id owns pairing; id/completed status are
+            // response projection metadata, including IDs minted by this gateway.
+            let complete_inline_call = ["call_id", "name"].iter().all(|field| {
+                item.get(*field)
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| !value.trim().is_empty())
+            }) && item.get("arguments").is_some_and(Value::is_string)
+                && item
+                    .get("id")
+                    .is_none_or(|id| id.as_str().is_some_and(|id| !id.trim().is_empty()))
+                && item
+                    .get("status")
+                    .is_none_or(|status| status.as_str() == Some("completed"));
+            item.keys().any(|field| {
+                !matches!(field.as_str(), "type" | "call_id" | "name" | "arguments")
+                    && !(complete_inline_call && matches!(field.as_str(), "id" | "status"))
+            })
+        }
         Some("function_call_output") => item
             .keys()
             .any(|field| !matches!(field.as_str(), "type" | "call_id" | "output")),
