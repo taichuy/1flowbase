@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 const api = vi.hoisted(() => ({
   getSystemTemplateCatalog: vi.fn(),
   exportSystemTemplateArchive: vi.fn(),
+  downloadSystemTemplate: vi.fn(),
   previewSystemTemplate: vi.fn(),
   installSystemTemplate: vi.fn()
 }));
@@ -15,6 +16,10 @@ import { useAuthStore } from '../../../../../state/auth-store';
 import { useState } from 'react';
 import { SystemTemplateDialog } from '../SystemTemplateDialog';
 
+const reference = {
+  catalog_id: 'applications-demo:taichuy/wiki',
+  release_version: 1
+};
 const body = {
   schema_version: '1flowbase.portable-template/v1',
   pages: [],
@@ -91,6 +96,7 @@ describe('portable template flow', () => {
     Object.values(api).forEach((mock) => mock.mockReset());
     await appI18n.changeLanguage('en_US');
     useAuthStore.setState({ csrfToken: 'csrf-token' });
+    api.downloadSystemTemplate.mockResolvedValue(body);
     api.getSystemTemplateCatalog.mockResolvedValue({
       pages: [],
       applications: [],
@@ -125,7 +131,7 @@ describe('portable template flow', () => {
     const onClose = vi.fn();
     const wrap = (
       file?: File,
-      template?: { name: string; body: typeof body }
+      template?: { name: string; body: typeof reference }
     ) => (
       <App>
         <QueryClientProvider client={client}>
@@ -141,7 +147,7 @@ describe('portable template flow', () => {
     const { rerender, unmount } = render(wrap(invalid));
     const error = appI18n.t('invalid_file', { ns: 'settingsSystemTemplates' });
     expect(await screen.findByText(error)).toBeInTheDocument();
-    rerender(wrap(undefined, { name: 'next.json', body }));
+    rerender(wrap(undefined, { name: 'next.json', body: reference }));
     await waitFor(() =>
       expect(screen.queryByText(error)).not.toBeInTheDocument()
     );
@@ -163,7 +169,7 @@ describe('portable template flow', () => {
       value: () => new Promise<string>(() => {})
     });
     const onClose = vi.fn();
-    const wrap = (template?: { name: string; body: typeof body }) => (
+    const wrap = (template?: { name: string; body: typeof reference }) => (
       <App>
         <QueryClientProvider client={client}>
           <SystemTemplateDialog
@@ -177,9 +183,11 @@ describe('portable template flow', () => {
     );
     const { rerender, unmount } = render(wrap());
     expect(screen.getByText('pending.json')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Install template' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Install template' })
+    ).not.toBeInTheDocument();
     expect(api.previewSystemTemplate).not.toHaveBeenCalled();
-    rerender(wrap({ name: 'ready.json', body }));
+    rerender(wrap({ name: 'ready.json', body: reference }));
     await waitFor(() =>
       expect(
         screen.getByRole('button', { name: 'Confirm installation' })

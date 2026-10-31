@@ -130,6 +130,18 @@ export const exportSystemTemplate = (
     csrfToken,
     baseUrl
   });
+export const downloadSystemTemplate = (
+  body: ApplicationTemplateReference,
+  csrfToken: string,
+  baseUrl?: string
+) =>
+  apiFetch<PortableTemplatePackage>({
+    path: `${BASE_PATH}/download`,
+    method: 'POST',
+    body,
+    csrfToken,
+    baseUrl
+  });
 export const previewSystemTemplate = (
   body: PortableTemplatePackage,
   csrfToken: string,

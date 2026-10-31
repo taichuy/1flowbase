@@ -682,6 +682,7 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("system.runtime_process.terminate", "system.system-runtime"),
     settings("system_templates.catalog", "system.backups"),
     settings("system_templates.export", "system.backups"),
+    settings("system_templates.download", "system.backups"),
     settings("system_templates.preview", "system.backups"),
     settings("system_templates.install", "system.backups"),
     settings("system_backups.catalog", "system.backups"),

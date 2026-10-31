@@ -115,7 +115,7 @@ export function ApplicationTemplateCatalogPanel({
               })
             }
           >
-            {t('preview_action')}
+            {t('install')}
           </Button>
         )
       }

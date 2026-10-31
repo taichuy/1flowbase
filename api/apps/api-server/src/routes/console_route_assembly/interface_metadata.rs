@@ -336,6 +336,7 @@ pub(super) fn static_english_interface_summary(interface_id: &str) -> String {
         "members.departments.replace" => Some("Replace member department assignments"),
         "system_templates.catalog" => Some("List portable template resources"),
         "system_templates.export" => Some("Export selected portable definitions"),
+        "system_templates.download" => Some("Download and verify a template release for local preview and installation"),
         "system_templates.preview" => Some("Preview portable template installation"),
         "system_templates.install" => Some("Install portable template resources"),
 
@@ -481,6 +482,7 @@ pub(super) fn compile_console_interface_metadata(
             _ => static_english_interface_summary(&interface_id),
         };
         let description = match interface_id.as_str() {
+            "system_templates.download" => "Download the selected catalog release once, verify its checksum and signature, and return the complete portable package for preview and subsequent installation without another catalog download.".to_owned(),
             "local_commands.execute" => "Execute a single command string in the backend instance environment as its OS account. Requires the local command operation permission; returns complete output and termination status without a reusable session, deployment opt-in, or automatic retry.".to_owned(),
             "communications.options.get" => "Return published Agent-flow applications, visible enabled MCP instances and the selected application model and reasoning capabilities.".to_owned(),
             "communications.binding.get" => "Read the channel execution binding and plugin-owned default prompt without credentials.".to_owned(),
