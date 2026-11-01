@@ -278,3 +278,51 @@ fn settings_pages_reuse_canonical_module_validation_and_asset_discovery() {
     assert!(crate::validate_frontend_module_assets(&root, &manifest).is_err());
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn shared_sibling_modules_preserve_independent_authority_and_reject_conflicts() {
+    let module = valid_module(
+        "@acme/shared",
+        "1.0.0",
+        "assets/shared.js",
+        &"a".repeat(64),
+        "Fixture",
+    );
+    let raw = manifest_with_modules(&module);
+    let block_start = raw.find("  - contribution_code: native").unwrap();
+    let sibling =
+        raw[block_start..].replace("contribution_code: native", "contribution_code: sibling");
+    let shared = format!("{raw}{sibling}");
+    assert_eq!(
+        parse_plugin_manifest(&shared)
+            .unwrap()
+            .block_contributions
+            .len(),
+        2
+    );
+    let conflicting = sibling.replace("version: \"1.0.0\"", "version: \"2.0.0\"");
+    assert_ne!(
+        conflicting, sibling,
+        "fixture must change the shared version"
+    );
+    assert!(parse_plugin_manifest(&format!("{raw}{conflicting}"))
+        .unwrap_err()
+        .to_string()
+        .contains("shared frontend module declarations must be identical"));
+}
+
+#[test]
+fn shared_host_bindings_use_the_existing_native_dependency_abi_only() {
+    for source in ["react", "antd", "antd-style", "dayjs", "@ant-design/icons"] {
+        let module = format!("      - source: '{source}'\n        version: '1.0.0'\n        exports: [default]\n        binding: host\n        type_declarations: \"declare module '{source}' {{}}\"\n");
+        assert!(
+            parse_plugin_manifest(&manifest_with_modules(&module)).is_ok(),
+            "{source}"
+        );
+    }
+    let forbidden = "      - source: '@unregistered/dependency'\n        version: '1.0.0'\n        exports: [default]\n        binding: host\n        type_declarations: \"declare module '@unregistered/dependency' {}\"\n";
+    assert!(parse_plugin_manifest(&manifest_with_modules(forbidden))
+        .unwrap_err()
+        .to_string()
+        .contains("not part of the Host ABI"));
+}
