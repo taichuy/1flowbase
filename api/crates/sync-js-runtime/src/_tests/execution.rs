@@ -73,6 +73,28 @@ fn plain_json_shared_references_and_input_are_preserved() {
 }
 
 #[test]
+fn strict_json_accepts_one_hundred_nested_plain_objects() {
+    // 101 plain objects, 602 bytes: supported by the existing host JSON decoder.
+    let expected_json = format!("{}{{}}{}", "{\"x\":".repeat(100), "}".repeat(100));
+    assert_eq!(expected_json.len(), 602);
+    let expected: serde_json::Value = serde_json::from_str(&expected_json).unwrap();
+    let result = run_script(
+        r#"function main() {
+            let value = {};
+            for (let i = 0; i < 100; i++) value = {x: value};
+            return value;
+        }"#,
+        &json!({}),
+        Limits {
+            max_output_bytes: expected_json.len(),
+            ..limits()
+        },
+    )
+    .unwrap();
+    assert_eq!(result.output_payload, expected);
+}
+
+#[test]
 fn trusted_intrinsics_cannot_hide_invalid_values() {
     for sabotage in [
         "JSON.stringify=()=> '{}'; Object.keys=()=>[];",

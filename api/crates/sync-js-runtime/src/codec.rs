@@ -1,5 +1,8 @@
 use crate::{check_stop, CancellationToken, ErrorKind, ExecutionError};
-use rquickjs::{object::Filter, Atom, Ctx, Function, Object, Value as JsValue};
+use rquickjs::{
+    object::{Filter, ObjectKeysIter},
+    Atom, Ctx, Function, Object, Value as JsValue,
+};
 use serde_json::Value;
 use std::{
     io::{self, Write},
@@ -69,147 +72,205 @@ impl<'js> StrictCodec<'js> {
             bytes: Vec::new(),
             max,
         };
-        self.walk(value, &mut out, &mut Vec::new(), stop, deadline)?;
+        self.walk(value, &mut out, stop, deadline)?;
         serde_json::from_slice(&out.bytes).map_err(|_| ErrorKind::InvalidOutput.into())
     }
     fn walk(
         &self,
         value: JsValue<'js>,
         out: &mut BoundedBytes,
-        ancestors: &mut Vec<JsValue<'js>>,
         stop: &CancellationToken,
         deadline: Instant,
     ) -> Result<(), ExecutionError> {
-        check_stop(stop, deadline)?;
-        if value.is_null() {
-            return out.raw(b"null");
-        }
-        if let Some(b) = value.as_bool() {
-            return out.json(&b);
-        }
-        if let Some(n) = value.as_number() {
-            if !n.is_finite() {
-                return Err(ErrorKind::InvalidOutput.into());
-            }
-            return if let Some(n) = value.as_int() {
-                out.json(&n)
-            } else if n.fract() == 0.0 && n.abs() <= ((1_u64 << 53) - 1) as f64 {
-                // Native JSON.parse may store integral input as Float64. Preserve
-                // JSON's single number domain (including -0 -> 0), without
-                // calling guest Number/toJSON or rounding a fractional value.
-                out.json(&(n as i64))
-            } else {
-                out.json(&n)
-            };
-        }
-        if let Some(text) = value.as_string() {
-            let text = text.to_string().map_err(|_| ErrorKind::InvalidOutput)?;
-            return out.json(&text);
-        }
-        if !value.is_object()
-            || value.is_function()
-            || value.is_promise()
-            || value.is_proxy()
-            || ancestors.contains(&value)
-            || ancestors.len() >= 96
-        {
-            return Err(ErrorKind::InvalidOutput.into());
-        }
-        let object = value.as_object().ok_or(ErrorKind::InvalidOutput)?;
-        let array = value.as_array();
-        if class_id(&value)
-            != if array.is_some() {
-                self.array_class
-            } else {
-                self.object_class
-            }
-        {
-            return Err(ErrorKind::InvalidOutput.into());
-        }
-        let prototype = object.get_prototype();
-        if array.is_some() {
-            if prototype.as_ref() != Some(&self.array_prototype) {
-                return Err(ErrorKind::InvalidOutput.into());
-            }
-        } else if prototype.is_some() && prototype.as_ref() != Some(&self.object_prototype) {
-            return Err(ErrorKind::InvalidOutput.into());
-        }
-        ancestors.push(value.clone());
-        if let Some(array) = array {
-            let len = array.len();
-            if len > out.max {
-                return Err(ErrorKind::OutputLimit.into());
-            }
-            // Reject non-index data (including symbols), rather than silently dropping it.
-            for key in object.own_keys::<Atom>(Filter::new().string().symbol()) {
-                let key = key
-                    .map_err(|_| ErrorKind::InvalidOutput)?
-                    .to_value()
-                    .map_err(|_| ErrorKind::InvalidOutput)?;
-                let key = key
-                    .as_string()
-                    .ok_or(ErrorKind::InvalidOutput)?
-                    .to_string()
-                    .map_err(|_| ErrorKind::InvalidOutput)?;
-                if key != "length"
-                    && !key
-                        .parse::<usize>()
-                        .ok()
-                        .is_some_and(|i| i < len && i.to_string() == key)
-                {
-                    return Err(ErrorKind::InvalidOutput.into());
+        let mut ancestors = Vec::new();
+        let mut frames = vec![WalkFrame::Value(value)];
+        // Each container keeps only its next-child continuation on the heap.
+        // Exit removes it from the current ancestor path, so a shared DAG node
+        // is legal after its earlier branch finishes. No Rust traversal recursion.
+        while let Some(frame) = frames.pop() {
+            check_stop(stop, deadline)?;
+            match frame {
+                WalkFrame::Value(value) => {
+                    if value.is_null() {
+                        out.raw(b"null")?;
+                        continue;
+                    }
+                    if let Some(b) = value.as_bool() {
+                        out.json(&b)?;
+                        continue;
+                    }
+                    if let Some(n) = value.as_number() {
+                        if !n.is_finite() {
+                            return Err(ErrorKind::InvalidOutput.into());
+                        }
+                        if let Some(n) = value.as_int() {
+                            out.json(&n)?;
+                        } else if n.fract() == 0.0 && n.abs() <= ((1_u64 << 53) - 1) as f64 {
+                            // Native JSON.parse may store integral input as Float64. Preserve
+                            // JSON's single number domain (including -0 -> 0), without
+                            // calling guest Number/toJSON or rounding a fractional value.
+                            out.json(&(n as i64))?;
+                        } else {
+                            out.json(&n)?;
+                        }
+                        continue;
+                    }
+                    if let Some(text) = value.as_string() {
+                        let text = text.to_string().map_err(|_| ErrorKind::InvalidOutput)?;
+                        out.json(&text)?;
+                        continue;
+                    }
+                    if !value.is_object()
+                        || value.is_function()
+                        || value.is_promise()
+                        || value.is_proxy()
+                        || ancestors.contains(&value)
+                    {
+                        return Err(ErrorKind::InvalidOutput.into());
+                    }
+                    let object = value.as_object().ok_or(ErrorKind::InvalidOutput)?;
+                    let array = value.as_array();
+                    if class_id(&value)
+                        != if array.is_some() {
+                            self.array_class
+                        } else {
+                            self.object_class
+                        }
+                    {
+                        return Err(ErrorKind::InvalidOutput.into());
+                    }
+                    let prototype = object.get_prototype();
+                    if array.is_some() {
+                        if prototype.as_ref() != Some(&self.array_prototype) {
+                            return Err(ErrorKind::InvalidOutput.into());
+                        }
+                    } else if prototype.is_some()
+                        && prototype.as_ref() != Some(&self.object_prototype)
+                    {
+                        return Err(ErrorKind::InvalidOutput.into());
+                    }
+                    ancestors.push(value.clone());
+                    if let Some(array) = array {
+                        let len = array.len();
+                        if len > out.max {
+                            return Err(ErrorKind::OutputLimit.into());
+                        }
+                        // Reject non-index data (including symbols), rather than silently dropping it.
+                        for key in object.own_keys::<Atom>(Filter::new().string().symbol()) {
+                            check_stop(stop, deadline)?;
+                            let key = key
+                                .map_err(|_| ErrorKind::InvalidOutput)?
+                                .to_value()
+                                .map_err(|_| ErrorKind::InvalidOutput)?;
+                            let key = key
+                                .as_string()
+                                .ok_or(ErrorKind::InvalidOutput)?
+                                .to_string()
+                                .map_err(|_| ErrorKind::InvalidOutput)?;
+                            if key != "length"
+                                && !key
+                                    .parse::<usize>()
+                                    .ok()
+                                    .is_some_and(|i| i < len && i.to_string() == key)
+                            {
+                                return Err(ErrorKind::InvalidOutput.into());
+                            }
+                        }
+                        out.raw(b"[")?;
+                        frames.push(WalkFrame::Exit(b']'));
+                        frames.push(WalkFrame::Array {
+                            object: object.clone(),
+                            index: 0,
+                            len,
+                        });
+                    } else {
+                        out.raw(b"{")?;
+                        frames.push(WalkFrame::Exit(b'}'));
+                        frames.push(WalkFrame::Object {
+                            object: object.clone(),
+                            keys: object.own_keys::<Atom>(Filter::new().string().symbol()),
+                            first: true,
+                        });
+                    }
+                }
+                WalkFrame::Array { object, index, len } => {
+                    if index == len {
+                        continue;
+                    }
+                    if index != 0 {
+                        out.raw(b",")?;
+                    }
+                    let child = self.data(&object, &index.to_string())?;
+                    frames.push(WalkFrame::Array {
+                        object,
+                        index: index + 1,
+                        len,
+                    });
+                    frames.push(WalkFrame::Value(child));
+                }
+                WalkFrame::Object {
+                    object,
+                    mut keys,
+                    first,
+                } => {
+                    let Some(key) = keys.next() else {
+                        continue;
+                    };
+                    let key = key
+                        .map_err(|_| ErrorKind::InvalidOutput)?
+                        .to_value()
+                        .map_err(|_| ErrorKind::InvalidOutput)?;
+                    let key = key
+                        .as_string()
+                        .ok_or(ErrorKind::InvalidOutput)?
+                        .to_string()
+                        .map_err(|_| ErrorKind::InvalidOutput)?;
+                    let descriptor: Object = self
+                        .descriptor
+                        .call((object.clone(), key.as_str()))
+                        .map_err(|_| ErrorKind::InvalidOutput)?;
+                    if !descriptor
+                        .get::<_, bool>("enumerable")
+                        .map_err(|_| ErrorKind::InvalidOutput)?
+                    {
+                        return Err(ErrorKind::InvalidOutput.into());
+                    }
+                    if !first {
+                        out.raw(b",")?;
+                    }
+                    out.json(&key)?;
+                    out.raw(b":")?;
+                    let child = self.data(&object, &key)?;
+                    frames.push(WalkFrame::Object {
+                        object,
+                        keys,
+                        first: false,
+                    });
+                    frames.push(WalkFrame::Value(child));
+                }
+                WalkFrame::Exit(close) => {
+                    out.raw(&[close])?;
+                    ancestors.pop();
                 }
             }
-            out.raw(b"[")?;
-            for i in 0..len {
-                if i != 0 {
-                    out.raw(b",")?;
-                }
-                self.walk(
-                    self.data(object, &i.to_string())?,
-                    out,
-                    ancestors,
-                    stop,
-                    deadline,
-                )?;
-            }
-            out.raw(b"]")?;
-        } else {
-            out.raw(b"{")?;
-            let mut first = true;
-            for key in object.own_keys::<Atom>(Filter::new().string().symbol()) {
-                let key = key
-                    .map_err(|_| ErrorKind::InvalidOutput)?
-                    .to_value()
-                    .map_err(|_| ErrorKind::InvalidOutput)?;
-                let key = key
-                    .as_string()
-                    .ok_or(ErrorKind::InvalidOutput)?
-                    .to_string()
-                    .map_err(|_| ErrorKind::InvalidOutput)?;
-                let descriptor: Object = self
-                    .descriptor
-                    .call((object.clone(), key.as_str()))
-                    .map_err(|_| ErrorKind::InvalidOutput)?;
-                if !descriptor
-                    .get::<_, bool>("enumerable")
-                    .map_err(|_| ErrorKind::InvalidOutput)?
-                {
-                    return Err(ErrorKind::InvalidOutput.into());
-                }
-                if !first {
-                    out.raw(b",")?;
-                }
-                first = false;
-                out.json(&key)?;
-                out.raw(b":")?;
-                self.walk(self.data(object, &key)?, out, ancestors, stop, deadline)?;
-            }
-            out.raw(b"}")?;
         }
-        ancestors.pop();
         Ok(())
     }
+}
+
+enum WalkFrame<'js> {
+    Value(JsValue<'js>),
+    Array {
+        object: Object<'js>,
+        index: usize,
+        len: usize,
+    },
+    Object {
+        object: Object<'js>,
+        keys: ObjectKeysIter<'js, Atom<'js>>,
+        first: bool,
+    },
+    Exit(u8),
 }
 
 struct BoundedBytes {
