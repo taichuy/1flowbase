@@ -493,4 +493,18 @@ async fn code_template_registration_does_not_create_duplicate_component_records(
         .await
         .unwrap()
         .is_empty());
+    // Built-in catalogs are boot-owned, not governed by managed family version selection.
+    sqlx::query("update extension_installations set source_kind='builtin' where id=$1")
+        .bind(previous.installation_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .list_system_frontend_blocks(&previous.node_id)
+            .await
+            .unwrap()
+            .len(),
+        6
+    );
 }

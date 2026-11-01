@@ -20,8 +20,8 @@ block_contributions:
     runtime: native_react
     entry: default
     ui_registration: component
-    code_template: "import { Calendar } from '@example/calendar'; export default () => <Calendar />;"
-    code_template_version: 1.0.0
+    code_template: "import { Calendar } from '@taichuy/taichuy-calendar'; export default () => <Calendar />;"
+    code_template_version: 0.1.5
     code_template_language: tsx
     # Declare code_modules, context_contract and permissions as required by the manifest contract.
 ```

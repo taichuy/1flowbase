@@ -193,7 +193,7 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
             where installation.verification_status = 'valid'
               and artifact.artifact_status = 'ready'
               and artifact.availability_status = 'available'
-              and artifact.is_current = true
+              and (installation.source_kind = 'builtin' or artifact.is_current = true)
             order by reg.title asc, reg.contribution_code asc
             "#,
         )
