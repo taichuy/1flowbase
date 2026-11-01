@@ -270,10 +270,7 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
   ) : undefined;
 
   return (
-    <SettingsSectionSurface
-      heightMode="fill"
-      status={visible.length ? loadError : undefined}
-    >
+    <SettingsSectionSurface heightMode="fill" status={loadError}>
       <DataTableLayout
         filters={
           <DataTableFilterForm
@@ -318,37 +315,38 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
           </DataTableFilterForm>
         }
       >
-        <DataTable
-          columns={columns}
-          configuration={tableConfiguration}
-          dataSource={visible}
-          emptyText={loadError}
-          loading={query.isLoading || query.isFetching}
-          page={page}
-          pageSize={PAGE_SIZE}
-          rowKey="id"
-          total={filtered.length}
-          onPageChange={setPage}
-          toolbar={
-            <Flex justify="flex-end" gap={8} wrap>
-              <Button onClick={() => setCatalogOpen(true)}>
-                {t('remote_catalog')}
-              </Button>
-              {canManage ? (
-                <Button type="primary" onClick={create}>
-                  {t('new_component')}
+        {!query.isError || visible.length > 0 ? (
+          <DataTable
+            columns={columns}
+            configuration={tableConfiguration}
+            dataSource={visible}
+            loading={query.isLoading || query.isFetching}
+            page={page}
+            pageSize={PAGE_SIZE}
+            rowKey="id"
+            total={filtered.length}
+            onPageChange={setPage}
+            toolbar={
+              <Flex justify="flex-end" gap={8} wrap>
+                <Button onClick={() => setCatalogOpen(true)}>
+                  {t('remote_catalog')}
                 </Button>
-              ) : null}
-              <Button onClick={() => query.refetch()}>
-                {t('component_refresh')}
-              </Button>
-              <DataTableColumnSettings
-                columns={columns}
-                configuration={tableConfiguration}
-              />
-            </Flex>
-          }
-        />
+                {canManage ? (
+                  <Button type="primary" onClick={create}>
+                    {t('new_component')}
+                  </Button>
+                ) : null}
+                <Button onClick={() => query.refetch()}>
+                  {t('component_refresh')}
+                </Button>
+                <DataTableColumnSettings
+                  columns={columns}
+                  configuration={tableConfiguration}
+                />
+              </Flex>
+            }
+          />
+        ) : null}
       </DataTableLayout>
 
       <ResizableDrawer

@@ -402,7 +402,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
   return (
     <SettingsSectionSurface
       heightMode="fill"
-      status={rows.length ? loadError : undefined}
+      status={loadError}
       toolbar={
         <Flex justify="space-between" align="center" gap={8} wrap>
           <Button
@@ -419,26 +419,27 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
         </Flex>
       }
     >
-      <DataTable<TemplateRow>
-        columns={columns}
-        configuration={tableConfiguration}
-        page={currentPage}
-        pageSize={pageSize}
-        total={rows.length}
-        onPageChange={setPage}
-        loading={query.isFetching}
-        emptyText={loadError}
-        rowKey="key"
-        onRow={(row) =>
-          ({
-            'data-template-id': row.kind === 'managed' ? row.id : undefined
-          }) as HTMLAttributes<HTMLTableRowElement>
-        }
-        dataSource={rows.slice(
-          (currentPage - 1) * pageSize,
-          currentPage * pageSize
-        )}
-      />
+      {!query.isError || rows.length > 0 ? (
+        <DataTable<TemplateRow>
+          columns={columns}
+          configuration={tableConfiguration}
+          page={currentPage}
+          pageSize={pageSize}
+          total={rows.length}
+          onPageChange={setPage}
+          loading={query.isFetching}
+          rowKey="key"
+          onRow={(row) =>
+            ({
+              'data-template-id': row.kind === 'managed' ? row.id : undefined
+            }) as HTMLAttributes<HTMLTableRowElement>
+          }
+          dataSource={rows.slice(
+            (currentPage - 1) * pageSize,
+            currentPage * pageSize
+          )}
+        />
+      ) : null}
       {studio ? (
         <UiCodeTemplateStudio
           initialValue={studio.initialValue}
