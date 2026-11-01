@@ -507,7 +507,11 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
     .is_err());
     for unsupported in [
         json!({"role":"user","content":"context","phase":"analysis"}),
-        json!({"role":"assistant","content":"context","id":"msg_unowned"}),
+        // A delivery ID on complete inline text is not a stored-item lookup.
+        // These inputs really need a persisted/native owner instead.
+        json!({"type":"item_reference","id":"msg_unowned"}),
+        json!({"type":"message","role":"assistant","id":"msg_unowned"}),
+        json!({"role":"assistant","content":"context","id":"msg_unowned","status":"in_progress"}),
         json!({"role":7,"content":"context"}),
         json!({"role":"user","content":[{"type":"input_text","text":"context","unknown_extension":true}]}),
         json!({"role":"user","content":[{"type":"input_image","image_url":{"url":"https://example.test/image.png","unknown_extension":true}}]}),
@@ -668,4 +672,89 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
     .await
     .unwrap()
     .is_none());
+}
+
+#[tokio::test]
+async fn semantic_owned_round_accepts_complete_inline_delivery_id_without_item_lookup() {
+    let first = json!({"model":"fixture", "tools":[], "input":[{"role":"user","content":"work"}]});
+    let digest = ProviderTransportPayload::openai_responses(first.clone())
+        .unwrap()
+        .configuration_digest()
+        .unwrap();
+    let (repository, actor, run) =
+        fixture_with_input(json!({"sys":{"responses_configuration_digest":digest}})).await;
+    let calls = vec![json!({"id":"call_semantic","name":"read","arguments":{}})];
+    let output =
+        crate::application_public_api::compat::openai::projection::function_call_items(&calls);
+    let history = crate::application_public_api::compat::openai::history::completed_history(
+        &first, None, &output,
+    )
+    .unwrap()
+    .unwrap();
+    let callback = repository.seed_pending_llm_tool_callback_task(run, json!({
+        "tool_calls":calls,
+        "responses_round":{"response_id":format!("resp_{run}"),"history":history,"output":output}
+    }));
+    let before = repository
+        .get_published_callback_task(callback.id)
+        .await
+        .unwrap()
+        .unwrap();
+    for id in ["msg_unowned", "opaque/delivery-id"] {
+        let message = json!({"type":"message","role":"assistant","id":id,
+            "status":"completed","content":[{"type":"output_text","text":"  context λ\n","annotations":[]}]});
+        let mut delta = first.clone();
+        delta["previous_response_id"] = json!(format!("resp_{run}"));
+        delta["input"] = json!([message, {"type":"function_call_output","call_id":"call_semantic","output":"ok"}]);
+        let grant = correlate_semantic_responses_callback(
+            &repository,
+            &actor,
+            &OpenAiResponsesEnvelope::capture(delta.clone()).unwrap(),
+        )
+        .await
+        .unwrap()
+        .expect("complete inline content is not a persisted-item reference");
+        assert_eq!(grant.callback_task_id(), callback.id);
+        let continuation = &grant.payload()["responses_continuation"];
+        assert_eq!(continuation["ordered_input"][0], message);
+        assert_eq!(
+            continuation["ordered_messages"][0],
+            json!({"role":"assistant","content":"  context λ\n"})
+        );
+        assert_eq!(
+            continuation["ordered_messages"][1]["tool_call_id"],
+            "call_semantic"
+        );
+
+        // Delivery metadata alone cannot mint callback authority.
+        let mut context_only = delta.clone();
+        context_only["input"] = json!([message]);
+        assert!(correlate_semantic_responses_callback(
+            &repository,
+            &actor,
+            &OpenAiResponsesEnvelope::capture(context_only).unwrap(),
+        )
+        .await
+        .unwrap()
+        .is_none());
+        let mut other_key = actor.clone();
+        other_key.api_key_id = Uuid::now_v7();
+        assert!(correlate_semantic_responses_callback(
+            &repository,
+            &other_key,
+            &OpenAiResponsesEnvelope::capture(delta).unwrap(),
+        )
+        .await
+        .unwrap()
+        .is_none());
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap(),
+            before
+        );
+        assert!(repository.callback_resume_attempts().is_empty());
+    }
 }
