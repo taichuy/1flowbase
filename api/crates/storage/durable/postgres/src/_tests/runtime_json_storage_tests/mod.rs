@@ -7,6 +7,7 @@ mod node_events;
 mod observation_bodies;
 mod trace_differential;
 mod trace_shared_payload;
+mod usage_totals;
 
 use control_plane_contracts::{application_public_runtime::*, ports::*};
 use serde_json::{json, Value};

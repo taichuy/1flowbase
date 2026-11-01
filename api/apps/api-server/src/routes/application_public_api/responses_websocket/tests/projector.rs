@@ -1120,7 +1120,7 @@ fn responses_resume_websocket_usage_is_round_local_for_every_terminal_kind() {
                     ..NativeUsage::default()
                 });
                 let payload = if known {
-                    json!({"native_usage_baseline":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"cache_read_tokens":60,"reasoning_tokens":5}})
+                    json!({"native_usage_baseline_source":"usage_ledger","native_usage_baseline":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"cache_read_tokens":60,"reasoning_tokens":5}})
                 } else {
                     json!({})
                 };

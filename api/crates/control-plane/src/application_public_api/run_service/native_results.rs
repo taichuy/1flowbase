@@ -159,8 +159,16 @@ pub fn native_result_from_run_stream_state(
     result.tool_calls = native_status_exposes_tool_calls(result.status)
         .then(|| extract_tool_calls(&stream_state.output_payload))
         .flatten();
-    result.usage =
-        native_usage_for_output_and_nodes(&stream_state.output_payload, &stream_state.node_usages);
+    result.usage = stream_state
+        .usage_totals
+        .as_ref()
+        .and_then(usage_from_payload)
+        .or_else(|| {
+            native_usage_for_output_and_nodes(
+                &stream_state.output_payload,
+                &stream_state.node_usages,
+            )
+        });
     result.error = native_error_from_payload(stream_state.error_payload.as_ref());
     result.operation_terminal = matches!(
         result.status,
@@ -393,7 +401,7 @@ fn extract_tool_calls(output_payload: &Value) -> Option<Value> {
         .cloned()
 }
 
-pub(crate) fn native_usage_for_output_and_nodes(
+fn native_usage_for_output_and_nodes(
     output_payload: &Value,
     node_usages: &[super::repository_contracts::PublishedRunNodeUsage],
 ) -> Option<native::NativeUsage> {

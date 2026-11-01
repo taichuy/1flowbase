@@ -431,13 +431,11 @@ where
             )?;
             let mut request_payload = wait.request_payload.clone();
             if wait.callback_kind == "llm_tool_calls" {
-                let node_usages = repository.get_flow_run_node_usages(flow_run.id).await?;
-                request_payload["native_usage_baseline"] = serde_json::to_value(
-                    crate::application_public_api::run_service::native_usage_for_output_and_nodes(
-                        &answer_output_payload,
-                        &node_usages,
-                    ),
-                )?;
+                request_payload["native_usage_baseline"] = repository
+                    .get_flow_run_usage_totals(flow_run.id)
+                    .await?
+                    .unwrap_or(Value::Null);
+                request_payload["native_usage_baseline_source"] = json!("usage_ledger");
             }
             let mut snapshot = snapshot.clone();
             if wait.callback_kind == "llm_tool_calls" {

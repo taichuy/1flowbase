@@ -482,6 +482,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
             output_payload: row.get("output_payload"),
             error_payload: row.get("error_payload"),
             node_usages,
+            usage_totals: self.read_flow_run_usage_totals(flow_run_id).await?,
             latest_pending_callback,
         }))
     }

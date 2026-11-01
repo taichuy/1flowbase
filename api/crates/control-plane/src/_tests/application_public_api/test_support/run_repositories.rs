@@ -849,6 +849,7 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
             output_payload: flow_run.output_payload.clone(),
             error_payload: flow_run.error_payload.clone(),
             node_usages,
+            usage_totals: None,
             latest_pending_callback,
         }))
     }
