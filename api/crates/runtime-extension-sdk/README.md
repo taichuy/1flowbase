@@ -269,7 +269,7 @@ let result = run_script(&script, &input, Limits {
 
 `CapabilityExecutionBudget` / `CAPABILITY_STDIO_FRAME_BYTES` reexport 现有 Host 预算与 canonical unary frame 边界；调用方仍须把实际协议 envelope 计入 transport frame，不用引擎 payload 上限替代整帧检查。0 memory/stack 表示跳过 setter、保留 QuickJS 默认值，不是显式设为 unlimited。
 
-每次新建并销毁 Runtime/Context；同步 `main(input)` 返回 plain JSON object，不运行 job queue、Node/npm 或依赖下载。严格 codec 拒绝所有深度的 undefined、非有限数、Promise、环、稀疏数组、function/symbol/BigInt、accessor、symbol/非 enumerable 自有属性及非 plain object；支持共享非环引用，不调用 `toJSON` 或 guest 可改写的 JSON.stringify。最大嵌套深度 96（拒绝超深输出，避免 host 栈溢出）。输出与捕获 console 共用传入的 UTF-8 byte budget；具体错误代码由 `ExecutionError::code()` 给出，无本机绝对路径。
+每次新建并销毁 Runtime/Context；同步 `main(input)` 返回 plain JSON object，不运行 job queue、Node/npm 或依赖下载。严格 codec 拒绝所有深度的 undefined、非有限数、Promise、环、稀疏数组、function/symbol/BigInt、accessor、symbol/非 enumerable 自有属性及非 plain object；支持共享非环引用，不调用 `toJSON` 或 guest 可改写的 JSON.stringify。遍历使用显式 frame 栈，Rust 调用栈不随树深增长；最终 JSON 解码仍遵循宿主既有 serde 解析合同，不承诺无限深输入。输出与捕获 console 共用传入的 UTF-8 byte budget；具体错误代码由 `ExecutionError::code()` 给出，无本机绝对路径。
 
 loader 只解析 `current_exe()/../..` 的 `bin` 父版本目录，根目录名与 expected/descriptor version 必须一致；逻辑 selector 仅由 `/` 分隔的 ASCII 字母/数字/`.`/`_`/`-` 路径段组成，不允许空段、`.`、`..` 或平台绝对路径。canonical containment 拒绝 symlink escape；只读 regular UTF-8 文件，metadata 与已读长度必须精确等于 compiled descriptor.bytes，读取上限 bytes + 1；校验同一 descriptor 的小写 64 位 hex SHA256 后执行同一份已读字节。版本安装目录必须在调用期间不可变；不声称对可并发恶意改写的目录实现无 TOCTOU。
 
