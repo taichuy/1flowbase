@@ -1100,3 +1100,74 @@ fn native_resumed_websocket_round_preserves_identity_and_tool_items() {
 mod selection_and_failures;
 #[path = "_tests/selection_transitions.rs"]
 mod selection_transitions;
+
+#[test]
+fn responses_resume_websocket_usage_is_round_local_for_every_terminal_kind() {
+    use crate::routes::application_public_api::openai::usage::ResponseUsageBaseline;
+    for event_type in ["flow_finished", "flow_incomplete", "waiting_callback"] {
+        for known in [true, false] {
+            for mode in [
+                ResponsesProjectionMode::SemanticNativeResponses,
+                ResponsesProjectionMode::TransparentProviderResponses,
+            ] {
+                let mut run = native_run(0x11111111111111111111111111111120);
+                run.usage = Some(NativeUsage {
+                    prompt_tokens: Some(220),
+                    completion_tokens: Some(35),
+                    total_tokens: Some(255),
+                    cache_read_tokens: Some(150),
+                    reasoning_tokens: Some(12),
+                    ..NativeUsage::default()
+                });
+                let payload = if known {
+                    json!({"native_usage_baseline":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"cache_read_tokens":60,"reasoning_tokens":5}})
+                } else {
+                    json!({})
+                };
+                let baseline = ResponseUsageBaseline::from_callback_payload(&payload);
+                let mut projector = ResponsesWebSocketProjector::with_mode(
+                    "provider/model".into(),
+                    Some("resp_prior".into()),
+                    mode,
+                )
+                .with_usage_baseline(baseline);
+                let payload = if event_type == "waiting_callback" {
+                    json!({"callback_task_id":Uuid::now_v7(),"callback_kind":"llm_tool_calls","required_action":{"action_type":"submit_tool_outputs","payload":{"tool_calls":[{"id":"call-test","name":"probe","arguments":{}}]}}})
+                } else {
+                    json!({})
+                };
+                let envelope = RuntimeEventEnvelope::new(
+                    run.id,
+                    1,
+                    RuntimeEventPayload {
+                        event_type: event_type.into(),
+                        source: RuntimeEventSource::Runtime,
+                        durability: RuntimeEventDurability::DurableRequired,
+                        persist_required: true,
+                        trace_visible: true,
+                        payload,
+                    },
+                );
+                let frames = decoded(projector.project(&run, envelope).unwrap());
+                let terminal = frames
+                    .iter()
+                    .find(|event| {
+                        matches!(
+                            event["type"].as_str(),
+                            Some("response.completed" | "response.incomplete")
+                        )
+                    })
+                    .expect("terminal Responses WS");
+                if known {
+                    assert_eq!(
+                        terminal["response"]["usage"],
+                        json!({"input_tokens":120,"output_tokens":15,"total_tokens":135,"input_tokens_details":{"cached_tokens":90},"output_tokens_details":{"reasoning_tokens":7}})
+                    );
+                } else {
+                    assert!(terminal["response"]["usage"].is_null());
+                }
+                assert_eq!(run.usage.unwrap().prompt_tokens, Some(220));
+            }
+        }
+    }
+}

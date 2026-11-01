@@ -43,6 +43,7 @@ pub(crate) struct ResponsesWebSocketProjector {
     output_item_index: usize,
     next_sequence_number: u64,
     state: ProjectionState,
+    usage_baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
 }
 
 impl ResponsesWebSocketProjector {
@@ -73,7 +74,16 @@ impl ResponsesWebSocketProjector {
             output_item_index: 0,
             next_sequence_number: 0,
             state: ProjectionState::Initial,
+            usage_baseline: Default::default(),
         }
+    }
+
+    pub(crate) fn with_usage_baseline(
+        mut self,
+        baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
+    ) -> Self {
+        self.usage_baseline = baseline;
+        self
     }
 
     pub(crate) fn project(
@@ -181,6 +191,10 @@ impl ResponsesWebSocketProjector {
             _ => self.begin_streaming(),
         }
 
+        for event in &mut events {
+            self.usage_baseline
+                .project_responses_event(event, run.usage.as_ref());
+        }
         let frames = self.serialize(events)?;
         if terminal {
             self.state = ProjectionState::Terminal;

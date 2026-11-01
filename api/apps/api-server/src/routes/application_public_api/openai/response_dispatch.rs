@@ -287,8 +287,11 @@ async fn prepare_response(
                             return Err(error);
                         }
                     }
+                    let usage_baseline =
+                        load_callback_usage_baseline(&state, resume.callback_task_id).await?;
                     return Ok(execution::PreparedResponseDispatch::Resume(Box::new(
                         execution::PreparedResumeResponse {
+                            usage_baseline,
                             context: execution::ResponseExecutionContext {
                                 state,
                                 principal,

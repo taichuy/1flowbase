@@ -53,6 +53,7 @@ pub(super) async fn collect_blocking_native_response(
     previous_response_id: Option<String>,
     recorder: Option<&ClientTrajectoryRecorder>,
     projection_mode: compat_sse::ResponsesProjectionMode,
+    usage_baseline: &usage::ResponseUsageBaseline,
 ) -> Result<OpenAiResponsesObject, OpenAiRouteError> {
     let (mut events, completion) = invocation.into_parts();
     // The typed turn already applies the resume sequence boundary. Keep the
@@ -137,8 +138,13 @@ pub(super) async fn collect_blocking_native_response(
         )
         .into());
     }
-    let response =
-        to_openai_responses_response_with_native_items(run, model, previous_response_id, items)?;
+    let response = to_openai_responses_response_for_round(
+        run,
+        model,
+        previous_response_id,
+        items,
+        usage_baseline,
+    )?;
     let _receipt = receipt.projected();
     for delivery in deliveries {
         delivery.projected();
@@ -195,6 +201,24 @@ pub(in super::super) fn to_openai_responses_response(
     previous_response_id: Option<String>,
 ) -> Result<OpenAiResponsesObject, OpenAiRouteError> {
     to_openai_responses_response_with_native_items(run, model, previous_response_id, None)
+}
+
+pub(super) fn to_openai_responses_response_for_round(
+    run: NativeRunResult,
+    model: String,
+    previous_response_id: Option<String>,
+    native_items: Option<Vec<Value>>,
+    usage_baseline: &usage::ResponseUsageBaseline,
+) -> Result<OpenAiResponsesObject, OpenAiRouteError> {
+    let round_usage = usage_baseline.project_responses(run.usage.as_ref());
+    let mut response = to_openai_responses_response_with_native_items(
+        run,
+        model,
+        previous_response_id,
+        native_items,
+    )?;
+    response.usage = round_usage;
+    Ok(response)
 }
 
 pub(super) fn to_openai_responses_response_with_native_items(
@@ -266,7 +290,7 @@ pub(super) fn to_openai_responses_response_with_native_items(
         model,
         output,
         output_text,
-        usage: openai_responses_usage(run.usage.as_ref()),
+        usage: Some(openai_responses_usage(run.usage.as_ref())),
         incomplete_details,
         previous_response_id,
     })

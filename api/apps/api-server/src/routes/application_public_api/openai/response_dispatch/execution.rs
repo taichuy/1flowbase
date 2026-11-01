@@ -26,6 +26,7 @@ pub(super) struct PreparedStartResponse {
 }
 
 pub(super) struct PreparedResumeResponse {
+    pub(super) usage_baseline: usage::ResponseUsageBaseline,
     pub(super) context: ResponseExecutionContext,
     pub(super) authentication_binding_id: &'static str,
     pub(super) plan: Box<compat_sse::CompatibleResumePlan>,
@@ -112,6 +113,7 @@ async fn execute_generate(
             previous_response_id,
             recorder.as_ref(),
             projection_mode,
+            &usage::ResponseUsageBaseline::NewRun,
         )
         .await?;
         info!(
@@ -180,6 +182,7 @@ async fn execute_generate(
             previous_response_id,
             runtime,
             projection_mode,
+            usage_baseline: usage::ResponseUsageBaseline::NewRun,
         },
     )))
 }
@@ -302,6 +305,7 @@ async fn execute_resume(
         context,
         authentication_binding_id,
         plan,
+        usage_baseline,
     } = resume;
     let ResponseExecutionContext {
         state,
@@ -335,10 +339,11 @@ async fn execute_resume(
                     principal,
                     input,
                     recorder.clone(),
-                    compat_sse::openai_responses_interface_projection_with_mode(
+                    compat_sse::openai_responses_resume_interface_projection(
                         model,
                         previous_response_id,
                         projection_mode,
+                        usage_baseline,
                     ),
                 )
                 .await
@@ -359,6 +364,7 @@ async fn execute_resume(
                         previous_response_id,
                         runtime,
                         projection_mode,
+                        usage_baseline,
                     },
                 )))
             }
@@ -390,6 +396,7 @@ async fn execute_resume(
         previous_response_id,
         recorder.as_ref(),
         projection_mode,
+        &usage_baseline,
     )
     .await?;
     Ok(OpenAiResponseDispatch::Http(Json(response).into_response()))

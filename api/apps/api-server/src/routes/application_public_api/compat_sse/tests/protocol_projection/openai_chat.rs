@@ -316,7 +316,7 @@ async fn chat_usage_details_stream_preserves_cache_and_reasoning() {
 
 #[tokio::test]
 async fn chat_resume_sse_usage_is_turn_local_and_missing_boundary_is_omitted() {
-    use crate::routes::application_public_api::openai::chat_usage::ChatUsageBaseline;
+    use crate::routes::application_public_api::openai::usage::ResponseUsageBaseline;
     let mut run = native_run();
     run.usage = Some(NativeUsage {
         prompt_tokens: Some(16212),
@@ -330,7 +330,7 @@ async fn chat_resume_sse_usage_is_turn_local_and_missing_boundary_is_omitted() {
         json!({}),
     ] {
         for event_type in ["flow_finished", "flow_incomplete", "waiting_callback"] {
-            let baseline = ChatUsageBaseline::from_callback_payload(&baseline_payload);
+            let baseline = ResponseUsageBaseline::from_callback_payload(&baseline_payload);
             let mut mapper = OpenAiChatStreamMapper::new("deepseek-flash".into(), "turn".into())
                 .with_usage_baseline(baseline);
             let payload = if event_type == "waiting_callback" {
