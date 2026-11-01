@@ -251,7 +251,12 @@ async fn dispatch_chat_completion(
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan))
                 if response_mode.as_deref() == Some("streaming") =>
             {
-                let usage_baseline = load_callback_usage_baseline(&state, callback_task_id).await?;
+                let usage_baseline = load_callback_usage_baseline(
+                    &state,
+                    callback_task_id,
+                    "chat_usage_boundary_failed",
+                )
+                .await?;
                 let completion_id = compat_sse::openai_chat_completion_id_from_callback_task(
                     plan.initial_run.id,
                     callback_task_id,
@@ -278,7 +283,12 @@ async fn dispatch_chat_completion(
                 .map_err(Into::into);
             }
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
-                let usage_baseline = load_callback_usage_baseline(&state, callback_task_id).await?;
+                let usage_baseline = load_callback_usage_baseline(
+                    &state,
+                    callback_task_id,
+                    "chat_usage_boundary_failed",
+                )
+                .await?;
                 let run = compatibility_interface::invoke_blocking_with_principal(
                     state.clone(),
                     resume_binding_id,
@@ -431,6 +441,7 @@ async fn dispatch_chat_completion(
 async fn load_callback_usage_baseline(
     state: &ApiState,
     callback_task_id: Uuid,
+    error_code: &'static str,
 ) -> Result<usage::ResponseUsageBaseline, OpenAiRouteError> {
     // Admission already verified the callback's application/API actor ownership.
     let callback = state
@@ -440,7 +451,7 @@ async fn load_callback_usage_baseline(
         .map_err(|error| {
             native::NativeApiError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "callback_usage_boundary_failed",
+                error_code,
                 error.to_string(),
             )
         })?;

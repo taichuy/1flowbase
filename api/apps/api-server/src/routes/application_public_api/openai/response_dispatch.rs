@@ -287,8 +287,12 @@ async fn prepare_response(
                             return Err(error);
                         }
                     }
-                    let usage_baseline =
-                        load_callback_usage_baseline(&state, resume.callback_task_id).await?;
+                    let usage_baseline = load_callback_usage_baseline(
+                        &state,
+                        resume.callback_task_id,
+                        "responses_usage_boundary_failed",
+                    )
+                    .await?;
                     return Ok(execution::PreparedResponseDispatch::Resume(Box::new(
                         execution::PreparedResumeResponse {
                             usage_baseline,
