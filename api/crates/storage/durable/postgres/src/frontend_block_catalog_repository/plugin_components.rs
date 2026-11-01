@@ -45,7 +45,10 @@ pub(crate) async fn sync_plugin_components(
         .await?;
     let mut contributions = Vec::new();
     for entry in &input.entries {
-        // A full template is the reusable source, not an invented import of the entry symbol.
+        if entry.ui_registration != "component" {
+            continue;
+        }
+        // Registration is explicit. Source alone does not opt a code template into components.
         let Some(source) = entry
             .code_template
             .as_deref()

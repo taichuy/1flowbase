@@ -92,6 +92,7 @@ fn install(candidate: &FrontendContributionCandidate) -> CommitPluginInstallatio
                 title: block.title.clone(),
                 runtime: block.runtime.clone(),
                 entry: block.entry.clone(),
+                ui_registration: "component".into(),
                 code_template: Some("export default function Block() { return <Hero />; }".into()),
                 code_template_version: Some("1.0.0".into()),
                 code_template_language: Some("tsx".into()),

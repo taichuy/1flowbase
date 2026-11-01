@@ -388,6 +388,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
 
   return (
     <SettingsSectionSurface
+      heightMode="fill"
       toolbar={
         <Flex justify="space-between" align="center" gap={8} wrap>
           <Button

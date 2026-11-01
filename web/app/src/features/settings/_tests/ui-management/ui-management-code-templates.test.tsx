@@ -324,6 +324,14 @@ describe('UiManagementPanel code templates', () => {
     }
   });
 
+  test('keeps the code template table inside the viewport scroll owner', async () => {
+    const view = await renderPanel();
+    await screen.findByText('自定义区块');
+    expect(view.container.querySelector('.settings-section-surface')).toHaveClass(
+      'settings-section-surface--fill'
+    );
+  });
+
   test('AC-DELETE-002 permanently deletes a managed template and refreshes the list', async () => {
     await renderPanel();
     const name = await screen.findByText('自定义区块');

@@ -125,6 +125,7 @@ where
         let managed = available;
         let mut official = blocks
             .into_iter()
+            .filter(|block| block.ui_registration == "code_template")
             .filter_map(|block| {
                 Some(OfficialUiCodeTemplate {
                     provider_code: block.provider_code,
@@ -177,6 +178,9 @@ where
         let managed = self.repository.list_ui_code_templates().await?;
         let mut templates = Vec::new();
         for block in blocks {
+            if block.ui_registration != "code_template" {
+                continue;
+            }
             let (Some(source), Some(language), Some(version)) = (
                 block.code_template.clone(),
                 block

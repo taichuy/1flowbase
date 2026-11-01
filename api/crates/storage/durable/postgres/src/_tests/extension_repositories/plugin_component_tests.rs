@@ -25,6 +25,7 @@ fn components(actor: Uuid, version: &str) -> CommitPluginInstallationInput {
             title: format!("View {index}"),
             runtime: "native_react".into(),
             entry: format!("View{index}"),
+            ui_registration: "component".into(),
             code_template: Some(format!(
                 "export default function View{index}() {{ return <p>{version}</p>; }}"
             )),
@@ -457,4 +458,39 @@ async fn publisher_owner_migration_preserves_record_ids_and_matches_install_proj
         assert_eq!(after.component_code, before.component_code);
         assert_eq!(after.owner_installation_id, Some(installed.id));
     }
+}
+
+#[tokio::test]
+async fn code_template_registration_does_not_create_duplicate_component_records() {
+    let store = store().await;
+    let actor = actor(&store).await;
+    let mut command = components(actor, "1.0.0");
+    command.frontend_blocks.entries[0].ui_registration = "code_template".into();
+    command.artifact_instance.availability_status = domain::PluginAvailabilityStatus::Available;
+    store.commit_plugin_installation(&command).await.unwrap();
+    let records = store.list_ui_component_records().await.unwrap();
+    assert_eq!(records.len(), 5);
+    assert!(records
+        .iter()
+        .all(|record| record.owner_contribution_code.as_deref() != Some("view-0")));
+    let entries = store
+        .list_system_frontend_blocks(&command.artifact_instance.node_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        entries
+            .iter()
+            .filter(|entry| entry.ui_registration == "code_template")
+            .count(),
+        1
+    );
+    // Retained assets from an older version must not reappear as current templates.
+    let mut previous = command.artifact_instance.clone();
+    previous.is_current = false;
+    store.upsert_artifact_instance(&previous).await.unwrap();
+    assert!(store
+        .list_system_frontend_blocks(&previous.node_id)
+        .await
+        .unwrap()
+        .is_empty());
 }

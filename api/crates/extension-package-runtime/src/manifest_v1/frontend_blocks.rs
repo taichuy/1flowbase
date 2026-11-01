@@ -40,6 +40,18 @@ pub(crate) fn validate_frontend_block_contributions(
         )?;
         validate_non_empty(&contribution.title, "block_contributions[].title")?;
         validate_non_empty(&contribution.entry, "block_contributions[].entry")?;
+        validate_allowed(
+            &contribution.ui_registration,
+            "block_contributions[].ui_registration",
+            &["code_template", "component"],
+        )?;
+        if contribution.ui_registration == "component"
+            && (contribution.runtime != "native_react" || contribution.code_template.is_none())
+        {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "block_contributions[].ui_registration component requires native_react and code_template",
+            ));
+        }
         match (
             contribution.code_template.as_deref(),
             contribution.code_template_version.as_deref(),

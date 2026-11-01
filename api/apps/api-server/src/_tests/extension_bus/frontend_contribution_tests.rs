@@ -89,6 +89,7 @@ fn candidate(workspace_id: Uuid) -> (FrontendContributionCandidate, PathBuf) {
         title: "Hero".to_string(),
         runtime: "native_react".to_string(),
         entry: "blocks/hero.js".to_string(),
+        ui_registration: "code_template".into(),
         code_template: None,
         code_template_version: None,
         code_template_language: None,

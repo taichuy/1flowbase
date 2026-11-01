@@ -867,6 +867,7 @@ fn frontend_candidate(
         title: "Hero".into(),
         runtime: "native_react".into(),
         entry: "blocks/hero.js".into(),
+        ui_registration: "code_template".into(),
         code_template: Some("official".into()),
         code_template_version: Some("official-v1".into()),
         code_template_language: Some("jsx".into()),

@@ -103,6 +103,7 @@ pub(super) fn build_frontend_block_sync_input(
                 title: block.title.clone(),
                 runtime: block.runtime.clone(),
                 entry: block.entry.clone(),
+                ui_registration: block.ui_registration.clone(),
                 code_template: block.code_template.clone(),
                 code_template_version: block.code_template_version.clone(),
                 code_template_language: block.code_template_language.clone(),
