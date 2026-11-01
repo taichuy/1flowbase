@@ -13,8 +13,14 @@ const FRONTEND_BLOCK_ALLOWED_PRIMITIVES: &[&str] = &[
 ];
 const FRONTEND_BLOCK_ALLOWED_UI_CAPABILITIES: &[&str] =
     &["responsive", "configurable", "theming", "data_binding"];
-const FRONTEND_BLOCK_HOST_MODULE_SOURCES: &[&str] =
-    &["react", "antd", "antd-style", "dayjs", "@ant-design/icons"];
+const FRONTEND_BLOCK_HOST_MODULE_SOURCES: &[&str] = &[
+    "react",
+    "antd",
+    "antd-style",
+    "dayjs",
+    "@ant-design/icons",
+    "clsx",
+];
 
 pub(crate) fn validate_frontend_block_contributions(
     contributions: &[FrontendBlockContributionManifest],

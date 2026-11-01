@@ -313,7 +313,14 @@ fn shared_sibling_modules_preserve_independent_authority_and_reject_conflicts() 
 
 #[test]
 fn shared_host_bindings_use_the_existing_native_dependency_abi_only() {
-    for source in ["react", "antd", "antd-style", "dayjs", "@ant-design/icons"] {
+    for source in [
+        "react",
+        "antd",
+        "antd-style",
+        "dayjs",
+        "@ant-design/icons",
+        "clsx",
+    ] {
         let module = format!("      - source: '{source}'\n        version: '1.0.0'\n        exports: [default]\n        binding: host\n        type_declarations: \"declare module '{source}' {{}}\"\n");
         assert!(
             parse_plugin_manifest(&manifest_with_modules(&module)).is_ok(),
