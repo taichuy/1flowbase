@@ -848,6 +848,16 @@ async fn openapi_contains_member_mutation_routes() {
 
 #[tokio::test]
 async fn mcp_role_permission_openapi_documents_canonical_ids_security_and_no_content() {
+    let document = serde_json::to_value(<crate::openapi::ApiDoc as utoipa::OpenApi>::openapi())
+        .expect("full aggregated OpenAPI document must be serializable");
+    let children = &document["components"]["schemas"]["RoleFrontstageRouteNodeResponse"]
+        ["properties"]["children"];
+    assert_eq!(children["type"], "array");
+    assert_eq!(
+        children["items"]["$ref"], "#/components/schemas/RoleFrontstageRouteNodeResponse",
+        "recursive children must retain their self-reference in the full aggregated document"
+    );
+
     let paths = dynamic_openapi_paths().await;
     for (path, method, id, response_schema) in [
         (

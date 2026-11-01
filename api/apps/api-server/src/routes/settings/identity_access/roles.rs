@@ -99,6 +99,7 @@ pub struct RoleFrontstageRouteNodeResponse {
     pub kind: String,
     pub title: Option<String>,
     pub slug: Option<String>,
+    #[schema(no_recursion)]
     pub children: Vec<RoleFrontstageRouteNodeResponse>,
 }
 
