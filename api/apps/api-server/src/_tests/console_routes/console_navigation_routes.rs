@@ -137,6 +137,71 @@ async fn console_navigation_route_returns_admin_registry_with_builtin_permission
     assert!(!item_ids.contains(&"templates".to_string()));
     assert!(item_ids.contains(&"settings.docs".to_string()));
     assert!(item_ids.contains(&"settings.roles".to_string()));
+
+    let admin_policy = crate::_tests::support::get_json(
+        &app,
+        "/api/console/settings/roles/admin/console-policy",
+        &root_cookie,
+    )
+    .await;
+    assert_eq!(admin_policy["data"]["role_code"], "admin");
+    let mut groups = admin_policy["data"]["groups"].clone();
+    let docs_group = groups
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|group| group["kind"] == "settings_feature" && group["group_id"] == "system.docs")
+        .expect("published canonical catalog must seed Admin's docs group");
+    assert_eq!(docs_group["enabled"], true);
+    assert_eq!(docs_group["strategy"], "full");
+    let docs =
+        crate::_tests::support::get_json(&app, "/api/console/docs/catalog", &admin_cookie).await;
+    assert!(!docs["data"]["categories"].as_array().unwrap().is_empty());
+
+    // Publication is a startup step, not a request-time reset of explicit policy.
+    docs_group["enabled"] = json!(false);
+    let replace = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/settings/roles/admin/console-policy")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"groups":groups}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(replace.status(), StatusCode::NO_CONTENT);
+    let (status, navigation) = get_console_navigation(&app, &admin_cookie).await;
+    assert_eq!(status, StatusCode::OK);
+    let item_ids = string_values(&navigation, &["data", "navigation_items"], "item_id");
+    assert!(!item_ids.contains(&"settings.docs".to_string()));
+    assert!(item_ids.contains(&"settings.roles".to_string()));
+    let denied = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/docs/catalog")
+                .header("cookie", &admin_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    let denied_body = to_bytes(denied.into_body(), usize::MAX).await.unwrap();
+    let denied: Value = serde_json::from_slice(&denied_body).unwrap();
+    assert_eq!(denied["code"], "console_operation_permission_denied");
+    let persisted = crate::_tests::support::get_json(
+        &app,
+        "/api/console/settings/roles/admin/console-policy",
+        &root_cookie,
+    )
+    .await;
+    assert_eq!(persisted["data"]["groups"], groups);
 }
 
 #[tokio::test]
