@@ -298,6 +298,69 @@ impl FrontendBlockCatalogRepository for MemoryNodeContributionRepository {
     }
 }
 
+// These repository fixtures exercise legacy, non-managed frontend contributions.
+// A durable-authority request must fail the test instead of implicitly granting it.
+#[async_trait]
+impl control_plane::ports::PluginContributionAuthorityRepository
+    for MemoryNodeContributionRepository
+{
+    async fn lock_managed_installation_switch(
+        &self,
+        _: &control_plane::ports::ManagedInstallationSwitch,
+    ) -> Result<Box<dyn control_plane::ports::ManagedInstallationSwitchLease>> {
+        panic!("unexpected managed installation switch in legacy frontend fixture")
+    }
+
+    async fn lock_contribution_authority_batch(
+        &self,
+        _: &[(Uuid, Uuid)],
+    ) -> Result<Box<dyn control_plane::ports::ContributionAuthorityLease>> {
+        panic!("unexpected authority batch in legacy frontend fixture")
+    }
+
+    async fn contribution_authority_workspaces(&self, _: Uuid) -> Result<Vec<Uuid>> {
+        panic!("unexpected authority workspaces in legacy frontend fixture")
+    }
+
+    async fn lock_installation_contribution_authority(
+        &self,
+        _: Uuid,
+        _: Uuid,
+    ) -> Result<Box<dyn control_plane::ports::ContributionAuthorityLease>> {
+        panic!("unexpected installation authority lock in legacy frontend fixture")
+    }
+
+    async fn grant_contribution_authorization(
+        &self,
+        _: &control_plane::ports::GrantContributionAuthorizationInput,
+    ) -> Result<domain::PluginContributionAuthoritySnapshot> {
+        panic!("unexpected authority grant in legacy frontend fixture")
+    }
+
+    async fn revoke_contribution_authorization(
+        &self,
+        _: &control_plane::ports::RevokeContributionAuthorizationInput,
+    ) -> Result<domain::PluginContributionAuthoritySnapshot> {
+        panic!("unexpected authority revoke in legacy frontend fixture")
+    }
+
+    async fn query_contribution_authority(
+        &self,
+        _: Uuid,
+        _: Uuid,
+        _: &domain::AuditLogRecord,
+    ) -> Result<domain::PluginContributionAuthoritySnapshot> {
+        panic!("unexpected authority query in legacy frontend fixture")
+    }
+
+    async fn lock_contribution_authority(
+        &self,
+        _: &extension_contracts::extension_bus::ManagedContributionSubject,
+    ) -> Result<Box<dyn control_plane::ports::ContributionAuthorityLease>> {
+        panic!("unexpected contribution authority lock in legacy frontend fixture")
+    }
+}
+
 #[async_trait]
 impl PluginRepository for MemoryNodeContributionRepository {
     async fn upsert_installation(
@@ -889,6 +952,7 @@ fn frontend_candidate(
         artifact,
         assignment: Some(assignment),
         catalog_entry,
+        authority: None,
     }
 }
 
