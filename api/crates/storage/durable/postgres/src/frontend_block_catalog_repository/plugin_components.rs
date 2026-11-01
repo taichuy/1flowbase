@@ -3,7 +3,6 @@ use anyhow::{bail, Result};
 use control_plane_contracts::{
     ports::ReplaceInstallationFrontendBlocksInput, ControlPlaneContractError,
 };
-use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, Row};
 use uuid::Uuid;
 
@@ -60,11 +59,6 @@ pub(crate) async fn sync_plugin_components(
             continue;
         }
         contributions.push(entry.contribution_code.clone());
-        let identity = serde_json::to_vec(&(plugin_id, entry.contribution_code.as_str()))?;
-        let code = format!(
-            "plugin.{:x}",
-            base16ct::HexDisplay(&Sha256::digest(identity))
-        );
         // Studio copies import_code + source_code. The complete template already owns its
         // imports; synthesizing imports from module metadata would declare bindings twice.
         // Provenance is opaque code content, not a second module import or a source parser.
@@ -77,7 +71,7 @@ pub(crate) async fn sync_plugin_components(
                 id, scope_id, component_code, name, description, import_code, source_code,
                 origin, source, "group", upstream_identity, upstream_version, version, keywords,
                 owner_plugin_id, owner_contribution_code, owner_installation_id, created_by, updated_by
-            ) values ($1,$2,$3,$4,$4,$5,$6,'plugin','plugin','components',$7,$8,$8,$9,$10,$11,$12,$13,$13)
+            ) values ($1,$2,plugin_ui_component_code($3,$14,$11),$4,$4,$5,$6,'plugin','plugin','components',$7,$8,$8,$9,$10,$11,$12,$13,$13)
             on conflict (scope_id,component_code) do update set
                 name=excluded.name, description=excluded.description, import_code=excluded.import_code,
                 source_code=excluded.source_code, upstream_identity=excluded.upstream_identity,
@@ -88,10 +82,10 @@ pub(crate) async fn sync_plugin_components(
                 and ui_component_records.owner_contribution_code=excluded.owner_contribution_code
             returning id"#,
         )
-        .bind(Uuid::now_v7()).bind(domain::SYSTEM_SCOPE_ID).bind(code).bind(&entry.title)
+        .bind(Uuid::now_v7()).bind(domain::SYSTEM_SCOPE_ID).bind(installation.get::<&str, _>("organization")).bind(&entry.title)
         .bind(import_code).bind(source).bind(format!("{plugin_id}:{}", entry.contribution_code))
         .bind(&input.plugin_version).bind(vec![plugin_id.to_string(), entry.contribution_code.clone()])
-        .bind(plugin_id).bind(&entry.contribution_code).bind(installation_id).bind(actor_user_id)
+        .bind(plugin_id).bind(&entry.contribution_code).bind(installation_id).bind(actor_user_id).bind(installation.get::<&str, _>("artifact_id"))
         .fetch_optional(&mut *connection).await?;
         if updated.is_none() {
             return Err(
