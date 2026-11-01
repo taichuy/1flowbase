@@ -29,7 +29,10 @@ export function createFetchedNativeReactModuleRegistry({
   const hostExportsBySource = new Map<string, Set<string>>();
   for (const definition of host.definitions) {
     if (!hostExportsBySource.has(definition.module_source)) {
-      hostExportsBySource.set(definition.module_source, new Set(definition.exports));
+      hostExportsBySource.set(
+        definition.module_source,
+        new Set(definition.exports)
+      );
     }
   }
   const sources = new Set<string>();
@@ -118,7 +121,59 @@ export function createFetchedNativeReactModuleRegistry({
         );
         urls.add(url);
         try {
-          const namespace = await importModule(url);
+          const imported = await importModule(url);
+          assertCurrent();
+          // Optional bundle factory: bind only manifest-declared host exports.
+          // This shares React/AntD identity without global variables, import maps,
+          // or another React copy inside the verified plugin bundle.
+          let namespace = imported;
+          let hostStyles: {
+            css: string;
+            media_type: 'text/css; charset=utf-8';
+          }[] = [];
+          if (Object.hasOwn(imported, 'createFrontendModule')) {
+            if (typeof imported.createFrontendModule !== 'function')
+              throw new Error('Invalid frontend module factory.');
+            const bindings = modules.filter(
+              ({ binding }) => binding === 'host'
+            );
+            const resolved = await host.resolveModuleMap(
+              bindings.map(({ source }) => source)
+            );
+            assertCurrent();
+            const hostModules = Object.fromEntries(
+              bindings.map((binding) => [
+                binding.source,
+                Object.freeze(
+                  Object.fromEntries(
+                    binding.exports.map((name) => [
+                      name,
+                      resolved[binding.source]![name]
+                    ])
+                  )
+                )
+              ])
+            );
+            const created: unknown = await imported.createFrontendModule(
+              Object.freeze(hostModules)
+            );
+            assertCurrent();
+            if (!created || typeof created !== 'object')
+              throw new Error('Invalid frontend module factory result.');
+            namespace = created as Record<string, unknown>;
+            const dependencyAssets = await host.resolveModuleAssets(
+              bindings.map(({ source }) => source)
+            );
+            assertCurrent();
+            hostStyles = dependencyAssets
+              .filter(({ role }) => role === 'shadow_style')
+              .map((asset) => ({
+                css: new TextDecoder('utf-8', { fatal: true }).decode(
+                  asset.bytes
+                ),
+                media_type: 'text/css; charset=utf-8' as const
+              }));
+          }
           assertCurrent();
           if (module.exports.some((name) => !Object.hasOwn(namespace, name)))
             throw new Error('Frontend module declared export missing.');
@@ -126,18 +181,21 @@ export function createFetchedNativeReactModuleRegistry({
             module: Object.fromEntries(
               module.exports.map((name) => [name, namespace[name]])
             ),
-            styles: assets.flatMap((asset, assetIndex) =>
-              asset.role === 'shadow_style'
-                ? [
-                    {
-                      css: new TextDecoder('utf-8', { fatal: true }).decode(
-                        bytes[assetIndex]!
-                      ),
-                      media_type: 'text/css; charset=utf-8' as const
-                    }
-                  ]
-                : []
-            )
+            styles: [
+              ...hostStyles,
+              ...assets.flatMap((asset, assetIndex) =>
+                asset.role === 'shadow_style'
+                  ? [
+                      {
+                        css: new TextDecoder('utf-8', { fatal: true }).decode(
+                          bytes[assetIndex]!
+                        ),
+                        media_type: 'text/css; charset=utf-8' as const
+                      }
+                    ]
+                  : []
+              )
+            ]
           };
         } finally {
           if (urls.delete(url)) revokeObjectURL(url);

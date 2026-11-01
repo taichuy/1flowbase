@@ -247,6 +247,39 @@ describe('UiManagementPanel component records', () => {
     ).toBeInTheDocument();
   });
 
+  test('plugin-owned components are discoverable but cannot be edited or deleted', async () => {
+    const plugin = {
+      ...official,
+      origin: 'plugin' as const,
+      name: 'Calendar',
+      component_code: 'plugin.calendar'
+    };
+    uiManagementApi.fetchSettingsUiComponents.mockResolvedValue([plugin]);
+    uiManagementApi.fetchSettingsUiComponent.mockResolvedValue(plugin);
+    render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+    expect(await screen.findByText('Calendar')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '编辑 Calendar' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '删除 Calendar' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '查看 Calendar' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(
+      within(drawer).getByText('插件组件由已安装插件维护，不可在此修改。')
+    ).toBeInTheDocument();
+    expect(
+      within(drawer).queryByRole('button', { name: /保存/ })
+    ).not.toBeInTheDocument();
+    expect(uiManagementApi.updateSettingsUiComponent).not.toHaveBeenCalled();
+    expect(uiManagementApi.deleteSettingsUiComponent).not.toHaveBeenCalled();
+  });
+
   test('WP-D2 creates a custom record while keeping code fields opaque', async () => {
     render(
       <AppProviders>

@@ -1,4 +1,6 @@
 {
+  "plugin": "插件",
+  "plugin_read_only": "插件组件由已安装插件维护，不可在此修改。",
   "delete_template_title": "删除模板？",
   "delete_template_description": "将永久删除“{{name}}”及其全部修订，无法恢复。已使用此模板的区块不受影响。",
   "code_templates": "代码模板",

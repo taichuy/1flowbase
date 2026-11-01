@@ -33,6 +33,7 @@ describe('console-frontend-blocks client', () => {
       code_template_version: '1.0.0',
       code_template_language: 'tsx',
       isolated_entry_asset: null,
+      code_modules: [],
       context_contract: { primitives: ['text'], input_schema: {} },
       permissions: { network: 'none', storage: 'none', secrets: 'none' },
       ui_capabilities: ['responsive'],

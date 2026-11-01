@@ -1,4 +1,6 @@
 {
+  "plugin": "Plugin",
+  "plugin_read_only": "Plugin components are maintained by the installed plugin and are read-only here.",
   "delete_template_title": "Delete template?",
   "delete_template_description": "Permanently delete “{{name}}” and all its revisions. This cannot be undone. Blocks already using this template are unaffected.",
   "code_templates": "Code templates",

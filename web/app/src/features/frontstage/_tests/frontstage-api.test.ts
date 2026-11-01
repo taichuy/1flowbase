@@ -471,6 +471,7 @@ describe('frontstage block catalog feature api', () => {
           title: 'Hero',
           runtime: 'native_react',
           entry: 'blocks/hero.html',
+          code_modules: [],
           context_contract: {
             primitives: ['record'],
             input_schema: {
@@ -505,6 +506,7 @@ describe('frontstage block catalog feature api', () => {
             title: 'Hero',
             runtime: 'native_react',
             entry: 'blocks/hero.html',
+            code_modules: [],
             context_contract: {
               primitives: ['record'],
               input_schema: {
@@ -541,6 +543,7 @@ describe('frontstage block catalog feature api', () => {
       title: 'Hero',
       runtime: 'native_react',
       entry: 'blocks/hero.html',
+      code_modules: [],
       context_contract: {
         primitives: ['record'],
         input_schema: { type: 'object' }

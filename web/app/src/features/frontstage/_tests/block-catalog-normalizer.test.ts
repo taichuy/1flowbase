@@ -26,6 +26,7 @@ function createCatalogEntry(
     runtime: 'native_react',
     entry: 'blocks/hero/index.html',
     isolated_entry_asset: null,
+    code_modules: [],
     context_contract: {
       primitives: ['text'],
       input_schema: { type: 'object' }
@@ -61,6 +62,7 @@ describe('frontstage block catalog normalizer', () => {
   test('normalizes console catalog entries into frontstage runtime models', () => {
     const result = normalizeFrontstageBlockCatalog([
       createCatalogEntry({
+        code_modules: [],
         context_contract: {
           primitives: ['text', 'data_record', 'button'],
           input_schema: {
@@ -110,7 +112,6 @@ describe('frontstage block catalog normalizer', () => {
     expect(hasFrontstageBlockEventPermission(block)).toBe(false);
   });
 
-
   test('filters unknown runtime entries and reports diagnostics', () => {
     const result = normalizeFrontstageBlockCatalog([
       createCatalogEntry({ runtime: 'react_remote' })
@@ -135,6 +136,7 @@ describe('frontstage block catalog normalizer', () => {
   test('keeps entries but filters unknown primitives and capabilities', () => {
     const result = normalizeFrontstageBlockCatalog([
       createCatalogEntry({
+        code_modules: [],
         context_contract: {
           primitives: ['text', 'script'],
           input_schema: { type: 'object' }

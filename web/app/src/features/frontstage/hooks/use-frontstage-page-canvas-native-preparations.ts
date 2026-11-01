@@ -26,6 +26,7 @@ import {
   type NativeReactBrowserCompileResult
 } from '../../../shared/code-block/native-react-compiler-browser';
 import { createFrontstageNativeReactModuleRegistry } from '../lib/native-modules/registry';
+import { createContributionModuleRegistry } from '../lib/native-modules/contributions/registry';
 import {
   createFrontstageNativeReactArtifactCacheIdentity,
   createFrontstageNativeReactArtifactCacheKey,
@@ -111,23 +112,46 @@ export function useFrontstagePageCanvasNativePreparations({
   compile = compileNativeReactComponentInBrowser,
   moduleRegistryFactory = createFrontstageNativeReactModuleRegistry
 }: UseFrontstagePageCanvasNativePreparationsInput): UseFrontstagePageCanvasNativePreparationsResult {
-  const preparationScope = useMemo(() => ({
-    actorId,
-    actorWorkspaceId,
-    scheduler: new FrontstageNativePreparationScheduler(maxConcurrent),
-    sourceCopies: new Map<string, NativePreparationSource>(),
-    compiledRefreshes: new Map<string, number>()
-  }), [actorId, actorWorkspaceId, maxConcurrent]);
+  const preparationScope = useMemo(
+    () => ({
+      actorId,
+      actorWorkspaceId,
+      scheduler: new FrontstageNativePreparationScheduler(maxConcurrent),
+      sourceCopies: new Map<string, NativePreparationSource>(),
+      compiledRefreshes: new Map<string, number>()
+    }),
+    [actorId, actorWorkspaceId, maxConcurrent]
+  );
   const { scheduler, sourceCopies, compiledRefreshes } = preparationScope;
   const moduleScope = useMemo(() => {
-    const moduleDefinitions = moduleRegistryFactory().definitions;
+    const hasFetchedModules = catalogEntries?.some(
+      (entry) => entry.raw.code_modules.length
+    );
+    let loader = hasFetchedModules
+      ? createContributionModuleRegistry(catalogEntries!, moduleRegistryFactory)
+      : null;
+    const registry = loader?.registry ?? moduleRegistryFactory();
+    const moduleDefinitions = registry.definitions;
     return {
       actorId: preparationScope.actorId,
       actorWorkspaceId: preparationScope.actorWorkspaceId,
       moduleDefinitions,
+      createEvaluationRegistry: () => {
+        if (!hasFetchedModules) return moduleRegistryFactory();
+        loader ??= createContributionModuleRegistry(
+          catalogEntries!,
+          moduleRegistryFactory
+        );
+        return loader.registry;
+      },
+      dispose: () => {
+        loader?.dispose();
+        loader = null;
+      },
       modulePolicySha256: sha256Text(
-        JSON.stringify(
-          moduleDefinitions
+        JSON.stringify({
+          modules: loader?.modules ?? [],
+          definitions: moduleDefinitions
             .map((definition) => ({
               module_source: definition.module_source,
               exports: [...definition.exports].sort()
@@ -139,15 +163,22 @@ export function useFrontstagePageCanvasNativePreparations({
                   ? 1
                   : 0
             )
-        )
+        })
       ),
       componentFactoryFlights: new Map<string, Promise<NativeComponentFlight>>()
     };
-  }, [preparationScope.actorId, preparationScope.actorWorkspaceId, moduleRegistryFactory]);
+  }, [
+    preparationScope.actorId,
+    preparationScope.actorWorkspaceId,
+    moduleRegistryFactory,
+    catalogEntries
+  ]);
+  useEffect(() => () => moduleScope.dispose(), [moduleScope]);
   const {
     actorId: scopedActorId,
     actorWorkspaceId: scopedWorkspaceId,
     moduleDefinitions,
+    createEvaluationRegistry,
     modulePolicySha256,
     componentFactoryFlights
   } = moduleScope;
@@ -319,7 +350,7 @@ export function useFrontstagePageCanvasNativePreparations({
             componentFactoryFlights.get(componentFactoryKey);
           if (!componentFactoryFlight) {
             // Evaluated module facades (including generated styles) belong to this factory.
-            const moduleRegistry = moduleRegistryFactory();
+            const moduleRegistry = createEvaluationRegistry();
             componentFactoryFlight =
               (async (): Promise<NativeComponentFlight> => {
                 const evaluated = await evaluateFrontstageReactArtifact(
@@ -398,7 +429,7 @@ export function useFrontstagePageCanvasNativePreparations({
     componentFactoryFlights,
     fetchSource,
     moduleDefinitions,
-    moduleRegistryFactory,
+    createEvaluationRegistry,
     modulePolicySha256,
     readPlan,
     refreshGenerationsByRequestId,

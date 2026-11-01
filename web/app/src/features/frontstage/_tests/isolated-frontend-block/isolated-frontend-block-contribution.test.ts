@@ -128,6 +128,7 @@ function createCatalogEntry(
       url: `/api/console/frontstage/component-module-assets/${digest}`,
       integrity: 'verified_sha256'
     },
+    code_modules: [],
     context_contract: { primitives: [], input_schema: { type: 'object' } },
     permissions: { network: 'none', storage: 'none', secrets: 'none' },
     ui_capabilities: [],

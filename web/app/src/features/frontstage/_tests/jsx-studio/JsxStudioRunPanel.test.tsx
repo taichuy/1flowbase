@@ -13,6 +13,11 @@ import {
   compileNativeReactComponent
 } from '@1flowbase/page-runtime';
 
+vi.mock('../../api/block-catalog', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/block-catalog')>()),
+  fetchFrontstageBlockCatalog: vi.fn(async () => ({ entries: [] }))
+}));
+
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import type { NativeReactBrowserCompileResult } from '../../../../shared/code-block/native-react-compiler-browser';
 import { JsxStudioRunPanel } from '../../components/jsx-studio/JsxStudioRunPanel';

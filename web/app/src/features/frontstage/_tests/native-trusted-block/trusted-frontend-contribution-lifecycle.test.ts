@@ -185,6 +185,7 @@ function catalogEntry(
     title: 'Hero Banner',
     runtime: 'native_react',
     entry: 'blocks/hero/index.js',
+    code_modules: [],
     context_contract: { primitives: ['text'], input_schema: {} },
     permissions: { network: 'none', storage: 'none', secrets: 'none' },
     ui_capabilities: ['responsive'],

@@ -186,7 +186,11 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
         key: 'origin',
         title: t('origin'),
         width: 110,
-        render: (_, record) => <Tag>{t(record.origin)}</Tag>
+        render: (_, record) => (
+          <Tag>
+            {record.origin === 'plugin' ? t('plugin') : t(record.origin)}
+          </Tag>
+        )
       },
       {
         key: 'actions',
@@ -287,10 +291,12 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
                 aria-label={t('component_filter_origin')}
                 value={originDraft}
                 onChange={setOriginDraft}
-                options={(['official', 'custom'] as const).map((value) => ({
-                  value,
-                  label: t(value)
-                }))}
+                options={(['official', 'custom', 'plugin'] as const).map(
+                  (value) => ({
+                    value,
+                    label: t(value)
+                  })
+                )}
               />
             </DataTableFilterField>
           </DataTableFilterForm>
@@ -352,9 +358,11 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
           <>
             <Typography.Paragraph strong>
               {t(
-                selected.origin === 'official'
-                  ? 'official_read_only'
-                  : 'custom_component'
+                selected.origin === 'plugin'
+                  ? 'plugin_read_only'
+                  : selected.origin === 'official'
+                    ? 'official_read_only'
+                    : 'custom_component'
               )}
             </Typography.Paragraph>
             <Descriptions

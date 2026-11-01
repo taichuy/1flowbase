@@ -209,3 +209,84 @@ describe('settings page fetched native modules', () => {
     loader.dispose();
   });
 });
+
+// A fetched bundle must share the host React instance, not bundle a second one.
+describe('fetched module host factory', () => {
+  const react = { createElement: () => 'host-element', secret: 'not-declared' };
+  const hostBinding: ConsolePluginSettingsCodeModule = {
+    source: 'react',
+    version: '19.2.0',
+    exports: ['createElement'],
+    binding: 'host',
+    assets: [],
+    type_declarations: 'declare module "react" {}'
+  };
+  const hostRegistryFactory = (
+    registrations: Parameters<typeof createNativeReactModuleRegistry>[0]
+  ) =>
+    createNativeReactModuleRegistry([
+      {
+        module_source: 'react',
+        exports: ['createElement', 'secret'],
+        load: async () => ({ module: react })
+      },
+      ...registrations
+    ]);
+
+  test('passes only declared host exports to a verified factory and preserves identity', async () => {
+    const factory = vi.fn((host: Record<string, Record<string, unknown>>) => {
+      expect(Object.keys(host)).toEqual(['react']);
+      expect(host.react!.createElement).toBe(react.createElement);
+      expect(host.react).not.toHaveProperty('secret');
+      return { answer: host.react!.createElement };
+    });
+    const loader = make({
+      modules: [module, hostBinding],
+      hostRegistryFactory,
+      importModule: async () => ({ createFrontendModule: factory })
+    });
+    try {
+      expect((await loader.registry.load(module.source)).answer).toBe(
+        react.createElement
+      );
+      expect(factory).toHaveBeenCalledTimes(1);
+    } finally {
+      loader.dispose();
+    }
+  });
+
+  test('rejects a factory result that lacks a declared export', async () => {
+    const loader = make({
+      modules: [module, hostBinding],
+      hostRegistryFactory,
+      importModule: async () => ({
+        createFrontendModule: () => ({ other: true })
+      })
+    });
+    try {
+      await expect(loader.registry.load(module.source)).rejects.toThrow(
+        'declared export missing'
+      );
+    } finally {
+      loader.dispose();
+    }
+  });
+
+  test('does not invoke a host factory when executable bytes fail integrity', async () => {
+    const factory = vi.fn(() => ({ answer: 42 }));
+    const loader = make({
+      modules: [module, hostBinding],
+      hostRegistryFactory,
+      fetchAsset: async () => bytes('tampered'),
+      importModule: async () => ({ createFrontendModule: factory })
+    });
+    try {
+      await expect(loader.registry.load(module.source)).rejects.toThrow(
+        'SHA-256 mismatch'
+      );
+      expect(factory).not.toHaveBeenCalled();
+    } finally {
+      loader.dispose();
+    }
+  });
+});
