@@ -150,7 +150,7 @@ export function useFrontstagePageCanvasNativePreparations({
       },
       modulePolicySha256: sha256Text(
         JSON.stringify({
-          modules: loader?.modules ?? [],
+          modules: loader?.policy ?? [],
           definitions: moduleDefinitions
             .map((definition) => ({
               module_source: definition.module_source,

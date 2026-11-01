@@ -11,33 +11,64 @@ import type { NormalizedFrontstageBlockCatalogEntry } from '../../block-catalog'
 import { createFrontstageNativeReactModuleRegistry } from '../registry';
 import { getFrontstageBlockCatalogApiBaseUrl } from '../../../api/block-catalog';
 
-/** Catalog entries have already passed workspace assignment and grant resolution. */
+type Module = ConsolePluginSettingsCodeModule;
+export interface ContributionModuleInventory {
+  modules: Module[];
+  hostBindingsByModule: ReadonlyMap<string, readonly Module[]>;
+  policy: {
+    source: string;
+    owner: string;
+    module: Module;
+    hostBindings: Module[];
+  }[];
+}
+
+/** Keep dependency ownership after flattening the workspace's authorized catalog. */
 export function collectContributionModules(
   entries: readonly NormalizedFrontstageBlockCatalogEntry[]
-): ConsolePluginSettingsCodeModule[] {
-  const modules = new Map<string, ConsolePluginSettingsCodeModule>();
+): ContributionModuleInventory {
+  const inventory = new Map<
+    string,
+    ContributionModuleInventory['policy'][number]
+  >();
   for (const entry of entries) {
     if (entry.raw.disable_reason !== null) continue;
+    const owner = JSON.stringify([
+      entry.installationId,
+      entry.pluginId,
+      entry.pluginVersion
+    ]);
+    const hostBindings = entry.raw.code_modules.filter(
+      ({ binding }) => binding === 'host'
+    );
     for (const module of entry.raw.code_modules) {
-      const current = modules.get(module.source);
-      if (current && JSON.stringify(current) !== JSON.stringify(module))
+      if (module.binding === 'host') continue;
+      const item = { source: module.source, owner, module, hostBindings };
+      const current = inventory.get(module.source);
+      if (current && JSON.stringify(current) !== JSON.stringify(item))
         throw new Error(`Frontend module identity conflict: ${module.source}`);
-      modules.set(module.source, module);
+      inventory.set(module.source, item);
     }
   }
-  return [...modules.values()];
+  const policy = [...inventory.values()];
+  return {
+    modules: policy.map(({ module }) => module),
+    hostBindingsByModule: new Map(
+      policy.map(({ source, hostBindings }) => [source, hostBindings])
+    ),
+    policy
+  };
 }
 
 export function createContributionModuleRegistry(
   entries: readonly NormalizedFrontstageBlockCatalogEntry[],
   hostRegistryFactory: () => NativeReactModuleRegistry = createFrontstageNativeReactModuleRegistry
 ) {
-  const modules = collectContributionModules(entries);
+  const inventory = collectContributionModules(entries);
   const loader = createFetchedNativeReactModuleRegistry({
-    modules,
+    modules: inventory.modules,
+    hostBindingsByModule: inventory.hostBindingsByModule,
     hostRegistryFactory: (registrations) => {
-      // Preserve caller-owned registry facades (including test/custom hosts)
-      // while adding only the authorized fetched registrations.
       const host = hostRegistryFactory();
       const fetched = createNativeReactModuleRegistry(registrations);
       const fetchedSources = new Set(
@@ -79,5 +110,5 @@ export function createContributionModuleRegistry(
         getFrontstageBlockCatalogApiBaseUrl()
       )
   });
-  return { ...loader, modules };
+  return { ...loader, modules: inventory.modules, policy: inventory.policy };
 }

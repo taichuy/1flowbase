@@ -10,6 +10,7 @@ type Asset = ConsolePluginSettingsCodeModule['assets'][number];
 /** Each page epoch owns its authenticated fetches and module/style flights. */
 export function createFetchedNativeReactModuleRegistry({
   modules,
+  hostBindingsByModule,
   hostRegistryFactory,
   fetchAsset,
   importModule = (url) => import(/* @vite-ignore */ url),
@@ -17,6 +18,11 @@ export function createFetchedNativeReactModuleRegistry({
   revokeObjectURL = (url) => URL.revokeObjectURL(url)
 }: {
   modules: readonly ConsolePluginSettingsCodeModule[];
+  /** Optional per-fetched-module dependencies, preserving verified plugin ownership. */
+  hostBindingsByModule?: ReadonlyMap<
+    string,
+    readonly ConsolePluginSettingsCodeModule[]
+  >;
   hostRegistryFactory: (
     registrations: readonly NativeReactFrontendModuleRegistration[]
   ) => NativeReactModuleRegistry;
@@ -54,6 +60,38 @@ export function createFetchedNativeReactModuleRegistry({
     assertCurrent();
     return bytes;
   };
+  const validateHostBinding = (module: ConsolePluginSettingsCodeModule) => {
+    const exports = hostExportsBySource.get(module.source);
+    if (
+      module.binding !== 'host' ||
+      !module.version.trim() ||
+      !module.type_declarations.trim() ||
+      !exports ||
+      module.assets.length ||
+      !module.exports.length ||
+      new Set(module.exports).size !== module.exports.length ||
+      module.exports.some((name) => !exports.has(name))
+    ) {
+      throw new Error('Invalid host frontend module declaration.');
+    }
+  };
+  if (hostBindingsByModule) {
+    for (const [source, bindings] of hostBindingsByModule) {
+      if (
+        !modules.some(
+          (module) => module.source === source && module.binding === 'fetched'
+        )
+      )
+        throw new Error('Frontend module dependency owner is missing.');
+      const declaredSources = new Set<string>();
+      for (const binding of bindings) {
+        validateHostBinding(binding);
+        if (declaredSources.has(binding.source))
+          throw new Error('Duplicate frontend host dependency.');
+        declaredSources.add(binding.source);
+      }
+    }
+  }
   const registrations: NativeReactFrontendModuleRegistration[] = [];
   for (const module of modules) {
     if (
@@ -70,13 +108,7 @@ export function createFetchedNativeReactModuleRegistry({
     sources.add(module.source);
     const hostExports = hostExportsBySource.get(module.source);
     if (module.binding === 'host') {
-      if (
-        !hostExports ||
-        module.assets.length ||
-        module.exports.some((name) => !hostExports.has(name))
-      ) {
-        throw new Error('Invalid host frontend module declaration.');
-      }
+      validateHostBinding(module);
       continue;
     }
     if (module.binding !== 'fetched' || hostExports)
@@ -134,9 +166,9 @@ export function createFetchedNativeReactModuleRegistry({
           if (Object.hasOwn(imported, 'createFrontendModule')) {
             if (typeof imported.createFrontendModule !== 'function')
               throw new Error('Invalid frontend module factory.');
-            const bindings = modules.filter(
-              ({ binding }) => binding === 'host'
-            );
+            const bindings = hostBindingsByModule
+              ? (hostBindingsByModule.get(module.source) ?? [])
+              : modules.filter(({ binding }) => binding === 'host');
             const resolved = await host.resolveModuleMap(
               bindings.map(({ source }) => source)
             );

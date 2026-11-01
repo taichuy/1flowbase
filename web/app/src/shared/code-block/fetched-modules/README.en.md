@@ -21,3 +21,5 @@ Build tooling may wrap a CommonJS bundle in this factory and restrict `require` 
 The caller owns each loader epoch. Identity, workspace, catalog version, or authorization changes dispose the old loader, abort its fetches, and release Blob URLs. A new epoch uses the backend-authorized catalog and asset endpoint again. The frontstage artifact cache includes full module declarations in its policy identity, preventing an upgrade from reusing old factories. Trusted-host JavaScript is not a security sandbox: disabling a plugin cannot undo arbitrary effects already executed in a browser. The backend still rejects new unauthorized asset reads.
 
 [中文](./README.md)
+
+Frontstage retains each fetched module's installation owner and its own host-export inventory. Independent plugins may request different valid subsets of one host module without conflict. A factory never receives another plugin's declared dependencies. Conflicting owners, bytes, versions, or dependencies for the same fetched source are still rejected.
