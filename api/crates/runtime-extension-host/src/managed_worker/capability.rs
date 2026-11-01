@@ -10,7 +10,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     process::Command,
 };
-const MAX_OUTPUT_BYTES: u64 = 1024 * 1024;
+const MAX_OUTPUT_BYTES: u64 = extension_contracts::CAPABILITY_STDIO_FRAME_BYTES;
 pub(super) async fn exchange(
     binding: &LoadedManagedBinding,
     request: &CapabilityStdioRequest,

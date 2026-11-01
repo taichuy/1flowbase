@@ -926,8 +926,29 @@ where
 pub(super) fn supports_workspace_assignment(
     installation: &domain::PluginInstallationRecord,
 ) -> bool {
-    domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+    // A mixed system service may expose declarative workspace UI, but assignment
+    // remains explicit and frontend resolution separately verifies its exact grant.
+    let workspace_ui = installation.contract_version == "1flowbase.extension-bus/v1"
+        && installation
+            .metadata_json
+            .get("managed")
+            .and_then(|value| {
+                serde_json::from_value::<plugin_framework::ManagedManifest>(value.clone()).ok()
+            })
+            .is_some_and(|managed| {
+                managed.execution_bindings.iter().any(|binding| {
+                    binding.execution_mode == plugin_framework::PluginExecutionMode::DeclarativeOnly
+                        && matches!(
+                            binding.payload,
+                            Some(
+                                plugin_framework::ManagedContributionPayload::FrontendBlock { .. }
+                            )
+                        )
+                })
+            });
+    (domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
         != domain::SYSTEM_SCOPE_ID
+        || workspace_ui)
         && matches!(
             installation.contract_version.as_str(),
             CURRENT_PROVIDER_CONTRACT

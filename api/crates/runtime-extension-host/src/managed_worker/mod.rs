@@ -506,6 +506,12 @@ impl ManagedWorkers {
                 "handler": binding.handler,
                 "config_payload": request.config_payload,
                 "input_payload": request.input_payload,
+                // Project the selected host policy, not a worker/private capacity guess.
+                "execution_budget": extension_contracts::CapabilityExecutionBudget {
+                    timeout_ms: remaining_ms.min(binding.limits.timeout_ms.unwrap_or(remaining_ms)),
+                    memory_bytes: binding.limits.memory_bytes,
+                    max_output_bytes: extension_contracts::CAPABILITY_STDIO_FRAME_BYTES,
+                },
             });
             if let Some(context) = call_context {
                 input["call_context"] = serde_json::to_value(context)

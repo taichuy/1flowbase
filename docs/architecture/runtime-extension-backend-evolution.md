@@ -130,3 +130,20 @@ Clash stateful Network Egress worker；manifest-only 检查不能结算 Runtime 
 
 停止条件是出现第二个可工作的 Backend、第二套 Runtime Profile 真值、Port 泄漏
 传输/进程细节、插件 wire 被迫变化，或实现开始承担路由、权限、事务与安装决策。
+
+## 可选同步 JavaScript 计算（Host 0.6.2）
+
+`runtime-extension-sdk/javascript` 默认关闭，只 reexport 独立的 `sync-js-runtime`。
+它复用已有 QuickJS，每调用新建 Runtime/Context；不提供 Node API、模块下载或常驻计算池。
+插件随版本分发闭合 JS bundle，编译 descriptor 指定版本、相对路径、精确字节数和 SHA-256；
+从当前 executable 版本根定位并校验同一份读取字节，不依赖 cwd 或 node_modules。
+
+旧 orchestration Code 使用固定 legacy codec，保留 JSON.stringify 与既有公开错误映射；
+插件使用 strict codec，拒绝有损或非 plain JSON 输出，不失败回退。Host 经既有 stdio
+封包注入 `CapabilityExecutionBudget`，来源为选定 `PluginRuntimeLimits`、当前 deadline 和
+现有 unary frame limit；插件不另猜业务容量。业务错误保留结果内层 envelope，执行/资产/
+协议失败使用现有 `CapabilityStdioResponse` 外层错误。
+
+Host 0.6.2 同时允许 system managed service 的显式 declarative frontend payload 被工作区
+分配；这不替代 assignment、payload identity 和持久贡献授权。依赖这两项能力的插件声明
+`minimum_host_version: 0.6.2`，由现有安装兼容检查拒绝旧 Host（显式人工 override 仍依既有契约）。

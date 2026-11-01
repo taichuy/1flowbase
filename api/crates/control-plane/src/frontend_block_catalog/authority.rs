@@ -30,8 +30,6 @@ pub(super) fn granted_permissions(
     if managed.module.module_id.as_str() != installation.provider_code
         || managed.module.module_version.as_str() != installation.plugin_version
         || managed.module.module_kind != expected_kind
-        || domain::managed_installation_scope(installation, candidate.workspace_id)
-            != candidate.workspace_id
     {
         return None;
     }
@@ -62,10 +60,13 @@ pub(super) fn granted_permissions(
     {
         return None;
     }
+    // System service activation does not remove the resolver's explicit workspace
+    // assignment gate. Its declarative UI payload consumes the same durable grant
+    // scope queried above, never a synthesized grant for an arbitrary workspace.
     let permissions = HostContributionGrantPolicy::root_composition()
         .effective_permissions(
             installation,
-            candidate.workspace_id,
+            domain::managed_installation_scope(installation, candidate.workspace_id),
             subject,
             candidate.authority.as_ref()?,
         )
