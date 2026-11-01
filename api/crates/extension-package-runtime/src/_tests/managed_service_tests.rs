@@ -57,7 +57,7 @@ fn managed_service_rejects_scope_route_identity_authority_and_protocol_forgery()
         ),
         (
             "/managed/execution_bindings/0/runtime/protocol",
-            json!("stdio_json"),
+            json!("unsupported_protocol"),
         ),
         (
             "/managed_service/operations/0/input_schema",
@@ -429,4 +429,30 @@ fn managed_mcp_instance_normalizes_hyphenated_plugin_owner() {
     assert!(parse(&value).is_ok());
     value["managed_service"]["mcp_instance"]["instance_id"] = json!("managed-fixture_tools");
     assert!(parse(&value).is_err());
+}
+
+#[test]
+fn unary_managed_service_uses_existing_per_call_carrier_only() {
+    let mut value = fixture();
+    value["runtime"]["protocol"] = json!("stdio_json");
+    value["managed"]["execution_bindings"][0]["runtime"]["protocol"] = json!("stdio_json");
+    assert!(
+        parse(&value).is_ok(),
+        "synchronous unary operations use the existing carrier"
+    );
+    value["managed_service"]["worker_lifetime"] = json!("actor_workspace_scope");
+    assert!(
+        parse(&value).is_err(),
+        "unary carrier must not imply a resident worker"
+    );
+    value["managed_service"]
+        .as_object_mut()
+        .unwrap()
+        .remove("worker_lifetime");
+    value["managed_service"]["operations"][0]["stream"] =
+        json!({"input_schema":{"type":"object"},"event_schema":{"type":"object"}});
+    assert!(
+        parse(&value).is_err(),
+        "stream transport still requires multiplex"
+    );
 }

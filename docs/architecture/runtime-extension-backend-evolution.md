@@ -144,6 +144,7 @@ Clash stateful Network Egress worker；manifest-only 检查不能结算 Runtime 
 现有 unary frame limit；插件不另猜业务容量。业务错误保留结果内层 envelope，执行/资产/
 协议失败使用现有 `CapabilityStdioResponse` 外层错误。
 
-Host 0.6.2 同时允许 system managed service 的显式 declarative frontend payload 被工作区
+Host 0.6.2 的同步 unary managed-service 可以声明已有 `stdio_json` process-per-call carrier；
+共享 worker 和 stream 仍要求 multiplex，不新增调度路径。Host 0.6.2 同时允许 system managed service 的显式 declarative frontend payload 被工作区
 分配；这不替代 assignment、payload identity 和持久贡献授权。依赖这两项能力的插件声明
 `minimum_host_version: 0.6.2`，由现有安装兼容检查拒绝旧 Host（显式人工 override 仍依既有契约）。
