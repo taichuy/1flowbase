@@ -219,15 +219,68 @@ async fn mcp_role_permission_readonly_user_can_get_but_cannot_put_or_escalate() 
     let fixture = PolicyFixture::new().await;
     create_role(&fixture.app, &fixture.cookie, &fixture.csrf, READER_ROLE).await;
     let reader_group = role_group(&["roles.console_policy.view"]);
-    // Legal prerequisite for issuing the user's own role-bound key. It grants
-    // no role mutation operation and is not a direct database/auth bypass.
-    let groups = json!([reader_group, {
-        "kind":"settings_feature", "group_id":"system.api-key-authentication",
-        "enabled":true, "strategy":"custom", "operations":[{
-            "kind":"simple", "operation_id":"user_api_keys.manage", "enabled":true
-        }]
-    }]);
-    assert_no_content(&fixture.replace(READER_ROLE, groups).await);
+    assert_no_content(&fixture.replace(READER_ROLE, json!([reader_group])).await);
+
+    // Discover the per-route policy ID; coarse route ownership is not a grant.
+    let catalog_response = fixture
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/roles/console-policy-catalog")
+                .header("cookie", &fixture.cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(catalog_response.status(), StatusCode::OK);
+    let catalog = response_json(catalog_response).await;
+    let key_group = catalog["data"]["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|group| {
+            group["kind"] == "settings_feature"
+                && group["group_id"] == "system.api-key-authentication"
+        })
+        .expect("API key settings group must be present in the real policy catalog");
+    let key_operations = key_group["operations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|operation| {
+            operation["route"]["method"] == "POST"
+                && operation["route"]["path"] == "/api/console/user-api-keys"
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        key_operations.len(),
+        1,
+        "key creation must have exactly one policy operation"
+    );
+    let create_key_operation = key_operations[0];
+    assert_eq!(create_key_operation["full_profile"]["kind"], "simple");
+    assert_eq!(create_key_operation["authorization"]["kind"], "simple");
+    let create_key_operation_id = create_key_operation["operation_id"].as_str().unwrap();
+
+    // Only the temporary issuing role can create a key. The key itself is
+    // explicitly bound to READER_ROLE, which retains only its read operation.
+    let bootstrap_role = "mcp_policy_bootstrap";
+    create_role(&fixture.app, &fixture.cookie, &fixture.csrf, bootstrap_role).await;
+    assert_no_content(
+        &fixture
+            .replace(
+                bootstrap_role,
+                json!([{
+                    "kind":key_group["kind"], "group_id":key_group["group_id"],
+                    "enabled":true, "strategy":"custom", "operations":[{
+                        "kind":"simple", "operation_id":create_key_operation_id, "enabled":true
+                    }]
+                }]),
+            )
+            .await,
+    );
     let member = create_member(
         &fixture.app,
         &fixture.cookie,
@@ -241,12 +294,55 @@ async fn mcp_role_permission_readonly_user_can_get_but_cannot_put_or_escalate() 
         &fixture.cookie,
         &fixture.csrf,
         &member,
+        &[bootstrap_role],
+    )
+    .await;
+    let (bootstrap_cookie, bootstrap_csrf) =
+        login_and_capture_cookie(&fixture.app, "mcp-policy-reader", "temp-pass").await;
+    replace_member_roles(
+        &fixture.app,
+        &fixture.cookie,
+        &fixture.csrf,
+        &member,
+        &[bootstrap_role, READER_ROLE],
+    )
+    .await;
+    let key_response = fixture
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/user-api-keys")
+                .header("cookie", &bootstrap_cookie)
+                .header("x-csrf-token", &bootstrap_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "name":"readonly MCP policy key", "expiration_policy":"never",
+                        "role_code":READER_ROLE
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(key_response.status(), StatusCode::CREATED);
+    let key_payload = response_json(key_response).await;
+    assert_eq!(key_payload["data"]["role_code"], READER_ROLE);
+    let token = key_payload["data"]["token"].as_str().unwrap().to_owned();
+    replace_member_roles(
+        &fixture.app,
+        &fixture.cookie,
+        &fixture.csrf,
+        &member,
         &[READER_ROLE],
     )
     .await;
+    assert_no_content(&fixture.replace(bootstrap_role, json!([])).await);
     let (cookie, csrf) =
         login_and_capture_cookie(&fixture.app, "mcp-policy-reader", "temp-pass").await;
-    let token = create_api_key(&fixture.app, &cookie, &csrf).await;
     let target_before = fixture.policy(TARGET_ROLE).await;
     let reader_before = fixture.policy(READER_ROLE).await;
     let (status, http_read) = policy_snapshot(&fixture.app, &cookie, TARGET_ROLE).await;
