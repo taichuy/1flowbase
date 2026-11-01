@@ -1,0 +1,58 @@
+name: MCP role permission frozen evidence
+on:
+  push:
+    branches: [codex/mcp-role-permissions-ci-20261101]
+permissions:
+  contents: read
+concurrency:
+  group: mcp-role-permissions-frozen-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  frozen-rust-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    env:
+      DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      CARGO_INCREMENTAL: '0'
+      CARGO_TARGET_DIR: ${{ github.workspace }}/api/target
+      ONEFLOWBASE_WARNING_OUTPUT_DIR: ${{ github.workspace }}/tmp/test-governance/mcp-role-permissions-ci/warnings
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: web/.nvmrc
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: mcp-role-permissions-debug0
+          cache-on-failure: true
+          workspaces: api -> target
+      - name: Record runner and exact source
+        run: |
+          mkdir -p tmp/test-governance/mcp-role-permissions-ci
+          { git rev-parse HEAD; git rev-parse HEAD:api; rustc --version; cargo --version; nproc; free -b; df -B1 .; } > tmp/test-governance/mcp-role-permissions-ci/runner.txt
+          echo "CARGO_BUILD_JOBS=$(node scripts/node/testing/verify-runtime.js cargo-jobs)" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/build-sdk-worker-fixtures
+      - name: Execute six frozen filters serially
+        run: node .github/scripts/mcp-role-permissions-evidence.cjs
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: mcp-role-permissions-${{ github.sha }}
+          path: tmp/test-governance/mcp-role-permissions-ci/
+          if-no-files-found: error
+          retention-days: 14
