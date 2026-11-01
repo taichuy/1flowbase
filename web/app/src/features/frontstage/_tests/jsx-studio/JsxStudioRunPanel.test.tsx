@@ -378,12 +378,20 @@ describe('JsxStudioRunPanel Native React run revision', () => {
       blockId: 'block-1',
       runId: expect.stringMatching(/^draft:block-1:/u)
     });
-    await waitFor(() =>
-      expect(
-        view.container.querySelector<HTMLElement>(
+    // Catalog/module preparation and React's declarative portal mount are asynchronous.
+    // Wait for the real compiler and attached shadow root, rather than a one-second wall clock.
+    await waitFor(() => expect(compiler).toHaveBeenCalledOnce(), {
+      timeout: 5000
+    });
+    await waitFor(
+      () => {
+        const host = view.container.querySelector<HTMLElement>(
           '[data-testid="native-react-studio-preview-root"]'
-        )?.shadowRoot
-      ).not.toBeNull()
+        );
+        expect(host).not.toBeNull();
+        expect(host?.shadowRoot).toBeInstanceOf(ShadowRoot);
+      },
+      { timeout: 5000 }
     );
     const shadowRoot = trialShadowRoot(view.container);
     const utils = within(shadowRoot as unknown as HTMLElement);

@@ -1,7 +1,11 @@
 //! Real v2 package intake -> install service -> durable transaction -> reusable UI records.
 use super::*;
 
-pub(super) fn package(fixture: &Fixture, version: &str, count: usize) -> PathBuf {
+pub(super) fn package(
+    fixture: &Fixture,
+    version: &str,
+    count: usize,
+) -> control_plane::plugin_management::InstallUploadedPluginCommand {
     let directory = fixture.root.join(format!("managed-components-{version}"));
     std::fs::create_dir_all(directory.join("bin")).unwrap();
     std::fs::create_dir_all(directory.join("ui")).unwrap();
@@ -71,20 +75,44 @@ pub(super) fn package(fixture: &Fixture, version: &str, count: usize) -> PathBuf
     std::fs::write(directory.join("manifest.yaml"), manifest).unwrap();
     std::fs::write(directory.join("bin/fixture"), "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::write(directory.join("ui/render.json"), "{}").unwrap();
-    directory
+    // Managed installations derive immutable content identity from the real archive intake.
+    // Do not use directory installation or manufacture checksum/source metadata in the fixture.
+    let archive = fixture
+        .root
+        .join(format!("managed-components-{version}.1flowbasepkg"));
+    let output = std::process::Command::new("tar")
+        .args(["-czf"])
+        .arg(&archive)
+        .arg("-C")
+        .arg(&directory)
+        .args(["manifest.yaml", "bin", "ui"])
+        .output()
+        .expect("tar is required to build the standard managed archive fixture");
+    assert!(
+        output.status.success(),
+        "archive creation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    control_plane::plugin_management::InstallUploadedPluginCommand {
+        actor_user_id: fixture.actor,
+        file_name: archive.file_name().unwrap().to_string_lossy().into_owned(),
+        package_bytes: std::fs::read(archive).unwrap(),
+    }
 }
 
 #[tokio::test]
 async fn v2_install_projects_six_reusable_records_and_upgrade_removes_without_duplicates() {
     let fixture = Fixture::new().await;
-    let install = |root: PathBuf| InstallPluginCommand {
-        actor_user_id: fixture.actor,
-        package_root: root.display().to_string(),
-    };
     let v1 = package(&fixture, "0.1.0", 6);
     fixture
         .service
-        .install_plugin(install(v1.clone()))
+        .install_uploaded_plugin(
+            control_plane::plugin_management::InstallUploadedPluginCommand {
+                actor_user_id: v1.actor_user_id,
+                file_name: v1.file_name.clone(),
+                package_bytes: v1.package_bytes.clone(),
+            },
+        )
         .await
         .unwrap();
     let records = fixture.store.list_ui_component_records().await.unwrap();
@@ -96,7 +124,7 @@ async fn v2_install_projects_six_reusable_records_and_upgrade_removes_without_du
         .iter()
         .all(|record| record.owner_plugin_id.as_deref() == Some("acme/managed_fixture")));
     assert_studio_copy_compiles(&records);
-    fixture.service.install_plugin(install(v1)).await.unwrap();
+    fixture.service.install_uploaded_plugin(v1).await.unwrap();
     assert_eq!(
         fixture
             .store
@@ -110,7 +138,7 @@ async fn v2_install_projects_six_reusable_records_and_upgrade_removes_without_du
     );
     fixture
         .service
-        .install_plugin(install(package(&fixture, "0.2.0", 5)))
+        .install_uploaded_plugin(package(&fixture, "0.2.0", 5))
         .await
         .unwrap();
     let upgrade = fixture.store.list_ui_component_records().await.unwrap();
