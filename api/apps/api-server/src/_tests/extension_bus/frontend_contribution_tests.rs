@@ -118,6 +118,7 @@ fn candidate(workspace_id: Uuid) -> (FrontendContributionCandidate, PathBuf) {
     };
     (
         FrontendContributionCandidate {
+            authority: None,
             workspace_id,
             installation,
             artifact,

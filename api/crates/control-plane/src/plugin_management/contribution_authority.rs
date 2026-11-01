@@ -96,6 +96,18 @@ impl HostContributionGrantPolicy {
             point_contract_version: extension_contracts::AUTHENTICATION_CONTRACT_V1,
             resource_scope: ContributionResourceScope::System,
         });
+        // Only this Boot Core-owned frontend point may delegate trusted host mounting.
+        // Workspace assignment and durable authority remain enforced by their existing owners.
+        rules.push(HostContributionPermissionRule {
+            point_id: crate::frontend_block_catalog::FRONTEND_BLOCK_CONTRIBUTION_POINT_ID.into(),
+            permission: crate::frontend_block_catalog::FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION
+                .into(),
+            permission_contract_id:
+                crate::frontend_block_catalog::FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_ID,
+            point_contract_version:
+                crate::frontend_block_catalog::FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_VERSION,
+            resource_scope: ContributionResourceScope::Workspace,
+        });
         Self { rules }
     }
 
@@ -110,7 +122,7 @@ impl HostContributionGrantPolicy {
             base16ct::HexDisplay(&sha2::Sha256::digest(
                 [
                     bytes.as_slice(),
-                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;http-egress/v1;authentication/v1"
+                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;http-egress/v1;authentication/v1;frontend-block-trusted-host/v1"
                 ]
                 .concat()
             ))
@@ -172,6 +184,13 @@ impl HostContributionGrantPolicy {
         contribution: &plugin_framework::extension_bus::ContributionDescriptor,
         request: &GrantContributionPermission,
     ) -> bool {
+        if contribution.point_id.as_str()
+            == crate::frontend_block_catalog::FRONTEND_BLOCK_CONTRIBUTION_POINT_ID
+            && (contribution.mode != plugin_framework::extension_bus::ContributionMode::Append
+                || contribution.contributor_module_id.as_str() != installation.provider_code)
+        {
+            return false;
+        }
         if contribution.point_id.as_str() == extension_contracts::AUTHENTICATION_POINT {
             return domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
                 == domain::SYSTEM_SCOPE_ID

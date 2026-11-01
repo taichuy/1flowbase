@@ -1,13 +1,43 @@
 //! Real v2 package intake -> install service -> durable transaction -> reusable UI records.
 use super::*;
 
-fn package(fixture: &Fixture, version: &str, count: usize) -> PathBuf {
+pub(super) fn package(fixture: &Fixture, version: &str, count: usize) -> PathBuf {
     let directory = fixture.root.join(format!("managed-components-{version}"));
     std::fs::create_dir_all(directory.join("bin")).unwrap();
     std::fs::create_dir_all(directory.join("ui")).unwrap();
     let base =
         include_str!("../../../../extension-package-runtime/src/_tests/managed_manifest.yaml");
-    let mut manifest = base.replace("0.1.0", version);
+    let mut descriptors = String::new();
+    let mut bindings = String::new();
+    // Each frontend payload is explicitly owned and bound; the canonical validator stays strict.
+    for index in 0..count {
+        descriptors.push_str(&format!(
+            r#"      - contribution_id: managed_fixture.view-{index}
+        contributor_module_id: managed_fixture
+        point_id: 1flowbase.workspace.frontend-block-contribution
+        contract_version: '1'
+        mode: append
+        required_permissions: [frontend-block.ui-mount.trusted-host]
+"#
+        ));
+        bindings.push_str(&format!(
+            r#"    - contribution_id: managed_fixture.view-{index}
+      execution_mode: declarative_only
+      runtime:
+        protocol: stdio_json
+        entry: ui/render.json
+      handler: View{index}
+      payload:
+        kind: frontend_block
+        contribution_code: view-{index}
+"#
+        ));
+    }
+    let mut manifest = base.replace("0.1.0", version).replace(
+        "  execution_bindings:\n",
+        &format!("{descriptors}  execution_bindings:\n"),
+    );
+    manifest.push_str(&bindings);
     manifest.push_str("\nblock_contributions:\n");
     for index in 0..count {
         // Manifest module identities are package-wide unique; consumers share this host module.
@@ -64,7 +94,7 @@ async fn v2_install_projects_six_reusable_records_and_upgrade_removes_without_du
         .all(|record| record.origin == domain::UiComponentRecordOrigin::Plugin));
     assert!(records
         .iter()
-        .all(|record| record.owner_plugin_id.as_deref() == Some("managed_fixture")));
+        .all(|record| record.owner_plugin_id.as_deref() == Some("acme/managed_fixture")));
     assert_studio_copy_compiles(&records);
     fixture.service.install_plugin(install(v1)).await.unwrap();
     assert_eq!(

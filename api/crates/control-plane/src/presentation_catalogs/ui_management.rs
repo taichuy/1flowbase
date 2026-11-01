@@ -425,7 +425,10 @@ where
 
 impl<R> UiManagementService<R>
 where
-    R: UiManagementRepository + FrontendBlockCatalogRepository + crate::ports::PluginRepository,
+    R: UiManagementRepository
+        + FrontendBlockCatalogRepository
+        + crate::ports::PluginRepository
+        + crate::ports::PluginContributionAuthorityRepository,
 {
     async fn workspace_component_contributions(
         &self,

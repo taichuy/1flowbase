@@ -14,7 +14,7 @@ pub(crate) async fn sync_plugin_components(
     actor_user_id: Uuid,
 ) -> Result<()> {
     let installation = sqlx::query(
-        "select plugin_id, artifact_version, artifact_id, source_kind from extension_installations where id=$1",
+        "select organization, plugin_id, artifact_version, artifact_id, source_kind from extension_installations where id=$1",
     )
     .bind(installation_id)
     .fetch_one(&mut *connection)
@@ -30,11 +30,14 @@ pub(crate) async fn sync_plugin_components(
     if installation.get::<&str, _>("source_kind") == "builtin" {
         return Ok(());
     }
-    // Read stable ownership from the installation, including when removing every contribution.
-    let versioned_plugin_id: &str = installation.get("plugin_id");
-    let plugin_id = versioned_plugin_id
-        .split_once('@')
-        .map_or(versioned_plugin_id, |(id, _)| id);
+    // Publisher and artifact come from the durable installation, including empty replacements.
+    // Neither field can contain '/', so the canonical unversioned owner is unambiguous.
+    let plugin_owner = format!(
+        "{}/{}",
+        installation.get::<&str, _>("organization"),
+        installation.get::<&str, _>("artifact_id")
+    );
+    let plugin_id = plugin_owner.as_str();
     // Version-specific installation admission locks do not serialize different package versions.
     sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 2015))")
         .bind(plugin_id)

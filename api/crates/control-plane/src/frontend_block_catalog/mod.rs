@@ -6,6 +6,7 @@ use std::{
 };
 use uuid::Uuid;
 
+mod authority;
 mod frontend_contribution;
 
 pub use frontend_contribution::{
@@ -22,7 +23,8 @@ pub use frontend_contribution::{
 use crate::{
     errors::ControlPlaneError,
     ports::{
-        AuthRepository, FrontendBlockCatalogRepository, PluginRepository, RoleConsolePolicyReader,
+        AuthRepository, FrontendBlockCatalogRepository, PluginContributionAuthorityRepository,
+        PluginRepository, RoleConsolePolicyReader,
     },
 };
 
@@ -65,7 +67,7 @@ impl<R> FrontendModuleAssetService<R> {
 
 impl<R> FrontendModuleAssetService<R>
 where
-    R: FrontendBlockCatalogRepository + PluginRepository,
+    R: FrontendBlockCatalogRepository + PluginRepository + PluginContributionAuthorityRepository,
 {
     pub async fn get_module_asset(
         &self,
@@ -180,7 +182,11 @@ pub struct FrontendBlockCatalogService<R> {
 
 impl<R> FrontendBlockCatalogService<R>
 where
-    R: AuthRepository + FrontendBlockCatalogRepository + PluginRepository + RoleConsolePolicyReader,
+    R: AuthRepository
+        + FrontendBlockCatalogRepository
+        + PluginRepository
+        + PluginContributionAuthorityRepository
+        + RoleConsolePolicyReader,
 {
     pub fn new(
         repository: R,
@@ -268,7 +274,7 @@ pub(crate) async fn resolve_frontend_contributions<R>(
     catalog_entries: Vec<domain::FrontendBlockCatalogEntry>,
 ) -> Result<Vec<FrontendContributionBinding>>
 where
-    R: FrontendBlockCatalogRepository + PluginRepository,
+    R: FrontendBlockCatalogRepository + PluginRepository + PluginContributionAuthorityRepository,
 {
     let assignments = repository.list_assignments(workspace_id).await?;
     let mut assignment_by_installation = HashMap::with_capacity(assignments.len());
@@ -280,6 +286,7 @@ where
     // Reuse the first observed identity facts only within this request. Asset and resolver
     // checks still run for each contribution after the original ordered read phase.
     let mut installation_facts = HashMap::new();
+    let mut authorities = HashMap::new();
     let mut candidates = Vec::with_capacity(catalog_entries.len());
     for catalog_entry in catalog_entries {
         let facts = match installation_facts.entry(catalog_entry.installation_id) {
@@ -302,7 +309,46 @@ where
             continue;
         };
         let assignment = assignment_by_installation.get(&installation.id).cloned();
+        let authority = if authority::requires_authority(installation) {
+            if let Entry::Vacant(entry) = authorities.entry(installation.id) {
+                let scope = domain::managed_installation_scope(installation, workspace_id);
+                let snapshot = repository
+                    .query_contribution_authority(
+                        installation.id,
+                        scope,
+                        &crate::audit::audit_log(
+                            Some(workspace_id),
+                            None,
+                            "plugin_installation",
+                            Some(installation.id),
+                            "plugin.frontend_contribution_authority.checked",
+                            serde_json::json!({}),
+                        ),
+                    )
+                    .await;
+                let snapshot = match snapshot {
+                    Ok(snapshot) => Some(snapshot),
+                    Err(error)
+                        if matches!(
+                            error.downcast_ref::<ControlPlaneError>(),
+                            Some(
+                                ControlPlaneError::PermissionDenied(_)
+                                    | ControlPlaneError::NotFound(_)
+                            )
+                        ) =>
+                    {
+                        None
+                    }
+                    Err(error) => return Err(error),
+                };
+                entry.insert(snapshot);
+            }
+            authorities.get(&installation.id).cloned().flatten()
+        } else {
+            None
+        };
         candidates.push(FrontendContributionCandidate {
+            authority,
             workspace_id,
             installation: installation.clone(),
             artifact: artifact.clone(),

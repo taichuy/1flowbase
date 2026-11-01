@@ -59,7 +59,7 @@ async fn installation_projects_six_owned_components_idempotently_and_upgrades_in
         assert_eq!(record.origin, UiComponentRecordOrigin::Plugin);
         assert_eq!(
             record.owner_plugin_id.as_deref(),
-            Some("northwind.settings-page")
+            Some("test/northwind.settings-page")
         );
         assert_eq!(record.owner_installation_id, Some(installed.id));
         assert!(record.import_code.starts_with("// Plugin component: "));
@@ -293,4 +293,168 @@ async fn uninstall_revokes_projection_but_retains_installation_history() {
             .await
             .unwrap();
     assert_eq!(count, 0);
+}
+
+async fn uninstall_components(
+    store: &PgControlPlaneStore,
+    mut command: CommitPluginInstallationInput,
+    installation_id: Uuid,
+    actor: Uuid,
+) {
+    command.artifact_instance.installation_id = installation_id;
+    command.artifact_instance.artifact_status = domain::PluginArtifactInstanceStatus::Missing;
+    command.artifact_instance.availability_status =
+        domain::PluginAvailabilityStatus::ArtifactMissing;
+    command.artifact_instance.local_path = None;
+    store
+        .commit_plugin_family_uninstall(&CommitPluginFamilyUninstallInput {
+            artifact_instances: vec![command.artifact_instance],
+            artifact_cleanups: Vec::new(),
+            audit_log: domain::AuditLogRecord {
+                id: Uuid::now_v7(),
+                workspace_id: None,
+                actor_user_id: Some(actor),
+                target_type: "plugin_family".into(),
+                target_id: None,
+                event_code: "plugin.family_uninstalled".into(),
+                payload: json!({}),
+                created_at: time::OffsetDateTime::now_utc(),
+            },
+        })
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn publishers_with_same_artifact_and_different_versions_cannot_overwrite_or_delete_each_other(
+) {
+    let store = store().await;
+    let actor = actor(&store).await;
+    let mut publisher_a = components(actor, "1.0.0");
+    publisher_a.installation.organization = "publisher-a".into();
+    let installed_a = store
+        .commit_plugin_installation(&publisher_a)
+        .await
+        .unwrap();
+    let before_a = store.list_ui_component_records().await.unwrap();
+    assert_eq!(before_a.len(), 6);
+
+    // Different versions deliberately avoid the unrelated same-version checksum admission gate.
+    let mut publisher_b = components(actor, "2.0.0");
+    publisher_b.installation.organization = "publisher-b".into();
+    publisher_b.frontend_blocks.entries.truncate(3);
+    let installed_b = store
+        .commit_plugin_installation(&publisher_b)
+        .await
+        .unwrap();
+    let both = store.list_ui_component_records().await.unwrap();
+    assert_eq!(both.len(), 9);
+    for before in &before_a {
+        assert_eq!(both.iter().find(|record| record.id == before.id), Some(before),
+            "another publisher must not transfer ownership, overwrite source or delete missing contributions");
+    }
+    let before_b: Vec<_> = both
+        .into_iter()
+        .filter(|record| record.owner_installation_id == Some(installed_b.id))
+        .collect();
+    assert_eq!(before_b.len(), 3);
+    for record in &before_b {
+        assert_eq!(
+            record.owner_plugin_id.as_deref(),
+            Some("publisher-b/northwind.settings-page")
+        );
+        assert!(!before_a
+            .iter()
+            .any(|other| other.component_code == record.component_code));
+    }
+
+    let mut upgrade_a = components(actor, "3.0.0");
+    upgrade_a.installation.organization = "publisher-a".into();
+    upgrade_a.frontend_blocks.entries.pop();
+    let installed_a3 = store.commit_plugin_installation(&upgrade_a).await.unwrap();
+    let upgraded = store.list_ui_component_records().await.unwrap();
+    assert_eq!(upgraded.len(), 8);
+    for before in &before_a[..5] {
+        let after = upgraded
+            .iter()
+            .find(|record| record.id == before.id)
+            .unwrap();
+        assert_eq!(after.component_code, before.component_code);
+        assert_eq!(
+            after.owner_plugin_id.as_deref(),
+            Some("publisher-a/northwind.settings-page")
+        );
+        assert_eq!(after.owner_installation_id, Some(installed_a3.id));
+        assert_eq!(after.version, "3.0.0");
+    }
+    for before in &before_b {
+        assert_eq!(
+            upgraded.iter().find(|record| record.id == before.id),
+            Some(before)
+        );
+    }
+    let mut empty_b = publisher_b.frontend_blocks.clone();
+    empty_b.installation_id = installed_b.id;
+    empty_b.entries.clear();
+    store
+        .replace_installation_frontend_blocks(&empty_b)
+        .await
+        .unwrap();
+    let remaining_a = store.list_ui_component_records().await.unwrap();
+    assert_eq!(remaining_a.len(), 5);
+    assert!(remaining_a
+        .iter()
+        .all(|record| record.owner_installation_id == Some(installed_a3.id)));
+    store
+        .commit_plugin_installation(&publisher_b)
+        .await
+        .unwrap();
+    // Uninstalling an old version cannot delete its replacement or another publisher's records.
+    uninstall_components(&store, publisher_a, installed_a.id, actor).await;
+    assert_eq!(store.list_ui_component_records().await.unwrap().len(), 8);
+    uninstall_components(&store, upgrade_a, installed_a3.id, actor).await;
+    let remaining_b = store.list_ui_component_records().await.unwrap();
+    assert_eq!(remaining_b.len(), 3);
+    assert!(remaining_b
+        .iter()
+        .all(|record| record.owner_installation_id == Some(installed_b.id)));
+}
+
+#[tokio::test]
+async fn publisher_owner_migration_preserves_record_ids_and_matches_install_projection_keys() {
+    use sha2::{Digest, Sha256};
+    let store = store().await;
+    let actor = actor(&store).await;
+    let command = components(actor, "1.0.0");
+    let installed = store.commit_plugin_installation(&command).await.unwrap();
+    let expected = store.list_ui_component_records().await.unwrap();
+    for record in &expected {
+        let contribution = record.owner_contribution_code.as_deref().unwrap();
+        let identity = serde_json::to_vec(&("northwind.settings-page", contribution)).unwrap();
+        let legacy_code = format!(
+            "plugin.{:x}",
+            base16ct::HexDisplay(&Sha256::digest(identity))
+        );
+        sqlx::query("update ui_component_records set owner_plugin_id='northwind.settings-page', component_code=$1 where id=$2")
+            .bind(legacy_code).bind(record.id).execute(store.pool()).await.unwrap();
+    }
+    sqlx::raw_sql(include_str!(
+        "../../../migrations/20261101100000_publisher_owned_ui_components.sql"
+    ))
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let migrated = store.list_ui_component_records().await.unwrap();
+    assert_eq!(migrated, expected);
+    store.commit_plugin_installation(&command).await.unwrap();
+    let retried = store.list_ui_component_records().await.unwrap();
+    assert_eq!(retried.len(), 6);
+    for before in &expected {
+        let after = retried
+            .iter()
+            .find(|record| record.id == before.id)
+            .unwrap();
+        assert_eq!(after.component_code, before.component_code);
+        assert_eq!(after.owner_installation_id, Some(installed.id));
+    }
 }

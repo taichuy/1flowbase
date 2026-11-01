@@ -216,7 +216,7 @@ async fn write_installation(
                 is_system_reserved = excluded.is_system_reserved,
                 updated_by = excluded.updated_by,
                 updated_at = now()
-            where (
+            where ((
                 coalesce(extension_installations.metadata_json -> 'managed', 'null'::jsonb) = 'null'::jsonb
                 and coalesce(excluded.metadata_json -> 'managed', 'null'::jsonb) = 'null'::jsonb
             ) or (
@@ -224,7 +224,10 @@ async fn write_installation(
                 and coalesce(excluded.metadata_json -> 'managed', 'null'::jsonb) <> 'null'::jsonb
                 and extension_installations.expected_checksum is not null
                 and extension_installations.expected_checksum = excluded.expected_checksum
-            )
+            ))
+                and extension_installations.organization = excluded.organization
+                and extension_installations.artifact_id = excluded.artifact_id
+                and extension_installations.category = excluded.category
             returning id, scope_id, category, organization, artifact_id as provider_code,
                 plugin_id, artifact_version as plugin_version, contract_version, protocol,
                 display_name, source_kind, trust_level, verification_status, desired_state,

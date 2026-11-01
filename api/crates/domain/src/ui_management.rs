@@ -105,7 +105,7 @@ pub struct UiComponentRecordUpstream {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiComponentRecord {
-    /// Stable, unversioned package identity, never a provider/display alias.
+    /// Canonical unversioned publisher/artifact owner, never a provider/display alias.
     pub owner_plugin_id: Option<String>,
     pub owner_contribution_code: Option<String>,
     pub owner_installation_id: Option<Uuid>,

@@ -162,6 +162,8 @@ pub enum FrontendContributionResolution {
 
 #[derive(Debug, Clone)]
 pub struct FrontendContributionCandidate {
+    /// Current durable facts; missing authority never grants a managed v2 contribution.
+    pub authority: Option<domain::PluginContributionAuthoritySnapshot>,
     pub workspace_id: Uuid,
     pub installation: domain::PluginInstallationRecord,
     pub artifact: domain::PluginArtifactInstanceRecord,
@@ -275,6 +277,11 @@ impl FrontendContributionResolver {
         {
             return disabled(FrontendContributionDisableReason::PermissionDenied);
         }
+        let Some(granted_permissions) =
+            super::authority::granted_permissions(&candidate, requested_permission)
+        else {
+            return disabled(FrontendContributionDisableReason::PermissionDenied);
+        };
         let Some(assets) = verified_assets(&candidate) else {
             return disabled(FrontendContributionDisableReason::AssetInvalid);
         };
@@ -295,7 +302,7 @@ impl FrontendContributionResolver {
             isolation_requirement,
             assets,
             requested_permissions: vec![requested_permission.to_string()],
-            granted_permissions: vec![requested_permission.to_string()],
+            granted_permissions,
             workspace_id: candidate.workspace_id,
             lifecycle: LifecycleSemantics::WorkspaceAssignment,
             graph_fingerprint: self.graph.fingerprint().as_str().to_string(),
