@@ -525,7 +525,7 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
                         service
                     };
                     let mut actor = service.authenticate(token, &credential.instance_id).await?;
-                    crate::middleware::require_session::apply_ui_management_permission_to_actor(
+                    crate::middleware::require_session::apply_console_policy_permissions_to_actor(
                         &credential.state,
                         &mut actor.actor,
                     )
