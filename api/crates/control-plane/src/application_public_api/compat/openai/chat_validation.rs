@@ -685,6 +685,50 @@ pub(super) fn responses_input_requires_native_passthrough(input: &Value) -> bool
     })
 }
 
+// Complete inline text owns its replay content. Delivery metadata does not imply a
+// persisted-item lookup; share this boundary with semantic message validation.
+pub(super) fn responses_complete_inline_assistant_message(item: &Map<String, Value>) -> bool {
+    item.get("type")
+        .is_none_or(|kind| kind.as_str() == Some("message"))
+        && item.get("role").and_then(Value::as_str) == Some("assistant")
+        && item.keys().all(|field| {
+            matches!(
+                field.as_str(),
+                "type" | "role" | "content" | "id" | "status"
+            )
+        })
+        && item
+            .get("id")
+            .is_none_or(|id| id.as_str().is_some_and(|id| !id.trim().is_empty()))
+        && item
+            .get("status")
+            .is_none_or(|status| status.as_str() == Some("completed"))
+        && item.get("content").is_some_and(|content| match content {
+            Value::String(_) => true,
+            Value::Array(parts) => {
+                !parts.is_empty()
+                    && parts.iter().all(|part| {
+                        let Some(part) = part.as_object() else {
+                            return false;
+                        };
+                        let kind = part.get("type").and_then(Value::as_str);
+                        matches!(kind, Some("text" | "input_text" | "output_text"))
+                            && part.get("text").is_some_and(Value::is_string)
+                            && part.iter().all(|(field, value)| {
+                                matches!(field.as_str(), "type" | "text")
+                                    || (kind == Some("output_text")
+                                        && responses_empty_output_text_metadata(field, value))
+                            })
+                    })
+            }
+            _ => false,
+        })
+}
+
+pub(super) fn responses_empty_output_text_metadata(field: &str, value: &Value) -> bool {
+    matches!(field, "annotations" | "logprobs") && value.as_array().is_some_and(Vec::is_empty)
+}
+
 pub(super) fn responses_input_item_requires_native_passthrough(item: &Value) -> bool {
     if super::is_standalone_function_output(item) {
         // Standalone notifications have a canonical external-context owner.
@@ -695,11 +739,14 @@ pub(super) fn responses_input_item_requires_native_passthrough(item: &Value) -> 
     };
     match item.get("type").and_then(Value::as_str) {
         None | Some("message") => {
-            item.keys()
-                .any(|field| !matches!(field.as_str(), "type" | "role" | "content"))
-                || item
+            let complete_inline_message = responses_complete_inline_assistant_message(item);
+            item.keys().any(|field| {
+                !matches!(field.as_str(), "type" | "role" | "content")
+                    && !(complete_inline_message && matches!(field.as_str(), "id" | "status"))
+            }) || (!complete_inline_message
+                && item
                     .get("content")
-                    .is_some_and(responses_content_requires_native_passthrough)
+                    .is_some_and(responses_content_requires_native_passthrough))
         }
         Some("function_call") => {
             // A complete inline call is not a persisted-item reference. In

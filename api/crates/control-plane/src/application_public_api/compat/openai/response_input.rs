@@ -402,9 +402,13 @@ fn validate_responses_items(
                 TranslationSafeRepresentation::Present,
             );
         }
+        let complete_inline_message = responses_complete_inline_assistant_message(object);
         let unknown_fields = object
             .keys()
-            .filter(|field| !matches!(field.as_str(), "type" | "role" | "content"))
+            .filter(|field| {
+                !matches!(field.as_str(), "type" | "role" | "content")
+                    && !(complete_inline_message && matches!(field.as_str(), "id" | "status"))
+            })
             .collect::<Vec<_>>();
         if report.record_anonymous_unknown_fields(
             &item_path,
@@ -418,6 +422,19 @@ fn validate_responses_items(
                 OpenAiCompatError::invalid("input", "unknown Responses input field")
                     .with_report(report.clone()),
             );
+        }
+        if complete_inline_message {
+            for field in ["id", "status"] {
+                if object.contains_key(field) {
+                    report.record(
+                        &format!("{item_path}.{field}"),
+                        None,
+                        TranslationDecisionKind::Dropped,
+                        Some("complete inline assistant delivery metadata has no Native message semantic"),
+                        TranslationSafeRepresentation::Redacted,
+                    );
+                }
+            }
         }
         let role_path = format!("$.input[{index}].role");
         let role_was_explicit = object.contains_key("role");

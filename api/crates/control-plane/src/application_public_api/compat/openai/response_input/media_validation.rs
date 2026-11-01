@@ -107,10 +107,16 @@ pub(in super::super) fn validate_openai_supported_content_part(
 ) -> Result<(), OpenAiCompatError> {
     match part_type {
         "text" | "input_text" | "output_text" => {
+            let allows_empty_output_metadata = error_param == "input" && part_type == "output_text";
+            let allowed_fields: &[&str] = if allows_empty_output_metadata {
+                &["type", "text", "annotations", "logprobs"]
+            } else {
+                &["type", "text"]
+            };
             reject_unknown_openai_content_part_fields(
                 object,
                 part_path,
-                &["type", "text"],
+                allowed_fields,
                 error_param,
                 report,
             )?;
@@ -132,6 +138,36 @@ pub(in super::super) fn validate_openai_supported_content_part(
                     "text content part requires text",
                 )
                 .with_report(report.clone()));
+            }
+            if allows_empty_output_metadata {
+                for field in ["annotations", "logprobs"] {
+                    if let Some(value) = object.get(field) {
+                        let metadata_path = format!("{part_path}.{field}");
+                        if !responses_empty_output_text_metadata(field, value) {
+                            report.record(
+                                &metadata_path,
+                                None,
+                                TranslationDecisionKind::Rejected,
+                                Some(
+                                    "only empty output_text metadata arrays have a canonical owner",
+                                ),
+                                TranslationSafeRepresentation::Redacted,
+                            );
+                            return Err(OpenAiCompatError::invalid(
+                                error_param,
+                                "output_text annotations and logprobs must be empty arrays",
+                            )
+                            .with_report(report.clone()));
+                        }
+                        report.record(
+                            &metadata_path,
+                            None,
+                            TranslationDecisionKind::Dropped,
+                            Some("empty output_text metadata has no Native content semantic"),
+                            TranslationSafeRepresentation::Present,
+                        );
+                    }
+                }
             }
             report.record(
                 &text_path,
