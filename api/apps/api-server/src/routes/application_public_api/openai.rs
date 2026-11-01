@@ -61,6 +61,7 @@ mod compact;
 pub(crate) mod http_delivery;
 mod model_list;
 mod response_dispatch;
+pub(crate) mod responses_headers;
 pub(crate) mod usage;
 use response_dispatch::dispatch_response_for_endpoint;
 mod session_context;
@@ -624,7 +625,10 @@ async fn create_response_for_endpoint(
         }
     };
     Ok(http_delivery::bind_response(
-        client_observer::observe_response(response, capture),
+        client_observer::observe_response(
+            responses_headers::with_usage_accounting(response),
+            capture,
+        ),
         delivery_scope,
     ))
 }
