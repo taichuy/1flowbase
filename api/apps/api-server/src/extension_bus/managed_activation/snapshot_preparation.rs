@@ -358,8 +358,16 @@ impl ManagedExtensionComposition {
                     .get_installation(assignment.installation_id)
                     .await?
                     .context("assigned installation missing")?;
-                if domain::managed_installation_scope(&installation, workspace_id) != workspace_id {
-                    bail!("system managed service cannot have workspace assignment");
+                let execution_scope =
+                    domain::managed_installation_scope(&installation, workspace_id);
+                if execution_scope == domain::SYSTEM_SCOPE_ID {
+                    // An explicit workspace assignment may expose a system package's
+                    // declarative UI. Its execution and authority stay in SYSTEM_SCOPE;
+                    // the frontend resolver still checks assignment and frontend grants.
+                    continue;
+                }
+                if execution_scope != workspace_id {
+                    bail!("managed execution scope disagrees with workspace assignment");
                 }
                 installations.push(installation);
             }
