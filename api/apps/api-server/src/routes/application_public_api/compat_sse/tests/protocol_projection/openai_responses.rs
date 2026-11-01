@@ -867,3 +867,81 @@ async fn preferred_sse_missing_host_selection_fails_instead_of_completing_empty(
     );
     assert!(body.contains("llm_input_selection_missing"));
 }
+
+#[tokio::test]
+async fn responses_resume_sse_usage_is_round_local_for_every_terminal_kind() {
+    use crate::routes::application_public_api::openai::usage::ResponseUsageBaseline;
+    for event_type in ["flow_finished", "flow_incomplete", "waiting_callback"] {
+        for known in [true, false] {
+            for mode in [
+                ResponsesProjectionMode::SemanticNativeResponses,
+                ResponsesProjectionMode::TransparentProviderResponses,
+            ] {
+                let mut run = native_run();
+                run.usage = Some(NativeUsage {
+                    prompt_tokens: Some(220),
+                    completion_tokens: Some(35),
+                    total_tokens: Some(255),
+                    cache_read_tokens: Some(150),
+                    reasoning_tokens: Some(12),
+                    ..NativeUsage::default()
+                });
+                let payload = if known {
+                    json!({"native_usage_baseline":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"cache_read_tokens":60,"reasoning_tokens":5}})
+                } else {
+                    json!({})
+                };
+                let baseline = ResponseUsageBaseline::from_callback_payload(&payload);
+                let mut mapper = OpenAiResponseStreamMapper::with_mode(
+                    "provider/model".into(),
+                    Some("resp_prior".into()),
+                    mode,
+                )
+                .with_usage_baseline(baseline);
+                let payload = if event_type == "waiting_callback" {
+                    json!({"callback_task_id":Uuid::now_v7(),"callback_kind":"llm_tool_calls","required_action":{"action_type":"submit_tool_outputs","payload":{"tool_calls":[{"id":"call-test","name":"probe","arguments":{}}]}}})
+                } else {
+                    json!({})
+                };
+                let envelope = RuntimeEventEnvelope::new(
+                    run.id,
+                    1,
+                    RuntimeEventPayload {
+                        event_type: event_type.into(),
+                        source: RuntimeEventSource::Runtime,
+                        durability: RuntimeEventDurability::DurableRequired,
+                        persist_required: true,
+                        trace_visible: true,
+                        payload,
+                    },
+                );
+                let response =
+                    test_projected_events_response(mapper.runtime_event_to_sse(&run, envelope));
+                let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+                    .await
+                    .unwrap();
+                let body = String::from_utf8(bytes.to_vec()).unwrap();
+                let terminal: Value = body
+                    .lines()
+                    .filter_map(|line| line.strip_prefix("data: "))
+                    .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+                    .find(|event| {
+                        matches!(
+                            event["type"].as_str(),
+                            Some("response.completed" | "response.incomplete")
+                        )
+                    })
+                    .expect("terminal Responses SSE");
+                if known {
+                    assert_eq!(
+                        terminal["response"]["usage"],
+                        json!({"input_tokens":120,"output_tokens":15,"total_tokens":135,"input_tokens_details":{"cached_tokens":90},"output_tokens_details":{"reasoning_tokens":7}})
+                    );
+                } else {
+                    assert!(terminal["response"]["usage"].is_null());
+                }
+                assert_eq!(run.usage.unwrap().prompt_tokens, Some(220));
+            }
+        }
+    }
+}

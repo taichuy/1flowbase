@@ -298,7 +298,7 @@ async fn unary_native_error_preserves_unknown_upstream_code_and_details() {
 
 #[test]
 fn chat_resume_unary_usage_uses_immutable_boundary_for_retries_and_old_callbacks() {
-    use super::super::chat_usage::{to_chat_response_for_round, ChatUsageBaseline};
+    use super::super::usage::{to_chat_response_for_round, ResponseUsageBaseline};
     let baseline = json!({"native_usage_baseline":{"prompt_tokens":7995,"completion_tokens":132,"total_tokens":8127,"input_cache_hit_tokens":512,"cache_read_tokens":512,"reasoning_tokens":100}});
     let cumulative = NativeUsage {
         prompt_tokens: Some(16212),
@@ -318,7 +318,7 @@ fn chat_resume_unary_usage_uses_immutable_boundary_for_retries_and_old_callbacks
             run.clone(),
             "deepseek-flash".into(),
             "turn".into(),
-            &ChatUsageBaseline::from_callback_payload(&baseline),
+            &ResponseUsageBaseline::from_callback_payload(&baseline),
         )
         .unwrap();
         let wire = serde_json::to_value(response).unwrap();
@@ -347,7 +347,7 @@ fn chat_resume_unary_usage_uses_immutable_boundary_for_retries_and_old_callbacks
             run,
             "deepseek-flash".into(),
             "old".into(),
-            &ChatUsageBaseline::from_callback_payload(&payload),
+            &ResponseUsageBaseline::from_callback_payload(&payload),
         )
         .unwrap();
         assert!(serde_json::to_value(response)
@@ -356,7 +356,7 @@ fn chat_resume_unary_usage_uses_immutable_boundary_for_retries_and_old_callbacks
             .is_none());
     }
     let known_empty =
-        ChatUsageBaseline::from_callback_payload(&json!({"native_usage_baseline":null}));
+        ResponseUsageBaseline::from_callback_payload(&json!({"native_usage_baseline":null}));
     assert_eq!(
         known_empty
             .project(Some(&cumulative))
@@ -368,7 +368,7 @@ fn chat_resume_unary_usage_uses_immutable_boundary_for_retries_and_old_callbacks
         prompt_tokens: Some(1),
         ..cumulative
     };
-    assert!(ChatUsageBaseline::from_callback_payload(&baseline)
+    assert!(ResponseUsageBaseline::from_callback_payload(&baseline)
         .project(Some(&regressed))
         .is_none());
 }
@@ -439,6 +439,50 @@ fn preferred_blocking_projection_uses_selection_and_required_transport_stays_str
         );
         if native {
             assert_eq!(response["output"], json!([item]));
+        }
+    }
+}
+
+#[test]
+fn responses_unary_usage_is_round_local_and_unknown_baseline_is_null() {
+    use super::super::usage::ResponseUsageBaseline;
+    let cumulative = NativeUsage {
+        prompt_tokens: Some(220),
+        completion_tokens: Some(35),
+        total_tokens: Some(255),
+        cache_read_tokens: Some(150),
+        reasoning_tokens: Some(12),
+        ..NativeUsage::default()
+    };
+    let items = vec![
+        json!({"type":"message","id":"provider-id","phase":"final_answer","role":"assistant","content":[{"type":"output_text","text":"done","annotations":[]}],"status":"completed"}),
+    ];
+    for payload in [
+        json!({"native_usage_baseline":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"cache_read_tokens":60,"reasoning_tokens":5}}),
+        json!({}),
+    ] {
+        for _ in 0..2 {
+            let mut run = blocking_run(NativeRunStatus::Succeeded);
+            run.usage = Some(cumulative.clone());
+            let response = to_openai_responses_response_for_round(
+                run.clone(),
+                "provider/model".into(),
+                Some("resp_prior".into()),
+                Some(items.clone()),
+                &ResponseUsageBaseline::from_callback_payload(&payload),
+            )
+            .unwrap();
+            let wire = serde_json::to_value(response).unwrap();
+            assert_eq!(wire["output"], json!(items));
+            if payload.get("native_usage_baseline").is_some() {
+                assert_eq!(
+                    wire["usage"],
+                    json!({"input_tokens":120,"output_tokens":15,"total_tokens":135,"input_tokens_details":{"cached_tokens":90},"output_tokens_details":{"reasoning_tokens":7}})
+                );
+            } else {
+                assert!(wire["usage"].is_null());
+            }
+            assert_eq!(run.usage.as_ref().unwrap().prompt_tokens, Some(220));
         }
     }
 }

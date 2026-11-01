@@ -415,7 +415,7 @@ pub(crate) fn openai_chat_interface_projection(model: String) -> CompatibleProto
 pub(crate) fn openai_chat_resume_interface_projection(
     model: String,
     completion_id: String,
-    usage_baseline: super::openai::chat_usage::ChatUsageBaseline,
+    usage_baseline: super::openai::usage::ResponseUsageBaseline,
 ) -> CompatibleProtocolProjection {
     CompatibleProtocolProjection::OpenAiChat(
         OpenAiChatStreamMapper::new(model, completion_id).with_usage_baseline(usage_baseline),
@@ -443,6 +443,18 @@ pub(crate) fn openai_responses_interface_projection_with_mode(
         previous_response_id,
         mode,
     ))
+}
+
+pub(crate) fn openai_responses_resume_interface_projection(
+    model: String,
+    previous_response_id: Option<String>,
+    mode: ResponsesProjectionMode,
+    baseline: super::openai::usage::ResponseUsageBaseline,
+) -> CompatibleProtocolProjection {
+    CompatibleProtocolProjection::OpenAiResponses(
+        OpenAiResponseStreamMapper::with_mode(model, previous_response_id, mode)
+            .with_usage_baseline(baseline),
+    )
 }
 
 pub(crate) fn anthropic_interface_projection(model: String) -> CompatibleProtocolProjection {

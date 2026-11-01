@@ -57,11 +57,11 @@ use crate::{
     },
 };
 
-pub(crate) mod chat_usage;
 mod compact;
 pub(crate) mod http_delivery;
 mod model_list;
 mod response_dispatch;
+pub(crate) mod usage;
 use response_dispatch::dispatch_response_for_endpoint;
 mod session_context;
 #[cfg(test)]
@@ -99,6 +99,7 @@ pub(crate) struct PreparedOpenAiResponseTurn {
     previous_response_id: Option<String>,
     runtime: compatibility_interface::CompatibilityTypedStreamInvocation,
     projection_mode: compat_sse::ResponsesProjectionMode,
+    usage_baseline: usage::ResponseUsageBaseline,
 }
 
 impl PreparedOpenAiResponseTurn {
@@ -109,12 +110,14 @@ impl PreparedOpenAiResponseTurn {
         Option<String>,
         compatibility_interface::CompatibilityTypedStreamInvocation,
         compat_sse::ResponsesProjectionMode,
+        usage::ResponseUsageBaseline,
     ) {
         (
             self.model,
             self.previous_response_id,
             self.runtime,
             self.projection_mode,
+            self.usage_baseline,
         )
     }
 }
@@ -248,7 +251,12 @@ async fn dispatch_chat_completion(
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan))
                 if response_mode.as_deref() == Some("streaming") =>
             {
-                let usage_baseline = load_chat_usage_baseline(&state, callback_task_id).await?;
+                let usage_baseline = load_callback_usage_baseline(
+                    &state,
+                    callback_task_id,
+                    "chat_usage_boundary_failed",
+                )
+                .await?;
                 let completion_id = compat_sse::openai_chat_completion_id_from_callback_task(
                     plan.initial_run.id,
                     callback_task_id,
@@ -275,7 +283,12 @@ async fn dispatch_chat_completion(
                 .map_err(Into::into);
             }
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
-                let usage_baseline = load_chat_usage_baseline(&state, callback_task_id).await?;
+                let usage_baseline = load_callback_usage_baseline(
+                    &state,
+                    callback_task_id,
+                    "chat_usage_boundary_failed",
+                )
+                .await?;
                 let run = compatibility_interface::invoke_blocking_with_principal(
                     state.clone(),
                     resume_binding_id,
@@ -294,7 +307,7 @@ async fn dispatch_chat_completion(
                     run.id,
                     callback_task_id,
                 );
-                return Ok(Json(chat_usage::to_chat_response_for_round(
+                return Ok(Json(usage::to_chat_response_for_round(
                     run,
                     model,
                     completion_id,
@@ -425,10 +438,11 @@ async fn dispatch_chat_completion(
     Ok(Json(to_openai_response(run, model, completion_id)?).into_response())
 }
 
-async fn load_chat_usage_baseline(
+async fn load_callback_usage_baseline(
     state: &ApiState,
     callback_task_id: Uuid,
-) -> Result<chat_usage::ChatUsageBaseline, OpenAiRouteError> {
+    error_code: &'static str,
+) -> Result<usage::ResponseUsageBaseline, OpenAiRouteError> {
     // Admission already verified the callback's application/API actor ownership.
     let callback = state
         .store
@@ -437,13 +451,13 @@ async fn load_chat_usage_baseline(
         .map_err(|error| {
             native::NativeApiError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "chat_usage_boundary_failed",
+                error_code,
                 error.to_string(),
             )
         })?;
     Ok(callback
-        .map(|task| chat_usage::ChatUsageBaseline::from_callback_payload(&task.request_payload))
-        .unwrap_or(chat_usage::ChatUsageBaseline::Unavailable))
+        .map(|task| usage::ResponseUsageBaseline::from_callback_payload(&task.request_payload))
+        .unwrap_or(usage::ResponseUsageBaseline::Unavailable))
 }
 
 /// Blocking execution already persisted provider observations. Read their request-scoped

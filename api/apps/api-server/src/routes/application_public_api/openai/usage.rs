@@ -1,16 +1,16 @@
-//! Chat completion usage is a turn projection of the immutable callback boundary.
-use super::{openai_usage, OpenAiUsage};
+//! Request-local usage is projected from the immutable admitted callback boundary.
+use super::{openai_responses_usage, openai_usage, OpenAiResponsesUsage, OpenAiUsage};
 use control_plane::application_public_api::native::NativeUsage;
 use serde_json::Value;
 
 #[derive(Clone, Default)]
-pub(crate) enum ChatUsageBaseline {
+pub(crate) enum ResponseUsageBaseline {
     #[default]
     NewRun,
     Recorded(Option<NativeUsage>),
     Unavailable,
 }
-impl ChatUsageBaseline {
+impl ResponseUsageBaseline {
     pub(crate) fn from_callback_payload(payload: &Value) -> Self {
         match payload.get("native_usage_baseline") {
             Some(value) => match serde_json::from_value::<Option<NativeUsage>>(value.clone()) {
@@ -36,9 +36,10 @@ impl ChatUsageBaseline {
             None => Self::Unavailable,
         }
     }
-    pub(crate) fn project(&self, cumulative: Option<&NativeUsage>) -> Option<OpenAiUsage> {
+    /// Subtract the recorded boundary, never a live snapshot that can move on replay.
+    fn native_round(&self, cumulative: Option<&NativeUsage>) -> Option<NativeUsage> {
         match self {
-            Self::NewRun => Some(openai_usage(cumulative)),
+            Self::NewRun => cumulative.cloned(),
             Self::Unavailable => None,
             Self::Recorded(baseline) => {
                 let mut turn = cumulative?.clone();
@@ -46,12 +47,16 @@ impl ChatUsageBaseline {
                     fn difference(value: Option<u64>, before: Option<u64>) -> Option<u64> {
                         value.and_then(|value| value.checked_sub(before.unwrap_or_default()))
                     }
-                    // A regressing counter is not reliable usage for this turn.
+                    // Regressing or disappearing counters cannot establish round usage.
                     macro_rules! subtract {
                         ($($field:ident),*) => {$(
                             let original = turn.$field;
-                            turn.$field = difference(turn.$field, baseline.$field);
-                            if original.is_some() && turn.$field.is_none() { return None; }
+                            turn.$field = difference(original, baseline.$field);
+                            if (original.is_some() || baseline.$field.is_some())
+                                && turn.$field.is_none()
+                            {
+                                return None;
+                            }
                         )*};
                     }
                     subtract!(
@@ -65,7 +70,42 @@ impl ChatUsageBaseline {
                         cache_write_tokens
                     );
                 }
-                Some(openai_usage(Some(&turn)))
+                Some(turn)
+            }
+        }
+    }
+
+    pub(crate) fn project(&self, cumulative: Option<&NativeUsage>) -> Option<OpenAiUsage> {
+        if matches!(self, Self::NewRun) {
+            return Some(openai_usage(cumulative));
+        }
+        self.native_round(cumulative)
+            .as_ref()
+            .map(|usage| openai_usage(Some(usage)))
+    }
+
+    pub(crate) fn project_responses(
+        &self,
+        cumulative: Option<&NativeUsage>,
+    ) -> Option<OpenAiResponsesUsage> {
+        if matches!(self, Self::NewRun) {
+            return Some(openai_responses_usage(cumulative));
+        }
+        self.native_round(cumulative)
+            .as_ref()
+            .map(|usage| openai_responses_usage(Some(usage)))
+    }
+
+    /// Only replace usage in snapshots that already carry accounting. Progress,
+    /// items and provider deltas retain their original wire shape.
+    pub(crate) fn project_responses_event(
+        &self,
+        event: &mut Value,
+        cumulative: Option<&NativeUsage>,
+    ) {
+        if let Some(response) = event.get_mut("response") {
+            if response.get("usage").is_some() {
+                response["usage"] = serde_json::json!(self.project_responses(cumulative));
             }
         }
     }
@@ -75,10 +115,14 @@ pub(super) fn to_chat_response_for_round(
     run: control_plane::application_public_api::native::NativeRunResult,
     model: String,
     completion_id: String,
-    baseline: &ChatUsageBaseline,
+    baseline: &ResponseUsageBaseline,
 ) -> Result<super::OpenAiChatCompletionResponse, super::OpenAiRouteError> {
     let usage = baseline.project(run.usage.as_ref());
     let mut response = super::to_openai_response(run, model, completion_id)?;
     response.usage = usage;
     Ok(response)
 }
+
+#[cfg(test)]
+#[path = "_tests/usage_boundary.rs"]
+mod tests;
