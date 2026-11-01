@@ -9,6 +9,8 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct ListUiComponentRecordsQuery {
+    /// None for management; Some restricts plugin bodies to resolver-authorized block IDs before pagination.
+    pub plugin_contribution_ids: Option<Vec<String>>,
     pub query: Option<String>,
     pub offset: usize,
     pub limit: usize,

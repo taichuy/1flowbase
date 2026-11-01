@@ -98,6 +98,9 @@ async fn load_template(
 
 fn map_component_record(row: sqlx::postgres::PgRow) -> Result<UiComponentRecord> {
     Ok(UiComponentRecord {
+        owner_plugin_id: row.get("owner_plugin_id"),
+        owner_contribution_code: row.get("owner_contribution_code"),
+        owner_installation_id: row.get("owner_installation_id"),
         id: row.get("id"),
         scope_id: row.get("scope_id"),
         component_code: row.get("component_code"),
@@ -124,7 +127,7 @@ fn map_component_record(row: sqlx::postgres::PgRow) -> Result<UiComponentRecord>
     })
 }
 
-const COMPONENT_RECORD_COLUMNS: &str = r#"id, scope_id, component_code, name, description, import_code, source_code, origin,
+const COMPONENT_RECORD_COLUMNS: &str = r#"owner_plugin_id, owner_contribution_code, owner_installation_id, id, scope_id, component_code, name, description, import_code, source_code, origin,
     source, "group", upstream_identity, upstream_version, version, keywords,
     catalog_updated_at, source_locator, source_checksum,
     created_by, updated_by, created_at, updated_at"#;
@@ -486,9 +489,12 @@ impl UiManagementRepository for PgControlPlaneStore {
         let mut metadata = sqlx::query(
             r#"select id, component_code, name, description, source, "group",
                 upstream_identity, upstream_version, version, keywords
-            from ui_component_records where scope_id = $1 order by name, component_code"#,
+            from ui_component_records where scope_id = $1
+                and ($2::text[] is null or origin <> 'plugin' or (owner_installation_id::text || ':' || owner_contribution_code) = any($2))
+                order by name, component_code"#,
         )
         .bind(SYSTEM_SCOPE_ID)
+        .bind(&query.plugin_contribution_ids)
         .fetch_all(&mut *tx)
         .await?;
         if let Some(search) = query
@@ -646,7 +652,7 @@ impl UiManagementRepository for PgControlPlaneStore {
             .await?
             .context("ui component record not found")?;
         if current.origin != UiComponentRecordOrigin::Custom {
-            bail!("official ui component records are read-only");
+            bail!("host-owned ui component records are read-only");
         }
         domain::validate_ui_component_record_fields(
             &current.component_code,

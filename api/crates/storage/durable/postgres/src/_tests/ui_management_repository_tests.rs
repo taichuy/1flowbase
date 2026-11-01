@@ -374,6 +374,7 @@ async fn component_pages_preserve_search_order_bodies_and_one_snapshot_without_o
     ] {
         let page = store
             .list_ui_component_records_page(ListUiComponentRecordsQuery {
+                plugin_contribution_ids: None,
                 query: Some("  ".into()),
                 offset,
                 limit,
@@ -398,6 +399,7 @@ async fn component_pages_preserve_search_order_bodies_and_one_snapshot_without_o
     ] {
         let page = store
             .list_ui_component_records_page(ListUiComponentRecordsQuery {
+                plugin_contribution_ids: None,
                 query: Some(search.into()),
                 offset: 0,
                 limit: 20,
@@ -416,6 +418,7 @@ async fn component_pages_preserve_search_order_bodies_and_one_snapshot_without_o
     for search in ["taichuy", "paging", "@not-installed", "9.9.9", "1.0.0"] {
         let page = store
             .list_ui_component_records_page(ListUiComponentRecordsQuery {
+                plugin_contribution_ids: None,
                 query: Some(search.into()),
                 offset: 0,
                 limit: 20,
@@ -465,6 +468,7 @@ async fn component_pages_preserve_search_order_bodies_and_one_snapshot_without_o
     let page_task = tokio::spawn(async move {
         reader
             .list_ui_component_records_page(ListUiComponentRecordsQuery {
+                plugin_contribution_ids: None,
                 query: None,
                 offset: 0,
                 limit: 20,

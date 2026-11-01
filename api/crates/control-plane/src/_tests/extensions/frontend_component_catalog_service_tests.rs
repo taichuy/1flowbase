@@ -186,6 +186,9 @@ impl UiManagementRepository for MemoryPersistedComponentCatalog {
 fn opaque_record() -> UiComponentRecord {
     let timestamp = OffsetDateTime::UNIX_EPOCH;
     UiComponentRecord {
+        owner_plugin_id: None,
+        owner_contribution_code: None,
+        owner_installation_id: None,
         id: Uuid::now_v7(),
         scope_id: SYSTEM_SCOPE_ID,
         component_code: "taichuy.opaque.widget".into(),
@@ -226,6 +229,7 @@ async fn wp_d4_persisted_record_is_listed_and_gettable_without_module_or_export_
 
     let page = service
         .list_component_records_page(ListUiComponentRecordsQuery {
+            plugin_contribution_ids: None,
             query: Some("not-installed".into()),
             offset: 0,
             limit: 20,
@@ -251,6 +255,7 @@ async fn wp_d4_empty_persistence_yields_empty_catalog_without_inferred_exports()
 
     let page = service
         .list_component_records_page(ListUiComponentRecordsQuery {
+            plugin_contribution_ids: None,
             query: Some("hooks message theme version icons".into()),
             offset: 0,
             limit: 20,
@@ -262,4 +267,53 @@ async fn wp_d4_empty_persistence_yields_empty_catalog_without_inferred_exports()
     assert!(page.items.is_empty());
     assert!(!page.has_more);
     assert_eq!(page.next_offset, None);
+}
+
+#[tokio::test]
+async fn plugin_owned_components_reject_management_update_and_delete_before_repository_writes() {
+    let mut record = opaque_record();
+    record.origin = UiComponentRecordOrigin::Plugin;
+    record.owner_plugin_id = Some("fixture".into());
+    record.owner_contribution_code = Some("view".into());
+    record.owner_installation_id = Some(Uuid::now_v7());
+    let service = UiManagementService::new(
+        MemoryPersistedComponentCatalog {
+            records: vec![record.clone()],
+        },
+        "node",
+    );
+    let update = service
+        .update_component_record(
+            record.id,
+            UiComponentRecordPatch {
+                name: record.name.clone(),
+                description: record.description.clone(),
+                import_code: record.import_code.clone(),
+                source_code: record.source_code.clone(),
+                source: record.source.clone(),
+                group: record.group.clone(),
+                upstream: record.upstream.clone(),
+                version: record.version.clone(),
+                keywords: record.keywords.clone(),
+                actor_user_id: Uuid::now_v7(),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        update.downcast_ref::<crate::errors::ControlPlaneError>(),
+        Some(crate::errors::ControlPlaneError::Conflict(
+            "plugin_ui_component_read_only"
+        ))
+    ));
+    let delete = service
+        .delete_component_record(record.id)
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        delete.downcast_ref::<crate::errors::ControlPlaneError>(),
+        Some(crate::errors::ControlPlaneError::Conflict(
+            "plugin_ui_component_read_only"
+        ))
+    ));
 }

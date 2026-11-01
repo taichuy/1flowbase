@@ -71,6 +71,7 @@ pub struct UiCodeTemplate {
 pub enum UiComponentRecordOrigin {
     Official,
     Custom,
+    Plugin,
 }
 
 impl UiComponentRecordOrigin {
@@ -78,6 +79,7 @@ impl UiComponentRecordOrigin {
         match self {
             Self::Official => "official",
             Self::Custom => "custom",
+            Self::Plugin => "plugin",
         }
     }
 }
@@ -89,6 +91,7 @@ impl TryFrom<&str> for UiComponentRecordOrigin {
         match value {
             "official" => Ok(Self::Official),
             "custom" => Ok(Self::Custom),
+            "plugin" => Ok(Self::Plugin),
             _ => Err(UiManagementInvariantError::InvalidComponentOrigin),
         }
     }
@@ -102,6 +105,10 @@ pub struct UiComponentRecordUpstream {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiComponentRecord {
+    /// Stable, unversioned package identity, never a provider/display alias.
+    pub owner_plugin_id: Option<String>,
+    pub owner_contribution_code: Option<String>,
+    pub owner_installation_id: Option<Uuid>,
     pub id: Uuid,
     pub scope_id: Uuid,
     pub component_code: String,
@@ -198,7 +205,7 @@ pub fn validate_ui_component_record_fields(
     description: &str,
     import_code: &str,
     source_code: &str,
-    _origin: UiComponentRecordOrigin,
+    origin: UiComponentRecordOrigin,
     source: &str,
     group: &str,
     upstream: &UiComponentRecordUpstream,
@@ -215,7 +222,7 @@ pub fn validate_ui_component_record_fields(
         return Err(UiManagementInvariantError::EmptyComponentDescription);
     }
     // Code is intentionally opaque. Shape validation is limited to non-empty storage content.
-    if import_code.trim().is_empty() {
+    if import_code.trim().is_empty() && origin != UiComponentRecordOrigin::Plugin {
         return Err(UiManagementInvariantError::EmptyComponentImportCode);
     }
     if source_code.trim().is_empty() {
@@ -233,7 +240,9 @@ pub fn validate_ui_component_record_fields(
     if upstream.version.trim().is_empty() {
         return Err(UiManagementInvariantError::EmptyComponentUpstreamVersion);
     }
-    if !valid_semver(version) {
+    if (origin != UiComponentRecordOrigin::Plugin && !valid_semver(version))
+        || version.trim().is_empty()
+    {
         return Err(UiManagementInvariantError::InvalidComponentVersion);
     }
     let mut unique = std::collections::BTreeSet::new();

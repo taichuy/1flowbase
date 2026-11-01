@@ -377,7 +377,14 @@ where
     ) -> Result<UiComponentRecord> {
         let current = self.get_component_record(id).await?;
         if current.origin != UiComponentRecordOrigin::Custom {
-            return Err(ControlPlaneError::Conflict("official_ui_component_read_only").into());
+            return Err(ControlPlaneError::Conflict(
+                if current.origin == UiComponentRecordOrigin::Plugin {
+                    "plugin_ui_component_read_only"
+                } else {
+                    "official_ui_component_read_only"
+                },
+            )
+            .into());
         }
         domain::validate_ui_component_record_fields(
             &current.component_code,
@@ -399,12 +406,83 @@ where
     pub async fn delete_component_record(&self, id: Uuid) -> Result<()> {
         let current = self.get_component_record(id).await?;
         if current.origin != UiComponentRecordOrigin::Custom {
-            return Err(ControlPlaneError::Conflict("official_ui_component_read_only").into());
+            return Err(ControlPlaneError::Conflict(
+                if current.origin == UiComponentRecordOrigin::Plugin {
+                    "plugin_ui_component_read_only"
+                } else {
+                    "official_ui_component_read_only"
+                },
+            )
+            .into());
         }
         if self.repository.delete_ui_component_record(id).await? {
             Ok(())
         } else {
             Err(ControlPlaneError::NotFound("ui_component_record").into())
         }
+    }
+}
+
+impl<R> UiManagementService<R>
+where
+    R: UiManagementRepository + FrontendBlockCatalogRepository + crate::ports::PluginRepository,
+{
+    async fn workspace_component_contributions(
+        &self,
+        workspace_id: Uuid,
+        resolver: &crate::frontend_block_catalog::FrontendContributionResolver,
+    ) -> Result<Vec<String>> {
+        let entries = self
+            .repository
+            .list_workspace_frontend_blocks(&self.node_id, workspace_id)
+            .await?;
+        Ok(
+            crate::frontend_block_catalog::resolve_frontend_contributions(
+                &self.repository,
+                &self.node_id,
+                workspace_id,
+                resolver,
+                entries,
+            )
+            .await?
+            .into_iter()
+            .map(|binding| binding.block_id)
+            .collect(),
+        )
+    }
+
+    pub async fn list_workspace_component_records_page(
+        &self,
+        mut query: ListUiComponentRecordsQuery,
+        workspace_id: Uuid,
+        resolver: &crate::frontend_block_catalog::FrontendContributionResolver,
+    ) -> Result<UiComponentRecordPage> {
+        query.plugin_contribution_ids = Some(
+            self.workspace_component_contributions(workspace_id, resolver)
+                .await?,
+        );
+        self.repository.list_ui_component_records_page(query).await
+    }
+
+    pub async fn get_workspace_component_record(
+        &self,
+        id: Uuid,
+        workspace_id: Uuid,
+        resolver: &crate::frontend_block_catalog::FrontendContributionResolver,
+    ) -> Result<UiComponentRecord> {
+        let record = self.get_component_record(id).await?;
+        if record.origin == UiComponentRecordOrigin::Plugin {
+            let allowed = self
+                .workspace_component_contributions(workspace_id, resolver)
+                .await?;
+            let identity = record
+                .owner_installation_id
+                .zip(record.owner_contribution_code.as_deref())
+                .map(|(id, contribution)| format!("{id}:{contribution}"));
+            if !identity.is_some_and(|identity| allowed.contains(&identity)) {
+                return Err(ControlPlaneError::NotFound("ui_component_record").into());
+            }
+        }
+        Ok(record)
     }
 }

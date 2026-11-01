@@ -257,7 +257,7 @@ async fn seed_persisted_component(database_url: &str) -> Uuid {
 #[tokio::test]
 async fn wp_d4_persisted_component_and_registered_asset_routes_are_independent() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
-    let installation_id = seed_frontend_block(&database_url, false, false).await;
+    let installation_id = seed_frontend_block(&database_url, true, false).await;
     let component_id = seed_persisted_component(&database_url).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     let _workspace_id: Uuid =
@@ -331,6 +331,10 @@ async fn wp_d4_persisted_component_and_registered_asset_routes_are_independent()
         .unwrap();
     assert_eq!(asset_response.status(), StatusCode::OK);
     assert_eq!(
+        asset_response.headers()["cache-control"],
+        "private, no-store"
+    );
+    assert_eq!(
         asset_response.headers()["content-type"],
         "text/javascript; charset=utf-8"
     );
@@ -396,7 +400,8 @@ async fn wp_d4_persisted_component_and_registered_asset_routes_are_independent()
         )
         .await
         .unwrap();
-    assert_eq!(corrupt_asset_response.status(), StatusCode::BAD_GATEWAY);
+    // The workspace resolver omits an invalid contribution rather than exposing its assets.
+    assert_eq!(corrupt_asset_response.status(), StatusCode::NOT_FOUND);
 
     let unauthenticated_asset_response = app
         .oneshot(
@@ -467,16 +472,14 @@ async fn dependency_lock_resolver_route_is_not_exposed() {
 }
 
 #[tokio::test]
-async fn retained_asset_authorization_does_not_read_block_dependency_lock() {
+async fn retained_asset_requires_current_workspace_contribution_and_disable_revokes_new_reads() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
     let installation_id = seed_frontend_block(&database_url, true, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     let old_bytes = b"export function RetainedButton() {}\n";
     let old_sha256 = format!("{:x}", base16ct::HexDisplay(&Sha256::digest(old_bytes)));
-    let new_sha256 = format!(
-        "{:x}",
-        base16ct::HexDisplay(&Sha256::digest(b"export function ButtonV2() {}\n"))
-    );
+    let new_bytes = b"export function ButtonV2() {}\n";
+    let new_sha256 = format!("{:x}", base16ct::HexDisplay(&Sha256::digest(new_bytes)));
 
     sqlx::query(
         r#"
@@ -494,7 +497,9 @@ async fn retained_asset_authorization_does_not_read_block_dependency_lock() {
     sqlx::query(
         r#"
         update frontend_block_catalog
-        set code_modules = jsonb_set(code_modules, '{0,assets,0,sha256}', to_jsonb($2::text))
+        set code_modules = jsonb_set(
+            jsonb_set(code_modules, '{0,assets,0,sha256}', to_jsonb($2::text)),
+            '{1,assets,0,sha256}', to_jsonb($2::text))
         where installation_id = $1
         "#,
     )
@@ -502,6 +507,19 @@ async fn retained_asset_authorization_does_not_read_block_dependency_lock() {
     .bind(&new_sha256)
     .execute(&pool)
     .await
+    .unwrap();
+
+    let installed_path: String = sqlx::query_scalar(
+        "select local_path from extension_artifact_instances where installation_id=$1",
+    )
+    .bind(installation_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    std::fs::write(
+        std::path::Path::new(&installed_path).join("browser-assets/native-components.js"),
+        new_bytes,
+    )
     .unwrap();
 
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
@@ -517,14 +535,70 @@ async fn retained_asset_authorization_does_not_read_block_dependency_lock() {
         )
         .await
         .unwrap();
-    assert_eq!(retained_response.status(), StatusCode::OK);
+    // Historical bytes are not executable authority after their contribution digest changes.
+    assert_eq!(retained_response.status(), StatusCode::NOT_FOUND);
+    let new_url = format!("/api/console/frontstage/component-module-assets/{new_sha256}");
+    let current_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(&new_url)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(current_response.status(), StatusCode::OK);
     assert_eq!(
-        to_bytes(retained_response.into_body(), usize::MAX)
+        current_response.headers()["cache-control"],
+        "private, no-store"
+    );
+    assert_eq!(
+        to_bytes(current_response.into_body(), usize::MAX)
             .await
             .unwrap()
             .as_ref(),
-        old_bytes
+        new_bytes
     );
+    sqlx::query("update extension_installations set desired_state='disabled' where id=$1")
+        .bind(installation_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let disabled_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(&new_url)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(disabled_response.status(), StatusCode::NOT_FOUND);
+    sqlx::query("update extension_installations set desired_state='active_requested' where id=$1")
+        .bind(installation_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("delete from plugin_assignments where installation_id=$1")
+        .bind(installation_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let unassigned_response = app
+        .oneshot(
+            Request::builder()
+                .uri(&new_url)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unassigned_response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -602,6 +676,7 @@ async fn ac_001_ac_002_ac_003_frontend_block_catalog_exposes_one_lightweight_sys
     assert_eq!(entry["contribution_code"], "frontstage.js-ui-block");
     assert_eq!(entry["runtime"], "native_react");
     assert_eq!(entry["code_template_language"], "tsx");
+    assert!(entry["code_modules"].is_array());
     let template = entry["code_template"].as_str().unwrap();
     assert!(!template.contains("tailwindcss"));
     assert!(!template.contains("@1flowbase/native-components"));
@@ -663,7 +738,16 @@ async fn frontend_block_catalog_route_lists_assigned_workspace_blocks() {
     );
     assert_eq!(entry["code_template_version"].as_str(), Some("1.0.0"));
     assert_eq!(entry["code_template_language"].as_str(), Some("tsx"));
-    assert!(entry.get("code_modules").is_none());
+    assert_eq!(entry["code_modules"].as_array().unwrap().len(), 2);
+    assert_eq!(entry["code_modules"][0]["binding"], "fetched");
+    assert_eq!(
+        entry["code_modules"][0]["assets"][0]["sha256"],
+        "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
+    );
+    assert!(entry["code_modules"][0]["assets"][0].get("url").is_none());
+    assert!(entry["code_modules"][0]["assets"][0]
+        .get("integrity")
+        .is_none());
     assert_eq!(entry["isolated_entry_asset"], Value::Null);
     assert_eq!(entry["runtime_kind"], "trusted_native");
     assert_eq!(entry["execution_kind"], "ui_mount");
@@ -728,7 +812,7 @@ async fn isolated_catalog_projects_its_entry_asset_without_module_dependencies()
         isolated["requested_permissions"],
         isolated["granted_permissions"]
     );
-    assert!(isolated.get("code_modules").is_none());
+    assert_eq!(isolated["code_modules"].as_array().unwrap().len(), 2);
     assert_eq!(
         isolated["isolated_entry_asset"]["sha256"],
         "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"

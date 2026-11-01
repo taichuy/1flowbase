@@ -48,6 +48,8 @@ pub struct FrontendBlockCatalogResponse {
     pub runtime: String,
     pub entry: String,
     pub code_template: Option<String>,
+    #[schema(value_type = Vec<Object>)]
+    pub code_modules: Vec<domain::FrontendBlockCodeModule>,
     pub code_template_version: Option<String>,
     pub code_template_language: Option<String>,
     pub isolated_entry_asset: Option<IsolatedFrontendBlockEntryAssetResponse>,
@@ -92,7 +94,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     )
 }
 
-fn to_response(
+pub(crate) fn to_response(
     binding: FrontendContributionBinding,
 ) -> Result<FrontendBlockCatalogResponse, ApiError> {
     let asset_bindings = binding
@@ -130,6 +132,7 @@ fn to_response(
         runtime: entry.runtime,
         entry: entry.entry,
         code_template: entry.code_template,
+        code_modules: entry.code_modules,
         code_template_version: entry.code_template_version,
         code_template_language: entry.code_template_language,
         isolated_entry_asset,

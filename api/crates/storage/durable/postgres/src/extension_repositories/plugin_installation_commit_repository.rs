@@ -551,5 +551,13 @@ async fn write_installation(
         }
     }
 
+    crate::frontend_block_catalog_repository::plugin_components::sync_plugin_components(
+        connection,
+        installation_id,
+        &input.frontend_blocks,
+        installation.actor_user_id,
+    )
+    .await?;
+
     Ok(record)
 }

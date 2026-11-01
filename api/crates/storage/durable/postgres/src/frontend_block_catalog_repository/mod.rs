@@ -1,3 +1,5 @@
+pub(crate) mod plugin_components;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::ports::{
@@ -109,6 +111,14 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
             .await?;
         }
 
+        let actor = sqlx::query_scalar(
+            "select coalesce(updated_by, created_by) from extension_installations where id=$1",
+        )
+        .bind(input.installation_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        plugin_components::sync_plugin_components(&mut tx, input.installation_id, input, actor)
+            .await?;
         tx.commit().await?;
         Ok(())
     }
