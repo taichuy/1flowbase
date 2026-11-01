@@ -299,7 +299,7 @@ async fn unary_native_error_preserves_unknown_upstream_code_and_details() {
 #[test]
 fn chat_resume_unary_usage_uses_immutable_boundary_for_retries_and_old_callbacks() {
     use super::super::usage::{to_chat_response_for_round, ResponseUsageBaseline};
-    let baseline = json!({"native_usage_baseline":{"prompt_tokens":7995,"completion_tokens":132,"total_tokens":8127,"input_cache_hit_tokens":512,"cache_read_tokens":512,"reasoning_tokens":100}});
+    let baseline = json!({"native_usage_baseline_source":"usage_ledger","native_usage_baseline":{"prompt_tokens":7995,"completion_tokens":132,"total_tokens":8127,"input_cache_hit_tokens":512,"cache_read_tokens":512,"reasoning_tokens":100}});
     let cumulative = NativeUsage {
         prompt_tokens: Some(16212),
         completion_tokens: Some(157),
@@ -337,9 +337,9 @@ fn chat_resume_unary_usage_uses_immutable_boundary_for_retries_and_old_callbacks
     }
     for payload in [
         json!({}),
-        json!({"native_usage_baseline":"invalid"}),
-        json!({"native_usage_baseline":{}}),
-        json!({"native_usage_baseline":{"unknown":1}}),
+        json!({"native_usage_baseline_source":"usage_ledger","native_usage_baseline":"invalid"}),
+        json!({"native_usage_baseline_source":"usage_ledger","native_usage_baseline":{}}),
+        json!({"native_usage_baseline_source":"usage_ledger","native_usage_baseline":{"unknown":1}}),
     ] {
         let mut run = blocking_run(NativeRunStatus::Succeeded);
         run.usage = Some(cumulative.clone());
@@ -355,8 +355,9 @@ fn chat_resume_unary_usage_uses_immutable_boundary_for_retries_and_old_callbacks
             .get("usage")
             .is_none());
     }
-    let known_empty =
-        ResponseUsageBaseline::from_callback_payload(&json!({"native_usage_baseline":null}));
+    let known_empty = ResponseUsageBaseline::from_callback_payload(
+        &json!({"native_usage_baseline_source":"usage_ledger","native_usage_baseline":null}),
+    );
     assert_eq!(
         known_empty
             .project(Some(&cumulative))
@@ -458,7 +459,7 @@ fn responses_unary_usage_is_round_local_and_unknown_baseline_is_null() {
         json!({"type":"message","id":"provider-id","phase":"final_answer","role":"assistant","content":[{"type":"output_text","text":"done","annotations":[]}],"status":"completed"}),
     ];
     for payload in [
-        json!({"native_usage_baseline":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"cache_read_tokens":60,"reasoning_tokens":5}}),
+        json!({"native_usage_baseline_source":"usage_ledger","native_usage_baseline":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"cache_read_tokens":60,"reasoning_tokens":5}}),
         json!({}),
     ] {
         for _ in 0..2 {

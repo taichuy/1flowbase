@@ -13,7 +13,9 @@ fn usage(input: u64, output: u64, cached: u64, reasoning: u64) -> NativeUsage {
 }
 
 fn boundary(usage: Option<NativeUsage>) -> ResponseUsageBaseline {
-    ResponseUsageBaseline::from_callback_payload(&json!({"native_usage_baseline":usage}))
+    ResponseUsageBaseline::from_callback_payload(
+        &json!({"native_usage_baseline_source":"usage_ledger","native_usage_baseline":usage}),
+    )
 }
 
 #[test]
@@ -114,9 +116,9 @@ fn every_native_counter_uses_checked_immutable_boundary_without_mutation() {
 fn absent_corrupt_or_unmeasured_boundaries_are_unknown_not_cumulative() {
     for payload in [
         json!({}),
-        json!({"native_usage_baseline":"corrupt"}),
-        json!({"native_usage_baseline":{}}),
-        json!({"native_usage_baseline":{"unknown":1}}),
+        json!({"native_usage_baseline_source":"usage_ledger","native_usage_baseline":"corrupt"}),
+        json!({"native_usage_baseline_source":"usage_ledger","native_usage_baseline":{}}),
+        json!({"native_usage_baseline_source":"usage_ledger","native_usage_baseline":{"unknown":1}}),
     ] {
         let baseline = ResponseUsageBaseline::from_callback_payload(&payload);
         assert!(baseline
@@ -184,4 +186,38 @@ fn response_event_projection_never_changes_non_usage_payloads() {
     ResponseUsageBaseline::Unavailable
         .project_responses_event(&mut event, Some(&usage(220, 40, 100, 10)));
     assert_eq!(event["response"]["usage"], Value::Null);
+}
+
+#[test]
+fn incident_round_usage_preserves_full_context_and_decreasing_output_counters() {
+    // Provider calls reuse one mutable node; only the append-only ledger is cumulative.
+    let calls = [(43757, 104, 43264), (46884, 152, 43648), (48036, 82, 44416)];
+    let mut cumulative = usage(0, 0, 0, 0);
+    let mut emitted = 0;
+    for (step, (input, output, cached)) in calls.into_iter().enumerate() {
+        let baseline = if step == 0 {
+            ResponseUsageBaseline::NewRun
+        } else {
+            boundary(Some(cumulative.clone()))
+        };
+        cumulative.prompt_tokens = Some(cumulative.prompt_tokens.unwrap() + input);
+        cumulative.completion_tokens = Some(cumulative.completion_tokens.unwrap() + output);
+        cumulative.total_tokens = Some(cumulative.total_tokens.unwrap() + input + output);
+        cumulative.cache_read_tokens = Some(cumulative.cache_read_tokens.unwrap() + cached);
+        let response = baseline.project_responses(Some(&cumulative)).unwrap();
+        assert_eq!(response.input_tokens, input);
+        assert_eq!(response.output_tokens, output);
+        assert_eq!(response.input_tokens_details.unwrap().cached_tokens, cached);
+        emitted += response.total_tokens;
+    }
+    assert_eq!(emitted, cumulative.total_tokens.unwrap());
+}
+
+#[test]
+fn legacy_snapshot_boundaries_are_never_subtracted_from_ledger_totals() {
+    let legacy = json!({"native_usage_baseline":usage(43757,104,43264,0)});
+    let baseline = ResponseUsageBaseline::from_callback_payload(&legacy);
+    assert!(baseline
+        .project_responses(Some(&usage(90641, 256, 86912, 0)))
+        .is_none());
 }

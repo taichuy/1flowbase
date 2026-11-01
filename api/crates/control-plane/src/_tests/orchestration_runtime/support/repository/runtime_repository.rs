@@ -43,6 +43,36 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
     {
         self.memory_get_flow_run_node_usages(flow_run_id)
     }
+    async fn get_flow_run_usage_totals(&self, flow_run_id: Uuid) -> Result<Option<Value>> {
+        let records = self.memory_list_usage_ledger(flow_run_id)?;
+        let mut sums = serde_json::Map::new();
+        for record in records {
+            for (key, value) in [
+                ("prompt_tokens", record.input_tokens),
+                ("completion_tokens", record.output_tokens),
+                (
+                    "total_tokens",
+                    record
+                        .total_tokens
+                        .or_else(|| Some(record.input_tokens? + record.output_tokens?)),
+                ),
+                ("reasoning_tokens", record.reasoning_output_tokens),
+                ("input_cache_hit_tokens", record.input_cache_hit_tokens),
+                ("input_cache_miss_tokens", record.input_cache_miss_tokens),
+                (
+                    "cache_read_tokens",
+                    record.cache_read_tokens.or(record.cached_input_tokens),
+                ),
+                ("cache_write_tokens", record.cache_write_tokens),
+            ] {
+                if let Some(value) = value {
+                    let before = sums.get(key).and_then(Value::as_i64).unwrap_or_default();
+                    sums.insert(key.into(), json!(before + value));
+                }
+            }
+        }
+        Ok((!sums.is_empty()).then_some(Value::Object(sums)))
+    }
     async fn upsert_compiled_plan(
         &self,
         input: &UpsertCompiledPlanInput,

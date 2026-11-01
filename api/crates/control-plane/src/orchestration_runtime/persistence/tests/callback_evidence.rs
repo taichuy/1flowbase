@@ -37,6 +37,35 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
         .await
         .unwrap();
     for index in 0..3 {
+        service
+            .repository
+            .append_usage_ledger(&crate::ports::AppendUsageLedgerInput {
+                flow_run_id: run.id,
+                node_run_id: Some(node.id),
+                span_id: None,
+                failover_attempt_id: None,
+                provider_instance_id: None,
+                gateway_route_id: None,
+                model_id: None,
+                upstream_model_id: None,
+                upstream_request_id: None,
+                input_tokens: Some((index + 1) * 11),
+                output_tokens: Some((index + 1) * 3),
+                total_tokens: Some((index + 1) * 14),
+                cached_input_tokens: None,
+                reasoning_output_tokens: None,
+                input_cache_hit_tokens: Some(index * 2),
+                input_cache_miss_tokens: None,
+                cache_read_tokens: None,
+                cache_write_tokens: None,
+                price_snapshot: None,
+                cost_snapshot: None,
+                usage_status: domain::UsageLedgerStatus::Recorded,
+                raw_usage: json!({}),
+                normalized_usage: json!({}),
+            })
+            .await
+            .unwrap();
         let payload =
             json!({"tool_calls":[{"id":format!("call-{index}"),"name":"read","arguments":{}}]});
         let mut node_trace = trace(&node.node_id, payload.clone(), None);
@@ -104,10 +133,20 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
             .unwrap();
         let index: u64 = call.strip_prefix("call-").unwrap().parse().unwrap();
         let baseline = &task.request_payload["native_usage_baseline"];
-        assert_eq!(baseline["prompt_tokens"], (index + 1) * 11);
-        assert_eq!(baseline["completion_tokens"], (index + 1) * 3);
-        assert_eq!(baseline["total_tokens"], (index + 1) * 14);
-        assert_eq!(baseline["input_cache_hit_tokens"], index * 2);
+        assert_eq!(
+            baseline["prompt_tokens"],
+            (index + 1) * (index + 2) / 2 * 11
+        );
+        assert_eq!(
+            baseline["completion_tokens"],
+            (index + 1) * (index + 2) / 2 * 3
+        );
+        assert_eq!(baseline["total_tokens"], (index + 1) * (index + 2) / 2 * 14);
+        assert_eq!(baseline["input_cache_hit_tokens"], index * (index + 1));
+        assert_eq!(
+            task.request_payload["native_usage_baseline_source"],
+            "usage_ledger"
+        );
     }
 
     assert!(detail

@@ -12,6 +12,14 @@ pub(crate) enum ResponseUsageBaseline {
 }
 impl ResponseUsageBaseline {
     pub(crate) fn from_callback_payload(payload: &Value) -> Self {
+        // Older callbacks recorded the latest node snapshot, not additive counters.
+        if payload
+            .get("native_usage_baseline_source")
+            .and_then(Value::as_str)
+            != Some("usage_ledger")
+        {
+            return Self::Unavailable;
+        }
         match payload.get("native_usage_baseline") {
             Some(value) => match serde_json::from_value::<Option<NativeUsage>>(value.clone()) {
                 Ok(Some(usage))

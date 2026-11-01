@@ -183,6 +183,7 @@ fn d1_ac_007_durable_incomplete_run_projects_the_same_non_success_terminal() {
             status: domain::FlowRunStatus::Incomplete,
             output_payload: flow_run.output_payload.clone(),
             error_payload: None,
+            usage_totals: None,
             node_usages: Vec::new(),
             latest_pending_callback: None,
         },
@@ -222,6 +223,7 @@ fn native_result_from_stream_state_preserves_usage_and_pending_tool_callback_con
         status: domain::FlowRunStatus::WaitingCallback,
         output_payload: json!({}),
         error_payload: None,
+        usage_totals: None,
         node_usages: vec![PublishedRunNodeUsage {
             metrics_usage: Some(json!({ "input_tokens": 21, "output_tokens": 8 })),
             output_usage: Some(json!({ "prompt_tokens": 999, "completion_tokens": 999 })),
@@ -304,4 +306,29 @@ fn gateway_error_keeps_existing_public_details_boundary() {
     assert_eq!(error.code, "provider_transport_unavailable");
     assert_eq!(error.details, json!({"status_code":503}));
     assert!(error.upstream_error().is_none());
+}
+
+#[test]
+fn stream_usage_uses_additive_ledger_even_when_output_and_node_snapshots_are_latest_only() {
+    let flow_run = failed_published_flow_run(json!({}));
+    let initial = native_result_from_flow_run(&flow_run, json!({}));
+    let latest = json!({"input_tokens":46884,"output_tokens":152,"total_tokens":47036});
+    let state = PublishedRunStreamState {
+        status: domain::FlowRunStatus::Succeeded,
+        output_payload: json!({"usage":latest}),
+        error_payload: None,
+        node_usages: vec![PublishedRunNodeUsage {
+            metrics_usage: Some(latest),
+            output_usage: None,
+        }],
+        usage_totals: Some(
+            json!({"prompt_tokens":90641,"completion_tokens":256,"total_tokens":90897}),
+        ),
+        latest_pending_callback: None,
+    };
+    let result = native_result_from_run_stream_state(&initial, &state);
+    let usage = result.usage.unwrap();
+    assert_eq!(usage.prompt_tokens, Some(90641));
+    assert_eq!(usage.completion_tokens, Some(256));
+    assert_eq!(usage.total_tokens, Some(90897));
 }

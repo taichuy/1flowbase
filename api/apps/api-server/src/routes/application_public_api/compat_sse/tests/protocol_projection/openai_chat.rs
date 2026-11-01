@@ -326,7 +326,7 @@ async fn chat_resume_sse_usage_is_turn_local_and_missing_boundary_is_omitted() {
         ..NativeUsage::default()
     });
     for baseline_payload in [
-        json!({"native_usage_baseline":{"prompt_tokens":7995,"completion_tokens":132,"total_tokens":8127,"input_cache_hit_tokens":512}}),
+        json!({"native_usage_baseline_source":"usage_ledger","native_usage_baseline":{"prompt_tokens":7995,"completion_tokens":132,"total_tokens":8127,"input_cache_hit_tokens":512}}),
         json!({}),
     ] {
         for event_type in ["flow_finished", "flow_incomplete", "waiting_callback"] {
