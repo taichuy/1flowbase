@@ -55,7 +55,10 @@ pub(crate) async fn sync_plugin_components(
         }
         contributions.push(entry.contribution_code.clone());
         let identity = serde_json::to_vec(&(plugin_id, entry.contribution_code.as_str()))?;
-        let code = format!("plugin.{:x}", Sha256::digest(identity));
+        let code = format!(
+            "plugin.{:x}",
+            base16ct::HexDisplay(&Sha256::digest(identity))
+        );
         // Studio copies import_code + source_code. The complete template already owns its
         // imports; synthesizing imports from module metadata would declare bindings twice.
         // Provenance is opaque code content, not a second module import or a source parser.

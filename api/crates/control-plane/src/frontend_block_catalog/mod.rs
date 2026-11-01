@@ -109,7 +109,10 @@ where
             .await?
         {
             use sha2::{Digest, Sha256};
-            if format!("{:x}", Sha256::digest(&retained.bytes)) != asset.digest
+            if format!(
+                "{:x}",
+                base16ct::HexDisplay(&Sha256::digest(&retained.bytes))
+            ) != asset.digest
                 || retained.media_type != asset.media_type
             {
                 return Err(ControlPlaneError::UpstreamUnavailable(
