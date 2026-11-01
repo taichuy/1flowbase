@@ -26,6 +26,17 @@ const FORBIDDEN_EDGES: &[(&str, &str)] = &[
     ("runtime-extension-host", "plugin-framework"),
     ("control-plane-contracts", "control-plane"),
     ("api-server", "publish-gateway"),
+    ("runtime-extension-sdk", "orchestration-runtime"),
+    ("runtime-extension-sdk", "runtime-extension-host"),
+    ("runtime-extension-sdk", "runtime-core"),
+    ("runtime-extension-sdk", "plugin-framework"),
+    ("runtime-extension-sdk", "control-plane"),
+    ("runtime-extension-sdk", "api-server"),
+    ("sync-js-runtime", "orchestration-runtime"),
+    ("sync-js-runtime", "runtime-extension-host"),
+    ("sync-js-runtime", "runtime-core"),
+    ("sync-js-runtime", "runtime-extension-sdk"),
+    ("sync-js-runtime", "extension-contracts"),
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -35,9 +46,17 @@ struct ResolvedDependency {
 }
 
 fn cargo_metadata(api: &Path) -> serde_json::Value {
-    let output = Command::new("cargo")
+    cargo_metadata_with_javascript(api, false)
+}
+
+fn cargo_metadata_with_javascript(api: &Path, javascript: bool) -> serde_json::Value {
+    let mut command = Command::new("cargo");
+    command.arg("metadata");
+    if javascript {
+        command.args(["--features", "runtime-extension-sdk/javascript"]);
+    }
+    let output = command
         .args([
-            "metadata",
             "--locked",
             "--offline",
             "--format-version",
@@ -367,4 +386,100 @@ fn runtime_consumer_fixture_uses_runtime_crates_only_as_dev_dependencies() {
         assert_eq!(dependencies.len(), 1, "one direct dependency on {name}");
         assert_eq!(dependencies[0]["kind"], "dev", "{name} is test-only");
     }
+}
+
+fn dependency_closure(metadata: &serde_json::Value, source: &str) -> Vec<String> {
+    let mut pending = vec![source.to_string()];
+    let mut closure = std::collections::BTreeSet::new();
+    while let Some(package) = pending.pop() {
+        for dependency in resolved_dependencies(metadata, &package) {
+            if closure.insert(dependency.package.clone()) {
+                pending.push(dependency.package);
+            }
+        }
+    }
+    closure.into_iter().collect()
+}
+
+#[test]
+fn sdk_javascript_is_optional_and_shared_engine_has_no_internal_dependencies() {
+    let api = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let off = cargo_metadata(&api);
+    let closure = dependency_closure(&off, "runtime-extension-sdk");
+    for forbidden in [
+        "sync-js-runtime",
+        "rquickjs",
+        "rquickjs-core",
+        "rquickjs-sys",
+        "orchestration-runtime",
+        "runtime-extension-host",
+    ] {
+        assert!(
+            !closure.iter().any(|name| name == forbidden),
+            "default SDK must not pull {forbidden}"
+        );
+    }
+    let on = cargo_metadata_with_javascript(&api, true);
+    let closure = dependency_closure(&on, "runtime-extension-sdk");
+    for required in ["sync-js-runtime", "rquickjs"] {
+        assert!(closure.iter().any(|name| name == required));
+    }
+    for forbidden in [
+        "orchestration-runtime",
+        "runtime-extension-host",
+        "plugin-framework",
+        "runtime-core",
+        "control-plane",
+        "api-server",
+    ] {
+        assert!(!closure.iter().any(|name| name == forbidden));
+    }
+    let local = on["packages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|p| p["source"].is_null())
+        .map(|p| p["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    for dependency in resolved_dependencies(&on, "sync-js-runtime") {
+        assert!(
+            !local.contains(&dependency.package.as_str()),
+            "engine must not depend on internal crate {}",
+            dependency.package
+        );
+    }
+    let sdk = on["packages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "runtime-extension-sdk")
+        .unwrap();
+    let engine = sdk["dependencies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "sync-js-runtime")
+        .unwrap();
+    assert_eq!(engine["optional"], true);
+    assert_eq!(sdk["features"]["default"], serde_json::json!([]));
+    assert_eq!(
+        sdk["features"]["javascript"],
+        serde_json::json!(["dep:sync-js-runtime"])
+    );
+}
+
+#[test]
+fn dependency_fixture_rejects_sdk_to_orchestration_even_when_renamed() {
+    let fixture = serde_json::json!({
+        "packages": [{"id":"sdk","name":"runtime-extension-sdk"},
+                     {"id":"orchestration","name":"orchestration-runtime"}],
+        "resolve":{"nodes":[
+            {"id":"sdk","deps":[{"pkg":"orchestration","name":"renamed_engine"}]},
+            {"id":"orchestration","deps":[]}
+        ]}
+    });
+    assert_eq!(
+        dependency_policy_violations(&fixture),
+        vec!["runtime-extension-sdk -> orchestration-runtime (crate alias renamed_engine)"]
+    );
 }

@@ -27,10 +27,11 @@
 | `extension-package-runtime` | Runtime Host 所需的 package descriptor、解析、artifact load/reconcile | `extension-contracts` |
 | `runtime-profile` | 运行目标、locale、fingerprint 与环境快照 | `extension-contracts` |
 | `runtime-core` | runtime registry、runtime CRUD 核心、slot engine 与六个必实现 Runtime Backend Port | `domain`、`extension-contracts`、`storage-durable` |
-| `orchestration-runtime` | 编排编译、绑定、执行与 `provider-routing` | `domain`、`extension-contracts`、`runtime-core` |
+| `orchestration-runtime` | 编排编译、绑定、执行与 `provider-routing` | `domain`、`extension-contracts`、`runtime-core`、`sync-js-runtime` |
 | `plugin-framework` | manifest、contribution、registry、安装与扩展图 | `access-control`、`extension-contracts`、`extension-package-runtime` |
 | `runtime-extension-host` | RuntimeExtension Registry、Worker、stdio、profile 与生命周期的唯一运行真值 | `extension-contracts`、`extension-package-runtime`、`runtime-core`、`runtime-profile` |
-| `runtime-extension-sdk` | RuntimeExtension 作者侧 typed Host Service client、有界异步 worker dispatcher、Simulator 与 wire fixture | `extension-contracts` |
+| `runtime-extension-sdk` | RuntimeExtension 作者侧 typed Host Service client、有界异步 worker dispatcher、Simulator 与 wire fixture | `extension-contracts`、可选 `sync-js-runtime`（仅 `javascript` feature） |
+| `sync-js-runtime` | 每调用隔离的同步 QuickJS 骨架、严格 plugin / legacy Code 双 codec、取消信号与版本根内 verified script loader；不拥有编排或宿主语义 | 无 |
 | `control-plane` | Use Case、状态写入口、事务、审计与应用策略 | `access-control`、`control-plane-contracts`、`domain`、`extension-contracts`、`observability`、`orchestration-runtime`、`plugin-framework`、`runtime-core`、`runtime-profile`、`storage-object` |
 | `storage/durable/core` (`storage-durable`) | 与数据库实现无关的 Durable contract 与共享类型 | `domain`、`extension-contracts` |
 | `storage/durable/postgres` (`storage-durable-postgres`) | PostgreSQL repository、SQL、事务、migration 与 mapper | `control-plane-contracts`、`domain`、`extension-contracts`、`storage-durable` |

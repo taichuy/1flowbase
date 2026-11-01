@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+default = []
+javascript = ["dep:sync-js-runtime"]
+
 [dependencies]
+sync-js-runtime = { path = "../sync-js-runtime", optional = true }
 base16ct.workspace = true
 extension-contracts = { path = "../extension-contracts" }
 serde.workspace = true

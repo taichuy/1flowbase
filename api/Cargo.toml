@@ -8,6 +8,7 @@ members = [
   "crates/runtime-core",
   "crates/runtime-extension-host",
   "crates/runtime-extension-sdk",
+  "crates/sync-js-runtime",
   "crates/runtime-profile",
   "crates/access-control",
   "crates/interface-runtime",
@@ -30,7 +31,7 @@ resolver = "2"
 rust-version = "1.99"
 edition = "2021"
 license = "MIT"
-version = "0.6.1"
+version = "0.6.2"
 
 [workspace.dependencies]
 base16ct = "1.0.0"

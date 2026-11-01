@@ -17,7 +17,7 @@ extension-contracts = { path = "../extension-contracts" }
 regex.workspace = true
 rand.workspace = true
 reqwest = { workspace = true, features = ["multipart", "stream"] }
-rquickjs.workspace = true
+sync-js-runtime = { path = "../sync-js-runtime" }
 runtime-core = { path = "../runtime-core" }
 serde.workspace = true
 serde_json.workspace = true
