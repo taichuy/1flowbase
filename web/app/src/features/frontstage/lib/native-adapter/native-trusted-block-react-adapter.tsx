@@ -124,7 +124,6 @@ const sharedModuleStyleSheets = new WeakMap<
 >();
 
 const EMPTY_MODULE_ASSETS: readonly NativeReactResolvedModuleAsset[] = [];
-const EMPTY_MODULE_SOURCES: readonly string[] = [];
 
 export interface FrontstageNativeTrustedBlockPortalHostProps {
   root: Element;
@@ -152,7 +151,6 @@ export function FrontstageNativeTrustedBlockPortalHost({
   component: BlockComponent,
   ctx,
   moduleAssets = EMPTY_MODULE_ASSETS,
-  moduleSources = EMPTY_MODULE_SOURCES,
   providerScope,
   providerWrapper,
   onRuntimeError,
@@ -246,10 +244,12 @@ export function FrontstageNativeTrustedBlockPortalHost({
       surface && externalAssetScope && surfaceRuntimeState?.surface === surface
         ? {
             ...ctx,
-            i18n: ctx.i18n ?? createBlockI18n({
-              locale: ctx.ui.locale ?? 'en_US',
-              status: 'error'
-            }),
+            i18n:
+              ctx.i18n ??
+              createBlockI18n({
+                locale: ctx.ui.locale ?? 'en_US',
+                status: 'error'
+              }),
             root: surface.shadowRoot,
             assets: externalAssetScope.assets,
             ui: {
@@ -351,7 +351,6 @@ export function FrontstageNativeTrustedBlockPortalHost({
           content,
           providerContext,
           styleCache,
-          moduleSources,
           antdStylePrefix,
           surfaceRuntime,
           { ...providerScope, theme: runtimeMotionTheme },
@@ -493,7 +492,6 @@ function wrapWithHostProviders(
   children: ReactNode,
   context: FrontstageNativeTrustedBlockProviderContext,
   styleCache: ReturnType<typeof createCache>,
-  moduleSources: readonly string[],
   antdStylePrefix: string,
   surfaceRuntime: NativeBlockSurfaceRuntime,
   providerScope?: FrontstageNativeTrustedBlockProviderScope,
@@ -520,15 +518,15 @@ function wrapWithHostProviders(
       </ConfigProvider>
     </StyleProvider>
   );
-  const scopedChildren = moduleSources.includes('antd-style') ? (
+  // Direct source imports do not describe a fetched factory's dependencies.
+  // Every native surface owns its style cache, including transitive style hooks.
+  const scopedChildren = (
     <AntdStyleSurfaceProvider
       container={context.shadowRoot}
       prefix={antdStylePrefix}
     >
       {hostChildren}
     </AntdStyleSurfaceProvider>
-  ) : (
-    hostChildren
   );
 
   return providerWrapper
