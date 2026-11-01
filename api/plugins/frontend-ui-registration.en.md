@@ -29,3 +29,24 @@ block_contributions:
 Plugins declare contributions only. The host owns transactional installation, idempotent publisher/contribution upgrades, read-only provenance and uninstall cleanup.
 Existing manually maintained templates and components are not deleted or rewritten. Older packages without this field remain code templates; selecting Components requires a plugin version upgrade with an explicit `component` declaration.
 A host source build supporting this field is required; an older published binary with the same version number is not necessarily compatible.
+
+## Component codes
+
+The host generates `component_code` as `<publisher_namespace>.<artifact_id>.<component-name>`:
+
+- Publisher and artifact identifiers come from the durable installation, not the npm scope, display name, or frontend.
+- The component name comes from `contribution_code`: split PascalCase/camelCase including acronym boundaries, replace runs of non-ASCII-alphanumeric separators with `-`, trim leading/trailing `-`, then lowercase. For example, `BirthInfo` becomes `birth-info`, and `HTTPClient` becomes `http-client`.
+- Versions are excluded. Upgrades retain component UUIDs and ownership; the normalized component name must not be empty.
+- Normalization does not guarantee uniqueness. If different contributions or owners produce the same code, the entire transaction is rejected and rolled back. Existing records are never overwritten and no hash or numeric suffix is appended.
+- A formal migration renames existing `plugin.<hash>` records in place, preserving official/custom records, component sources, and page references.
+
+For the calendar package above (`publisher_namespace: 1flowbase`, `plugin_id: taichuy-calendar`):
+
+| contribution_code | component_code |
+| --- | --- |
+| Calendar | `1flowbase.taichuy-calendar.calendar` |
+| Almanac | `1flowbase.taichuy-calendar.almanac` |
+| BirthInfo | `1flowbase.taichuy-calendar.birth-info` |
+| ZiWei | `1flowbase.taichuy-calendar.zi-wei` |
+| Bazi | `1flowbase.taichuy-calendar.bazi` |
+| CalendarPage | `1flowbase.taichuy-calendar.calendar-page` |

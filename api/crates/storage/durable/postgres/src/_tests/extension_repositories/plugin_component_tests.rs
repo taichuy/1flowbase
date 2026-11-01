@@ -68,6 +68,13 @@ async fn installation_projects_six_owned_components_idempotently_and_upgrades_in
             .source_code
             .starts_with("export default function View"));
         assert_eq!(record.version, "1.0.0");
+        assert_eq!(
+            record.component_code,
+            format!(
+                "test.northwind.settings-page.{}",
+                record.owner_contribution_code.as_deref().unwrap()
+            )
+        );
     }
     store.commit_plugin_installation(&first).await.unwrap();
     let retry = store.list_ui_component_records().await.unwrap();
@@ -445,6 +452,12 @@ async fn publisher_owner_migration_preserves_record_ids_and_matches_install_proj
     .execute(store.pool())
     .await
     .unwrap();
+    sqlx::raw_sql(include_str!(
+        "../../../migrations/20261101120000_readable_plugin_component_codes.sql"
+    ))
+    .execute(store.pool())
+    .await
+    .unwrap();
     let migrated = store.list_ui_component_records().await.unwrap();
     assert_eq!(migrated, expected);
     store.commit_plugin_installation(&command).await.unwrap();
@@ -507,4 +520,199 @@ async fn code_template_registration_does_not_create_duplicate_component_records(
             .len(),
         6
     );
+}
+
+const READABLE_CODES_MIGRATION: &str =
+    include_str!("../../../migrations/20261101120000_readable_plugin_component_codes.sql");
+
+#[tokio::test]
+async fn readable_plugin_component_names_match_calendar_and_acronym_rules() {
+    let store = store().await;
+    for (contribution, expected) in [
+        ("Calendar", "calendar"),
+        ("Almanac", "almanac"),
+        ("BirthInfo", "birth-info"),
+        ("ZiWei", "zi-wei"),
+        ("Bazi", "bazi"),
+        ("CalendarPage", "calendar-page"),
+        ("HTTPClient", "http-client"),
+        ("birth_info", "birth-info"),
+        ("__Calendar--Page__", "calendar-page"),
+        ("View2D", "view2-d"),
+    ] {
+        let code: String = sqlx::query_scalar(
+            "select plugin_ui_component_code('1flowbase','taichuy-calendar',$1)",
+        )
+        .bind(contribution)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(code, format!("1flowbase.taichuy-calendar.{expected}"));
+    }
+    // The production installation path must consume the same naming authority.
+    let actor = actor(&store).await;
+    let mut command = components(actor, "1.0.0");
+    command.frontend_blocks.entries[0].contribution_code = "BirthInfo".into();
+    store.commit_plugin_installation(&command).await.unwrap();
+    assert!(store
+        .list_ui_component_records()
+        .await
+        .unwrap()
+        .iter()
+        .any(|record| record.component_code == "test.northwind.settings-page.birth-info"));
+}
+
+#[tokio::test]
+async fn readable_code_migration_preserves_all_other_fields_and_is_idempotent() {
+    let store = store().await;
+    let actor = actor(&store).await;
+    let command = components(actor, "1.0.0");
+    store.commit_plugin_installation(&command).await.unwrap();
+    let expected = store.list_ui_component_records().await.unwrap();
+    for record in &expected {
+        // Reproduce the exact former publisher-qualified SHA-256 code, not a display alias.
+        use sha2::{Digest, Sha256};
+        let identity = serde_json::to_vec(&(
+            record.owner_plugin_id.as_deref().unwrap(),
+            record.owner_contribution_code.as_deref().unwrap(),
+        ))
+        .unwrap();
+        let code = format!(
+            "plugin.{:x}",
+            base16ct::HexDisplay(&Sha256::digest(identity))
+        );
+        sqlx::query("update ui_component_records set component_code=$1 where id=$2")
+            .bind(code)
+            .bind(record.id)
+            .execute(store.pool())
+            .await
+            .unwrap();
+    }
+    assert!(store
+        .list_ui_component_records()
+        .await
+        .unwrap()
+        .iter()
+        .all(|record| record.component_code.starts_with("plugin.")));
+    for _ in 0..2 {
+        sqlx::raw_sql(READABLE_CODES_MIGRATION)
+            .execute(store.pool())
+            .await
+            .unwrap();
+        assert_eq!(store.list_ui_component_records().await.unwrap(), expected);
+    }
+    store.commit_plugin_installation(&command).await.unwrap();
+    let retried = store.list_ui_component_records().await.unwrap();
+    assert_eq!(retried.len(), expected.len());
+    for before in &expected {
+        let after = retried
+            .iter()
+            .find(|record| record.id == before.id)
+            .unwrap();
+        assert_eq!(after.component_code, before.component_code);
+        assert_eq!(after.owner_plugin_id, before.owner_plugin_id);
+        assert_eq!(after.source_code, before.source_code);
+    }
+}
+
+#[tokio::test]
+async fn normalized_contribution_collisions_and_empty_names_roll_back_installation() {
+    let store = store().await;
+    let actor = actor(&store).await;
+    for (left, right) in [("BirthInfo", "birth_info"), ("Calendar", "---")] {
+        let mut command = components(actor, "1.0.0");
+        command.frontend_blocks.entries.truncate(2);
+        command.frontend_blocks.entries[0].contribution_code = left.into();
+        command.frontend_blocks.entries[1].contribution_code = right.into();
+        assert!(store.commit_plugin_installation(&command).await.is_err());
+        assert!(store.list_ui_component_records().await.unwrap().is_empty());
+        assert!(store
+            .get_installation(command.installation.installation_id)
+            .await
+            .unwrap()
+            .is_none());
+        let count: i64 = sqlx::query_scalar("select count(*) from frontend_block_catalog")
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+}
+
+#[tokio::test]
+async fn readable_code_migration_conflict_rolls_back_without_touching_any_owner() {
+    let store = store().await;
+    let actor = actor(&store).await;
+    store
+        .commit_plugin_installation(&components(actor, "1.0.0"))
+        .await
+        .unwrap();
+    let records = store.list_ui_component_records().await.unwrap();
+    let occupied_code = records[0].component_code.clone();
+    for (index, record) in records.iter().enumerate() {
+        sqlx::query("update ui_component_records set component_code=$1 where id=$2")
+            .bind(format!("plugin.legacy-{index}"))
+            .bind(record.id)
+            .execute(store.pool())
+            .await
+            .unwrap();
+    }
+    let custom = store
+        .create_ui_component_record(&CreateUiComponentRecordInput {
+            component_code: occupied_code,
+            name: "Custom owner".into(),
+            description: "Must survive migration".into(),
+            import_code: "opaque import".into(),
+            source_code: "opaque source".into(),
+            source: "local".into(),
+            group: "custom".into(),
+            upstream: UiComponentRecordUpstream {
+                identity: "own".into(),
+                version: "1.0.0".into(),
+            },
+            version: "1.0.0".into(),
+            keywords: Vec::new(),
+            actor_user_id: actor,
+        })
+        .await
+        .unwrap();
+    let before = store.list_ui_component_records().await.unwrap();
+    let mut transaction = store.pool().begin().await.unwrap();
+    let error = sqlx::raw_sql(READABLE_CODES_MIGRATION)
+        .execute(&mut *transaction)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.as_database_error().unwrap().code().as_deref(),
+        Some("23505")
+    );
+    transaction.rollback().await.unwrap();
+    assert_eq!(store.list_ui_component_records().await.unwrap(), before);
+    // Once the user resolves the conflict, a retry succeeds; non-plugin hash-like codes stay untouched.
+    sqlx::query(
+        "update ui_component_records set component_code='plugin.custom-widget' where id=$1",
+    )
+    .bind(custom.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let custom_before = store.get_ui_component_record(custom.id).await.unwrap();
+    sqlx::raw_sql(READABLE_CODES_MIGRATION)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        store.get_ui_component_record(custom.id).await.unwrap(),
+        custom_before
+    );
+    for record in &records {
+        assert_eq!(
+            store
+                .get_ui_component_record(record.id)
+                .await
+                .unwrap()
+                .as_ref(),
+            Some(record)
+        );
+    }
 }
