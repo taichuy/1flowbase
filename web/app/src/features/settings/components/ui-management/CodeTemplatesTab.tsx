@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type HTMLAttributes } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Button, Flex, Space, Tag } from 'antd';
+import { Alert, App, Button, Flex, Space, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -386,9 +386,23 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
     Math.max(1, Math.ceil(rows.length / pageSize))
   );
 
+  const loadError = query.isError ? (
+    <Alert
+      type="error"
+      showIcon
+      title={t('templates_load_failed')}
+      action={
+        <Button loading={query.isFetching} onClick={() => void query.refetch()}>
+          {t('routes_retry')}
+        </Button>
+      }
+    />
+  ) : undefined;
+
   return (
     <SettingsSectionSurface
       heightMode="fill"
+      status={rows.length ? loadError : undefined}
       toolbar={
         <Flex justify="space-between" align="center" gap={8} wrap>
           <Button
@@ -412,7 +426,8 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
         pageSize={pageSize}
         total={rows.length}
         onPageChange={setPage}
-        loading={query.isLoading}
+        loading={query.isFetching}
+        emptyText={loadError}
         rowKey="key"
         onRow={(row) =>
           ({

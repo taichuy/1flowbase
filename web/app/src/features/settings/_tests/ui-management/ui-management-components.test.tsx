@@ -205,6 +205,73 @@ describe('UiManagementPanel component records', () => {
     );
   });
 
+  test('shows load failure instead of an empty component list and recovers on retry', async () => {
+    uiManagementApi.fetchSettingsUiComponents.mockRejectedValue(
+      new Error('unavailable')
+    );
+    render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '组件加载失败，请重试。'
+    );
+    expect(screen.queryByText('暂无数据')).not.toBeInTheDocument();
+    uiManagementApi.fetchSettingsUiComponents.mockResolvedValue([
+      official,
+      custom
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
+    expect(await screen.findByText('Bubble')).toBeInTheDocument();
+    expect(screen.getByText('Status panel')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  test('retains loaded components when refresh fails and clears the error on retry', async () => {
+    render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+    expect(await screen.findByText('Bubble')).toBeInTheDocument();
+    uiManagementApi.fetchSettingsUiComponents.mockRejectedValue(
+      new Error('unavailable')
+    );
+    fireEvent.click(screen.getByRole('button', { name: /刷\s*新/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '组件加载失败，请重试。'
+    );
+    expect(screen.getByText('Bubble')).toBeInTheDocument();
+    uiManagementApi.fetchSettingsUiComponents.mockResolvedValue([
+      official,
+      custom
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
+    await waitFor(() =>
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    );
+    expect(screen.getByText('Bubble')).toBeInTheDocument();
+  });
+
+  test('keeps a successful empty component list distinct from a request failure', async () => {
+    uiManagementApi.fetchSettingsUiComponents.mockResolvedValue([]);
+    render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+    await waitFor(() =>
+      expect(uiManagementApi.fetchSettingsUiComponents).toHaveBeenCalled()
+    );
+    expect(
+      await screen.findByText('暂无数据', {
+        selector: '.ant-empty-description'
+      })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   test('WP-D2 lists and searches independent persisted records', async () => {
     render(
       <AppProviders>

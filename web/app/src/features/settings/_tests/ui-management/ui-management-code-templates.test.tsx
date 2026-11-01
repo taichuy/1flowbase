@@ -324,12 +324,52 @@ describe('UiManagementPanel code templates', () => {
     }
   });
 
+  test('shows template request failure rather than empty data and retries without creating records', async () => {
+    const restored = await uiManagementApi.fetchSettingsUiTemplates();
+    uiManagementApi.fetchSettingsUiTemplates.mockRejectedValue(
+      new Error('unavailable')
+    );
+    await renderPanel();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '代码模板加载失败，请重试。'
+    );
+    expect(screen.queryByText('暂无数据')).not.toBeInTheDocument();
+    uiManagementApi.fetchSettingsUiTemplates.mockResolvedValue(restored);
+    await click(screen.getByRole('button', { name: /重\s*试/ }));
+    expect(await screen.findByText('自定义区块')).toBeInTheDocument();
+    expect(screen.getByText('官方区块')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(uiManagementApi.createSettingsUiTemplate).not.toHaveBeenCalled();
+  });
+
+  test('keeps cached templates visible if background reload fails', async () => {
+    await renderPanel();
+    expect(await screen.findByText('自定义区块')).toBeInTheDocument();
+    uiManagementApi.fetchSettingsUiTemplates.mockRejectedValue(
+      new Error('unavailable')
+    );
+    await act(async () => {
+      await Promise.all(
+        [...mountedClients].map((client) =>
+          client.invalidateQueries({
+            queryKey: uiManagementApi.settingsUiTemplatesQueryKey
+          })
+        )
+      );
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '代码模板加载失败，请重试。'
+    );
+    expect(screen.getByText('自定义区块')).toBeInTheDocument();
+    expect(screen.getByText('官方区块')).toBeInTheDocument();
+  });
+
   test('keeps the code template table inside the viewport scroll owner', async () => {
     const view = await renderPanel();
     await screen.findByText('自定义区块');
-    expect(view.container.querySelector('.settings-section-surface')).toHaveClass(
-      'settings-section-surface--fill'
-    );
+    expect(
+      view.container.querySelector('.settings-section-surface')
+    ).toHaveClass('settings-section-surface--fill');
   });
 
   test('AC-DELETE-002 permanently deletes a managed template and refreshes the list', async () => {

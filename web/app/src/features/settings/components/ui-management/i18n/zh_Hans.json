@@ -135,5 +135,7 @@
   "routes_status_hidden": "此节点设置为隐藏",
   "routes_show_node": "显示此节点",
   "routes_hide_node": "隐藏此节点",
-  "routes_open_page": "在新标签页打开"
+  "routes_open_page": "在新标签页打开",
+  "components_load_failed": "组件加载失败，请重试。",
+  "templates_load_failed": "代码模板加载失败，请重试。"
 }

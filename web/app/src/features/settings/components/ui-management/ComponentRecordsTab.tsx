@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   App,
   Button,
   Descriptions,
@@ -255,9 +256,24 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
   }, [keyword, origin, query.data]);
   const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const readOnly = drawerMode === 'detail';
+  const loadError = query.isError ? (
+    <Alert
+      type="error"
+      showIcon
+      title={t('components_load_failed')}
+      action={
+        <Button loading={query.isFetching} onClick={() => void query.refetch()}>
+          {t('routes_retry')}
+        </Button>
+      }
+    />
+  ) : undefined;
 
   return (
-    <SettingsSectionSurface heightMode="fill">
+    <SettingsSectionSurface
+      heightMode="fill"
+      status={visible.length ? loadError : undefined}
+    >
       <DataTableLayout
         filters={
           <DataTableFilterForm
@@ -306,6 +322,7 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
           columns={columns}
           configuration={tableConfiguration}
           dataSource={visible}
+          emptyText={loadError}
           loading={query.isLoading || query.isFetching}
           page={page}
           pageSize={PAGE_SIZE}
