@@ -59,7 +59,7 @@ fn strict_json_rejects_loss_at_every_depth() {
 fn plain_json_shared_references_and_input_are_preserved() {
     let result = run_script(
         r#"function main(input) {
-        const x={n:3}; return {input, a:x, b:x, dense:[null,true,"é",1.5], empty:{}};
+        const x={n:3}; return {input, a:x, b:x, dense:[null,true,"é",1.5], integral:2.0, zero:-0.0, empty:{}};
     }"#,
         &json!({"__proto__":{"data":1}, "text":"</script>"}),
         limits(),
@@ -68,7 +68,7 @@ fn plain_json_shared_references_and_input_are_preserved() {
     assert_eq!(
         result.output_payload,
         json!({"input":{"__proto__":{"data":1},"text":"</script>"},
-        "a":{"n":3},"b":{"n":3},"dense":[null,true,"é",1.5],"empty":{}})
+        "a":{"n":3},"b":{"n":3},"dense":[null,true,"é",1.5],"integral":2,"zero":0,"empty":{}})
     );
 }
 

@@ -93,6 +93,11 @@ impl<'js> StrictCodec<'js> {
             }
             return if let Some(n) = value.as_int() {
                 out.json(&n)
+            } else if n.fract() == 0.0 && n.abs() <= ((1_u64 << 53) - 1) as f64 {
+                // Native JSON.parse may store integral input as Float64. Preserve
+                // JSON's single number domain (including -0 -> 0), without
+                // calling guest Number/toJSON or rounding a fractional value.
+                out.json(&(n as i64))
             } else {
                 out.json(&n)
             };
