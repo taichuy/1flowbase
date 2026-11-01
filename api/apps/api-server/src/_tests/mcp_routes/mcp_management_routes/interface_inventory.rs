@@ -255,7 +255,7 @@ async fn mcp_role_permission_inventory_preserves_identities_and_exposes_real_con
             .iter()
             .find(|item| item["name"] == "id")
             .expect("role code path descriptor");
-        assert_eq!(descriptor["location"], "path", "{id}");
+        assert_eq!(descriptor["parameter_type"], "url", "{id}");
         assert_eq!(descriptor["required"], true, "{id}");
         assert_eq!(descriptor["schema"]["type"], "string", "{id}");
         assert_eq!(
@@ -291,7 +291,9 @@ async fn mcp_role_permission_inventory_preserves_identities_and_exposes_real_con
         .unwrap()
         .iter()
         .any(|item| {
-            item["name"] == "groups" && item["location"] == "json_body" && item["required"] == true
+            item["name"] == "groups"
+                && item["parameter_type"] == "json_body"
+                && item["required"] == true
         }));
     // A 204 has no response media/schema, rather than a fabricated JSON object.
     assert_eq!(replace["result_schema"], json!(true));
@@ -312,7 +314,9 @@ async fn mcp_role_permission_inventory_preserves_identities_and_exposes_real_con
             .unwrap()
             .iter()
             .any(|item| {
-                item["name"] == field && item["location"] == "json_body" && item["required"] == true
+                item["name"] == field
+                    && item["parameter_type"] == "json_body"
+                    && item["required"] == true
             }));
     }
     assert_eq!(replace["result_schema"], json!(true));
