@@ -203,7 +203,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 #[utoipa::path(
     get,
     path = "/api/console/settings/members/role-options",
-    responses((status = 200, body = [MemberRoleOptionResponse]), (status = 403, body = crate::error_response::ErrorBody))
+    operation_id = "members.role_options.list",
+    security(("sessionCookie" = []), ("patBearer" = [])),
+    responses(
+        (status = 200, body = [MemberRoleOptionResponse]),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
 )]
 pub async fn list_member_role_options(
     State(state): State<Arc<ApiState>>,

@@ -845,3 +845,92 @@ async fn openapi_contains_member_mutation_routes() {
         .unwrap();
     assert_eq!(action_disable_response.status(), StatusCode::NO_CONTENT);
 }
+
+#[tokio::test]
+async fn mcp_role_permission_openapi_documents_canonical_ids_security_and_no_content() {
+    let paths = dynamic_openapi_paths().await;
+    for (path, method, id, response_schema) in [
+        (
+            "/api/console/settings/roles/{id}/console-policy",
+            "get",
+            "roles.console_policy.view",
+            Some("RoleConsolePolicyResponse"),
+        ),
+        (
+            "/api/console/settings/roles/{id}/console-policy",
+            "put",
+            "roles.console_policy.replace",
+            None,
+        ),
+        (
+            "/api/console/settings/roles/{id}/frontstage-routes",
+            "get",
+            "roles.frontstage_routes.view",
+            Some("RoleFrontstageRoutesResponse"),
+        ),
+        (
+            "/api/console/settings/roles/{id}/frontstage-routes",
+            "put",
+            "roles.frontstage_routes.replace",
+            None,
+        ),
+        (
+            "/api/console/settings/members/role-options",
+            "get",
+            "members.role_options.list",
+            Some("MemberRoleOptionResponse"),
+        ),
+    ] {
+        let operation = &paths[path][method];
+        assert_eq!(operation["operationId"], id, "{method} {path}");
+        assert_eq!(
+            operation["security"],
+            if method == "put" {
+                json!([{"sessionCookie":[],"csrfHeader":[]},{"patBearer":[]}])
+            } else {
+                json!([{"sessionCookie":[]},{"patBearer":[]}])
+            }
+        );
+        for status in ["401", "403"] {
+            assert!(
+                operation["responses"][status]["content"]["application/json"]["schema"].is_object(),
+                "{id}: {status}"
+            );
+        }
+        if let Some(schema) = response_schema {
+            let response = &operation["responses"]["200"]["content"]["application/json"]["schema"];
+            let reference = if id == "members.role_options.list" {
+                &response["items"]["$ref"]
+            } else {
+                &response["$ref"]
+            };
+            assert_eq!(reference, &json!(format!("#/components/schemas/{schema}")));
+        } else {
+            let response = &operation["responses"]["204"];
+            assert!(response.is_object(), "{id}: missing 204");
+            assert!(
+                response.get("content").is_none(),
+                "{id}: 204 must have no body"
+            );
+            assert_eq!(operation["requestBody"]["required"], true);
+            let schema = if id == "roles.console_policy.replace" {
+                "ReplaceRoleConsolePolicyBody"
+            } else {
+                "ReplaceRoleFrontstageRoutesBody"
+            };
+            assert_eq!(
+                operation["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+                json!(format!("#/components/schemas/{schema}"))
+            );
+            assert!(operation["responses"]["400"].is_object());
+        }
+    }
+    assert_eq!(
+        paths["/api/console/settings/roles"]["get"]["operationId"],
+        "list_roles"
+    );
+    assert_eq!(
+        paths["/api/console/settings/roles"]["post"]["operationId"],
+        "create_role"
+    );
+}
