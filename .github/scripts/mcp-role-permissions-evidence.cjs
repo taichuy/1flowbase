@@ -3,8 +3,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const cp = require('node:child_process');
-const {requireExecutedCargoTests} = require('../../scripts/node/verify/cargo-test-results.js');
-const source = '97702c7932ec2bc81801258f395d707ce2e42159';
+const {parseCargoTestCounts, requireExecutedCargoTests} = require('../../scripts/node/verify/cargo-test-results.js');
+const {stripVTControlCharacters} = require('node:util');
+const source = '754beb28733d1eca23852ab90a16e95c3fc484dd';
 const out = path.resolve('tmp/test-governance/mcp-role-permissions-ci');
 fs.mkdirSync(out, {recursive: true});
 const git = (...args) => cp.execFileSync('git', args, {encoding: 'utf8'}).trim();
@@ -35,8 +36,23 @@ for (const filter of filters) {
   const result = cp.spawnSync('cargo', args, {stdio: ['ignore', fd, fd], timeout: 50 * 60 * 1000});
   fs.closeSync(fd);
   const log = fs.readFileSync(logfile, 'utf8');
-  let counts = null, error = null;
-  try {counts = requireExecutedCargoTests(log, [filter]);} catch (e) {error = e.message;}
+  // Keep actual failed-suite totals even when the acceptance guard rejects them.
+  // A completed test failure may advance to the next frozen filter; a compile,
+  // timeout, signal or empty-selector failure must stop this one build batch.
+  const normalized = stripVTControlCharacters(log);
+  const rawCounts = parseCargoTestCounts(log);
+  const summaries = [...normalized.matchAll(/test result:\s+(?:ok|FAILED)\.\s+(\d+) passed;\s+(\d+) failed;\s+(\d+) ignored;/gu)];
+  const counts = summaries.length ? {
+    ...rawCounts,
+    ignoredCount: summaries.reduce((sum, match) => sum + Number(match[3]), 0)
+  } : null;
+  let error = null;
+  try {requireExecutedCargoTests(log, [filter]);} catch (e) {error = e.message;}
+  const executedNames = [...normalized.matchAll(/^test (.+) \.\.\. (?:ok|FAILED)\r?$/gmu)].map(match => match[1]);
+  const completedNonemptySuite = !result.signal && !result.error
+    && counts && counts.passedCount + counts.failedCount > 0
+    && executedNames.some(name => name.includes(filter))
+    && (result.status === 0 || (result.status === 101 && counts.failedCount > 0));
   const item = {filter, command: ['cargo', ...args], code: result.status, signal: result.signal, seconds: (Date.now() - start) / 1000, counts, error: error || result.error?.message || null};
   receipt.results.push(item); save();
   console.log(JSON.stringify(item));
@@ -44,7 +60,7 @@ for (const filter of filters) {
     console.log(log.slice(-10000));
     process.exitCode = 1;
     // Never repeat failed compilation under another filter.
-    if (!counts) break;
+    if (!completedNonemptySuite) break;
   }
 }
 receipt.finishedAt = new Date().toISOString();
