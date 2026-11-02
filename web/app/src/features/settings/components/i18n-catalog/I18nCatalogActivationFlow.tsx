@@ -1,6 +1,7 @@
 import { Alert, Descriptions, Modal, Space, Spin, Typography, App } from 'antd';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import '../../../../shared/ui/structured-list/structured-list.css';
 
 import {
@@ -57,6 +58,10 @@ export function I18nCatalogActivationFlow({
 }) {
   const { message } = App.useApp();
   const { t } = useTranslation('settings');
+  const can = useConsoleOperationAccess();
+  const canActivate = can(source?.kind === 'installed_extension'
+    ? 'i18n_catalog.installed_extension.activate'
+    : 'i18n_catalog.update.activate');
   const [review, setReview] = useState<I18nCatalogActivationReview | null>(
     null
   );
@@ -132,7 +137,7 @@ export function I18nCatalogActivationFlow({
   }, [installationId, message, onClose, sourceKind]);
 
   async function activateCatalog() {
-    if (!review || !csrfToken) return;
+    if (!review || !csrfToken || !canActivate) return;
     setBusy(true);
     try {
       if (review.kind === 'official') {
@@ -168,7 +173,7 @@ export function I18nCatalogActivationFlow({
       title={t('auto.activate_translation_catalog')}
       okText={t('auto.activate')}
       confirmLoading={busy}
-      okButtonProps={{ disabled: review === null || !csrfToken }}
+      okButtonProps={{ disabled: review === null || !csrfToken || !canActivate }}
       onCancel={onClose}
       onOk={() => void activateCatalog()}
     >

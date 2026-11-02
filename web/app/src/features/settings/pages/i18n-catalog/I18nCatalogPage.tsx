@@ -18,6 +18,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import {
   DataTable,
   DataTableColumnSettings,
@@ -81,6 +82,10 @@ export function I18nCatalogPage() {
   const { t } = useTranslation('settings');
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
+  const can = useConsoleOperationAccess();
+  const canCreate = can('i18n_catalog.custom_translations.upsert');
+  const canDelete = can('i18n_catalog.custom_keys.delete');
+  const canRestoreAll = can('i18n_catalog.overrides.restore_all');
   const { message: messageApi } = App.useApp();
   const [filterDraft, setFilterDraft] = useState<CatalogFilters>({});
   const [filters, setFilters] = useState<CatalogFilters>({});
@@ -123,6 +128,10 @@ export function I18nCatalogPage() {
   const mutation = useMutation({
     mutationFn: async (action: CatalogAction) => {
       if (!csrfToken) throw new Error('missing csrf token');
+      const operation = action.kind === 'save'
+        ? (action.entry.origin === 'custom' ? 'i18n_catalog.custom_translations.upsert' : 'i18n_catalog.overrides.upsert')
+        : { restore: 'i18n_catalog.overrides.restore', delete: 'i18n_catalog.custom_keys.delete', 'restore-all': 'i18n_catalog.overrides.restore_all', create: 'i18n_catalog.custom_translations.upsert' }[action.kind];
+      if (!can(operation)) throw new Error('operation not permitted');
       switch (action.kind) {
         case 'save': {
           const request = {
@@ -374,20 +383,23 @@ export function I18nCatalogPage() {
                   <Button
                     icon={<GlobalOutlined />}
                     aria-label={t('auto.translation_catalog_version')}
+                    disabled={!can('i18n_catalog.state.get') || !can('i18n_catalog.update.check')}
                     onClick={() => setCatalogActivationOpen(true)}
                   >
                     {t('auto.translation_catalog_version')}
                   </Button>
                   <Button
                     icon={<UndoOutlined />}
-                    onClick={() => setRestoreAllOpen(true)}
+                    disabled={!canRestoreAll}
+                    onClick={() => { if (canRestoreAll) setRestoreAllOpen(true); }}
                   >
                     {t('auto.translation_catalog_restore_defaults')}
                   </Button>
                   <Button
                     type="primary"
                     icon={<PlusOutlined />}
-                    onClick={() => setCreateOpen(true)}
+                    disabled={!canCreate}
+                    onClick={() => { if (canCreate) setCreateOpen(true); }}
                   >
                     {t('auto.new')}
                   </Button>
@@ -423,7 +435,7 @@ export function I18nCatalogPage() {
           detailQuery.data &&
           mutation.mutate({ kind: 'restore', entry: detailQuery.data })
         }
-        onDelete={() => detailQuery.data && setDeleteEntry(detailQuery.data)}
+        onDelete={() => canDelete && detailQuery.data && setDeleteEntry(detailQuery.data)}
       />
       <I18nCatalogCreateDrawer
         open={createOpen}
@@ -436,12 +448,12 @@ export function I18nCatalogPage() {
       <Modal
         open={deleteEntry !== null}
         title={t('auto.translation_catalog_delete_custom_key')}
-        okButtonProps={{ danger: true, loading: mutation.isPending }}
+        okButtonProps={{ danger: true, loading: mutation.isPending, disabled: !canDelete }}
         okText={t('auto.translation_catalog_delete')}
         cancelText={t('auto.translation_catalog_cancel')}
         onCancel={() => setDeleteEntry(null)}
         onOk={() =>
-          deleteEntry && mutation.mutate({ kind: 'delete', entry: deleteEntry })
+          canDelete && deleteEntry && mutation.mutate({ kind: 'delete', entry: deleteEntry })
         }
         data-testid="i18n-catalog-delete-confirmation"
       >
@@ -453,8 +465,9 @@ export function I18nCatalogPage() {
         okText={t('auto.translation_catalog_restore')}
         cancelText={t('auto.translation_catalog_cancel')}
         confirmLoading={mutation.isPending}
+        okButtonProps={{ disabled: !canRestoreAll }}
         onCancel={() => setRestoreAllOpen(false)}
-        onOk={() => mutation.mutate({ kind: 'restore-all', revision })}
+        onOk={() => { if (canRestoreAll) mutation.mutate({ kind: 'restore-all', revision }); }}
         data-testid="i18n-catalog-restore-all-confirmation"
       >
         {t('auto.translation_catalog_restore_all_confirmation')}
