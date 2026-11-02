@@ -255,6 +255,45 @@ describe('fetched module host factory', () => {
     }
   });
 
+  test('preserves declared host stylesheet order ahead of the verified bundle style', async () => {
+    const hostRegistryWithStyles = (
+      registrations: Parameters<typeof createNativeReactModuleRegistry>[0]
+    ) =>
+      createNativeReactModuleRegistry([
+        {
+          module_source: 'react',
+          exports: ['createElement', 'secret'],
+          load: async () => ({
+            module: react,
+            styles: [
+              { css: '.host-one { color: red; }' },
+              { css: '.host-two { color: blue; }' }
+            ]
+          })
+        },
+        ...registrations
+      ]);
+    const loader = make({
+      modules: [module, hostBinding],
+      hostRegistryFactory: hostRegistryWithStyles,
+      importModule: async () => ({
+        createFrontendModule: () => ({ answer: 42 })
+      })
+    });
+    try {
+      const assets = await loader.registry.resolveModuleAssets([module.source]);
+      expect(
+        assets.map((asset) => new TextDecoder().decode(asset.bytes))
+      ).toEqual([
+        '.host-one { color: red; }',
+        '.host-two { color: blue; }',
+        css
+      ]);
+    } finally {
+      loader.dispose();
+    }
+  });
+
   test('rejects a factory result that lacks a declared export', async () => {
     const loader = make({
       modules: [module, hostBinding],

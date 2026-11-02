@@ -8,6 +8,51 @@ import { describe, expect, test } from 'vitest';
 describe('ApplicationManagementPanel', () => {
   setupApplicationManagementFixture();
 
+  test('own-scoped viewer keeps workbench access without inheriting management permissions', async () => {
+    const { actor, me } = useAuthStore.getState();
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf-123',
+      actor: {
+        ...actor!,
+        id: 'own-viewer',
+        account: 'own-viewer',
+        effective_display_role: 'member'
+      },
+      me: {
+        ...me!,
+        id: 'own-viewer',
+        account: 'own-viewer',
+        effective_display_role: 'member',
+        permissions: ['application.create.own', 'application.list.own']
+      }
+    });
+    applicationManagementApi.fetchSettingsApplicationManagement.mockRejectedValue(
+      new ApiClientError({
+        status: 403,
+        code: 'forbidden',
+        message: 'internal management policy details'
+      })
+    );
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+    expect(
+      await screen.findByText(
+        '管理应用列表需要独立授权。您仍可在工作台查看已获授权的应用。'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: '前往工作台' })
+    ).toHaveAttribute('href', '/');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(
+      applicationManagementApi.fetchSettingsApplicationManagement
+    ).toHaveBeenCalledTimes(1);
+  });
+
+
   test.each(['success', 'partial', 'failure'] as const)(
     'batch delete AC-001 AC-002 AC-004 confirms the selection and handles %s',
     async (outcome) => {

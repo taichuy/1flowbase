@@ -5,6 +5,7 @@ import ExportOutlined from '@ant-design/icons/es/icons/ExportOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   Button,
   Flex,
   Input,
@@ -184,7 +185,10 @@ export function ApplicationManagementPanel() {
   );
   const applicationsQuery = useQuery({
     queryKey: settingsApplicationManagementQueryKey(managementQuery),
-    queryFn: () => fetchSettingsApplicationManagement(managementQuery)
+    queryFn: () => fetchSettingsApplicationManagement(managementQuery),
+    retry: (attempts, error) =>
+      !(error instanceof ApiClientError && error.status === 403) &&
+      attempts < 3
   });
   const catalogQuery = useQuery({
     queryKey: applicationCatalogQueryKey,
@@ -845,6 +849,37 @@ export function ApplicationManagementPanel() {
       </DataTableFilterField>
     </>
   );
+
+  // The settings feature can be discoverable through a scoped operation even
+  // when the distinct management-list operation is forbidden. Show the backend
+  // denial and the existing workbench entry; never project own-list rows into
+  // privileged management DTOs or infer a broader grant on the client.
+  if (
+    applicationsQuery.isError &&
+    applicationsQuery.error instanceof ApiClientError &&
+    applicationsQuery.error.status === 403
+  ) {
+    return (
+      <SettingsSectionSurface>
+        <Alert
+          type="warning"
+          showIcon
+          title={i18nText(
+            'settingsApplicationManagement',
+            'auto.application_management_access_denied'
+          )}
+          action={
+            <Button href="/">
+              {i18nText(
+                'settingsApplicationManagement',
+                'auto.application_management_back_to_workbench'
+              )}
+            </Button>
+          }
+        />
+      </SettingsSectionSurface>
+    );
+  }
 
   return (
     <SettingsSectionSurface heightMode="fill">

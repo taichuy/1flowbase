@@ -1229,6 +1229,9 @@ async fn inference_successor_selected_run_is_start_even_when_prior_callback_auth
     let (events, claims) = collect_projection(attached.events).await;
     assert_exact_response(&events, &payloads, successor.id);
     assert_eq!(claims, 1);
+    // Forwarding closes before its receipt settler commits the actual ACK.
+    // Preserve the strict acked assertion, but wait for that durable outcome.
+    super::cold_replay::await_tool_ack(&state, committed.tool_delivery_events[0].id).await;
     assert_eq!(
         delivery_statuses(&state, &[committed.tool_delivery_events[0].id]).await,
         vec!["acked"]

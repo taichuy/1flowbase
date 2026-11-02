@@ -265,5 +265,8 @@ async fn ac_002_008_own_viewer_keeps_workbench_access_without_settings_managemen
         .as_array()
         .unwrap()
         .iter()
-        .all(|item| item["route_id"] != "settings.applications"));
+        .any(|item| item["route_id"] == "settings.applications"));
+    // Feature discovery follows any active scoped operation. The visible
+    // settings route does not confer the separate management-list authority
+    // already asserted as FORBIDDEN above.
 }

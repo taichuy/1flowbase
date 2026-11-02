@@ -114,6 +114,10 @@ Rust 文件按领域职责收纳物理子目录时，Cargo package identity、�
 
 源码变化使 digest 失效；同文件新增 rule、工具版本不匹配、缺少理由或有效证据均需重新审查或修复。缺 diagnostics、总数不匹配、工具 error 或无效诊断身份不能形成完整 inventory。wrapper 对工具失败、未解决诊断、不完整报告以及配置中的任意 rule/file/override suppression 返回失败；缺失或无法解析配置也不能作为零 suppression。审查完整且无 suppression 是接受证据的前提，不能通过隐藏诊断使子进程 exit 0 等同门禁通过。
 
+原生 Block 的异步样式 Provider 必须处于**当前 Block** 的错误边界内：其加载失败进入该 Block 的 runtime 错误反馈，不跨越到兄弟 Block 或页面的错误兜底。ShadowRoot 样式资产的 fallback style 元素顺序和 adoptedStyleSheets 顺序一致，后声明者按 CSS 层叠顺序覆盖先声明者；定向行为测试验证失败区块隔离、同根样式顺序与卸载回收。React Doctor 原始诊断、完整 source/evidence 摘要绑定与零 suppression 规则继续独立保留。
+
+Managed RuntimeExtension 的前端贡献须保留精确声明与持久授权交集：安装、workspace assignment 不是 frontend-block.ui-mount.trusted-host 的替代授权；只有匹配 module/contribution_id/point_id/frontend_block payload 以及 workspace grant，才允许返回资产与可复用组件。正式 CI 使用实库正反例验证缺少 grant 不暴露，授予后可读，并保留篡改及卸载时的拒绝契约。
+
 ## 持久化与 wire 契约
 
 本次三类 0.5 前格式已经明确退出支持。MCP bundle 仅接受 `1flowbase.mcp.bundle/v2`，Tool 必须使用 `execution_target`，顶层 `interface_id` 拒绝反序列化；SQL 节点只使用 `bindings.sql`，编译器对仍含 `config.sql` 的文档明确报错，编辑器不读取旧字段。
