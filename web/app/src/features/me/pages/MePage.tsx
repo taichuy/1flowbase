@@ -5,6 +5,7 @@ import { Navigate, useNavigate } from '@tanstack/react-router';
 import { Result } from 'antd';
 
 import { useAuthStore } from '../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../state/console-operation-access';
 import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { SectionPageLayout } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 import { changeMyPassword, fetchMyProfile, updateMyProfile } from '../api/me';
@@ -34,6 +35,8 @@ export function MePage({
   const me = useAuthStore((state) => state.me);
   const setMe = useAuthStore((state) => state.setMe);
   const setAnonymous = useAuthStore((state) => state.setAnonymous);
+  const canAccess = useConsoleOperationAccess();
+  const canUpdateProfile = canAccess('console.identity.me.patch');
   const visibleSections = getMeSections();
   const fallbackSection = visibleSections[0];
   const activeSection = visibleSections.find(
@@ -54,6 +57,7 @@ export function MePage({
 
   const profileMutation = useMutation({
     mutationFn: async (input: Parameters<typeof updateMyProfile>[0]) => {
+      if (!canUpdateProfile) throw new Error('operation access denied');
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
@@ -136,6 +140,7 @@ export function MePage({
         <div className="me-page">
           <ProfileForm
             me={currentProfile}
+            canEdit={canUpdateProfile}
             statusLabel={
               sessionStatus === 'authenticated'
                 ? i18nText('me', 'auto.logged_in')

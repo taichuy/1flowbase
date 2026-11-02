@@ -4,6 +4,7 @@ import { Menu } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../state/auth-store';
+import { useConsoleOperationAccess } from '../state/console-operation-access';
 import { patchUserPreferences } from '../shared/user-preferences/user-preferences';
 import {
   mergeLocalePreferenceMeta,
@@ -18,12 +19,19 @@ const PROFILE_LOCALE_BY_MENU_KEY = {
 
 export function LanguageChromeMenu() {
   const { t } = useTranslation('appShell');
+  const canAccess = useConsoleOperationAccess();
+  const canUpdatePreferences = canAccess('console.identity.me.meta.patch');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const me = useAuthStore((state) => state.me);
   const setMe = useAuthStore((state) => state.setMe);
 
   const handleLanguageMenuClick: MenuProps['onClick'] = ({ key }) => {
-    if (!(key in PROFILE_LOCALE_BY_MENU_KEY)) {
+    if (
+      !canUpdatePreferences ||
+      !me ||
+      !csrfToken ||
+      !(key in PROFILE_LOCALE_BY_MENU_KEY)
+    ) {
       return;
     }
 
@@ -33,10 +41,6 @@ export function LanguageChromeMenu() {
       ];
 
     writeLocalePreferenceToStorage(nextPreferredLocale);
-
-    if (!me) {
-      return;
-    }
 
     const optimisticMeta = mergeLocalePreferenceMeta(
       me.meta,
@@ -48,10 +52,6 @@ export function LanguageChromeMenu() {
       preferred_locale: nextPreferredLocale,
       meta: optimisticMeta
     });
-
-    if (!csrfToken) {
-      return;
-    }
 
     void patchUserPreferences(optimisticMeta, csrfToken)
       .then((updatedMe) => {
@@ -75,6 +75,7 @@ export function LanguageChromeMenu() {
       items={[
         {
           key: 'language',
+          disabled: !canUpdatePreferences,
           label: (
             <span
               className="app-shell-language-block"

@@ -23,17 +23,20 @@ vi.mock('../components/ProfileForm', () => ({
   ProfileForm: ({
     me,
     onSubmit,
-    submitting
+    submitting,
+    errorMessage
   }: {
     me: ConsoleMe;
     onSubmit: (input: unknown) => Promise<void>;
     submitting: boolean;
+    errorMessage: string | null;
   }) => (
     <div>
       <span>{me.name}</span>
+      <span>{errorMessage}</span>
       <button
         disabled={submitting}
-        onClick={() => onSubmit({ name: 'Saved profile' })}
+        onClick={() => void onSubmit({ name: 'Saved profile' }).catch(() => {})}
       >
         Save profile
       </button>
@@ -51,28 +54,29 @@ const original: ConsoleMe = {
   avatar_url: null,
   introduction: '',
   effective_display_role: 'member',
-  permissions: []
+  permissions: ['console.identity.me.patch']
 };
 
-afterEach(() => resetAuthStore());
+afterEach(() => { resetAuthStore(); updateMyProfile.mockReset(); });
 
 describe('profile cache coherence', () => {
-  it('updates the current profile cache and preserves the saved profile on remount', async () => {
+  it.each(['root', 'single-operation'])('updates the profile cache for %s and preserves it on remount', async (grant) => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } }
     });
-    client.setQueryData(['me', 'profile'], original);
+    const grantedProfile = { ...original, permissions: grant === 'root' ? [] : original.permissions };
+    client.setQueryData(['me', 'profile'], grantedProfile);
     useAuthStore.getState().setAuthenticated({
       csrfToken: 'csrf',
       actor: {
         id: 'user-1',
         account: 'member',
-        effective_display_role: 'member',
+        effective_display_role: grant === 'root' ? 'root' : 'member',
         current_workspace_id: 'workspace'
       },
-      me: original
+      me: grantedProfile
     });
-    const saved = { ...original, name: 'Saved profile' };
+    const saved = { ...grantedProfile, name: 'Saved profile' };
     updateMyProfile.mockResolvedValue(saved);
     const wrapper = ({ children }: PropsWithChildren) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -97,4 +101,27 @@ describe('profile cache coherence', () => {
     unmountRemounted();
     client.clear();
   });
+  it.each([{ permissions: [] }, { permissions: ['console.identity.me.meta.patch'] }, { permissions: ['assistant.settings.update'] }])(
+    'rejects a direct profile mutation with unrelated grants %j',
+    async ({ permissions }) => {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const me = { ...original, permissions };
+      client.setQueryData(['me', 'profile'], me);
+      useAuthStore.getState().setAuthenticated({
+        csrfToken: 'csrf',
+        actor: { id: me.id, account: me.account, effective_display_role: 'member', current_workspace_id: 'workspace' },
+        me
+      });
+      const view = render(<QueryClientProvider client={client}><MePage requestedSectionKey="profile" /></QueryClientProvider>);
+      // The form stub deliberately invokes the mutation despite UI access restrictions.
+      fireEvent.click(screen.getByRole('button', { name: 'Save profile' }));
+      expect(await screen.findByText('operation access denied')).toBeInTheDocument();
+      expect(updateMyProfile).not.toHaveBeenCalled();
+      expect(client.getQueryData(['me', 'profile'])).toEqual(me);
+      expect(useAuthStore.getState().me).toEqual(me);
+      view.unmount();
+      client.clear();
+    }
+  );
+
 });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import { useConsoleOperationAccess } from '../../../state/console-operation-access';
 
 export const DEFAULT_MIN_COLUMN_WIDTH = 110;
 
@@ -166,6 +167,8 @@ export function usePersistedDataTableConfiguration<T extends object>({
   columns: Array<DataTableColumn<T>>;
   storageKey: string;
 }): DataTableConfiguration {
+  const canAccess = useConsoleOperationAccess();
+  const canUpdatePreferences = canAccess('console.identity.me.meta.patch');
   const storedState = useMemo(
     () => readStoredState(storageKey, columns),
     [columns, storageKey]
@@ -223,9 +226,10 @@ export function usePersistedDataTableConfiguration<T extends object>({
 
   useEffect(() => {
     // Reading another table never writes the previous table's draft into it.
-    if (!draft || draft.storageKey !== storageKey) return;
+    if (!draft || draft.storageKey !== storageKey || !canUpdatePreferences)
+      return;
     writeStoredState(storageKey, normalizeDataTableState(columns, draft.state));
-  }, [columns, draft, storageKey]);
+  }, [canUpdatePreferences, columns, draft, storageKey]);
 
   return { ...state, setVisibleColumnKeys, setColumnWidths };
 }

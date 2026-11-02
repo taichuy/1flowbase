@@ -7,6 +7,7 @@ export function AssistantSettingsModal({
   form,
   applications,
   applicationFixed = false,
+  disabled = false,
   mcpInstances,
   mcpLoading,
   onApplicationChange,
@@ -19,6 +20,7 @@ export function AssistantSettingsModal({
   form: FormInstance;
   applications: Array<{ application_id: string; name: string }>;
   applicationFixed?: boolean;
+  disabled?: boolean;
   mcpInstances: Array<{ value: string; label: string }>;
   mcpLoading?: boolean;
   onApplicationChange?: (applicationId: string) => void;
@@ -26,7 +28,7 @@ export function AssistantSettingsModal({
 }) {
   return (
     <Modal {...modal} title={i18nText('appShell', 'auto.assistant_settings')}>
-      <Form form={form} layout="vertical">
+      <Form form={form} layout="vertical" disabled={disabled}>
         <Form.Item
           label={i18nText('appShell', 'auto.assistant_flow')}
           name="application_id"
@@ -34,7 +36,7 @@ export function AssistantSettingsModal({
         >
           <Select
             allowClear={!applicationFixed}
-            disabled={applicationFixed}
+            disabled={disabled || applicationFixed}
             options={applications.map((application) => ({
               value: application.application_id,
               label: application.name
@@ -49,7 +51,7 @@ export function AssistantSettingsModal({
           <Select
             mode="multiple"
             loading={mcpLoading}
-            disabled={mcpLoading}
+            disabled={disabled || mcpLoading}
             options={mcpInstances}
           />
         </Form.Item>

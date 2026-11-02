@@ -146,3 +146,41 @@ test('refreshing prevents selecting from a stale menu', async () => {
   fireEvent.click(reset);
   expect(onChangePreference).not.toHaveBeenCalled();
 });
+
+test('read-only runtime keeps the published model list visible and disables every preference write', async () => {
+  const onChangePreference = vi.fn();
+  const onRefresh = vi.fn().mockResolvedValue(undefined);
+  render(
+    panel({
+      ...runtime,
+      preference: { model: 'published-model', reasoning_effort: 'low' },
+      readOnly: true,
+      onRefresh,
+      onChangePreference
+    })
+  );
+  fireEvent.click(screen.getByRole('button', { name: /Published model/ }));
+  expect(onRefresh).toHaveBeenCalledOnce();
+  const reset = await screen.findByRole('menuitem', {
+    name: i18nText('appShell', 'auto.assistant_reset_defaults')
+  });
+  expect(reset).toHaveAttribute('aria-disabled', 'true');
+  fireEvent.click(reset);
+  const models = screen.getByRole('menuitem', {
+    name: /模型 Published model|Model Published model/
+  });
+  fireEvent.mouseEnter(models);
+  const option = await screen.findByRole('menuitem', {
+    name: 'Published model'
+  });
+  expect(option).toHaveAttribute('aria-disabled', 'true');
+  fireEvent.click(option);
+  const efforts = screen.getByRole('menuitem', {
+    name: `${i18nText('appShell', 'auto.assistant_reasoning_effort')} low`
+  });
+  fireEvent.mouseEnter(efforts);
+  const effort = await screen.findByRole('menuitem', { name: 'low' });
+  expect(effort).toHaveAttribute('aria-disabled', 'true');
+  fireEvent.click(effort);
+  expect(onChangePreference).not.toHaveBeenCalled();
+});
