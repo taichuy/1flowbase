@@ -521,18 +521,14 @@ fn ensure_workspace_role_data_policy_allowed(
     default_policy: &RoleDataPolicyDefaultsInput,
     model_policies: &[RoleDataModelPolicyInput],
 ) -> Result<(), ControlPlaneError> {
-    ensure_workspace_role_data_policy_scope(default_policy.default_view_scope)?;
+    // System-wide reads are explicit role policy; system writes remain root-only.
     ensure_workspace_role_data_policy_scope(default_policy.default_update_scope)?;
     ensure_workspace_role_data_policy_scope(default_policy.default_delete_scope)?;
 
     for policy in model_policies {
-        for scope in [
-            policy.view_scope_override,
-            policy.update_scope_override,
-            policy.delete_scope_override,
-        ]
-        .into_iter()
-        .flatten()
+        for scope in [policy.update_scope_override, policy.delete_scope_override]
+            .into_iter()
+            .flatten()
         {
             ensure_workspace_role_data_policy_scope(scope)?;
         }

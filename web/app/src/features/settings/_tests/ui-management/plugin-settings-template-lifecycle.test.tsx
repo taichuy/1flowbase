@@ -235,7 +235,7 @@ describe('AC-009/012 plugin settings published page', () => {
         me: {
           id: 'user-1',
           account: role,
-          email: null,
+          email: 'member@example.com',
           phone: null,
           nickname: 'Member',
           name: 'Member',
@@ -258,7 +258,7 @@ describe('AC-009/012 plugin settings published page', () => {
     `
       });
       await renderPage();
-      const host = screen.getByTestId('plugin-settings-page');
+      const host = await screen.findByTestId('plugin-settings-page');
       await waitFor(() =>
         expect(host.shadowRoot?.textContent).toContain('immutable identity')
       );

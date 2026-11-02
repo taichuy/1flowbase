@@ -21,57 +21,90 @@ import { AssistantRunTimeline } from '../../components/embedded-assistant/Assist
 import { EmbeddedAgentAssistant } from '../../components/embedded-assistant/EmbeddedAgentAssistant';
 import { act, screen, waitFor } from '@testing-library/react';
 import { i18nText } from '../../../../shared/i18n/text';
+import { useAuthStore } from '../../../../state/auth-store';
 
 describe('EmbeddedAgentAssistant', () => {
-  test('resizes the history pane with focused arrow keys and persists the conversation width', async () => {
-    await renderSettled(
-      <AppProviders>
-        <EmbeddedAgentAssistant />
-      </AppProviders>
-    );
-    await domEvents.click(
-      screen.getByRole('button', {
-        name: i18nText('appShell', 'auto.assistant')
-      })
-    );
-    await domEvents.click(await findReadyHistoryButton());
-    const sidebar = await screen.findByTestId(
-      'embedded-agent-assistant-history'
-    );
-    const divider = screen.getByTestId(
-      'embedded-agent-assistant-history-resize'
-    );
-    const assistantWindow = screen.getByTestId(
-      'embedded-agent-assistant-preview'
-    );
-    const initialWidth = Number.parseFloat(sidebar.style.width);
-    const windowWidth = Number.parseFloat(assistantWindow.style.width);
-    expect(divider).toHaveAttribute('tabindex', '0');
-    await act(async () => {
-      divider.focus();
-    });
-    expect(divider).toHaveFocus();
-    await domEvents.fire(
-      divider,
-      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
-    );
-    expect(sidebar).toHaveStyle({ width: `${initialWidth + 10}px` });
-    expect(Number.parseFloat(assistantWindow.style.width)).toBe(windowWidth);
-    const widerHistory = JSON.parse(
-      window.localStorage.getItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY) ?? '{}'
-    );
-    await domEvents.fire(
-      divider,
-      new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })
-    );
-    expect(sidebar).toHaveStyle({ width: `${initialWidth}px` });
-    const restoredHistory = JSON.parse(
-      window.localStorage.getItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY) ?? '{}'
-    );
-    expect(restoredHistory.conversationWidth).toBe(
-      widerHistory.conversationWidth + 10
-    );
-  });
+  test.each([
+    { role: 'root', permissions: [], persists: true },
+    { role: 'member', permissions: [], persists: false },
+    {
+      role: 'member',
+      permissions: ['patch_me'],
+      persists: false
+    },
+    {
+      role: 'member',
+      permissions: ['assistant_update_settings'],
+      persists: false
+    },
+    {
+      role: 'member',
+      permissions: ['patch_me_meta'],
+      persists: true
+    }
+  ])(
+    'resizes history locally and persists only with exact UI preference access $role/$permissions',
+    async ({ role, permissions, persists }) => {
+      const auth = useAuthStore.getState();
+      useAuthStore.setState({
+        actor: { ...auth.actor!, effective_display_role: role },
+        me: { ...auth.me!, effective_display_role: role, permissions }
+      });
+      await renderSettled(
+        <AppProviders>
+          <EmbeddedAgentAssistant />
+        </AppProviders>
+      );
+      await domEvents.click(
+        screen.getByRole('button', {
+          name: i18nText('appShell', 'auto.assistant')
+        })
+      );
+      await domEvents.click(await findReadyHistoryButton());
+      const sidebar = await screen.findByTestId(
+        'embedded-agent-assistant-history'
+      );
+      const divider = screen.getByTestId(
+        'embedded-agent-assistant-history-resize'
+      );
+      const assistantWindow = screen.getByTestId(
+        'embedded-agent-assistant-preview'
+      );
+      const initialWidth = Number.parseFloat(sidebar.style.width);
+      const windowWidth = Number.parseFloat(assistantWindow.style.width);
+      expect(divider).toHaveAttribute('tabindex', '0');
+      await act(async () => {
+        divider.focus();
+      });
+      expect(divider).toHaveFocus();
+      await domEvents.fire(
+        divider,
+        new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
+      );
+      expect(sidebar).toHaveStyle({ width: `${initialWidth + 10}px` });
+      expect(Number.parseFloat(assistantWindow.style.width)).toBe(windowWidth);
+      const widerHistory = JSON.parse(
+        window.localStorage.getItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY) ?? '{}'
+      );
+      await domEvents.fire(
+        divider,
+        new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })
+      );
+      expect(sidebar).toHaveStyle({ width: `${initialWidth}px` });
+      const restoredHistory = JSON.parse(
+        window.localStorage.getItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY) ?? '{}'
+      );
+      if (persists) {
+        expect(restoredHistory.conversationWidth).toBe(
+          widerHistory.conversationWidth + 10
+        );
+      } else {
+        expect(
+          window.localStorage.getItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY)
+        ).toBeNull();
+      }
+    }
+  );
 
   test('AC-005 assigns each horizontal resize edge to its nearest pane', async () => {
     await renderSettled(

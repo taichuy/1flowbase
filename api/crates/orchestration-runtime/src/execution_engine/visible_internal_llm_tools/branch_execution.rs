@@ -400,6 +400,7 @@ where
                 return Ok(VisibleInternalLlmToolNodeExecution::Failed(error_payload));
             }
             if let Some(mut wait) = execution.pending_callback.take() {
+                wait.retain_agentflow_ownership();
                 if visible_internal_llm_tool_blocks_external_callback(variable_pool) {
                     return Ok(VisibleInternalLlmToolNodeExecution::Failed(json!({
                         "error_code": "visible_internal_llm_tool_external_callback_forbidden",

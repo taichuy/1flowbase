@@ -16,7 +16,7 @@ describe('Extension center exact operations', () => {
     await renderSection();
     expect(screen.getByRole('button', { name: '上传插件' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '检查更新' })).toBeDisabled();
-    const activation = screen.getByRole('switch');
+    const activation = await screen.findByRole('switch');
     expect(activation).toBeDisabled();
     await click(screen.getByRole('button', { name: /查\s*看/ }));
     expect(await screen.findByText('sha256:previous')).toBeInTheDocument();

@@ -16,7 +16,7 @@ export function authenticateEditor(
     me: {
       id: 'user-1',
       account: role,
-      email: null,
+      email: 'member@example.com',
       phone: null,
       nickname: role,
       name: role,

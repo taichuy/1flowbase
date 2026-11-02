@@ -24,7 +24,7 @@ describe('MCP exact operation controls', () => {
     renderPanelWithMountedTool();
     const panel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
     expect(within(panel).getByText('Ops MCP')).toBeInTheDocument();
-    expect(within(panel).getByRole('button', { name: '新增' })).toBeDisabled();
+    expect(within(panel).getByRole('button', { name: /新增$/ })).toBeDisabled();
     fireEvent.click(within(panel).getByRole('button', { name: '查看' }));
     const editor = await screen.findByRole('dialog', { name: '查看' });
     expect(editor.querySelector('button.ant-btn-primary')).toBeDisabled();
@@ -34,15 +34,15 @@ describe('MCP exact operation controls', () => {
   test('one instance-create grant enables create without enabling tool create', () => {
     grant(['mcp.instances.create']);
     renderPanelWithMountedTool();
-    expect(within(screen.getByRole('tabpanel', { name: 'MCP 实例' })).getByRole('button', { name: '新增' })).toBeEnabled();
+    expect(within(screen.getByRole('tabpanel', { name: 'MCP 实例' })).getByRole('button', { name: /新增$/ })).toBeEnabled();
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
-    expect(within(screen.getByRole('tabpanel', { name: 'Tool 配置' })).getByRole('button', { name: '新增' })).toBeDisabled();
+    expect(within(screen.getByRole('tabpanel', { name: 'Tool 配置' })).getByRole('button', { name: /新增$/ })).toBeDisabled();
   });
 
   test('root retains instance and tool creation', () => {
     renderPanelWithMountedTool();
-    expect(within(screen.getByRole('tabpanel', { name: 'MCP 实例' })).getByRole('button', { name: '新增' })).toBeEnabled();
+    expect(within(screen.getByRole('tabpanel', { name: 'MCP 实例' })).getByRole('button', { name: /新增$/ })).toBeEnabled();
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
-    expect(within(screen.getByRole('tabpanel', { name: 'Tool 配置' })).getByRole('button', { name: '新增' })).toBeEnabled();
+    expect(within(screen.getByRole('tabpanel', { name: 'Tool 配置' })).getByRole('button', { name: /新增$/ })).toBeEnabled();
   });
 });

@@ -330,7 +330,7 @@ async fn scope_all_returns_all_records_inside_granted_scope_id() {
 }
 
 #[tokio::test]
-async fn system_all_returns_all_granted_data_for_system_actor_only() {
+async fn system_all_read_requires_root_or_an_explicit_real_system_grant() {
     let model_id = Uuid::nil();
     let scope_a = Uuid::now_v7();
     let scope_b = Uuid::now_v7();
@@ -384,6 +384,24 @@ async fn system_all_returns_all_granted_data_for_system_actor_only() {
         .unwrap();
     assert_eq!(listed.total, 2);
 
+    let delegated = engine
+        .list_records(RuntimeListInput {
+            actor: scoped_actor(Uuid::now_v7(), scope_a, Vec::<&'static str>::new()),
+            model_code: "orders".into(),
+            filter: domain::ResourceFilterExpr::All(vec![]),
+            sorts: vec![],
+            expand_relations: vec![],
+            page: 1,
+            page_size: 20,
+            scope_grant: Some(RuntimeScopeGrant {
+                scope_kind: domain::DataModelScopeKind::System,
+                ..system_grant.clone()
+            }),
+        })
+        .await
+        .unwrap();
+    assert_eq!(delegated.total, listed.total);
+
     let error = engine
         .list_records(RuntimeListInput {
             actor: non_system_actor,
@@ -400,4 +418,41 @@ async fn system_all_returns_all_granted_data_for_system_actor_only() {
     assert!(error
         .to_string()
         .contains("system_all_requires_system_actor"));
+}
+
+#[test]
+fn delegated_system_grant_is_read_only_and_cannot_be_forged_with_workspace_scope() {
+    use runtime_core::runtime_acl::{resolve_access_scope, RuntimeDataAction};
+    let model_id = Uuid::nil();
+    let actor = scoped_actor(Uuid::now_v7(), Uuid::now_v7(), Vec::<&'static str>::new());
+    let mut grant = scope_grant(
+        domain::SYSTEM_SCOPE_ID,
+        domain::ScopeDataModelPermissionProfile::SystemAll,
+    );
+    grant.scope_kind = domain::DataModelScopeKind::System;
+    let scope =
+        resolve_access_scope(&actor, RuntimeDataAction::View, model_id, Some(&grant)).unwrap();
+    assert_eq!(scope.scope_id, None);
+    assert_eq!(scope.owner_user_id, None);
+    for action in [
+        RuntimeDataAction::Create,
+        RuntimeDataAction::Update,
+        RuntimeDataAction::Delete,
+    ] {
+        assert!(
+            resolve_access_scope(&actor, action, model_id, Some(&grant)).is_err(),
+            "{action:?}"
+        );
+    }
+    grant.scope_kind = domain::DataModelScopeKind::Workspace;
+    assert!(resolve_access_scope(&actor, RuntimeDataAction::View, model_id, Some(&grant)).is_err());
+    grant.scope_kind = domain::DataModelScopeKind::System;
+    grant.scope_id = actor.current_workspace_id;
+    assert!(resolve_access_scope(&actor, RuntimeDataAction::View, model_id, Some(&grant)).is_err());
+    grant.scope_id = domain::SYSTEM_SCOPE_ID;
+    grant.enabled = false;
+    assert!(resolve_access_scope(&actor, RuntimeDataAction::View, model_id, Some(&grant)).is_err());
+    grant.enabled = true;
+    grant.data_model_id = Uuid::now_v7();
+    assert!(resolve_access_scope(&actor, RuntimeDataAction::View, model_id, Some(&grant)).is_err());
 }

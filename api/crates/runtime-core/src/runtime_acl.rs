@@ -73,7 +73,13 @@ pub fn resolve_access_scope(
             })
         }
         domain::ScopeDataModelPermissionProfile::SystemAll => {
-            if actor.is_root {
+            // The service resolves role authorization before supplying a grant.
+            // A delegated system read must still be a real system-scope grant.
+            if actor.is_root
+                || (matches!(action, RuntimeDataAction::View)
+                    && grant.scope_kind == domain::DataModelScopeKind::System
+                    && grant.scope_id == domain::SYSTEM_SCOPE_ID)
+            {
                 Ok(RuntimeAccessScope {
                     scope_id: None,
                     owner_user_id: None,

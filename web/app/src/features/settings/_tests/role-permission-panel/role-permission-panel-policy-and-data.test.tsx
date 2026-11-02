@@ -559,7 +559,7 @@ describe('RolePermissionPanel', () => {
     });
   }, 20000);
 
-  test('submits per-model override payload and hides system_all choices', async () => {
+  test('submits per-model override payload while preserving separate write scopes', async () => {
     renderPanel();
 
     await screen.findByRole('tab', { name: '动态路由' });

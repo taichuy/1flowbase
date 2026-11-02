@@ -369,8 +369,10 @@ test('read binding grants preserve saved configuration but cannot change or pers
   const { ref, writes } = setup({ existing: true, permissions: ['communications.binding.get', 'communications.options.get'] });
   await screen.findByDisplayValue('Custom prompt');
   expect(screen.getByRole('textbox', { name: 'System prompt' })).toBeDisabled();
-  expect(commandSwitch('help')).toBeDisabled();
-  expect(commandSwitch('summary')).toBeDisabled();
+  await waitFor(() => {
+    expect(commandSwitch('help')).toBeDisabled();
+    expect(commandSwitch('summary')).toBeDisabled();
+  });
   await expect(ref.current?.save('channel-1')).rejects.toThrow('operation not permitted');
   expect(writes).toEqual([]);
 });

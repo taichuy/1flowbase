@@ -912,6 +912,19 @@ where
             &execution.output_payload,
             &tool_prompt_transcript,
         )?;
+        if native_responses_passthrough {
+            if let Some(wait) = execution.pending_callback.as_mut() {
+                if pending_llm_tool_callback_state(variable_pool, &node.node_id)
+                    .and_then(|state| state.get("host_tool_continuation_owner"))
+                    .and_then(Value::as_str)
+                    == Some("agentflow")
+                {
+                    wait.retain_agentflow_ownership();
+                } else {
+                    wait.continuation_owner = LlmToolContinuationOwner::ClientResponses;
+                }
+            }
+        }
         // A pure-text result also needs a durable transcript: later inputs may arrive
         // between this result and the host's final send reservation.
         if let Some(communication) = &runtime_context.communication {

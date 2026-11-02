@@ -682,16 +682,14 @@ struct OpenAiResponseDispatchRequest {
 
 fn responses_callback_provider_transport(
     envelope: &OpenAiResponsesEnvelope,
-    native_resume: bool,
+    host_owned_native_resume: bool,
     encoded_resume: bool,
 ) -> Result<Option<ProviderTransportPayload>, OpenAiRouteError> {
-    if !native_resume && !encoded_resume {
+    if !host_owned_native_resume && !encoded_resume {
         return Ok(None);
     }
-    // A native callback can still carry older gateway-projected function calls
-    // in its full Responses history. Adapter-owned correlation IDs must never
-    // cross the Provider boundary, regardless of how the current tail was
-    // correlated.
+    // Host-owned callbacks may carry older encoded IDs in their history.
+    // Restore those IDs only after the callback owner established authority.
     ProviderTransportPayload::openai_responses(restore_openai_responses_provider_call_ids(
         envelope.raw_body(),
     ))
@@ -704,8 +702,8 @@ fn responses_callback_provider_transport(
     })
 }
 
-fn responses_resume_requires_previous_response_match(correlated_from_native_state: bool) -> bool {
-    !correlated_from_native_state
+fn responses_resume_requires_previous_response_match(correlated_from_host_state: bool) -> bool {
+    !correlated_from_host_state
 }
 
 #[utoipa::path(

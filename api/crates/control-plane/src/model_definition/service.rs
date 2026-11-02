@@ -342,7 +342,37 @@ where
         data_model_id: Uuid,
         action: RuntimeDataAction,
     ) -> Result<Option<runtime_core::runtime_acl::RuntimeScopeGrant>> {
-        if actor.is_root {
+        // Resolve role authorization before considering the system grant. Ordinary
+        // workspace reads must never inherit root's system visibility implicitly.
+        let role_scope = if actor.is_root {
+            None
+        } else {
+            let mut role_scope: Option<domain::RoleDataPolicyScope> = None;
+            for (policy, model_policy) in self
+                .repository
+                .list_actor_role_data_policies(
+                    actor.user_id,
+                    actor.current_workspace_id,
+                    &actor.effective_display_role,
+                    data_model_id,
+                )
+                .await?
+            {
+                if !action_allowed(&policy, model_policy.as_ref(), action) {
+                    continue;
+                }
+                let candidate = action_scope(&policy, model_policy.as_ref(), action);
+                role_scope = Some(role_scope.map_or(candidate, |current| current.max(candidate)));
+            }
+
+            role_scope
+        };
+        if !actor.is_root && role_scope.is_none() {
+            return Ok(None);
+        }
+        let may_read_system = matches!(action, RuntimeDataAction::View)
+            && role_scope == Some(domain::RoleDataPolicyScope::SystemAll);
+        if actor.is_root || may_read_system {
             let system_grants = self
                 .repository
                 .list_scope_data_model_grants(DataModelScopeKind::System, domain::SYSTEM_SCOPE_ID)
@@ -351,6 +381,9 @@ where
                 .iter()
                 .find(|grant| grant.data_model_id == data_model_id)
             {
+                if !actor.is_root && !grant.enabled {
+                    return Ok(None);
+                }
                 return Ok(Some(runtime_scope_grant_from_record(grant)));
             }
         }
@@ -384,24 +417,6 @@ where
 
         if actor.is_root {
             return Ok(Some(grant));
-        }
-
-        let mut role_scope: Option<domain::RoleDataPolicyScope> = None;
-        for (policy, model_policy) in self
-            .repository
-            .list_actor_role_data_policies(
-                actor.user_id,
-                actor.current_workspace_id,
-                &actor.effective_display_role,
-                data_model_id,
-            )
-            .await?
-        {
-            if !action_allowed(&policy, model_policy.as_ref(), action) {
-                continue;
-            }
-            let candidate = action_scope(&policy, model_policy.as_ref(), action);
-            role_scope = Some(role_scope.map_or(candidate, |current| current.max(candidate)));
         }
 
         let Some(role_scope) = role_scope else {

@@ -147,7 +147,6 @@ export function renderConsolePolicyCatalogTable(
             _: unknown,
             row: ReturnType<typeof policyTableRows>[number]
           ) => {
-            const canEdit = canManageRoles && selectedRole?.is_editable;
             return (
               <Button
                 type="link"
@@ -156,7 +155,7 @@ export function renderConsolePolicyCatalogTable(
                   'auto.permission_policy_details',
                   { value1: row.catalogGroup.label }
                 )}
-                disabled={!canEdit}
+                disabled={!selectedRole}
                 onClick={() => openConsolePolicyDetail(row.catalogGroup)}
               >
                 {i18nText(

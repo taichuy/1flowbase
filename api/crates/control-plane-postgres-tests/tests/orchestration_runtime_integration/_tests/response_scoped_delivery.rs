@@ -191,8 +191,11 @@ async fn response_scope_precedes_limit_and_reconnect_excludes_descendants_after_
         .closed_proof
         .as_ref()
         .expect("atomic own tools+upper establish Closed");
-    assert_eq!(proof.upper.recovery_id, own.recovery_history.id);
-    assert_eq!(proof.upper.event_sequence, own.waiting_event.sequence);
+    assert_eq!(
+        proof.upper.recovery().unwrap().recovery_id,
+        own.recovery_history.id
+    );
+    assert_eq!(proof.upper.event_sequence(), own.waiting_event.sequence);
     let canonical = store
         .get_original_callback_waiting_boundary(run.id, predecessor)
         .await
@@ -202,7 +205,7 @@ async fn response_scope_precedes_limit_and_reconnect_excludes_descendants_after_
         canonical.original.event_sequence,
         old.waiting_event.sequence
     );
-    assert_eq!(canonical.next.unwrap(), proof.upper);
+    assert_eq!(canonical.next.unwrap(), proof.upper.recovery().unwrap());
     let own_ids = own
         .tool_delivery_events
         .iter()
@@ -524,4 +527,49 @@ async fn closed_proof_385_atomic_facts_once_and_later_claims_are_independent() {
     .await
     .unwrap();
     assert_eq!(foreign_generations, vec![0; 4]);
+}
+
+#[tokio::test]
+async fn malformed_recovery_upper_rejects_without_claim_side_effects() {
+    let (store, seeded, run, node) = fixture().await;
+    let waiting = wait(&store, &seeded, &run, &node, 1, 1).await;
+    // Controlled corrupt-legacy fixture in this test's isolated schema only.
+    // Current production migrations forbid both mutation and a NULL coordinate.
+    sqlx::query("alter table flow_run_recovery_history disable trigger flow_run_recovery_history_reject_update")
+        .execute(store.pool()).await.unwrap();
+    sqlx::query("alter table flow_run_recovery_history alter column event_sequence drop not null")
+        .execute(store.pool())
+        .await
+        .unwrap();
+    sqlx::query("update flow_run_recovery_history set event_sequence=null where id=$1")
+        .bind(waiting.recovery_history.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    for include_membership in [true, false] {
+        let mut request = input(run.id, RuntimeEventDeliveryScope::Start, 8);
+        request.include_membership = include_membership;
+        let error = store
+            .claim_runtime_event_deliveries(&request)
+            .await
+            .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("runtime_event_delivery_scope_unresolved"));
+        let rows: Vec<(i64, String)> = sqlx::query_as(
+            "select delivery_generation,delivery_status from runtime_events where id=any($1)",
+        )
+        .bind(
+            waiting
+                .tool_delivery_events
+                .iter()
+                .map(|event| event.id)
+                .collect::<Vec<_>>(),
+        )
+        .fetch_all(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(rows,vec![(0,"pending".to_owned())],
+            "a bad upper must be SQL fail-closed before claimed UPDATE (membership={include_membership})");
+    }
 }

@@ -55,6 +55,7 @@ async fn late_success_projects_cancelled_winner_without_success_terminal_or_answ
             flow_run_id: running.id,
             expected_status: domain::FlowRunStatus::Running,
             require_initial_execution: false,
+            tool_delivery_events: Vec::new(),
             result: crate::ports::CommitFlowRunTerminalResult::Cancelled {
                 output_payload: stale_partial.output_payload.clone(),
                 error_payload: None,

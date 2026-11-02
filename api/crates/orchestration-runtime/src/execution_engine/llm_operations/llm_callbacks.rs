@@ -52,6 +52,7 @@ pub(super) fn build_llm_tool_callback_wait(
     let serialized_system = serde_json::to_value(&transcript.system)
         .map_err(|error| anyhow!("failed to serialize LLM tool callback system: {error}"))?;
     Ok(Some(LlmToolCallbackWait {
+        continuation_owner: LlmToolContinuationOwner::AgentFlow,
         node_id: node.node_id.clone(),
         node_alias: node.alias.clone(),
         request_payload: build_llm_tool_callback_request_payload(output_payload),
@@ -308,6 +309,10 @@ pub(super) fn append_llm_tool_result_messages(
     let provider_route = state.get("provider_route").cloned();
     let provider_continuation = state.get("provider_continuation").cloned();
     let provider_metadata = state.get("provider_metadata").cloned();
+    // This function is entered only by the host checkpoint-resume owner or its
+    // internal tool loop. Completing that owned receipt retains the workflow,
+    // including legacy checkpoints that predate explicit owner evidence.
+    let host_tool_continuation_owner = json!("agentflow");
     let visible_internal_transcript = state.get("visible_internal_llm_tool_transcript").cloned();
     let visible_internal_events = state.get("visible_internal_llm_tool_events").cloned();
     let pending_tool_calls = state
@@ -482,6 +487,10 @@ pub(super) fn append_llm_tool_result_messages(
     if !delta_messages.is_empty() {
         callback_state.insert("delta_messages".to_string(), Value::Array(delta_messages));
     }
+    callback_state.insert(
+        "host_tool_continuation_owner".into(),
+        host_tool_continuation_owner,
+    );
     if let Some(visible_internal_transcript) = visible_internal_transcript {
         callback_state.insert(
             "visible_internal_llm_tool_transcript".to_string(),

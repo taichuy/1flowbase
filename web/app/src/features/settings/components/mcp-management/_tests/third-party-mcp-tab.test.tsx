@@ -189,7 +189,7 @@ describe('ThirdPartyMcpTab', () => {
           custom_header_name: null,
           status: 'enabled'
         },
-        ''
+        'csrf-123'
       );
     });
     await waitFor(() => {
@@ -254,7 +254,7 @@ describe('ThirdPartyMcpTab', () => {
           custom_header_name: null,
           credential: null
         },
-        ''
+        'csrf-123'
       );
     });
     expect(
@@ -295,7 +295,7 @@ describe('ThirdPartyMcpTab', () => {
           custom_header_name: null,
           credential: null
         },
-        ''
+        'csrf-123'
       );
     });
     expect(
@@ -334,7 +334,7 @@ describe('ThirdPartyMcpTab', () => {
       expect(upstreamApi.importSettingsMcpUpstreamTools).toHaveBeenCalledWith(
         connection.connection_id,
         { remote_tool_names: ['search_documents'] },
-        ''
+        'csrf-123'
       );
     });
     expect(onImported).toHaveBeenCalledTimes(1);

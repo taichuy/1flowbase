@@ -1060,10 +1060,10 @@ async fn role_service_tracks_policy_flags_on_create_and_update() {
 }
 
 #[tokio::test]
-async fn role_service_rejects_system_all_data_policy_for_workspace_roles() {
+async fn workspace_role_system_all_is_configurable_for_view_but_never_for_writes() {
+    use domain::RoleDataPolicyScope::{Own, ScopeAll, SystemAll};
     let repository = MemoryRoleRepository::default();
     let service = RoleService::new(repository.clone());
-
     service
         .create_role(CreateRoleCommand {
             actor_user_id: repository.root_user_id(),
@@ -1075,52 +1075,64 @@ async fn role_service_rejects_system_all_data_policy_for_workspace_roles() {
         })
         .await
         .unwrap();
-
-    let default_scope_error = service
+    let model_id = Uuid::now_v7();
+    let defaults = RoleDataPolicyDefaultsInput {
+        can_view: true,
+        can_create: false,
+        can_update: false,
+        can_delete: false,
+        default_view_scope: SystemAll,
+        default_update_scope: ScopeAll,
+        default_delete_scope: Own,
+    };
+    let model_policy = RoleDataModelPolicyInput {
+        data_model_id: model_id,
+        can_create_override: None,
+        view_scope_override: Some(SystemAll),
+        update_scope_override: None,
+        delete_scope_override: None,
+    };
+    let saved = service
         .replace_data_policy(ReplaceRoleDataPolicyCommand {
             actor_user_id: repository.root_user_id(),
             role_code: "editor".into(),
-            default_policy: RoleDataPolicyDefaultsInput {
-                can_view: true,
-                can_create: true,
-                can_update: true,
-                can_delete: true,
-                default_view_scope: domain::RoleDataPolicyScope::SystemAll,
-                default_update_scope: domain::RoleDataPolicyScope::ScopeAll,
-                default_delete_scope: domain::RoleDataPolicyScope::Own,
-            },
-            model_policies: Vec::new(),
+            default_policy: defaults.clone(),
+            model_policies: vec![model_policy.clone()],
         })
         .await
-        .unwrap_err();
-    assert!(default_scope_error
-        .to_string()
-        .contains("system_all_requires_system_role"));
+        .expect("explicit system-wide view should be configurable");
+    assert_eq!(saved.default_policy.default_view_scope, SystemAll);
+    assert_eq!(saved.model_policies[0].view_scope_override, Some(SystemAll));
 
-    let model_scope_error = service
-        .replace_data_policy(ReplaceRoleDataPolicyCommand {
-            actor_user_id: repository.root_user_id(),
-            role_code: "editor".into(),
-            default_policy: RoleDataPolicyDefaultsInput {
-                can_view: true,
-                can_create: true,
-                can_update: true,
-                can_delete: true,
-                default_view_scope: domain::RoleDataPolicyScope::ScopeAll,
-                default_update_scope: domain::RoleDataPolicyScope::ScopeAll,
-                default_delete_scope: domain::RoleDataPolicyScope::Own,
-            },
-            model_policies: vec![RoleDataModelPolicyInput {
-                data_model_id: Uuid::now_v7(),
-                can_create_override: None,
-                view_scope_override: Some(domain::RoleDataPolicyScope::SystemAll),
-                update_scope_override: None,
-                delete_scope_override: None,
-            }],
-        })
-        .await
-        .unwrap_err();
-    assert!(model_scope_error
-        .to_string()
-        .contains("system_all_requires_system_role"));
+    for write_field in [
+        "default_update",
+        "default_delete",
+        "model_update",
+        "model_delete",
+    ] {
+        let mut default_policy = defaults.clone();
+        let mut model_policy = model_policy.clone();
+        match write_field {
+            "default_update" => default_policy.default_update_scope = SystemAll,
+            "default_delete" => default_policy.default_delete_scope = SystemAll,
+            "model_update" => model_policy.update_scope_override = Some(SystemAll),
+            "model_delete" => model_policy.delete_scope_override = Some(SystemAll),
+            _ => unreachable!(),
+        }
+        let error = service
+            .replace_data_policy(ReplaceRoleDataPolicyCommand {
+                actor_user_id: repository.root_user_id(),
+                role_code: "editor".into(),
+                default_policy,
+                model_policies: vec![model_policy],
+            })
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("system_all_requires_system_role"),
+            "{write_field}"
+        );
+    }
 }

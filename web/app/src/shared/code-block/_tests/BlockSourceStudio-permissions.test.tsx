@@ -66,15 +66,13 @@ describe('BlockSourceStudio permissions', () => {
       expect(editor).toHaveAttribute('readonly');
       for (const key of ['auto.inject_context', 'auto.reset', 'auto.save']) {
         const button = screen.getByRole('button', {
-          name: i18nText('frontstage', key),
-          exact: true
+          name: new RegExp(`^${i18nText('frontstage', key).split('').join('\\s*')}$`)
         });
         expect(button).toBeDisabled();
         fireEvent.click(button);
       }
       const run = screen.getByRole('button', {
-        name: i18nText('frontstage', 'auto.run'),
-        exact: true
+        name: new RegExp(`^${i18nText('frontstage', 'auto.run').split('').join('\\s*')}$`)
       });
       expect(run).toHaveProperty('disabled', !canRun);
       fireEvent.click(run);

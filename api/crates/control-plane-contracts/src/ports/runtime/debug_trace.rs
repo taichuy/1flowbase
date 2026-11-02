@@ -359,6 +359,28 @@ pub struct RuntimeCallbackWaitingBoundary {
     pub next: Option<RuntimeEventDeliveryBoundary>,
 }
 
+/// Different authoritative stop facts keep their original identities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeEventDeliveryUpperBoundary {
+    Recovery(RuntimeEventDeliveryBoundary),
+    SuccessfulTerminal { event_id: Uuid, event_sequence: i64 },
+}
+
+impl RuntimeEventDeliveryUpperBoundary {
+    pub fn event_sequence(self) -> i64 {
+        match self {
+            Self::Recovery(boundary) => boundary.event_sequence,
+            Self::SuccessfulTerminal { event_sequence, .. } => event_sequence,
+        }
+    }
+    pub fn recovery(self) -> Option<RuntimeEventDeliveryBoundary> {
+        match self {
+            Self::Recovery(boundary) => Some(boundary),
+            _ => None,
+        }
+    }
+}
+
 /// Complete membership is immutable only after the original upper business stop
 /// and all its tool facts are visible in the same SQL snapshot. Open is not empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -367,7 +389,7 @@ pub struct RuntimeEventDeliveryClosedProof {
     pub scope: RuntimeEventDeliveryScope,
     pub lower_sequence: i64,
     pub lower_recovery_sequence: i64,
-    pub upper: RuntimeEventDeliveryBoundary,
+    pub upper: RuntimeEventDeliveryUpperBoundary,
 }
 
 /// `events` contains full proof facts only when requested, including acked/uncertain

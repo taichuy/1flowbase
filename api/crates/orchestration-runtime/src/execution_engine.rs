@@ -637,13 +637,38 @@ pub struct DataModelCallback {
     pub request_payload: Value,
 }
 
+/// The host-selected input representation owns this decision, never Provider metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum LlmToolContinuationOwner {
+    AgentFlow,
+    ClientResponses,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LlmToolCallbackWait {
+    pub(super) continuation_owner: LlmToolContinuationOwner,
     pub node_id: String,
     pub node_alias: String,
     pub request_payload: Value,
     pub checkpoint_variable_pool: Map<String, Value>,
     pub node_trace: Option<NodeExecutionTrace>,
+}
+
+impl LlmToolCallbackWait {
+    /// Actual host tool execution retains the suspended workflow's resume authority.
+    /// This top-level evidence is created here, outside client and Provider payloads.
+    pub(super) fn retain_agentflow_ownership(&mut self) {
+        self.continuation_owner = LlmToolContinuationOwner::AgentFlow;
+        self.request_payload["host_tool_continuation_owner"] = json!("agentflow");
+        if let Some(state) = self
+            .checkpoint_variable_pool
+            .get_mut(&self.node_id)
+            .and_then(|node| node.get_mut("__llm_tool_callback"))
+            .and_then(Value::as_object_mut)
+        {
+            state.insert("host_tool_continuation_owner".into(), json!("agentflow"));
+        }
+    }
 }
 
 pub async fn start_flow_debug_run<I>(

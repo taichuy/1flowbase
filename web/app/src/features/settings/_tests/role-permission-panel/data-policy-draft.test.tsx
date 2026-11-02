@@ -85,6 +85,48 @@ describe('role data policy draft ownership', () => {
     );
   });
 
+  test.each([
+    ['default-policy', '查看'],
+    ['default-policy', '更新'],
+    ['default-policy', '删除'],
+    ['single-model-policy', '查看'],
+    ['single-model-policy', '更新'],
+    ['single-model-policy', '删除']
+  ] as const)('offers system_all only for %s view, action=%s', async (section, action) => {
+    api.fetchSettingsRoleDataPolicy.mockResolvedValue({
+      ...defaultDataPolicy,
+      default_policy: { ...defaultDataPolicy.default_policy, can_delete: true }
+    });
+    api.replaceSettingsRoleDataPolicy.mockImplementation(
+      async (roleCode: string, input: ReplaceSettingsRoleDataPolicyInput) => {
+        const saved = { role_code: roleCode, ...input };
+        api.fetchSettingsRoleDataPolicy.mockResolvedValue(saved);
+        return saved;
+      }
+    );
+    setup(section);
+    const selectName = section === 'default-policy' ? `${action} 作用域` : `${action} Orders`;
+    const select = await screen.findByRole('combobox', { name: selectName });
+    await waitFor(() => expect(select).toBeEnabled());
+    fireEvent.mouseDown(select);
+    if (action !== '查看') {
+      expect(screen.queryByTitle('系统所有记录')).not.toBeInTheDocument();
+      expect(await screen.findByTitle('本空间')).toBeInTheDocument();
+      return;
+    }
+    fireEvent.click(await screen.findByTitle('系统所有记录'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save policy' }));
+    await waitFor(() => expect(api.replaceSettingsRoleDataPolicy).toHaveBeenCalledWith(
+      'member',
+      expect.objectContaining(section === 'default-policy'
+        ? { default_policy: expect.objectContaining({ default_view_scope: 'system_all', default_update_scope: 'scope_all', default_delete_scope: 'own' }) }
+        : { model_policies: expect.arrayContaining([expect.objectContaining({ data_model_id: 'model-orders', view_scope_override: 'system_all', update_scope_override: 'own', delete_scope_override: 'scope_all' })]) }),
+      'csrf-123'
+    ));
+    // Invalidation reloads the actual saved contract rather than a local alias.
+    await waitFor(() => expect(select.closest('.ant-select')).toHaveTextContent('系统所有记录'));
+  });
+
   test('blocks external submission during a delayed role switch and never sends the previous role draft', async () => {
     let resolvePolicy!: (policy: SettingsRoleDataPolicy) => void;
     const pendingPolicy = new Promise<SettingsRoleDataPolicy>((resolve) => {

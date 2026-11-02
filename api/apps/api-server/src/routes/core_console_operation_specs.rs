@@ -94,6 +94,9 @@ const fn resource_action(
 /// here with an explicit policy group and authorization contract.
 pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     authenticated_routes("core.authenticated", "core.authenticated"),
+    other("patch_me", "other.personal-account"),
+    other("patch_me_meta", "other.personal-account"),
+    other("assistant_update_settings", "other.personal-account"),
     other("local_commands.execute", "other.local-commands"),
     settings(
         "communications.management.conversations.messages.list",

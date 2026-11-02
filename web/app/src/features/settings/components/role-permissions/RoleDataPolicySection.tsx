@@ -16,6 +16,7 @@ import {
   replaceSettingsRoleDataPolicy,
   settingsRoleDataPolicyQueryKey,
   type SettingsRoleDataPolicyScope,
+  type SettingsRoleDataPolicyWriteScope,
   type SettingsRoleDataPolicyOverrideScope
 } from '../../api/identity-access/roles';
 
@@ -25,16 +26,16 @@ interface DefaultPolicyFormState {
   can_update: boolean;
   can_delete: boolean;
   default_view_scope: SettingsRoleDataPolicyScope;
-  default_update_scope: SettingsRoleDataPolicyScope;
-  default_delete_scope: SettingsRoleDataPolicyScope;
+  default_update_scope: SettingsRoleDataPolicyWriteScope;
+  default_delete_scope: SettingsRoleDataPolicyWriteScope;
 }
 
 interface ModelPolicyFormState {
   data_model_id: string;
   can_create_override: boolean | null;
   view_scope_override: SettingsRoleDataPolicyOverrideScope;
-  update_scope_override: SettingsRoleDataPolicyOverrideScope;
-  delete_scope_override: SettingsRoleDataPolicyOverrideScope;
+  update_scope_override: SettingsRoleDataPolicyWriteScope | null;
+  delete_scope_override: SettingsRoleDataPolicyWriteScope | null;
 }
 
 interface RoleDataPolicySectionProps {
@@ -105,6 +106,10 @@ const defaultPolicyScopes: Array<{
   {
     scope: 'scope_all',
     label: i18nText("settings", "auto.scope_all_records")
+  },
+  {
+    scope: 'system_all',
+    label: i18nText("settings", "auto.system_all_records")
   }
 ];
 
@@ -123,6 +128,10 @@ const modelOverrideScopeOptions: Array<{
   {
     value: 'scope_all',
     label: i18nText("settings", "auto.scope_all_records")
+  },
+  {
+    value: 'system_all',
+    label: i18nText("settings", "auto.system_all_records")
   }
 ];
 
@@ -389,7 +398,9 @@ function RoleDataPolicyDraft({
             onChange={(scope) => {
               setDefaultScope(scopeKey, scope);
             }}
-            options={defaultPolicyScopes.map((scopeConfig) => ({
+            options={defaultPolicyScopes.filter((scopeConfig) =>
+              row.action === 'view' || scopeConfig.scope !== 'system_all'
+            ).map((scopeConfig) => ({
               label: scopeConfig.label,
               value: scopeConfig.scope
             }))}
@@ -421,7 +432,9 @@ function RoleDataPolicyDraft({
             scope === 'inherit' ? null : (scope as SettingsRoleDataPolicyScope);
           setModelScope(model.id, policyKey, nextScope);
         }}
-        options={modelOverrideScopeOptions}
+        options={modelOverrideScopeOptions.filter((option) =>
+          policyKey === 'view_scope_override' || option.value !== 'system_all'
+        )}
         style={{ width: 128 }}
         value={policy?.[policyKey] ?? 'inherit'}
       />

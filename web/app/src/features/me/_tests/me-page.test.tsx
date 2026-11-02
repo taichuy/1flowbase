@@ -54,7 +54,7 @@ function authenticate(
       preferred_locale: preferredLocale,
       meta,
       effective_display_role: 'member',
-      permissions: ['application.create.all', 'plugin_config.configure.all']
+      permissions: ['application.create.all', 'plugin_config.configure.all', 'patch_me']
     }
   });
 }
@@ -228,8 +228,23 @@ describe('MePage', () => {
     ).toBeInTheDocument();
   });
 
+  test('reader keeps profile details visible while profile editing is disabled', async () => {
+    const me = useAuthStore.getState().me!;
+    useAuthStore.getState().setMe({ ...me, permissions: ['patch_me_meta'] });
+    renderApp('/me/profile');
+    expect(await screen.findByRole('heading', { name: '个人资料', level: 4 })).toBeInTheDocument();
+    expect(screen.getByText('root@example.com')).toBeInTheDocument();
+    const edit = screen.getByRole('button', { name: /编辑资料/ });
+    expect(edit).toBeDisabled();
+    fireEvent.click(edit);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(updateMyProfile).not.toHaveBeenCalled();
+  });
+
   test('submits password change on /me/security and navigates to /sign-in after success', async () => {
     changeMyPassword.mockResolvedValue(undefined);
+    const me = useAuthStore.getState().me!;
+    useAuthStore.getState().setMe({ ...me, permissions: [] });
 
     renderApp('/me/security');
 

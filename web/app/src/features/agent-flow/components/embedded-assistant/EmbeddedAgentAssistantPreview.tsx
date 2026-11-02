@@ -44,6 +44,10 @@ import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import {
+  hasConsoleOperationAccess,
+  useConsoleOperationAccess
+} from '../../../../state/console-operation-access';
+import {
   WindowWorkspaceWindow,
   type WindowWorkspaceResizeEdge
 } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
@@ -106,6 +110,8 @@ export function EmbeddedAgentAssistantPreview({
   onClose: () => void;
   clientTools?: import('@1flowbase/api-client').ConsoleAssistantClientTools;
 }) {
+  const canAccess = useConsoleOperationAccess();
+  const canUpdateSettings = canAccess('assistant_update_settings');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
@@ -583,7 +589,15 @@ export function EmbeddedAgentAssistantPreview({
   }
 
   function persistAssistantWindowSize(rect: WindowWorkspaceRect | null) {
-    if (!rect) {
+    const auth = useAuthStore.getState();
+    if (
+      !rect ||
+      !hasConsoleOperationAccess(
+        auth.actor?.effective_display_role,
+        auth.me?.permissions,
+        'patch_me_meta'
+      )
+    ) {
       return;
     }
     const historyOccupiedWidth =
@@ -597,10 +611,19 @@ export function EmbeddedAgentAssistantPreview({
   }
 
   async function saveSettings() {
-    if (!csrfToken || refreshing) {
+    if (!canUpdateSettings || !csrfToken || refreshing) {
       return;
     }
     const preference = await form.validateFields();
+    const auth = useAuthStore.getState();
+    if (
+      !hasConsoleOperationAccess(
+        auth.actor?.effective_display_role,
+        auth.me?.permissions,
+        'assistant_update_settings'
+      )
+    )
+      return;
     invalidateSettingsRead();
     setSaving(true);
     try {
@@ -622,7 +645,7 @@ export function EmbeddedAgentAssistantPreview({
   async function updateRuntimePreference(
     patch: Pick<ConsoleAssistantPreference, 'model' | 'reasoning_effort'>
   ) {
-    if (!csrfToken || !settings || refreshing) {
+    if (!canUpdateSettings || !csrfToken || !settings || refreshing) {
       return;
     }
     invalidateSettingsRead();
@@ -934,7 +957,8 @@ export function EmbeddedAgentAssistantPreview({
                               : undefined),
                           onChangePreference: updateRuntimePreference,
                           onRefresh: refreshSettings,
-                          refreshing: refreshing || saving
+                          refreshing: refreshing || saving,
+                          readOnly: !canUpdateSettings
                         }
                       : undefined
                   }
@@ -1023,6 +1047,8 @@ export function EmbeddedAgentAssistantPreview({
           }
         }}
         confirmLoading={saving || refreshing}
+        disabled={!canUpdateSettings}
+        okButtonProps={{ disabled: !canUpdateSettings }}
         open={open && settingsOpen}
         zIndex={assistantSettingsModalZIndex}
         onCancel={() => setSettingsOpen(false)}
@@ -1052,7 +1078,7 @@ export function EmbeddedAgentAssistantPreview({
           />
         </Form.Item>
         <Button
-          disabled={!settings || saving}
+          disabled={!canUpdateSettings || !settings || saving}
           onClick={() =>
             void updateRuntimePreference({
               model: null,

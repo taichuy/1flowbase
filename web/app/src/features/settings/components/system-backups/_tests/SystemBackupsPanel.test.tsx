@@ -659,15 +659,15 @@ describe('SystemBackupsPanel', () => {
     await renderPanel();
     await screen.findByText(backup.exact_backup_name);
     expect(screen.queryByRole('button', { name: /Create backup/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Application template' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Application template$/ })).toBeEnabled();
     await domEvents.click(screen.getByText(backup.exact_backup_name));
     expect(await screen.findByText('Backup format and schema migration path are supported.')).toBeInTheDocument();
     await domEvents.click(screen.getByRole('button', { name: 'Close' }));
     await openActions();
     for (const name of ['Verify', 'Restore', 'Delete']) {
-      expect(await screen.findByRole('menuitem', { name })).toHaveAttribute('aria-disabled', 'true');
+      expect(await screen.findByRole('menuitem', { name: new RegExp(`${name}$`) })).toHaveAttribute('aria-disabled', 'true');
     }
-    expect(screen.getByRole('menuitem', { name: 'Download' })).not.toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('menuitem', { name: /Download$/ })).not.toHaveAttribute('aria-disabled', 'true');
     expect(api.verifySystemBackup).not.toHaveBeenCalled();
     expect(api.preflightSystemRecovery).not.toHaveBeenCalled();
     expect(api.deleteSystemBackup).not.toHaveBeenCalled();
@@ -679,9 +679,9 @@ describe('SystemBackupsPanel', () => {
     await screen.findByText(backup.exact_backup_name);
     expect(screen.getByRole('button', { name: /Create backup/ })).toBeDisabled();
     await openActions();
-    expect(await screen.findByRole('menuitem', { name: 'Delete' })).not.toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByRole('menuitem', { name: 'Verify' })).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByRole('menuitem', { name: 'Restore' })).toHaveAttribute('aria-disabled', 'true');
+    expect(await screen.findByRole('menuitem', { name: /Delete$/ })).not.toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('menuitem', { name: /Verify$/ })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('menuitem', { name: /Restore$/ })).toHaveAttribute('aria-disabled', 'true');
   });
 
 });

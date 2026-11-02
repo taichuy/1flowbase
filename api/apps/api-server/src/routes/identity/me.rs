@@ -77,14 +77,23 @@ pub fn router() -> Router<Arc<ApiState>> {
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::Authenticated;
+    use access_control::ConsoleRouteOwnership::{Authenticated, ConsoleOperation};
 
     ConsoleRouteAssembly::new()
         .route(
             "/me",
-            console_get(get_me, Authenticated).patch(patch_me, Authenticated),
+            console_get(get_me, Authenticated).patch(
+                patch_me,
+                ConsoleOperation("patch_me".to_owned()),
+            ),
         )
-        .route("/me/meta", console_patch(patch_me_meta, Authenticated))
+        .route(
+            "/me/meta",
+            console_patch(
+                patch_me_meta,
+                ConsoleOperation("patch_me_meta".to_owned()),
+            ),
+        )
         .route(
             "/me/actions/change-password",
             console_post(change_password, Authenticated),
@@ -143,7 +152,7 @@ pub async fn get_me(
     patch,
     path = "/api/console/me",
     request_body = PatchMeBody,
-    responses((status = 200, body = MeResponse), (status = 401, body = crate::error_response::ErrorBody))
+    responses((status = 200, body = MeResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn patch_me(
     State(state): State<Arc<ApiState>>,
@@ -170,7 +179,7 @@ pub async fn patch_me(
     patch,
     path = "/api/console/me/meta",
     request_body = PatchMeMetaBody,
-    responses((status = 200, body = MeResponse), (status = 401, body = crate::error_response::ErrorBody))
+    responses((status = 200, body = MeResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn patch_me_meta(
     State(state): State<Arc<ApiState>>,

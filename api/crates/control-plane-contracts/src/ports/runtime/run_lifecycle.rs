@@ -204,6 +204,9 @@ pub struct CommitFlowRunTerminalInput {
     /// or resume claim commits. Check under the run lock, independently of node
     /// writes to updated_at. Explicit business transitions retain their own fence.
     pub require_initial_execution: bool,
+    /// Executable native output committed with this successful sampling terminal.
+    /// A losing terminal CAS must persist and publish none of these deliveries.
+    pub tool_delivery_events: Vec<super::AppendRuntimeEventInput>,
     pub result: CommitFlowRunTerminalResult,
     pub flow_run_event_payload: serde_json::Value,
     pub terminal_event_payload: serde_json::Value,

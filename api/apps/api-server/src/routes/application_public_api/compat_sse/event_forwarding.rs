@@ -269,7 +269,7 @@ fn admit_delivery_batch(
         event.flow_run_id != forwarding.initial_run.id
             || batch.closed_proof.as_ref().is_some_and(|proof| {
                 event.sequence <= proof.lower_sequence
-                    || event.sequence >= proof.upper.event_sequence
+                    || event.sequence >= proof.upper.event_sequence()
             })
     }) {
         release_delivery_claims(forwarding.settler, batch.claims);

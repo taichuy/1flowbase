@@ -64,6 +64,10 @@ type ConnectionTestRequest =
   | { kind: 'draft'; body: TestConsoleMcpUpstreamConnectionDraftBody };
 
 const textByKey = {
+  clear_credential: () =>
+    i18nText('settingsMcpManagement', 'auto.clear_credential'),
+  upstream_save_credentials: () =>
+    i18nText('settingsMcpManagement', 'auto.upstream_save_credentials'),
   enabled: () => i18nText('settingsMcpManagement', 'auto.enabled'),
   upstream_actions: () =>
     i18nText('settingsMcpManagement', 'auto.upstream_actions'),
