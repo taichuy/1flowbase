@@ -77,14 +77,23 @@ pub fn router() -> Router<Arc<ApiState>> {
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::Authenticated;
+    use access_control::ConsoleRouteOwnership::{Authenticated, ConsoleOperation};
 
     ConsoleRouteAssembly::new()
         .route(
             "/me",
-            console_get(get_me, Authenticated).patch(patch_me, Authenticated),
+            console_get(get_me, Authenticated).patch(
+                patch_me,
+                ConsoleOperation("console.identity.me.patch".to_owned()),
+            ),
         )
-        .route("/me/meta", console_patch(patch_me_meta, Authenticated))
+        .route(
+            "/me/meta",
+            console_patch(
+                patch_me_meta,
+                ConsoleOperation("console.identity.me.meta.patch".to_owned()),
+            ),
+        )
         .route(
             "/me/actions/change-password",
             console_post(change_password, Authenticated),

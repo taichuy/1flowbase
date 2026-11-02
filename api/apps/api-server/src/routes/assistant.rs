@@ -372,12 +372,15 @@ pub(crate) fn run_dependencies(state: Arc<ApiState>) -> AssistantRunDependencies
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::Authenticated;
+    use access_control::ConsoleRouteOwnership::{Authenticated, ConsoleOperation};
 
     ConsoleRouteAssembly::new()
         .route(
             "/assistant/settings",
-            console_get(get_settings, Authenticated).patch(update_settings, Authenticated),
+            console_get(get_settings, Authenticated).patch(
+                update_settings,
+                ConsoleOperation("assistant.settings.update".to_owned()),
+            ),
         )
         .route(
             "/assistant/conversations",

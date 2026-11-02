@@ -273,6 +273,9 @@ pub(super) fn expand_core_interface_registrations(
 
 pub(super) fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "console.identity.me.patch" => Some("Update own profile"),
+        "console.identity.me.meta.patch" => Some("Update own preferences"),
+        "assistant.settings.update" => Some("Update own assistant preferences"),
         "local_commands.execute" => Some("Execute one local shell command"),
         "communications.options.get" => Some("List communication execution options"),
         "communications.binding.get" => Some("Read communication binding"),
@@ -482,6 +485,9 @@ pub(super) fn compile_console_interface_metadata(
             _ => static_english_interface_summary(&interface_id),
         };
         let description = match interface_id.as_str() {
+            "console.identity.me.patch" => "Update the signed-in user's profile and preferred locale. Requires the independent personal profile operation; does not change passwords or sign-in methods.".to_owned(),
+            "console.identity.me.meta.patch" => "Merge personal preferences into the signed-in user's metadata. Requires the independent personal preference operation.".to_owned(),
+            "assistant.settings.update" => "Update the signed-in user's assistant target and model preferences. Requires the independent assistant preference operation.".to_owned(),
             "system_templates.download" => "Download the selected catalog release once, verify its checksum and signature, and return the complete portable package for preview and subsequent installation without another catalog download.".to_owned(),
             "local_commands.execute" => "Execute a single command string in the backend instance environment as its OS account. Requires the local command operation permission; returns complete output and termination status without a reusable session, deployment opt-in, or automatic retry.".to_owned(),
             "communications.options.get" => "Return published Agent-flow applications, visible enabled MCP instances and the selected application model and reasoning capabilities.".to_owned(),

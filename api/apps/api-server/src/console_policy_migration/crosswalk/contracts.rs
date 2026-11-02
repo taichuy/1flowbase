@@ -11,6 +11,14 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         &["system.branding.get", "system.branding.save"],
     ),
     core_authenticated_other("core.authenticated", &["core.authenticated"]),
+    core_simple_other(
+        "other.personal-account",
+        &[
+            "console.identity.me.patch",
+            "console.identity.me.meta.patch",
+            "assistant.settings.update",
+        ],
+    ),
     core_simple_other("other.local-commands", &["local_commands.execute"]),
     core_authenticated_other(
         "core.authenticated",
@@ -492,6 +500,10 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // Personal writes are independently configurable; authenticated security actions stay open.
+    "console.identity.me.patch",
+    "console.identity.me.meta.patch",
+    "assistant.settings.update",
     // A data read grant must not silently acquire temporary anonymous-link authority.
     "files.access_links.create",
     // Previously root-only; historic role grants must not acquire host command access.
