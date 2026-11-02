@@ -36,12 +36,13 @@ pub async fn correlate_native_responses_callback_from_envelope<R>(
 where
     R: ApplicationPublishedRunControlRepository,
 {
-    correlate_responses_callback(repository, actor, envelope, false).await
+    correlate_responses_callback(repository, actor, envelope, false, None).await
 }
 
 /// Public Responses admission only resumes tools explicitly owned by the host.
-/// Native client history is not callback authority, even when call IDs match a
-/// receipt from an older gateway version. The marker is written by host tool
+/// Native client history is not callback authority merely because call IDs match.
+/// Legacy pending workflows additionally require explicit predecessor proof.
+/// The marker is written by host tool
 /// execution, never accepted from request JSON or provider metadata.
 pub async fn correlate_host_owned_responses_callback<R>(
     repository: &R,
@@ -49,9 +50,10 @@ pub async fn correlate_host_owned_responses_callback<R>(
     envelope: &OpenAiResponsesEnvelope,
 ) -> Result<Option<(CallbackTaskRecord, Value)>>
 where
-    R: ApplicationPublishedRunControlRepository,
+    R: ApplicationPublishedRunControlRepository
+        + control_plane_contracts::application_public_runtime::ApplicationPublishedCallbackAttemptRepository,
 {
-    correlate_responses_callback(repository, actor, envelope, true).await
+    correlate_responses_callback(repository, actor, envelope, true, Some(repository)).await
 }
 
 async fn correlate_responses_callback<R>(
@@ -59,6 +61,7 @@ async fn correlate_responses_callback<R>(
     actor: &ApplicationApiKeyActor,
     envelope: &OpenAiResponsesEnvelope,
     host_owned_only: bool,
+    attempt_repository: Option<&dyn control_plane_contracts::application_public_runtime::ApplicationPublishedCallbackAttemptRepository>,
 ) -> Result<Option<(CallbackTaskRecord, Value)>>
 where
     R: ApplicationPublishedRunControlRepository,
@@ -141,12 +144,29 @@ where
             .await?
     };
     let mut candidates = candidates.into_iter().filter(|callback| {
-        !host_owned_only
-            || callback
+        if !host_owned_only || host_owns_callback(callback) {
+            return true;
+        }
+        // Preserve an in-flight workflow created before owner evidence existed.
+        // An exact cursor or verified complete predecessor is required; an ID
+        // copied into arbitrary history cannot acquire this legacy authority.
+        matches!(
+            callback.status,
+            CallbackTaskStatus::Pending | CallbackTaskStatus::Completed
+        ) && (previous_response_id.is_some_and(|previous| {
+            callback
                 .request_payload
-                .get("host_tool_continuation_owner")
+                .pointer("/provider_metadata/native_response/response_id")
                 .and_then(Value::as_str)
-                == Some("agentflow")
+                == Some(previous)
+        }) || (previous_response_id.is_none()
+            && input.len() > output_positions.len()
+            && super::compat::openai::history::prove_full_context_input(
+                input_value,
+                &callback.request_payload["provider_metadata"]["native_response"]["history"],
+                &call_id_list,
+            )
+            .is_ok()))
     });
     let Some(callback) = candidates.next() else {
         if host_owned_only {
@@ -186,6 +206,34 @@ where
         || flow_run.created_by != actor.creator_user_id
     {
         return Err(ControlPlaneError::PermissionDenied("native_tool_output_owner").into());
+    }
+    if host_owned_only
+        && !host_owns_callback(&callback)
+        && callback.status == CallbackTaskStatus::Pending
+        && !matches!(
+            flow_run.status,
+            FlowRunStatus::WaitingCallback | FlowRunStatus::Running
+        )
+    {
+        return Ok(None);
+    }
+    if host_owned_only
+        && !host_owns_callback(&callback)
+        && callback.status == CallbackTaskStatus::Completed
+    {
+        let attempt = attempt_repository
+            .expect("host admission supplies attempt repository")
+            .get_published_callback_resume_attempt(callback.id)
+            .await?;
+        // A consumed legacy receipt grants only an exact durable replay, never
+        // fresh inference on account of historical tool IDs.
+        if !attempt.is_some_and(|attempt| {
+            attempt.flow_run_id == callback.flow_run_id
+                && attempt.source == "openai_responses"
+                && attempt.response_payload == json!({"tool_results": tool_results})
+        }) {
+            return Ok(None);
+        }
     }
     let expected_calls = callback
         .request_payload
@@ -303,6 +351,14 @@ where
         return Err(ControlPlaneError::Conflict("native_tool_output_round_not_pending").into());
     }
     Ok(Some((callback, json!({"tool_results": tool_results}))))
+}
+
+fn host_owns_callback(callback: &CallbackTaskRecord) -> bool {
+    callback
+        .request_payload
+        .get("host_tool_continuation_owner")
+        .and_then(Value::as_str)
+        == Some("agentflow")
 }
 
 /// A self-contained request in another authenticated session starts new sampling.

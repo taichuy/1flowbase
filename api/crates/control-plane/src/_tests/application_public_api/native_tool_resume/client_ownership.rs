@@ -47,16 +47,24 @@ async fn old_native_receipts_cannot_claim_client_history_or_warmup_cursors() {
         for cursor in [None, Some("resp_round"), Some("resp_warmup")] {
             for generate in [true, false] {
                 let mut candidate = body.clone();
-                candidate["generate"] = json!(generate);
+                if !generate {
+                    candidate["generate"] = json!(false);
+                }
                 if let Some(cursor) = cursor {
                     candidate["previous_response_id"] = json!(cursor);
                 }
                 // A client cannot manufacture host ownership in public JSON.
-                candidate["host_tool_continuation_owner"] = json!("agentflow");
-                assert!(public_admission(&repository, &actor, candidate)
+                if completed || cursor != Some("resp_round") {
+                    candidate["host_tool_continuation_owner"] = json!("agentflow");
+                }
+                let admitted = public_admission(&repository, &actor, candidate)
                     .await
-                    .unwrap()
-                    .is_none());
+                    .unwrap();
+                if !completed && generate && cursor == Some("resp_round") {
+                    assert_eq!(admitted.unwrap().0.id, old.id);
+                } else {
+                    assert!(admitted.is_none());
+                }
             }
         }
         assert_eq!(
@@ -132,6 +140,96 @@ async fn host_ownership_is_scoped_to_the_authenticated_key() {
     let mut other_actor = actor;
     other_actor.api_key_id = Uuid::now_v7();
     assert!(public_admission(&repository, &other_actor, body)
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn legacy_pending_history_requires_full_predecessor_proof() {
+    let (repository, actor, run) =
+        fixture_with_input(json!({"sys":{"requested_model_id":"fixture"}})).await;
+    let (callback, full) = seed_proven_full_round(&repository, run, true);
+    assert_eq!(
+        public_admission(&repository, &actor, full.clone())
+            .await
+            .unwrap()
+            .unwrap()
+            .0
+            .id,
+        callback.id
+    );
+    let mut unrelated = full.clone();
+    unrelated["input"][0]["content"] = json!("Different client history");
+    assert!(public_admission(&repository, &actor, unrelated)
+        .await
+        .unwrap()
+        .is_none());
+    repository.complete_callback_task_for_test(callback.id);
+    assert!(
+        public_admission(&repository, &actor, full)
+            .await
+            .unwrap()
+            .is_none(),
+        "consumed history without a durable retry attempt starts ordinary sampling"
+    );
+}
+
+#[tokio::test]
+async fn legacy_completed_exact_retry_reuses_the_durable_attempt() {
+    use crate::application_public_api::callback_resume::{
+        ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
+        PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
+    };
+    let (repository, actor, run) = fixture().await;
+    let mut body = request();
+    let callback = seed_round(&repository, run, &body);
+    body["previous_response_id"] = json!("resp_round");
+    let (_, results) = public_admission(&repository, &actor, body.clone())
+        .await
+        .unwrap()
+        .unwrap();
+    let consumer = RecordingNativeCallbackConsumer {
+        repository: repository.clone(),
+        calls: Default::default(),
+    };
+    let service =
+        ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
+    let command = ResumePublishedCallbackCommand {
+        responses_continuation: None,
+        transport_connection_scope: None,
+        observation_context: None,
+        reserved_attempt_id: None,
+        native_transport: Some(ProviderTransportPayload::openai_responses(body.clone()).unwrap()),
+        bearer_token: String::new(),
+        target: PublishedCallbackResumeTarget::CallbackTask {
+            callback_task_id: callback.id,
+        },
+        source: PublishedCallbackResumeSource::OpenAiResponses,
+        response_payload: results,
+        response_mode: Some("streaming".into()),
+    };
+    service
+        .resume_callback_for_actor(actor.clone(), command.clone())
+        .await
+        .unwrap();
+    let (replayed, _) = public_admission(&repository, &actor, body.clone())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(replayed.id, callback.id);
+    service
+        .resume_callback_for_actor(actor.clone(), command)
+        .await
+        .unwrap();
+    assert_eq!(
+        consumer.calls.lock().unwrap().len(),
+        1,
+        "lost-terminal retries must not execute or bill twice"
+    );
+    assert_eq!(repository.callback_resume_attempts().len(), 1);
+    body["previous_response_id"] = json!("resp_warmup");
+    assert!(public_admission(&repository, &actor, body)
         .await
         .unwrap()
         .is_none());
