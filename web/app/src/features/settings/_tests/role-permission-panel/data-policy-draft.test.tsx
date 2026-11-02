@@ -161,7 +161,10 @@ describe('role data policy draft ownership', () => {
       fireEvent.click(systemAll);
       expect(select.closest('.ant-select')).not.toHaveTextContent('系统所有记录');
       expect(api.replaceSettingsRoleDataPolicy).not.toHaveBeenCalled();
-      fireEvent.keyDown(select, { key: 'Escape', code: 'Escape' });
+      // rc-select's OptionList consumes KeyboardEvent.which for Escape.
+      fireEvent.keyDown(select, {
+        key: 'Escape', code: 'Escape', keyCode: 27, which: 27
+      });
       await waitFor(() => expect(select).toHaveAttribute('aria-expanded', 'false'));
       fireEvent.click(screen.getByRole('button', { name: 'Save policy' }));
       await waitFor(() => expect(api.replaceSettingsRoleDataPolicy).toHaveBeenCalledWith(
