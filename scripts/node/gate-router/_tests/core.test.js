@@ -148,6 +148,7 @@ test('new contract and runtime owners route to their real CI check shard', () =>
     ['postgres-test-support', 'core-libs'],
     ['runtime-extension-host', 'runtime-storage'],
     ['runtime-extension-sdk', 'runtime-storage'],
+    ['sync-js-runtime', 'runtime-storage'],
     ['control-plane-postgres-tests', 'apps'],
     ['storage/durable/postgres', 'runtime-storage'],
   ]) {

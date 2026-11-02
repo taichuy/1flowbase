@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { BACKEND_SHARDS } = require('../../verify/backend-targets.js');
+const { BACKEND_SHARDS, BACKEND_RUNTIME_STORAGE_TEST_SHARDS } = require('../../verify/backend-targets.js');
 const { buildBackendCommands } = require('../../verify/backend.js');
 const { buildCoverageBackendCommands } = require('../../verify/coverage.js');
 const { DEFAULT_AGGREGATE_SCOPES } = require('../../github-quality-gate/commands.js');
@@ -43,4 +43,11 @@ test('workspace inventory rejects a new unassigned member and stale package targ
   const members = workspacePackages();
   assert.throws(() => assertCovered([...members, 'new-unassigned-crate'], BACKEND_SHARDS));
   assert.throws(() => assertCovered(members.filter((name) => name !== 'interface-runtime'), BACKEND_SHARDS));
+});
+
+
+test('sync-js-runtime belongs to exactly one runtime/storage check shard and ordinary test shard', () => {
+  const owners = (shards) => shards.filter(({ packages }) => packages.includes('sync-js-runtime'));
+  assert.deepEqual(owners(BACKEND_SHARDS).map(({ key }) => key), ['runtime-storage']);
+  assert.deepEqual(owners(BACKEND_RUNTIME_STORAGE_TEST_SHARDS).map(({ key }) => key), ['runtime-storage-fast']);
 });

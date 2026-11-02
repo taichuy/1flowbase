@@ -584,7 +584,22 @@ function buildAggregateReport({
   timestamp,
   env,
 }) {
-  const components = componentArtifacts.map((artifact) => normalizeComponentReport({ repoRoot, artifact, expectedCommit: env.GITHUB_SHA }));
+  const scopeCounts = new Map();
+  for (const { scope } of componentArtifacts) {
+    scopeCounts.set(scope, (scopeCounts.get(scope) || 0) + 1);
+  }
+  const components = componentArtifacts.map((artifact) => {
+    const component = normalizeComponentReport({ repoRoot, artifact, expectedCommit: env.GITHUB_SHA });
+    if (scopeCounts.get(component.scope) === 1) {
+      return component;
+    }
+    return {
+      ...component,
+      status: 'failed',
+      exitCode: 1,
+      failureExcerpt: `Duplicate component scope: ${component.scope}`,
+    };
+  });
   const warningFiles = dedupeBy(
     componentArtifacts.flatMap((artifact) => artifact.report.warningFiles || []),
     (filePath) => filePath

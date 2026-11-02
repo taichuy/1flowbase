@@ -51,18 +51,12 @@ fn cargo_metadata(api: &Path) -> serde_json::Value {
 
 fn cargo_metadata_with_javascript(api: &Path, javascript: bool) -> serde_json::Value {
     let mut command = Command::new("cargo");
-    command.arg("metadata");
+    command.args(["metadata", "--locked", "--offline"]);
     if javascript {
         command.args(["--features", "runtime-extension-sdk/javascript"]);
     }
     let output = command
-        .args([
-            "--locked",
-            "--offline",
-            "--format-version",
-            "1",
-            "--manifest-path",
-        ])
+        .args(["--format-version", "1", "--manifest-path"])
         .arg(api.join("Cargo.toml"))
         .output()
         .expect("cargo metadata should start");
