@@ -18,6 +18,7 @@ import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 
 import { useAuthStore } from '../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../state/console-operation-access';
 import { formatDateTime as formatLocalizedDateTime } from '../../../shared/i18n/format';
 import { copyTextToClipboard } from '../../../shared/ui/clipboard/copy-text';
 import {
@@ -88,6 +89,9 @@ export function PersonalAccessTokensPanel() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
+  const can = useConsoleOperationAccess();
+  const canCreate = can('create_user_api_key');
+  const canRevoke = can('revoke_user_api_key');
   const actor = useAuthStore((state) => state.actor);
   const [createForm] = Form.useForm<CreatePersonalAccessTokenFormValues>();
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -210,9 +214,9 @@ export function PersonalAccessTokensPanel() {
 
   const handleCreateSubmit = useCallback(
     (values: CreatePersonalAccessTokenFormValues) => {
-      createMutation.mutate(values);
+      if (canCreate) createMutation.mutate(values);
     },
-    [createMutation]
+    [canCreate, createMutation]
   );
 
   const handleCopyCreatedToken = useCallback(async () => {
@@ -304,14 +308,16 @@ export function PersonalAccessTokensPanel() {
               )}
               okText={i18nText('settings', 'auto.confirm_delete')}
               cancelText={i18nText('settings', 'auto.cancel')}
-              okButtonProps={{ danger: true }}
-              onConfirm={() => revokeToken(token.id)}
+              disabled={!canRevoke}
+              okButtonProps={{ danger: true, disabled: !canRevoke }}
+              onConfirm={() => { if (canRevoke) revokeToken(token.id); }}
             >
               <Button
                 danger
                 size="small"
                 icon={<DeleteOutlined />}
                 loading={revokePending}
+                disabled={!canRevoke}
               >
                 {i18nText('settings', 'auto.delete')}
               </Button>
@@ -319,7 +325,7 @@ export function PersonalAccessTokensPanel() {
           )
       }
     ],
-    [revokePending, revokeToken]
+    [canRevoke, revokePending, revokeToken]
   );
   const tableConfiguration = usePersistedDataTableConfiguration({
     columns,
@@ -400,7 +406,8 @@ export function PersonalAccessTokensPanel() {
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                onClick={() => setCreateModalOpen(true)}
+                disabled={!canCreate}
+                onClick={() => { if (canCreate) setCreateModalOpen(true); }}
               >
                 {i18nText('settings', 'auto.create_api_key')}
               </Button>
@@ -425,7 +432,8 @@ export function PersonalAccessTokensPanel() {
           setCreateModalOpen(false);
           createForm.resetFields();
         }}
-        onOk={() => createForm.submit()}
+        okButtonProps={{ disabled: !canCreate }}
+        onOk={() => { if (canCreate) createForm.submit(); }}
         confirmLoading={createMutation.isPending}
         okText={i18nText('settings', 'auto.create')}
         cancelText={i18nText('settings', 'auto.cancel')}
@@ -433,6 +441,7 @@ export function PersonalAccessTokensPanel() {
       >
         <Form
           form={createForm}
+          disabled={!canCreate}
           layout="vertical"
           onFinish={handleCreateSubmit}
           style={{ marginTop: 16 }}
