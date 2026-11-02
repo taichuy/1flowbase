@@ -67,7 +67,11 @@ describe('SystemBackupsPanel', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     await appI18n.changeLanguage('en_US');
-    useAuthStore.setState({ csrfToken: 'csrf-token' });
+    useAuthStore.setState({
+      csrfToken: 'csrf-token',
+      actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace-1' },
+      me: null
+    });
     api.getSystemBackupCatalog.mockResolvedValue({
       items: [
         {
@@ -650,6 +654,36 @@ describe('SystemBackupsPanel', () => {
     expect(await screen.findByText('restoring')).toBeInTheDocument();
     expect(screen.getByText('safe-1')).toBeInTheDocument();
   });
+  test('read grants retain details and download without enabling backup mutations', async () => {
+    setOperations(['system_backups.list', 'system_backups.detail', 'system_backups.download', 'system_templates.export']);
+    await renderPanel();
+    await screen.findByText(backup.exact_backup_name);
+    expect(screen.queryByRole('button', { name: /Create backup/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Application template' })).toBeEnabled();
+    await domEvents.click(screen.getByText(backup.exact_backup_name));
+    expect(await screen.findByText('Backup format and schema migration path are supported.')).toBeInTheDocument();
+    await domEvents.click(screen.getByRole('button', { name: 'Close' }));
+    await openActions();
+    for (const name of ['Verify', 'Restore', 'Delete']) {
+      expect(await screen.findByRole('menuitem', { name })).toHaveAttribute('aria-disabled', 'true');
+    }
+    expect(screen.getByRole('menuitem', { name: 'Download' })).not.toHaveAttribute('aria-disabled', 'true');
+    expect(api.verifySystemBackup).not.toHaveBeenCalled();
+    expect(api.preflightSystemRecovery).not.toHaveBeenCalled();
+    expect(api.deleteSystemBackup).not.toHaveBeenCalled();
+  });
+
+  test('a single delete operation does not enable verify, restore or create', async () => {
+    setOperations(['system_backups.list', 'system_backups.delete']);
+    await renderPanel();
+    await screen.findByText(backup.exact_backup_name);
+    expect(screen.getByRole('button', { name: /Create backup/ })).toBeDisabled();
+    await openActions();
+    expect(await screen.findByRole('menuitem', { name: 'Delete' })).not.toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('menuitem', { name: 'Verify' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('menuitem', { name: 'Restore' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
 });
 
 async function dispatch<T>(event: () => T) {
@@ -684,3 +718,10 @@ afterEach(async () => {
     mountedClients.clear();
   }
 });
+
+function setOperations(permissions: string[]) {
+  useAuthStore.setState({
+    actor: { id: 'member', account: 'member', effective_display_role: 'member', current_workspace_id: 'workspace-1' },
+    me: { id: 'member', account: 'member', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: 'member', permissions }
+  });
+}

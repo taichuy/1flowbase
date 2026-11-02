@@ -95,7 +95,11 @@ describe('portable template flow', () => {
   beforeEach(async () => {
     Object.values(api).forEach((mock) => mock.mockReset());
     await appI18n.changeLanguage('en_US');
-    useAuthStore.setState({ csrfToken: 'csrf-token' });
+    useAuthStore.setState({
+      csrfToken: 'csrf-token',
+      actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace-1' },
+      me: null
+    });
     api.downloadSystemTemplate.mockResolvedValue(body);
     api.getSystemTemplateCatalog.mockResolvedValue({
       pages: [],
@@ -570,4 +574,33 @@ describe('portable template flow', () => {
     ).toBeDisabled();
     expect(api.installSystemTemplate).not.toHaveBeenCalled();
   });
+  test('preview permission reads an imported template without allowing installation', async () => {
+    setOperations(['system_templates.preview']);
+    const { container } = setup();
+    upload(container);
+    const install = await screen.findByRole('button', { name: 'Install template' });
+    await waitFor(() => expect(api.previewSystemTemplate).toHaveBeenCalledWith(body, 'csrf-token'));
+    expect(install).toBeDisabled();
+    fireEvent.click(install);
+    expect(api.installSystemTemplate).not.toHaveBeenCalled();
+  });
+
+  test('the install grant enables installation independently of backup permissions', async () => {
+    setOperations(['system_templates.preview', 'system_templates.install']);
+    api.installSystemTemplate.mockResolvedValue({ complete: true, created: [], updated: [], skipped: [], failures: [], id_map: {} });
+    const { container } = setup();
+    upload(container);
+    const install = await screen.findByRole('button', { name: 'Install template' });
+    await waitFor(() => expect(install).toBeEnabled());
+    fireEvent.click(install);
+    await waitFor(() => expect(api.installSystemTemplate).toHaveBeenCalledWith(body, 'csrf-token'));
+  });
+
 });
+
+function setOperations(permissions: string[]) {
+  useAuthStore.setState({
+    actor: { id: 'member', account: 'member', effective_display_role: 'member', current_workspace_id: 'workspace-1' },
+    me: { id: 'member', account: 'member', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: 'member', permissions }
+  });
+}
