@@ -138,7 +138,8 @@ async fn file_access_preserves_stable_url_and_scopes_ephemeral_public_read() {
     let denied = service
         .create_share_link(reader, table_id, id, 600)
         .await
-        .unwrap_err();
+        .err()
+        .expect("read-only callers must not issue public shares");
     assert!(denied.to_string().contains("files.access_links.create"));
     assert!(kv.entries.lock().unwrap().is_empty());
     let link = service

@@ -123,6 +123,55 @@ async fn personal_writes_require_independent_operations_and_keep_security_self_s
                 "grant {allowed_id}, route {path}"
             );
         }
+        if *allowed_id == "patch_me_meta" {
+            let before = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri("/api/console/me")
+                        .header("cookie", &cookie)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let before: serde_json::Value =
+                serde_json::from_slice(&to_bytes(before.into_body(), usize::MAX).await.unwrap())
+                    .unwrap();
+            for value in [
+                serde_json::Value::Null,
+                json!({"workspaces":{"audit":{"application_id":"unvalidated"}}}),
+            ] {
+                assert_eq!(
+                    personal_request(
+                        &app,
+                        &cookie,
+                        &csrf,
+                        "PATCH",
+                        "/api/console/me/meta",
+                        json!({"meta":{"embedded_assistant":value}})
+                    )
+                    .await
+                    .status(),
+                    StatusCode::BAD_REQUEST
+                );
+            }
+            let after = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri("/api/console/me")
+                        .header("cookie", &cookie)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let after: serde_json::Value =
+                serde_json::from_slice(&to_bytes(after.into_body(), usize::MAX).await.unwrap())
+                    .unwrap();
+            assert_eq!(before["data"]["meta"], after["data"]["meta"]);
+        }
     }
     // Removing personal write grants must leave password and sign-out available.
     assert_eq!(

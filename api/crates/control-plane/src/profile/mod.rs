@@ -8,6 +8,9 @@ use crate::{
     ports::{AuthRepository, UpdateProfileInput, UpdateUserMetaInput},
 };
 
+/// Feature-owned preferences are written by the validated assistant settings use case.
+pub const ASSISTANT_META_KEY: &str = "embedded_assistant";
+
 pub struct MeProfile {
     pub user: UserRecord,
     pub actor: ActorContext,
@@ -98,6 +101,16 @@ where
 
         self.load_profile(user, command.tenant_id, command.workspace_id)
             .await
+    }
+
+    pub async fn update_me_preferences(&self, command: UpdateMeMetaCommand) -> Result<MeProfile> {
+        if command.meta_patch.get(ASSISTANT_META_KEY).is_some() {
+            return Err(ControlPlaneError::InvalidInput(
+                "assistant_preferences_require_settings_interface",
+            )
+            .into());
+        }
+        self.update_me_meta(command).await
     }
 
     pub async fn update_me_meta(&self, command: UpdateMeMetaCommand) -> Result<MeProfile> {
