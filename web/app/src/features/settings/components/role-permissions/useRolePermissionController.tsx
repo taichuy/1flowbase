@@ -215,7 +215,6 @@ export function useRolePermissionController({
   });
 
   const consoleSettingsOrder = useConsoleSettingsOrder({
-    canManageRoles,
     csrfToken,
     locale: consolePolicyCatalogLocale,
     catalog: consolePolicyCatalogQuery.data,

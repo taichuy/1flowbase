@@ -1,6 +1,7 @@
 import { useMutation, type QueryClient } from '@tanstack/react-query';
 import type { MessageInstance } from 'antd/es/message/interface';
 
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { i18nText } from '../../../../shared/i18n/text';
 import { settingsConsoleNavigationQueryKey } from '../../api/console-navigation';
 import {
@@ -12,20 +13,20 @@ import {
 import { reorderItems } from './policy-order';
 
 export function useConsoleSettingsOrder({
-  canManageRoles,
   csrfToken,
   locale,
   catalog,
   queryClient,
   messageApi
 }: {
-  canManageRoles: boolean;
   csrfToken: string | null;
   locale: SettingsConsolePolicyCatalogLocale;
   catalog: SettingsConsolePolicyCatalog | undefined;
   queryClient: QueryClient;
   messageApi: MessageInstance;
 }) {
+  const can = useConsoleOperationAccess();
+  const canReorder = can('roles.console_settings_order.replace');
   const mutation = useMutation({
     mutationFn: async (groupIds: string[]) => {
       if (!csrfToken || !catalog)
@@ -58,7 +59,7 @@ export function useConsoleSettingsOrder({
   });
 
   const reorder = (oldIndex: number, newIndex: number) => {
-    if (!canManageRoles || mutation.isPending || !catalog) return;
+    if (!canReorder || mutation.isPending || !catalog) return;
     const settingsGroups = catalog.groups.filter(
       (group) => group.kind === 'settings_feature'
     );
@@ -76,5 +77,5 @@ export function useConsoleSettingsOrder({
     mutation.mutate(reordered.map((group) => group.group_id));
   };
 
-  return { reorder, isPending: mutation.isPending };
+  return { reorder, canReorder, isPending: mutation.isPending };
 }

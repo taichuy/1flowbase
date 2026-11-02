@@ -15,7 +15,7 @@ type ConsolePolicyCatalogTableContext = {
   consolePolicyGroups: ConsolePolicyGroup[];
   saveConsolePolicyGroups: (groups: ConsolePolicyGroup[]) => void;
   openConsolePolicyDetail: (group: ConsolePolicyCatalogGroup, forceCustom?: boolean) => void;
-  consoleSettingsOrder: { reorder: (oldIndex: number, newIndex: number) => void };
+  consoleSettingsOrder: { canReorder: boolean; isPending: boolean; reorder: (oldIndex: number, newIndex: number) => void };
 };
 
 export function renderConsolePolicyCatalogTable(
@@ -175,6 +175,7 @@ export function renderConsolePolicyCatalogTable(
   return (
     <SortablePolicyTable
       itemIds={ids}
+      disabled={!consoleSettingsOrder.canReorder || consoleSettingsOrder.isPending}
       onReorder={consoleSettingsOrder.reorder}
     >
       {table}
