@@ -17,6 +17,7 @@ import {
   type UpdateSettingsFileStorageInput
 } from '../api/file-management';
 import { useAuthStore } from '../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../state/console-operation-access';
 import { i18nText } from '../../../shared/i18n/text';
 
 type DrawerMode = 'create' | 'view' | 'edit';
@@ -124,6 +125,9 @@ export function FileStorageDrawer({
   const [submitting, setSubmitting] = useState(false);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const isView = mode === 'view';
+  const can = useConsoleOperationAccess();
+  const isRoot = useAuthStore((state) => state.actor?.effective_display_role === 'root');
+  const canWrite = isRoot && !isView && can(mode === 'create' ? 'file_storages.create' : 'file_storages.update');
 
   useEffect(() => {
     if (open) {
@@ -144,6 +148,7 @@ export function FileStorageDrawer({
   }, [open, record, mode, form]);
 
   const handleSubmit = async () => {
+    if (!canWrite) return;
     try {
       const values = await form.validateFields();
       setSubmitting(true);
@@ -211,7 +216,7 @@ export function FileStorageDrawer({
       size={520}
       extra={
         !isView ? (
-          <Button type="primary" loading={submitting} onClick={handleSubmit}>
+          <Button type="primary" disabled={!canWrite} loading={submitting} onClick={handleSubmit}>
             {mode === 'create'
               ? i18nText('settings', 'auto.create')
               : i18nText('settings', 'auto.save')}
@@ -222,7 +227,7 @@ export function FileStorageDrawer({
       <Form
         form={form}
         layout="vertical"
-        disabled={isView}
+        disabled={!canWrite || isView}
         initialValues={{
           driver_type: 'local',
           enabled: true,
@@ -243,7 +248,7 @@ export function FileStorageDrawer({
         >
           <Input
             placeholder={i18nText('settings', 'auto.storage_code_placeholder')}
-            disabled={mode === 'edit' || isView}
+            disabled={!canWrite || mode === 'edit' || isView}
           />
         </Form.Item>
 
@@ -274,7 +279,7 @@ export function FileStorageDrawer({
         >
           <Select
             options={DRIVER_TYPE_OPTIONS}
-            disabled={mode === 'edit' || isView}
+            disabled={!canWrite || mode === 'edit' || isView}
           />
         </Form.Item>
 

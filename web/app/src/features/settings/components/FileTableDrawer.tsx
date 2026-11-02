@@ -6,6 +6,7 @@ import {
   type SettingsFileTable
 } from '../api/file-management';
 import { useAuthStore } from '../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../state/console-operation-access';
 import { i18nText } from '../../../shared/i18n/text';
 
 type DrawerMode = 'create' | 'view' | 'edit';
@@ -41,6 +42,10 @@ export function FileTableDrawer({
   const [bindingSubmitting, setBindingSubmitting] = useState(false);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const isView = mode === 'view';
+  const can = useConsoleOperationAccess();
+  const canCreate = can('file_tables.create');
+  const canBind = can('file_tables.storage.bind');
+  const canWrite = !isView && (mode === 'create' ? canCreate : canBind);
 
   useEffect(() => {
     if (open) {
@@ -57,6 +62,7 @@ export function FileTableDrawer({
   }, [open, record, mode, form]);
 
   const handleSubmit = async () => {
+    if (mode !== 'create' || !canCreate) return;
     try {
       const values = await form.validateFields();
       setSubmitting(true);
@@ -90,7 +96,7 @@ export function FileTableDrawer({
   };
 
   const handleBindingSave = async () => {
-    if (!record) return;
+    if (!record || mode !== 'edit' || !canBind) return;
     try {
       const values = form.getFieldsValue();
       setBindingSubmitting(true);
@@ -131,13 +137,14 @@ export function FileTableDrawer({
           mode === 'edit' ? (
             <Button
               type="primary"
+              disabled={!canBind}
               loading={bindingSubmitting}
               onClick={handleBindingSave}
             >
               {i18nText('settings', 'auto.save_binding')}
             </Button>
           ) : (
-            <Button type="primary" loading={submitting} onClick={handleSubmit}>
+            <Button type="primary" disabled={!canCreate} loading={submitting} onClick={handleSubmit}>
               {i18nText('settings', 'auto.create')}
             </Button>
           )
@@ -147,7 +154,7 @@ export function FileTableDrawer({
       <Form
         form={form}
         layout="vertical"
-        disabled={isView}
+        disabled={!canWrite || isView}
         initialValues={{ bound_storage_id: '' }}
       >
         <Form.Item
@@ -162,7 +169,7 @@ export function FileTableDrawer({
         >
           <Input
             placeholder={i18nText('settings', 'auto.table_code_placeholder')}
-            disabled={mode !== 'create'}
+            disabled={!canWrite || mode !== 'create'}
           />
         </Form.Item>
 
@@ -178,7 +185,7 @@ export function FileTableDrawer({
         >
           <Input
             placeholder={i18nText('settings', 'auto.table_name_placeholder')}
-            disabled={isView}
+            disabled={!canWrite || mode !== 'create'}
           />
         </Form.Item>
 
@@ -194,7 +201,7 @@ export function FileTableDrawer({
             options={storageOptions}
             placeholder={i18nText('settings', 'auto.follow_default_storage')}
             allowClear
-            disabled={isView}
+            disabled={!canWrite || isView}
           />
         </Form.Item>
         {mode !== 'create' && (

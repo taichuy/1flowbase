@@ -1,24 +1,21 @@
 import { FileManagementPanel } from '../../components/FileManagementPanel';
-
-function hasAnyPermission(permissions: string[], candidates: string[]) {
-  return candidates.some((permission) => permissions.includes(permission));
-}
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 
 export function SettingsFilesSection({
-  isRoot,
-  permissions
+  isRoot
 }: {
   isRoot: boolean;
   permissions: string[];
 }) {
-  const canViewTables =
-    isRoot ||
-    hasAnyPermission(permissions, ['file_table.view.all', 'file_table.view.own']);
-  const canCreateTables = isRoot || permissions.includes('file_table.create.all');
+  const can = useConsoleOperationAccess();
+  const canViewStorages = can('file_storages.list');
+  const canViewTables = can('file_tables.list');
+  const canCreateTables = can('file_tables.create');
 
   return (
     <FileManagementPanel
       isRoot={isRoot}
+      canViewStorages={canViewStorages}
       canViewTables={canViewTables}
       canCreateTables={canCreateTables}
     />
