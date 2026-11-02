@@ -128,10 +128,7 @@ describe('EmbeddedAgentAssistant', () => {
     const history = await findReadyHistoryButton();
     await domEvents.click(history);
     expect(await screen.findByText('First conversation')).toBeInTheDocument();
-    expect(
-      subscribeConsoleAssistantConversationsWebSocket,
-      updateConsoleAssistantSettings
-    ).toHaveBeenCalledWith(
+    expect(subscribeConsoleAssistantConversationsWebSocket).toHaveBeenCalledWith(
       'flow-1',
       'csrf-token',
       expect.objectContaining({
@@ -526,8 +523,11 @@ describe('EmbeddedAgentAssistant', () => {
       });
       await waitFor(() => expect(settings).toBeEnabled());
       await domEvents.click(settings);
-      const dialog = await screen.findByRole('dialog');
-      const save = within(dialog).getByRole('button', { name: /确定|OK/ });
+      const dialog = await screen.findByRole('dialog', {
+        name: i18nText('appShell', 'auto.assistant_settings')
+      });
+      await waitFor(() => expect(dialog).toBeVisible());
+      const save = within(dialog).getByRole('button', { name: /确\s*定|OK/ });
       const reset = within(dialog).getByRole('button', {
         name: i18nText('appShell', 'auto.assistant_reset_defaults')
       });

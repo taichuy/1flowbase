@@ -8,7 +8,7 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { resetAuthStore } from '../../../../state/auth-store';
+import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import {
   appI18n,
   loadApplicationI18nResources
@@ -66,6 +66,13 @@ function setup(
   };
 }
 
+async function findScopeOption(label: string) {
+  const content = await screen.findByText(label, {
+    selector: '.ant-select-item-option-content'
+  });
+  return content.closest<HTMLElement>('.ant-select-item-option')!;
+}
+
 describe('role data policy draft ownership', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -111,10 +118,10 @@ describe('role data policy draft ownership', () => {
     fireEvent.mouseDown(select);
     if (action !== '查看') {
       expect(screen.queryByTitle('系统所有记录')).not.toBeInTheDocument();
-      expect(await screen.findByTitle('本空间')).toBeInTheDocument();
+      expect(await findScopeOption('本空间')).toBeVisible();
       return;
     }
-    fireEvent.click(await screen.findByTitle('系统所有记录'));
+    fireEvent.click(await findScopeOption('系统所有记录'));
     fireEvent.click(screen.getByRole('button', { name: 'Save policy' }));
     await waitFor(() => expect(api.replaceSettingsRoleDataPolicy).toHaveBeenCalledWith(
       'member',
@@ -126,6 +133,48 @@ describe('role data policy draft ownership', () => {
     // Invalidation reloads the actual saved contract rather than a local alias.
     await waitFor(() => expect(select.closest('.ant-select')).toHaveTextContent('系统所有记录'));
   });
+
+  test.each(['default-policy', 'single-model-policy'] as const)(
+    'non-root can edit ordinary scopes in %s but cannot grant system_all view',
+    async (section) => {
+      const { actor, me } = useAuthStore.getState();
+      useAuthStore.setState({
+        actor: { ...actor!, account: 'role-manager', effective_display_role: 'member' },
+        me: {
+          ...me!, account: 'role-manager', effective_display_role: 'member',
+          permissions: ['roles.data_policy.view', 'roles.data_policy.replace', 'model_definitions.list']
+        }
+      });
+      setup(section);
+      const selectName = section === 'default-policy' ? '查看 作用域' : '查看 Orders';
+      const select = await screen.findByRole('combobox', { name: selectName });
+      await waitFor(() => expect(select).toBeEnabled());
+      fireEvent.mouseDown(select);
+      const systemAll = await findScopeOption('系统所有记录');
+      expect(systemAll).toBeVisible();
+      expect(systemAll).toHaveAttribute('aria-disabled', 'true');
+      fireEvent.click(systemAll);
+      expect(select.closest('.ant-select')).not.toHaveTextContent('系统所有记录');
+      expect(api.replaceSettingsRoleDataPolicy).not.toHaveBeenCalled();
+      fireEvent.keyDown(select, { key: 'Escape', code: 'Escape' });
+      await waitFor(() => expect(select).toHaveAttribute('aria-expanded', 'false'));
+      fireEvent.click(screen.getByRole('button', { name: 'Save policy' }));
+      await waitFor(() => expect(api.replaceSettingsRoleDataPolicy).toHaveBeenCalledWith(
+        'member',
+        {
+          default_policy: defaultDataPolicy.default_policy,
+          model_policies: defaultDataPolicy.model_policies
+        },
+        'csrf-123'
+      ));
+      fireEvent.mouseDown(select);
+      const scopeAll = await findScopeOption('本空间');
+      expect(scopeAll).toBeVisible();
+      expect(scopeAll).toHaveAttribute('aria-disabled', 'false');
+      fireEvent.click(scopeAll);
+      expect(select.closest('.ant-select')).toHaveTextContent('本空间');
+    }
+  );
 
   test('blocks external submission during a delayed role switch and never sends the previous role draft', async () => {
     let resolvePolicy!: (policy: SettingsRoleDataPolicy) => void;

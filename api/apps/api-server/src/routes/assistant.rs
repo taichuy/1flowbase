@@ -73,7 +73,7 @@ use crate::{
     },
 };
 
-const ASSISTANT_META_KEY: &str = "embedded_assistant";
+use control_plane::profile::ASSISTANT_META_KEY;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]

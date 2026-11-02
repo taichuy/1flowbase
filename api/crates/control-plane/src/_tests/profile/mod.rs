@@ -31,6 +31,43 @@ fn test_user() -> UserRecord {
 }
 
 #[tokio::test]
+async fn generic_preferences_cannot_replace_or_delete_assistant_owned_metadata() {
+    let mut user = test_user();
+    user.meta = serde_json::json!({"embedded_assistant":{"workspaces":{"audit":{"application_id":"original"}}},"ui":{"theme":"light"}});
+    let repository = MemoryAuthRepository::new(user);
+    let service = ProfileService::new(repository.clone());
+    let before = repository.user().meta;
+    for value in [
+        serde_json::Value::Null,
+        serde_json::json!({}),
+        serde_json::json!({"workspaces":{"audit":{"application_id":"changed"}}}),
+    ] {
+        let error = service.update_me_preferences(UpdateMeMetaCommand {
+            actor_user_id: repository.user().id, tenant_id: Uuid::nil(), workspace_id: Uuid::nil(),
+            meta_patch: serde_json::json!({"embedded_assistant":value,"ui":{"theme":"changed"}}),
+        }).await.err().expect("generic metadata must not bypass the assistant preference owner");
+        assert!(error
+            .to_string()
+            .contains("assistant_preferences_require_settings_interface"));
+        assert_eq!(repository.user().meta, before);
+    }
+    service
+        .update_me_preferences(UpdateMeMetaCommand {
+            actor_user_id: repository.user().id,
+            tenant_id: Uuid::nil(),
+            workspace_id: Uuid::nil(),
+            meta_patch: serde_json::json!({"ui":{"theme":"dark"}}),
+        })
+        .await
+        .unwrap();
+    assert_eq!(repository.user().meta["ui"]["theme"], "dark");
+    assert_eq!(
+        repository.user().meta["embedded_assistant"],
+        before["embedded_assistant"]
+    );
+}
+
+#[tokio::test]
 async fn update_me_updates_only_profile_fields() {
     let repository = MemoryAuthRepository::new(test_user());
     let service = ProfileService::new(repository.clone());

@@ -160,6 +160,7 @@ function RoleDataPolicyDraft({
   section,
   formId
 }: RoleDataPolicySectionProps) {
+  const isRoot = useAuthStore((state) => state.actor?.effective_display_role === 'root');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
   // Only locally edited fields belong to the draft. Untouched fields follow
@@ -402,7 +403,8 @@ function RoleDataPolicyDraft({
               row.action === 'view' || scopeConfig.scope !== 'system_all'
             ).map((scopeConfig) => ({
               label: scopeConfig.label,
-              value: scopeConfig.scope
+              value: scopeConfig.scope,
+              disabled: scopeConfig.scope === 'system_all' && !isRoot
             }))}
             style={{ width: 128 }}
             value={row.scopeValue}
@@ -434,7 +436,7 @@ function RoleDataPolicyDraft({
         }}
         options={modelOverrideScopeOptions.filter((option) =>
           policyKey === 'view_scope_override' || option.value !== 'system_all'
-        )}
+        ).map((option) => ({ ...option, disabled: option.value === 'system_all' && !isRoot }))}
         style={{ width: 128 }}
         value={policy?.[policyKey] ?? 'inherit'}
       />

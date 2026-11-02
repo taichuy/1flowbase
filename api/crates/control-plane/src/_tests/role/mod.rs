@@ -1135,4 +1135,42 @@ async fn workspace_role_system_all_is_configurable_for_view_but_never_for_writes
             "{write_field}"
         );
     }
+
+    let manager = memory_actor_context(false, &[]);
+    repository.set_actor_context(manager.clone()).await;
+    repository
+        .set_actor_console_policies(vec![roles_policy(&["roles.data_policy.replace"])])
+        .await;
+    let audit_before = repository.audit_events();
+    for model_override in [false, true] {
+        let mut scoped_defaults = defaults.clone();
+        scoped_defaults.default_view_scope = if model_override { ScopeAll } else { SystemAll };
+        let error = service
+            .replace_data_policy(ReplaceRoleDataPolicyCommand {
+                actor_user_id: manager.user_id,
+                role_code: "editor".into(),
+                default_policy: scoped_defaults,
+                model_policies: if model_override {
+                    vec![model_policy.clone()]
+                } else {
+                    vec![]
+                },
+            })
+            .await
+            .err()
+            .expect("workspace managers must not grant system-wide visibility");
+        assert!(error.to_string().contains("system_all_view_requires_root"));
+        assert_eq!(repository.audit_events(), audit_before);
+    }
+    let mut scoped_defaults = defaults;
+    scoped_defaults.default_view_scope = ScopeAll;
+    service
+        .replace_data_policy(ReplaceRoleDataPolicyCommand {
+            actor_user_id: manager.user_id,
+            role_code: "editor".into(),
+            default_policy: scoped_defaults,
+            model_policies: vec![],
+        })
+        .await
+        .expect("workspace managers retain ordinary workspace policy control");
 }
