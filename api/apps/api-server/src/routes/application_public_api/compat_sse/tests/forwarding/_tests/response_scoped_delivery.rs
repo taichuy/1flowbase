@@ -617,13 +617,29 @@ async fn successful_native_terminal_closes_postgres_delivery_and_completes_share
     assert_eq!(batch.claims.len(), 1);
     assert!(batch.events[0].sequence < proof.upper.event_sequence());
     let delivered_event_id = batch.events[0].id;
-    let late = seed_pending_committed_delivery(
-        &state,
-        &run,
-        committed_delivery_payload("late-after-terminal"),
+    // Normal append already rejects terminal runs. Seed an adversarial legacy
+    // row directly in this isolated database to exercise the immutable upper
+    // bound without weakening that production terminal write guard.
+    let late_id = uuid::Uuid::now_v7();
+    let late_sequence = proof.upper.event_sequence() + 1;
+    sqlx::query(
+        "insert into runtime_events (
+            id, scope_id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
+            event_type, layer, source, trust_level, item_id, ledger_ref, payload,
+            visibility, durability, delivery_status, raw_json_payloads
+         ) select $1, scope_id, flow_run_id, node_run_id, span_id, parent_span_id, $2,
+            event_type, layer, source, trust_level, item_id, ledger_ref, $3,
+            visibility, durability, 'pending', '{}'::jsonb
+           from runtime_events where id=$4",
     )
-    .await;
-    assert!(late.sequence > proof.upper.event_sequence());
+    .bind(late_id)
+    .bind(late_sequence)
+    .bind(committed_delivery_payload("late-after-terminal"))
+    .bind(delivered_event_id)
+    .execute(state.store.pool())
+    .await
+    .unwrap();
+    assert!(late_sequence > proof.upper.event_sequence());
     let thin = state
         .store
         .claim_runtime_event_deliveries(&request(false))
@@ -743,7 +759,7 @@ async fn successful_native_terminal_closes_postgres_delivery_and_completes_share
         assert!(thin.events.is_empty() && thin.claims.is_empty());
         let late_generation: i64 =
             sqlx::query_scalar("select delivery_generation from runtime_events where id=$1")
-                .bind(late.id)
+                .bind(late_id)
                 .fetch_one(state.store.pool())
                 .await
                 .unwrap();
