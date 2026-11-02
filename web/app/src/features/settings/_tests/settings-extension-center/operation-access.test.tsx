@@ -25,11 +25,16 @@ describe('Extension center exact operations', () => {
   });
 
   test('one install grant leaves upload and update-check disabled', async () => {
-    grant(['extension_center.install']);
+    // Catalog inspection is a read prerequisite; install is the only write grant.
+    grant(['extension_center.installed.view', 'extension_center.catalog.view', 'extension_center.catalog.detail', 'extension_center.install']);
     extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({ category: 'runtime-extensions', limit: 20, next_cursor: null, total_entries: 1, entries: [installableCatalogEntry] });
     await renderSection('runtime-extensions');
-    expect(screen.getByRole('button', { name: /^安\s*装$/ })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: /^安\s*装$/ })).toBeEnabled();
     expect(screen.getByRole('button', { name: '上传插件' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '检查更新' })).toBeDisabled();
+    await click(screen.getByRole('button', { name: '上传插件' }));
+    await click(screen.getByRole('button', { name: '检查更新' }));
+    expect(extensionsApi.uploadSettingsExtension).not.toHaveBeenCalled();
+    expect(extensionsApi.checkSettingsExtensionUpdates).not.toHaveBeenCalled();
   });
 });
