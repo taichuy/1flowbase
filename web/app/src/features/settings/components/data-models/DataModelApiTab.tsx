@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import {
   Alert,
   Descriptions,
@@ -189,18 +190,18 @@ function apiAccessLabel(model: SettingsDataModel) {
 
 export function DataModelApiTab({
   model,
-  canManage,
   saving,
   onUpdateApiRequired
 }: {
   model: SettingsDataModel;
-  canManage: boolean;
+  canManage?: boolean;
   saving: boolean;
   onUpdateApiRequired: (
     field: SettingsDataModelField,
     apiRequired: boolean
   ) => void;
 }) {
+  const can = useConsoleOperationAccess();
   const openApiQuery = useQuery({
     queryKey: settingsDataModelOpenApiQueryKey(model.id),
     queryFn: () => fetchSettingsDataModelOpenApiDocument(model.id),
@@ -272,8 +273,8 @@ export function DataModelApiTab({
               }
             )}
             checked={field.api_required}
-            disabled={!canManage || saving || openApiQuery.isLoading}
-            onChange={(checked) => onUpdateApiRequired(field, checked)}
+            disabled={!can('model_fields.update') || saving || openApiQuery.isLoading}
+            onChange={(checked) => { if (can('model_fields.update')) onUpdateApiRequired(field, checked); }}
           />
         );
       }

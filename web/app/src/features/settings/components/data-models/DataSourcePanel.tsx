@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useState } from 'react';
 
 import { Button, Checkbox, Flex, Space, Table, Tag, Typography } from 'antd';
@@ -33,7 +34,6 @@ export function DataSourcePanel({
   loading,
   creating,
   creationErrorMessage,
-  canManage,
   onRefresh,
   onOpenDataSource,
   onCreateDataSource
@@ -43,11 +43,12 @@ export function DataSourcePanel({
   loading: boolean;
   creating: boolean;
   creationErrorMessage: string | null;
-  canManage: boolean;
+  canManage?: boolean;
   onRefresh: () => Promise<void>;
   onOpenDataSource: (dataSourceId: string) => void;
   onCreateDataSource: (input: CreateSettingsDataSourceInput) => Promise<void>;
 }) {
+  const can = useConsoleOperationAccess();
   const [createDrawerOpen, setCreateDrawerOpen] = useState(false);
   const columns: ColumnsType<SettingsDataSource> = [
     {
@@ -147,7 +148,7 @@ export function DataSourcePanel({
           <Button
             type="primary"
             icon={<PlusOutlined aria-hidden="true" />}
-            disabled={!canManage || catalog.length === 0}
+            disabled={!can('data_sources.create') || catalog.length === 0}
             onClick={() => setCreateDrawerOpen(true)}
           >
             {i18nText('settings', 'auto.add_data_source')}

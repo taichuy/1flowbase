@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useState } from 'react';
 
 import { Button, Flex, Table, Tabs, Tag, Typography, Space } from 'antd';
@@ -64,7 +65,6 @@ function apiAccessLabel(model: SettingsDataModel) {
 function useDataModelDetailController({
   model,
   allModels,
-  canManage,
   grants,
   grantsLoading,
   grantsSaving,
@@ -80,7 +80,7 @@ function useDataModelDetailController({
 }: {
   model: SettingsDataModel;
   allModels: SettingsDataModel[];
-  canManage: boolean;
+  canManage?: boolean;
   grants: SettingsDataModelScopeGrant[];
   grantsLoading: boolean;
   grantsSaving: boolean;
@@ -97,6 +97,7 @@ function useDataModelDetailController({
   onDeleteField: (field: SettingsDataModelField) => void;
   onSaveGrant: Parameters<typeof DataModelPermissionsTab>[0]['onSave'];
 }) {
+  const can = useConsoleOperationAccess();
   const [modelDrawerOpen, setModelDrawerOpen] = useState(false);
   const [fieldDrawerState, setFieldDrawerState] = useState<
     | { open: false; mode: 'create'; field: null }
@@ -118,7 +119,6 @@ function useDataModelDetailController({
               <button
                 type="button"
                 className={`data-model-panel__field-title-btn ${canUpdatePresentation ? '' : 'disabled'}`}
-                disabled={!canUpdatePresentation}
                 onClick={() =>
                   setFieldDrawerState({ open: true, mode: 'edit', field })
                 }
@@ -210,14 +210,11 @@ function useDataModelDetailController({
           size="small"
           icon={<EditOutlined aria-hidden="true" />}
           style={{ padding: 0 }}
-          disabled={
-            !canManage || !field.capabilities.can_update_presentation_metadata
-          }
           onClick={() =>
             setFieldDrawerState({ open: true, mode: 'edit', field })
           }
         >
-          {i18nText('settings', 'auto.edit')}
+          {i18nText('settings', can('model_fields.update') && field.capabilities.can_update_presentation_metadata ? 'auto.edit' : 'auto.view')}
         </Button>
       )
     }
@@ -295,7 +292,7 @@ function useDataModelDetailController({
     ]
   ];
   return {
-    summaryRows, canManage, setModelDrawerOpen, model, setFieldDrawerState, fieldColumns,
+    summaryRows, can, setModelDrawerOpen, model, setFieldDrawerState, fieldColumns,
     fieldDrawerState, allModels, fieldSaving, onCreateField, onUpdateField,
     onDeleteField, relationFields, grants, grantsLoading, grantsSaving, onSaveGrant,
     advisorFindings, advisorLoading, modelDrawerOpen, modelSaving, onUpdateModel
@@ -304,7 +301,7 @@ function useDataModelDetailController({
 
 export function DataModelDetail(props: Parameters<typeof useDataModelDetailController>[0]) {
   const {
-    summaryRows, canManage, setModelDrawerOpen, model, setFieldDrawerState, fieldColumns,
+    summaryRows, can, setModelDrawerOpen, model, setFieldDrawerState, fieldColumns,
     fieldDrawerState, allModels, fieldSaving, onCreateField, onUpdateField,
     onDeleteField, relationFields, grants, grantsLoading, grantsSaving, onSaveGrant,
     advisorFindings, advisorLoading, modelDrawerOpen, modelSaving, onUpdateModel
@@ -354,8 +351,8 @@ export function DataModelDetail(props: Parameters<typeof useDataModelDetailContr
         className="data-model-panel__detail-actions"
         data-testid="data-model-detail-actions"
       >
-        <Button disabled={!canManage} onClick={() => setModelDrawerOpen(true)}>
-          {i18nText('settings', 'auto.edit')}
+        <Button onClick={() => setModelDrawerOpen(true)}>
+          {i18nText('settings', can('model_definitions.update') ? 'auto.edit' : 'auto.view')}
         </Button>
       </div>
 
@@ -371,7 +368,7 @@ export function DataModelDetail(props: Parameters<typeof useDataModelDetailContr
                     type="primary"
                     icon={<PlusOutlined aria-hidden="true" />}
                     disabled={
-                      !canManage || !model.capabilities.can_add_user_field
+                      !can('model_fields.create') || !model.capabilities.can_add_user_field
                     }
                     onClick={() =>
                       setFieldDrawerState({
@@ -398,7 +395,6 @@ export function DataModelDetail(props: Parameters<typeof useDataModelDetailContr
                   isExternalModel={model.source_kind === 'external_source'}
                   modelOptions={allModels}
                   saving={fieldSaving}
-                  canManage={canManage}
                   onClose={() =>
                     setFieldDrawerState({
                       open: false,
@@ -455,7 +451,6 @@ export function DataModelDetail(props: Parameters<typeof useDataModelDetailContr
             children: (
               <DataModelApiTab
                 model={model}
-                canManage={canManage}
                 saving={fieldSaving}
                 onUpdateApiRequired={(field, apiRequired) =>
                   onUpdateField(field, {

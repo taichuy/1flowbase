@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useEffect, useState } from 'react';
 
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
@@ -281,7 +282,6 @@ export function DataModelFieldDrawer({
   isExternalModel,
   modelOptions,
   saving,
-  canManage,
   onClose,
   onCreate,
   onUpdate,
@@ -293,7 +293,7 @@ export function DataModelFieldDrawer({
   isExternalModel: boolean;
   modelOptions: SettingsDataModel[];
   saving: boolean;
-  canManage: boolean;
+  canManage?: boolean;
   onClose: () => void;
   onCreate: (input: CreateSettingsDataModelFieldInput) => void;
   onUpdate: (
@@ -302,6 +302,7 @@ export function DataModelFieldDrawer({
   ) => void;
   onDelete: (field: SettingsDataModelField) => void;
 }) {
+  const can = useConsoleOperationAccess();
   const [form] = Form.useForm<FieldFormValues>();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -314,18 +315,18 @@ export function DataModelFieldDrawer({
   const showsDefaultValue = !showsRelationSettings;
   const canUpdatePresentation =
     mode === 'create'
-      ? canManage
+      ? can('model_fields.create')
       : Boolean(
-          canManage && field?.capabilities.can_update_presentation_metadata
+          can('model_fields.update') && field?.capabilities.can_update_presentation_metadata
         );
   const canUpdatePhysical =
     mode === 'create'
-      ? canManage
-      : Boolean(canManage && field?.capabilities.can_update_physical_metadata);
+      ? can('model_fields.create')
+      : Boolean(can('model_fields.update') && field?.capabilities.can_update_physical_metadata);
   const canSubmit =
-    mode === 'create' ? canManage : canUpdatePresentation || canUpdatePhysical;
+    mode === 'create' ? can('model_fields.create') : canUpdatePresentation || canUpdatePhysical;
   const canDeleteField =
-    mode === 'edit' && Boolean(canManage && field?.capabilities.can_delete);
+    mode === 'edit' && Boolean(can('model_fields.delete') && field?.capabilities.can_delete);
 
   useEffect(() => {
     if (!open) {
@@ -380,6 +381,7 @@ export function DataModelFieldDrawer({
   }, [field, form, mode, open]);
 
   const handleSubmit = async () => {
+    if (!canSubmit) return;
     const values = await form.validateFields();
     let defaultValue: unknown | null = null;
     let displayOptions: Record<string, unknown> = {};
@@ -488,7 +490,7 @@ export function DataModelFieldDrawer({
   };
 
   const confirmDelete = () => {
-    if (!field) {
+    if (!field || !canDeleteField) {
       return;
     }
 
@@ -650,6 +652,7 @@ export function DataModelFieldDrawer({
         }
       >
         <Form
+          disabled={!canSubmit}
           form={form}
           layout="vertical"
           initialValues={{
@@ -977,10 +980,10 @@ export function DataModelFieldDrawer({
         okText={i18nText('settings', 'auto.delete')}
         okType="danger"
         cancelText={i18nText('settings', 'auto.cancel')}
-        okButtonProps={{ 'aria-label': i18nText('settings', 'auto.delete') }}
+        okButtonProps={{ 'aria-label': i18nText('settings', 'auto.delete'), disabled: !canDeleteField }}
         onCancel={() => setDeleteConfirmOpen(false)}
         onOk={() => {
-          if (field) {
+          if (field && canDeleteField) {
             onDelete(field);
           }
           setDeleteConfirmOpen(false);

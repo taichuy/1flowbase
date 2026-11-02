@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useEffect, useMemo } from 'react';
 
 import {
@@ -62,6 +63,7 @@ export function DataSourceCreateDrawer({
   onClose: () => void;
   onCreate: (input: CreateSettingsDataSourceInput) => Promise<void>;
 }) {
+  const can = useConsoleOperationAccess();
   const [form] = Form.useForm<DataSourceFormValues>();
   const installationId = Form.useWatch('installation_id', form);
   const selectedExtension = useMemo(
@@ -80,6 +82,7 @@ export function DataSourceCreateDrawer({
   }, [catalog, form, open]);
 
   const submit = async () => {
+    if (!can('data_sources.create')) return;
     const values = await form.validateFields();
     const extension = catalog.find(
       (entry) => entry.installation_id === values.installation_id
@@ -125,6 +128,7 @@ export function DataSourceCreateDrawer({
         <Button
           type="primary"
           aria-label={i18nText('settings', 'auto.create')}
+          disabled={!can('data_sources.create')}
           loading={saving}
           onClick={submit}
         >
@@ -132,7 +136,7 @@ export function DataSourceCreateDrawer({
         </Button>
       }
     >
-      <Form form={form} layout="vertical">
+      <Form disabled={!can('data_sources.create')} form={form} layout="vertical">
         {errorMessage ? (
           <Alert
             type="error"

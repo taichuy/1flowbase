@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Select, Space, Table, Tag, Typography } from 'antd';
@@ -16,7 +17,6 @@ import {
   dataModelTitleHelp
 } from './data-model-help-text';
 import { i18nText } from '../../../../shared/i18n/text';
-import { useAuthStore } from '../../../../state/auth-store';
 import {
   fetchSettingsFileStorages,
   type SettingsFileStorage
@@ -96,20 +96,20 @@ export function DataModelFormDrawer({
     input: UpdateSettingsDataModelInput
   ) => void;
 }) {
+  const can = useConsoleOperationAccess();
+  const canSave = can(mode === 'create' ? 'model_definitions.create' : 'model_definitions.update');
   const [selectedTemplate, setSelectedTemplate] =
     useState<SettingsCompatibleDataModelTemplate | null>(null);
   const [storages, setStorages] = useState<SettingsFileStorage[]>([]);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [boundStorageId, setBoundStorageId] = useState<string | null>(null);
-  const isRoot = useAuthStore(
-    (state) => state.actor?.effective_display_role === 'root'
-  );
+  const canViewStorages = can('file_storages.list');
   const isFileTemplate =
     selectedTemplate !== null &&
     dataModelTemplateIdentity(selectedTemplate) === 'core/file/v1';
 
   useEffect(() => {
-    if (!open || !isFileTemplate || !isRoot) return;
+    if (!open || !isFileTemplate || !canViewStorages) return;
     let active = true;
     setStorageError(null);
     fetchSettingsFileStorages().then(
@@ -128,7 +128,7 @@ export function DataModelFormDrawer({
     return () => {
       active = false;
     };
-  }, [open, isFileTemplate, isRoot]);
+  }, [open, isFileTemplate, canViewStorages]);
 
   useEffect(() => {
     setBoundStorageId(null);
@@ -243,7 +243,7 @@ export function DataModelFormDrawer({
             <Select
               aria-label={i18nText('settings', 'auto.bound_storage')}
               style={{ width: '100%' }}
-              disabled={!isRoot || Boolean(storageError)}
+              disabled={!canViewStorages || Boolean(storageError)}
               value={boundStorageId ?? ''}
               options={[
                 {
@@ -338,7 +338,8 @@ export function DataModelFormDrawer({
       leadingContent={templateSelector}
       trailingContent={defaultFieldsPreview}
       statusMessages={statusMessages}
-      submitDisabled={templateUnavailable}
+      disabled={!canSave}
+      submitDisabled={!canSave || templateUnavailable}
       submitting={saving}
       submitText={
         mode === 'create'
@@ -347,6 +348,7 @@ export function DataModelFormDrawer({
       }
       onCancel={onClose}
       onSubmit={(values) => {
+        if (!canSave) return;
         const title = values.title as string;
         const description = (values.description as string | undefined) ?? '';
         const apiOpen = values.api_open === true;
