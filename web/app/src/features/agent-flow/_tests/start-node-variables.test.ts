@@ -9,14 +9,82 @@ import { buildFlowDebugRunInput } from '../api/runtime';
 import { createEdgeDocument } from '../lib/document/edge-factory';
 import { createNodeDocument } from '../lib/document/node-factory';
 import {
+  findSelectorOption,
   isSelectorVisible,
   listLlmContextSelectorOptions,
   listLlmProtocolContextSelectorOptions,
   listVisibleSelectorOptions,
-  toCascaderSelectorOptions
+  toCascaderSelectorOptions,
+  type FlowSelectorOption
 } from '../lib/selector-options';
 import { getStartInputFields } from '../lib/variables/start-node-variables';
 import { appI18n } from '../../../shared/i18n/app-i18n';
+
+describe('exact selector lookup', () => {
+  const option = (
+    value: string[],
+    valueType = 'string'
+  ): FlowSelectorOption => ({
+    nodeId: 'node',
+    nodeLabel: 'Node',
+    outputKey: 'result',
+    outputLabel: 'Result',
+    displayLabel: 'Result',
+    value,
+    valueType
+  });
+
+  test('returns the first original object even when duplicate paths have different types', () => {
+    const first = option(['node', 'result'], 'number');
+    const second = option(['node', 'result'], 'string');
+    expect(findSelectorOption([first, second], ['node', 'result'])).toBe(first);
+  });
+
+  test('rejects both prefix directions and unrelated paths', () => {
+    const options = [option(['node', 'result'])];
+    for (const path of [
+      ['node'],
+      ['node', 'result', 'child'],
+      ['other', 'result']
+    ]) {
+      expect(findSelectorOption(options, path)).toBeUndefined();
+    }
+  });
+
+  test('handles empty lists, empty paths and empty segments exactly', () => {
+    const empty = option([]);
+    const segment = option(['']);
+    expect(findSelectorOption([], [])).toBeUndefined();
+    expect(findSelectorOption([segment], [])).toBeUndefined();
+    expect(findSelectorOption([empty, segment], [])).toBe(empty);
+    expect(findSelectorOption([empty, segment], [''])).toBe(segment);
+  });
+
+  test.each([
+    [
+      ['a.b', 'c'],
+      ['a', 'b.c']
+    ],
+    [
+      ['a/b', 'c'],
+      ['a', 'b/c']
+    ],
+    [
+      ['节点😀', '结果/字段.值'],
+      ['节点😀', '结果', '字段.值']
+    ],
+    [
+      ['é', '结果'],
+      ['e\u0301', '结果']
+    ]
+  ])('preserves segment boundaries and Unicode: %j', (path, collision) => {
+    const match = option(path);
+    expect(findSelectorOption([option(collision), match], [...path])).toBe(
+      match
+    );
+    expect(findSelectorOption([match], collision)).toBeUndefined();
+  });
+});
 
 describe('start node variables', () => {
   beforeEach(async () => {

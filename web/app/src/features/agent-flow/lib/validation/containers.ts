@@ -4,7 +4,10 @@ import type {
 } from '@1flowbase/flow-schema';
 import { i18nText } from '../../../../shared/i18n/text';
 import { pushFieldIssue, type AgentFlowIssue } from './issues';
-import { listVisibleSelectorOptions } from '../selector-options';
+import {
+  findSelectorOption,
+  listVisibleSelectorOptions
+} from '../selector-options';
 import {
   loopVariableDefinitions,
   type LoopVariableDefinition
@@ -74,14 +77,14 @@ export function validateContainerNode(
       );
       continue;
     }
-    const selectorKey = JSON.stringify(binding.value);
-    const option = listVisibleSelectorOptions(
+    const options = listVisibleSelectorOptions(
       document,
       node.id,
       environmentVariables,
       workflowTriggerContext,
       `bindings.${key}`
-    ).find((option) => JSON.stringify(option.value) === selectorKey);
+    );
+    const option = findSelectorOption(options, binding.value);
     if (
       (key === 'items' || node.config.flatten_output === true) &&
       option &&

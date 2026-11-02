@@ -10,7 +10,10 @@ import type {
   FlowConditionValue
 } from '@1flowbase/flow-schema';
 
-import type { FlowSelectorOption } from '../../lib/selector-options';
+import {
+  findSelectorOption,
+  type FlowSelectorOption
+} from '../../lib/selector-options';
 import { SelectorField } from './SelectorField';
 import {
   createEmptyConditionGroup,
@@ -93,14 +96,6 @@ function conditionValueText(value: FlowConditionValue | undefined) {
   }
 
   return String(value.value);
-}
-
-function selectorValueType(options: FlowSelectorOption[], selector: string[]) {
-  return options.find(
-    (option) =>
-      option.value.length === selector.length &&
-      option.value.every((segment, index) => segment === selector[index])
-  )?.valueType;
 }
 
 function coerceConditionConstantValue(
@@ -264,7 +259,7 @@ function RightValueField({
                 kind: 'constant',
                 value: coerceConditionConstantValue(
                   event.target.value,
-                  selectorValueType(options, condition.left)
+                  findSelectorOption(options, condition.left)?.valueType
                 )
               }
             })
@@ -407,7 +402,7 @@ export function ConditionGroupField({
                             kind: 'constant',
                             value: coerceConditionConstantValue(
                               conditionValueText(rule.right),
-                              selectorValueType(options, nextLeft)
+                              findSelectorOption(options, nextLeft)?.valueType
                             )
                           }
                         }

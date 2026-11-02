@@ -5,7 +5,10 @@ import type {
   NamedBindingExpression
 } from '@1flowbase/flow-schema';
 
-import type { FlowSelectorOption } from '../../lib/selector-options';
+import {
+  findSelectorOption,
+  type FlowSelectorOption
+} from '../../lib/selector-options';
 import {
   getNamedBindingExpression,
   isNamedBindingNameAllowed
@@ -76,14 +79,6 @@ function normalizeParameterValueType(value: string | undefined) {
   }
 
   return 'unknown' as const;
-}
-
-function findSelectorOption(options: FlowSelectorOption[], selector: string[]) {
-  return options.find(
-    (option) =>
-      option.value.length === selector.length &&
-      option.value.every((segment, index) => selector[index] === segment)
-  );
 }
 
 function inferValueTypeFromExpression(
