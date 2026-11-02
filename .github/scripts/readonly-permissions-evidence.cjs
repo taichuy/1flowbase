@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('node:fs'),cp=require('node:child_process'),path=require('node:path');
 const {parseCargoTestCounts,requireExecutedCargoTests}=require('../../scripts/node/verify/cargo-test-results.js');
-const source='723561e1547499296fea90219ea690428eb270f3';
+const source='d04d1ef47437985af0fdd251cba228bfaf9369fb';
 const git=(...a)=>cp.execFileSync('git',a,{encoding:'utf8'}).trim();
 const head=git('rev-parse','HEAD'),apiTree=git('rev-parse','HEAD:api');
 if(apiTree!==git('rev-parse',source+':api'))throw Error('API source mismatch');
