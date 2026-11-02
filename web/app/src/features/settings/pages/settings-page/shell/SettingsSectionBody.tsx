@@ -130,11 +130,8 @@ interface SettingsSectionAccess {
   permissions: string[];
   canManageMembers: boolean;
   canManageRoles: boolean;
-  canManageDataModels: boolean;
   canManageModelProviders: boolean;
   canManageHostInfrastructure: boolean;
-  canManageMcpManagement: boolean;
-  canManageUiManagement: boolean;
 }
 
 export function SettingsSectionBody({
@@ -190,7 +187,6 @@ export function SettingsSectionBody({
             category={extensionCenterCategory}
             cursor={extensionCenterCursor}
             q={extensionCenterQ}
-            canManageUiComponents={access.canManageUiManagement}
           />
         </SettingsSectionBoundary>
       );
@@ -227,7 +223,7 @@ export function SettingsSectionBody({
     case 'data-models':
       return (
         <SettingsSectionBoundary>
-          <SettingsDataModelsSection canManage={access.canManageDataModels} />
+          <SettingsDataModelsSection />
         </SettingsSectionBoundary>
       );
     case 'network-center':
@@ -239,15 +235,13 @@ export function SettingsSectionBody({
     case 'mcp-management':
       return (
         <SettingsSectionBoundary>
-          <SettingsMcpManagementSection
-            canManage={access.canManageMcpManagement}
-          />
+          <SettingsMcpManagementSection />
         </SettingsSectionBoundary>
       );
     case 'ui-management':
       return (
         <SettingsSectionBoundary>
-          <UiManagementPanel canManage={access.canManageUiManagement} />
+          <UiManagementPanel />
         </SettingsSectionBoundary>
       );
     case 'memory-observation':

@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { App } from 'antd';
 import { useEffect, useState } from 'react';
 
@@ -57,6 +58,8 @@ export function McpBundleImportFlow({
   onClose: () => void;
   onApplied: () => Promise<void>;
 }) {
+  const can = useConsoleOperationAccess();
+  const importOperation = source?.kind === 'upload' ? 'import_uploaded_mcp_bundle' : source?.kind === 'library' ? 'mcp.bundle_library.import' : 'import_official_mcp_bundle';
   const { message } = App.useApp();
   const [review, setReview] = useState<McpBundleReview | null>(null);
   const [integrityWarnings, setIntegrityWarnings] = useState<string[]>([]);
@@ -182,7 +185,7 @@ export function McpBundleImportFlow({
   ]);
 
   async function importBundle() {
-    if (!source || !review || !csrfToken) return;
+    if (!source || !review || !csrfToken || !can(importOperation)) return;
 
     setBusy(true);
     try {
@@ -262,6 +265,7 @@ export function McpBundleImportFlow({
       mode={mode}
       integrityWarnings={integrityWarnings}
       onCancel={onClose}
+      canImport={can(importOperation)}
       onImport={() => void importBundle()}
     />
   );

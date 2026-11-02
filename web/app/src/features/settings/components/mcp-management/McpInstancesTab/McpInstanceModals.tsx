@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import type {
   ConsoleMcpInstance,
   SaveConsoleMcpInstanceBody
@@ -68,16 +69,19 @@ export function McpCopyInstanceModal({
     values: CopySettingsMcpInstanceBody
   ) => void;
 }) {
+  const can = useConsoleOperationAccess();
   return (
     <Modal
       open={Boolean(source)}
       title={i18nText('settingsMcpManagement', 'auto.copy_instance_title')}
       okText={i18nText('settingsMcpManagement', 'auto.copy_instance_action')}
+      okButtonProps={{ disabled: !can('mcp.instances.copy') }}
       confirmLoading={saving}
       onCancel={onClose}
       onOk={() => form.submit()}
     >
       <Form
+        disabled={!can('mcp.instances.copy')}
         form={form}
         layout="vertical"
         onFinish={(values) => source && onSave(source, values)}
@@ -116,6 +120,8 @@ export function McpInstanceEditorModal({
   onClose: () => void;
   onSave: (values: SaveConsoleMcpInstanceBody) => void;
 }) {
+  const can = useConsoleOperationAccess();
+  const canSave = can(instance ? 'mcp.instances.update' : 'mcp.instances.create');
   return (
     <Modal
       open={open}
@@ -126,9 +132,10 @@ export function McpInstanceEditorModal({
       }
       onCancel={onClose}
       onOk={() => form.submit()}
+      okButtonProps={{ disabled: !canSave }}
       confirmLoading={saving}
     >
-      <Form form={form} layout="vertical" onFinish={onSave}>
+      <Form disabled={!canSave} form={form} layout="vertical" onFinish={(values) => canSave && onSave(values)}>
         <Form.Item htmlFor="instance_id" label="instance_id" required>
           {instance ? (
             <Form.Item name="instance_id" noStyle rules={[{ required: true }]}>

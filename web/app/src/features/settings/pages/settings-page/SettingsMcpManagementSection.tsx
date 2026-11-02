@@ -11,11 +11,7 @@ import {
 } from '../../api/mcp-management';
 import { i18nText } from '../../../../shared/i18n/text';
 
-export function SettingsMcpManagementSection({
-  canManage
-}: {
-  canManage: boolean;
-}) {
+export function SettingsMcpManagementSection() {
   const catalogQuery = useQuery({
     queryKey: settingsMcpCatalogQueryKey,
     queryFn: fetchSettingsMcpCatalog
@@ -58,7 +54,6 @@ export function SettingsMcpManagementSection({
       heightMode="fill"
     >
       <McpManagementPanel
-        canManage={canManage}
         catalog={catalogQuery.data}
         interfaceCapabilities={interfaceQuery.data}
       />

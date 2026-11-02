@@ -69,31 +69,19 @@ export function SettingsPage({
       'state_model.manage.all',
       'state_model.manage.own'
     ]);
-  const canManageDataModels = canManageModelProviders;
   const canManageHostInfrastructure =
     isRoot || permissionSet.has('plugin_config.configure.all');
-  const canManageMcpManagement =
-    isRoot ||
-    permissionSet.has('settings_feature.access.system.mcp-management');
-  const canManageUiManagement =
-    isRoot || permissionSet.has('settings_feature.access.system.ui-management');
   const sectionAccess = useMemo(
     () => ({
       isRoot,
       permissions,
       canManageMembers,
       canManageRoles,
-      canManageDataModels,
       canManageModelProviders,
-      canManageHostInfrastructure,
-      canManageMcpManagement,
-      canManageUiManagement
+      canManageHostInfrastructure
     }),
     [
-      canManageDataModels,
       canManageHostInfrastructure,
-      canManageMcpManagement,
-      canManageUiManagement,
       canManageMembers,
       canManageModelProviders,
       canManageRoles,

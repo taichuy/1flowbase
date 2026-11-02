@@ -106,7 +106,8 @@ export function McpBundleReviewModal({
   mode = 'import',
   integrityWarnings = [],
   onCancel,
-  onImport
+  onImport,
+  canImport = true
 }: {
   open?: boolean;
   review: McpBundleReview | null;
@@ -116,6 +117,7 @@ export function McpBundleReviewModal({
   integrityWarnings?: string[];
   onCancel: () => void;
   onImport: () => void;
+  canImport?: boolean;
 }) {
   const warning = review ? versionWarning(review.version_status) : null;
   const importReport = review && 'status' in review ? review : null;
@@ -151,7 +153,7 @@ export function McpBundleReviewModal({
               )
       }
       cancelButtonProps={{ style: imported ? { display: 'none' } : undefined }}
-      okButtonProps={{ disabled: loading }}
+      okButtonProps={{ disabled: loading || (!imported && !canImport) }}
       confirmLoading={importing}
       onCancel={onCancel}
       onOk={imported ? onCancel : onImport}

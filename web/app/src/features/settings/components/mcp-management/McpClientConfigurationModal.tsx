@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { buildCodexCommands } from './client-configuration/codex-commands';
 import {
   quotePosix,
@@ -187,6 +188,7 @@ export function McpClientConfigurationModal({
   instance: ConsoleMcpInstance | null;
   onClose: () => void;
 }) {
+  const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const { message } = App.useApp();
   const queryClient = useQueryClient();
@@ -307,7 +309,7 @@ export function McpClientConfigurationModal({
           key="delete"
           danger
           icon={<DeleteOutlined />}
-          disabled={!saved}
+          disabled={!saved || !can('mcp.client_credential.delete')}
           hidden={clientTab === 'chatgpt'}
           loading={deleteMutation.isPending}
           onClick={() => deleteMutation.mutate()}
@@ -318,7 +320,7 @@ export function McpClientConfigurationModal({
           key="save"
           type="primary"
           icon={<SaveOutlined />}
-          disabled={!apiKey.trim()}
+          disabled={!apiKey.trim() || !can('mcp.client_credential.save')}
           hidden={clientTab === 'chatgpt'}
           loading={saveMutation.isPending}
           onClick={() => saveMutation.mutate()}

@@ -1,3 +1,4 @@
+import { useAuthStore } from '../../../../../../state/auth-store';
 import { i18nText } from '../../../../../../shared/i18n/text';
 import { App } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -87,6 +88,7 @@ async function openEditor() {
 
 describe('MCP return default editor', () => {
   beforeEach(() => {
+    useAuthStore.setState({ csrfToken: 'csrf-123', actor: { id: 'root-1', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace-1' } });
     api.updateSettingsMcpTool.mockReset();
     api.updateSettingsMcpTool.mockResolvedValue(tool);
     window.history.replaceState(null, '', '/settings/mcp-management');

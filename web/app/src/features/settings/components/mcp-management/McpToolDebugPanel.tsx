@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import {
   Alert,
   Button,
@@ -163,6 +164,7 @@ export function McpToolDebugPanel({
   operationLabel?: string | null;
   outputMapping: Record<string, unknown>;
 }) {
+  const can = useConsoleOperationAccess();
   const normalizedInputMapping = useMemo(
     () => normalizeInputMapping(inputMapping),
     [inputMapping]
@@ -268,7 +270,7 @@ export function McpToolDebugPanel({
   };
 
   const canRunDebug =
-    debugFields.length > 0 && Boolean(interfaceId && executeDebug);
+    can('mcp.debug.execute') && debugFields.length > 0 && Boolean(interfaceId && executeDebug);
   const debugResultTitle =
     debugResultMode === 'debug_details' ? '完整内容' : '返回值';
 

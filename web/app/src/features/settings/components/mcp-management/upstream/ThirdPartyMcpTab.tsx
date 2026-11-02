@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
 import ExperimentOutlined from '@ant-design/icons/es/icons/ExperimentOutlined';
@@ -256,12 +257,12 @@ function SchemaFields({ schema }: { schema: unknown }) {
 }
 
 function useUpstreamMcpController({
-  canManage,
   onImported
 }: {
-  canManage: boolean;
+  canManage?: boolean;
   onImported: () => void;
 }) {
+  const can = useConsoleOperationAccess();
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
@@ -301,6 +302,9 @@ function useUpstreamMcpController({
 
   const saveMutation = useMutation({
     mutationFn: async (values: ConnectionFormValues) => {
+      if (!can(editingConnection ? 'mcp.upstream_connections.update' : 'mcp.upstream_connections.create')) return;
+      if ((values.token || values.header_value) && !can('mcp.upstream_credentials.update')) return;
+      if (editingConnection && values.auth_type === 'none' && editingConnection.auth_type !== 'none' && !can('mcp.upstream_credentials.delete')) return;
       validateConnectionCredential(values);
       const body: SaveConsoleMcpUpstreamConnectionBody = {
         name: values.name,
@@ -431,6 +435,30 @@ function useUpstreamMcpController({
     }
   });
 
+  const saveCredentialsMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingConnection || !can('mcp.upstream_credentials.update')) return;
+      const values = form.getFieldsValue();
+      if (editingConnection.auth_type === 'bearer' && values.token) {
+        await saveSettingsMcpUpstreamConnectionCredentials(editingConnection.connection_id, { kind: 'bearer', token: values.token }, csrfToken);
+      } else if (editingConnection.auth_type === 'custom_header' && values.header_value && editingConnection.custom_header_name) {
+        await saveSettingsMcpUpstreamConnectionCredentials(editingConnection.connection_id, { kind: 'custom_header', header_name: editingConnection.custom_header_name, header_value: values.header_value }, csrfToken);
+      }
+    },
+    onSuccess: async () => {
+      form.setFieldsValue({ token: undefined, header_value: undefined });
+      await queryClient.invalidateQueries({ queryKey: settingsMcpUpstreamConnectionsQueryKey });
+    }
+  });
+  const deleteCredentialsMutation = useMutation({
+    mutationFn: async () => {
+      if (editingConnection && can('mcp.upstream_credentials.delete')) {
+        await deleteSettingsMcpUpstreamConnectionCredentials(editingConnection.connection_id, csrfToken);
+      }
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsMcpUpstreamConnectionsQueryKey })
+  });
+
   const testCurrentForm = async () => {
     try {
       const values = await form.validateFields();
@@ -550,7 +578,6 @@ function useUpstreamMcpController({
                 aria-label={`${text('upstream_edit_connection')} ${record.name}`}
                 icon={<EditOutlined />}
                 size="small"
-                disabled={!canManage}
                 onClick={() => {
                   setEditingConnection(record);
                   form.setFieldsValue({
@@ -572,7 +599,7 @@ function useUpstreamMcpController({
                 aria-label={`${text('upstream_test_connection')} ${record.name}`}
                 icon={<ExperimentOutlined />}
                 size="small"
-                disabled={!canManage}
+                disabled={!can('test_connection')}
                 onClick={() => {
                   setTestResultOpen(true);
                   testMutation.reset();
@@ -588,7 +615,7 @@ function useUpstreamMcpController({
                 aria-label={`${text('upstream_discover_tools')} ${record.name}`}
                 icon={<SearchOutlined />}
                 size="small"
-                disabled={!canManage}
+                disabled={!can('mcp.upstream_connections.discover')}
                 onClick={() => {
                   setDiscoverConnection(record);
                   setToolKeyword('');
@@ -607,14 +634,14 @@ function useUpstreamMcpController({
                 danger
                 icon={<DeleteOutlined />}
                 size="small"
-                disabled={!canManage}
+                disabled={!can('mcp.upstream_connections.delete')}
               />
             </Popconfirm>
           </Space>
         )
       }
     ],
-    [canManage, deleteMutation, discoverMutation, form, testMutation]
+    [can, deleteMutation, discoverMutation, form, testMutation]
   );
 
   const discoveredTools = discoverMutation.data?.items ?? [];
@@ -673,9 +700,9 @@ function useUpstreamMcpController({
     }
   ];
   return {
-    connectionsQuery, canManage, setEditingConnection, form, setConnectionModalOpen,
+    connectionsQuery, can, setEditingConnection, form, setConnectionModalOpen,
     columns, connectionModalOpen, editingConnection, saveMutation, testMutation,
-    testCurrentForm, authType, testResultOpen, setTestResultOpen, message,
+    testCurrentForm, saveCredentialsMutation, deleteCredentialsMutation, authType, testResultOpen, setTestResultOpen, message,
     discoverConnection, selectedToolNames, importMutation, setDiscoverConnection,
     discoverMutation, toolKeyword, setToolKeyword, discoveryColumns, filteredTools
   };
@@ -683,9 +710,9 @@ function useUpstreamMcpController({
 
 export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpController>[0]) {
   const {
-    connectionsQuery, canManage, setEditingConnection, form, setConnectionModalOpen,
+    connectionsQuery, can, setEditingConnection, form, setConnectionModalOpen,
     columns, connectionModalOpen, editingConnection, saveMutation, testMutation,
-    testCurrentForm, authType, testResultOpen, setTestResultOpen,
+    testCurrentForm, saveCredentialsMutation, deleteCredentialsMutation, authType, testResultOpen, setTestResultOpen,
     discoverConnection, selectedToolNames, importMutation, setDiscoverConnection,
     discoverMutation, toolKeyword, setToolKeyword, discoveryColumns, filteredTools
   } = useUpstreamMcpController(props);
@@ -710,7 +737,7 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
           aria-label={text('upstream_new_connection')}
           type="primary"
           icon={<PlusOutlined />}
-          disabled={!canManage}
+          disabled={!can('mcp.upstream_connections.create')}
           onClick={() => {
             setEditingConnection(null);
             form.resetFields();
@@ -754,17 +781,27 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
           <Button
             key="test"
             aria-label={text('upstream_test')}
-            disabled={!canManage || saveMutation.isPending}
+            disabled={!can('test_draft_connection') || saveMutation.isPending}
             loading={testMutation.isPending}
             onClick={() => void testCurrentForm()}
           >
             {text('upstream_test')}
           </Button>,
+          editingConnection && editingConnection.auth_type !== 'none' ? (
+            <Button key="credentials" disabled={!can('mcp.upstream_credentials.update')} loading={saveCredentialsMutation.isPending} onClick={() => saveCredentialsMutation.mutate()}>
+              {text('upstream_save_credentials')}
+            </Button>
+          ) : null,
+          editingConnection && editingConnection.credentials_status === 'configured' ? (
+            <Button key="clear-credentials" danger disabled={!can('mcp.upstream_credentials.delete')} loading={deleteCredentialsMutation.isPending} onClick={() => deleteCredentialsMutation.mutate()}>
+              {text('clear_credential')}
+            </Button>
+          ) : null,
           <Button
             key="save"
             aria-label={i18nText('settings', 'auto.save')}
             type="primary"
-            disabled={!canManage || testMutation.isPending}
+            disabled={!can(editingConnection ? 'mcp.upstream_connections.update' : 'mcp.upstream_connections.create') || testMutation.isPending}
             loading={saveMutation.isPending}
             onClick={() => form.submit()}
           >
@@ -777,6 +814,7 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
         <Form
           form={form}
           layout="vertical"
+          disabled={!can(editingConnection ? 'mcp.upstream_connections.update' : 'mcp.upstream_connections.create')}
           onFinish={(values) => saveMutation.mutate(values)}
         >
           <Form.Item
@@ -821,7 +859,7 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
                   'bearer',
                   'custom_header'
                 ] as ConsoleMcpUpstreamAuthType[]
-              ).map((value) => ({ value, label: value }))}
+              ).map((value) => ({ value, label: value, disabled: value === 'none' && Boolean(editingConnection && editingConnection.auth_type !== 'none') && !can('mcp.upstream_credentials.delete') }))}
             />
           </Form.Item>
           {authType === 'bearer' ? (
@@ -836,7 +874,7 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
                 }
               ]}
             >
-              <Input.Password autoComplete="new-password" />
+              <Input.Password disabled={!can('mcp.upstream_credentials.update')} autoComplete="new-password" />
             </Form.Item>
           ) : null}
           {authType === 'custom_header' ? (
@@ -859,7 +897,7 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
                   }
                 ]}
               >
-                <Input.Password autoComplete="new-password" />
+                <Input.Password disabled={!can('mcp.upstream_credentials.update')} autoComplete="new-password" />
               </Form.Item>
             </>
           ) : null}
@@ -934,7 +972,7 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
         title={text('upstream_discover_import_title')}
         okText={text('upstream_import_selected')}
         cancelText={i18nText('settings', 'auto.cancel')}
-        okButtonProps={{ disabled: selectedToolNames.length === 0 }}
+        okButtonProps={{ disabled: selectedToolNames.length === 0 || !can('mcp.upstream_tools.import') }}
         confirmLoading={importMutation.isPending}
         onOk={() => importMutation.mutate()}
         onCancel={() => setDiscoverConnection(null)}

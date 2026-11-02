@@ -38,7 +38,6 @@ type InstanceEditorSession = Pick<
 
 /** Owns instance save/copy/delete, export/download and connection/policy dialog selection. */
 export function useMcpInstanceActions(
-  canManage: boolean,
   catalog: ConsoleMcpCatalog,
   {
     editingInstance,
@@ -53,7 +52,6 @@ export function useMcpInstanceActions(
   const exportDefaults = useQuery({
     queryKey: settingsMcpBundleExportDefaultsQueryKey,
     queryFn: fetchSettingsMcpBundleExportDefaults,
-    enabled: canManage
   });
   const [instanceForm] = Form.useForm<InstanceFormValues>();
   const [copyInstanceForm] = Form.useForm<CopyInstanceFormValues>();

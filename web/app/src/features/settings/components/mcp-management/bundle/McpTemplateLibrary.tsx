@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import CloudDownloadOutlined from '@ant-design/icons/es/icons/CloudDownloadOutlined';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
@@ -85,7 +86,6 @@ function versionRows(bundle: SettingsMcpTemplateLibraryBundle) {
 }
 
 export function McpTemplateLibrary({
-  canManage = true,
   enabled = true,
   onImportOpen,
   variant = 'page'
@@ -95,6 +95,7 @@ export function McpTemplateLibrary({
   onImportOpen?: () => void;
   variant?: 'page' | 'compact';
 }) {
+  const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
   const { message: messageApi } = App.useApp();
@@ -105,7 +106,7 @@ export function McpTemplateLibrary({
   const libraryQuery = useQuery({
     queryKey: settingsMcpTemplateLibraryQueryKey,
     queryFn: fetchSettingsMcpTemplateLibrary,
-    enabled: canManage && enabled,
+    enabled,
     retry: false
   });
   const selected =
@@ -311,6 +312,7 @@ export function McpTemplateLibrary({
                   'settingsMcpManagement',
                   'auto.mcp_bundle_import'
                 )}
+                disabled={!can('mcp.bundle_library.import')}
                 loading={pending.has(operationKey(bundle, 'prepare'))}
                 onClick={() => void prepareImport(bundle)}
               >
@@ -325,6 +327,7 @@ export function McpTemplateLibrary({
                   'settingsMcpManagement',
                   'auto.mcp_template_sync'
                 )}
+                disabled={!can('mcp.bundle_library.sync')}
                 loading={pending.has(syncKey)}
                 onClick={() => void syncBundle(bundle)}
               >
@@ -411,6 +414,7 @@ export function McpTemplateLibrary({
                   'settingsMcpManagement',
                   'auto.mcp_template_sync'
                 )}
+                disabled={!can('mcp.bundle_library.sync')}
                 loading={pending.has(syncKey)}
                 onClick={() => void syncBundle(selected, row.bundle_version)}
               >
@@ -425,6 +429,7 @@ export function McpTemplateLibrary({
                     'settingsMcpManagement',
                     'auto.mcp_template_import_version'
                   )}
+                  disabled={!can('mcp.bundle_library.import')}
                   loading={pending.has(
                     operationKey(selected, 'prepare', row.bundle_version)
                   )}
@@ -440,6 +445,7 @@ export function McpTemplateLibrary({
                 {selected.current_bundle_version !== row.bundle_version ? (
                   <Button
                     type="link"
+                    disabled={!can('mcp.bundle_library.current.switch')}
                     loading={pending.has(currentKey)}
                     onClick={() =>
                       void setCurrent(selected, row.bundle_version)
@@ -459,7 +465,7 @@ export function McpTemplateLibrary({
                     'auto.mcp_template_repair'
                   )}
                   loading={pending.has(repairKey)}
-                  disabled={!row.remote}
+                  disabled={!row.remote || !can('mcp.bundle_library.releases.repair')}
                   onClick={() => void repair(selected, row.bundle_version)}
                 >
                   {i18nText(
@@ -482,6 +488,7 @@ export function McpTemplateLibrary({
                       'settingsMcpManagement',
                       'auto.mcp_template_delete'
                     )}
+                    disabled={!can('mcp.bundle_library.releases.delete')}
                     loading={pending.has(deleteKey)}
                   >
                     {i18nText(
@@ -498,7 +505,6 @@ export function McpTemplateLibrary({
     }
   ];
 
-  if (!canManage) return null;
 
   return (
     <div className={`mcp-template-library mcp-template-library--${variant}`}>

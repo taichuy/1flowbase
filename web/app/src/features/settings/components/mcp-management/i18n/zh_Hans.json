@@ -214,7 +214,8 @@
     "proxy_local_arguments": "本地 arguments",
     "proxy_remote_arguments": "远端 arguments",
     "proxy_upstream_result": "第三方原始结果",
-    "proxy_mapped_result": "本地映射结果"
+    "proxy_mapped_result": "本地映射结果",
+    "upstream_save_credentials": "保存凭据"
   },
   "mcp_mapping_default_value": "默认值",
   "mcp_mapping_hidden": "隐藏",

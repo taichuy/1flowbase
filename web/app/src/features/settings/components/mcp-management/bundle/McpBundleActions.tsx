@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Button, Modal, Space } from 'antd';
@@ -20,7 +21,8 @@ import {
 import { downloadMcpBundle } from './mcp-bundle-download';
 import { McpTemplateLibrary } from './McpTemplateLibrary';
 
-export function McpBundleActions({ canManage }: { canManage: boolean }) {
+export function McpBundleActions(_props: { canManage?: boolean } = {}) {
+  const can = useConsoleOperationAccess();
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
@@ -33,7 +35,6 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
   const exportDefaults = useQuery({
     queryKey: settingsMcpBundleExportDefaultsQueryKey,
     queryFn: fetchSettingsMcpBundleExportDefaults,
-    enabled: canManage
   });
   const closeImportFlow = useCallback(() => setImportSource(null), []);
   const refreshMcpCatalog = useCallback(async () => {
@@ -41,10 +42,6 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
       queryKey: settingsMcpCatalogQueryKey
     });
   }, [queryClient]);
-
-  if (!canManage) {
-    return null;
-  }
 
   function handleFile(file: File) {
     setImportSource({ kind: 'upload', file });
@@ -88,7 +85,7 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
         <Button icon={<UploadOutlined />} onClick={() => setSourceOpen(true)}>
           {i18nText('settingsMcpManagement', 'auto.mcp_bundle_import')}
         </Button>
-        <Button icon={<UploadOutlined />} onClick={() => setExportOpen(true)}>
+        <Button disabled={!can('export_mcp_bundle')} icon={<UploadOutlined />} onClick={() => setExportOpen(true)}>
           {i18nText('settingsMcpManagement', 'auto.mcp_bundle_export')}
         </Button>
       </Space>
@@ -106,6 +103,7 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <Button
             block
+            disabled={!can('import_uploaded_mcp_bundle')}
             icon={<UploadOutlined />}
             onClick={() => fileInputRef.current?.click()}
           >
