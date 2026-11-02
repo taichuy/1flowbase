@@ -1,3 +1,5 @@
+import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
+import { preferenceWriteCases, setPreferenceActor } from '../../../../test/fixtures/preference-auth';
 import { App } from 'antd';
 import {
   fireEvent,
@@ -6,7 +8,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import { AppProviders } from '../../../../app/AppProviders';
 import {
   appI18n,
@@ -18,7 +20,6 @@ import {
   fetchApplicationRuns,
   exportSelectedApplicationRunsTraceDumpZip
 } from '../../api/runtime';
-import { useAuthStore } from '../../../../state/auth-store';
 import type { ApplicationRunSummary } from '../../api/runtime';
 
 vi.mock('../../api/runtime', async (importOriginal) => ({
@@ -89,6 +90,7 @@ beforeEach(async () => {
   window.history.replaceState({}, '', '/route/pages/logs');
   await loadApplicationI18nResources();
   await appI18n.changeLanguage('zh_Hans');
+  setPreferenceActor({ role: 'root', permissions: [] });
   useAuthStore.setState({ csrfToken: 'test-csrf' });
   vi.mocked(fetchApplicationRuns).mockResolvedValue({
     items: [run('run-a', 'app-a'), run('run-b', 'app-b')],
@@ -97,6 +99,8 @@ beforeEach(async () => {
     page_size: 20
   });
 });
+
+afterEach(() => { resetAuthStore(); vi.restoreAllMocks(); });
 
 test('opens each row with its own application and retains its owner when the row leaves the page', async () => {
   mount();
@@ -203,3 +207,28 @@ test('restores an in-progress import with its chosen application after reload', 
     )
   ).toBeNull();
 });
+
+
+test.each(preferenceWriteCases.filter(({ actor }) => actor !== null))(
+  'remembers the import target only with metadata authority: $name',
+  async ({ actor, canPersist }) => {
+    setPreferenceActor({ ...actor!, permissions: [
+      ...actor!.permissions, 'create_run_archive_upload_session',
+      'upload_run_archive_chunk', 'complete_run_archive_upload_session'
+    ] });
+    const key = '1flowbase.application.all-agent-flow.run_archive_import_target';
+    window.localStorage.setItem(key, 'app-a');
+    const { unmount } = mount();
+    await screen.findAllByRole('button', { name: '查看运行详情' });
+    fireEvent.click(screen.getByRole('button', { name: '导入运行归档' }));
+    const target = await screen.findByRole('combobox', { name: '选择导入目标应用' });
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    fireEvent.mouseDown(target);
+    fireEvent.click(await screen.findByText('Beta', { selector: '.ant-select-item-option-content' }));
+    expect(target.closest('.ant-select')).toHaveTextContent('Beta');
+    expect(window.localStorage.getItem(key)).toBe(canPersist ? 'app-b' : 'app-a');
+    if (canPersist) expect(write).toHaveBeenCalledWith(key, 'app-b');
+    else expect(write).not.toHaveBeenCalled();
+    unmount();
+  }
+);

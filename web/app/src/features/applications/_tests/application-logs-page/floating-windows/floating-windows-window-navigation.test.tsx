@@ -1,3 +1,4 @@
+import { setPreferenceActor } from '../../../../../test/fixtures/preference-auth';
 import { describe, test, expect } from 'vitest';
 import { mockViewportSize, runtimeApi } from './floating-windows.fixtures';
 import { App as AntdApp } from 'antd';
@@ -19,6 +20,7 @@ import {
 
 describe('ApplicationLogsPage - floating windows shell', () => {
   test('drags and resizes floating run detail window', async () => {
+    setPreferenceActor({ role: 'root', permissions: [] });
     mockViewportSize(1280, 900);
 
     render(
