@@ -17,6 +17,8 @@ import { NotificationAuthorization } from '../NotificationAuthorization';
 import { formatDateTime } from '../../../../../shared/i18n/format';
 import { appI18n } from '../../../../../shared/i18n/app-i18n';
 import { NotificationInstanceDrawer } from '../NotificationInstanceDrawer';
+import { NotificationsPage } from '../NotificationsPage';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
 
 const type: NotificationType = {
@@ -114,7 +116,7 @@ beforeEach(() => {
     }
   };
   saved.mockReset();
-  useAuthStore.setState({ csrfToken: 'csrf' });
+  useAuthStore.setState({ csrfToken: 'csrf', actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace-1' }, me: null });
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
@@ -581,3 +583,57 @@ async function mouseDown(...args: Parameters<typeof fireEvent.mouseDown>) {
     fireEvent.mouseDown(...args);
   });
 }
+
+function setOperations(permissions: string[]) {
+  useAuthStore.setState({
+    actor: { id: 'member', account: 'member', effective_display_role: 'member', current_workspace_id: 'workspace-1' },
+    me: { id: 'member', account: 'member', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: 'member', permissions }
+  });
+}
+
+test('viewing a pending authorization cannot begin, poll or cancel without its operation', async () => {
+  setOperations(['notifications.instances.get']);
+  vi.useFakeTimers();
+  await renderSettled(<NotificationAuthorization instance_id={instance.id} descriptor={type.authorization!} authorization={pending} beginOnMount onChanged={saved} />);
+  expect(screen.getByRole('button', { name: '取消授权' })).toBeDisabled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  expect(commands).toHaveLength(0);
+});
+
+test('authorization-only permission allows authorization while instance save stays disabled', async () => {
+  setOperations(['notifications.instances.get', 'notifications.instances.authorization']);
+  await renderSettled(<NotificationInstanceDrawer instance={instance} types={[type]} onClose={vi.fn()} onSaved={saved} />);
+  expect(screen.getByRole('button', { name: '保存修改' })).toBeDisabled();
+  expect(screen.getByRole('textbox', { name: '渠道名称' })).toBeDisabled();
+  await click(screen.getByRole('button', { name: '扫码授权' }));
+  expect(commands[0]?.body).toEqual({ type: 'begin', action: 'scan' });
+  expect(commands.every((command) => command.path.endsWith('/authorization'))).toBe(true);
+});
+
+test.each([
+  [[], false, false, false],
+  [['notifications.instances.create'], true, false, false],
+  [['notifications.instances.update'], false, true, false],
+  [['notifications.instances.delete'], false, false, true]
+] as const)('channel list grants %j enable only the matching mutation', async (permissions, createEnabled, updateEnabled, deleteEnabled) => {
+  setOperations([...permissions, 'notifications.instances.list']);
+  window.history.replaceState({}, '', '/settings/communications?tab=channels');
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+    const path = new URL(input, 'http://localhost').pathname;
+    return respond(path.endsWith('/types') ? [type] : [{ ...instance, status: 'enabled', available: true }]);
+  }));
+  try {
+    await renderSettled(<QueryClientProvider client={client}><NotificationsPage /></QueryClientProvider>);
+    await screen.findByRole('button', { name: '我的渠道' });
+    expect(screen.getByRole('button', { name: /新\s*增/ }).hasAttribute('disabled')).toBe(!createEnabled);
+    expect(screen.getByRole('switch', { name: '我的渠道: 状态' }).hasAttribute('disabled')).toBe(!updateEnabled);
+    expect(screen.getByRole('button', { name: /删\s*除/ }).hasAttribute('disabled')).toBe(!deleteEnabled);
+    expect(screen.getByRole('button', { name: '我的渠道' })).toBeEnabled();
+  } finally {
+    cleanup();
+    await client.cancelQueries();
+    client.clear();
+    window.history.replaceState({}, '', '/');
+  }
+});

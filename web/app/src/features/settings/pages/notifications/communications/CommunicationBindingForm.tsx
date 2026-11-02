@@ -14,6 +14,7 @@ import {
   putCommunicationBinding
 } from '../../../../notifications/api/communications';
 import { useAuthStore } from '../../../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { selectNavigationQueryScope } from '../../../../../state/navigation-query-scope';
 import { CommunicationCommandsTable } from './CommunicationCommandsTable';
 export interface CommunicationBindingHandle {
@@ -26,6 +27,8 @@ export const CommunicationBindingForm = forwardRef<
 >(function CommunicationBindingForm({ instance_id, receive }, ref) {
   const { t } = useTranslation('notifications');
   const scope = useAuthStore(selectNavigationQueryScope);
+  const can = useConsoleOperationAccess();
+  const canWrite = can('communications.binding.update');
   const csrfToken = useAuthStore((s) => s.csrfToken) ?? '';
   const [draft, setDraft] = useState<CommunicationBindingInput>({
     application_id: '',
@@ -67,6 +70,7 @@ export const CommunicationBindingForm = forwardRef<
       }));
   }, [binding.data, dirty, receive.default_system_prompt]);
   const change = (value: Partial<CommunicationBindingInput>) => {
+    if (!canWrite) return;
     setDirty(true);
     setDraft((d) => ({ ...d, ...value }));
   };
@@ -94,6 +98,7 @@ export const CommunicationBindingForm = forwardRef<
       return valid;
     },
     save: async (id) => {
+      if (!canWrite) throw new Error('operation not permitted');
       let value = {
         ...draft,
         command_settings: [...command_settings.values()]
@@ -129,7 +134,7 @@ export const CommunicationBindingForm = forwardRef<
     <Form
       layout="vertical"
       component={false}
-      disabled={!!instance_id && !binding.isSuccess}
+      disabled={!canWrite || (!!instance_id && !binding.isSuccess)}
     >
       {(options.isError || binding.isError || tables.isError) && (
         <Alert type="error" title={t('binding_load_failed')} />
@@ -160,7 +165,7 @@ export const CommunicationBindingForm = forwardRef<
           allowClear
           aria-label={t('model')}
           value={draft.model ?? undefined}
-          disabled={!capabilities?.model_selection_enabled}
+          disabled={!canWrite || !capabilities?.model_selection_enabled}
           options={capabilities?.models.map((m) => ({
             value: m.id,
             label: m.name ?? m.id
@@ -175,7 +180,7 @@ export const CommunicationBindingForm = forwardRef<
           allowClear
           aria-label={t('reasoning_effort')}
           value={draft.reasoning_effort ?? undefined}
-          disabled={!capabilities?.reasoning_effort_enabled || !model}
+          disabled={!canWrite || !capabilities?.reasoning_effort_enabled || !model}
           options={model?.reasoning_efforts.map((value) => ({
             value,
             label: value
@@ -227,7 +232,7 @@ export const CommunicationBindingForm = forwardRef<
             }))}
             loading={options.isPending}
             disabled={
-              options.isPending || (!!instance_id && !binding.isSuccess)
+              !canWrite || options.isPending || (!!instance_id && !binding.isSuccess)
             }
             onChange={(setting) => {
               command_settings.set(setting.command_id, setting);

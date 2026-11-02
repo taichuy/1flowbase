@@ -20,6 +20,7 @@ import type {
   NotificationInstanceListInput
 } from '@1flowbase/api-client';
 import { useAuthStore } from '../../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { selectNavigationQueryScope } from '../../../../state/navigation-query-scope';
 import {
   notificationInstancesOptions,
@@ -114,6 +115,10 @@ function NotificationChannelsPage() {
   const scope = useAuthStore(selectNavigationQueryScope);
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const client = useQueryClient();
+  const can = useConsoleOperationAccess();
+  const canCreate = can('notifications.instances.create');
+  const canUpdate = can('notifications.instances.update');
+  const canDelete = can('notifications.instances.delete');
   const [filters, setFilters] = useState<NotificationInstanceListInput>({});
   const instances = useQuery(notificationInstancesOptions(scope, filters));
   const types = useQuery(notificationTypesOptions(scope));
@@ -212,9 +217,9 @@ function NotificationChannelsPage() {
             <Switch
               aria-label={`${item.display_name}: ${t('status')}`}
               checked={item.status === 'enabled'}
-              disabled={statusPending}
+              disabled={!canUpdate || statusPending}
               loading={statusPending && statusVariables?.id === item.id}
-              onChange={() => changeStatus(item)}
+              onChange={() => { if (canUpdate) changeStatus(item); }}
             />
             {availability(item) && (
               <Typography.Text type="secondary">
@@ -273,13 +278,15 @@ function NotificationChannelsPage() {
             </Button>
             <Popconfirm
               title={t('delete_confirm')}
-              onConfirm={() => deleteInstance(item.id)}
+              disabled={!canDelete}
+              onConfirm={() => { if (canDelete) return deleteInstance(item.id); }}
             >
               <Button
                 danger
                 type="link"
                 className="notifications-page__action"
                 loading={deletePending && deleteVariables === item.id}
+                disabled={!canDelete}
               >
                 {t('delete')}
               </Button>
@@ -290,6 +297,8 @@ function NotificationChannelsPage() {
     ],
     [
       t,
+      canUpdate,
+      canDelete,
       editInstance,
       availability,
       types.data,
@@ -340,8 +349,8 @@ function NotificationChannelsPage() {
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                disabled={!types.data?.some((type) => type.available)}
-                onClick={() => setEditing({})}
+                disabled={!canCreate || !types.data?.some((type) => type.available)}
+                onClick={() => { if (canCreate) setEditing({}); }}
               >
                 {t('create')}
               </Button>
