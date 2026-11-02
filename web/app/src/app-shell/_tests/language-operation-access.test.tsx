@@ -52,7 +52,7 @@ afterEach(() => resetAuthStore());
 
 describe('language preference operation access', () => {
   it.each(
-    [[], ['console.identity.me.patch'], ['assistant.settings.update']].map(
+    [[], ['patch_me'], ['assistant_update_settings']].map(
       (permissions) => ({ permissions })
     )
   )(
@@ -83,7 +83,7 @@ describe('language preference operation access', () => {
 
   it.each([
     { role: 'root', permissions: [] },
-    { role: 'member', permissions: ['console.identity.me.meta.patch'] }
+    { role: 'member', permissions: ['patch_me_meta'] }
   ])(
     'allows the exact preference operation for $role',
     async ({ role, permissions }) => {

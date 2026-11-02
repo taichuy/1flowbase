@@ -54,7 +54,7 @@ function authenticate(
       preferred_locale: preferredLocale,
       meta,
       effective_display_role: 'member',
-      permissions: ['application.create.all', 'plugin_config.configure.all', 'console.identity.me.patch']
+      permissions: ['application.create.all', 'plugin_config.configure.all', 'patch_me']
     }
   });
 }
@@ -230,7 +230,7 @@ describe('MePage', () => {
 
   test('reader keeps profile details visible while profile editing is disabled', async () => {
     const me = useAuthStore.getState().me!;
-    useAuthStore.getState().setMe({ ...me, permissions: ['console.identity.me.meta.patch'] });
+    useAuthStore.getState().setMe({ ...me, permissions: ['patch_me_meta'] });
     renderApp('/me/profile');
     expect(await screen.findByRole('heading', { name: '个人资料', level: 4 })).toBeInTheDocument();
     expect(screen.getByText('root@example.com')).toBeInTheDocument();

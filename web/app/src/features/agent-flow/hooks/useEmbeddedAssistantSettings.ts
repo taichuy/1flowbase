@@ -82,7 +82,7 @@ export function useEmbeddedAssistantSettings({
           hasConsoleOperationAccess(
             auth.actor?.effective_display_role,
             auth.me?.permissions,
-            'assistant.settings.update'
+            'assistant_update_settings'
           )
         ) {
           if (!csrfToken)

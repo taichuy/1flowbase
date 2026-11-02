@@ -111,7 +111,7 @@ export function EmbeddedAgentAssistantPreview({
   clientTools?: import('@1flowbase/api-client').ConsoleAssistantClientTools;
 }) {
   const canAccess = useConsoleOperationAccess();
-  const canUpdateSettings = canAccess('assistant.settings.update');
+  const canUpdateSettings = canAccess('assistant_update_settings');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
@@ -595,7 +595,7 @@ export function EmbeddedAgentAssistantPreview({
       !hasConsoleOperationAccess(
         auth.actor?.effective_display_role,
         auth.me?.permissions,
-        'console.identity.me.meta.patch'
+        'patch_me_meta'
       )
     ) {
       return;
@@ -620,7 +620,7 @@ export function EmbeddedAgentAssistantPreview({
       !hasConsoleOperationAccess(
         auth.actor?.effective_display_role,
         auth.me?.permissions,
-        'assistant.settings.update'
+        'assistant_update_settings'
       )
     )
       return;

@@ -168,7 +168,7 @@ export function usePersistedDataTableConfiguration<T extends object>({
   storageKey: string;
 }): DataTableConfiguration {
   const canAccess = useConsoleOperationAccess();
-  const canUpdatePreferences = canAccess('console.identity.me.meta.patch');
+  const canUpdatePreferences = canAccess('patch_me_meta');
   const storedState = useMemo(
     () => readStoredState(storageKey, columns),
     [columns, storageKey]

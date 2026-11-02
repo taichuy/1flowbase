@@ -496,9 +496,9 @@ describe('EmbeddedAgentAssistant', () => {
   });
   test.each([
     { permissions: [], allowed: false },
-    { permissions: ['console.identity.me.patch'], allowed: false },
-    { permissions: ['console.identity.me.meta.patch'], allowed: false },
-    { permissions: ['assistant.settings.update'], allowed: true }
+    { permissions: ['patch_me'], allowed: false },
+    { permissions: ['patch_me_meta'], allowed: false },
+    { permissions: ['assistant_update_settings'], allowed: true }
   ])(
     'personal assistant settings preserve viewing with exact grants $permissions',
     async ({ permissions, allowed }) => {

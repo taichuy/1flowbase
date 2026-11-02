@@ -58,7 +58,7 @@ export function useUserPreferenceDataTableConfiguration<T extends object>({
   preferenceKey: string;
 }): DataTableConfiguration {
   const canAccess = useConsoleOperationAccess();
-  const canUpdatePreferences = canAccess('console.identity.me.meta.patch');
+  const canUpdatePreferences = canAccess('patch_me_meta');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const me = useAuthStore((state) => state.me);
   const setMe = useAuthStore((state) => state.setMe);
@@ -136,7 +136,7 @@ export function useUserPreferenceDataTableConfiguration<T extends object>({
           !hasConsoleOperationAccess(
             auth.actor?.effective_display_role,
             auth.me?.permissions,
-            'console.identity.me.meta.patch'
+            'patch_me_meta'
           )
         )
           return;

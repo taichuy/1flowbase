@@ -20,7 +20,7 @@ const PROFILE_LOCALE_BY_MENU_KEY = {
 export function LanguageChromeMenu() {
   const { t } = useTranslation('appShell');
   const canAccess = useConsoleOperationAccess();
-  const canUpdatePreferences = canAccess('console.identity.me.meta.patch');
+  const canUpdatePreferences = canAccess('patch_me_meta');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const me = useAuthStore((state) => state.me);
   const setMe = useAuthStore((state) => state.setMe);

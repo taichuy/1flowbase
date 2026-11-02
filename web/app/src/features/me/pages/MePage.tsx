@@ -36,7 +36,7 @@ export function MePage({
   const setMe = useAuthStore((state) => state.setMe);
   const setAnonymous = useAuthStore((state) => state.setAnonymous);
   const canAccess = useConsoleOperationAccess();
-  const canUpdateProfile = canAccess('console.identity.me.patch');
+  const canUpdateProfile = canAccess('patch_me');
   const visibleSections = getMeSections();
   const fallbackSection = visibleSections[0];
   const activeSection = visibleSections.find(

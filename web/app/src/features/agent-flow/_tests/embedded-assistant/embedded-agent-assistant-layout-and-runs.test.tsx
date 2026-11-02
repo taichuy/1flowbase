@@ -29,17 +29,17 @@ describe('EmbeddedAgentAssistant', () => {
     { role: 'member', permissions: [], persists: false },
     {
       role: 'member',
-      permissions: ['console.identity.me.patch'],
+      permissions: ['patch_me'],
       persists: false
     },
     {
       role: 'member',
-      permissions: ['assistant.settings.update'],
+      permissions: ['assistant_update_settings'],
       persists: false
     },
     {
       role: 'member',
-      permissions: ['console.identity.me.meta.patch'],
+      permissions: ['patch_me_meta'],
       persists: true
     }
   ])(

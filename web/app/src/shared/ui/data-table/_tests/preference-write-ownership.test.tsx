@@ -33,7 +33,7 @@ const profile = (visibleColumnKeys: string[]): ConsoleMe => ({
   avatar_url: null,
   introduction: '',
   effective_display_role: 'member',
-  permissions: ['console.identity.me.meta.patch'],
+  permissions: ['patch_me_meta'],
   meta: { ui: { data_tables: { first: table(visibleColumnKeys) } } }
 });
 
@@ -133,7 +133,7 @@ describe('data table preference write ownership', () => {
     unmount();
   });
   it.each(
-    [[], ['console.identity.me.patch'], ['assistant.settings.update']].map(
+    [[], ['patch_me'], ['assistant_update_settings']].map(
       (permissions) => ({ permissions })
     )
   )(

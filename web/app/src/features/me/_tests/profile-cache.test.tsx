@@ -54,7 +54,7 @@ const original: ConsoleMe = {
   avatar_url: null,
   introduction: '',
   effective_display_role: 'member',
-  permissions: ['console.identity.me.patch']
+  permissions: ['patch_me']
 };
 
 afterEach(() => { resetAuthStore(); updateMyProfile.mockReset(); });
@@ -101,7 +101,7 @@ describe('profile cache coherence', () => {
     unmountRemounted();
     client.clear();
   });
-  it.each([{ permissions: [] }, { permissions: ['console.identity.me.meta.patch'] }, { permissions: ['assistant.settings.update'] }])(
+  it.each([{ permissions: [] }, { permissions: ['patch_me_meta'] }, { permissions: ['assistant_update_settings'] }])(
     'rejects a direct profile mutation with unrelated grants %j',
     async ({ permissions }) => {
       const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

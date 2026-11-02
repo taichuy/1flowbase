@@ -70,7 +70,7 @@ const props = {
 };
 beforeEach(() => {
   resetAuthStore();
-  setAccess('member', ['assistant.settings.update']);
+  setAccess('member', ['assistant_update_settings']);
   getSettings.mockReset();
   saveSettings.mockReset();
   getSettings.mockResolvedValue(settings('old'));
@@ -354,15 +354,15 @@ test.each([
   { role: 'member', permissions: [], allowed: false },
   {
     role: 'member',
-    permissions: ['console.identity.me.patch'],
+    permissions: ['patch_me'],
     allowed: false
   },
   {
     role: 'member',
-    permissions: ['console.identity.me.meta.patch'],
+    permissions: ['patch_me_meta'],
     allowed: false
   },
-  { role: 'member', permissions: ['assistant.settings.update'], allowed: true },
+  { role: 'member', permissions: ['assistant_update_settings'], allowed: true },
   { role: 'root', permissions: [], allowed: true }
 ])(
   'automatic model correction respects exact grants $role/$permissions',

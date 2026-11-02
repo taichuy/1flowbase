@@ -379,7 +379,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/assistant/settings",
             console_get(get_settings, Authenticated).patch(
                 update_settings,
-                ConsoleOperation("assistant.settings.update".to_owned()),
+                ConsoleOperation("assistant_update_settings".to_owned()),
             ),
         )
         .route(

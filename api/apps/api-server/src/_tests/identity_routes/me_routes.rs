@@ -54,7 +54,7 @@ async fn personal_writes_require_independent_operations_and_keep_security_self_s
     let (cookie, csrf) = login_and_capture_cookie(&app, "personal-member", "temp-pass").await;
     let writes = [
         (
-            "console.identity.me.patch",
+            "patch_me",
             "/api/console/me",
             json!({
                 "name":"Personal Member", "nickname":"Reader", "email":"personal-member@example.com",
@@ -62,12 +62,12 @@ async fn personal_writes_require_independent_operations_and_keep_security_self_s
             }),
         ),
         (
-            "console.identity.me.meta.patch",
+            "patch_me_meta",
             "/api/console/me/meta",
             json!({"meta":{"ui":{"audit":true}}}),
         ),
         (
-            "assistant.settings.update",
+            "assistant_update_settings",
             "/api/console/assistant/settings",
             json!({"application_id":null,"mcp_instance_ids":[]}),
         ),
