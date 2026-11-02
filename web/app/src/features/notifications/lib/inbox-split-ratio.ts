@@ -1,3 +1,6 @@
+import { useAuthStore } from '../../../state/auth-store';
+import { hasConsoleOperationAccess } from '../../../state/console-operation-access';
+
 const STORAGE_KEY = '1flowbase.notifications.inbox_split_ratio';
 
 export function readInboxSplitRatio(): number | null {
@@ -11,6 +14,15 @@ export function readInboxSplitRatio(): number | null {
 }
 
 export function persistInboxSplitRatio(ratio: number) {
+  const auth = useAuthStore.getState();
+  if (
+    !hasConsoleOperationAccess(
+      auth.actor?.effective_display_role,
+      auth.me?.permissions,
+      'patch_me_meta'
+    )
+  )
+    return;
   try {
     window.localStorage.setItem(
       STORAGE_KEY,
