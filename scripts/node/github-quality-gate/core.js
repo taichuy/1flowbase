@@ -597,7 +597,7 @@ function buildAggregateReport({
       ...component,
       status: 'failed',
       exitCode: 1,
-      failureExcerpt: `Duplicate component scope: ${component.scope}`,
+      failureExcerpt: [component.failureExcerpt, `Duplicate component scope: ${component.scope}`].filter(Boolean).join('\n'),
     };
   });
   const warningFiles = dedupeBy(

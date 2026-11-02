@@ -30,7 +30,7 @@ test('aggregate rejects mixed, missing, and unbound candidate evidence', () => {
     const result = report(artifacts, expected);
     assert.equal(result.status, 'failed');
     assert.equal(result.exitCode, 1);
-    assert.match(result.components.find((c) => c.status === 'failed').failureExcerpt, /Candidate mismatch/u);
+    assert.ok(result.components.some((component) => /Candidate mismatch/u.test(component.failureExcerpt)));
   }
 });
 
