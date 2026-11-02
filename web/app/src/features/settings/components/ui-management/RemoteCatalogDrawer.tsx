@@ -5,11 +5,10 @@ import { UiComponentCatalogContent } from './UiComponentCatalogContent';
 
 export function RemoteCatalogDrawer({
   open,
-  canManage,
   onClose
 }: {
   open: boolean;
-  canManage: boolean;
+  canManage?: boolean;
   onClose: () => void;
 }) {
   const { t } = useTranslation('settingsUiManagement');
@@ -23,7 +22,7 @@ export function RemoteCatalogDrawer({
       title={t('remote_catalog')}
       onClose={onClose}
     >
-      {open ? <UiComponentCatalogContent canManage={canManage} /> : null}
+      {open ? <UiComponentCatalogContent /> : null}
     </ResizableDrawer>
   );
 }

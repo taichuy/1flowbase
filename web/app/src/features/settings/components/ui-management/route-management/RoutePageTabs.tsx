@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -33,14 +34,14 @@ import { useRouteManagementMutation } from '../../../api/ui-management/route-man
 export function RoutePageTabs({
   workspaceId,
   pageId,
-  editable,
   presentation
 }: {
   workspaceId: string;
   pageId: string;
-  editable: boolean;
+  editable?: boolean;
   presentation: 'single' | 'tabs';
 }) {
+  const can = useConsoleOperationAccess();
   const { t } = useTranslation('settingsUiManagement');
   const query = useQuery({
     queryKey: frontstagePageTabsQueryKey(workspaceId, pageId),
@@ -53,7 +54,8 @@ export function RoutePageTabs({
   const tabs = query.data ?? [];
   const pending = mutation.isPending;
   const run = async (action: Parameters<typeof mutation.mutateAsync>[0]) => {
-    if (!editable || pending) return false;
+    const operation = action.kind === 'create-tab' ? 'frontstage.tabs.create' : action.kind === 'delete-tab' ? 'frontstage.tabs.delete' : 'frontstage.tabs.update';
+    if (!can(operation) || pending) return false;
     try {
       await mutation.mutateAsync(action);
       return true;
@@ -95,7 +97,7 @@ export function RoutePageTabs({
     <div className="route-page-tabs">
       <div className="route-page-tabs__toolbar">
         <span>{t('routes_tabs_hint')}</span>
-        {editable ? (
+        {can('frontstage.tabs.create') ? (
           <Button
             icon={<PlusOutlined />}
             onClick={() => open('new')}
@@ -138,14 +140,14 @@ export function RoutePageTabs({
                     : t('routes_default_path')}
                 </span>
               </div>
-              {editable ? (
+              {(can('frontstage.tabs.update') || can('frontstage.tabs.delete')) ? (
                 <Space size={2}>
                   <Tooltip title={t('routes_up')}>
                     <Button
                       type="text"
                       icon={<ArrowUpOutlined />}
                       aria-label={`${t('routes_up')} ${tab.title ?? ''}`}
-                      disabled={pending || index === 0}
+                      disabled={!can('frontstage.tabs.update') || pending || index === 0}
                       onClick={() =>
                         void run({
                           kind: 'reorder-tabs',
@@ -164,7 +166,7 @@ export function RoutePageTabs({
                       type="text"
                       icon={<ArrowDownOutlined />}
                       aria-label={`${t('routes_down')} ${tab.title ?? ''}`}
-                      disabled={pending || index === tabs.length - 1}
+                      disabled={!can('frontstage.tabs.update') || pending || index === tabs.length - 1}
                       onClick={() =>
                         void run({
                           kind: 'reorder-tabs',
@@ -183,7 +185,7 @@ export function RoutePageTabs({
                       type="text"
                       icon={<EditOutlined />}
                       aria-label={`${t('routes_rename')} ${tab.title ?? ''}`}
-                      disabled={pending}
+                      disabled={!can('frontstage.tabs.update') || pending}
                       onClick={() => open(tab)}
                     />
                   </Tooltip>
@@ -193,14 +195,14 @@ export function RoutePageTabs({
                     onConfirm={() =>
                       run({ kind: 'delete-tab', pageId, id: tab.id })
                     }
-                    disabled={pending || tabs.length <= 1}
+                    disabled={!can('frontstage.tabs.delete') || pending || tabs.length <= 1}
                   >
                     <Button
                       type="text"
                       danger
                       icon={<DeleteOutlined />}
                       aria-label={`${t('delete')} ${tab.title ?? ''}`}
-                      disabled={pending || tabs.length <= 1}
+                      disabled={!can('frontstage.tabs.delete') || pending || tabs.length <= 1}
                     />
                   </Popconfirm>
                 </Space>
@@ -216,6 +218,7 @@ export function RoutePageTabs({
           if (!pending) setEditor(null);
         }}
         onOk={() => form.submit()}
+        okButtonProps={{ disabled: !can(editor === 'new' ? 'frontstage.tabs.create' : 'frontstage.tabs.update') }}
         confirmLoading={pending}
         destroyOnHidden
       >

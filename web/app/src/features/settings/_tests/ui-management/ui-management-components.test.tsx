@@ -162,7 +162,7 @@ describe('UiManagementPanel component records', () => {
   });
   beforeEach(() => {
     window.localStorage.removeItem('settings.ui_management.components');
-    useAuthStore.setState({ csrfToken: 'csrf' });
+    useAuthStore.setState({ csrfToken: 'csrf', actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace' } });
     vi.clearAllMocks();
     uiManagementApi.fetchSettingsUiComponents.mockResolvedValue([
       official,

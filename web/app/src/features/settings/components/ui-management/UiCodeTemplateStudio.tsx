@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import type { OnMount } from '@monaco-editor/react';
 import {
   createJsBlockDiagnostics,
@@ -54,6 +55,7 @@ export function UiCodeTemplateStudio({
   onClose: () => void;
   onSave: (value: SettingsUiTemplateInput) => void;
 }) {
+  const can = useConsoleOperationAccess();
   const { t } = useTranslation('settingsUiManagement');
   const { message } = App.useApp();
   const actor = useAuthStore((state) => state.actor);
@@ -77,7 +79,8 @@ export function UiCodeTemplateStudio({
     [catalogEntry]
   );
   const monacoExtraLibs = projection.monacoExtraLibs;
-  const readOnly = mode === 'view';
+  const canSave = can(mode === 'edit' || (mode === 'view' && managedTemplate) ? 'ui_management.templates.update' : 'ui_management.templates.create');
+  const readOnly = mode === 'view' || !canSave;
   const contributionIdentity = templateIdentity(
     draft.provider_code,
     draft.contribution_code
@@ -204,6 +207,7 @@ export function UiCodeTemplateStudio({
   };
 
   const submit = () => {
+    if (readOnly || !canSave) return;
     if (!draft.provider_code || !draft.contribution_code) {
       void message.error(t('select_contribution_required'));
       return;
@@ -318,6 +322,7 @@ export function UiCodeTemplateStudio({
       owner="settings:ui-management:code-templates"
       path={`file:///settings/ui-code-templates/${encodeURIComponent(contributionIdentity || 'new')}.${draft.language}`}
       readOnly={readOnly}
+      canRun={canSave}
       saving={saving}
       sections={
         workspaceId
@@ -335,6 +340,7 @@ export function UiCodeTemplateStudio({
       onInjectContext={injectFrontstageContextComment}
       onReset={() => setDraft(initialValue)}
       onRun={(source) => {
+        if (!canSave) return;
         if (diagnoseLegacyBlockModuleSource(source)) return;
         previewSequenceRef.current += 1;
         setPreviewRequest({

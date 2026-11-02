@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -41,24 +42,21 @@ import {
 } from './route-management/RouteNodeDrawer';
 import './route-management/route-management.css';
 
-export function RouteManagementTab({ canManage }: { canManage: boolean }) {
+export function RouteManagementTab(_props: { canManage?: boolean } = {}) {
   const scope = useAuthStore(selectNavigationQueryScope);
-  return <RouteManagementContent key={scope} canManage={canManage} />;
+  return <RouteManagementContent key={scope} />;
 }
 
-function RouteManagementContent({ canManage }: { canManage: boolean }) {
+function RouteManagementContent() {
+  const can = useConsoleOperationAccess();
   const { t } = useTranslation('settingsUiManagement');
   const { modal, message } = App.useApp();
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
   );
   const scope = useAuthStore(selectNavigationQueryScope);
-  const canDesign = useAuthStore(
-    (state) =>
-      state.actor?.effective_display_role === 'root' ||
-      Boolean(state.me?.permissions.includes('frontstage.page.design'))
-  );
-  const editable = canManage && canDesign;
+  const editable = can('frontstage.pages.update');
+  const canCreate = can('frontstage.pages.create') || can('frontstage.groups.create');
   const tree = useQuery({
     queryKey: frontstagePageTreeQueryKey(workspaceId ?? '', scope),
     queryFn: () => fetchFrontstagePageTree(workspaceId ?? ''),
@@ -115,7 +113,7 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
   );
   const busy = mutations.isPending || action.isPending;
   const move = async (id: string, input: MoveFrontstageNodeInput) => {
-    if (!editable || !workspaceId || moving.current || action.isPending)
+    if (!can('frontstage.pages.move') || !workspaceId || moving.current || action.isPending)
       return false;
     moving.current = true;
     setMoveError(false);
@@ -149,12 +147,14 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
     items: [
       {
         key: 'page',
+        disabled: !can('frontstage.pages.create'),
         label: t('routes_add_page'),
         onClick: () =>
           setEditor({ kind: 'create', nodeKind: 'page', parent_id })
       },
       {
         key: 'group',
+        disabled: !can('frontstage.groups.create'),
         label: t('routes_add_group'),
         onClick: () =>
           setEditor({ kind: 'create', nodeKind: 'group', parent_id })
@@ -172,7 +172,7 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
       cancelText: t('cancel'),
       okButtonProps: { danger: true },
       onOk: async () => {
-        if (!editable || busy) return;
+        if (!can('frontstage.pages.delete') || busy) return;
         try {
           await action.mutateAsync({ kind: 'delete', id: node.id });
         } catch (error) {
@@ -247,7 +247,7 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
                   {t('routes_saving')}
                 </span>
               ) : null}
-              {editable ? (
+              {canCreate ? (
                 <Dropdown
                   menu={createMenu(null)}
                   trigger={['click']}
@@ -290,7 +290,7 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
               key={scope}
               management
               pageTree={tree.data}
-              disabled={!editable || busy}
+              disabled={!can('frontstage.pages.move') || busy}
               height={560}
               locateNodeId={locatedId}
               onSelectMove={(id, input) => void move(id, input)}
@@ -358,7 +358,7 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
                         </Tooltip>
                       )
                     ) : null}
-                    {editable && (!node || node.kind === 'group') ? (
+                    {canCreate && (!node || node.kind === 'group') ? (
                       <Dropdown
                         menu={createMenu(node?.id ?? null)}
                         trigger={['click']}
@@ -392,7 +392,7 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
                             />
                           </Tooltip>
                         </span>
-                        {editable ? (
+                        {(can('frontstage.pages.update') || can('frontstage.pages.move') || can('frontstage.pages.delete')) ? (
                           <>
                             <span className="route-management__inline-action">
                               <Tooltip title={t('delete')}>
@@ -400,7 +400,7 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
                                   className="route-management__delete"
                                   type="text"
                                   icon={<DeleteOutlined />}
-                                  disabled={busy}
+                                  disabled={!can('frontstage.pages.delete') || busy}
                                   aria-label={`${t('delete')} ${node.title ?? ''}`}
                                   onClick={() => remove(node)}
                                 />
@@ -412,6 +412,7 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
                                 items: [
                                   {
                                     key: 'edit',
+                                    disabled: !can('frontstage.pages.update'),
                                     label: t('edit'),
                                     icon: <EditOutlined />,
                                     onClick: () =>
@@ -419,12 +420,14 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
                                   },
                                   {
                                     key: 'move',
+                                    disabled: !can('frontstage.pages.move'),
                                     label: t('routes_move'),
                                     icon: <DragOutlined />,
                                     onClick: () => setMovingId(node.id)
                                   },
                                   {
                                     key: 'delete',
+                                    disabled: !can('frontstage.pages.delete'),
                                     label: t('delete'),
                                     danger: true,
                                     icon: <DeleteOutlined />,
@@ -455,7 +458,6 @@ function RouteManagementContent({ canManage }: { canManage: boolean }) {
             key={`${scope}:${editor.kind === 'edit' ? editor.node.id : `${editor.nodeKind}:${editor.parent_id}`}`}
             editor={editor}
             workspaceId={workspaceId}
-            editable={editable}
             onClose={() => setEditor(null)}
           />
         ) : null}

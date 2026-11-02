@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useCallback, useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -82,7 +83,8 @@ function requestValue(value: FormValue): CreateSettingsUiComponentInput {
   };
 }
 
-export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
+export function ComponentRecordsTab(_props: { canManage?: boolean } = {}) {
+  const can = useConsoleOperationAccess();
   const { t } = useTranslation('settingsUiManagement');
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
@@ -208,11 +210,12 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
             >
               {t('view')}
             </Button>
-            {record.origin === 'custom' && canManage ? (
+            {record.origin === 'custom' ? (
               <>
                 <Button
                   type="link"
                   size="small"
+                  disabled={!can('ui_management.components.update')}
                   aria-label={`${t('edit')} ${record.name}`}
                   onClick={() => void openRecord(record, 'edit')}
                 >
@@ -222,6 +225,7 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
                   type="link"
                   size="small"
                   danger
+                  disabled={!can('ui_management.components.delete')}
                   aria-label={`${t('delete')} ${record.name}`}
                   onClick={() => setDeleteTarget(record)}
                 >
@@ -233,7 +237,7 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
         )
       }
     ],
-    [canManage, openRecord, t]
+    [can, openRecord, t]
   );
   const tableConfiguration = usePersistedDataTableConfiguration({
     columns,
@@ -331,7 +335,7 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
                 <Button onClick={() => setCatalogOpen(true)}>
                   {t('remote_catalog')}
                 </Button>
-                {canManage ? (
+                {can('ui_management.components.create') ? (
                   <Button type="primary" onClick={create}>
                     {t('new_component')}
                   </Button>
@@ -361,6 +365,7 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
           !readOnly ? (
             <Button
               type="primary"
+              disabled={!can(drawerMode === 'edit' ? 'ui_management.components.update' : 'ui_management.components.create')}
               loading={save.isPending}
               onClick={() => form.submit()}
             >
@@ -542,7 +547,7 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
         open={deleteTarget !== undefined}
         title={t('delete_component')}
         okText={t('confirm_delete')}
-        okButtonProps={{ danger: true, loading: remove.isPending }}
+        okButtonProps={{ danger: true, loading: remove.isPending, disabled: !can('ui_management.components.delete') }}
         cancelText={t('cancel')}
         onCancel={() => setDeleteTarget(undefined)}
         onOk={() => deleteTarget && remove.mutate(deleteTarget)}
@@ -552,7 +557,6 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
           : null}
       </Modal>
       <RemoteCatalogDrawer
-        canManage={canManage}
         open={catalogOpen}
         onClose={() => setCatalogOpen(false)}
       />

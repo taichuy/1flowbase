@@ -655,9 +655,10 @@ test('failed visibility update retains server state and reports failure', async 
 });
 
 test('readonly route visibility is an indicator without a mutation action', async () => {
+  useAuthStore.setState({ actor: { ...useAuthStore.getState().actor!, effective_display_role: 'readonly.audit.20261102' }, me: null });
   render(
     <AppProviders>
-      <RouteManagementTab canManage={false} />
+      <RouteManagementTab />
     </AppProviders>
   );
   await screen.findByText('Page A');
@@ -671,6 +672,7 @@ test('readonly route visibility is an indicator without a mutation action', asyn
 });
 
 test('open links use the topbar route and nested page route in a new tab, including readonly', async () => {
+  useAuthStore.setState({ actor: { ...useAuthStore.getState().actor!, effective_display_role: 'readonly.audit.20261102' }, me: null });
   api.list.mockResolvedValue([
     {
       ...nodes[0],
@@ -704,7 +706,7 @@ test('open links use the topbar route and nested page route in a new tab, includ
   ]);
   render(
     <AppProviders>
-      <RouteManagementTab canManage={false} />
+      <RouteManagementTab />
     </AppProviders>
   );
   const rootLink = await screen.findByRole('link', {
@@ -726,4 +728,24 @@ test('open links use the topbar route and nested page route in a new tab, includ
     screen.queryByRole('link', { name: '在新标签页打开 Legacy' })
   ).not.toBeInTheDocument();
   expect(api.update).not.toHaveBeenCalled();
+});
+
+
+test('a tab-create grant enables tabs without enabling page mutation or tab delete', async () => {
+  useAuthStore.setState({
+    actor: { ...useAuthStore.getState().actor!, effective_display_role: 'readonly.audit.20261102' },
+    me: {
+      id: 'user-1', account: 'auditor', email: 'auditor@example.com', phone: null,
+      nickname: 'Auditor', name: 'Auditor', avatar_url: null, introduction: '',
+      effective_display_role: 'readonly.audit.20261102', permissions: ['frontstage.tabs.create']
+    }
+  });
+  api.list.mockResolvedValue([{ ...nodes[0], content_presentation: 'tabs' }]);
+  render(<AppProviders><RouteManagementTab /></AppProviders>);
+  await screen.findByText('Page A');
+  expect(row('a')).toHaveAttribute('draggable', 'false');
+  fireEvent.click(screen.getByRole('button', { name: '查看 Page A' }));
+  fireEvent.click(await screen.findByRole('tab', { name: '页面 Tabs' }));
+  expect(await screen.findByRole('button', { name: '新增标签页' })).toBeEnabled();
+  expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument();
 });

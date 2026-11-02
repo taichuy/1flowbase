@@ -237,6 +237,7 @@ describe('UiManagementPanel code templates', () => {
       actor: {
         id: 'user-1',
         user_id: 'user-1',
+        effective_display_role: 'root',
         current_workspace_id: 'workspace-1'
       } as never,
       me: null
@@ -340,6 +341,43 @@ describe('UiManagementPanel code templates', () => {
     expect(screen.getByText('官方区块')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(uiManagementApi.createSettingsUiTemplate).not.toHaveBeenCalled();
+  });
+
+  test('readonly can view managed template source without write or run side effects', async () => {
+    const state = useAuthStore.getState();
+    useAuthStore.setState({
+      actor: { ...state.actor!, effective_display_role: 'readonly.audit.20261102' },
+      me: null
+    });
+    await renderPanel();
+    const row = (await screen.findByText('自定义区块')).closest('tr')!;
+    expect(screen.getByRole('button', { name: '新建模板' })).toBeDisabled();
+    await click(within(row).getByRole('button', { name: /查\s*看/ }));
+    expect(screen.getByTestId('studio-source')).toHaveTextContent(studioSourceText(managedSource));
+    expect(screen.getByTestId('ui-code-template-studio')).toHaveTextContent('studio-readonly');
+    await click(screen.getByRole('button', { name: 'studio-save' }));
+    await click(screen.getByRole('button', { name: 'studio-run' }));
+    expect(uiManagementApi.updateSettingsUiTemplate).not.toHaveBeenCalled();
+    expect(uiManagementApi.createSettingsUiTemplate).not.toHaveBeenCalled();
+    expect(templateRunPanel.render).not.toHaveBeenCalled();
+  });
+
+  test('one publish grant does not grant template creation, editing or deletion', async () => {
+    useAuthStore.setState({
+      actor: { ...useAuthStore.getState().actor!, effective_display_role: 'readonly.audit.20261102' },
+      me: {
+        id: 'user-1', account: 'auditor', email: 'auditor@example.com', phone: null,
+        nickname: 'Auditor', name: 'Auditor', avatar_url: null, introduction: '',
+        effective_display_role: 'readonly.audit.20261102',
+        permissions: ['ui_management.templates.publish']
+      }
+    });
+    await renderPanel();
+    const row = (await screen.findByText('自定义区块')).closest('tr')!;
+    expect(screen.getByRole('button', { name: '新建模板' })).toBeDisabled();
+    expect(within(row).getByRole('button', { name: /查\s*看/ })).toBeEnabled();
+    expect(within(row).getByRole('button', { name: /发\s*布/ })).toBeEnabled();
+    expect(within(row).getByRole('button', { name: /删\s*除/ })).toBeDisabled();
   });
 
   test('keeps cached templates visible if background reload fails', async () => {
