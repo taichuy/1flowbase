@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import {
   createContext,
   useContext,
@@ -164,6 +165,7 @@ export function ModelProviderRoutingPolicyModal({
     excluded_provider_instance_ids: string[];
   }) => void;
 }) {
+  const can = useConsoleOperationAccess();
   const [distributionRule, setDistributionRule] = useState<DistributionRule>(
     policy?.distribution_rule ?? 'none'
   );
@@ -252,6 +254,7 @@ export function ModelProviderRoutingPolicyModal({
   };
 
   const submit = () => {
+    if (!can('model_providers.main_instance.update')) return;
     const definition = distributionRules.find(
       (candidate) => candidate.value === distributionRule
     );
@@ -282,7 +285,7 @@ export function ModelProviderRoutingPolicyModal({
           <Button onClick={onCancel}>
             {i18nText('settings', 'auto.cancel')}
           </Button>
-          <Button type="primary" loading={saving} onClick={submit}>
+          <Button type="primary" disabled={!can('model_providers.main_instance.update')} loading={saving} onClick={submit}>
             {i18nText('settings', 'auto.save')}
           </Button>
         </Space>

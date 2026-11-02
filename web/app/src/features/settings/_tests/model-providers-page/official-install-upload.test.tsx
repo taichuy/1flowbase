@@ -1,3 +1,4 @@
+import { modelProviderManagerOperations } from './operation-permission-fixture';
 import {
   fireEvent,
   render,
@@ -197,10 +198,7 @@ function authenticateWithPermissions(
 }
 
 function authenticateAsModelProviderManager() {
-  authenticateWithPermissions([
-    'state_model.view.all',
-    'state_model.manage.all'
-  ]);
+  authenticateWithPermissions(modelProviderManagerOperations);
 }
 
 function renderApp(pathname: string) {

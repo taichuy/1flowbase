@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { extensionRiskWarningText } from '../../lib/extension-risk-warning';
 import { useRef, useState } from 'react';
 import { extensionOperationErrorText } from '../../lib/extension-operation-error';
@@ -55,6 +56,7 @@ export function ExtensionUploadModal({
   onClose(): void;
   onInstalled(): Promise<void>;
 }) {
+  const can = useConsoleOperationAccess();
   const { t } = useTranslation('settings');
   const [items, setItems] = useState<UploadItem[]>([]);
   const [busy, setBusy] = useState(false);
@@ -77,7 +79,7 @@ export function ExtensionUploadModal({
   }
 
   async function start() {
-    if (running.current || !csrfToken || blocked) return;
+    if (running.current || !csrfToken || blocked || !can('extension_center.install.upload')) return;
     const batch = confirming ? [confirming, ...pending] : pending;
     if (!batch.length) return;
     running.current = true;
@@ -221,7 +223,7 @@ export function ExtensionUploadModal({
           <Button
             type="primary"
             loading={busy}
-            disabled={!csrfToken || blocked || (!pending.length && !confirming)}
+            disabled={!can('extension_center.install.upload') || !csrfToken || blocked || (!pending.length && !confirming)}
             onClick={() => void start()}
           >
             {confirming

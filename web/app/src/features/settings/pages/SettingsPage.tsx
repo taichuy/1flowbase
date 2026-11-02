@@ -27,10 +27,6 @@ import type { RolePermissionTab } from '../components/RolePermissionPanel';
 import type { SettingsExtensionCenterCategory } from '../api/extensions/extensions';
 import type { NetworkCenterPage } from './network-center/NetworkCenterSection';
 
-function hasAnyPermission(permissions: string[], candidates: string[]) {
-  return candidates.some((permission) => permissions.includes(permission));
-}
-
 export function SettingsPage({
   requestedSectionKey,
   modelProviderTab,
@@ -63,12 +59,6 @@ export function SettingsPage({
   const canManageMembers = isRoot || permissionSet.has('user.manage.all');
   const canManageRoles =
     isRoot || permissionSet.has('role_permission.manage.all');
-  const canManageModelProviders =
-    isRoot ||
-    hasAnyPermission(permissions, [
-      'state_model.manage.all',
-      'state_model.manage.own'
-    ]);
   const canManageHostInfrastructure =
     isRoot || permissionSet.has('plugin_config.configure.all');
   const sectionAccess = useMemo(
@@ -77,13 +67,11 @@ export function SettingsPage({
       permissions,
       canManageMembers,
       canManageRoles,
-      canManageModelProviders,
       canManageHostInfrastructure
     }),
     [
       canManageHostInfrastructure,
       canManageMembers,
-      canManageModelProviders,
       canManageRoles,
       isRoot,
       permissions

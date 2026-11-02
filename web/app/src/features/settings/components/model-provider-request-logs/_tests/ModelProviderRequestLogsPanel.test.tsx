@@ -26,16 +26,19 @@ vi.mock('../../../api/model-providers', () => requestLogsApi);
 
 import { ModelProviderRequestLogsPanel } from '../ModelProviderRequestLogsPanel';
 
-function renderPanel() {
+function renderPanel(permissions?: string[]) {
   useAuthStore.getState().setAuthenticated({
     csrfToken: 'csrf-123',
     actor: {
       id: 'user-1',
       account: 'root',
-      effective_display_role: 'root',
+      effective_display_role: permissions === undefined ? 'root' : 'readonly.audit.20261102',
       current_workspace_id: 'workspace-1'
     },
-    me: null
+    me: permissions === undefined ? null : {
+      id: 'user-1', account: 'auditor', email: 'auditor@example.com', phone: null, nickname: 'Auditor', name: 'Auditor', avatar_url: null, introduction: '',
+      effective_display_role: 'readonly.audit.20261102', permissions
+    }
   });
   return render(
     <App>
@@ -397,4 +400,18 @@ test('AC-007 stops on a failed clear batch and retries with the opaque continuat
     );
   });
   expect(await screen.findByText('已删除 501 条')).toBeInTheDocument();
+});
+
+
+test.each([
+  [[], false],
+  [['model_providers.request_logs.delete'], false],
+  [['model_providers.request_logs.clear'], true]
+] as const)('request-log clear checks its own operation %j', async (permissions, canClear) => {
+  requestLogsApi.fetchSettingsModelProviderRequestLogs.mockResolvedValue({ total_count: 0, page: 1, page_size: 20, items: [] });
+  renderPanel([...permissions]);
+  await waitFor(() => expect(requestLogsApi.fetchSettingsModelProviderRequestLogs).toHaveBeenCalled());
+  expect(screen.getByRole('button', { name: /清空/ })).toHaveProperty('disabled', !canClear);
+  expect(requestLogsApi.clearSettingsModelProviderRequestLogsBatch).not.toHaveBeenCalled();
+  expect(requestLogsApi.deleteSettingsModelProviderRequestLogs).not.toHaveBeenCalled();
 });

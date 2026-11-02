@@ -1,6 +1,7 @@
+import { useAuthStore } from '../../../../../state/auth-store';
 import { Modal } from 'antd';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { modelProviderCatalogEntries } from '../../../../../test/model-provider-contract-fixtures';
 import { ModelProviderAccountOperationsCard } from '../ModelProviderAccountOperationsCard';
@@ -9,6 +10,10 @@ const accountOperationCatalogEntry = {
   ...modelProviderCatalogEntries[0],
   operational_capabilities: ['usage_windows', 'reset_credits']
 };
+
+beforeEach(() => {
+  useAuthStore.setState({ actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace' }, me: null });
+});
 
 describe('ModelProviderAccountOperationsCard', () => {
   afterEach(() => {

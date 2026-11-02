@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useState } from 'react';
 
 import {
@@ -86,7 +87,6 @@ function useProviderInstancesController({
   refreshingCandidates,
   refreshing,
   deleting,
-  canManage,
   versionSwitchNotice,
   onClose,
   onEdit,
@@ -109,7 +109,7 @@ function useProviderInstancesController({
   refreshingCandidates: boolean;
   refreshing: boolean;
   deleting: boolean;
-  canManage: boolean;
+  canManage?: boolean;
   versionSwitchNotice: {
     targetVersion: string | null;
     migratedInstanceCount: number | null;
@@ -138,6 +138,7 @@ function useProviderInstancesController({
     checked: boolean
   ) => void;
 }) {
+  const can = useConsoleOperationAccess();
   const [editingGroup, setEditingGroup] = useState<ModelGroup | null>(null);
   const includedCount = instances.filter(
     (instance) => instance.included_in_main
@@ -156,7 +157,7 @@ function useProviderInstancesController({
       target.source_instance_display_name
     );
 
-    if (!canManage || !sourceInstance) {
+    if (!sourceInstance) {
       return (
         <Tag key={target.source_instance_id} variant="filled" color={tagColor}>
           {target.source_instance_display_name}
@@ -220,7 +221,7 @@ function useProviderInstancesController({
         <select
           aria-label={i18nText('settings', 'auto.distribution_rule')}
           className="model-provider-panel__distribution-rule-select"
-          disabled={!canManage || updatingMainInstance || !mainInstance}
+          disabled={!can('model_providers.main_instance.update') || updatingMainInstance || !mainInstance}
           value={group.distribution_rule}
           onChange={(event) =>
             onChangeDistributionRule(
@@ -247,7 +248,7 @@ function useProviderInstancesController({
           <Button
             type="link"
             size="small"
-            disabled={!canManage || updatingMainInstance || !mainInstance}
+            disabled={!can('model_providers.main_instance.update') || updatingMainInstance || !mainInstance}
             onClick={(event) => {
               event.stopPropagation();
               setEditingGroup(group);
@@ -265,7 +266,7 @@ function useProviderInstancesController({
   );
   return {
     open, title, onClose, versionSwitchNotice, mainInstanceLabel, includedCount,
-    aggregatedModelCount, mainInstance, canManage, updatingMainInstance,
+    aggregatedModelCount, mainInstance, can, updatingMainInstance,
     onToggleAutoIncludeNewInstances, modelGroups, modelGroupColumns, instances,
     updatingInstanceId, onToggleIncludedInMain, onEdit, onRefreshCandidates,
     refreshingCandidates, onRefreshModels, refreshing, onDelete, deleting, editingGroup,
@@ -276,7 +277,7 @@ function useProviderInstancesController({
 export function ModelProviderInstancesModal(props: Parameters<typeof useProviderInstancesController>[0]) {
   const {
     open, title, onClose, versionSwitchNotice, mainInstanceLabel, includedCount,
-    aggregatedModelCount, mainInstance, canManage, updatingMainInstance,
+    aggregatedModelCount, mainInstance, can, updatingMainInstance,
     onToggleAutoIncludeNewInstances, modelGroups, modelGroupColumns, instances,
     updatingInstanceId, onToggleIncludedInMain, onEdit, onRefreshCandidates,
     refreshingCandidates, onRefreshModels, refreshing, onDelete, deleting, editingGroup,
@@ -363,7 +364,7 @@ export function ModelProviderInstancesModal(props: Parameters<typeof useProvider
                           checked={
                             mainInstance?.auto_include_new_instances ?? false
                           }
-                          disabled={!canManage || updatingMainInstance}
+                          disabled={!can('model_providers.main_instance.update') || updatingMainInstance}
                           onChange={onToggleAutoIncludeNewInstances}
                         />
                       </Space>
@@ -398,7 +399,6 @@ export function ModelProviderInstancesModal(props: Parameters<typeof useProvider
                 children: (
                   <ModelProviderInstancesTable
                     instances={instances}
-                    canManage={canManage}
                     loading={false}
                     updatingInstanceId={updatingInstanceId}
                     onToggleIncludedInMain={onToggleIncludedInMain}

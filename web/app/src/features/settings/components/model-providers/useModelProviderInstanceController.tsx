@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button, Form, Input, Select, Space } from 'antd';
@@ -31,6 +32,7 @@ export function useModelProviderInstanceController({
   onValidate,
   onRefreshUsage,
 }: ModelProviderInstanceDrawerProps) {
+  const can = useConsoleOperationAccess();
   const [form] = Form.useForm<{
     display_name: string;
     included_in_main: boolean;
@@ -73,8 +75,8 @@ export function useModelProviderInstanceController({
   const supportsModelListing =
     catalogEntry?.operational_capabilities.includes('list_models') ?? false;
   const canDetect = instance
-    ? supportsConfigurationValidation && Boolean(onValidate)
-    : supportsModelListing;
+    ? can('model_providers.instances.validate') && supportsConfigurationValidation && Boolean(onValidate)
+    : can('model_providers.preview.view') && supportsModelListing;
   const [callbackValue, setCallbackValue] = useState('');
   const initializedDrawerRef = useRef<string | null>(null);
   const drawerIdentity = `${mode}:${catalogEntry?.installation_id ?? ''}:${instance?.id ?? ''}`;
@@ -295,6 +297,7 @@ export function useModelProviderInstanceController({
   }
 
   async function handleRevealSecret(fieldKey: string) {
+    if (!can('model_providers.instances.secrets.reveal')) return;
     setRevealingSecretKey(fieldKey);
 
     try {
@@ -372,6 +375,7 @@ export function useModelProviderInstanceController({
 
   const runAuthenticationOperation = useCallback(
     async (operation: SettingsModelProviderAuthOperation) => {
+      if (!can('model_providers.instances.authenticate') || (!instance && !can('model_providers.instances.create'))) return;
       setAuthenticationRequestPending(true);
       setAuthenticationError(null);
 
@@ -414,6 +418,7 @@ export function useModelProviderInstanceController({
       }
     },
     [
+      can,
       buildDraftConfig,
       configFieldNames,
       form,
@@ -501,6 +506,7 @@ export function useModelProviderInstanceController({
   }
 
   async function handlePreviewModels() {
+    if (!can(instance ? 'model_providers.instances.validate' : 'model_providers.preview.view')) return;
     setPreviewingModels(true);
 
     try {
@@ -524,6 +530,7 @@ export function useModelProviderInstanceController({
   }
 
   async function handleSubmit() {
+    if (!can(mode === 'create' ? 'model_providers.instances.create' : 'model_providers.instances.update')) return;
     const values = await form.validateFields([
       ['display_name'],
       ['included_in_main'],
@@ -640,6 +647,7 @@ export function useModelProviderInstanceController({
             <Space.Compact block>
               <Input aria-label={label} readOnly value={previewValue} />
               <Button
+                disabled={!can('model_providers.instances.secrets.reveal')}
                 loading={revealingSecretKey === field.key}
                 onClick={() => {
                   void handleRevealSecret(field.key).catch(() => undefined);

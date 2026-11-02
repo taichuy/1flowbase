@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { useMemo, useState } from 'react';
 
 import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOutlined';
@@ -259,7 +260,6 @@ function getStatusTags(
 function OfficialPluginCard({
   entry,
   family,
-  canManage,
   installState,
   activePluginId,
   upgradingProviderCode,
@@ -269,7 +269,7 @@ function OfficialPluginCard({
 }: {
   entry: SettingsOfficialPluginCatalogEntry;
   family: SettingsPluginFamilyEntry | undefined;
-  canManage: boolean;
+  canManage?: boolean;
   installState: InstallState;
   activePluginId: string | null;
   upgradingProviderCode: string | null;
@@ -283,6 +283,7 @@ function OfficialPluginCard({
     compatibilityOverride?: SettingsPluginCompatibilityOverride
   ) => void;
 }) {
+  const can = useConsoleOperationAccess();
   const installing =
     activePluginId === entry.plugin_id && installState === 'installing';
   const installed =
@@ -303,7 +304,8 @@ function OfficialPluginCard({
             : i18nText('settings', 'auto.upgrade_latest_version')
         : i18nText('settings', 'auto.currently_latest_version')
     : getInstallButtonLabel(entry, installState, activePluginId);
-  const buttonDisabled = activeFamily ? !activeFamily.has_update : installed;
+  const canInstall = can(activeFamily ? 'model_provider_plugins.families.upgrade' : 'model_provider_plugins.install.official');
+  const buttonDisabled = !canInstall || (activeFamily ? !activeFamily.has_update : installed);
   const installCompatibilityOverride = belowMinimumHostVersion
     ? ({
         reason: BELOW_MINIMUM_HOST_VERSION,
@@ -313,6 +315,7 @@ function OfficialPluginCard({
     : undefined;
 
   function confirmInstall() {
+    if (!canInstall) return;
     if (activeFamily) {
       confirmOfficialPluginUpgrade({
         modal,
@@ -384,7 +387,7 @@ function OfficialPluginCard({
         ) : null}
       </div>
 
-      {canManage ? (
+      {(
         <div className="model-provider-panel__catalog-item-actions">
           {entry.help_url ? (
             <Button onClick={() => openExternal(entry.help_url!)}>
@@ -400,13 +403,7 @@ function OfficialPluginCard({
             {buttonLabel}
           </Button>
         </div>
-      ) : entry.help_url ? (
-        <div className="model-provider-panel__catalog-item-actions">
-          <Button onClick={() => openExternal(entry.help_url!)}>
-            {i18nText('settings', 'auto.documentation')}
-          </Button>
-        </div>
-      ) : null}
+      )}
     </article>
   );
 }
@@ -417,7 +414,6 @@ export function OfficialPluginInstallPanel({
   catalogErrorMessage,
   familiesByProviderCode,
   loading,
-  canManage,
   searchQuery,
   activePluginId,
   installState,
@@ -438,7 +434,7 @@ export function OfficialPluginInstallPanel({
   catalogErrorMessage?: string | null;
   familiesByProviderCode: Record<string, SettingsPluginFamilyEntry | undefined>;
   loading?: boolean;
-  canManage: boolean;
+  canManage?: boolean;
   searchQuery: string;
   activePluginId: string | null;
   installState: InstallState;
@@ -455,6 +451,7 @@ export function OfficialPluginInstallPanel({
     compatibilityOverride?: SettingsPluginCompatibilityOverride
   ) => void;
 }) {
+  const can = useConsoleOperationAccess();
   const [modal, contextHolder] = Modal.useModal();
   const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
   const normalizedEntries = useMemo(() => {
@@ -508,7 +505,7 @@ export function OfficialPluginInstallPanel({
             </Typography.Text>
           ) : null}
           <div className="model-provider-panel__official-toolbar">
-            {canManage ? (
+            {can('model_provider_plugins.install.upload') ? (
               <Button onClick={onOpenUpload}>
                 {i18nText('settings', 'auto.upload_plugin')}
               </Button>
@@ -594,7 +591,6 @@ export function OfficialPluginInstallPanel({
               key={entry.plugin_id}
               entry={entry}
               family={familiesByProviderCode[entry.provider_code]}
-              canManage={canManage}
               installState={installState}
               activePluginId={activePluginId}
               upgradingProviderCode={upgradingProviderCode}

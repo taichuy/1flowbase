@@ -92,7 +92,7 @@ describe('application templates extension tab', () => {
       csrfToken: 'csrf-token',
       actor: null,
       me: {
-        permissions: ['settings_feature.access.system.backups']
+        permissions: ['system_templates.catalog', 'system_templates.download', 'system_templates.preview', 'system_templates.install']
       } as NonNullable<ReturnType<typeof useAuthStore.getState>['me']>
     });
     api.getApplicationTemplateCatalog.mockResolvedValue({
@@ -314,6 +314,15 @@ describe('application templates extension tab', () => {
     await openPreview();
     expect(api.downloadSystemTemplate).toHaveBeenCalledTimes(2);
   });
+  test('readonly catalog grant keeps templates visible and installation disabled', async () => {
+    useAuthStore.setState({ me: { permissions: ['system_templates.catalog'] } as NonNullable<ReturnType<typeof useAuthStore.getState>['me']> });
+    setup();
+    expect(await screen.findByRole('button', { name: 'Install template' })).toBeDisabled();
+    expect(api.getApplicationTemplateCatalog).toHaveBeenCalled();
+    expect(api.downloadSystemTemplate).not.toHaveBeenCalled();
+    expect(api.installSystemTemplate).not.toHaveBeenCalled();
+  });
+
   test('missing permission prevents catalog and installation requests', async () => {
     useAuthStore.setState({ me: null });
     setup();

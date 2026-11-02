@@ -1,3 +1,4 @@
+import { modelProviderManagerOperations } from './operation-permission-fixture';
 import {
   fireEvent,
   render,
@@ -197,10 +198,7 @@ function authenticateWithPermissions(
 }
 
 function authenticateAsModelProviderManager() {
-  authenticateWithPermissions([
-    'state_model.view.all',
-    'state_model.manage.all'
-  ]);
+  authenticateWithPermissions(modelProviderManagerOperations);
 }
 
 function renderApp(pathname: string) {
@@ -872,7 +870,7 @@ describe('ModelProvidersPage - catalog and family version', () => {
     ).toEqual(['管理', '新增', '更新', '卸载']);
   });
 
-  test('renders catalog and instance metadata for view-only users without manage actions', async () => {
+  test('keeps provider instance inspection available for view-only users', async () => {
     authenticateWithPermissions(['state_model.view.all']);
 
     renderApp('/settings/model-providers');
@@ -903,12 +901,14 @@ describe('ModelProvidersPage - catalog and family version', () => {
       screen.queryByRole('heading', { name: '当前实例' })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: '管理' })
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: '管理' })
+    ).toBeEnabled();
+    expect(screen.getByRole('button', { name: '新增' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '卸载' })).toBeDisabled();
     expect(screen.queryByText('OpenAI Production')).not.toBeInTheDocument();
   }, 10000);
 
-  test('shows create and row-level manage actions when state_model.manage.all is present', async () => {
+  test('shows create and row-level actions from explicit operation grants', async () => {
     authenticateAsModelProviderManager();
 
     renderApp('/settings/model-providers');

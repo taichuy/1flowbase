@@ -1,5 +1,6 @@
+import { useAuthStore } from '../../../../../state/auth-store';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type {
   SettingsOfficialPluginCatalogEntry
@@ -72,6 +73,10 @@ function renderPanel(
 
   return { onInstall, onUpgradeLatest };
 }
+
+beforeEach(() => {
+  useAuthStore.setState({ actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace' }, me: null });
+});
 
 describe('OfficialPluginInstallPanel', () => {
   test('uses the official catalog icon url when provided', () => {

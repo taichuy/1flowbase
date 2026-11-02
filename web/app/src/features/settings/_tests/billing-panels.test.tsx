@@ -405,6 +405,22 @@ describe('billing settings panels', () => {
     );
   });
 
+  test.each([
+    [[], false, false],
+    [['billing.pricing_catalog.import'], true, false],
+    [['billing.pricing_catalog.sync'], false, true]
+  ])('pricing catalog isolates import and sync grants %j', async (permissions, canImport, canSync) => {
+    const state = useAuthStore.getState();
+    useAuthStore.setState({ actor: { ...state.actor!, effective_display_role: 'readonly.audit.20261102' }, me: { ...state.me!, effective_display_role: 'readonly.audit.20261102', permissions: permissions as string[] } });
+    await renderWithProviders(<PricingCatalogPanel />);
+    await screen.findByText('zero');
+    expect(screen.getByRole('button', { name: /安装当前页/ })).toHaveProperty('disabled', !canImport);
+    expect(screen.getByRole('button', { name: /同\s*步/ })).toHaveProperty('disabled', !canSync);
+    expect(screen.getByRole('button', { name: /刷新远程目录/ })).toBeEnabled();
+    expect(billingApi.importSettingsPricingCatalog).not.toHaveBeenCalled();
+    expect(billingApi.syncSettingsPricingCatalog).not.toHaveBeenCalled();
+  });
+
   test('loads, refreshes, and installs the remote official catalog without update semantics', async () => {
     await renderWithProviders(<PricingCatalogPanel />);
     expect(await screen.findByText('zero')).toBeInTheDocument();

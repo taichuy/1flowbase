@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import {
   CONFIGURED_MODEL_GRID_TEMPLATE_COLUMNS,
   CONFIGURED_MODEL_GRID_GAP,
@@ -62,6 +63,8 @@ function ModelProviderInstanceDrawerContent({
   onCountResetCredits,
   onConsumeResetCredit
 }: ModelProviderInstanceDrawerProps) {
+  const can = useConsoleOperationAccess();
+  const canSave = can(mode === 'create' ? 'model_providers.instances.create' : 'model_providers.instances.update');
   const {
     form,
     previewModels,
@@ -128,6 +131,7 @@ function ModelProviderInstanceDrawerContent({
             <Space>
               <Button
                 type="primary"
+                disabled={!canSave}
                 loading={submitting}
                 onClick={() => {
                   void handleSubmit().catch(() => undefined);
@@ -143,6 +147,7 @@ function ModelProviderInstanceDrawerContent({
         }
       >
         <Form
+          disabled={!canSave}
           form={form}
           layout="vertical"
           onValuesChange={(changedValues) => {
@@ -266,6 +271,7 @@ function ModelProviderInstanceDrawerContent({
                     <div>
                       <Button
                         size="small"
+                        disabled={!can(instance ? 'model_providers.instances.validate' : 'model_providers.preview.view')}
                         loading={previewingModels}
                         onClick={(e) => {
                           e.stopPropagation();

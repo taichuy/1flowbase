@@ -10,11 +10,10 @@ import './model-provider-settings-tabs.css';
 export type ModelProviderSettingsTab = 'providers' | 'pricing' | 'request-logs';
 
 export function ModelProviderSettingsTabs({
-  activeTab,
-  canManage
+  activeTab
 }: {
   activeTab: ModelProviderSettingsTab;
-  canManage: boolean;
+  canManage?: boolean;
 }) {
   const navigate = useNavigate();
   return (
@@ -26,12 +25,12 @@ export function ModelProviderSettingsTabs({
         {
           key: 'providers',
           label: i18nText('settings', 'auto.model_providers'),
-          children: <SettingsModelProvidersSection canManage={canManage} />
+          children: <SettingsModelProvidersSection />
         },
         {
           key: 'pricing',
           label: i18nText('settings', 'auto.billing_pricing_rules'),
-          children: <PricingRulesPanel canManage={canManage} />
+          children: <PricingRulesPanel />
         },
         {
           key: 'request-logs',

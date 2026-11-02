@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import {
   useCallback,
   useMemo,
@@ -166,11 +167,8 @@ function modelProviderSectionReducer(
   return state;
 }
 
-export function SettingsModelProvidersSection({
-  canManage
-}: {
-  canManage: boolean;
-}) {
+export function SettingsModelProvidersSection(_props: { canManage?: boolean } = {}) {
+  const can = useConsoleOperationAccess();
   const queryClient = useQueryClient();
   const [upgradeModal, upgradeModalContextHolder] = Modal.useModal();
   const csrfToken = useAuthStore((state) => state.csrfToken);
@@ -479,8 +477,13 @@ export function SettingsModelProvidersSection({
       return;
     }
 
+    if (!can('model_providers.instances.delete')) {
+      drawerDraftInstanceIdRef.current = null;
+      setDrawerState(null);
+      return;
+    }
     try {
-      await authenticateMutation.mutateAsync({
+      if (can('model_providers.instances.authenticate')) await authenticateMutation.mutateAsync({
         instanceId: activeDrawerInstanceId,
         operation: { type: 'cancel' }
       });
@@ -506,7 +509,6 @@ export function SettingsModelProvidersSection({
                 entries={families}
                 currentCatalogEntries={currentCatalogEntriesByProviderCode}
                 loading={familiesQuery.isLoading}
-                canManage={canManage}
                 switchingProviderCode={
                   versionMutation.isPending &&
                   versionMutation.variables.mode === 'switch'
@@ -565,7 +567,6 @@ export function SettingsModelProvidersSection({
                 familiesByProviderCode={familiesByProviderCode}
                 searchQuery={officialSearchQuery}
                 loading={officialCatalogQuery.isLoading}
-                canManage={canManage}
                 activePluginId={officialInstallState.pluginId}
                 installState={officialInstallState.status}
                 upgradingProviderCode={
@@ -759,7 +760,6 @@ export function SettingsModelProvidersSection({
         refreshingCandidates={validateMutation.isPending}
         refreshing={refreshMutation.isPending}
         deleting={deleteMutation.isPending}
-        canManage={canManage}
         versionSwitchNotice={
           instanceModalState &&
           recentVersionSwitchNotice?.providerCode ===

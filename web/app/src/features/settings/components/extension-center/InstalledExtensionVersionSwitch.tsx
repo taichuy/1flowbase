@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { switchSettingsPluginFamilyVersion } from '../../api/extensions/plugins';
 import { useMutation } from '@tanstack/react-query';
 import { extensionOperationErrorText } from '../../lib/extension-operation-error';
@@ -19,6 +20,7 @@ export function InstalledExtensionVersionSwitch({
   csrfToken: string;
   onChanged(): Promise<void>;
 }) {
+  const can = useConsoleOperationAccess();
   const { t } = useTranslation('settings');
   const { message } = App.useApp();
   const mutation = useMutation({
@@ -40,7 +42,7 @@ export function InstalledExtensionVersionSwitch({
   return (
     <Button
       type="link"
-      disabled={version.is_current || version.status !== 'installed'}
+      disabled={version.is_current || version.status !== 'installed' || !can(installation.contract_version === '1flowbase.extension-bus/v1' && installation.desired_state === 'disabled' ? 'extension_center.installed.enable' : 'model_provider_plugins.families.switch')}
       loading={mutation.isPending}
       onClick={() =>
         Modal.confirm({

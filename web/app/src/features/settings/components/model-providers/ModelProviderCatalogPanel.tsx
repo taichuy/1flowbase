@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import {
   Badge,
   Button,
@@ -47,7 +48,6 @@ export function ModelProviderCatalogPanel({
   entries,
   currentCatalogEntries,
   loading,
-  canManage,
   switchingProviderCode,
   upgradingProviderCode,
   uninstallingProviderCode,
@@ -64,7 +64,7 @@ export function ModelProviderCatalogPanel({
     SettingsModelProviderCatalogEntry | null
   >;
   loading?: boolean;
-  canManage: boolean;
+  canManage?: boolean;
   switchingProviderCode?: string | null;
   upgradingProviderCode?: string | null;
   uninstallingProviderCode?: string | null;
@@ -77,6 +77,7 @@ export function ModelProviderCatalogPanel({
   ) => void;
   onUninstall: (entry: SettingsPluginFamilyEntry) => void;
 }) {
+  const can = useConsoleOperationAccess();
   return (
     <ScrollableSurface className="model-provider-panel__catalog">
       <div className="model-provider-panel__section-head">
@@ -104,8 +105,7 @@ export function ModelProviderCatalogPanel({
           )
         }}
         columns={[
-          ...(canManage
-            ? [
+          ...[
                 {
                   title: i18nText('settings', 'auto.operation'),
                   key: 'actions',
@@ -135,7 +135,7 @@ export function ModelProviderCatalogPanel({
                         <Button
                           type="link"
                           disabled={
-                            uninstalling || !currentNodeArtifactAvailable
+                            !can('model_providers.instances.create') || uninstalling || !currentNodeArtifactAvailable
                           }
                           onClick={() => onCreate(entry)}
                         >
@@ -172,7 +172,7 @@ export function ModelProviderCatalogPanel({
                               <Button
                                 type="link"
                                 loading={upgrading}
-                                disabled={!entry.has_update || uninstalling}
+                                disabled={!can('model_provider_plugins.families.upgrade') || !entry.has_update || uninstalling}
                                 onClick={() => onUpgradeLatest(entry)}
                               >
                                 {i18nText('settings', 'auto.update')}
@@ -183,6 +183,7 @@ export function ModelProviderCatalogPanel({
                         <Button
                           danger
                           type="link"
+                          disabled={!can('model_provider_plugins.families.delete')}
                           loading={uninstalling}
                           onClick={() => onUninstall(entry)}
                         >
@@ -192,8 +193,7 @@ export function ModelProviderCatalogPanel({
                     );
                   }
                 }
-              ]
-            : []),
+              ],
           {
             title: i18nText('settings', 'auto.name'),
             key: 'provider',
@@ -248,7 +248,7 @@ export function ModelProviderCatalogPanel({
 
               return (
                 <div className="model-provider-panel__catalog-version">
-                  {canManage ? (
+                  {can('model_provider_plugins.families.switch') ? (
                     <Space
                       size={8}
                       wrap
@@ -269,7 +269,7 @@ export function ModelProviderCatalogPanel({
                           { value1: entry.display_name }
                         )}
                         loading={switchingProviderCode === entry.provider_code}
-                        disabled={uninstallingProviderCode === entry.provider_code}
+                        disabled={!can('model_provider_plugins.families.switch') || uninstallingProviderCode === entry.provider_code}
                         options={versionOptions}
                         onChange={(installationId) => {
                           if (

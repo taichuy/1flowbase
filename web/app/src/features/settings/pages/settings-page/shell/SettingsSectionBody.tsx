@@ -130,7 +130,6 @@ interface SettingsSectionAccess {
   permissions: string[];
   canManageMembers: boolean;
   canManageRoles: boolean;
-  canManageModelProviders: boolean;
   canManageHostInfrastructure: boolean;
 }
 
@@ -216,7 +215,6 @@ export function SettingsSectionBody({
         <SettingsSectionBoundary>
           <ModelProviderSettingsTabs
             activeTab={modelProviderTab}
-            canManage={access.canManageModelProviders}
           />
         </SettingsSectionBoundary>
       );

@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Empty, Flex, Input } from 'antd';
@@ -32,6 +33,7 @@ const PAGE_SIZE = 20;
 type PricingCatalogRule = SettingsPricingCatalog['items'][number];
 
 export function PricingCatalogPanel() {
+  const can = useConsoleOperationAccess();
   const navigate = useNavigate();
   const csrf = useAuthStore((s) => s.csrfToken);
   const client = useQueryClient();
@@ -356,7 +358,7 @@ export function PricingCatalogPanel() {
                 <Button
                   type="primary"
                   loading={syncing.isPending}
-                  disabled={importing.isPending}
+                  disabled={importing.isPending || !can('billing.pricing_catalog.sync')}
                   onClick={() => {
                     importing.reset();
                     syncing.mutate();
@@ -380,7 +382,7 @@ export function PricingCatalogPanel() {
                   )}
                 </Button>
                 <Button
-                  disabled={!canInstall || rows.length === 0 || syncing.isPending}
+                  disabled={!can('billing.pricing_catalog.import') || !canInstall || rows.length === 0 || syncing.isPending}
                   loading={importing.isPending}
                   onClick={() => importing.mutate()}
                 >
