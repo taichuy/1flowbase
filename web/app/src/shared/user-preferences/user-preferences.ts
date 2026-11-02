@@ -6,6 +6,19 @@ import {
   type ConsoleUserMeta
 } from '@1flowbase/api-client';
 
+import { useAuthStore } from '../../state/auth-store';
+import { hasConsoleOperationAccess } from '../../state/console-operation-access';
+
+/** Check the current backend projection when a non-React preference writer runs. */
+export function hasUserPreferenceWriteAccess(): boolean {
+  const { actor, me } = useAuthStore.getState();
+  return hasConsoleOperationAccess(
+    actor?.effective_display_role,
+    me?.permissions,
+    'patch_me_meta'
+  );
+}
+
 export type UserPreferencePatch = ConsoleUserMeta;
 
 export function getUserPreferencesApiBaseUrl(

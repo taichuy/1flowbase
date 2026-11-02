@@ -5,6 +5,10 @@ import type {
   NotificationReadStatus
 } from '@1flowbase/api-client';
 import { useAuthStore } from '../../../state/auth-store';
+import {
+  hasConsoleOperationAccess,
+  useConsoleOperationAccess
+} from '../../../state/console-operation-access';
 import { selectNavigationQueryScope } from '../../../state/navigation-query-scope';
 import {
   markNotificationChannelRead,
@@ -16,6 +20,12 @@ import {
   notificationUnreadOptions,
   subscribeNotificationChanges
 } from '../api/queries';
+
+const writeOperations = {
+  read: 'notifications.messages.read',
+  unread: 'notifications.messages.unread',
+  channel: 'notifications.channels.read_all'
+} as const;
 
 type CursorState = { cursor?: string; previous: Array<string | undefined> };
 const firstPage = (): CursorState => ({ previous: [] });
@@ -34,6 +44,10 @@ const initialState = (scope: string): InboxState => ({
 });
 
 export function useNotificationInbox(open: boolean) {
+  const canAccess = useConsoleOperationAccess();
+  const canMarkRead = canAccess(writeOperations.read);
+  const canMarkUnread = canAccess(writeOperations.unread);
+  const canReadAll = canAccess(writeOperations.channel);
   const scope = useAuthStore(selectNavigationQueryScope);
   const authenticated = useAuthStore(
     (state) => state.sessionStatus === 'authenticated'
@@ -93,6 +107,15 @@ export function useNotificationInbox(open: boolean) {
       operation: 'read' | 'unread' | 'channel';
       requestScope: string;
     }) => {
+      const auth = useAuthStore.getState();
+      if (
+        !hasConsoleOperationAccess(
+          auth.actor?.effective_display_role,
+          auth.me?.permissions,
+          writeOperations[operation]
+        )
+      )
+        throw new Error('operation access denied');
       if (operation === 'read') await markNotificationRead(id, csrfToken);
       else if (operation === 'unread')
         await markNotificationUnread(id, csrfToken);
@@ -143,6 +166,9 @@ export function useNotificationInbox(open: boolean) {
     });
   return {
     authenticated,
+    canMarkRead,
+    canMarkUnread,
+    canReadAll,
     unread,
     channels: {
       ...channels,
@@ -172,12 +198,16 @@ export function useNotificationInbox(open: boolean) {
       resetWrite();
       update((current) => ({ ...current, selected, messages: firstPage() }));
     },
-    markRead: (id: string) =>
-      write.mutate({ id, operation: 'read', requestScope: scope }),
-    markUnread: (id: string) =>
-      write.mutate({ id, operation: 'unread', requestScope: scope }),
+    markRead: (id: string) => {
+      if (canMarkRead)
+        write.mutate({ id, operation: 'read', requestScope: scope });
+    },
+    markUnread: (id: string) => {
+      if (canMarkUnread)
+        write.mutate({ id, operation: 'unread', requestScope: scope });
+    },
     readAll: () => {
-      if (selected)
+      if (selected && canReadAll)
         write.mutate({
           id: selected.instance_id,
           operation: 'channel',

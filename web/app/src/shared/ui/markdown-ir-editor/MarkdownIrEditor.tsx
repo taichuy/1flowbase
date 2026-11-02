@@ -1,4 +1,4 @@
-import { VditorEditor } from '@1flowbase/rich-text';
+import { UserPreferenceVditorEditor } from './UserPreferenceVditorEditor';
 import '@1flowbase/rich-text/styles.css';
 import 'vditor/dist/index.css';
 
@@ -18,7 +18,7 @@ export function MarkdownIrEditor({
   onChange
 }: MarkdownIrEditorProps) {
   return (
-    <VditorEditor
+    <UserPreferenceVditorEditor
       ariaLabel={ariaLabel}
       className={className}
       height={height}

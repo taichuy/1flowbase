@@ -19,7 +19,8 @@ export function preferredEditorMode(
 
 export function rememberEditorMode(
   mount: HTMLElement,
-  editor: Pick<Vditor, 'getCurrentMode'>
+  editor: Pick<Vditor, 'getCurrentMode'>,
+  canPersist: () => boolean = () => false
 ) {
   const view = mount.ownerDocument.defaultView;
   const menu = mount.querySelector('[data-type="edit-mode"]')?.parentElement;
@@ -31,6 +32,7 @@ export function rememberEditorMode(
       const mode = editor.getCurrentMode();
       if (mode === previous) return;
       previous = mode;
+      if (!canPersist()) return;
       try {
         view.localStorage.setItem(STORAGE_KEY, mode);
       } catch {

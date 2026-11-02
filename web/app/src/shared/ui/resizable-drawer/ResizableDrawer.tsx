@@ -2,6 +2,8 @@ import { Drawer } from 'antd';
 import type { ReactNode } from 'react';
 import { useEffect, useId, useState } from 'react';
 
+import { hasUserPreferenceWriteAccess } from '../../user-preferences/user-preferences';
+
 import './resizable-drawer.css';
 
 export interface ResizableDrawerProps {
@@ -199,7 +201,7 @@ function readStoredWidth(storageKey: string | null) {
 }
 
 function writeStoredWidth(storageKey: string | null, width: number) {
-  if (!storageKey) {
+  if (!storageKey || !hasUserPreferenceWriteAccess()) {
     return;
   }
 

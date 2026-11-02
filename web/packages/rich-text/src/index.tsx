@@ -41,6 +41,8 @@ export interface VditorEditorProps {
   readonly api?: RichTextApi;
   readonly ariaLabel?: string;
   readonly className?: string;
+  /** The host grants persistence; mode changes remain temporary by default. */
+  readonly canPersistModePreference?: () => boolean;
   readonly height?: number | string;
   readonly locale?: 'zh_Hans' | 'en_US';
   readonly mode?: VditorEditorMode;
@@ -57,6 +59,7 @@ export function VditorEditor({
   api,
   ariaLabel = 'vditor_editor',
   className,
+  canPersistModePreference,
   height = 360,
   locale = 'zh_Hans',
   mode = 'ir',
@@ -78,6 +81,8 @@ export function VditorEditor({
   const onChangeRef = useRef(onChange);
   const onReadyRef = useRef(onReady);
   const uploadEnabled = api !== undefined;
+  const canPersistModePreferenceRef = useRef(canPersistModePreference);
+  canPersistModePreferenceRef.current = canPersistModePreference;
 
   useEffect(() => {
     apiRef.current = api;
@@ -203,7 +208,11 @@ export function VditorEditor({
               disposeEditor(editor);
               return;
             }
-            releaseModePreference = rememberEditorMode(mount, editor);
+            releaseModePreference = rememberEditorMode(
+              mount,
+              editor,
+              () => canPersistModePreferenceRef.current?.() === true
+            );
             readyRef.current = true;
             setLoading(false);
             if (editor.getValue() !== valueRef.current) {

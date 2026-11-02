@@ -1,3 +1,5 @@
+import { resetAuthStore } from '../../../../state/auth-store';
+import { preferenceWriteCases, setPreferenceActor } from '../../../../test/fixtures/preference-auth';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from 'antd';
 import {
@@ -273,6 +275,7 @@ function renderPanel() {
 
 describe('SystemRuntimePanel', () => {
   beforeEach(async () => {
+    setPreferenceActor({ role: 'root', permissions: [] });
     window.localStorage.removeItem(
       '1flowbase.settings.process_tree_split_ratio'
     );
@@ -300,6 +303,7 @@ describe('SystemRuntimePanel', () => {
   });
 
   afterEach(() => {
+    resetAuthStore();
     vi.useRealTimers();
   });
 
@@ -823,6 +827,24 @@ describe('SystemRuntimePanel', () => {
     });
     expect(restoredTreePanel.style.flexBasis).toMatch(/^(55%|704px)$/);
   });
+
+  test.each(preferenceWriteCases)(
+    'returns the temporary process split without unauthorized persistence: $name',
+    ({ actor, canPersist }) => {
+      setPreferenceActor(actor);
+      const key = '1flowbase.settings.process_tree_split_ratio';
+      window.localStorage.setItem(key, '55');
+      const write = vi.spyOn(Storage.prototype, 'setItem');
+      try {
+        expect(persistProcessTreeSplitRatio([600, 400])).toBe(60);
+        expect(window.localStorage.getItem(key)).toBe(canPersist ? '60' : '55');
+        if (canPersist) expect(write).toHaveBeenCalledWith(key, '60');
+        else expect(write).not.toHaveBeenCalled();
+      } finally {
+        write.mockRestore();
+      }
+    }
+  );
 
   test('persists a completed split as a percentage and rejects missing dimensions', () => {
     expect(persistProcessTreeSplitRatio([640, 640])).toBe(50);

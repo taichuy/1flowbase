@@ -1,3 +1,4 @@
+import { hasUserPreferenceWriteAccess } from '../../../../shared/user-preferences/user-preferences';
 import { clampWindowWorkspaceRect } from '../../../../shared/ui/window-workspace/window-workspace-geometry';
 import type { WindowWorkspaceRect } from '../../../../shared/ui/window-workspace/window-workspace-state';
 
@@ -34,7 +35,7 @@ function readStoredWidth(testId: string) {
 }
 
 export function writeStoredWidth(testId: string, width: number) {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || !hasUserPreferenceWriteAccess()) {
     return;
   }
 
