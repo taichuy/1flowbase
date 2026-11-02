@@ -19,7 +19,6 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "assistant_update_settings",
             "notifications.channels.read_all",
             "notifications.messages.unread",
-            "notifications.messages.read",
             "notifications.messages.read_all",
         ],
     ),
@@ -30,6 +29,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "notifications.events.subscribe",
             "notifications.channels.list",
             "notifications.messages.list",
+            "notifications.messages.read",
             "notifications.messages.unread_count",
             "notifications.types.list",
         ],
@@ -500,10 +500,9 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
-    // Notification read-status changes are personal writes, not content reads.
+    // Bulk and unread changes are configurable; reading an owned message is self-service.
     "notifications.channels.read_all",
     "notifications.messages.unread",
-    "notifications.messages.read",
     "notifications.messages.read_all",
     // Personal writes are independently configurable; authenticated security actions stay open.
     "patch_me",

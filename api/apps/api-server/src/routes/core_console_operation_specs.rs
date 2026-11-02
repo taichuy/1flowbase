@@ -140,7 +140,7 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     authenticated_operation("notifications.types.list", "core.authenticated"),
     authenticated_operation("notifications.messages.list", "core.authenticated"),
     authenticated_operation("notifications.messages.unread_count", "core.authenticated"),
-    other("notifications.messages.read", "other.personal-account"),
+    authenticated_operation("notifications.messages.read", "core.authenticated"),
     other("notifications.messages.read_all", "other.personal-account"),
     authenticated_operation("notifications.events.subscribe", "core.authenticated"),
     settings("applications.api.set_enabled", "system.applications"),

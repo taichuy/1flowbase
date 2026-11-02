@@ -178,7 +178,6 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
     let unread_path = read_path.replace("/read", "/unread");
     let channel_path = format!("/api/console/notifications/channels/{id}/read-all");
     let state_writes = [
-        ("notifications.messages.read", read_path.as_str()),
         ("notifications.messages.unread", unread_path.as_str()),
         ("notifications.channels.read_all", channel_path.as_str()),
         (
@@ -186,6 +185,28 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
             "/api/console/notifications/messages/read-all",
         ),
     ];
+    // Reading one's own message is self-service even without role operation grants.
+    let (status, read) = request(
+        &app,
+        &first_cookie,
+        &first_csrf,
+        "POST",
+        &read_path,
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{read}");
+    assert!(read["data"]["read_at"].is_string());
+    let (status, denied) = request(
+        &app,
+        &second_cookie,
+        &second_csrf,
+        "POST",
+        &read_path,
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{denied}");
     for (_, path) in state_writes {
         let (status, error) =
             request(&app, &first_cookie, &first_csrf, "POST", path, Value::Null).await;
@@ -202,7 +223,7 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
             &first_cookie
         )
         .await["data"]["unread_count"],
-        1
+        0
     );
     create_role(&app, &root_cookie, &root_csrf, "notification_status_editor").await;
     for user_id in [&first_id, &second_id] {
@@ -224,7 +245,6 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
     // Each independent write reaches its real recipient-owned record; its siblings stay denied.
     // End with unread so the existing read/idempotency assertions below keep their precondition.
     for allowed in [
-        "notifications.messages.read",
         "notifications.channels.read_all",
         "notifications.messages.read_all",
         "notifications.messages.unread",

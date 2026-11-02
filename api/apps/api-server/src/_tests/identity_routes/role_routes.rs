@@ -11,7 +11,7 @@ use serde_json::json;
 use tower::ServiceExt;
 
 #[tokio::test]
-async fn role_routes_workspace_policy_manager_cannot_grant_system_visibility() {
+async fn role_routes_authorized_policy_manager_can_grant_system_visibility() {
     use crate::_tests::support::{create_member, create_role, replace_member_roles};
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
@@ -42,6 +42,18 @@ async fn role_routes_workspace_policy_manager_cannot_grant_system_visibility() {
             .body(Body::from(body.to_string()))
             .unwrap()
     };
+    let (cookie, csrf) =
+        login_and_capture_cookie(&app, "workspace-policy-member", "temp-pass").await;
+    let path = "/api/console/settings/roles/workspace_policy_editor/data-policy";
+    let system = json!({"default_policy":{"can_view":true,"can_create":false,"can_update":false,"can_delete":false,"default_view_scope":"system_all","default_update_scope":"own","default_delete_scope":"own"},"model_policies":[]});
+    assert_eq!(
+        app.clone()
+            .oneshot(request(&cookie, &csrf, path, system))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
     let grant = app.clone().oneshot(request(&root_cookie, &root_csrf,
         "/api/console/settings/roles/workspace_policy_editor/console-policy",
         json!({"groups":[{"kind":"settings_feature","group_id":"system.roles","enabled":true,"strategy":"custom","operations":[{"kind":"simple","operation_id":"roles.data_policy.replace","enabled":true}]}]})
@@ -61,12 +73,12 @@ async fn role_routes_workspace_policy_manager_cannot_grant_system_visibility() {
     );
     let mut system = scoped;
     system["default_policy"]["default_view_scope"] = json!("system_all");
-    let denied = app
+    let allowed = app
         .clone()
         .oneshot(request(&cookie, &csrf, path, system.clone()))
         .await
         .unwrap();
-    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    assert_eq!(allowed.status(), StatusCode::OK);
     let root_allowed = app
         .clone()
         .oneshot(request(&root_cookie, &root_csrf, path, system))

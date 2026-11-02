@@ -518,20 +518,9 @@ fn ensure_workspace_role_data_policy_scope(
 }
 
 fn ensure_workspace_role_data_policy_allowed(
-    actor: &domain::ActorContext,
     default_policy: &RoleDataPolicyDefaultsInput,
     model_policies: &[RoleDataModelPolicyInput],
 ) -> Result<(), ControlPlaneError> {
-    if !actor.is_root
-        && (default_policy.default_view_scope == domain::RoleDataPolicyScope::SystemAll
-            || model_policies.iter().any(|policy| {
-                policy.view_scope_override == Some(domain::RoleDataPolicyScope::SystemAll)
-            }))
-    {
-        return Err(ControlPlaneError::PermissionDenied(
-            "system_all_view_requires_root",
-        ));
-    }
     // System-wide reads are explicit role policy; system writes remain root-only.
     ensure_workspace_role_data_policy_scope(default_policy.default_update_scope)?;
     ensure_workspace_role_data_policy_scope(default_policy.default_delete_scope)?;
@@ -923,7 +912,6 @@ where
         self.ensure_console_operation(&actor, ROLES_DATA_POLICY_REPLACE_OPERATION_ID)
             .await?;
         ensure_workspace_role_data_policy_allowed(
-            &actor,
             &command.default_policy,
             &command.model_policies,
         )?;

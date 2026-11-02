@@ -903,7 +903,7 @@ const unrelatedInboxGrants = [
 ];
 
 test.each(unrelatedInboxGrants)(
-  'reader can browse, filter, page and refresh without state writes: $permissions',
+  'reader can browse and automatically mark only the opened owned message read: $permissions',
   async ({ permissions }) => {
     setInboxAccess(permissions);
     serverPagination = true;
@@ -915,14 +915,19 @@ test.each(unrelatedInboxGrants)(
     await click(await screen.findByRole('button', { name: '发布完成' }));
     expect(screen.getByText('流程运行成功')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '全部已读' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '标为已读' })).toBeDisabled();
+    await waitFor(() => expect(read_at).not.toBeNull());
+    expect(screen.getByRole('button', { name: '标为未读' })).toBeDisabled();
     await click(screen.getByRole('button', { name: '全部已读' }));
-    await click(screen.getByRole('button', { name: '标为已读' }));
     await click(screen.getByRole('tab', { name: '未读' }));
     await waitForRequests();
     expect(
       calls.filter((call) => call.url.includes('/messages?')).at(-1)?.url
     ).toContain('read_status=unread');
+    await waitFor(() => expect(
+      screen.queryByRole('button', { name: '发布完成' })
+    ).not.toBeInTheDocument());
+    await click(screen.getByRole('tab', { name: '全部' }));
+    await screen.findByRole('button', { name: '发布完成' });
     await waitFor(() =>
       expect(screen.getAllByRole('button', { name: '下一页' })[1]).toBeEnabled()
     );
@@ -935,8 +940,11 @@ test.each(unrelatedInboxGrants)(
     await screen.findByRole('button', { name: '发布完成' });
     await click(screen.getByRole('button', { name: /刷\s*新/ }));
     await waitForRequests();
-    expect(read_at).toBeNull();
-    expect(calls.filter((call) => call.method !== 'GET')).toHaveLength(0);
+    expect(read_at).not.toBeNull();
+    const writes = calls.filter((call) => call.method !== 'GET');
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ method: 'POST' });
+    expect(writes[0].url).toContain('/messages/message-1/read');
   }
 );
 
@@ -961,12 +969,6 @@ test.each(unrelatedInboxGrants)(
 );
 
 test.each([
-  {
-    grant: 'notifications.messages.read',
-    action: '标为已读',
-    endpoint: '/messages/message-1/read',
-    initiallyRead: false
-  },
   {
     grant: 'notifications.messages.unread',
     action: '标为未读',
@@ -994,8 +996,7 @@ test.each([
     if (grant !== 'notifications.channels.read_all')
       expect(screen.getByRole('button', { name: '全部已读' })).toBeDisabled();
     if (grant === 'notifications.channels.read_all') {
-      expect(screen.getByRole('button', { name: '标为已读' })).toBeDisabled();
-      await click(screen.getByRole('button', { name: '发布完成' }));
+      expect(screen.getByRole('button', { name: '标为已读' })).toBeEnabled();
       expect(read_at).toBeNull();
     }
     await click(stateAction);
@@ -1004,17 +1005,16 @@ test.each([
     expect(writes).toHaveLength(1);
     expect(writes[0].url).toContain(endpoint);
     expect(Boolean(read_at)).toBe(!initiallyRead);
-    expect(
-      screen.getByRole('button', {
-        name: initiallyRead ? '标为已读' : '标为未读'
-      })
-    ).toBeDisabled();
+    const oppositeAction = screen.getByRole('button', {
+      name: initiallyRead ? '标为已读' : '标为未读'
+    });
+    if (initiallyRead) expect(oppositeAction).toBeEnabled();
+    else expect(oppositeAction).toBeDisabled();
   }
 );
 
 test.each([
   ...unrelatedInboxGrants,
-  { permissions: ['notifications.messages.read'] },
   { permissions: ['notifications.messages.unread'] },
   { permissions: ['notifications.channels.read_all'] }
 ])(
@@ -1036,9 +1036,7 @@ test.each([
       result.current.select(result.current.channels.data!.items[0]);
     });
     await waitForRequests();
-    expect(result.current.canMarkRead).toBe(
-      permissions.includes('notifications.messages.read')
-    );
+    expect(result.current.canMarkRead).toBe(true);
     expect(result.current.canMarkUnread).toBe(
       permissions.includes('notifications.messages.unread')
     );
@@ -1066,7 +1064,7 @@ test.each([
       }
     ];
     for (const entry of cases.filter(
-      (entry) => !permissions.includes(entry.grant)
+      (entry) => entry.operation !== 'read' && !permissions.includes(entry.grant)
     )) {
       await act(async () => {
         entry.callback();
@@ -1084,5 +1082,19 @@ test.each([
       });
     }
     expect(calls.filter((call) => call.method !== 'GET')).toHaveLength(0);
+    await act(async () => {
+      result.current.markRead('message-1');
+    });
+    await waitFor(() => expect(read_at).not.toBeNull());
+    const writes = calls.filter((call) => call.method !== 'GET');
+    expect(writes).toHaveLength(1);
+    expect(writes[0].url).toContain('/messages/message-1/read');
+    await act(async () => { resetAuthStore(); });
+    await act(async () => {
+      await expect(result.current.write.mutateAsync({
+        id: 'message-1', operation: 'read', requestScope: 'signed-out'
+      })).rejects.toThrow('operation access denied');
+    });
+    expect(calls.filter((call) => call.method !== 'GET')).toHaveLength(1);
   }
 );

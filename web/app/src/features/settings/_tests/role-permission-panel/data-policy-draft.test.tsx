@@ -140,7 +140,7 @@ describe('role data policy draft ownership', () => {
   });
 
   test.each(['default-policy', 'single-model-policy'] as const)(
-    'non-root can edit ordinary scopes in %s but cannot grant system_all view',
+    'authorized non-root can grant system_all view and ordinary scopes in %s',
     async (section) => {
       const { actor, me } = useAuthStore.getState();
       useAuthStore.setState({
@@ -157,22 +157,16 @@ describe('role data policy draft ownership', () => {
       fireEvent.mouseDown(select);
       const systemAll = await findScopeOption('系统所有记录');
       expect(systemAll).toBeVisible();
-      expect(systemAll).toHaveAttribute('aria-disabled', 'true');
+      expect(systemAll).not.toHaveAttribute('aria-disabled', 'true');
       fireEvent.click(systemAll);
-      expect(select.closest('.ant-select')).not.toHaveTextContent('系统所有记录');
+      expect(select.closest('.ant-select')).toHaveTextContent('系统所有记录');
       expect(api.replaceSettingsRoleDataPolicy).not.toHaveBeenCalled();
-      // rc-select's OptionList consumes KeyboardEvent.which for Escape.
-      fireEvent.keyDown(select, {
-        key: 'Escape', code: 'Escape', keyCode: 27, which: 27
-      });
-      await waitFor(() => expect(select).toHaveAttribute('aria-expanded', 'false'));
       fireEvent.click(screen.getByRole('button', { name: 'Save policy' }));
       await waitFor(() => expect(api.replaceSettingsRoleDataPolicy).toHaveBeenCalledWith(
         'member',
-        {
-          default_policy: defaultDataPolicy.default_policy,
-          model_policies: defaultDataPolicy.model_policies
-        },
+        expect.objectContaining(section === 'default-policy'
+          ? { default_policy: expect.objectContaining({ default_view_scope: 'system_all' }) }
+          : { model_policies: expect.arrayContaining([expect.objectContaining({ data_model_id: 'model-orders', view_scope_override: 'system_all' })]) }),
         'csrf-123'
       ));
       fireEvent.mouseDown(select);

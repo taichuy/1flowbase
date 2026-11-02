@@ -1141,11 +1141,10 @@ async fn workspace_role_system_all_is_configurable_for_view_but_never_for_writes
     repository
         .set_actor_console_policies(vec![roles_policy(&["roles.data_policy.replace"])])
         .await;
-    let audit_before = repository.audit_events();
     for model_override in [false, true] {
         let mut scoped_defaults = defaults.clone();
         scoped_defaults.default_view_scope = if model_override { ScopeAll } else { SystemAll };
-        let error = service
+        let saved = service
             .replace_data_policy(ReplaceRoleDataPolicyCommand {
                 actor_user_id: manager.user_id,
                 role_code: "editor".into(),
@@ -1157,11 +1156,30 @@ async fn workspace_role_system_all_is_configurable_for_view_but_never_for_writes
                 },
             })
             .await
-            .err()
-            .expect("workspace managers must not grant system-wide visibility");
-        assert!(error.to_string().contains("system_all_view_requires_root"));
-        assert_eq!(repository.audit_events(), audit_before);
+            .expect("the role policy operation authorizes system-wide view grants");
+        if model_override {
+            assert_eq!(saved.model_policies[0].view_scope_override, Some(SystemAll));
+        } else {
+            assert_eq!(saved.default_policy.default_view_scope, SystemAll);
+        }
     }
+    repository.set_actor_console_policies(vec![]).await;
+    let audit_before = repository.audit_events();
+    let error = service
+        .replace_data_policy(ReplaceRoleDataPolicyCommand {
+            actor_user_id: manager.user_id,
+            role_code: "editor".into(),
+            default_policy: defaults.clone(),
+            model_policies: vec![],
+        })
+        .await
+        .err()
+        .expect("users without the policy operation cannot grant system-wide views");
+    assert!(error.to_string().contains("permission_denied"));
+    assert_eq!(repository.audit_events(), audit_before);
+    repository
+        .set_actor_console_policies(vec![roles_policy(&["roles.data_policy.replace"])])
+        .await;
     let mut scoped_defaults = defaults;
     scoped_defaults.default_view_scope = ScopeAll;
     service

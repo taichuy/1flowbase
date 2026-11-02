@@ -22,7 +22,6 @@ import {
 } from '../api/queries';
 
 const writeOperations = {
-  read: 'notifications.messages.read',
   unread: 'notifications.messages.unread',
   channel: 'notifications.channels.read_all'
 } as const;
@@ -45,13 +44,14 @@ const initialState = (scope: string): InboxState => ({
 
 export function useNotificationInbox(open: boolean) {
   const canAccess = useConsoleOperationAccess();
-  const canMarkRead = canAccess(writeOperations.read);
   const canMarkUnread = canAccess(writeOperations.unread);
   const canReadAll = canAccess(writeOperations.channel);
   const scope = useAuthStore(selectNavigationQueryScope);
   const authenticated = useAuthStore(
     (state) => state.sessionStatus === 'authenticated'
   );
+  // Reading one's own message is authenticated self-service, including readonly users.
+  const canMarkRead = authenticated;
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const client = useQueryClient();
   const [stored, setStored] = useState(() => initialState(scope));
@@ -109,11 +109,12 @@ export function useNotificationInbox(open: boolean) {
     }) => {
       const auth = useAuthStore.getState();
       if (
-        !hasConsoleOperationAccess(
+        auth.sessionStatus !== 'authenticated' ||
+        (operation !== 'read' && !hasConsoleOperationAccess(
           auth.actor?.effective_display_role,
           auth.me?.permissions,
           writeOperations[operation]
-        )
+        ))
       )
         throw new Error('operation access denied');
       if (operation === 'read') await markNotificationRead(id, csrfToken);
