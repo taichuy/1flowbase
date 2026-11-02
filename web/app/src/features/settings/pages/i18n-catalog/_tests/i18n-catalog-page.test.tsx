@@ -411,7 +411,7 @@ describe('I18nCatalogPage batch fixtures', () => {
     expect(within(drawer).getByText('设置')).toBeInTheDocument();
     expect(within(drawer).getByRole('button', { name: '保存翻译' })).toBeDisabled();
     expect(within(drawer).getByRole('button', { name: '恢复官方翻译' })).toBeDisabled();
-    fireEvent.click(within(drawer).getByRole('button', { name: 'Close' }));
+    fireEvent.click(within(drawer).getByRole('button', { name: /关闭|Close/ }));
     expect(screen.getByRole('button', { name: /新增/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /恢复默认值/ })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '目录版本' }));

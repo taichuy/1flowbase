@@ -669,7 +669,7 @@ describe('NetworkEgressPoolsPanel', () => {
     const dialog = await screen.findByRole('dialog');
     expect(await within(dialog).findByDisplayValue('US proxy')).toBeDisabled();
     expect(within(dialog).getByRole('button', { name: /^保\s*存$|^Save$/ })).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: /取消|Cancel/ })).toBeEnabled();
+    expect(within(dialog).getByRole('button', { name: /取\s*消|Cancel/ })).toBeEnabled();
     expect(networkCenterApi.updateSettingsNetworkEgressProxy).not.toHaveBeenCalled();
     expect(networkCenterApi.testSettingsNetworkEgressPoolMember).not.toHaveBeenCalled();
   });

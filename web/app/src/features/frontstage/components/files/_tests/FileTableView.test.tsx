@@ -185,7 +185,7 @@ describe('FileTableView', () => {
         { name: '分享', allowed: record_permissions.can_share }
       ];
       for (const { name, allowed } of actions) {
-        const button = screen.getByRole('button', { name, exact: true });
+        const button = screen.getByRole('button', { name });
         expect(button).toHaveProperty('disabled', !allowed);
         if (!allowed) await click(button);
       }

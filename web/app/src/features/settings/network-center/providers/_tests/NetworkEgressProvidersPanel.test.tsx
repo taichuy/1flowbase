@@ -212,7 +212,7 @@ describe('NetworkEgressProvidersPanel', () => {
     expect(screen.getByRole('button', { name: /上传插件|Upload plugin/i })).toBeDisabled();
     expect(screen.getByRole('combobox', { name: /Test proxy.*版本|Test proxy.*version/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Test proxy.*卸载|Test proxy.*uninstall/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /文档|Documentation/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /文\s*档|Documentation/i })).toBeEnabled();
   });
 
 });

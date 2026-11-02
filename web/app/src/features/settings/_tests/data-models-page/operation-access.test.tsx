@@ -11,19 +11,60 @@ function grant(operations: string[] = []) {
 }
 
 describe('Data model exact operation controls', () => {
-  test('readonly can preview external resource rows while discovery, validation and mapping remain disabled', async () => {
+  test('readonly can preview external resource rows while discovery and mapping remain disabled', async () => {
     grant();
     renderApp('/settings/data-models?source=source-1');
     const preview = await screen.findByRole('button', { name: /预览/ }, { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT });
     expect(preview).toBeEnabled();
-    expect(screen.getByRole('button', { name: /发现资源/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /验证数据源/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /映射/ })).toBeDisabled();
+    const discover = screen.getByRole('button', { name: /发现资源/ });
+    expect(discover).toBeDisabled();
+    fireEvent.click(discover);
+    const map = screen.getByRole('button', { name: /映射/ });
+    expect(map).toBeDisabled();
+    fireEvent.click(map);
     fireEvent.click(preview);
     expect(await screen.findByText('Contacts 预览')).toBeInTheDocument();
     expect(dataModelsApi.previewSettingsDataSourceResource).toHaveBeenCalled();
     expect(dataModelsApi.discoverSettingsDataSourceResources).not.toHaveBeenCalled();
     expect(dataModelsApi.mapSettingsDataSourceResourceToModel).not.toHaveBeenCalled();
+  });
+
+  test('readonly cannot validate a source whose resource action is validation', async () => {
+    grant();
+    dataModelsApi.fetchSettingsDataSources.mockResolvedValue([
+      {
+        id: 'source-1',
+        display_name: 'HubSpot',
+        status: 'ready',
+        enabled: true,
+        fixed: false,
+        default_data_model_status: 'draft',
+        capabilities: {
+          can_update_defaults: true,
+          can_create_data_model: false,
+          can_validate: true,
+          can_discover_resources: false,
+          can_preview_resources: false,
+          can_map_resources: false
+        },
+        backend: {
+          kind: 'runtime_extension',
+          installation_id: 'installation-1',
+          source_code: 'hubspot',
+          config_json: {},
+          secret_ref: null,
+          secret_version: null,
+          catalog_refresh_status: 'ready',
+          catalog_last_error_message: null,
+          catalog_refreshed_at: '2026-04-30T08:00:00Z'
+        }
+      }
+    ]);
+    renderApp('/settings/data-models?source=source-1');
+    const validate = await screen.findByRole('button', { name: '验证数据源' }, { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT });
+    expect(validate).toBeDisabled();
+    fireEvent.click(validate);
+    expect(dataModelsApi.validateSettingsDataSource).not.toHaveBeenCalled();
   });
 
   test('readonly retains model and field detail access without model or field updates', async () => {

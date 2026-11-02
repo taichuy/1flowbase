@@ -60,6 +60,7 @@ function renderPanel() {
 
 describe('PersonalAccessTokensPanel', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     resetAuthStore();
     authenticate();
     personalAccessTokensApi.fetchSettingsPersonalAccessTokens.mockResolvedValue(

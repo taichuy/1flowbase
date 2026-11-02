@@ -746,6 +746,9 @@ test('a tab-create grant enables tabs without enabling page mutation or tab dele
   expect(row('a')).toHaveAttribute('draggable', 'false');
   fireEvent.click(screen.getByRole('button', { name: '查看 Page A' }));
   fireEvent.click(await screen.findByRole('tab', { name: '页面 Tabs' }));
-  expect(await screen.findByRole('button', { name: '新增标签页' })).toBeEnabled();
+  expect(await screen.findByRole('button', { name: /新增标签页$/ })).toBeEnabled();
   expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '删除 Overview' })).not.toBeInTheDocument();
+  expect(api.update).not.toHaveBeenCalled();
+  expect(api.deleteTab).not.toHaveBeenCalled();
 });

@@ -492,7 +492,7 @@ describe('ApplicationApiPage', () => {
         me: {
           id: 'user-1',
           account: 'member',
-          email: null,
+          email: 'member@example.com',
           phone: null,
           nickname: 'Member',
           name: 'Member',
@@ -516,7 +516,9 @@ describe('ApplicationApiPage', () => {
       );
       await click(await screen.findByRole('button', { name: 'API 密钥' }));
       const dialog = await screen.findByRole('dialog', { name: 'API Keys' });
-      expect(within(dialog).getByText('Visible key')).toBeVisible();
+      await waitFor(() =>
+        expect(within(dialog).getByText('Visible key')).toBeVisible()
+      );
       const createButton = within(dialog).getByRole('button', {
         name: '创建 Key'
       });

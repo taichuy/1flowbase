@@ -349,7 +349,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       );
       const deleteButton = within(row).getByRole('button', { name: '删除' });
       expect(deleteButton).toHaveProperty('disabled', !remove);
-      expect(screen.getByRole('button', { name: /新\s*建/ })).toHaveProperty(
+      expect(screen.getByRole('button', { name: '新增' })).toHaveProperty(
         'disabled',
         !create
       );
