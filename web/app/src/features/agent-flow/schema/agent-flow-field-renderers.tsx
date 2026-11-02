@@ -47,6 +47,7 @@ import {
 import { HTTP_REQUEST_METHOD_OPTIONS } from '../lib/http-request/contract';
 import { getNamedBindingExpression } from '../lib/named-binding-expressions';
 import {
+  findSelectorOption,
   encodeSelectorValue,
   decodeSelectorValue,
   listLlmProtocolContextSelectorOptions,
@@ -692,14 +693,6 @@ function renderNamedBindingsField({
         })
       }
     />
-  );
-}
-
-function findSelectorOption(options: FlowSelectorOption[], selector: string[]) {
-  return options.find(
-    (option) =>
-      option.value.length === selector.length &&
-      option.value.every((segment, index) => selector[index] === segment)
   );
 }
 

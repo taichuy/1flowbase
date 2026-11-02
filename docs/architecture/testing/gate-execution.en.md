@@ -7,7 +7,7 @@ existing owner Map. Nested owners, the appShell route case, and explicit namespa
 references remain recognized. Unused-key warnings, other severities, and report
 ordering are unchanged; the lookup introduces no persistent cache.
 
-A complete candidate aggregate rejects duplicate live component scopes, even if every receipt claims success at the same SHA; missing scopes, incompatible candidates and failed components remain blockers. The `sync-js-runtime` crate belongs to the existing runtime-storage check/Clippy owner and runtime-storage-fast execution owner. This changes neither the PR-to-full gate split nor the native nonzero-execution requirement.
+A complete candidate aggregate rejects duplicate live component scopes, even if every receipt claims success at the same SHA; missing scopes, incompatible candidates and failed components remain blockers. The `sync-js-runtime` crate belongs to the existing runtime-storage check/Clippy owner and runtime-storage-fast execution owner. This changes neither the PR-to-full gate split nor the native nonzero-execution requirement. The runtime-storage-fast receipt requires at least one executed passing test from the sync-js-runtime binary; a passing sibling package cannot substitute.
 
 Full project acceptance uses `clippy --all-targets` to type-check the same package
 groups. Its CI matrix and required receipts omit the three redundant `cargo check`

@@ -9,7 +9,7 @@
 - `verify.yml` 是 PR / push 合并基线；`quality-gate.yml scope=ci` 是完整项目体检，额外包含完整测试分片、Clippy、覆盖率、特殊 feature 场景和 React Doctor。
 - 一次完整体检固定同一个 full SHA。根 `quality-gate-report.json` 必须为 `passed/0`，必需 component 唯一、成功且绑定同 SHA；四个 API coverage 分片经 merge 后才形成覆盖率 component。
 - 组件收据按 scope 必须唯一；即使两个同名 scope 都是成功且同 SHA，也必须拒绝聚合，不能用重复收据替换缺失 owner。
-- `sync-js-runtime` 归 `runtime-storage` 的 check/Clippy 与 `runtime-storage-fast` 行为测试所有；PR advisory 只建议对应检查分片，完整 CI 保留非零真实测试执行证据。
+- `sync-js-runtime` 归 `runtime-storage` 的 check/Clippy 与 `runtime-storage-fast` 行为测试所有；PR advisory 只建议对应检查分片，完整 CI 保留非零真实测试执行证据。 `runtime-storage-fast` 必须单独核证 `sync-js-runtime` 测试二进制有至少一例实际通过，不能用同一 Cargo 命令的邻包成功替代。
 - SDK / 内存 EventBus 的单元测试由 runtime-storage-fast 执行，贡献契约与插件事件注册测试由 core-libs 执行；Host、orchestration-runtime 和 PostgreSQL adapter 的完整包测试由各自 coverage owner 执行，跨层 control-plane-postgres-tests 仍由 storage-postgres 四分片完整执行，第一分片另执行 model-usage-report-postgres Node 集成；API lib 与 integration targets 由 API coverage nextest 分片执行。临时专项 workflow 的存在不代表必须重复执行同一组行为。
 - 定向 Cargo 命令必须有非零实际通过用例；编译、ignored 和空 filter 不等于行为通过。真实 managed worker 由 CI 先构建，再向行为测试注入路径。
 - `state-protocols --skip-live-acp` 不验证真实外部 ACP 服务；静态边界、单元测试与 component 收据也不证明所有页面视觉或生产运行态已经验收。报告分别列明证据范围。

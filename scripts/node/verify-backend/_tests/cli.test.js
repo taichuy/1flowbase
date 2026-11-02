@@ -568,12 +568,56 @@ test('ordinary libtest CLI shards require nonzero passing evidence for each comm
             calls += 1;
             assert.equal(command, 'cargo');
             assert.equal(args[0], 'test');
+            if (shard === 'runtime-storage-fast' && expected === 0) {
+              return {
+                status: 0,
+                stderr: '     Running unittests src/lib.rs (target/debug/deps/sync_js_runtime-abcdef)\n',
+                stdout: 'running 2 tests\ntest sync_js_runtime::case_one ... ok\n'
+                  + 'test sync_js_runtime::case_two ... ok\n'
+                  + 'test result: \u001b[32mok\u001b[0m. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;\n',
+              };
+            }
             return { status: exitCode, stdout, stderr: '' };
           },
         });
         assert.equal(status, expected, `${shard ?? 'workspace'}: ${stdout}`);
         assert.equal(calls, 1);
       } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
+    }
+  }
+});
+
+
+test('runtime-storage-fast rejects neighboring success when sync-js-runtime executes zero tests', async () => {
+  const stderr = [
+    '     Running unittests src/lib.rs (target/debug/deps/runtime_core-abcdef)',
+    '     Running unittests src/lib.rs (target/debug/deps/sync_js_runtime-abcdef)',
+  ].join('\n');
+  const suite = (name, passed) =>
+    `running ${passed} test${passed === 1 ? '' : 's'}\n`
+      + (passed ? `test ${name} ... ok\n` : '')
+      + `test result: ok. ${passed} passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;\n`;
+  for (const [syncPassed, expected] of [[false, 1], [true, 0]]) {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-js-owner-evidence-'));
+    try {
+      const stdout = suite('runtime_core::neighbor', 1)
+        + suite('sync_js_runtime::own_test', Number(syncPassed));
+      let diagnostic = '';
+      const status = await main(['test', 'runtime-storage-fast'], {
+        repoRoot, env: { QUALITY_GATE_SCOPE: 'ci' },
+        runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 1 } },
+        writeStdout() {}, writeStderr(text) { diagnostic += text; },
+        managedRunnerImpl(options) { return options.runCommandSequenceImpl(options); },
+        spawnSyncImpl(command, args) {
+          assert.equal(command, 'cargo');
+          assert.ok(args.includes('sync-js-runtime'));
+          return { status: 0, stdout, stderr };
+        },
+      });
+      assert.equal(status, expected, `syncPassed=${syncPassed}; ${diagnostic}`);
+      if (!syncPassed) assert.match(diagnostic, /sync-js-runtime.*no executed passing tests/u);
+    } finally {
+      fs.rmSync(repoRoot, { recursive: true, force: true });
     }
   }
 });

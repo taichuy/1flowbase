@@ -41,6 +41,7 @@ const BACKEND_RUNTIME_STORAGE_TEST_SHARDS = [
   {
     key: 'runtime-storage-fast',
     coverageOwnedPackages: ['runtime-extension-host', 'orchestration-runtime'],
+    requiredTestTargets: [{ label: 'sync-js-runtime-unit-tests', packageName: 'sync-js-runtime' }],
     packages: [
       'runtime-core',
       'runtime-extension-host',
