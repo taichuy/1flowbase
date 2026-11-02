@@ -55,7 +55,7 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        if !actor.is_root {
+        if !actor.has_permission("file_storages.list") {
             return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
         }
 

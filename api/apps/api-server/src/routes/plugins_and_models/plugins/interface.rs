@@ -437,7 +437,7 @@ impl PluginInterfaceAdapter {
                 )?))
             }
             PluginInterfaceInput::ListTasks => Ok(PluginInterfaceOutput::Tasks(
-                self.service(actor, "plugins.tasks.view")
+                self.service(actor, "plugin_list_tasks")
                     .list_tasks(actor.user_id)
                     .await?
                     .into_iter()
@@ -446,7 +446,7 @@ impl PluginInterfaceAdapter {
             )),
             PluginInterfaceInput::GetTask { task_id } => {
                 Ok(PluginInterfaceOutput::Task(to_task_response(
-                    self.service(actor, "plugins.tasks.view")
+                    self.service(actor, "plugin_get_task")
                         .get_task(actor.user_id, parse_uuid(&task_id, "task_id")?)
                         .await?,
                 )?))

@@ -228,6 +228,7 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("file_tables.delete", "system.files"),
     settings("file_tables.list", "system.files"),
     settings("file_tables.storage.bind", "system.files"),
+    settings("files.access_links.create", "system.files"),
     other("frontend_blocks.view", "other.frontend-blocks"),
     authenticated_operation("frontstage.actions.dispatch", "other.frontstage"),
     authenticated_operation("frontstage.blocks.code.update", "other.frontstage"),

@@ -312,6 +312,33 @@ struct FileTablesAdapter {
 }
 
 impl FileTablesAdapter {
+    async fn response_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        table: FileTableWithStorageTitle,
+    ) -> Result<FileTableResponse, ApiError> {
+        use runtime_core::runtime_acl::RuntimeDataAction;
+        let models = control_plane::model_definition::ModelDefinitionService::new(
+            self.store.for_actor(actor.clone()),
+        );
+        let model_id = table.table.model_definition_id;
+        let mut permissions = FileRecordPermissionsResponse {
+            can_create: false, can_update: false, can_delete: false, can_share: false,
+        };
+        for (action, allowed) in [
+            (RuntimeDataAction::Create, &mut permissions.can_create),
+            (RuntimeDataAction::Update, &mut permissions.can_update),
+            (RuntimeDataAction::Delete, &mut permissions.can_delete),
+        ] {
+            *allowed = models.load_runtime_scope_grant(actor, model_id, action).await?
+                .is_some_and(|grant| grant.enabled);
+        }
+        permissions.can_share = actor.has_permission("files.access_links.create")
+            && models.load_runtime_scope_grant(actor, model_id, RuntimeDataAction::View).await?
+                .is_some_and(|grant| grant.enabled);
+        Ok(to_response(table, permissions))
+    }
+
     async fn execute_inner(
         &self,
         principal: &UserPrincipal,
@@ -341,9 +368,11 @@ impl FileTablesAdapter {
                     )
                     .await?;
                 }
-                Ok(FileTablesOutput::List(
-                    tables.into_iter().map(to_response).collect(),
-                ))
+                let mut responses = Vec::with_capacity(tables.len());
+                for table in tables {
+                    responses.push(self.response_for_actor(actor, table).await?);
+                }
+                Ok(FileTablesOutput::List(responses))
             }
             FileTablesInput::Create(body) => {
                 let created = FileTableService::new(self.store.clone())
@@ -355,7 +384,7 @@ impl FileTablesAdapter {
                     })
                     .await?;
                 self.runtime_registry_sync.rebuild().await?;
-                Ok(FileTablesOutput::Item(to_response(created)))
+                Ok(FileTablesOutput::Item(self.response_for_actor(actor, created).await?))
             }
             FileTablesInput::Bind {
                 file_table_id,
@@ -368,7 +397,7 @@ impl FileTablesAdapter {
                         bound_storage_id: body.bound_storage_id,
                     })
                     .await?;
-                Ok(FileTablesOutput::Item(to_response(updated)))
+                Ok(FileTablesOutput::Item(self.response_for_actor(actor, updated).await?))
             }
             FileTablesInput::Delete { file_table_id } => {
                 FileTableService::new(self.store.clone())
@@ -416,6 +445,16 @@ pub struct FileTableResponse {
     pub is_builtin: bool,
     pub is_default: bool,
     pub status: String,
+    pub record_permissions: FileRecordPermissionsResponse,
+}
+
+/// Model-level action eligibility. Runtime row/field ACLs still authorize each record.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FileRecordPermissionsResponse {
+    pub can_create: bool,
+    pub can_update: bool,
+    pub can_delete: bool,
+    pub can_share: bool,
 }
 
 fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
@@ -423,7 +462,7 @@ fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
 }
 
-fn to_response(result: FileTableWithStorageTitle) -> FileTableResponse {
+fn to_response(result: FileTableWithStorageTitle, record_permissions: FileRecordPermissionsResponse) -> FileTableResponse {
     let record = result.table;
     FileTableResponse {
         id: record.id.to_string(),
@@ -440,6 +479,7 @@ fn to_response(result: FileTableWithStorageTitle) -> FileTableResponse {
         is_builtin: record.is_builtin,
         is_default: record.is_default,
         status: record.status,
+        record_permissions,
     }
 }
 

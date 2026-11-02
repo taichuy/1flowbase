@@ -1,14 +1,14 @@
 use uuid::Uuid;
 
-use control_plane::_tests::support::{memory_actor_context, MemoryFileManagementRepository};
+use control_plane::_tests::support::{MemoryFileManagementRepository, memory_actor_context};
 use control_plane::file_management::{
     BindFileTableStorageCommand, CreateFileStorageCommand, DeleteFileStorageCommand,
     DeleteFileTableCommand, FileStorageService, FileTableService, UpdateFileStorageCommand,
 };
 
 #[tokio::test]
-async fn file_table_create_can_inherit_without_resolving_default_but_explicit_binding_requires_root(
-) {
+async fn file_table_create_can_inherit_without_resolving_default_but_explicit_binding_requires_root()
+ {
     let repository = MemoryFileManagementRepository::new(memory_actor_context(false, &[]));
     let service = FileTableService::new(repository);
     let error = service
@@ -32,6 +32,27 @@ async fn file_table_create_can_inherit_without_resolving_default_but_explicit_bi
         .unwrap();
     assert!(inherited.table.bound_storage_id.is_none());
     assert!(inherited.bound_storage_title.is_none());
+}
+
+#[tokio::test]
+async fn explicit_storage_read_does_not_grant_storage_writes() {
+    let actor = memory_actor_context(false, &["file_storages.list"]);
+    let user_id = actor.user_id;
+    let repository = MemoryFileManagementRepository::new(actor);
+    let service = FileStorageService::new(repository);
+    assert!(service.list_storages(user_id).await.is_ok());
+    let error = service
+        .delete_storage(DeleteFileStorageCommand {
+            actor_user_id: user_id,
+            file_storage_id: Uuid::now_v7(),
+        })
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("permission_denied"));
+    let service = FileStorageService::new(MemoryFileManagementRepository::new(
+        memory_actor_context(false, &[]),
+    ));
+    assert!(service.list_storages(user_id).await.is_err());
 }
 
 #[tokio::test]

@@ -279,12 +279,12 @@ pub fn router() -> Router<Arc<ApiState>> {
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::Authenticated;
+    use access_control::ConsoleRouteOwnership::{Authenticated, ConsoleOperation};
 
     ConsoleRouteAssembly::new()
         .route(
             "/files/:file_table_id/records/:record_id/access-links",
-            console_post(create_file_share_link, Authenticated),
+            console_post(create_file_share_link, ConsoleOperation("files.access_links.create".to_owned())),
         )
         .route("/files/upload", console_post(upload_file, Authenticated))
         .route(

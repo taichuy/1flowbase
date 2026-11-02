@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::rngs::SysRng;
 use rand_core::TryRng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
+use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 
 use crate::{
@@ -158,6 +158,9 @@ where
         record_id: Uuid,
         expires_in_seconds: i64,
     ) -> Result<FileShareLink> {
+        if !actor.has_permission("files.access_links.create") {
+            return Err(ControlPlaneError::PermissionDenied("files.access_links.create").into());
+        }
         if expires_in_seconds <= 0 {
             return Err(ControlPlaneError::InvalidInput("expires_in_seconds").into());
         }

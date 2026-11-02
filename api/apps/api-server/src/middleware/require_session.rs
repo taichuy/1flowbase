@@ -218,11 +218,6 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
     actor
         .permissions
         .retain(|permission| !permission.starts_with("settings_feature.access."));
-    actor
-        .permissions
-        .extend(settings_feature_navigation_permissions(
-            inventory, &policies,
-        ));
     actor.permissions.remove("frontstage.page.design");
     for operation in &inventory.operations {
         actor.permissions.remove(&operation.operation_id);
@@ -234,6 +229,11 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
             .insert("frontstage.page.design".to_string());
     }
     actor.permissions.extend(permissions);
+    actor
+        .permissions
+        .extend(settings_feature_navigation_permissions(
+            inventory, &policies,
+        ));
     Ok(())
 }
 
@@ -290,7 +290,9 @@ fn console_operation_permissions(
             let (Ok(group), Ok(id)) = (
                 group,
                 domain::ConsoleOperationId::try_from(operation.operation_id.as_str()),
-            ) else { return false; };
+            ) else {
+                return false;
+            };
             match operation.authorization {
                 access_control::ConsoleAuthorization::Simple => {
                     domain::effective_console_simple_operation(policies, &group, &id)

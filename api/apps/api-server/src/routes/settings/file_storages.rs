@@ -365,7 +365,7 @@ impl FileStoragesAdapter {
         let actor = principal.actor();
         match input {
             FileStoragesInput::List { locale } => {
-                let mut storages = FileStorageService::new(self.store.clone())
+                let mut storages = FileStorageService::new(self.store.for_actor(actor.clone()))
                     .list_storages(actor.user_id)
                     .await?;
                 let preferred_locale = self
