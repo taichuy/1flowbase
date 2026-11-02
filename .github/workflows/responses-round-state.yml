@@ -132,7 +132,7 @@ jobs:
         run: |
           set -euo pipefail
           out=tmp/test-governance/responses-client-history/ci
-          for suite in application_public_api::native_tool_resume native_responses_chain; do
+          for suite in application_public_api::native_tool_resume native_responses_chain successful_native_terminal_commits_only_latest_scoped_tool_candidate; do
             log="$out/control-${suite//:/_}.log"
             cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib "$suite" > "$log" 2>&1 || { tail -c 8000 "$log"; exit 1; }
             node scripts/node/verify/cargo-test-results.js "$log"
@@ -141,11 +141,16 @@ jobs:
           node scripts/node/verify/cargo-test-results.js "$out/executor.log"
           cargo test --locked --manifest-path api/Cargo.toml -p orchestration-runtime --lib routing_failover > "$out/routing.log" 2>&1 || { tail -c 8000 "$out/routing.log"; exit 1; }
           node scripts/node/verify/cargo-test-results.js "$out/routing.log"
+      - name: Native terminal delivery transaction
+        run: |
+          out=tmp/test-governance/responses-client-history/ci
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration terminal_tool_delivery_is_atomic_and_cas_loser_cannot_publish > "$out/terminal-delivery-postgres.log" 2>&1 || { tail -c 8000 "$out/terminal-delivery-postgres.log"; exit 1; }
+          node scripts/node/verify/cargo-test-results.js "$out/terminal-delivery-postgres.log"
       - name: Shared HTTP and WebSocket projection
         run: |
           set -euo pipefail
           out=tmp/test-governance/responses-client-history/ci
-          for suite in application_public_api::openai:: application_public_api::responses_websocket::; do
+          for suite in application_public_api::openai:: application_public_api::responses_websocket:: application_public_api::compat_sse::tests::forwarding; do
             log="$out/api-${suite//:/_}.log"
             cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib "$suite" > "$log" 2>&1 || { tail -c 8000 "$log"; exit 1; }
             node scripts/node/verify/cargo-test-results.js "$log"

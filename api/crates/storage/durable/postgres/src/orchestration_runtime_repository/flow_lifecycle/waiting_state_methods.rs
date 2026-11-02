@@ -1,3 +1,53 @@
+async fn persist_committed_tool_deliveries(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    scope_id: Uuid,
+    flow_run_id: Uuid,
+    deliveries: &[control_plane_contracts::ports::AppendRuntimeEventInput],
+) -> Result<Vec<domain::RuntimeEventRecord>> {
+    let mut tool_delivery_events = Vec::with_capacity(deliveries.len());
+    for delivery in deliveries {
+        if delivery.flow_run_id != flow_run_id || delivery.event_type != "provider_output_item_done"
+        {
+            return Err(anyhow!(
+                "terminal/waiting transaction accepts only same-run provider_output_item_done deliveries"
+            ));
+        }
+        let delivery_sequence = next_runtime_event_sequence(tx, flow_run_id).await?;
+        let row = sqlx::query(
+            r#"
+            insert into runtime_events (
+                id, scope_id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
+                event_type, layer, source, trust_level, item_id, ledger_ref, payload,
+                visibility, durability, delivery_status
+            , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, ($14::jsonb -> 0), $15, $16, 'pending', jsonb_strip_nulls(jsonb_build_object('payload', ($14::jsonb -> 1))) )
+            returning id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
+                      event_type, layer, source, trust_level, item_id, ledger_ref, runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
+                      visibility, durability, created_at
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(scope_id)
+        .bind(flow_run_id)
+        .bind(delivery.node_run_id)
+        .bind(delivery.span_id)
+        .bind(delivery.parent_span_id)
+        .bind(delivery_sequence)
+        .bind(&delivery.event_type)
+        .bind(delivery.layer.as_str())
+        .bind(delivery.source.as_str())
+        .bind(delivery.trust_level.as_str())
+        .bind(delivery.item_id)
+        .bind(delivery.ledger_ref.as_deref())
+        .bind(lossless_json_parameter(&(&delivery.payload)))
+        .bind(delivery.visibility.as_str())
+        .bind(delivery.durability.as_str())
+        .fetch_one(&mut **tx)
+        .await?;
+        tool_delivery_events.push(map_runtime_event_record(row)?);
+    }
+    Ok(tool_delivery_events)
+}
+
 impl PgControlPlaneStore {
     async fn load_runtime_context_content_lineage(
         &self,
@@ -213,48 +263,13 @@ impl PgControlPlaneStore {
             }
         };
 
-        let mut tool_delivery_events = Vec::with_capacity(input.tool_delivery_events.len());
-        for delivery in &input.tool_delivery_events {
-            if delivery.flow_run_id != input.flow_run_id
-                || delivery.event_type != "provider_output_item_done"
-            {
-                return Err(anyhow!(
-                    "waiting transaction accepts only same-run provider_output_item_done deliveries"
-                ));
-            }
-            let delivery_sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
-            let row = sqlx::query(
-                r#"
-                insert into runtime_events (
-                    id, scope_id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
-                    event_type, layer, source, trust_level, item_id, ledger_ref, payload,
-                    visibility, durability, delivery_status
-                , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, ($14::jsonb -> 0), $15, $16, 'pending', jsonb_strip_nulls(jsonb_build_object('payload', ($14::jsonb -> 1))) )
-                returning id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
-                          event_type, layer, source, trust_level, item_id, ledger_ref, runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
-                          visibility, durability, created_at
-                "#,
-            )
-            .bind(Uuid::now_v7())
-            .bind(input.scope_id)
-            .bind(input.flow_run_id)
-            .bind(delivery.node_run_id)
-            .bind(delivery.span_id)
-            .bind(delivery.parent_span_id)
-            .bind(delivery_sequence)
-            .bind(&delivery.event_type)
-            .bind(delivery.layer.as_str())
-            .bind(delivery.source.as_str())
-            .bind(delivery.trust_level.as_str())
-            .bind(delivery.item_id)
-            .bind(delivery.ledger_ref.as_deref())
-            .bind(lossless_json_parameter(&(&delivery.payload)))
-            .bind(delivery.visibility.as_str())
-            .bind(delivery.durability.as_str())
-            .fetch_one(&mut *tx)
-            .await?;
-            tool_delivery_events.push(map_runtime_event_record(row)?);
-        }
+        let tool_delivery_events = persist_committed_tool_deliveries(
+            &mut tx,
+            input.scope_id,
+            input.flow_run_id,
+            &input.tool_delivery_events,
+        )
+        .await?;
 
         let event_sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
         let event_row = sqlx::query(

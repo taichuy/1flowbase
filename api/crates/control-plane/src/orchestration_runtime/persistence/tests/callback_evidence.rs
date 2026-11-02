@@ -400,3 +400,123 @@ async fn semantic_round_evidence_is_atomic_with_callback_and_checkpoint() {
         .iter()
         .all(|task| task.node_run_id == node.id));
 }
+
+#[tokio::test]
+async fn successful_native_terminal_commits_only_latest_scoped_tool_candidate() {
+    use crate::orchestration_runtime::{OrchestrationRuntimeService, StartFlowDebugRunCommand};
+    use crate::ports::{CreateNodeRunInput, OrchestrationRuntimeRepository};
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service
+        .seed_application_with_flow("native successful tool delivery")
+        .await;
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({"node-start":{"query":"tool"}}),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    let run = started.flow_run;
+    let node = service
+        .repository
+        .create_node_run(&CreateNodeRunInput {
+            flow_run_id: run.id,
+            node_id: "node-llm".into(),
+            node_type: "llm".into(),
+            node_alias: "LLM".into(),
+            status: domain::NodeRunStatus::Running,
+            input_payload: json!({}),
+            debug_payload: json!({}),
+            started_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    let outcome = FlowDebugExecutionOutcome {
+        stop_reason: ExecutionStopReason::Completed,
+        variable_pool: Map::new(),
+        checkpoint_snapshot: None,
+        operation_terminal: None,
+        node_traces: vec![trace(
+            &node.node_id,
+            json!({"tool_calls":[{"id":"same-call","name":"exec","arguments":{"input":"latest"}}]}),
+            None,
+        )],
+    };
+    let candidate = |node_run_id, call_id: &str, input: &str| {
+        crate::orchestration_runtime::debug_stream_events::provider_output_item_done(
+            &node.node_id,
+            node_run_id,
+            0,
+            json!({"type":"custom_tool_call","call_id":call_id,"name":"exec","input":input}),
+        )
+    };
+    let prepared = [(node.node_id.clone(), node.clone())].into_iter().collect();
+    let persisted = super::super::persist_flow_debug_outcome(
+        &service.repository,
+        super::super::PersistFlowDebugOutcomeInput {
+            responses_round: None,
+            scope_id: Uuid::nil(),
+            application_name: "native successful tool delivery",
+            task_queue: None,
+            application_id: seeded.application_id,
+            flow_run: &run,
+            compiled_plan: None,
+            outcome: &outcome,
+            prepared_node_runs: Some(&prepared),
+            answer_presentation: None,
+            trigger_event_type: "fixture",
+            trigger_event_payload: json!({}),
+            base_started_at: OffsetDateTime::now_utc(),
+            waiting_node_resume: None,
+            resume_claim_id: None,
+            resume_claim_token: None,
+            tool_delivery_events: vec![
+                candidate(node.id, "same-call", "older internal round"),
+                candidate(node.id, "internal-consumed", "already executed"),
+                candidate(node.id, "same-call", "latest"),
+                candidate(Uuid::now_v7(), "same-call", "another node execution"),
+            ],
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(persisted.flow_run.status, domain::FlowRunStatus::Succeeded);
+    let delivered: Vec<_> = persisted
+        .stream_events
+        .iter()
+        .filter(|event| event.event_type == "provider_output_item_done")
+        .collect();
+    assert_eq!(delivered.len(), 1);
+    assert_eq!(delivered[0].payload["item"]["input"], "latest");
+    assert_eq!(delivered[0].payload["committed_delivery"], true);
+    assert!(!delivered[0].persist_required);
+    let events = service
+        .repository
+        .list_runtime_events(run.id, 0)
+        .await
+        .unwrap();
+    let formal: Vec<_> = events
+        .iter()
+        .filter(|event| event.event_type == "provider_output_item_done")
+        .collect();
+    assert_eq!(formal.len(), 1);
+    assert_eq!(formal[0].payload["item"]["input"], "latest");
+    assert!(
+        formal[0].sequence
+            < events
+                .iter()
+                .find(|event| event.event_type == "flow_finished")
+                .unwrap()
+                .sequence
+    );
+    let detail = service
+        .repository
+        .get_application_run_detail(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(detail.callback_tasks.is_empty());
+}

@@ -436,6 +436,7 @@ async fn cancelled_terminal_finalizes_unfinished_nodes_and_fences_late_writes() 
             flow_run_id: run.id,
             expected_status: FlowRunStatus::Running,
             require_initial_execution: false,
+            tool_delivery_events: Vec::new(),
             result: CommitFlowRunTerminalResult::Cancelled {
                 output_payload: json!({ "answer": "partial" }),
                 error_payload: None,
@@ -569,6 +570,7 @@ async fn competing_terminal_commits_persist_exactly_one_winner() {
                     flow_run_id,
                     expected_status: FlowRunStatus::Running,
                     require_initial_execution: false,
+                    tool_delivery_events: Vec::new(),
                     result: CommitFlowRunTerminalResult::Succeeded {
                         output_payload: json!({ "answer": "succeeded winner" }),
                     },
@@ -597,6 +599,7 @@ async fn competing_terminal_commits_persist_exactly_one_winner() {
                     flow_run_id,
                     expected_status: FlowRunStatus::Running,
                     require_initial_execution: false,
+                    tool_delivery_events: Vec::new(),
                     result: CommitFlowRunTerminalResult::Failed {
                         output_payload: json!({ "partial": "failed winner" }),
                         error_payload: json!({ "code": "fixture_failure" }),
@@ -728,6 +731,7 @@ async fn terminal_commit_rolls_back_state_result_and_events_when_terminal_insert
             flow_run_id: run.id,
             expected_status: FlowRunStatus::Running,
             require_initial_execution: false,
+            tool_delivery_events: Vec::new(),
             result: CommitFlowRunTerminalResult::Failed {
                 output_payload: json!({ "partial": "must roll back" }),
                 error_payload: json!({ "code": "must_roll_back" }),
@@ -772,4 +776,124 @@ async fn terminal_commit_rolls_back_state_result_and_events_when_terminal_insert
             .unwrap();
     assert_eq!(flow_event_count, 0);
     assert_eq!(runtime_event_count, 0);
+}
+
+// Executable native output and its successful sampling terminal share one CAS transaction.
+#[tokio::test]
+async fn terminal_tool_delivery_is_atomic_and_cas_loser_cannot_publish() {
+    use control_plane::ports::{
+        AppendRuntimeEventInput, ClaimRuntimeEventDeliveriesInput, RuntimeEventDeliveryScope,
+    };
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        OffsetDateTime::now_utc(),
+        FlowRunMode::DebugFlowRun,
+        None,
+    )
+    .await;
+    let delivery = |marker: &str| AppendRuntimeEventInput {
+        flow_run_id: run.id,
+        node_run_id: None,
+        span_id: None,
+        parent_span_id: None,
+        event_type: "provider_output_item_done".into(),
+        layer: domain::RuntimeEventLayer::RuntimeItem,
+        source: domain::RuntimeEventSource::Host,
+        trust_level: domain::RuntimeTrustLevel::HostFact,
+        item_id: None,
+        ledger_ref: None,
+        payload: json!({"type":"provider_output_item_done","committed_delivery":true,
+            "item":{"type":"custom_tool_call","call_id":marker,"name":"exec","input":"read\0opaque"}}),
+        visibility: domain::RuntimeEventVisibility::Workspace,
+        durability: domain::RuntimeEventDurability::Durable,
+    };
+    let input = |marker: &str| CommitFlowRunTerminalInput {
+        flow_run_id: run.id,
+        expected_status: FlowRunStatus::Running,
+        require_initial_execution: false,
+        tool_delivery_events: vec![delivery(marker)],
+        result: CommitFlowRunTerminalResult::Succeeded {
+            output_payload: json!({"answer":"tool sampling"}),
+        },
+        flow_run_event_payload: json!({"answer":"tool sampling"}),
+        terminal_event_payload: json!({"type":"flow_finished","run_id":run.id}),
+        finished_at: OffsetDateTime::now_utc(),
+    };
+    sqlx::query(r#"create function reject_native_terminal_fixture() returns trigger language plpgsql as $$
+        begin
+            if new.event_type = 'flow_finished' then raise exception 'native terminal failure'; end if;
+            return new;
+        end; $$;"#).execute(store.pool()).await.unwrap();
+    sqlx::query("create trigger reject_native_terminal_fixture before insert on runtime_events for each row execute function reject_native_terminal_fixture()")
+        .execute(store.pool()).await.unwrap();
+    let error =
+        OrchestrationRuntimeRepository::commit_flow_run_terminal(&store, &input("rolled-back"))
+            .await
+            .unwrap_err();
+    assert!(error.to_string().contains("native terminal failure"));
+    let stored =
+        OrchestrationRuntimeRepository::get_flow_run(&store, seeded.application_id, run.id)
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(stored.status, FlowRunStatus::Running);
+    let count: i64 = sqlx::query_scalar("select count(*) from runtime_events where flow_run_id=$1")
+        .bind(run.id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        count, 0,
+        "tool delivery must roll back with the rejected terminal"
+    );
+    sqlx::query("drop trigger reject_native_terminal_fixture on runtime_events")
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let receipt =
+        OrchestrationRuntimeRepository::commit_flow_run_terminal(&store, &input("winner"))
+            .await
+            .unwrap();
+    assert!(matches!(
+        receipt,
+        CommitFlowRunTerminalReceipt::Winner(_)
+            | CommitFlowRunTerminalReceipt::WinnerWithPostCommitProjectionWarning(_)
+    ));
+    let receipt = OrchestrationRuntimeRepository::commit_flow_run_terminal(&store, &input("loser"))
+        .await
+        .unwrap();
+    assert!(matches!(receipt, CommitFlowRunTerminalReceipt::Loser));
+    let rows:Vec<(String,i64,Option<String>)> = sqlx::query_as("select event_type,sequence,delivery_status from runtime_events where flow_run_id=$1 order by sequence")
+        .bind(run.id).fetch_all(store.pool()).await.unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].0, "provider_output_item_done");
+    assert_eq!(rows[0].2.as_deref(), Some("pending"));
+    assert_eq!(rows[1].0, "flow_finished");
+    assert!(rows[0].1 < rows[1].1);
+    let batch = OrchestrationRuntimeRepository::claim_runtime_event_deliveries(
+        &store,
+        &ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run.id,
+            scope: RuntimeEventDeliveryScope::Start,
+            include_membership: true,
+            limit: 8,
+            lease_seconds: 30,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(batch.claims.len(), 1);
+    assert_eq!(batch.events.len(), 1);
+    assert_eq!(batch.claims[0].event.payload["item"]["call_id"], "winner");
+    assert_eq!(
+        batch.claims[0].event.payload["item"]["input"],
+        "read\0opaque"
+    );
 }

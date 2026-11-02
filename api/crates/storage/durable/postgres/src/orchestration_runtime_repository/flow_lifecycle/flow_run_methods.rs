@@ -814,6 +814,13 @@ impl PgControlPlaneStore {
         &self,
         input: &CommitFlowRunTerminalInput,
     ) -> Result<CommitFlowRunTerminalReceipt> {
+        if !input.tool_delivery_events.is_empty()
+            && !matches!(input.result, CommitFlowRunTerminalResult::Succeeded { .. })
+        {
+            return Err(anyhow!(
+                "tool deliveries require a successful sampling terminal"
+            ));
+        }
         let mut tx = self.pool().begin().await?;
         lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
         if input.require_initial_execution {
@@ -928,6 +935,13 @@ impl PgControlPlaneStore {
         Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
 
         let scope_id = flow_run_scope_id_for_update(&mut tx, flow_run.id).await?;
+        persist_committed_tool_deliveries(
+            &mut tx,
+            scope_id,
+            flow_run.id,
+            &input.tool_delivery_events,
+        )
+        .await?;
         let flow_event_sequence = next_event_sequence(&mut tx, flow_run.id).await?;
         let resume_timeline_description =
             resume_timeline_description(&input.flow_run_event_payload);
@@ -1015,6 +1029,7 @@ impl PgControlPlaneStore {
                 flow_run_id: input.flow_run_id,
                 expected_status: input.expected_status,
                 require_initial_execution: false,
+                tool_delivery_events: Vec::new(),
                 result: CommitFlowRunTerminalResult::Failed {
                     output_payload: input.output_payload.clone(),
                     error_payload: input.error_payload.clone(),

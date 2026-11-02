@@ -68,6 +68,7 @@ where
             flow_run_id: flow_run.id,
             expected_status: flow_run.status,
             require_initial_execution: true,
+            tool_delivery_events: Vec::new(),
             result: CommitFlowRunTerminalResult::Failed {
                 output_payload: flow_run.output_payload.clone(),
                 error_payload: error_payload.clone(),

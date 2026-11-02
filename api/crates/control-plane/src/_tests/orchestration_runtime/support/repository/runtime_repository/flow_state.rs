@@ -230,6 +230,22 @@ impl InMemoryOrchestrationRuntimeRepository {
         &self,
         input: &CommitFlowRunTerminalInput,
     ) -> Result<CommitFlowRunTerminalReceipt> {
+        if !input.tool_delivery_events.is_empty()
+            && !matches!(input.result, CommitFlowRunTerminalResult::Succeeded { .. })
+        {
+            return Err(anyhow::anyhow!(
+                "tool deliveries require a successful sampling terminal"
+            ));
+        }
+        for event in &input.tool_delivery_events {
+            if event.flow_run_id != input.flow_run_id
+                || event.event_type != "provider_output_item_done"
+            {
+                return Err(anyhow::anyhow!(
+                    "terminal accepts only same-run provider_output_item_done deliveries"
+                ));
+            }
+        }
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
         force_status_before_next_flow_update(&mut inner, input.flow_run_id);
         force_stream_terminal_failure_before_next_flow_update(&mut inner, input.flow_run_id);
@@ -277,17 +293,41 @@ impl InMemoryOrchestrationRuntimeRepository {
             payload: input.flow_run_event_payload.clone(),
             created_at: OffsetDateTime::now_utc(),
         };
+        let first_sequence = inner
+            .runtime_events_by_flow_run_id
+            .get(&recovered.id)
+            .map_or(0, Vec::len) as i64
+            + 1;
+        let deliveries = input
+            .tool_delivery_events
+            .iter()
+            .enumerate()
+            .map(|(index, event)| domain::RuntimeEventRecord {
+                id: Uuid::now_v7(),
+                flow_run_id: recovered.id,
+                node_run_id: event.node_run_id,
+                span_id: event.span_id,
+                parent_span_id: event.parent_span_id,
+                sequence: first_sequence + index as i64,
+                event_type: event.event_type.clone(),
+                layer: event.layer,
+                source: event.source,
+                trust_level: event.trust_level,
+                item_id: event.item_id,
+                ledger_ref: event.ledger_ref.clone(),
+                payload: event.payload.clone(),
+                visibility: event.visibility,
+                durability: event.durability,
+                created_at: OffsetDateTime::now_utc(),
+            })
+            .collect::<Vec<_>>();
         let runtime_event = domain::RuntimeEventRecord {
             id: Uuid::now_v7(),
             flow_run_id: recovered.id,
             node_run_id: None,
             span_id: None,
             parent_span_id: None,
-            sequence: inner
-                .runtime_events_by_flow_run_id
-                .get(&recovered.id)
-                .map_or(0, Vec::len) as i64
-                + 1,
+            sequence: first_sequence + deliveries.len() as i64,
             event_type: input.result.runtime_event_type().to_string(),
             layer: domain::RuntimeEventLayer::AgentTransition,
             source: domain::RuntimeEventSource::Host,
@@ -316,6 +356,11 @@ impl InMemoryOrchestrationRuntimeRepository {
             .entry(recovered.id)
             .or_default()
             .push(flow_event);
+        inner
+            .runtime_events_by_flow_run_id
+            .entry(recovered.id)
+            .or_default()
+            .extend(deliveries);
         inner
             .runtime_events_by_flow_run_id
             .entry(recovered.id)

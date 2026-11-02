@@ -24,6 +24,7 @@ fn stale_failure(run: &domain::FlowRunRecord) -> CommitFlowRunTerminalInput {
         flow_run_id: run.id,
         expected_status: run.status,
         require_initial_execution: true,
+        tool_delivery_events: Vec::new(),
         result: CommitFlowRunTerminalResult::Failed {
             output_payload: run.output_payload.clone(),
             error_payload: json!({"message":"old execution read failed"}),

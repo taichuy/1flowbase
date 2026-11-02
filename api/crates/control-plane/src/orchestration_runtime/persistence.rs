@@ -317,24 +317,58 @@ where
     let mut stream_events = persisted_node_traces.stream_events;
     let mut close_reason = None;
 
-    // Buffered tool deliveries are candidates until the llm_tool_calls waiting
-    // state commits them. Any other outcome (a provider fault after the tool
-    // call was generated, a human wait, a terminal) discards them: the client
-    // never received an executable event, so nothing is owed.
-    if !tool_delivery_events.is_empty()
-        && !matches!(
-            &outcome.stop_reason,
-            orchestration_runtime::execution_state::ExecutionStopReason::WaitingCallback(wait)
-                if wait.callback_kind == "llm_tool_calls"
-        )
-    {
-        tracing::warn!(
-            flow_run_id = %flow_run.id,
-            discarded = tool_delivery_events.len(),
-            stop_reason = ?std::mem::discriminant(&outcome.stop_reason),
-            "uncommitted tool delivery candidates discarded with a non-tool-wait outcome"
-        );
-        tool_delivery_events.clear();
+    // Tool candidates become executable only with their durable owner transition:
+    // a workflow callback wait, or successful client-native sampling completion.
+    // Host tools already consumed inline are absent from the final node output.
+    match &outcome.stop_reason {
+        orchestration_runtime::execution_state::ExecutionStopReason::WaitingCallback(wait)
+            if wait.callback_kind == "llm_tool_calls" => {}
+        orchestration_runtime::execution_state::ExecutionStopReason::Completed => {
+            let mut retained_calls = std::collections::BTreeSet::new();
+            // Internal loops can reuse a node row. The final client-facing call
+            // owns only its latest formal candidate in this node execution.
+            tool_delivery_events.reverse();
+            tool_delivery_events.retain(|event| {
+                let item = &event.payload["item"];
+                let call_id = item
+                    .get("call_id")
+                    .or_else(|| item.get("id"))
+                    .and_then(Value::as_str);
+                let node_run_id = event.payload["node_run_id"]
+                    .as_str()
+                    .and_then(|id| Uuid::parse_str(id).ok());
+                let matches_final_output =
+                    call_id
+                        .zip(node_run_id)
+                        .is_some_and(|(call_id, node_run_id)| {
+                            outcome.node_traces.iter().any(|trace| {
+                                event.payload["node_id"].as_str() == Some(trace.node_id.as_str())
+                                    && prepared_node_runs
+                                        .and_then(|nodes| nodes.get(&trace.node_id))
+                                        .is_some_and(|node| node.id == node_run_id)
+                                    && trace
+                                        .output_payload
+                                        .get("tool_calls")
+                                        .and_then(Value::as_array)
+                                        .is_some_and(|calls| {
+                                            calls.iter().any(|call| {
+                                                call.get("call_id")
+                                                    .or_else(|| call.get("id"))
+                                                    .and_then(Value::as_str)
+                                                    == Some(call_id)
+                                                    && call
+                                                        .get("name")
+                                                        .or_else(|| call.pointer("/function/name"))
+                                                        == item.get("name")
+                                            })
+                                        })
+                            }) && retained_calls.insert((node_run_id, call_id.to_owned()))
+                        });
+                matches_final_output
+            });
+            tool_delivery_events.reverse();
+        }
+        _ => tool_delivery_events.clear(),
     }
 
     let persisted_flow_run = match &outcome.stop_reason {
@@ -609,7 +643,28 @@ where
                     )?,
                 )?;
             }
+            for event in &mut tool_delivery_events {
+                event.payload["committed_delivery"] = json!(true);
+                event.persist_required = false;
+            }
+            let tool_delivery_inputs = tool_delivery_events
+                .iter()
+                .map(|event| {
+                    runtime_event_persister::build_runtime_event_input(
+                        flow_run.id,
+                        event
+                            .payload
+                            .get("node_run_id")
+                            .and_then(Value::as_str)
+                            .and_then(|id| Uuid::parse_str(id).ok()),
+                        event.event_type.clone(),
+                        event.source,
+                        event.payload.clone(),
+                    )
+                })
+                .collect();
             stream_events.extend(presentation_events);
+            stream_events.extend(tool_delivery_events);
             let terminal_event =
                 debug_stream_events::flow_finished(flow_run.id, output_payload.clone());
             return commit_terminal_outcome(
@@ -619,6 +674,7 @@ where
                     flow_run_id: flow_run.id,
                     expected_status: flow_run.status,
                     require_initial_execution: false,
+                    tool_delivery_events: tool_delivery_inputs,
                     result: CommitFlowRunTerminalResult::Succeeded {
                         output_payload: output_payload.clone(),
                     },
@@ -647,6 +703,7 @@ where
                     flow_run_id: flow_run.id,
                     expected_status: flow_run.status,
                     require_initial_execution: false,
+                    tool_delivery_events: Vec::new(),
                     result: CommitFlowRunTerminalResult::Incomplete {
                         output_payload: output_payload.clone(),
                     },
@@ -676,6 +733,7 @@ where
                     flow_run_id: flow_run.id,
                     expected_status: flow_run.status,
                     require_initial_execution: false,
+                    tool_delivery_events: Vec::new(),
                     result: CommitFlowRunTerminalResult::Failed {
                         output_payload,
                         error_payload: error_payload.clone(),
