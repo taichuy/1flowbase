@@ -39,7 +39,7 @@ const CLSX_DECLARATIONS = `declare module 'clsx' {
 
 const BLOCK_SDK_DECLARATIONS = `declare module '@1flowbase/block-sdk' {
   export type BlockContextRecord = Record<string, unknown>;
-  export interface BlockContextIdentity { readonly id: string; readonly displayName?: string; }
+  export interface BlockContextIdentity { readonly id: string; readonly displayName?: string; readonly permissions?: readonly string[]; readonly isRoot?: boolean; }
   export interface BlockContextEntity { readonly id: string; readonly name?: string; }
   export interface BlockContextPage { readonly id: string; readonly route: string; readonly title?: string; }
   export interface BlockExternalAssetHandle { dispose(): void; }
@@ -179,7 +179,9 @@ function createGenericModuleDeclarations(
   exports: readonly string[]
 ): string {
   const namedExports = exports
-    .flatMap((exportName) => exportName !== 'default' ? [`  export const ${exportName}: any;`] : [])
+    .flatMap((exportName) =>
+      exportName !== 'default' ? [`  export const ${exportName}: any;`] : []
+    )
     .join('\n');
   const defaultExport = exports.includes('default')
     ? '\n  const defaultExport: any;\n  export default defaultExport;'

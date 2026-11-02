@@ -380,11 +380,13 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
   const nativeBlockRuntimeContext = useMemo<FrontstagePageCanvasRuntimeContext>(
     () => ({
       currentUser: actor
-        ? {
+        ? Object.freeze({
             id: actor.id,
             displayName:
-              me?.nickname?.trim() || me?.name?.trim() || actor.account
-          }
+              me?.nickname?.trim() || me?.name?.trim() || actor.account,
+            permissions: Object.freeze([...(me?.permissions ?? [])]),
+            isRoot: actor.effective_display_role === 'root'
+          })
         : null,
       workspace: { id: workspaceId },
       application: null,
@@ -392,7 +394,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       ui: { locale: blockI18n.locale },
       i18n: blockI18n
     }),
-    [actor, me?.name, me?.nickname, blockI18n, workspaceId]
+    [actor, me?.name, me?.nickname, me?.permissions, blockI18n, workspaceId]
   );
   const createTrialBlockContext = useMemo(() => {
     if (!jsBlockCapabilityHandlers || !selectedPageId || !tabId) {

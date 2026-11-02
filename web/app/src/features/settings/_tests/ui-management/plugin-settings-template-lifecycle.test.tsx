@@ -1,4 +1,8 @@
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient
+} from '@tanstack/react-query';
 import {
   render,
   act,
@@ -166,15 +170,22 @@ describe('AC-009/012 plugin settings published page', () => {
   });
   afterEach(cleanupSurface);
   test('publishes the active language and updates mounted plugins without a user locale preference', async () => {
-    api.fetchConsolePluginSettingsPage.mockResolvedValue({ ...page,
-      source: 'export default function Settings({ctx}) { return <h1>{ctx.ui.locale}</h1>; }'
+    api.fetchConsolePluginSettingsPage.mockResolvedValue({
+      ...page,
+      source:
+        'export default function Settings({ctx}) { return <h1>{ctx.ui.locale}</h1>; }'
     });
     await renderPage();
-    const text = () => screen.getByTestId('plugin-settings-page').shadowRoot?.textContent;
+    const text = () =>
+      screen.getByTestId('plugin-settings-page').shadowRoot?.textContent;
     await waitFor(() => expect(text()).toContain('en_US'));
-    await act(async () => { await i18n.changeLanguage('zh_Hans'); });
+    await act(async () => {
+      await i18n.changeLanguage('zh_Hans');
+    });
     await waitFor(() => expect(text()).toContain('zh_Hans'));
-    await act(async () => { await i18n.changeLanguage('en_US'); });
+    await act(async () => {
+      await i18n.changeLanguage('en_US');
+    });
     await waitFor(() => expect(text()).toContain('en_US'));
   });
   test('retains the registered route identity rather than deriving plugin ownership from the URL', () => {
@@ -206,6 +217,62 @@ describe('AC-009/012 plugin settings published page', () => {
       }
     ]);
   });
+  test.each([
+    { role: 'member', permissions: ['ssh.hosts.list'], enabled: false },
+    { role: 'member', permissions: ['ssh.hosts.create'], enabled: true },
+    { role: 'root', permissions: [], enabled: true }
+  ])(
+    'projects immutable operation hints for $role: $permissions without API capabilities',
+    async ({ role, permissions, enabled }) => {
+      useAuthStore.getState().setAuthenticated({
+        csrfToken: 'csrf-123',
+        actor: {
+          id: 'user-1',
+          account: role,
+          effective_display_role: role,
+          current_workspace_id: 'workspace-1'
+        },
+        me: {
+          id: 'user-1',
+          account: role,
+          email: null,
+          phone: null,
+          nickname: 'Member',
+          name: 'Member',
+          avatar_url: null,
+          introduction: '',
+          effective_display_role: role,
+          permissions
+        }
+      });
+      api.fetchConsolePluginSettingsPage.mockResolvedValue({
+        ...page,
+        source: `
+      export default function Settings({ctx}) {
+        const canCreate = ctx.currentUser?.isRoot || ctx.currentUser?.permissions?.includes('ssh.hosts.create');
+        const immutable = Object.isFrozen(ctx.currentUser) && Object.isFrozen(ctx.currentUser.permissions);
+        return <section><p>{immutable ? 'immutable identity' : 'mutable identity'}</p>
+          <button disabled={!canCreate} onClick={() => ctx.api.post('/api/console/managed-services/ssh/hosts').catch(() => ctx.root.host.setAttribute('data-api-denied', 'true'))}>Create host</button>
+        </section>;
+      }
+    `
+      });
+      await renderPage();
+      const host = screen.getByTestId('plugin-settings-page');
+      await waitFor(() =>
+        expect(host.shadowRoot?.textContent).toContain('immutable identity')
+      );
+      const button = host.shadowRoot!.querySelector('button')!;
+      expect(button).toHaveProperty('disabled', !enabled);
+      if (enabled) {
+        await act(async () => fireEvent.click(button));
+        await waitFor(() =>
+          expect(host).toHaveAttribute('data-api-denied', 'true')
+        );
+      }
+    }
+  );
+
   test('compiles and renders the authorized published source through the actual portal', async () => {
     api.fetchConsolePluginSettingsPage.mockResolvedValue(page);
     await renderPage();
@@ -518,10 +585,9 @@ describe('AC-012/014 template editor and formal activation entry', () => {
       );
       expect(warning).toHaveTextContent('acme.preferences');
       expect(warning).toHaveTextContent('1.0.0');
-      await change(
-        screen.getByRole('textbox', { name: 'Template source' }),
-        { target: { value: 'export default () => <p>My edit</p>' } }
-      );
+      await change(screen.getByRole('textbox', { name: 'Template source' }), {
+        target: { value: 'export default () => <p>My edit</p>' }
+      });
       await click(screen.getByRole('button', { name: 'Save source' }));
       await waitFor(() =>
         expect(api.updateConsoleUiTemplate).toHaveBeenCalledWith(
@@ -609,7 +675,9 @@ describe('AC-012/014 template editor and formal activation entry', () => {
           return { id: 'enable-task', status: 'completed' };
         }
       );
-      await renderSurface(<SettingsExtensionCenterSection category="installed" />);
+      await renderSurface(
+        <SettingsExtensionCenterSection category="installed" />
+      );
       const row = await screen.findByRole('row', { name: /preferences/ });
       await click(
         within(row).getByRole('button', {
@@ -687,7 +755,9 @@ describe('AC-012/014 template editor and formal activation entry', () => {
         limit: 20,
         next_cursor: null
       });
-      await renderSurface(<SettingsExtensionCenterSection category="installed" />);
+      await renderSurface(
+        <SettingsExtensionCenterSection category="installed" />
+      );
       expect(
         await screen.findByTestId('plugin-runtime-status')
       ).toHaveTextContent(label);
@@ -739,7 +809,9 @@ describe('AC-012/014 template editor and formal activation entry', () => {
       });
       return { id: 'enable-task', status: 'completed' };
     });
-    await renderSurface(<SettingsExtensionCenterSection category="installed" />);
+    await renderSurface(
+      <SettingsExtensionCenterSection category="installed" />
+    );
     const warning = await screen.findByTestId(
       'plugin-settings-upgrade-warning'
     );
