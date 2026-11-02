@@ -1119,6 +1119,13 @@ async fn native_mixed_tool_wait_delivers_only_remaining_external_formal_item() {
             .claim_native_tool_deliveries_fixture(waiting.flow_run.id)
             .await
             .unwrap();
+        assert!(
+            matches!(
+                batch.closed_proof.as_ref().map(|proof| proof.upper),
+                Some(crate::ports::RuntimeEventDeliveryUpperBoundary::Recovery(_))
+            ),
+            "mixed host-owned wait must retain its original recovery boundary"
+        );
         assert_eq!(batch.claims.len(), 1);
         assert_eq!(batch.events.len(), 1);
         assert_eq!(batch.claims[0].event.payload["item"], external);

@@ -889,6 +889,18 @@ async fn terminal_tool_delivery_is_atomic_and_cas_loser_cannot_publish() {
     )
     .await
     .unwrap();
+    let proof = batch
+        .closed_proof
+        .as_ref()
+        .expect("successful native tool terminal must close membership");
+    assert!(matches!(
+        proof.upper,
+        control_plane::ports::RuntimeEventDeliveryUpperBoundary::SuccessfulTerminal { .. }
+    ));
+    assert!(batch
+        .events
+        .iter()
+        .all(|event| event.sequence < proof.upper.event_sequence()));
     assert_eq!(batch.claims.len(), 1);
     assert_eq!(batch.events.len(), 1);
     assert_eq!(batch.claims[0].event.payload["item"]["call_id"], "winner");

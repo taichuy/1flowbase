@@ -970,6 +970,15 @@ impl PgControlPlaneStore {
         .execute(&mut *tx)
         .await?;
 
+        // Only this winning business transaction can mark the authoritative terminal.
+        // Diagnostic copies and Provider payloads never supply this evidence.
+        let mut terminal_payload = input.terminal_event_payload.clone();
+        if matches!(input.result, CommitFlowRunTerminalResult::Succeeded { .. }) {
+            terminal_payload
+                .as_object_mut()
+                .ok_or_else(|| anyhow!("terminal payload must be an object"))?
+                .insert("terminal_commit".into(), serde_json::Value::Bool(true));
+        }
         let runtime_event_sequence = next_runtime_event_sequence(&mut tx, flow_run.id).await?;
         sqlx::query(
             r#"
@@ -996,7 +1005,7 @@ impl PgControlPlaneStore {
         .bind(flow_run.id)
         .bind(runtime_event_sequence)
         .bind(input.result.runtime_event_type())
-        .bind(lossless_json_parameter(&(&input.terminal_event_payload)))
+        .bind(lossless_json_parameter(&(&terminal_payload)))
         .execute(&mut *tx)
         .await?;
 

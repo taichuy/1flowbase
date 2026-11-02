@@ -791,6 +791,13 @@ async fn native_client_tool_completion_commits_durable_formal_items() {
             .claim_native_tool_deliveries_fixture(detail.flow_run.id)
             .await
             .unwrap();
+        assert!(
+            matches!(
+                batch.closed_proof.as_ref().map(|proof| proof.upper),
+                Some(crate::ports::RuntimeEventDeliveryUpperBoundary::SuccessfulTerminal { .. })
+            ),
+            "the shared forwarding outlet requires closed terminal membership"
+        );
         assert_eq!(batch.claims.len(), 1);
         assert_eq!(batch.events.len(), 1);
         assert_eq!(batch.claims[0].event.payload["item"], item);

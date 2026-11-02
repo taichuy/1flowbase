@@ -321,6 +321,13 @@ impl InMemoryOrchestrationRuntimeRepository {
                 created_at: OffsetDateTime::now_utc(),
             })
             .collect::<Vec<_>>();
+        let mut terminal_payload = input.terminal_event_payload.clone();
+        if matches!(input.result, CommitFlowRunTerminalResult::Succeeded { .. }) {
+            terminal_payload
+                .as_object_mut()
+                .ok_or_else(|| anyhow::anyhow!("terminal payload must be an object"))?
+                .insert("terminal_commit".into(), json!(true));
+        }
         let runtime_event = domain::RuntimeEventRecord {
             id: Uuid::now_v7(),
             flow_run_id: recovered.id,
@@ -334,7 +341,7 @@ impl InMemoryOrchestrationRuntimeRepository {
             trust_level: domain::RuntimeTrustLevel::HostFact,
             item_id: None,
             ledger_ref: None,
-            payload: input.terminal_event_payload.clone(),
+            payload: terminal_payload,
             visibility: domain::RuntimeEventVisibility::Workspace,
             durability: domain::RuntimeEventDurability::Durable,
             created_at: OffsetDateTime::now_utc(),

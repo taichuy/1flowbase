@@ -486,3 +486,270 @@ pub(super) fn assert_protocol_failure(events: &[Value], code: &str) {
         .expect("stable failed terminal");
     assert_eq!(failed["response"]["error"]["code"], code);
 }
+
+#[tokio::test]
+async fn successful_native_terminal_closes_postgres_delivery_and_completes_shared_forwarding() {
+    use control_plane::ports::{
+        AppendRuntimeEventInput, CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt,
+        CommitFlowRunTerminalResult, ReleaseRuntimeEventDeliveryInput,
+        RuntimeEventDeliveryUpperBoundary,
+    };
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let run = native_run();
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    // The shared historical fixture defaults to a callback wait; this case is
+    // a new native sampling invocation with no callback or recovery context.
+    state
+        .store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: domain::FlowRunStatus::Running,
+            output_payload: json!({}),
+            error_payload: None,
+            finished_at: None,
+        })
+        .await
+        .unwrap();
+    append_compat_sse_runtime_event(
+        &state,
+        run.id,
+        "flow_finished",
+        json!({"type":"flow_finished","status":"succeeded"}),
+    )
+    .await;
+    let open = state
+        .store
+        .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run.id,
+            scope: RuntimeEventDeliveryScope::Start,
+            include_membership: true,
+            limit: 8,
+            lease_seconds: 30,
+        })
+        .await
+        .unwrap();
+    assert!(
+        open.closed_proof.is_none(),
+        "diagnostic terminal copy cannot authorize closure"
+    );
+    let item = json!({"id":"ctc_terminal","type":"custom_tool_call","call_id":"terminal-call",
+        "name":"exec","input":"exact\0opaque","future":{"retain":[1,false,null]}});
+    let payload = json!({"type":"provider_output_item_done","output_index":0,"committed_delivery":true,"item":item});
+    let terminal = CommitFlowRunTerminalInput {
+        flow_run_id: run.id,
+        expected_status: domain::FlowRunStatus::Running,
+        require_initial_execution: false,
+        tool_delivery_events: vec![AppendRuntimeEventInput {
+            flow_run_id: run.id,
+            node_run_id: None,
+            span_id: None,
+            parent_span_id: None,
+            event_type: "provider_output_item_done".into(),
+            layer: domain::RuntimeEventLayer::RuntimeItem,
+            source: domain::RuntimeEventSource::Host,
+            trust_level: domain::RuntimeTrustLevel::HostFact,
+            item_id: None,
+            ledger_ref: None,
+            payload: payload.clone(),
+            visibility: domain::RuntimeEventVisibility::Workspace,
+            durability: domain::RuntimeEventDurability::Durable,
+        }],
+        result: CommitFlowRunTerminalResult::Succeeded {
+            output_payload: json!({}),
+        },
+        flow_run_event_payload: json!({}),
+        terminal_event_payload: json!({"type":"flow_finished","run_id":run.id,"status":"succeeded","terminal_commit":false}),
+        finished_at: time::OffsetDateTime::now_utc(),
+    };
+    let receipt = state
+        .store
+        .commit_flow_run_terminal(&terminal)
+        .await
+        .unwrap();
+    assert!(matches!(
+        receipt,
+        CommitFlowRunTerminalReceipt::Winner(_)
+            | CommitFlowRunTerminalReceipt::WinnerWithPostCommitProjectionWarning(_)
+    ));
+    assert!(matches!(
+        state
+            .store
+            .commit_flow_run_terminal(&terminal)
+            .await
+            .unwrap(),
+        CommitFlowRunTerminalReceipt::Loser
+    ));
+    let request = |include_membership| ClaimRuntimeEventDeliveriesInput {
+        flow_run_id: run.id,
+        scope: RuntimeEventDeliveryScope::Start,
+        include_membership,
+        limit: 8,
+        lease_seconds: 30,
+    };
+    let batch = state
+        .store
+        .claim_runtime_event_deliveries(&request(true))
+        .await
+        .unwrap();
+    let proof = batch
+        .closed_proof
+        .clone()
+        .expect("terminal transaction must close full membership");
+    let (terminal_id, terminal_sequence) = match proof.upper {
+        RuntimeEventDeliveryUpperBoundary::SuccessfulTerminal {
+            event_id,
+            event_sequence,
+        } => (event_id, event_sequence),
+        other => panic!("native terminal cannot invent a recovery boundary: {other:?}"),
+    };
+    let persisted_terminal = state
+        .store
+        .list_runtime_events(run.id, 0)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|event| event.id == terminal_id)
+        .unwrap();
+    assert_eq!(persisted_terminal.event_type, "flow_finished");
+    assert_eq!(persisted_terminal.payload["terminal_commit"], true);
+    assert_eq!(persisted_terminal.sequence, terminal_sequence);
+    assert_eq!(batch.events.len(), 1);
+    assert_eq!(batch.claims.len(), 1);
+    assert!(batch.events[0].sequence < proof.upper.event_sequence());
+    let delivered_event_id = batch.events[0].id;
+    let late = seed_pending_committed_delivery(
+        &state,
+        &run,
+        committed_delivery_payload("late-after-terminal"),
+    )
+    .await;
+    assert!(late.sequence > proof.upper.event_sequence());
+    let thin = state
+        .store
+        .claim_runtime_event_deliveries(&request(false))
+        .await
+        .unwrap();
+    assert_eq!(thin.closed_proof.as_ref(), Some(&proof));
+    assert!(thin.events.is_empty());
+    for claim in batch.claims {
+        state
+            .store
+            .release_runtime_event_delivery(&ReleaseRuntimeEventDeliveryInput {
+                event_id: claim.event.id,
+                claim_token: claim.claim_token,
+                expected_generation: claim.generation,
+            })
+            .await
+            .unwrap();
+    }
+    for replay_after_ack in [false, true] {
+        let (tx, live) = mpsc::unbounded_channel();
+        tx.send(RuntimeEventEnvelope::new(
+            run.id,
+            70000,
+            RuntimeEventPayload {
+                event_type: "flow_finished".into(),
+                source: RuntimeEventSource::Runtime,
+                durability: RuntimeEventDurability::DurableRequired,
+                persist_required: false,
+                trace_visible: true,
+                payload: json!({"type":"flow_finished","run_id":run.id,"status":"succeeded"}),
+            },
+        ))
+        .unwrap();
+        drop(tx);
+        let (sender, mut receiver) = mpsc::channel(8);
+        let forwarding = spawn_scoped_typed_stream(
+            &state,
+            &run,
+            RuntimeEventDeliveryScope::Start,
+            Vec::new(),
+            Vec::new(),
+            live,
+            sender,
+        );
+        let mut mapper = OpenAiResponseStreamMapper::with_mode(
+            "fixture".into(),
+            None,
+            ResponsesProjectionMode::TransparentProviderResponses,
+        );
+        let mut frames = Vec::new();
+        while let Some(input) = receiver.recv().await {
+            let (snapshot, event, receipt) = input.into_parts();
+            frames.extend(mapper.runtime_event_to_sse(&snapshot, event));
+            if let Some(receipt) = receipt {
+                receipt.projected();
+            }
+        }
+        forwarding.await.unwrap();
+        let response = axum::response::sse::Sse::new(tokio_stream::iter(frames)).into_response();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let projected: Vec<Value> = std::str::from_utf8(&bytes)
+            .unwrap()
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert!(
+            !projected
+                .iter()
+                .any(|event| event["type"] == "response.failed"),
+            "{projected:?}"
+        );
+        let done: Vec<_> = projected
+            .iter()
+            .filter(|event| event["type"] == "response.output_item.done")
+            .collect();
+        assert_eq!(done.len(), 1, "acked replay {replay_after_ack}");
+        assert_eq!(done[0]["item"], item);
+        let completed = projected
+            .iter()
+            .find(|event| event["type"] == "response.completed")
+            .expect("closed durable native tool must finish the shared Responses outlet");
+        assert_eq!(completed["response"]["output"], json!([item]));
+        // The second projection uses immutable membership even after the first writer ACK.
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let statuses: Vec<String> =
+                    sqlx::query_scalar("select delivery_status from runtime_events where id=$1")
+                        .bind(delivered_event_id)
+                        .fetch_all(state.store.pool())
+                        .await
+                        .unwrap();
+                if statuses == ["acked"] {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let replay = state
+            .store
+            .claim_runtime_event_deliveries(&request(true))
+            .await
+            .unwrap();
+        assert_eq!(replay.closed_proof.as_ref(), Some(&proof));
+        assert!(replay.claims.is_empty());
+        assert_eq!(replay.events.len(), 1);
+        let thin = state
+            .store
+            .claim_runtime_event_deliveries(&request(false))
+            .await
+            .unwrap();
+        assert_eq!(thin.closed_proof.as_ref(), Some(&proof));
+        assert!(thin.events.is_empty() && thin.claims.is_empty());
+        let late_generation: i64 =
+            sqlx::query_scalar("select delivery_generation from runtime_events where id=$1")
+                .bind(late.id)
+                .fetch_one(state.store.pool())
+                .await
+                .unwrap();
+        assert_eq!(
+            late_generation, 0,
+            "post-terminal candidates stay outside immutable membership"
+        );
+    }
+}
