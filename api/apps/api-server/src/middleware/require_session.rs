@@ -213,7 +213,8 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
         .load_role_console_policies_for_user(actor)
         .await?;
     let inventory = state.console_operation_registry.inventory();
-    // Only navigation access is projected here; operation ACLs and manage grants stay separate.
+    // Project the same effective operations consumed by the invocation boundary. Legacy
+    // role grants cannot retain stale operation IDs after a group or operation is revoked.
     actor
         .permissions
         .retain(|permission| !permission.starts_with("settings_feature.access."));
@@ -224,16 +225,10 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
         ));
     actor.permissions.remove("frontstage.page.design");
     for operation in &inventory.operations {
-        if operation.policy_group
-            == access_control::ConsolePolicyGroup::SettingsFeature(
-                access_control::SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_ID.to_string(),
-            )
-        {
-            actor.permissions.remove(&operation.operation_id);
-        }
+        actor.permissions.remove(&operation.operation_id);
     }
-    let permissions = ui_management_permissions(inventory, &policies);
-    if !permissions.is_empty() {
+    let permissions = console_operation_permissions(inventory, &policies);
+    if permissions.iter().any(|id| id.starts_with("frontstage.")) {
         actor
             .permissions
             .insert("frontstage.page.design".to_string());
@@ -275,30 +270,37 @@ pub(crate) fn settings_feature_navigation_permissions(
         .collect()
 }
 
-fn ui_management_permissions(
+fn console_operation_permissions(
     inventory: &access_control::ConsoleOperationCompiledInventory,
     policies: &[domain::RoleConsolePolicy],
 ) -> std::collections::BTreeSet<String> {
-    let group = domain::ConsolePolicyGroup::settings_feature(
-        access_control::SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_ID,
-    )
-    .expect("static UI-management group is valid");
-    let ui_group = access_control::ConsolePolicyGroup::SettingsFeature(
-        access_control::SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_ID.to_string(),
-    );
     inventory
         .operations
         .iter()
+        .filter(|operation| operation.lifecycle == access_control::SettingsFeatureLifecycle::Active)
         .filter(|operation| {
-            operation.policy_group == ui_group
-                && operation.lifecycle == access_control::SettingsFeatureLifecycle::Active
-                && matches!(
-                    operation.authorization,
-                    access_control::ConsoleAuthorization::Simple
-                )
-                && domain::ConsoleOperationId::try_from(operation.operation_id.as_str()).is_ok_and(
-                    |id| domain::effective_console_simple_operation(policies, &group, &id),
-                )
+            let group = match &operation.policy_group {
+                access_control::ConsolePolicyGroup::SettingsFeature(id) => {
+                    domain::ConsolePolicyGroup::settings_feature(id)
+                }
+                access_control::ConsolePolicyGroup::Other(id) => {
+                    domain::ConsolePolicyGroup::other(id)
+                }
+            };
+            let (Ok(group), Ok(id)) = (
+                group,
+                domain::ConsoleOperationId::try_from(operation.operation_id.as_str()),
+            ) else { return false; };
+            match operation.authorization {
+                access_control::ConsoleAuthorization::Simple => {
+                    domain::effective_console_simple_operation(policies, &group, &id)
+                }
+                access_control::ConsoleAuthorization::ResourceAction { .. } => {
+                    domain::effective_console_row_scope(policies, &group, &id)
+                        != domain::ConsoleOperationRowScope::Disabled
+                }
+                access_control::ConsoleAuthorization::Authenticated => false,
+            }
         })
         .map(|operation| operation.operation_id.clone())
         .collect()

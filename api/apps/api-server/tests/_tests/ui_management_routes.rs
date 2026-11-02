@@ -73,6 +73,15 @@ async fn ui_management_controls_menu_operations_and_design_visibility() {
         StatusCode::NO_CONTENT
     );
     assert!(!design_permission(app, &cookie).await);
+    ui_policy(
+        app, &root, &root_csrf, true, "custom",
+        json!([{ "kind": "simple", "operation_id": "ui_management.components.list", "enabled": true }]),
+    ).await;
+    assert!(!design_permission(app, &cookie).await, "viewing components must not enable page design");
+    let (_, me) = get(app, "/api/console/me", &cookie).await;
+    let permissions = me["data"]["permissions"].as_array().unwrap();
+    assert!(permissions.contains(&json!("ui_management.components.list")));
+    assert!(!permissions.contains(&json!("ui_management.components.create")));
     let groups_path = "/api/console/frontstage/pages/groups";
     let pages_path = "/api/console/frontstage/pages";
     assert_eq!(
