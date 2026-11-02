@@ -418,3 +418,147 @@ async fn empty_canonical_run_tools_do_not_restore_legacy_run_catalog() {
     .unwrap();
     assert!(captured.lock().unwrap()[0].tools.is_empty());
 }
+
+#[tokio::test]
+async fn native_mixed_tool_owner_survives_checkpoint_and_external_followup() {
+    use crate::execution_engine::resume_flow_debug_run_with_runtime_context;
+    use extension_contracts::provider_contract::ProviderOutputItemPhase;
+    for legacy in [false, true] {
+        let plan = llm_answer_plan();
+        let output =
+            |calls: Vec<ProviderToolCall>| {
+                let mut result = tool_call_response(calls);
+                result.response_id = Some("provider-mixed".into());
+                // tool_call_response includes "need tools" text; native output must
+                // carry its formal message as well as every formal tool call.
+                let message = json!({"type":"message","id":"msg_mixed","role":"assistant",
+            "content":[{"type":"output_text","text":"need tools","annotations":[]}]});
+                let mut events: Vec<_> = [
+                    ProviderOutputItemPhase::Added,
+                    ProviderOutputItemPhase::Done,
+                ]
+                .into_iter()
+                .map(|phase| ProviderStreamEvent::OutputItem {
+                    phase,
+                    output_index: 0,
+                    item: message.clone(),
+                })
+                .collect();
+                events.extend(result.tool_calls.iter().enumerate().flat_map(
+                    |(output_index, call)| {
+                        let item = json!({"type":"function_call","id":format!("fc_{}",call.id),
+                "call_id":call.id,"name":call.name,"arguments":call.arguments.to_string()});
+                        [
+                            ProviderOutputItemPhase::Added,
+                            ProviderOutputItemPhase::Done,
+                        ]
+                        .map(|phase| ProviderStreamEvent::OutputItem {
+                            phase,
+                            output_index: output_index + 1,
+                            item: item.clone(),
+                        })
+                    },
+                ));
+                ProviderInvocationOutput {
+                    events,
+                    result,
+                    first_token_at: None,
+                    time_to_first_token_ms: None,
+                }
+            };
+        let call = |id: &str, name: &str| ProviderToolCall {
+            id: id.into(),
+            name: name.into(),
+            arguments: json!({"tool_id":"lookup","arguments":{}}),
+            provider_metadata: json!({}),
+        };
+        let (provider, captured) = sequential_tool_output_invoker(vec![
+            output(vec![
+                call("internal", "catalog_mcp_call"),
+                call("external1", "external_weather"),
+            ]),
+            output(vec![call("external2", "external_weather")]),
+        ]);
+        let internal = Arc::new(StubRuntimeInternalToolInvoker::default());
+        let input = json!({"node-start":{"query":"mixed native"}});
+        let context = ExecutionRuntimeContext::from_plan_input(&plan, input.as_object().unwrap())
+            .unwrap()
+            .with_runtime_internal_tool_invoker(internal.clone())
+            .with_provider_invocation_capability(
+                ProviderInvocationCapability::ResponsesNativePassthrough,
+            );
+        let waiting = start_flow_debug_run_with_runtime_context(&plan, &input, context, &provider)
+            .await
+            .unwrap();
+        let ExecutionStopReason::WaitingCallback(wait) = &waiting.stop_reason else {
+            panic!(
+                "host-owned native mixed round must wait: {:?}",
+                waiting.stop_reason
+            );
+        };
+        assert_eq!(
+            wait.request_payload["host_tool_continuation_owner"],
+            "agentflow"
+        );
+        assert_eq!(
+            wait.request_payload["tool_calls"].as_array().unwrap().len(),
+            1
+        );
+        let mut checkpoint = waiting.checkpoint_snapshot.clone().unwrap();
+        assert_eq!(
+            checkpoint.variable_pool["node-llm"]["__llm_tool_callback"]
+                ["host_tool_continuation_owner"],
+            "agentflow"
+        );
+        if legacy {
+            // The pre-upgrade host checkpoint has its complete internal tool history,
+            // but predates the explicit ownership marker.
+            checkpoint
+                .variable_pool
+                .get_mut("node-llm")
+                .unwrap()
+                .get_mut("__llm_tool_callback")
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .remove("host_tool_continuation_owner");
+            assert!(checkpoint.variable_pool["node-llm"]["__llm_tool_callback"]
+                .get("host_tool_continuation_owner")
+                .is_none());
+        }
+        let context = ExecutionRuntimeContext::from_plan_input(&plan, &checkpoint.variable_pool)
+            .unwrap()
+            .with_runtime_internal_tool_invoker(internal.clone())
+            .with_provider_invocation_capability(
+                ProviderInvocationCapability::ResponsesNativePassthrough,
+            );
+        let resumed = resume_flow_debug_run_with_runtime_context(
+            &plan,
+            &checkpoint,
+            "node-llm",
+            &json!({"tool_results":[{"tool_call_id":"external1","content":"sunny"}]}),
+            context,
+            &provider,
+        )
+        .await
+        .unwrap();
+        let ExecutionStopReason::WaitingCallback(wait) = &resumed.stop_reason else {
+            panic!(
+                "external followup of host-owned chain must retain its owner: {:?}",
+                resumed.stop_reason
+            );
+        };
+        assert_eq!(
+            wait.request_payload["host_tool_continuation_owner"],
+            "agentflow"
+        );
+        assert_eq!(wait.request_payload["tool_calls"][0]["id"], "external2");
+        assert_eq!(internal.calls.lock().unwrap().len(), 1);
+        assert_eq!(captured.lock().unwrap().len(), 2);
+        assert_eq!(
+            resumed.checkpoint_snapshot.as_ref().unwrap().variable_pool["node-llm"]
+                ["__llm_tool_callback"]["host_tool_continuation_owner"],
+            "agentflow"
+        );
+    }
+}

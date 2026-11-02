@@ -195,7 +195,10 @@ async fn prepare_response(
         .map(str::to_owned);
     let previous_translation_context = previous_response.map(|previous| previous.translation);
     let mut inference_recovery = None;
-    if endpoint == OpenAiResponsesEndpoint::Responses && !is_local_summary {
+    if endpoint == OpenAiResponsesEndpoint::Responses
+        && !is_local_summary
+        && responses_envelope.raw_body().get("generate") != Some(&Value::Bool(false))
+    {
         let encoded_resume = correlate_openai_responses_callback(
             responses_envelope.raw_body(),
             previous_response_id.as_deref(),
@@ -207,17 +210,19 @@ async fn prepare_response(
         } else {
             None
         };
+        // Only explicitly host-owned native tools can resume an AgentFlow.
+        // Historical client call IDs cannot claim receipts from older versions.
         let native_resume = if encoded_resume.is_none() && semantic_resume.is_none() {
-            control_plane::application_public_api::native_tool_resume::correlate_native_responses_callback_from_envelope(
+            control_plane::application_public_api::native_tool_resume::correlate_host_owned_responses_callback(
                 &state.store, &application_actor, &responses_envelope,
             ).await.map_err(native::service_error)?
         } else {
             None
         };
-        let correlated_from_native_state = native_resume.is_some();
+        let correlated_from_host_state = native_resume.is_some();
         let native_transport = responses_callback_provider_transport(
             &responses_envelope,
-            correlated_from_native_state,
+            correlated_from_host_state,
             encoded_resume.is_some(),
         )?;
         let resume = encoded_resume
@@ -270,8 +275,7 @@ async fn prepare_response(
             {
                 Ok(compat_sse::CompatibleResumeAdmission::Resume(mut plan)) => {
                     if responses_resume_requires_previous_response_match(
-                        correlated_from_native_state
-                            || plan.command.responses_continuation.is_some(),
+                        correlated_from_host_state || plan.command.responses_continuation.is_some(),
                     ) {
                         if let Err(error) =
                             ensure_openai_responses_resume_matches_previous_response(

@@ -670,7 +670,7 @@ where
                                 stream_event.event_type == "provider_output_item_done";
                             if durable_log_fact {
                                 // Non-tool native items were committed above; executable
-                                // items are committed with the callback waiting state.
+                                // items are committed with their callback wait or sampling terminal.
                                 stream_event.persist_required = false;
                             }
                             match runtime_events::forward_required_runtime_event(

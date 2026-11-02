@@ -417,6 +417,15 @@ async fn visible_internal_llm_tool_callback_resume_keeps_completed_hidden_tool_r
         ExecutionStopReason::WaitingCallback(ref pending) => {
             assert_eq!(pending.node_id, "node-mounted-llm");
             assert_eq!(
+                pending.request_payload["host_tool_continuation_owner"],
+                "agentflow"
+            );
+            assert_eq!(
+                checkpoint.variable_pool["node-mounted-llm"]["__llm_tool_callback"]
+                    ["host_tool_continuation_owner"],
+                "agentflow"
+            );
+            assert_eq!(
                 pending.request_payload["tool_calls"][0]["id"],
                 json!("call_bash")
             );

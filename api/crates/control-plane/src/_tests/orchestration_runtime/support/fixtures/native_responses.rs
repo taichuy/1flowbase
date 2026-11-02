@@ -51,6 +51,22 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             .unwrap()
     }
 
+    /// Claim the same durable client-tool batch consumed by HTTP SSE and Responses WS.
+    pub async fn claim_native_tool_deliveries_fixture(
+        &self,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<crate::ports::RuntimeEventDeliveryBatch> {
+        self.repository
+            .claim_runtime_event_deliveries(&crate::ports::ClaimRuntimeEventDeliveriesInput {
+                flow_run_id,
+                scope: crate::ports::RuntimeEventDeliveryScope::Start,
+                include_membership: true,
+                limit: 8,
+                lease_seconds: 30,
+            })
+            .await
+    }
+
     pub async fn native_continuation_fixture(
         &self,
         flow_run_id: Uuid,

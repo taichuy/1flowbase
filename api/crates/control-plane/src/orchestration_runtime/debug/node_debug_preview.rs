@@ -262,6 +262,7 @@ where
                 flow_run_id: flow_run.id,
                 expected_status: flow_run.status,
                 require_initial_execution: false,
+                tool_delivery_events: Vec::new(),
                 result,
                 flow_run_event_payload,
                 terminal_event_payload: terminal_event.payload,

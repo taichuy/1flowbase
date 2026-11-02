@@ -9,6 +9,8 @@ use control_plane_contracts::{
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+#[path = "native_tool_resume/client_ownership.rs"]
+mod client_ownership;
 #[path = "native_tool_resume/closed_history.rs"]
 mod closed_history;
 #[path = "native_tool_resume/multipart_outputs.rs"]

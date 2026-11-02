@@ -172,6 +172,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
                 flow_run_id: input.flow_run_id,
                 expected_status: input.expected_status,
                 require_initial_execution: false,
+                tool_delivery_events: Vec::new(),
                 result: CommitFlowRunTerminalResult::Failed {
                     output_payload: input.output_payload.clone(),
                     error_payload: input.error_payload.clone(),
