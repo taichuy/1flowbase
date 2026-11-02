@@ -35,6 +35,22 @@ async fn personal_writes_require_independent_operations_and_keep_security_self_s
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     create_role(&app, &root_cookie, &root_csrf, "personal_limited").await;
+    // The assistant settings response includes the readable application catalog.
+    // Keep that read prerequisite independent of the three mutation grants.
+    let application_read_group = json!({"kind":"settings_feature","group_id":"system.applications","enabled":true,"strategy":"custom","operations":[{"kind":"row","operation_id":"list_applications","scope":"scope_all"}]});
+    assert_eq!(
+        personal_request(
+            &app,
+            &root_cookie,
+            &root_csrf,
+            "PUT",
+            "/api/console/settings/roles/personal_limited/console-policy",
+            json!({"groups":[application_read_group.clone()]})
+        )
+        .await
+        .status(),
+        StatusCode::NO_CONTENT
+    );
     let member = create_member(
         &app,
         &root_cookie,
@@ -104,7 +120,7 @@ async fn personal_writes_require_independent_operations_and_keep_security_self_s
     }
     for (allowed_id, allowed_path, _) in &writes {
         let grant = personal_request(&app, &root_cookie, &root_csrf, "PUT",
-            "/api/console/settings/roles/personal_limited/console-policy", json!({"groups":[{
+            "/api/console/settings/roles/personal_limited/console-policy", json!({"groups":[application_read_group.clone(), {
                 "kind":"other", "group_id":"other.personal-account", "enabled":true, "strategy":"custom",
                 "operations":[{"kind":"simple","operation_id":allowed_id,"enabled":true}]
             }]})).await;
@@ -181,7 +197,7 @@ async fn personal_writes_require_independent_operations_and_keep_security_self_s
             &root_csrf,
             "PUT",
             "/api/console/settings/roles/personal_limited/console-policy",
-            json!({"groups":[]})
+            json!({"groups":[application_read_group]})
         )
         .await
         .status(),
