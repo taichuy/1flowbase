@@ -28,8 +28,9 @@ export type ReplaceSettingsRoleConsolePolicyInput =
   ReplaceConsoleRoleConsolePolicyInput;
 export type SettingsRolePermissions = ConsoleRolePermissions;
 export type SettingsRoleFrontstageRoutes = ConsoleRoleFrontstageRoutes;
-export type SettingsRoleDataPolicyScope = Exclude<
-  ConsoleRoleDataPolicyScope,
+export type SettingsRoleDataPolicyScope = ConsoleRoleDataPolicyScope;
+export type SettingsRoleDataPolicyWriteScope = Exclude<
+  SettingsRoleDataPolicyScope,
   'system_all'
 >;
 export type SettingsRoleDataPolicyOverrideScope =
@@ -41,16 +42,16 @@ export interface SettingsRoleDefaultDataPolicy {
   can_update: boolean;
   can_delete: boolean;
   default_view_scope: SettingsRoleDataPolicyScope;
-  default_update_scope: SettingsRoleDataPolicyScope;
-  default_delete_scope: SettingsRoleDataPolicyScope;
+  default_update_scope: SettingsRoleDataPolicyWriteScope;
+  default_delete_scope: SettingsRoleDataPolicyWriteScope;
 }
 
 export interface SettingsRoleModelDataPolicy {
   data_model_id: string;
   can_create_override: boolean | null;
   view_scope_override: SettingsRoleDataPolicyOverrideScope;
-  update_scope_override: SettingsRoleDataPolicyOverrideScope;
-  delete_scope_override: SettingsRoleDataPolicyOverrideScope;
+  update_scope_override: SettingsRoleDataPolicyWriteScope | null;
+  delete_scope_override: SettingsRoleDataPolicyWriteScope | null;
 }
 
 export interface SettingsRoleDataPolicy {
@@ -83,7 +84,7 @@ export function fetchSettingsRoleDataPolicy(
 ): Promise<SettingsRoleDataPolicy> {
   return fetchConsoleRoleDataPolicy(
     roleCode
-  ) as Promise<SettingsRoleDataPolicy>;
+  );
 }
 
 export function replaceSettingsRoleDataPolicy(
@@ -95,5 +96,5 @@ export function replaceSettingsRoleDataPolicy(
     roleCode,
     input,
     csrfToken
-  ) as Promise<SettingsRoleDataPolicy>;
+  );
 }

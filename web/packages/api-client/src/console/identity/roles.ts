@@ -164,6 +164,10 @@ export interface ReplaceConsoleRoleFrontstageRoutesInput {
 export type ConsoleRoleDataPolicyScope = 'own' | 'scope_all' | 'system_all';
 export type ConsoleRoleDataPolicyOverrideScope =
   ConsoleRoleDataPolicyScope | null;
+export type ConsoleRoleDataPolicyWriteScope = Exclude<
+  ConsoleRoleDataPolicyScope,
+  'system_all'
+>;
 
 export interface ConsoleRoleDefaultDataPolicy {
   can_view: boolean;
@@ -171,16 +175,16 @@ export interface ConsoleRoleDefaultDataPolicy {
   can_update: boolean;
   can_delete: boolean;
   default_view_scope: ConsoleRoleDataPolicyScope;
-  default_update_scope: ConsoleRoleDataPolicyScope;
-  default_delete_scope: ConsoleRoleDataPolicyScope;
+  default_update_scope: ConsoleRoleDataPolicyWriteScope;
+  default_delete_scope: ConsoleRoleDataPolicyWriteScope;
 }
 
 export interface ConsoleRoleModelDataPolicy {
   data_model_id: string;
   can_create_override: boolean | null;
   view_scope_override: ConsoleRoleDataPolicyOverrideScope;
-  update_scope_override: ConsoleRoleDataPolicyOverrideScope;
-  delete_scope_override: ConsoleRoleDataPolicyOverrideScope;
+  update_scope_override: ConsoleRoleDataPolicyWriteScope | null;
+  delete_scope_override: ConsoleRoleDataPolicyWriteScope | null;
 }
 
 export interface ConsoleRoleDataPolicy {

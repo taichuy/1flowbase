@@ -295,6 +295,7 @@
     "save_data_policy": "Save data policy",
     "own_records": "Own records",
     "scope_all_records": "Workspace scope",
+    "system_all_records": "All system records",
     "inherit": "Inherit",
     "inject_main_instance_alt": "Inject the main instance",
     "target_model": "target model",
