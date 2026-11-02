@@ -14,10 +14,19 @@ fn seed_host_round(
     run: Uuid,
     body: &Value,
 ) -> CallbackTaskRecord {
-    let old = seed_round(repository, run, body);
-    let mut payload = old.request_payload;
-    payload["host_tool_continuation_owner"] = json!("agentflow");
-    repository.seed_pending_llm_tool_callback_task(run, payload)
+    let transport = ProviderTransportPayload::openai_responses(body.clone()).unwrap();
+    repository.seed_pending_llm_tool_callback_task(
+        run,
+        json!({
+            "host_tool_continuation_owner":"agentflow",
+            "tool_calls":[{"id":"function","name":"read"},{"id":"custom","name":"exec"}],
+            "provider_metadata":{"native_response":{
+                "response_id":"resp_round",
+                "configuration_digest":transport.configuration_digest().unwrap(),
+                "user_messages_digest":transport.user_messages_digest().unwrap()
+            }}
+        }),
+    )
 }
 
 #[tokio::test]
@@ -107,13 +116,23 @@ async fn host_owned_round_retains_complete_set_validation_without_claiming_other
         .await
         .unwrap()
         .is_none());
-    let mut other_cursor = body;
+    let mut other_cursor = body.clone();
     other_cursor["previous_response_id"] = json!("resp_warmup");
     assert!(public_admission(&repository, &actor, other_cursor)
         .await
         .unwrap()
         .is_none());
     assert!(repository.callback_resume_attempts().is_empty());
+    // Two genuinely active receipts with the same cursor must remain ambiguous;
+    // explicit ownership must not silently choose one workflow over another.
+    seed_round(&repository, run, &body);
+    let mut ambiguous = body;
+    ambiguous["previous_response_id"] = json!("resp_round");
+    assert!(public_admission(&repository, &actor, ambiguous)
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("native_tool_output_ambiguous_round"));
 }
 
 #[tokio::test]
