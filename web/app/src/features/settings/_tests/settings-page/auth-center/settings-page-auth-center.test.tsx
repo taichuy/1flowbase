@@ -10,7 +10,13 @@ import { useAuthStore } from '../../../../../state/auth-store';
 
 describe('SettingsPage', () => {
   test('renders auth center actions and opens configuration drawer', async () => {
-    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
+    authenticateWithPermissions([
+      'user.view.all',
+      'auth_center.overview.view',
+      'auth_center.login_entries.enabled.update',
+      'update_auth_center_authenticator_config',
+      'update_auth_center_authenticator_public_ui_block'
+    ]);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_login_entry_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
@@ -98,7 +104,13 @@ describe('SettingsPage', () => {
   });
 
   test('initializes auth center config form from authenticator fields', async () => {
-    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
+    authenticateWithPermissions([
+      'user.view.all',
+      'auth_center.overview.view',
+      'auth_center.login_entries.enabled.update',
+      'update_auth_center_authenticator_config',
+      'update_auth_center_authenticator_public_ui_block'
+    ]);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_login_entry_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
@@ -152,7 +164,13 @@ describe('SettingsPage', () => {
   });
 
   test('submits auth center config, refreshes the list, and closes the drawer', async () => {
-    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
+    authenticateWithPermissions([
+      'user.view.all',
+      'auth_center.overview.view',
+      'auth_center.login_entries.enabled.update',
+      'update_auth_center_authenticator_config',
+      'update_auth_center_authenticator_public_ui_block'
+    ]);
     authCenterApi.fetchSettingsAuthCenterOverview
       .mockResolvedValueOnce({
         default_login_entry_id: 'auth-oidc-main',
@@ -264,7 +282,13 @@ describe('SettingsPage', () => {
   });
 
   test('shows auth center config errors in the drawer', async () => {
-    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
+    authenticateWithPermissions([
+      'user.view.all',
+      'auth_center.overview.view',
+      'auth_center.login_entries.enabled.update',
+      'update_auth_center_authenticator_config',
+      'update_auth_center_authenticator_public_ui_block'
+    ]);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_login_entry_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
@@ -350,7 +374,13 @@ describe('SettingsPage', () => {
   });
 
   test('shows auth center csrf error in the drawer', async () => {
-    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
+    authenticateWithPermissions([
+      'user.view.all',
+      'auth_center.overview.view',
+      'auth_center.login_entries.enabled.update',
+      'update_auth_center_authenticator_config',
+      'update_auth_center_authenticator_public_ui_block'
+    ]);
     useAuthStore.setState({ csrfToken: null });
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_login_entry_id: 'auth-oidc-main',
