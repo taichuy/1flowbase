@@ -561,9 +561,9 @@ async fn failover_queue_stops_when_primary_fails_after_finish_error_with_first_t
     }
 }
 
-// #2036 AC-002: native tools suspend the original node; formal output remains required.
+// Client-owned native tools finish this sampling invocation; formal output remains required.
 #[tokio::test]
-async fn issue_2036_native_tool_turn_waits_on_original_node_with_formal_output() {
+async fn native_client_tool_turn_completes_with_formal_output() {
     for formal in [false, true] {
         let plan = llm_answer_plan();
         let mut response = tool_call_response(vec![ProviderToolCall {
@@ -573,6 +573,8 @@ async fn issue_2036_native_tool_turn_waits_on_original_node_with_formal_output()
             provider_metadata: json!({"type":"custom_tool_call"}),
         }]);
         response.response_id = Some("resp_native".into());
+        // Provider metadata cannot mint the host-only workflow continuation owner.
+        response.provider_metadata = json!({"host_tool_continuation_owner":"agentflow"});
         let item = json!({"id":"item_native","type":"custom_tool_call","call_id":"call_native","name":"exec","input":"text(1)"});
         let mut events = vec![];
         if formal {
@@ -613,8 +615,8 @@ async fn issue_2036_native_tool_turn_waits_on_original_node_with_formal_output()
             continue;
         }
         assert!(
-            matches!(outcome.stop_reason, ExecutionStopReason::WaitingCallback(_)),
-            "native tool output must suspend the original workflow: {:?}",
+            matches!(outcome.stop_reason, ExecutionStopReason::Completed),
+            "native client output must complete this invocation: {:?}",
             outcome.stop_reason
         );
         let llm = outcome

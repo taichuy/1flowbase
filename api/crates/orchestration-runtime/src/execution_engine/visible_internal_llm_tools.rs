@@ -166,6 +166,7 @@ where
                 node.node_id
             )
         })?;
+        callback_wait.retain_agentflow_ownership();
         let internal_call_ids = internal_tool_calls
             .iter()
             .map(|(tool_call, _)| tool_call_id(tool_call))

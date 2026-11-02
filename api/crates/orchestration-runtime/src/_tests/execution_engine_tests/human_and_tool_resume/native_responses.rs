@@ -1,10 +1,9 @@
 use super::*;
-use crate::execution_engine::resume_flow_debug_run_with_runtime_context;
 use extension_contracts::provider_contract::ProviderOutputItemPhase;
 
-// #2036 AC-001/002/003: drive the real scheduler through three client tool waits.
+// Each client-owned native sampling request has an independent workflow lifetime.
 #[tokio::test]
-async fn native_three_tool_rounds_keep_checkpoint_and_execute_downstream_once() {
+async fn native_three_tool_rounds_complete_independent_invocations() {
     let plan = llm_answer_plan();
     let outputs = (0..4)
         .map(|round| {
@@ -53,68 +52,49 @@ async fn native_three_tool_rounds_keep_checkpoint_and_execute_downstream_once() 
         .collect();
     let (invoker, captured) = sequential_tool_output_invoker(outputs);
     let input = json!({"node-start":{"query":"read the dependency chain"}});
-    let context = ExecutionRuntimeContext::from_plan_input(&plan, input.as_object().unwrap())
-        .unwrap()
-        .with_provider_invocation_capability(
-            ProviderInvocationCapability::ResponsesNativePassthrough,
-        );
-    let mut outcome = start_flow_debug_run_with_runtime_context(&plan, &input, context, &invoker)
-        .await
-        .unwrap();
-    let mut traces = Vec::new();
-    for round in 0..3 {
-        let ExecutionStopReason::WaitingCallback(ref wait) = outcome.stop_reason else {
-            panic!("must wait for tool {round}")
-        };
-        assert_eq!(wait.node_id, "node-llm");
-        assert_eq!(
-            wait.request_payload["tool_calls"][0]["id"],
-            format!("call_{round}")
-        );
-        assert!(!outcome.variable_pool.contains_key("node-answer"));
-        traces.extend(
-            outcome
-                .node_traces
-                .iter()
-                .map(|trace| trace.node_id.clone()),
-        );
-        let checkpoint = outcome.checkpoint_snapshot.as_ref().unwrap();
-        let context = ExecutionRuntimeContext::from_plan_input(&plan, &checkpoint.variable_pool)
+    for round in 0..4 {
+        let context = ExecutionRuntimeContext::from_plan_input(&plan, input.as_object().unwrap())
             .unwrap()
             .with_provider_invocation_capability(
                 ProviderInvocationCapability::ResponsesNativePassthrough,
             );
-        outcome = resume_flow_debug_run_with_runtime_context(&plan,checkpoint,"node-llm",
-            &json!({"tool_results":[{"tool_call_id":format!("call_{round}"),"content":format!("result {round}")}]}),context,&invoker).await.unwrap();
+        let outcome = start_flow_debug_run_with_runtime_context(&plan, &input, context, &invoker)
+            .await
+            .unwrap();
+        assert!(
+            matches!(outcome.stop_reason, ExecutionStopReason::Completed),
+            "client sampling {round}: {:?}",
+            outcome.stop_reason
+        );
+        assert_eq!(
+            outcome
+                .node_traces
+                .iter()
+                .filter(|trace| trace.node_id == "node-llm")
+                .count(),
+            1
+        );
+        assert!(outcome.variable_pool.contains_key("node-answer"));
+        if round < 3 {
+            let llm = outcome
+                .node_traces
+                .iter()
+                .find(|trace| trace.node_id == "node-llm")
+                .unwrap();
+            assert_eq!(llm.metrics_payload["usage"]["input_tokens"], 11);
+            assert_eq!(llm.metrics_payload["usage"]["output_tokens"], 3);
+            assert!(
+                llm.provider_events.iter().any(|event| matches!(event,
+                ProviderStreamEvent::OutputItem {phase:ProviderOutputItemPhase::Done,item,..}
+                if item["type"] == "custom_tool_call" && item["input"] == format!("read {round}")))
+            );
+            assert_eq!(
+                outcome.variable_pool["node-llm"]["tool_calls"][0]["id"],
+                format!("call_{round}")
+            );
+        } else {
+            assert_eq!(outcome.variable_pool["node-answer"]["answer"], "finished");
+        }
     }
-    assert!(matches!(
-        outcome.stop_reason,
-        ExecutionStopReason::Completed
-    ));
-    traces.extend(
-        outcome
-            .node_traces
-            .iter()
-            .map(|trace| trace.node_id.clone()),
-    );
-    assert_eq!(
-        traces
-            .iter()
-            .filter(|id| id.as_str() == "node-start")
-            .count(),
-        1
-    );
-    assert_eq!(
-        traces.iter().filter(|id| id.as_str() == "node-llm").count(),
-        4
-    );
-    assert_eq!(
-        traces
-            .iter()
-            .filter(|id| id.as_str() == "node-answer")
-            .count(),
-        1
-    );
     assert_eq!(captured.lock().unwrap().len(), 4);
-    assert_eq!(outcome.variable_pool["node-answer"]["answer"], "finished");
 }

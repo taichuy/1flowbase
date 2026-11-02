@@ -107,6 +107,43 @@ pub async fn execute_llm_node<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    let mut execution = execute_llm_node_with_communication(
+        plan,
+        node,
+        resolved_inputs,
+        rendered_templates,
+        variable_pool,
+        runtime_context,
+        invoker,
+        lifecycle,
+    )
+    .await?;
+    // Internal tool loops may use the transcript while executing. Only the outer
+    // node boundary decides whether any remaining external wait is durable.
+    if execution
+        .pending_callback
+        .as_ref()
+        .is_some_and(|wait| wait.continuation_owner == LlmToolContinuationOwner::ClientResponses)
+    {
+        execution.pending_callback = None;
+    }
+    Ok(execution)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn execute_llm_node_with_communication<I>(
+    plan: &CompiledPlan,
+    node: &CompiledNode,
+    resolved_inputs: &Map<String, Value>,
+    rendered_templates: &Map<String, Value>,
+    variable_pool: &mut Map<String, Value>,
+    runtime_context: &ExecutionRuntimeContext,
+    invoker: &I,
+    lifecycle: &dyn ExecutionLifecycle,
+) -> Result<LlmNodeExecution>
+where
+    I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
+{
     let Some(communication) = &runtime_context.communication else {
         return execute_llm_node_tools(
             plan,
@@ -254,6 +291,7 @@ where
                 node.node_id
             )
         })?;
+        callback_wait.retain_agentflow_ownership();
         let call_usage = execution
             .metrics_payload
             .get("usage")
@@ -354,6 +392,9 @@ where
 fn attach_runtime_internal_tool_events(execution: &mut LlmNodeExecution, events: &[Value]) {
     if events.is_empty() {
         return;
+    }
+    if let Some(wait) = execution.pending_callback.as_mut() {
+        wait.retain_agentflow_ownership();
     }
     let debug = execution
         .debug_payload

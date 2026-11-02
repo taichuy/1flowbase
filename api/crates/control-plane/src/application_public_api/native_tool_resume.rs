@@ -36,6 +36,37 @@ pub async fn correlate_native_responses_callback_from_envelope<R>(
 where
     R: ApplicationPublishedRunControlRepository,
 {
+    correlate_responses_callback(repository, actor, envelope, false).await
+}
+
+/// Public Responses admission only resumes tools explicitly owned by the host.
+/// Native client history is not callback authority, even when call IDs match a
+/// receipt from an older gateway version. The marker is written by host tool
+/// execution, never accepted from request JSON or provider metadata.
+pub async fn correlate_host_owned_responses_callback<R>(
+    repository: &R,
+    actor: &ApplicationApiKeyActor,
+    envelope: &OpenAiResponsesEnvelope,
+) -> Result<Option<(CallbackTaskRecord, Value)>>
+where
+    R: ApplicationPublishedRunControlRepository,
+{
+    correlate_responses_callback(repository, actor, envelope, true).await
+}
+
+async fn correlate_responses_callback<R>(
+    repository: &R,
+    actor: &ApplicationApiKeyActor,
+    envelope: &OpenAiResponsesEnvelope,
+    host_owned_only: bool,
+) -> Result<Option<(CallbackTaskRecord, Value)>>
+where
+    R: ApplicationPublishedRunControlRepository,
+{
+    // Prewarming is connection setup, not submission of a workflow receipt.
+    if host_owned_only && envelope.raw_body().get("generate") == Some(&Value::Bool(false)) {
+        return Ok(None);
+    }
     // Structural protocol errors remain owned by the Responses translator. Correlation runs
     // before translation and must only claim a request when a bounded index can be built.
     let request = envelope.raw_body();
@@ -50,16 +81,20 @@ where
         return Ok(None);
     }
 
-    let tool_results =
-        native_tool_results(output_positions.iter().map(|position| &input[*position]))?;
-    let call_ids: BTreeSet<String> = tool_results
+    // Before establishing ownership, inspect identities only. Native client
+    // payload validation belongs to the provider, not the workflow tool codec.
+    let tool_results = if host_owned_only {
+        None
+    } else {
+        Some(native_tool_results(
+            output_positions.iter().map(|position| &input[*position]),
+        )?)
+    };
+    let call_ids: BTreeSet<String> = output_positions
         .iter()
-        .map(|result| {
-            result["tool_call_id"]
-                .as_str()
-                .expect("validated output ID")
-                .to_owned()
-        })
+        .filter_map(|position| input[*position].get("call_id").and_then(Value::as_str))
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
         .collect();
     debug_assert!(call_ids.iter().all(|call_id| {
         index
@@ -79,7 +114,7 @@ where
                 response_id,
             )
             .await?;
-        if response_candidates.is_empty() {
+        if response_candidates.is_empty() && !host_owned_only {
             // Preserve a precise mismatch result when the call set identifies an owned round;
             // this diagnostic fallback never overrides a response-id match.
             repository
@@ -105,8 +140,18 @@ where
             )
             .await?
     };
-    let mut candidates = candidates.into_iter();
+    let mut candidates = candidates.into_iter().filter(|callback| {
+        !host_owned_only
+            || callback
+                .request_payload
+                .get("host_tool_continuation_owner")
+                .and_then(Value::as_str)
+                == Some("agentflow")
+    });
     let Some(callback) = candidates.next() else {
+        if host_owned_only {
+            return Ok(None);
+        }
         if previous_response_id.is_none() && is_closed_tool_history(input) {
             return Ok(None);
         }
@@ -128,6 +173,10 @@ where
     if candidates.next().is_some() {
         return Err(ControlPlaneError::Conflict("native_tool_output_ambiguous_round").into());
     }
+    let tool_results = match tool_results {
+        Some(results) => results,
+        None => native_tool_results(output_positions.iter().map(|position| &input[*position]))?,
+    };
     let flow_run = repository
         .get_published_flow_run(callback.flow_run_id)
         .await?
