@@ -933,7 +933,7 @@ test.each(unrelatedInboxGrants)(
     );
     await click(screen.getAllByRole('button', { name: '上一页' })[1]);
     await screen.findByRole('button', { name: '发布完成' });
-    await click(screen.getByRole('button', { name: '刷新' }));
+    await click(screen.getByRole('button', { name: /刷\s*新/ }));
     await waitForRequests();
     expect(read_at).toBeNull();
     expect(calls.filter((call) => call.method !== 'GET')).toHaveLength(0);

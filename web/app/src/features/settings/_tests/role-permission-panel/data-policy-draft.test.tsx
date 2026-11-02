@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ConfigProvider } from 'antd';
 import {
   act,
   fireEvent,
@@ -46,17 +47,19 @@ function setup(
   });
   function view(roleCode: string) {
     return (
-      <QueryClientProvider client={client}>
-        <RoleDataPolicySection
-          roleCode={roleCode}
-          canEdit
-          section={section}
-          formId="data-policy"
-        />
-        <button type="submit" form="data-policy">
-          Save policy
-        </button>
-      </QueryClientProvider>
+      <ConfigProvider theme={{ token: { motion: false } }}>
+        <QueryClientProvider client={client}>
+          <RoleDataPolicySection
+            roleCode={roleCode}
+            canEdit
+            section={section}
+            formId="data-policy"
+          />
+          <button type="submit" form="data-policy">
+            Save policy
+          </button>
+        </QueryClientProvider>
+      </ConfigProvider>
     );
   }
   const { rerender } = render(view('member'));
@@ -70,7 +73,9 @@ async function findScopeOption(label: string) {
   const content = await screen.findByText(label, {
     selector: '.ant-select-item-option-content'
   });
-  return content.closest<HTMLElement>('.ant-select-item-option')!;
+  const option = content.closest<HTMLElement>('.ant-select-item-option')!;
+  await waitFor(() => expect(option).toBeVisible());
+  return option;
 }
 
 describe('role data policy draft ownership', () => {

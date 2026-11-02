@@ -173,7 +173,7 @@ test.each(['reset', 'model', 'reasoning effort'] as const)(
       const submenu = screen.getByRole('menuitem', {
         name: action === 'model'
           ? /模型 Published model|Model Published model/
-          : `${i18nText('appShell', 'auto.assistant_reasoning_effort')} low`
+          : /^推理强度 low(?: right)?$|^Reasoning effort low(?: right)?$/i
       });
       await waitFor(() => expect(submenu).toBeVisible());
       expect(submenu).not.toHaveAttribute('aria-disabled', 'true');
