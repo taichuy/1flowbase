@@ -174,6 +174,43 @@ where
     })
 }
 
+/// A client call owns only the latest candidate from its exact node execution.
+/// The waiting owner supplies the remaining external set after internal tools run.
+fn retain_client_tool_deliveries(
+    events: &mut Vec<crate::ports::RuntimeEventPayload>,
+    scopes: &[(&str, Uuid, &[Value])],
+) {
+    let mut retained_calls = std::collections::BTreeSet::new();
+    events.reverse();
+    events.retain(|event| {
+        let item = &event.payload["item"];
+        let call_id = item
+            .get("call_id")
+            .or_else(|| item.get("id"))
+            .and_then(Value::as_str);
+        let node_run_id = event.payload["node_run_id"]
+            .as_str()
+            .and_then(|id| Uuid::parse_str(id).ok());
+        call_id
+            .zip(node_run_id)
+            .is_some_and(|(call_id, node_run_id)| {
+                scopes.iter().any(|(node_id, execution_id, calls)| {
+                    event.payload["node_id"].as_str() == Some(*node_id)
+                        && *execution_id == node_run_id
+                        && calls.iter().any(|call| {
+                            call.get("call_id")
+                                .or_else(|| call.get("id"))
+                                .and_then(Value::as_str)
+                                == Some(call_id)
+                                && call.get("name").or_else(|| call.pointer("/function/name"))
+                                    == item.get("name")
+                        })
+                }) && retained_calls.insert((node_run_id, call_id.to_owned()))
+            })
+    });
+    events.reverse();
+}
+
 pub(super) async fn persist_flow_debug_outcome<R>(
     repository: &R,
     input: PersistFlowDebugOutcomeInput<'_>,
@@ -317,59 +354,37 @@ where
     let mut stream_events = persisted_node_traces.stream_events;
     let mut close_reason = None;
 
-    // Tool candidates become executable only with their durable owner transition:
-    // a workflow callback wait, or successful client-native sampling completion.
-    // Host tools already consumed inline are absent from the final node output.
-    match &outcome.stop_reason {
+    // Only tools still owed to the client can cross the durable handoff. Host
+    // tools consumed inline may share the same flow and node execution buffer.
+    let delivery_scopes = match &outcome.stop_reason {
         orchestration_runtime::execution_state::ExecutionStopReason::WaitingCallback(wait)
-            if wait.callback_kind == "llm_tool_calls" => {}
-        orchestration_runtime::execution_state::ExecutionStopReason::Completed => {
-            let mut retained_calls = std::collections::BTreeSet::new();
-            // Internal loops can reuse a node row. The final client-facing call
-            // owns only its latest formal candidate in this node execution.
-            tool_delivery_events.reverse();
-            tool_delivery_events.retain(|event| {
-                let item = &event.payload["item"];
-                let call_id = item
-                    .get("call_id")
-                    .or_else(|| item.get("id"))
-                    .and_then(Value::as_str);
-                let node_run_id = event.payload["node_run_id"]
-                    .as_str()
-                    .and_then(|id| Uuid::parse_str(id).ok());
-                let matches_final_output =
-                    call_id
-                        .zip(node_run_id)
-                        .is_some_and(|(call_id, node_run_id)| {
-                            outcome.node_traces.iter().any(|trace| {
-                                event.payload["node_id"].as_str() == Some(trace.node_id.as_str())
-                                    && prepared_node_runs
-                                        .and_then(|nodes| nodes.get(&trace.node_id))
-                                        .is_some_and(|node| node.id == node_run_id)
-                                    && trace
-                                        .output_payload
-                                        .get("tool_calls")
-                                        .and_then(Value::as_array)
-                                        .is_some_and(|calls| {
-                                            calls.iter().any(|call| {
-                                                call.get("call_id")
-                                                    .or_else(|| call.get("id"))
-                                                    .and_then(Value::as_str)
-                                                    == Some(call_id)
-                                                    && call
-                                                        .get("name")
-                                                        .or_else(|| call.pointer("/function/name"))
-                                                        == item.get("name")
-                                            })
-                                        })
-                            }) && retained_calls.insert((node_run_id, call_id.to_owned()))
-                        });
-                matches_final_output
-            });
-            tool_delivery_events.reverse();
+            if wait.callback_kind == "llm_tool_calls" =>
+        {
+            waiting_node_run
+                .as_ref()
+                .zip(
+                    wait.request_payload
+                        .get("tool_calls")
+                        .and_then(Value::as_array),
+                )
+                .map(|(node, calls)| vec![(node.node_id.as_str(), node.id, calls.as_slice())])
+                .unwrap_or_default()
         }
-        _ => tool_delivery_events.clear(),
-    }
+        orchestration_runtime::execution_state::ExecutionStopReason::Completed => outcome
+            .node_traces
+            .iter()
+            .filter_map(|trace| {
+                let node = prepared_node_runs.and_then(|nodes| nodes.get(&trace.node_id))?;
+                let calls = trace
+                    .output_payload
+                    .get("tool_calls")
+                    .and_then(Value::as_array)?;
+                Some((trace.node_id.as_str(), node.id, calls.as_slice()))
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    retain_client_tool_deliveries(&mut tool_delivery_events, &delivery_scopes);
 
     let persisted_flow_run = match &outcome.stop_reason {
         orchestration_runtime::execution_state::ExecutionStopReason::WaitingHuman(wait) => {

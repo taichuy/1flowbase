@@ -981,3 +981,146 @@ async fn ac_004_answer_node_truth_two_callbacks_create_only_the_executed_final_a
 #[path = "callback_tasks/callback_completion.rs"]
 mod callback_completion;
 mod event_projection;
+
+#[tokio::test]
+async fn native_mixed_tool_wait_delivers_only_remaining_external_formal_item() {
+    use crate::ports::ProviderTransportPayload;
+    use plugin_framework::provider_contract::{
+        ProviderFinishReason, ProviderInvocationResult, ProviderOutputItemPhase,
+        ProviderStreamEvent, ProviderToolCall,
+    };
+    for custom in [false, true] {
+        let internal = json!({"type":"function_call","id":"fc_internal","call_id":"call_internal",
+            "name":"get_client_context","arguments":"{}"});
+        let external = if custom {
+            json!({"type":"custom_tool_call","id":"ct_external","call_id":"call_external",
+                "name":"exec","input":"read\0opaque","future":{"preserve":[null,false,1]}})
+        } else {
+            json!({"type":"function_call","id":"fc_external","call_id":"call_external",
+                "name":"exec","arguments":"{ \"path\": \"fixture\" }","future":{"preserve":[null,false,1]}})
+        };
+        let output = crate::ports::ProviderRuntimeInvocationOutput {
+            events: [internal.clone(), external.clone()]
+                .into_iter()
+                .enumerate()
+                .flat_map(|(output_index, item)| {
+                    [
+                        ProviderOutputItemPhase::Added,
+                        ProviderOutputItemPhase::Done,
+                    ]
+                    .map(|phase| ProviderStreamEvent::OutputItem {
+                        phase,
+                        output_index,
+                        item: item.clone(),
+                    })
+                })
+                .collect(),
+            result: ProviderInvocationResult {
+                response_id: Some("upstream-mixed-delivery".into()),
+                finish_reason: Some(ProviderFinishReason::ToolCall),
+                tool_calls: vec![
+                    ProviderToolCall {
+                        id: "call_internal".into(),
+                        name: "get_client_context".into(),
+                        arguments: json!({}),
+                        provider_metadata: json!({}),
+                    },
+                    ProviderToolCall {
+                        id: "call_external".into(),
+                        name: "exec".into(),
+                        arguments: if custom {
+                            json!({"input":"read\0opaque"})
+                        } else {
+                            json!({"path":"fixture"})
+                        },
+                        provider_metadata: if custom {
+                            json!({"type":"custom_tool_call"})
+                        } else {
+                            json!({})
+                        },
+                    },
+                ],
+                ..Default::default()
+            },
+        };
+        let stream = std::sync::Arc::new(crate::_tests::RecordingRuntimeEventStream::default());
+        let service = OrchestrationRuntimeService::for_tests_with_provider_outputs(vec![output])
+            .with_runtime_internal_tool_invoker(std::sync::Arc::new(
+                ImmediateRuntimeInternalToolInvoker,
+            ))
+            .with_runtime_event_stream(stream.clone());
+        service.enable_native_responses_fixture().await;
+        let seeded = service
+            .seed_application_with_flow("Native mixed delivery owner")
+            .await;
+        let started = service.start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id:seeded.actor_user_id,application_id:seeded.application_id,
+            input_payload:json!({"node-start":{"query":"read host context and run external tool"}}),
+            document_snapshot:None,debug_session_id:None,
+        }).await.unwrap();
+        let waiting = service
+            .continue_native_responses_fixture(
+                ContinueFlowDebugRunCommand {
+                    application_id: seeded.application_id,
+                    flow_run_id: started.flow_run.id,
+                    workspace_id: Uuid::nil(),
+                },
+                ProviderTransportPayload::openai_responses(
+                    json!({"model":"gpt-5.4-mini","input":"run tools"}),
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            waiting.flow_run.status,
+            domain::FlowRunStatus::WaitingCallback,
+            "{:?}",
+            waiting.flow_run.error_payload
+        );
+        assert_eq!(waiting.callback_tasks.len(), 1);
+        let task = &waiting.callback_tasks[0];
+        assert_eq!(
+            task.request_payload["host_tool_continuation_owner"],
+            "agentflow"
+        );
+        assert_eq!(
+            task.request_payload["tool_calls"].as_array().unwrap().len(),
+            1
+        );
+        assert_eq!(task.request_payload["tool_calls"][0]["id"], "call_external");
+        let durable = service.list_runtime_events(waiting.flow_run.id, 0).await;
+        assert!(
+            durable
+                .iter()
+                .any(|event| event.event_type == "assistant_tool_call_finished"
+                    && event.payload["tool_result"]["tool_call_id"] == "call_internal"),
+            "host tool must execute and retain its audit fact"
+        );
+        let formal: Vec<_> = durable
+            .iter()
+            .filter(|event| event.event_type == "provider_output_item_done")
+            .collect();
+        assert_eq!(
+            formal.len(),
+            1,
+            "host-executed Done must not become client work"
+        );
+        assert_eq!(formal[0].node_run_id, Some(task.node_run_id));
+        assert_eq!(formal[0].payload["item"], external);
+        let live = stream.events();
+        let formal: Vec<_> = live
+            .iter()
+            .filter(|event| event.event_type == "provider_output_item_done")
+            .collect();
+        assert_eq!(formal.len(), 1);
+        assert_eq!(formal[0].payload["item"], external);
+        let batch = service
+            .claim_native_tool_deliveries_fixture(waiting.flow_run.id)
+            .await
+            .unwrap();
+        assert_eq!(batch.claims.len(), 1);
+        assert_eq!(batch.events.len(), 1);
+        assert_eq!(batch.claims[0].event.payload["item"], external);
+    }
+}

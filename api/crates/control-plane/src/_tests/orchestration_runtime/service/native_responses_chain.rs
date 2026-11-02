@@ -693,9 +693,6 @@ async fn selected_input_fact_commits_before_provider_output_and_failure_prevents
 
 #[tokio::test]
 async fn native_client_tool_completion_commits_durable_formal_items() {
-    use crate::ports::{
-        ClaimRuntimeEventDeliveriesInput, OrchestrationRuntimeRepository, RuntimeEventDeliveryScope,
-    };
     for custom in [false, true] {
         let item = if custom {
             json!({"type":"custom_tool_call","id":"ct_opaque","call_id":"call_delivery",
@@ -791,14 +788,7 @@ async fn native_client_tool_completion_commits_durable_formal_items() {
         // HTTP SSE and Responses WS both obtain executable formal items through
         // this shared durable delivery batch, including after producer completion.
         let batch = service
-            .repository
-            .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
-                flow_run_id: detail.flow_run.id,
-                scope: RuntimeEventDeliveryScope::Start,
-                include_membership: true,
-                limit: 8,
-                lease_seconds: 30,
-            })
+            .claim_native_tool_deliveries_fixture(detail.flow_run.id)
             .await
             .unwrap();
         assert_eq!(batch.claims.len(), 1);
