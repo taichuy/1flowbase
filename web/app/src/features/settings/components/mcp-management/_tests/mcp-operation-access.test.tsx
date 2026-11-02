@@ -25,8 +25,8 @@ describe('MCP exact operation controls', () => {
     const panel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
     expect(within(panel).getByText('Ops MCP')).toBeInTheDocument();
     expect(within(panel).getByRole('button', { name: '新增' })).toBeDisabled();
-    fireEvent.click(within(panel).getByRole('button', { name: '编辑' }));
-    const editor = await screen.findByRole('dialog', { name: '编辑' });
+    fireEvent.click(within(panel).getByRole('button', { name: '查看' }));
+    const editor = await screen.findByRole('dialog', { name: '查看' });
     expect(editor.querySelector('button.ant-btn-primary')).toBeDisabled();
     expect(mcpManagementApi.updateSettingsMcpInstance).not.toHaveBeenCalled();
   });

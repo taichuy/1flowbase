@@ -105,7 +105,7 @@ export function McpInstanceTable({
       render: (_, record) => (
         <Space>
           <Button
-            aria-label={i18nText('settings', 'auto.edit')}
+            aria-label={i18nText('settings', can('mcp.instances.update') ? 'auto.edit' : 'auto.view')}
             icon={<EditOutlined />}
             size="small"
             onClick={() => onEdit(record)}

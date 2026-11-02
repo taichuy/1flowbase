@@ -127,7 +127,7 @@ export function McpInstanceEditorModal({
       open={open}
       title={
         instance
-          ? i18nText('settings', 'auto.edit')
+          ? i18nText('settings', canSave ? 'auto.edit' : 'auto.view')
           : i18nText('settings', 'auto.new')
       }
       onCancel={onClose}

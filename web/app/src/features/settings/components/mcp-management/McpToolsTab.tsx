@@ -235,6 +235,7 @@ export function McpToolsTab({
         render: (_, record) => (
           <Space>
             <Button
+              aria-label={i18nText('settings', can('mcp.tools.update') ? 'auto.edit' : 'auto.view')}
               icon={<EditOutlined />}
               size="small"
               onClick={() => {
@@ -596,7 +597,7 @@ export function McpToolsTab({
         open={modalOpen}
         title={
           editingTool
-            ? i18nText('settings', 'auto.edit')
+            ? i18nText('settings', can('mcp.tools.update') ? 'auto.edit' : 'auto.view')
             : i18nText('settings', 'auto.new')
         }
         onCancel={() => setModalOpen(false)}
