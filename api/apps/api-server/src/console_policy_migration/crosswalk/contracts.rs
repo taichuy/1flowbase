@@ -199,6 +199,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "file_tables.delete",
             "file_tables.list",
             "file_tables.storage.bind",
+            "files.access_links.create",
         ],
     ),
     core_simple_settings(
@@ -491,6 +492,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // A data read grant must not silently acquire temporary anonymous-link authority.
+    "files.access_links.create",
     // Previously root-only; historic role grants must not acquire host command access.
     "local_commands.execute",
     // Proxy discovery is a new authoring grant, independent of secret-management access.
