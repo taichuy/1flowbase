@@ -151,6 +151,10 @@ impl ConsoleSurfaceRegistry {
             )?;
         }
         for service in &services {
+            // API ownership alone does not declare a settings page.
+            if service.pages.is_empty() {
+                continue;
+            }
             let feature = &service.declaration.feature;
             let navigation = ConsoleNavigation {
                 route_definitions: vec![ConsoleRouteDefinition {

@@ -3,7 +3,7 @@ title: "角色管理按授权，个人设置默认拒绝，自身通知阅读保
 memory_type: feedback
 feedback_category: repository
 created_at: "2026-11-02 22"
-updated_at: "2026-11-02 22"
+updated_at: "2026-11-03 08"
 decision_policy: direct_reference
 status: active
 tags: [permissions, roles, notifications]
@@ -20,3 +20,7 @@ tags: [permissions, roles, notifications]
 - 规则：用户打开自己的通知应正常自动标记已读，包括只读角色；单条自身通知已读是登录用户自助行为，继续检查 workspace、recipient 和 CSRF。批量已读、标为未读仍按当前独立授权处理，除非用户另行调整。
 - 原因：用户明确纠正“只读浏览不自动标记已读”；阅读自己的消息应反映已读状态。
 - 适用场景：通知标题打开、单条已读接口、只读角色验收。此纠正不允许修改其他人的通知或发送通知、管理渠道。
+
+- 规则：纯计算/API或组件贡献不应自动生成后台设置页；设置菜单和路由需要实际的settings_pages声明。删除空设置入口时保留已有业务API的独立授权与接口归属。
+- 原因：用户指出日历组件/计算能力已有接口权限，却额外出现打不开的“太初y 日历计算”设置页，要求移除。
+- 适用场景：受管服务的菜单、路由、页面权限投影；不按插件名称隐藏菜单，也不因移除UI而删除业务权限组。

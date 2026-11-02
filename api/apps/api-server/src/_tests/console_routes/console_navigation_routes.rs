@@ -830,3 +830,111 @@ fn mcp_role_permission_navigation_row_full_custom_none_and_inactive_invariants()
     inventory.operations.clear();
     assert!(settings_feature_navigation_permissions(&inventory, &policies).is_empty());
 }
+
+fn managed_service_navigation_fixture(
+    with_page: bool,
+) -> crate::managed_services::ManagedServiceRegistration {
+    crate::managed_services::ManagedServiceRegistration {
+        installation_id: uuid::Uuid::from_u128(900),
+        plugin_code: "navigation-fixture".into(),
+        plugin_version: "1.0.0".into(),
+        declaration: serde_json::from_value(json!({
+            "scope": "system",
+            "feature": {
+                "feature_id": "navigation-fixture.settings", "label": "Navigation fixture",
+                "description": "Navigation regression service", "route_id": "navigation-fixture",
+                "path": "/settings/navigation-fixture"
+            },
+            "operations": [{
+                "interface_id": "navigation-fixture.calculate", "contribution_id": "navigation-fixture.calculate",
+                "method": "POST", "path": "/api/console/managed-services/navigation-fixture/calculate",
+                "summary": "Calculate fixture", "description": "Calculate a deterministic fixture result.",
+                "input_schema": {"type": "object"}, "output_schema": {"type": "object"}
+            }]
+        })).unwrap(),
+        pages: if with_page {
+            vec![plugin_framework::PluginSettingsPageManifest {
+                feature_id: "navigation-fixture.settings".into(), contribution_code: "settings".into(),
+                source_file: "ui/Settings.tsx".into(), language: "tsx".into(), code_modules: vec![],
+            }]
+        } else { vec![] },
+    }
+}
+
+#[test]
+fn managed_service_navigation_requires_a_declared_page_and_preserves_api_authority() {
+    let plan = |with_page| {
+        crate::app_state::compile_console_boot_plan_with_managed_services(
+            [],
+            None,
+            crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES,
+            vec![managed_service_navigation_fixture(with_page)],
+        )
+        .expect("API-only and page-owning services both compile")
+    };
+    let api_only = plan(false);
+    let with_page = plan(true);
+    let root = domain::ActorContext::root(uuid::Uuid::nil(), uuid::Uuid::nil(), "root");
+    let allowed = domain::ActorContext::scoped(
+        uuid::Uuid::nil(),
+        uuid::Uuid::nil(),
+        "member",
+        ["settings_feature.access.navigation-fixture.settings".to_string()],
+    );
+    let denied = domain::ActorContext::scoped(uuid::Uuid::nil(), uuid::Uuid::nil(), "member", []);
+    for actor in [&root, &allowed, &denied] {
+        let navigation = api_only
+            .console_surface_registry
+            .accessible_navigation(actor);
+        assert!(!navigation
+            .route_definitions
+            .iter()
+            .any(|r| r.route_id == "navigation-fixture"));
+        assert!(!navigation
+            .navigation_items
+            .iter()
+            .any(|i| i.route_id == "navigation-fixture"));
+        assert!(!navigation
+            .permission_bindings
+            .iter()
+            .any(|b| b.route_id == "navigation-fixture"));
+    }
+    assert!(api_only
+        .console_surface_registry
+        .page("navigation-fixture")
+        .is_none());
+    assert_eq!(
+        api_only.console_surface_registry.managed_services().len(),
+        1
+    );
+    assert_eq!(
+        api_only.console_operation_registry.inventory().operations,
+        with_page.console_operation_registry.inventory().operations,
+        "removing an undeclared UI must retain all operation identities, routes and authorization"
+    );
+    assert!(api_only
+        .console_operation_registry
+        .access_for_console_route(
+            "POST",
+            "/api/console/managed-services/navigation-fixture/calculate"
+        )
+        .is_ok());
+    for actor in [&root, &allowed] {
+        assert!(with_page
+            .console_surface_registry
+            .accessible_navigation(actor)
+            .route_definitions
+            .iter()
+            .any(|r| r.route_id == "navigation-fixture"));
+    }
+    assert!(!with_page
+        .console_surface_registry
+        .accessible_navigation(&denied)
+        .route_definitions
+        .iter()
+        .any(|r| r.route_id == "navigation-fixture"));
+    assert!(with_page
+        .console_surface_registry
+        .page("navigation-fixture")
+        .is_some());
+}
