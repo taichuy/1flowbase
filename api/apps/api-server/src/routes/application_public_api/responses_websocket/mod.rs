@@ -68,5 +68,5 @@ pub(crate) async fn upgrade(
             actor::run_connection(socket, state, Arc::new(authorization)).await;
         })
         .await;
-    Ok(openai::responses_headers::with_usage_accounting(response))
+    Ok(response)
 }
