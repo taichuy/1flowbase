@@ -60,7 +60,7 @@ function renderPanel() {
 describe('NetworkEgressRoutesPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useAuthStore.setState({ csrfToken: 'csrf-123' });
+    useAuthStore.setState({ csrfToken: 'csrf-123', actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace-1' }, me: null });
     networkCenterApi.fetchSettingsNetworkEgressRoutes.mockResolvedValue([]);
     networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([
       {
@@ -201,4 +201,26 @@ describe('NetworkEgressRoutesPanel', () => {
       within(edit).getByText(/^(Agent Logs 日志交换|Agent Logs exchange)$/)
     ).toBeInTheDocument();
   });
+  test.each([false, true])('route delete grant %s preserves readable mappings without route create or edit', async (deleteGranted) => {
+    setOperations(deleteGranted ? ['network_egress_routes.list', 'network_egress_routes.delete'] : ['network_egress_routes.list']);
+    networkCenterApi.fetchSettingsNetworkEgressRoutes.mockResolvedValue([{ id: 'route-1', consumer_kind: 'github', consumer_reference: null, pool_member_ids: ['proxy-us'], enabled: true }]);
+    renderPanel();
+    const row = await screen.findByRole('row', { name: /github.*US proxy/ });
+    expect(screen.getByRole('button', { name: /创建路由规则|Create routing rule/ })).toBeDisabled();
+    expect(within(row).getByRole('button', { name: /删除|Delete/ }).hasAttribute('disabled')).toBe(!deleteGranted);
+    fireEvent.click(within(row).getByRole('button', { name: /编辑|Edit/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText(/代理映射|Proxy mapping/)).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: /确\s*定|OK/ })).toBeDisabled();
+    expect(networkCenterApi.updateSettingsNetworkEgressRoute).not.toHaveBeenCalled();
+    expect(networkCenterApi.createSettingsNetworkEgressRoute).not.toHaveBeenCalled();
+  });
+
 });
+
+function setOperations(permissions: string[]) {
+  useAuthStore.setState({
+    actor: { id: 'member', account: 'member', effective_display_role: 'member', current_workspace_id: 'workspace-1' },
+    me: { id: 'member', account: 'member', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: 'member', permissions }
+  });
+}

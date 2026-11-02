@@ -20,6 +20,7 @@ import {
 } from '../../api/network-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { useAuthStore } from '../../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { i18nText } from '../../../../shared/i18n/text';
 import { FALLBACK_APP_LOCALE, toAppLocale } from '../../../../shared/i18n/locales';
 import './network-egress-providers.css';
@@ -35,6 +36,11 @@ export function NetworkEgressProvidersPanel() {
   const { i18n } = useTranslation();
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
+  const can = useConsoleOperationAccess();
+  const canInstall = can('network_egress_plugins.install.official');
+  const canUpload = can('network_egress_plugins.install.upload');
+  const canSwitch = can('network_egress_plugins.families.switch');
+  const canUninstall = can('network_egress_plugins_uninstall_family');
   const [search, setSearch] = useState('');
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
@@ -130,9 +136,10 @@ export function NetworkEgressProvidersPanel() {
                       size="small"
                       aria-label={`${item.display_name} ${i18nText('settings', 'auto.version')}`}
                       value={family.current_installation_id}
+                      disabled={!canSwitch}
                       loading={switchVersion.isPending && switchVersion.variables?.providerCode === family.provider_code}
                       options={family.installed_versions.map((version) => ({ value: version.installation_id, label: version.plugin_version }))}
-                      onChange={(installationId) => switchVersion.mutate({ providerCode: family.provider_code, installationId })}
+                      onChange={(installationId) => { if (canSwitch) switchVersion.mutate({ providerCode: family.provider_code, installationId }); }}
                     />;
                   }
                 },
@@ -149,21 +156,23 @@ export function NetworkEgressProvidersPanel() {
                         size="small"
                         aria-label={`${item.display_name} ${i18nText('settings', 'auto.update')}`}
                         loading={install.isPending && install.variables === officialPlugin.plugin_id}
-                        onClick={() => install.mutate(officialPlugin.plugin_id)}
+                        disabled={!canInstall}
+                        onClick={() => { if (canInstall) install.mutate(officialPlugin.plugin_id); }}
                       >
                         {i18nText('settings', 'auto.update')}
                       </Button> : null}
                       <Popconfirm
                         title={i18nText('settings', 'auto.uninstall_plugin')}
-                        onConfirm={() => uninstallFamily.mutate(family.provider_code)}
-                        okButtonProps={{ danger: true, loading: uninstallFamily.isPending && uninstallFamily.variables === family.provider_code }}
+                        disabled={!canUninstall}
+                        onConfirm={() => { if (canUninstall) uninstallFamily.mutate(family.provider_code); }}
+                        okButtonProps={{ danger: true, disabled: !canUninstall, loading: uninstallFamily.isPending && uninstallFamily.variables === family.provider_code }}
                       >
                         <Button
                           danger
                           type="link"
                           size="small"
                           aria-label={`${item.display_name} ${i18nText('settings', 'auto.uninstall_plugin')}`}
-                          disabled={!family.can_uninstall}
+                          disabled={!canUninstall || !family.can_uninstall}
                         >
                           {i18nText('settings', 'auto.uninstall_plugin')}
                         </Button>
@@ -178,7 +187,7 @@ export function NetworkEgressProvidersPanel() {
         <aside className="network-egress-providers__plugins" aria-label={i18nText('settings', 'auto.network_center_proxy_plugins')}>
           <div className="network-egress-providers__plugin-heading">
             <Typography.Title level={5}>{i18nText('settings', 'auto.network_center_proxy_plugins')}</Typography.Title>
-            <Button onClick={() => setUploadOpen(true)}>{i18nText('settings', 'auto.upload_plugin')}</Button>
+            <Button disabled={!canUpload} onClick={() => { if (canUpload) setUploadOpen(true); }}>{i18nText('settings', 'auto.upload_plugin')}</Button>
           </div>
           <Input.Search value={search} onChange={(event) => setSearch(event.target.value)} placeholder={i18nText('settings', 'auto.network_center_proxy_plugins_search')} />
           {pluginError ? <Alert type="error" showIcon title={pluginError} /> : null}
@@ -193,7 +202,7 @@ export function NetworkEgressProvidersPanel() {
                 {plugin.description ? <Typography.Text type="secondary">{plugin.description}</Typography.Text> : null}
                 <div className="network-egress-providers__plugin-actions">
                   {plugin.help_url ? <Button onClick={() => window.open(plugin.help_url!, '_blank', 'noopener,noreferrer')}>{i18nText('settings', 'auto.documentation')}</Button> : null}
-                  <Button type="primary" loading={install.isPending && install.variables === plugin.plugin_id} disabled={plugin.install_status === 'installed'} onClick={() => install.mutate(plugin.plugin_id)}>
+                  <Button type="primary" loading={install.isPending && install.variables === plugin.plugin_id} disabled={!canInstall || plugin.install_status === 'installed'} onClick={() => { if (canInstall) install.mutate(plugin.plugin_id); }}>
                     {plugin.install_status === 'installed'
                       ? i18nText('settings', 'auto.network_center_proxy_plugin_installed')
                       : i18nText('settings', 'auto.install_plugin')}
@@ -209,9 +218,9 @@ export function NetworkEgressProvidersPanel() {
       </div>
       <Modal open={uploadOpen} title={i18nText('settings', 'auto.upload_plugin')} onCancel={() => setUploadOpen(false)} onOk={() => {
         const file = uploadFiles[0]?.originFileObj;
-        if (file instanceof File) upload.mutate(file);
-      }} confirmLoading={upload.isPending}>
-        <Upload.Dragger beforeUpload={() => false} maxCount={1} fileList={uploadFiles} onChange={({ fileList }) => setUploadFiles(fileList.slice(-1))}>
+        if (canUpload && file instanceof File) upload.mutate(file);
+      }} okButtonProps={{ disabled: !canUpload }} confirmLoading={upload.isPending}>
+        <Upload.Dragger disabled={!canUpload} beforeUpload={() => false} maxCount={1} fileList={uploadFiles} onChange={({ fileList }) => setUploadFiles(fileList.slice(-1))}>
           {i18nText('settings', 'auto.select_plug_package_upload_install')}
         </Upload.Dragger>
       </Modal>

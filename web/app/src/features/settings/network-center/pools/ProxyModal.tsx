@@ -5,6 +5,7 @@ import type {
   SettingsNetworkEgressProviderType,
   SettingsNetworkEgressProxy
 } from '../../api/network-center';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { i18nText } from '../../../../shared/i18n/text';
 import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
 
@@ -31,6 +32,8 @@ export function ProxyModal({
   onClose,
   onSubmit
 }: Props) {
+  const can = useConsoleOperationAccess();
+  const canSubmit = can(mode === 'edit' ? 'network_egress_proxies.update' : 'network_egress_proxies.create');
   const [form] = Form.useForm<CreateSettingsNetworkEgressProxyInput>();
   const providerCode = Form.useWatch('provider_code', form);
   const schema =
@@ -50,7 +53,7 @@ export function ProxyModal({
       )}
       onCancel={onClose}
       onOk={() => {
-        if (!loading && !error) form.submit();
+        if (canSubmit && !loading && !error) form.submit();
       }}
       confirmLoading={submitting}
       footer={
@@ -61,8 +64,8 @@ export function ProxyModal({
           <Button
             type="primary"
             loading={submitting}
-            disabled={loading || error}
-            onClick={() => form.submit()}
+            disabled={!canSubmit || loading || error}
+            onClick={() => { if (canSubmit) form.submit(); }}
           >
             {i18nText('settings', 'auto.save')}
           </Button>
@@ -100,8 +103,8 @@ export function ProxyModal({
                 }
               : { description: '', config: {} }
           }
-          onFinish={onSubmit}
-          disabled={submitting}
+          onFinish={(values) => { if (canSubmit) onSubmit(values); }}
+          disabled={!canSubmit || submitting}
         >
           <Form.Item
             name="provider_code"
@@ -109,7 +112,7 @@ export function ProxyModal({
             rules={[{ required: true }]}
           >
             <Select
-              disabled={mode === 'edit'}
+              disabled={!canSubmit || mode === 'edit'}
               options={
                 types.some(
                   (type) => type.provider_code === proxy?.provider_code
