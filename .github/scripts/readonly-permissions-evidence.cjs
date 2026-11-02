@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('node:fs'),cp=require('node:child_process'),path=require('node:path');
 const {parseCargoTestCounts,requireExecutedCargoTests}=require('../../scripts/node/verify/cargo-test-results.js');
-const source='92990999631f6bbb87f81dbd2353a5e1eff865ec';
+const source='6a1868efc9916c04ac4d77ff0b86d811b945f708';
 const git=(...a)=>cp.execFileSync('git',a,{encoding:'utf8'}).trim();
 const head=git('rev-parse','HEAD'),apiTree=git('rev-parse','HEAD:api');
 if(apiTree!==git('rev-parse',source+':api'))throw Error('API source mismatch');
@@ -13,6 +13,11 @@ const suites=[
  ['frontstage','-p','api-server','--test','frontstage_data_capability_routes'],
  ['files','-p','control-plane','--lib','file_management'],
  ['i18n','-p','control-plane-postgres-tests','--test','i18n_catalog_integration'],
+ ['personal-routes','-p','api-server','--lib','me_routes'],
+ ['system-view-policy','-p','control-plane','--lib','model_definition_service_tests::scope_grants'],
+ ['system-view-role','-p','control-plane','--lib','workspace_role_system_all'],
+ ['runtime-acl','-p','runtime-core','--lib','runtime_acl_tests'],
+ ['route-ownership','-p','api-server','--lib','console_route_assembly_tests'],
  ['role-routes','-p','api-server','--lib','role_routes'],
  ['navigation','-p','api-server','--lib','console_navigation_route_'],
  ['file-ownership','-p','api-server','--lib','file_owner_routes_'],
