@@ -38,6 +38,18 @@ function Source({
   data: AgentFlowCanvasNodeData;
   top?: number;
 }) {
+  if (data.readOnly) {
+    return (
+      <Handle
+        type="source"
+        position={Position.Right}
+        id={MAIN_SOURCE_HANDLE_ID}
+        isConnectable={false}
+        style={top ? { top } : undefined}
+        className="agent-flow-node-handle agent-flow-node-handle--source"
+      />
+    );
+  }
   return (
     <NodePickerPopover
       ariaLabel={i18nText('agentFlow', 'auto.add_node_after', {
@@ -95,7 +107,7 @@ export function AgentFlowContainer({
         minHeight={data.minimumContainerSize?.height}
         className="agent-flow-container__resize nodrag"
         style={{
-          visibility: selected ? 'visible' : 'hidden',
+          visibility: selected && !data.readOnly ? 'visible' : 'hidden',
           width: 12,
           height: 12,
           border: '2px solid var(--container-selection)',
@@ -106,6 +118,7 @@ export function AgentFlowContainer({
       />
       <Handle
         type="target"
+        isConnectable={!data.readOnly}
         position={Position.Left}
         style={{ top: 28 }}
         className="agent-flow-node-handle"
@@ -131,6 +144,7 @@ export function AgentFlowContainer({
         </button>
         <Button
           type="text"
+          disabled={data.readOnly}
           size="small"
           className="nodrag"
           icon={<DeleteOutlined />}
@@ -181,6 +195,7 @@ export function ContainerStart({
           type="source"
           position={Position.Right}
           id={MAIN_SOURCE_HANDLE_ID}
+          isConnectable={!data.readOnly}
           className="agent-flow-container-start__anchor nodrag nopan"
         />
       )}

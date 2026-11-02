@@ -22,6 +22,7 @@ import {
 
 import { systemVariableNodeId } from '../../../lib/variables/system-variables';
 
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { useAuthStore } from '../../../../../state/auth-store';
 
 import { i18nText } from '../../../../../shared/i18n/text';
@@ -58,6 +59,7 @@ export function useCanvasNodePreview({
 }: CanvasNodePreviewInput) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
+  const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const actorUserId = useAuthStore(
     (state) => state.actor?.id ?? state.me?.id ?? null
@@ -84,6 +86,8 @@ export function useCanvasNodePreview({
       nodeId: string;
       inputPayload: Record<string, Record<string, unknown>>;
     }) => {
+      if (!can('start_node_debug_preview'))
+        throw new Error('permission denied');
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
@@ -172,6 +176,7 @@ export function useCanvasNodePreview({
   }
 
   function handleRunNode(nodeId: string) {
+    if (!can('start_node_debug_preview')) return;
     const plan = buildNodeDebugPreviewPlan(
       documentRef.current,
       nodeId,
@@ -196,6 +201,7 @@ export function useCanvasNodePreview({
   });
 
   function handleDebugNode(nodeId: string) {
+    if (!can('start_node_debug_preview')) return;
     const plan = buildNodeDebugVariableConfirmationPlan(
       documentRef.current,
       nodeId,

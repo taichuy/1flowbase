@@ -1,6 +1,6 @@
 import BookOutlined from '@ant-design/icons/es/icons/BookOutlined';
 import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
-import { Button, Divider, Space, Tooltip } from 'antd';
+import { Button, ConfigProvider, Divider, Space, Tooltip } from 'antd';
 
 import type { CanvasNodeSchema } from '../../../../shared/schema-ui/v1/contracts/canvas-node-schema';
 import { SchemaRenderer } from '../../../../shared/schema-ui/v1/runtime/SchemaRenderer';
@@ -23,6 +23,7 @@ function findHeaderField(schema: CanvasNodeSchema, path: string) {
 export function NodeDetailHeader({
   schema,
   adapter,
+  readOnly = false,
   onClose,
   onDebugNode,
   onRunNode,
@@ -30,6 +31,7 @@ export function NodeDetailHeader({
   previewActionsDisabled = false,
   runLoading = false
 }: {
+  readOnly?: boolean;
   schema: CanvasNodeSchema;
   adapter: SchemaAdapter;
   onClose: () => void;
@@ -63,11 +65,13 @@ export function NodeDetailHeader({
             {nodeTypeIcon}
           </div>
           {aliasField ? (
-            <SchemaRenderer
-              adapter={adapter}
-              blocks={[aliasField]}
-              registry={agentFlowRendererRegistry}
-            />
+            <ConfigProvider componentDisabled={readOnly}>
+              <SchemaRenderer
+                adapter={adapter}
+                blocks={[aliasField]}
+                registry={agentFlowRendererRegistry}
+              />
+            </ConfigProvider>
           ) : null}
         </div>
         <Space className="agent-flow-node-detail__actions" size={4}>
@@ -97,6 +101,7 @@ export function NodeDetailHeader({
             </Tooltip>
           ) : null}
           <NodeActionMenu
+            readOnly={readOnly}
             onLocate={detailActions.locateSelectedNode}
             onCopy={detailActions.duplicateSelectedNode}
             onDelete={detailActions.deleteSelectedNode}
@@ -114,11 +119,13 @@ export function NodeDetailHeader({
         </Space>
       </div>
       {descriptionField ? (
-        <SchemaRenderer
-          adapter={adapter}
-          blocks={[descriptionField]}
-          registry={agentFlowRendererRegistry}
-        />
+        <ConfigProvider componentDisabled={readOnly}>
+          <SchemaRenderer
+            adapter={adapter}
+            blocks={[descriptionField]}
+            registry={agentFlowRendererRegistry}
+          />
+        </ConfigProvider>
       ) : null}
     </header>
   );

@@ -22,6 +22,7 @@ import {
   formatConversationVariableTitle,
   type AgentFlowConversationVariable
 } from '../../lib/variables/conversation-variables';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { i18nText } from '../../../../shared/i18n/text';
 
 interface ConversationVariableFormValues {
@@ -41,6 +42,8 @@ export function ConversationVariablesPanel({
   onClose,
   onSave
 }: ConversationVariablesPanelProps) {
+  const can = useConsoleOperationAccess();
+  const canSave = can('save_draft');
   const [draftVariables, setDraftVariables] = useState(variables);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -67,6 +70,7 @@ export function ConversationVariablesPanel({
   );
 
   function openCreateModal() {
+    if (!canSave) return;
     setEditingIndex(null);
     form.setFieldsValue({
       name: '',
@@ -77,6 +81,7 @@ export function ConversationVariablesPanel({
   }
 
   function openEditModal(index: number) {
+    if (!canSave) return;
     const variable = draftVariables[index];
     setEditingIndex(index);
     form.setFieldsValue({
@@ -88,6 +93,7 @@ export function ConversationVariablesPanel({
   }
 
   async function submitModal() {
+    if (!canSave) return;
     const values = await form.validateFields();
     const nextVariable: AgentFlowConversationVariable = {
       name: values.name,
@@ -107,6 +113,7 @@ export function ConversationVariablesPanel({
   }
 
   function deleteVariable(index: number) {
+    if (!canSave) return;
     const nextVariables = draftVariables.filter(
       (_, candidate) => candidate !== index
     );
@@ -144,6 +151,7 @@ export function ConversationVariablesPanel({
       <div className="agent-flow-editor__environment-variables-body">
         <div className="agent-flow-editor__environment-variables-toolbar">
           <Button
+            disabled={!canSave}
             icon={<PlusOutlined />}
             type="primary"
             onClick={openCreateModal}
@@ -185,6 +193,7 @@ export function ConversationVariablesPanel({
                       aria-label={i18nText('agentFlow', 'auto.edit', {
                         value1: variable.name
                       })}
+                      disabled={!canSave}
                       icon={<EditOutlined />}
                       size="small"
                       type="text"
@@ -206,6 +215,7 @@ export function ConversationVariablesPanel({
                           value1: variable.name
                         })}
                         danger
+                        disabled={!canSave}
                         icon={<DeleteOutlined />}
                         size="small"
                         type="text"

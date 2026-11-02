@@ -1,3 +1,4 @@
+import { authenticateEditor } from '../fixtures/editor-auth';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
@@ -64,6 +65,7 @@ vi.mock('../../hooks/runtime/useAgentFlowDebugSession', () => ({
 describe('AgentFlowEditorAssembly', () => {
   beforeAll(() => loadApplicationI18nResources());
   beforeEach(() => {
+    authenticateEditor();
     canvasBoundaryCommitCount = 0;
     pushDebugMessage = null;
   });

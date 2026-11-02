@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { containerBodyPickerOptions } from '../../lib/node-definitions/nodes/containers/body-policy';
 import '@xyflow/react/dist/style.css';
 
@@ -57,7 +58,13 @@ interface AgentFlowCanvasProps {
 
 const EMPTY_NODE_PICKER_OPTIONS: NodePickerOption[] = [];
 
-function ZoomToolbar({ onArrangeCanvas }: { onArrangeCanvas: () => void }) {
+function ZoomToolbar({
+  onArrangeCanvas,
+  readOnly
+}: {
+  onArrangeCanvas: () => void;
+  readOnly: boolean;
+}) {
   const reactFlow = useReactFlow();
   const { zoom } = useViewport();
 
@@ -103,6 +110,7 @@ function ZoomToolbar({ onArrangeCanvas }: { onArrangeCanvas: () => void }) {
             aria-label={i18nText('agentFlow', 'auto.arrange_canvas')}
             className="agent-flow-zoom-toolbar__button"
             icon={<ApartmentOutlined />}
+            disabled={readOnly}
             onClick={onArrangeCanvas}
             size="small"
             type="text"
@@ -190,6 +198,8 @@ function AgentFlowCanvasInner({
   onViewportSnapshotChange,
   onViewportGetterReady
 }: AgentFlowCanvasProps) {
+  const can = useConsoleOperationAccess();
+  const readOnly = !can('save_draft');
   const canvasRef = useRef<HTMLDivElement>(null);
   const reactFlow = useReactFlow<AgentFlowCanvasNode, AgentFlowCanvasEdge>();
   const document = useAgentFlowEditorStore(selectWorkingDocument);
@@ -220,19 +230,23 @@ function AgentFlowCanvasInner({
         connectingPayload.sourceHandleId,
         issueCountByNodeId,
         {
-          onOpenPicker: nodeInteractions.openNodePicker,
+          readOnly,
+          onOpenPicker: readOnly ? () => {} : nodeInteractions.openNodePicker,
           onClosePicker: nodeInteractions.closeNodePicker,
           onOpenContainer: nodeInteractions.openContainer,
           onSelectNode: nodeInteractions.selectNode,
-          onInsertNode: nodeInteractions.insertAfterNode,
+          onInsertNode: readOnly ? () => {} : nodeInteractions.insertAfterNode,
           onRunNode,
-          onReplaceNode: nodeInteractions.replaceNode,
-          onDeleteNode: nodeInteractions.deleteNode,
-          onResizeContainer: canvasInteractions.commitContainerResize,
+          onReplaceNode: readOnly ? () => {} : nodeInteractions.replaceNode,
+          onDeleteNode: readOnly ? () => {} : nodeInteractions.deleteNode,
+          onResizeContainer: readOnly
+            ? undefined
+            : canvasInteractions.commitContainerResize,
           nodePickerOptions
         }
       ),
     [
+      readOnly,
       activeContainerId,
       canvasInteractions.commitContainerResize,
       document,
@@ -251,9 +265,10 @@ function AgentFlowCanvasInner({
     () =>
       toCanvasEdges(document, activeContainerId, selectedEdgeId, {
         nodePickerOptions,
-        onInsertNode: edgeInteractions.insertOnEdge
+        onInsertNode: readOnly ? undefined : edgeInteractions.insertOnEdge
       }),
     [
+      readOnly,
       activeContainerId,
       document,
       edgeInteractions.insertOnEdge,
@@ -285,12 +300,16 @@ function AgentFlowCanvasInner({
         selectionKeyCode={null}
         onPaneClick={selectionInteractions.clearSelection}
         onNodeClick={(_, node) => nodeInteractions.selectNode(node.id)}
-        nodesDraggable
-        onConnect={edgeInteractions.connect}
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
+        edgesReconnectable={!readOnly}
+        onConnect={readOnly ? undefined : edgeInteractions.connect}
         onConnectStart={(_, payload) => {
+          if (readOnly) return;
           edgeInteractions.startConnection(payload);
         }}
         onConnectEnd={(event) => {
+          if (readOnly) return;
           if (!event) {
             edgeInteractions.cancelConnection();
             return;
@@ -324,8 +343,9 @@ function AgentFlowCanvasInner({
             y: clientPosition.y - (bounds?.top ?? 0)
           });
         }}
-        onNodesChange={canvasInteractions.onNodesChange}
+        onNodesChange={readOnly ? undefined : canvasInteractions.onNodesChange}
         onReconnect={(oldEdge: Edge, connection) => {
+          if (readOnly) return;
           edgeInteractions.reconnect(oldEdge.id, connection);
         }}
         onEdgeClick={(_, edge) => {
@@ -354,13 +374,19 @@ function AgentFlowCanvasInner({
         <Background gap={20} size={1} />
         <PendingLocateNodeEffect />
         <ViewportObserver
-          onViewportEnd={canvasInteractions.commitViewportChange}
+          onViewportEnd={
+            readOnly ? () => {} : canvasInteractions.commitViewportChange
+          }
           onViewportSnapshotChange={onViewportSnapshotChange}
           onViewportGetterReady={onViewportGetterReady}
         />
-        <ZoomToolbar onArrangeCanvas={canvasInteractions.arrangeCanvas} />
+        <ZoomToolbar
+          readOnly={readOnly}
+          onArrangeCanvas={canvasInteractions.arrangeCanvas}
+        />
       </ReactFlow>
-      {nodePickerState.open &&
+      {!readOnly &&
+      nodePickerState.open &&
       nodePickerState.anchorNodeId &&
       nodePickerState.anchorCanvasPosition ? (
         <div

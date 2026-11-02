@@ -47,6 +47,7 @@ export interface BlockSourceStudioProps<
   owner: string;
   path: string;
   readOnly: boolean;
+  canRun?: boolean;
   saving: boolean;
   sections: readonly Section[];
   source: string;
@@ -105,6 +106,7 @@ function BlockSourceStudioWindow<Section extends BlockStudioSection>({
   owner,
   path,
   readOnly,
+  canRun = true,
   renderResource,
   saving,
   sections,
@@ -223,24 +225,36 @@ function BlockSourceStudioWindow<Section extends BlockStudioSection>({
         toolbar={
           <>
             <Button
-              onClick={() => onChange(onInjectContext(source, contextComment))}
+              disabled={loading || readOnly || saving}
+              onClick={() => {
+                if (!loading && !readOnly && !saving)
+                  onChange(onInjectContext(source, contextComment));
+              }}
             >
               {i18nText('frontstage', 'auto.inject_context')}
             </Button>
-            <Button disabled={!dirty || loading || saving} onClick={onReset}>
+            <Button
+              disabled={!dirty || loading || readOnly || saving}
+              onClick={() => {
+                if (!readOnly) onReset();
+              }}
+            >
               {i18nText('frontstage', 'auto.reset')}
             </Button>
             <Button
               disabled={!dirty || loading || readOnly || saving}
               loading={saving}
-              onClick={onSave}
+              onClick={() => {
+                if (!readOnly) onSave();
+              }}
             >
               {i18nText('frontstage', 'auto.save')}
             </Button>
             <Button
-              disabled={loading || saving}
+              disabled={!canRun || loading || saving}
               type="primary"
               onClick={() => {
+                if (!canRun || loading || saving) return;
                 onRun(source);
                 setActiveSection('run');
               }}
@@ -280,7 +294,9 @@ function BlockSourceStudioWindow<Section extends BlockStudioSection>({
                 path={path}
                 readOnly={loading || readOnly || saving}
                 value={source}
-                onChange={onChange}
+                onChange={(nextSource, modelPath) => {
+                  if (!readOnly) onChange(nextSource, modelPath);
+                }}
                 onMount={onEditorMount}
               />
             </div>

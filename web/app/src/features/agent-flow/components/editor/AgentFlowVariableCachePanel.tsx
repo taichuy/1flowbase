@@ -2,13 +2,17 @@ import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOutlined';
 import { App, Button, Tooltip, Typography } from 'antd';
-import type { MouseEvent as ReactMouseEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
+import type {
+  MouseEvent as ReactMouseEvent,
+  KeyboardEvent as ReactKeyboardEvent
+} from 'react';
 
 import {
   fetchRuntimeDebugArtifact,
   type AgentFlowVariableGroup
 } from '../../api/runtime';
 import { copyTextToClipboard } from '../../../../shared/ui/clipboard/copy-text';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { i18nText } from '../../../../shared/i18n/text';
 import {
   DebugVariablesPane,
@@ -63,6 +67,7 @@ export function AgentFlowVariableCachePanel({
   sidebarWidth
 }: AgentFlowVariableCachePanelProps) {
   const { message } = App.useApp();
+  const can = useConsoleOperationAccess();
 
   return (
     <section
@@ -138,6 +143,7 @@ export function AgentFlowVariableCachePanel({
             aria-label={i18nText('agentFlow', 'auto.reset_all_variable_caches')}
             size="small"
             type="text"
+            disabled={!can('delete_debug_variable_cache_entries')}
             onClick={onReset}
           >
             {i18nText('agentFlow', 'auto.reset_all')}

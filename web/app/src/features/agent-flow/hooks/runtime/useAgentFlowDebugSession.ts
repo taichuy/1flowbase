@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useAuthStore } from '../../../../state/auth-store';
 import {
   buildFlowDebugRunInput,
@@ -82,6 +83,7 @@ export function useAgentFlowDebugSession({
   environmentVariables?: AgentFlowEnvironmentVariable[];
 }) {
   const queryClient = useQueryClient();
+  const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const actorUserId = useAuthStore(
     (state) => state.actor?.id ?? state.me?.id ?? null
@@ -432,6 +434,8 @@ export function useAgentFlowDebugSession({
   );
 
   async function submitPrompt(prompt?: string) {
+    if (!can('start_flow_debug_run_stream') && !can('start_flow_debug_run'))
+      return null;
     const resolvedPrompt = resolvePrompt(runContext, prompt);
     const nextRunContext = updateRunContextQuery(runContext, resolvedPrompt);
     const inputValues = getRunContextValues(nextRunContext);
@@ -475,6 +479,8 @@ export function useAgentFlowDebugSession({
       let streamTraceItemsSnapshot: AgentFlowTraceItem[] = [];
       const seenStreamEventKeys = new Set<string>();
 
+      if (!can('start_flow_debug_run_stream'))
+        throw new Error('permission denied');
       await startFlowDebugRunStream(applicationId, runInput, csrfToken, {
         getAbortController: (abortController) => {
           if (!isActiveDebugStreamGeneration(streamGeneration)) {
@@ -643,6 +649,10 @@ export function useAgentFlowDebugSession({
       setStreamTraceItems([]);
     }
 
+    if (!can('start_flow_debug_run')) {
+      setStatus('failed');
+      return null;
+    }
     try {
       const detail = await startFlowDebugRun(
         applicationId,
@@ -701,6 +711,7 @@ export function useAgentFlowDebugSession({
     const runId = lastDetail?.flow_run.id ?? activeRunIdRef.current;
 
     if (
+      !can('cancel_flow_run') ||
       stoppingRef.current ||
       !csrfToken ||
       !runId ||
@@ -800,6 +811,7 @@ export function useAgentFlowDebugSession({
   }
 
   function setVariableCacheValue(key: string, value: unknown) {
+    if (!can('upsert_debug_variable_cache_entry')) return;
     const parsed = parseVariableCacheItemKey(key);
     if (!parsed) {
       return;
@@ -883,6 +895,7 @@ export function useAgentFlowDebugSession({
   }
 
   function resetVariableCache() {
+    if (!can('delete_debug_variable_cache_entries')) return;
     variableSnapshotRestoreGenerationRef.current += 1;
     const nextDebugSessionState = createDebugSessionState(
       applicationId,

@@ -1,4 +1,5 @@
 import { removeEdge } from '../../lib/document/transforms/edge';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useEffect, useRef } from 'react';
 
 import { useNodeDetailActions } from './use-node-detail-actions';
@@ -9,6 +10,8 @@ import {
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 
 export function useEditorShortcuts() {
+  const can = useConsoleOperationAccess();
+  const canEdit = can('save_draft');
   const workingDocument = useAgentFlowEditorStore(
     (state) => state.workingDocument
   );
@@ -61,6 +64,7 @@ export function useEditorShortcuts() {
     function handleKeyDown(event: KeyboardEvent) {
       const shortcutKey = event.key.toLowerCase();
       const isModifierShortcut = event.ctrlKey || event.metaKey;
+      if (!canEdit && event.key !== 'Escape') return;
 
       if (isModifierShortcut) {
         if (isEditableTarget(event.target)) {
@@ -183,6 +187,7 @@ export function useEditorShortcuts() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
+    canEdit,
     detailActions,
     selectedNodeId,
     selectedEdgeId,

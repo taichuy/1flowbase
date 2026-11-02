@@ -1,3 +1,4 @@
+import { authenticateEditor } from '../fixtures/editor-auth';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
@@ -349,10 +350,38 @@ vi.mock('@xyflow/react', () => ({
 
 describe('AgentFlowCanvas interactions', () => {
   beforeEach(() => {
+    authenticateEditor();
     latestReactFlowProps = null;
     canvasCommitCount = 0;
     latestViewportChangeOptions = null;
     mockViewport = { x: 0, y: 0, zoom: 1 };
+  });
+
+  test('preserves readable canvas selection without authoring authority', () => {
+    authenticateEditor(['get_orchestration'], 'member');
+    const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+    const { getState } = renderCanvas(document);
+    act(() => {
+      latestReactFlowProps?.onNodesChange?.([
+        {
+          id: 'node-llm',
+          type: 'position',
+          position: { x: 999, y: 999 },
+          dragging: false
+        }
+      ]);
+      latestReactFlowProps?.onConnect?.({
+        source: 'node-start',
+        target: 'node-answer'
+      });
+    });
+    expect(getState().workingDocument).toEqual(document);
+    const node = latestReactFlowProps?.defaultNodes?.find(
+      (item) => item.id === 'node-llm'
+    );
+    act(() => node?.data?.onSelectNode?.('node-llm'));
+    expect(getState().selectedNodeId).toBe('node-llm');
+    expect(screen.getByRole('button', { name: '自动整理' })).toBeDisabled();
   });
 
   test('writes dragged node positions back into the document', () => {

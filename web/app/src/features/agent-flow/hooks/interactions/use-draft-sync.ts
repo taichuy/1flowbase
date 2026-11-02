@@ -5,6 +5,7 @@ import type {
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { useEffect, useRef } from 'react';
 
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useAuthStore } from '../../../../state/auth-store';
 import { restoreVersion, saveDraft } from '../../api/orchestration';
 import { buildDraftSaveInput } from '../../lib/draft-save';
@@ -40,6 +41,9 @@ export function useDraftSync({
   getLastSavedDocument,
   environmentVariables = []
 }: UseDraftSyncOptions) {
+  const can = useConsoleOperationAccess();
+  const canSave = can('save_draft');
+  const canRestore = can('applications.orchestration.version.restore');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const workingDocument = useAgentFlowEditorStore(selectWorkingDocument);
   const lastSavedDocument = useAgentFlowEditorStore(selectLastSavedDocument);
@@ -47,7 +51,9 @@ export function useDraftSync({
   const autosaveIntervalMs = useAgentFlowEditorStore(
     (state) => state.autosaveIntervalMs
   );
-  const autosaveStatus = useAgentFlowEditorStore((state) => state.autosaveStatus);
+  const autosaveStatus = useAgentFlowEditorStore(
+    (state) => state.autosaveStatus
+  );
   const setAutosaveStatus = useAgentFlowEditorStore(
     (state) => state.setAutosaveStatus
   );
@@ -62,7 +68,7 @@ export function useDraftSync({
   const saveNowRef = useRef<() => Promise<boolean>>(async () => false);
 
   async function saveNow() {
-    if (saveInFlightRef.current) {
+    if (!canSave || saveInFlightRef.current) {
       return false;
     }
 
@@ -119,7 +125,7 @@ export function useDraftSync({
   saveNowRef.current = saveNow;
 
   async function restoreVersionById(versionId: string) {
-    if (!restoreVersionOverride && !csrfToken) {
+    if (!canRestore || (!restoreVersionOverride && !csrfToken)) {
       return;
     }
 
@@ -147,7 +153,7 @@ export function useDraftSync({
   }
 
   useEffect(() => {
-    if (!hasPendingChanges) {
+    if (!canSave || !hasPendingChanges) {
       if (!saveInFlightRef.current) {
         setAutosaveStatus('idle');
       }
@@ -159,7 +165,7 @@ export function useDraftSync({
     }, autosaveIntervalMs);
 
     return () => window.clearInterval(timer);
-  }, [autosaveIntervalMs, hasPendingChanges, setAutosaveStatus]);
+  }, [autosaveIntervalMs, canSave, hasPendingChanges, setAutosaveStatus]);
 
   return {
     hasPendingChanges,

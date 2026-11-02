@@ -1,3 +1,4 @@
+import { authenticateEditor } from '../fixtures/editor-auth';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -6,6 +7,7 @@ import { appI18n } from '../../../../shared/i18n/app-i18n';
 
 describe('ConversationVariablesPanel', () => {
   beforeEach(async () => {
+    authenticateEditor();
     await appI18n.changeLanguage('zh_Hans');
   });
 

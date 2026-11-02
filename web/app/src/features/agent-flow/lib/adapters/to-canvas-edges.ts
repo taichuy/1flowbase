@@ -14,7 +14,7 @@ export function toCanvasEdges(
   selectedEdgeId: string | null,
   actions: {
     nodePickerOptions: NodePickerOption[];
-    onInsertNode: (edgeId: string, option: NodePickerOption) => void;
+    onInsertNode?: (edgeId: string, option: NodePickerOption) => void;
   }
 ): AgentFlowCanvasEdge[] {
   const nodesById = new Map<string, FlowNodeDocument>();

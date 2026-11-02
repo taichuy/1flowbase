@@ -51,6 +51,7 @@ import {
   validateDocument
 } from '../../lib/validate-document';
 import { buildNodePickerOptions } from '../../lib/plugin-node-definitions';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import {
@@ -140,6 +141,7 @@ export function AgentFlowCanvasFrame({
 }: AgentFlowCanvasFrameProps) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
+  const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const workingDocument = useAgentFlowEditorStore(selectWorkingDocument);
   const lastSavedDocument = useAgentFlowEditorStore(selectLastSavedDocument);
@@ -211,6 +213,8 @@ export function AgentFlowCanvasFrame({
   });
   const environmentVariablesMutation = useMutation({
     mutationFn: (variables: AgentFlowEnvironmentVariable[]) => {
+      if (!can('replace_application_environment_variables'))
+        throw new Error('permission denied');
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
@@ -238,7 +242,11 @@ export function AgentFlowCanvasFrame({
     }
   });
   const exportTemplateMutation = useMutation({
-    mutationFn: () => exportApplicationArchive([applicationId]),
+    mutationFn: () => {
+      if (!can('applications.orchestration.template.export'))
+        throw new Error('permission denied');
+      return exportApplicationArchive([applicationId]);
+    },
     onSuccess(archive) {
       downloadApplicationArchive(archive);
       message.success(i18nText('agentFlow', 'auto.template_exported'));
@@ -253,6 +261,7 @@ export function AgentFlowCanvasFrame({
         throw new Error('missing csrf token');
       }
 
+      if (!can('publish_application_api')) throw new Error('permission denied');
       const mapping = await fetchApplicationApiMapping(applicationId);
       return publishApplicationApiVersion(applicationId, mapping, csrfToken);
     },
@@ -281,6 +290,7 @@ export function AgentFlowCanvasFrame({
         throw new Error('missing csrf token');
       }
 
+      if (!can('update_version')) throw new Error('permission denied');
       return updateVersion(applicationId, versionId, input, csrfToken);
     },
     onSuccess(nextState) {
@@ -552,9 +562,15 @@ export function AgentFlowCanvasFrame({
           void draftSync.saveNow();
         }}
         saveDisabled={
-          autosaveStatus === 'saving' || variableAggregatorSaveBlocked
+          !can('save_draft') ||
+          autosaveStatus === 'saving' ||
+          variableAggregatorSaveBlocked
         }
         saveLoading={autosaveStatus === 'saving'}
+        previewDisabled={
+          !can('start_flow_debug_run_stream') && !can('start_flow_debug_run')
+        }
+        exportDisabled={!can('applications.orchestration.template.export')}
         onOpenDebugConsole={openDebugConsole}
         onExportTemplate={() => exportTemplateMutation.mutate()}
         onOpenIssues={() => setPanelState({ issuesOpen: true })}
@@ -565,7 +581,11 @@ export function AgentFlowCanvasFrame({
         onOpenPublish={() => publishMutation.mutate()}
         issueErrorCount={issueErrorCount}
         exportLoading={exportTemplateMutation.isPending}
-        publishDisabled={publishMutation.isPending || issueErrorCount > 0}
+        publishDisabled={
+          !can('publish_application_api') ||
+          publishMutation.isPending ||
+          issueErrorCount > 0
+        }
       />
       <div
         ref={bodyRef}
@@ -575,7 +595,9 @@ export function AgentFlowCanvasFrame({
         <AgentFlowCanvas
           issueCountByNodeId={issueCountByNodeId}
           nodePickerOptions={nodePickerOptions}
-          onRunNode={handleCanvasRunNode}
+          onRunNode={
+            can('start_node_debug_preview') ? handleCanvasRunNode : undefined
+          }
           onViewportSnapshotChange={handleViewportSnapshotChange}
           onViewportGetterReady={handleViewportGetterReady}
         />
@@ -681,10 +703,16 @@ export function AgentFlowCanvasFrame({
                 issues={issues}
                 onClose={detailActions.closeDetail}
                 onDebugNode={
-                  selectedNodeId ? handleDebugSelectedNode : undefined
+                  selectedNodeId && can('start_node_debug_preview')
+                    ? handleDebugSelectedNode
+                    : undefined
                 }
                 onResolveRunScope={debugSession.selectRunScope}
-                onRunNode={selectedNodeId ? handleRunSelectedNode : undefined}
+                onRunNode={
+                  selectedNodeId && can('start_node_debug_preview')
+                    ? handleRunSelectedNode
+                    : undefined
+                }
                 previewActionsDisabled={nodePreviewMutation.isPending}
                 runLoading={nodePreviewAction === 'run'}
               />
@@ -695,7 +723,17 @@ export function AgentFlowCanvasFrame({
           <DemandIsland>
             <AgentFlowVariableCachePanel
               applicationId={applicationId}
-              groups={debugSession.variableGroups}
+              groups={
+                can('upsert_debug_variable_cache_entry')
+                  ? debugSession.variableGroups
+                  : debugSession.variableGroups.map((group) => ({
+                      ...group,
+                      items: group.items.map((item) => ({
+                        ...item,
+                        isReadOnly: true
+                      }))
+                    }))
+              }
               height={boundedVariableCacheHeight}
               isResizing={isResizingVariableCache}
               isSidebarResizing={isResizingVariableCacheSidebar}

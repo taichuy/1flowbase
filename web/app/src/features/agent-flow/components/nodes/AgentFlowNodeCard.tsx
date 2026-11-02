@@ -126,12 +126,14 @@ function useNodeCardInteractionController({
     ...runMenuItems,
     {
       key: 'replace',
+      disabled: data.readOnly,
       icon: <SwapOutlined />,
       label: i18nText('agentFlow', 'auto.replace_node'),
       children: replaceItems
     },
     {
       key: 'delete',
+      disabled: data.readOnly,
       icon: <DeleteOutlined />,
       label: i18nText('agentFlow', 'auto.delete_node'),
       danger: true,
@@ -257,10 +259,10 @@ function useNodeCardInteractionController({
       <div key={handle.id ?? 'default'}>
         <NodePickerPopover
           ariaLabel={ariaLabel}
-          open={pickerOpen && !handle.disabled}
+          open={pickerOpen && !(handle.disabled || data.readOnly)}
           options={nodePickerOptions}
           onOpenChange={(open) => {
-            if (handle.disabled) {
+            if (handle.disabled || data.readOnly) {
               data.onClosePicker();
               return;
             }
@@ -277,7 +279,7 @@ function useNodeCardInteractionController({
             data.onClosePicker();
           }}
           onPickNode={(option) => {
-            if (handle.disabled) {
+            if (handle.disabled || data.readOnly) {
               return;
             }
 
@@ -306,17 +308,19 @@ function useNodeCardInteractionController({
               type="source"
               position={Position.Right}
               aria-expanded={pickerOpen}
-              aria-disabled={handle.disabled}
+              aria-disabled={handle.disabled || data.readOnly}
               aria-haspopup="menu"
               aria-label={ariaLabel}
               className={[
                 'agent-flow-node-handle',
                 'agent-flow-node-handle--source',
-                sourceHandles.length > 1 ? 'agent-flow-node-handle--branch' : null
+                sourceHandles.length > 1
+                  ? 'agent-flow-node-handle--branch'
+                  : null
               ]
                 .filter(Boolean)
                 .join(' ')}
-              isConnectable={!handle.disabled}
+              isConnectable={!(handle.disabled || data.readOnly)}
               role="button"
               style={style}
               tabIndex={0}
@@ -331,7 +335,7 @@ function useNodeCardInteractionController({
                 event.preventDefault();
                 event.stopPropagation();
 
-                if (handle.disabled) {
+                if (handle.disabled || data.readOnly) {
                   return;
                 }
 
@@ -388,7 +392,7 @@ function useNodeCardInteractionController({
             id={handle.id}
             type="source"
             position={Position.Bottom}
-            isConnectable
+            isConnectable={!data.readOnly}
             aria-label={`${handle.title} ${i18nText('agentFlow', 'auto.tool_connector')}`}
             className="agent-flow-node-handle agent-flow-node-handle--tool"
           >
@@ -403,17 +407,43 @@ function useNodeCardInteractionController({
     );
   }
   return {
-    data, selected, minimumNodeHeight, showQuickActions, scheduleHideQuickActions,
-    isUnresolvedNode, unresolvedInfo, cardAdapter, quickActionsVisible, runNode,
-    menuItems, toolSourceHandles, renderToolHandle, sourceHandles, renderSourceHandle
+    data,
+    selected,
+    minimumNodeHeight,
+    showQuickActions,
+    scheduleHideQuickActions,
+    isUnresolvedNode,
+    unresolvedInfo,
+    cardAdapter,
+    quickActionsVisible,
+    runNode,
+    menuItems,
+    toolSourceHandles,
+    renderToolHandle,
+    sourceHandles,
+    renderSourceHandle
   };
 }
 
-export function AgentFlowNodeCard(props: Parameters<typeof useNodeCardInteractionController>[0]) {
+export function AgentFlowNodeCard(
+  props: Parameters<typeof useNodeCardInteractionController>[0]
+) {
   const {
-    data, selected, minimumNodeHeight, showQuickActions, scheduleHideQuickActions,
-    isUnresolvedNode, unresolvedInfo, cardAdapter, quickActionsVisible, runNode,
-    menuItems, toolSourceHandles, renderToolHandle, sourceHandles, renderSourceHandle
+    data,
+    selected,
+    minimumNodeHeight,
+    showQuickActions,
+    scheduleHideQuickActions,
+    isUnresolvedNode,
+    unresolvedInfo,
+    cardAdapter,
+    quickActionsVisible,
+    runNode,
+    menuItems,
+    toolSourceHandles,
+    renderToolHandle,
+    sourceHandles,
+    renderSourceHandle
   } = useNodeCardInteractionController(props);
 
   return (
@@ -421,6 +451,7 @@ export function AgentFlowNodeCard(props: Parameters<typeof useNodeCardInteractio
       {data.showTargetHandle ? (
         <CanvasHandle
           type="target"
+          isConnectable={!data.readOnly}
           position={Position.Left}
           className="agent-flow-node-handle agent-flow-node-handle--target"
         />

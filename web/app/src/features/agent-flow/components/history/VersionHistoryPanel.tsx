@@ -9,6 +9,7 @@ import type {
   UpdateConsoleApplicationVersionInput
 } from '@1flowbase/api-client';
 
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { AgentFlowDockPanel } from '../editor/AgentFlowDockPanel';
 import { i18nText } from '../../../../shared/i18n/text';
 import '../../../../shared/ui/structured-list/structured-list.css';
@@ -62,6 +63,9 @@ export function VersionHistoryPanel({
   onRestore,
   onUpdate
 }: VersionHistoryPanelProps) {
+  const can = useConsoleOperationAccess();
+  const canRestore = can('applications.orchestration.version.restore');
+  const canUpdate = can('update_version');
   const [editingVersion, setEditingVersion] =
     useState<ConsoleFlowVersionSummary | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -71,7 +75,7 @@ export function VersionHistoryPanel({
   const userProtectionLimitReached = userProtectedCount >= userProtectionLimit;
 
   async function saveTitle() {
-    if (!editingVersion) {
+    if (!canUpdate || !editingVersion) {
       return;
     }
 
@@ -133,7 +137,9 @@ export function VersionHistoryPanel({
                     <Button
                       aria-label={`${version.is_user_protected ? i18nText('agentFlow', 'auto.cancel_top_protection') : i18nText('agentFlow', 'auto.top_protection')} ${title}`}
                       disabled={
-                        !version.is_user_protected && userProtectionLimitReached
+                        !canUpdate ||
+                        (!version.is_user_protected &&
+                          userProtectionLimitReached)
                       }
                       icon={
                         version.is_user_protected ? (
@@ -154,6 +160,7 @@ export function VersionHistoryPanel({
                       aria-label={i18nText('agentFlow', 'auto.edit_title', {
                         value1: title
                       })}
+                      disabled={!canUpdate}
                       icon={<EditOutlined />}
                       type="text"
                       onClick={() => {
@@ -162,6 +169,7 @@ export function VersionHistoryPanel({
                       }}
                     />
                     <Button
+                      disabled={!canRestore}
                       loading={restoring}
                       onClick={() => {
                         void onRestore(version.id);
@@ -188,7 +196,7 @@ export function VersionHistoryPanel({
         destroyOnHidden
         okButtonProps={{
           'aria-label': i18nText('agentFlow', 'auto.save_version_title'),
-          disabled: editingTitle.trim().length === 0
+          disabled: !canUpdate || editingTitle.trim().length === 0
         }}
         okText={i18nText('agentFlow', 'auto.save')}
         open={Boolean(editingVersion)}

@@ -21,6 +21,7 @@ import type {
   AgentLogsDeleteJobCreate,
   AgentLogsDeleteScope
 } from '@1flowbase/api-client';
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { useAuthStore } from '../../../../../state/auth-store';
 import {
   fetchApplicationLogDeletionJob,
@@ -49,6 +50,9 @@ function useDeletionJobController({
   onFinished: () => Promise<void>;
 }) {
   const { t } = useTranslation('applications');
+  const can = useConsoleOperationAccess();
+  const canStart = can('applications.logs.delete.jobs.create');
+  const canStop = can('applications.logs.delete.jobs.stop');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -75,6 +79,11 @@ function useDeletionJobController({
         ? 1500
         : false;
     },
+    enabled: can(
+      trackedId
+        ? 'applications.logs.delete.jobs.get'
+        : 'applications.logs.delete.jobs.latest'
+    ),
     retry: false,
     // Keep polling when the modal closes; the component does not execute deletion.
     refetchOnWindowFocus: true
@@ -121,13 +130,20 @@ function useDeletionJobController({
     queryKey: logDeletionPreviewKey(applicationId, scope),
     queryFn: ({ signal }) =>
       previewApplicationLogDeletion(applicationId, scope!, signal),
-    enabled: open && !trackedId && !job && !!scope,
+    enabled:
+      can('applications.logs.delete.preview') &&
+      open &&
+      !trackedId &&
+      !job &&
+      !!scope,
     retry: false,
     staleTime: 0
   });
   const start = useMutation({
-    mutationFn: (input: AgentLogsDeleteJobCreate) =>
-      startApplicationLogDeletion(applicationId, input, csrfToken!),
+    mutationFn: (input: AgentLogsDeleteJobCreate) => {
+      if (!canStart) throw new Error('permission denied');
+      return startApplicationLogDeletion(applicationId, input, csrfToken!);
+    },
     onSuccess: async (value) => {
       await queryClient.cancelQueries({
         queryKey: logDeletionJobKey(applicationId, value.job_id)
@@ -155,8 +171,10 @@ function useDeletionJobController({
     }
   });
   const stop = useMutation({
-    mutationFn: () =>
-      stopApplicationLogDeletion(applicationId, job!.job_id, csrfToken!),
+    mutationFn: () => {
+      if (!canStop) throw new Error('permission denied');
+      return stopApplicationLogDeletion(applicationId, job!.job_id, csrfToken!);
+    },
     onSuccess: async (value) => {
       await queryClient.cancelQueries({
         queryKey: logDeletionJobKey(applicationId, value.job_id)
@@ -169,6 +187,7 @@ function useDeletionJobController({
   });
   function submit(values: Values) {
     if (
+      !canStart ||
       !scope ||
       !csrfToken ||
       trackedId ||
@@ -213,16 +232,56 @@ function useDeletionJobController({
       : Math.floor((job.deleted_records / job.total_records) * 100)
     : 0;
   return {
-    setAnchor, setOpen, csrfToken, t, open, job, stop, reset, pendingInput, start,
-    trackedId, scope, preview, observed, form, submit, date, processing, percent,
+    canStart,
+    canStop,
+    setAnchor,
+    setOpen,
+    csrfToken,
+    t,
+    open,
+    job,
+    stop,
+    reset,
+    pendingInput,
+    start,
+    trackedId,
+    scope,
+    preview,
+    observed,
+    form,
+    submit,
+    date,
+    processing,
+    percent,
     applicationType
   };
 }
 
-export function AgentLogsDeleteButton(props: Parameters<typeof useDeletionJobController>[0]) {
+export function AgentLogsDeleteButton(
+  props: Parameters<typeof useDeletionJobController>[0]
+) {
   const {
-    setAnchor, setOpen, csrfToken, t, open, job, stop, reset, pendingInput, start,
-    trackedId, scope, preview, observed, form, submit, date, processing, percent,
+    canStart,
+    canStop,
+    setAnchor,
+    setOpen,
+    csrfToken,
+    t,
+    open,
+    job,
+    stop,
+    reset,
+    pendingInput,
+    start,
+    trackedId,
+    scope,
+    preview,
+    observed,
+    form,
+    submit,
+    date,
+    processing,
+    percent,
     applicationType
   } = useDeletionJobController(props);
   return (
@@ -234,7 +293,7 @@ export function AgentLogsDeleteButton(props: Parameters<typeof useDeletionJobCon
           setAnchor(dayjs());
           setOpen(true);
         }}
-        disabled={!csrfToken}
+        disabled={!csrfToken || (!canStart && !canStop)}
       >
         {t('log_deletion.button')}
       </Button>
@@ -247,7 +306,12 @@ export function AgentLogsDeleteButton(props: Parameters<typeof useDeletionJobCon
             <Button onClick={() => setOpen(false)}>{t('auto.close')}</Button>
             {active(job) && (
               <Button
-                disabled={job!.stop_requested || stop.isPending || !csrfToken}
+                disabled={
+                  !canStop ||
+                  job!.stop_requested ||
+                  stop.isPending ||
+                  !csrfToken
+                }
                 onClick={() => stop.mutate()}
               >
                 {t(
@@ -264,7 +328,7 @@ export function AgentLogsDeleteButton(props: Parameters<typeof useDeletionJobCon
               <Button
                 onClick={() => start.mutate(pendingInput)}
                 loading={start.isPending}
-                disabled={!csrfToken}
+                disabled={!canStart || !csrfToken}
               >
                 {t('log_deletion.confirm_start')}
               </Button>
@@ -274,6 +338,7 @@ export function AgentLogsDeleteButton(props: Parameters<typeof useDeletionJobCon
                 danger
                 type="primary"
                 disabled={
+                  !canStart ||
                   !csrfToken ||
                   !scope ||
                   !preview.data?.total_records ||
@@ -402,9 +467,15 @@ export function AgentLogsDeleteButton(props: Parameters<typeof useDeletionJobCon
             </Form.Item>
           </Form>
         )}
-        <Alert type="warning" showIcon title={applicationType === 'agent_flow'
-          ? t('log_deletion.native_warning')
-          : t('log_deletion.warning')} />
+        <Alert
+          type="warning"
+          showIcon
+          title={
+            applicationType === 'agent_flow'
+              ? t('log_deletion.native_warning')
+              : t('log_deletion.warning')
+          }
+        />
         {job && (
           <div role="status" style={{ marginTop: 16 }}>
             <Typography.Paragraph>
