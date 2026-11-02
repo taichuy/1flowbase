@@ -58,7 +58,10 @@ impl EphemeralKvStore for TestKv {
 #[tokio::test]
 async fn file_access_preserves_stable_url_and_scopes_ephemeral_public_read() {
     let workspace_id = Uuid::now_v7();
-    let actor = actor_in_workspace(workspace_id);
+    let mut actor = actor_in_workspace(workspace_id);
+    actor
+        .permissions
+        .insert("files.access_links.create".to_owned());
     let repository = MemoryFileManagementRepository::new(actor.clone());
     let table_id = Uuid::now_v7();
     let storage_id = Uuid::now_v7();
@@ -129,6 +132,15 @@ async fn file_access_preserves_stable_url_and_scopes_ephemeral_public_read() {
     repository.insert_file_record(table_id, upload.record.clone());
     let kv = Arc::new(TestKv::default());
     let service = FileAccessService::new(repository.clone(), drivers, engine, kv.clone());
+    let mut reader = actor.clone();
+    reader.permissions.remove("files.access_links.create");
+    assert!(service.read(reader.clone(), table_id, id).await.is_ok());
+    let denied = service
+        .create_share_link(reader, table_id, id, 600)
+        .await
+        .unwrap_err();
+    assert!(denied.to_string().contains("files.access_links.create"));
+    assert!(kv.entries.lock().unwrap().is_empty());
     let link = service
         .create_share_link(actor.clone(), table_id, id, 600)
         .await
@@ -212,7 +224,10 @@ async fn file_access_preserves_stable_url_and_scopes_ephemeral_public_read() {
 #[tokio::test]
 async fn image_preview_projects_upload_list_get_and_obeys_actual_storage_policy() {
     let workspace_id = Uuid::now_v7();
-    let actor = actor_in_workspace(workspace_id);
+    let mut actor = actor_in_workspace(workspace_id);
+    actor
+        .permissions
+        .insert("files.access_links.create".to_owned());
     let repository = MemoryFileManagementRepository::new(actor.clone());
     let table_id = Uuid::now_v7();
     let storage_id = Uuid::now_v7();

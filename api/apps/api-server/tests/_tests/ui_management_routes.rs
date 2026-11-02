@@ -5,7 +5,17 @@ const GROUP: &str = "system.ui-management";
 
 #[tokio::test]
 async fn readonly_console_grants_keep_system_reads_separate_from_writes() {
-    let fixture = fixture().await;
+    let (state, config, database) = fixture_state().await;
+    control_plane::ports::I18nCatalogRepository::bootstrap_workspace_catalog_state(
+        &state.store,
+        state.bootstrap_workspace_id,
+    )
+    .await
+    .unwrap();
+    let fixture = Fixture {
+        app: app_with_state_and_config(state, &config),
+        _database: database,
+    };
     let app = &fixture.app;
     let (root, csrf) = login(app, "root", "change-me").await;
     create_member(app, &root, &csrf, "readonly-console", "temp-pass").await;
