@@ -127,7 +127,17 @@ jobs:
         with:
           ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
       - id: target
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        shell: bash
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.scope == 'ci' && inputs.candidate_sha || '' }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ -n "$EXPECTED_CANDIDATE_SHA" && "$actual_sha" != "$EXPECTED_CANDIDATE_SHA" ]]; then
+            echo "Full quality gate candidate SHA does not match the requested commit" >&2
+            exit 1
+          fi
+          echo "sha=$actual_sha" >> "$GITHUB_OUTPUT"
 
   foundation-contract-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}

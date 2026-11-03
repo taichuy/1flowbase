@@ -34,3 +34,9 @@
 - Core 文案注册表已包含“Personal account”及其描述，消费者固定清单从 86 条调整为 88 条；官方 seed 是固定外部版本，新增 8 项接口的 summary/description 尚未在 768 条消息键中发布，因此仅按具体 operation ID 使用已存在的 pending-official-release 路径，不修改 seed 字节。
 - PostgreSQL 插件组件测试使用真实 Host TSX 编译器。CI Rust-only runner 必须为存储集成分片提供既有 pnpm、Node 及锁文件规定的 TypeScript、page-runtime，不绕过 duplicate-import 负例或引入新包；源测试所需的审计 actor 必须在隔离 schema 中真实存在，外键约束不变。
 - 本地低成本复核：业务接口与字符串源码锚定、Rustfmt、Git diff 检查、真实 Host TSX 编译+重复 import 拒绝；Node gate 测试 84/84，`/usr/bin/time` 单进程 maxRSS 246176 KB。以上不代替 Rust 真实数据库执行或候选 SHA 的远程完整门禁。
+
+## 可选的完整 PR 门禁触发
+
+由于 GitHub Verify 是 Level 2，完整 Quality Gate 仍为受控的 Level 3 手动工作流。为避免每次 PR 更新都重复占用完整回归 runner，仓库内同源 PR 仅在维护者添加 `quality-gate` 标签后调用原有 `workflow_dispatch`；标签保留时，候选后续提交触发下一轮完整验收。派发作业不检出或执行 PR 业务代码，仅使用 GitHub runner 现有 CLI、最小 `actions:write` 权限；叉仓 PR 不可触发。
+
+派发前比较事件绑定 SHA 与远端分支最新 SHA；完整门禁的 `resolve-quality-gate-target` 再检查 `candidate_sha` 与实际检出 HEAD 相同，任一变化立即失败，防止用旧的通过收据验收新候选。React Doctor 的 `react_doctor_base` 取目标受保护分支在 PR 事件中的基线提交，不以缺失或过期的定时扫描收据推断本次 PR 差异。现有完整门禁组件、阈值、负例、环境及覆盖范围保持不变。
