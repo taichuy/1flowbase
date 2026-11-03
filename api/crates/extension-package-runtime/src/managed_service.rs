@@ -273,7 +273,8 @@ pub struct ManagedServiceManifest {
     pub worker_idle_timeout_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_instance: Option<ManagedServiceMcpInstance>,
-    pub feature: ManagedServiceFeature,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature: Option<ManagedServiceFeature>,
     pub operations: Vec<ManagedServiceOperation>,
 }
 
@@ -348,29 +349,34 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
             }
         })
     };
-    let feature = &service.feature;
-    if !owned_id(&feature.feature_id)
-        || feature.route_id.is_empty()
-        || !feature
-            .route_id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
-        || feature.path != format!("/settings/{}", feature.route_id)
-        || feature.label.trim().is_empty()
-        || feature.description.trim().is_empty()
-    {
+    if let Some(feature) = &service.feature {
+        if !owned_id(&feature.feature_id)
+            || feature.route_id.is_empty()
+            || !feature
+                .route_id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+            || feature.path != format!("/settings/{}", feature.route_id)
+            || feature.label.trim().is_empty()
+            || feature.description.trim().is_empty()
+        {
+            return Err(invalid(
+                "managed service feature must have an owned identity and concrete settings route",
+            ));
+        }
+        if manifest.settings_pages.len() > 1
+            || manifest
+                .settings_pages
+                .iter()
+                .any(|p| p.feature_id != feature.feature_id)
+        {
+            return Err(invalid(
+                "managed service settings page must belong to its feature",
+            ));
+        }
+    } else if !manifest.settings_pages.is_empty() {
         return Err(invalid(
-            "managed service feature must have an owned identity and concrete settings route",
-        ));
-    }
-    if manifest.settings_pages.len() > 1
-        || manifest
-            .settings_pages
-            .iter()
-            .any(|p| p.feature_id != feature.feature_id)
-    {
-        return Err(invalid(
-            "managed service settings page must belong to its feature",
+            "managed service settings page requires a settings feature",
         ));
     }
     let mut ids = BTreeSet::new();

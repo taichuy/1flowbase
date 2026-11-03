@@ -312,7 +312,11 @@ pub(crate) fn compile_console_boot_plan_with_managed_services(
                     .iter()
                     .flat_map(|c| c.settings_features.iter().cloned()),
             )
-            .chain(managed_services.iter().map(|service| service.feature())),
+            .chain(
+                managed_services
+                    .iter()
+                    .filter_map(|service| service.feature()),
+            ),
     )?);
     let mut route_assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations_and_plugin_upload_max_bytes(
         interface_registry,

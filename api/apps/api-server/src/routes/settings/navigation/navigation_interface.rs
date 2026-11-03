@@ -231,7 +231,11 @@ impl ConsoleNavigationAdapter {
                 for page in self.0.surfaces.pages() {
                     let managed = self.0.surfaces.managed_services().iter().find(|service| {
                         service.plugin_code == page.plugin_code
-                            && service.declaration.feature.feature_id == page.feature_id
+                            && service
+                                .declaration
+                                .feature
+                                .as_ref()
+                                .is_some_and(|feature| feature.feature_id == page.feature_id)
                     });
                     let available = if let Some(service) = managed {
                         let current = self

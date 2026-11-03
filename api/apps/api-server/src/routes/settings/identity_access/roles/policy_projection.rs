@@ -7,6 +7,7 @@ pub(super) fn to_console_policy_group_kind_body(
         domain::ConsolePolicyGroupKind::SettingsFeature => {
             ConsolePolicyGroupKindBody::SettingsFeature
         }
+        domain::ConsolePolicyGroupKind::Plugin => ConsolePolicyGroupKindBody::Plugin,
         domain::ConsolePolicyGroupKind::Other => ConsolePolicyGroupKindBody::Other,
     }
 }
@@ -50,6 +51,7 @@ pub(crate) fn to_console_policy_catalog_response(
             .groups
             .into_iter()
             .map(|group| ConsolePolicyCatalogGroupResponse {
+                settings_feature_id: group.settings_feature_id,
                 kind: to_console_policy_group_kind_body(group.kind),
                 group_id: group.group_id,
                 label: group.label,

@@ -232,7 +232,9 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
     actor
         .permissions
         .extend(settings_feature_navigation_permissions(
-            inventory, &policies,
+            inventory,
+            &policies,
+            &state.settings_feature_registry.inventory().features,
         ));
     Ok(())
 }
@@ -242,32 +244,53 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
 pub(crate) fn settings_feature_navigation_permissions(
     inventory: &access_control::ConsoleOperationCompiledInventory,
     policies: &[domain::RoleConsolePolicy],
+    settings_features: &[access_control::SettingsFeatureInventoryEntry],
 ) -> std::collections::BTreeSet<String> {
-    inventory
-        .operations
-        .iter()
-        .filter(|operation| operation.lifecycle == access_control::SettingsFeatureLifecycle::Active)
-        .filter_map(|operation| {
-            let access_control::ConsolePolicyGroup::SettingsFeature(feature_id) =
-                &operation.policy_group
-            else {
-                return None;
-            };
-            let group = domain::ConsolePolicyGroup::settings_feature(feature_id).ok()?;
-            let id = domain::ConsoleOperationId::try_from(operation.operation_id.as_str()).ok()?;
-            let granted = match operation.authorization {
-                access_control::ConsoleAuthorization::Simple => {
-                    domain::effective_console_simple_operation(policies, &group, &id)
-                }
-                access_control::ConsoleAuthorization::ResourceAction { .. } => {
-                    domain::effective_console_row_scope(policies, &group, &id)
-                        != domain::ConsoleOperationRowScope::Disabled
-                }
-                access_control::ConsoleAuthorization::Authenticated => false,
-            };
-            granted.then(|| format!("settings_feature.access.{feature_id}"))
-        })
-        .collect()
+    let mut permissions = std::collections::BTreeSet::new();
+    for operation in &inventory.operations {
+        if operation.lifecycle != access_control::SettingsFeatureLifecycle::Active {
+            continue;
+        }
+        let (group, feature_ids) = match &operation.policy_group {
+            access_control::ConsolePolicyGroup::SettingsFeature(id) => (
+                domain::ConsolePolicyGroup::settings_feature(id),
+                vec![id.as_str()],
+            ),
+            access_control::ConsolePolicyGroup::Plugin(id) => (
+                domain::ConsolePolicyGroup::plugin(id),
+                settings_features
+                    .iter()
+                    .filter(|feature| feature.owner == operation.owner)
+                    .map(|feature| feature.feature_id.as_str())
+                    .collect(),
+            ),
+            access_control::ConsolePolicyGroup::Other(_) => continue,
+        };
+        let (Ok(group), Ok(id)) = (
+            group,
+            domain::ConsoleOperationId::try_from(operation.operation_id.as_str()),
+        ) else {
+            continue;
+        };
+        let granted = match operation.authorization {
+            access_control::ConsoleAuthorization::Simple => {
+                domain::effective_console_simple_operation(policies, &group, &id)
+            }
+            access_control::ConsoleAuthorization::ResourceAction { .. } => {
+                domain::effective_console_row_scope(policies, &group, &id)
+                    != domain::ConsoleOperationRowScope::Disabled
+            }
+            access_control::ConsoleAuthorization::Authenticated => false,
+        };
+        if granted {
+            permissions.extend(
+                feature_ids
+                    .into_iter()
+                    .map(|id| format!("settings_feature.access.{id}")),
+            );
+        }
+    }
+    permissions
 }
 
 fn console_operation_permissions(
@@ -282,6 +305,9 @@ fn console_operation_permissions(
             let group = match &operation.policy_group {
                 access_control::ConsolePolicyGroup::SettingsFeature(id) => {
                     domain::ConsolePolicyGroup::settings_feature(id)
+                }
+                access_control::ConsolePolicyGroup::Plugin(id) => {
+                    domain::ConsolePolicyGroup::plugin(id)
                 }
                 access_control::ConsolePolicyGroup::Other(id) => {
                     domain::ConsolePolicyGroup::other(id)

@@ -137,7 +137,7 @@ async fn hot_generation_same_ingress_swaps_routes_navigation_docs_and_mcp_atomic
     let mut upgraded = service;
     upgraded.installation_id = uuid::Uuid::now_v7();
     upgraded.plugin_version = "2.0.0".into();
-    upgraded.declaration.feature.path = "/settings/fixture-v2".into();
+    upgraded.declaration.feature.as_mut().unwrap().path = "/settings/fixture-v2".into();
     upgraded.declaration.operations[0].interface_id = "fixture.list-v2".into();
     upgraded.declaration.operations[0].path =
         "/api/console/managed-services/fixture/items-v2".into();

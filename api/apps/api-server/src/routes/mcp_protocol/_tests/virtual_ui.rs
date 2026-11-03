@@ -698,6 +698,8 @@ fn managed_mcp_get_uses_flat_body_path_query_body_fields_and_retains_existing_co
         }]
     })).unwrap();
     let service = crate::managed_services::ManagedServiceRegistration {
+        display_name: "Fixture plugin".into(),
+        description: "Fixture plugin operations".into(),
         installation_id: uuid::Uuid::nil(),
         plugin_code: "ssh".into(),
         plugin_version: "1".into(),

@@ -37,6 +37,7 @@ pub(crate) fn authorize_compiled_console_access(
         ConsolePolicyGroup::SettingsFeature(feature_id) => {
             domain::ConsolePolicyGroup::settings_feature(feature_id).ok()
         }
+        ConsolePolicyGroup::Plugin(group_id) => domain::ConsolePolicyGroup::plugin(group_id).ok(),
         ConsolePolicyGroup::Other(group_id) => domain::ConsolePolicyGroup::other(group_id).ok(),
     };
     let Some(group) = group else {
