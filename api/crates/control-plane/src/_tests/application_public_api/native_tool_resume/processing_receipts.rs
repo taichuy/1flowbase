@@ -489,13 +489,20 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
         assert!(error
             .to_string()
             .contains("semantic_responses_continuation_item_unsupported"));
+        // The public task getter projects only tool-call summaries. Check the
+        // complete scoped receipt here so round evidence must also stay intact.
         assert_eq!(
             repository
-                .get_published_callback_task(callback.id)
+                .find_semantic_responses_callbacks_by_response_id(
+                    actor.workspace_id,
+                    actor.application_id,
+                    actor.api_key_id,
+                    actor.creator_user_id,
+                    &format!("resp_{run}"),
+                )
                 .await
-                .unwrap()
                 .unwrap(),
-            callback
+            vec![callback.clone()]
         );
         assert!(repository.callback_resume_attempts().is_empty());
     }
