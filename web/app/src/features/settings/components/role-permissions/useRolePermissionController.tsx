@@ -37,6 +37,7 @@ import { RoleDataPolicySection } from './RoleDataPolicySection';
 import { renderConsolePolicyCatalogTable } from './console-policy-catalog-table';
 import {
   disabledConsolePolicyGroup,
+  isConsoleSettingsCatalogGroup,
   materializeDetailPolicyOperations,
   sameConsolePolicyGroup,
   replaceConsolePolicyGroup,
@@ -581,8 +582,9 @@ export function useRolePermissionController({
     };
 
     const settingsFeatureGroups = catalogGroups.filter(
-      (group) => group.kind === 'settings_feature'
+      isConsoleSettingsCatalogGroup
     );
+    const pluginGroups = catalogGroups.filter((group) => group.kind === 'plugin');
     const otherGroups = catalogGroups.filter((group) => group.kind === 'other');
     const backendSettingsTab = settingsFeatureGroups.length
       ? {
@@ -592,6 +594,13 @@ export function useRolePermissionController({
             'settings_feature',
             catalogTableContext
           )
+        }
+      : null;
+    const pluginPolicyTab = pluginGroups.length
+      ? {
+          key: PLUGIN_POLICY_TAB,
+          label: i18nText('settings', 'auto.plugin_permissions'),
+          children: renderConsolePolicyCatalogTable('plugin', catalogTableContext)
         }
       : null;
     const otherPolicyTab = otherGroups.length
@@ -610,6 +619,7 @@ export function useRolePermissionController({
       ...(defaultDataPolicyTab ? [defaultDataPolicyTab] : []),
       ...(singleModelPolicyTab ? [singleModelPolicyTab] : []),
       ...(backendSettingsTab ? [backendSettingsTab] : []),
+      ...(pluginPolicyTab ? [pluginPolicyTab] : []),
       ...(otherPolicyTab ? [otherPolicyTab] : [])
     ];
   }, [
@@ -648,14 +658,10 @@ export function useRolePermissionController({
       const availableTabKeys = new Set(
         permissionTabItems.map((item) => item.key)
       );
-      const policyPeerFallback =
-        activePermissionTab === CONSOLE_POLICY_TAB &&
-        availableTabKeys.has(OTHER_POLICY_TAB)
-          ? OTHER_POLICY_TAB
-          : activePermissionTab === OTHER_POLICY_TAB &&
-              availableTabKeys.has(CONSOLE_POLICY_TAB)
-            ? CONSOLE_POLICY_TAB
-            : null;
+      const policyTabs: RolePermissionTab[] = [CONSOLE_POLICY_TAB, PLUGIN_POLICY_TAB, OTHER_POLICY_TAB];
+      const policyPeerFallback = policyTabs.includes(activePermissionTab)
+        ? policyTabs.find((tab) => availableTabKeys.has(tab))
+        : null;
       onPermissionTabChange(
         policyPeerFallback ?? (permissionTabItems[0].key as RolePermissionTab),
         'replace'
@@ -714,6 +720,7 @@ export function useRolePermissionController({
 import {
   CONSOLE_POLICY_TAB,
   OTHER_POLICY_TAB,
+  PLUGIN_POLICY_TAB,
   DYNAMIC_ROUTE_TAB,
   ROLE_TABLE_GENERAL_TAB,
   ROLE_TABLE_SINGLE_TAB,

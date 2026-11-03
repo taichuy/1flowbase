@@ -102,6 +102,7 @@
     "incomplete_installation": "安装不完整",
     "multiple_selection_drop_down": "多选下拉",
     "memory_watch_connection_failed": "内存观察连接失败。",
+    "plugin_permissions": "插件",
     "backend_setting": "后台设置",
     "authorization_policy": "授权策略",
     "permission_policy_details": "详细配置 {{value1}}",

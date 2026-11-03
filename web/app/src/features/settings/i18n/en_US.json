@@ -102,6 +102,7 @@
     "incomplete_installation": "Incomplete installation",
     "multiple_selection_drop_down": "Multiple selection drop-down",
     "memory_watch_connection_failed": "Memory watch connection failed.",
+    "plugin_permissions": "Plugins",
     "backend_setting": "Backend settings",
     "authorization_policy": "Authorization policy",
     "permission_policy_details": "Configure {{value1}}",

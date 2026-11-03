@@ -684,6 +684,13 @@ const settingsRolesConsolePolicyRoute = createRoute({
   component: () => renderSettingsRoute('roles', undefined, 'console-policy')
 });
 
+const settingsRolesPluginPolicyRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/roles/plugin-policy',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('roles', undefined, 'plugin-policy')
+});
+
 const settingsRolesOtherPolicyRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/roles/other-policy',
@@ -865,6 +872,7 @@ const routeTree = rootRoute.addChildren([
     settingsRolesTableGeneralPolicyRoute,
     settingsRolesTableSinglePolicyRoute,
     settingsRolesConsolePolicyRoute,
+    settingsRolesPluginPolicyRoute,
     settingsRolesOtherPolicyRoute,
     settingsDynamicRoute,
     meIndexRoute,

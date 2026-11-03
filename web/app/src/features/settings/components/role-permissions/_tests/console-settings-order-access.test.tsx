@@ -18,7 +18,7 @@ import { useConsoleSettingsOrder } from '../useConsoleSettingsOrder';
 const catalog: SettingsConsolePolicyCatalog = {
   schema_version: '2026-07-14', locale: 'en_US', settings_order_revision: 4,
   group_strategy_options: [], resources: [],
-  groups: ['first', 'second'].map((group_id) => ({ kind: 'settings_feature', group_id, label: group_id, description: '', operations: [] }))
+  groups: ['first', 'second'].map((group_id) => ({ kind: 'settings_feature', group_id, settings_feature_id: null, label: group_id, description: '', operations: [] }))
 };
 let client: QueryClient;
 beforeEach(() => {
@@ -61,4 +61,31 @@ test.each([
     expect(saveOrder).not.toHaveBeenCalled();
     expect(client.getQueryData(settingsConsolePolicyCatalogQueryKey('en_US'))).toEqual(catalog);
   }
+});
+
+
+test('settings ordering submits plugin settings_feature_id while preserving canonical plugin identity', async () => {
+  setOperations('root', []);
+  const mixedCatalog: SettingsConsolePolicyCatalog = {
+    ...catalog,
+    groups: [
+      catalog.groups[0],
+      { kind: 'plugin', group_id: 'calendar', settings_feature_id: 'settings.calendar', label: 'Calendar', description: '', operations: [] },
+      { kind: 'plugin', group_id: 'worker', settings_feature_id: null, label: 'Worker', description: '', operations: [] },
+      catalog.groups[1]
+    ]
+  };
+  // Keep the optimistic state available for inspection before the server response.
+  saveOrder.mockImplementation(() => new Promise(() => {}));
+  client.setQueryData(settingsConsolePolicyCatalogQueryKey('en_US'), mixedCatalog);
+  const { result } = renderHook(() => {
+    const { message } = App.useApp();
+    return useConsoleSettingsOrder({ csrfToken: 'csrf', locale: 'en_US', catalog: mixedCatalog, queryClient: client, messageApi: message });
+  }, { wrapper });
+  act(() => result.current.reorder(1, 0));
+  await waitFor(() => expect(saveOrder).toHaveBeenCalledWith(4, ['settings.calendar', 'first', 'second'], 'csrf', 'en_US'));
+  const optimistic = client.getQueryData<SettingsConsolePolicyCatalog>(settingsConsolePolicyCatalogQueryKey('en_US'))!;
+  expect(optimistic.groups.map(({ kind, group_id }) => [kind, group_id])).toEqual([
+    ['plugin', 'calendar'], ['settings_feature', 'first'], ['settings_feature', 'second'], ['plugin', 'worker']
+  ]);
 });

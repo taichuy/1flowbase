@@ -22,6 +22,7 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'settings_feature',
           group_id: 'settings.missing',
+          settings_feature_id: null,
           label: '缺失策略组',
           description: '后端 catalog 中存在，角色策略中缺失',
           operations: [
@@ -85,6 +86,7 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'settings_feature',
           group_id: 'settings.full-profile',
+          settings_feature_id: null,
           label: '完整策略组',
           description: '',
           operations: [
@@ -188,6 +190,7 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'settings_feature',
           group_id: 'settings.restore-full',
+          settings_feature_id: null,
           label: '可恢复策略组',
           description: '',
           operations: [
@@ -270,6 +273,7 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'other',
           group_id: 'other.limited-scopes',
+          settings_feature_id: null,
           label: '受限范围',
           description: '',
           operations: [
@@ -635,6 +639,7 @@ describe('RolePermissionPanel', () => {
             {
               kind: 'other' as const,
               group_id: 'other.general',
+              settings_feature_id: null,
               label: isEnglish ? 'Other settings' : '其他设置',
               description: null,
               operations: [
