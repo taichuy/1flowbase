@@ -66,30 +66,12 @@ impl<R: ExternalIdentityLifecycleRepository> AuthenticationMethodsService<R> {
         let password_usable = password_configured
             && snapshot.local_account_identity
             && snapshot.password_entry_enabled;
-        let usable_external = snapshot
-            .bindings
-            .iter()
-            .filter(|binding| {
-                binding.state == "bound"
-                    && binding.entry_enabled
-                    && available_authorities.contains(&binding.authority_namespace)
-            })
-            .count();
-        let bindings = snapshot
+        let mut bindings: Vec<_> = snapshot
             .bindings
             .into_iter()
             .map(|binding| {
                 let provider_available = binding.entry_enabled
                     && available_authorities.contains(&binding.authority_namespace);
-                let can_unlink = binding.state == "bound"
-                    && (password_usable || usable_external > usize::from(provider_available));
-                let unlink_blocked_reason = if binding.state != "bound" {
-                    Some("external_identity_unlinked".into())
-                } else if !can_unlink {
-                    Some("last_usable_authentication_method".into())
-                } else {
-                    None
-                };
                 ExternalAuthenticationMethod {
                     identity_id: binding.identity_id,
                     connection_id: binding.connection_id,
@@ -104,11 +86,27 @@ impl<R: ExternalIdentityLifecycleRepository> AuthenticationMethodsService<R> {
                     unlinked_at: binding.unlinked_at,
                     state: binding.state,
                     provider_available,
-                    can_unlink,
-                    unlink_blocked_reason,
+                    can_unlink: false,
+                    unlink_blocked_reason: None,
                 }
             })
             .collect();
+        // Cache p_i in the DTO, then count U = sum(bound_i * p_i) once.
+        let usable_external = bindings
+            .iter()
+            .filter(|binding| binding.state == "bound" && binding.provider_available)
+            .count();
+        for binding in &mut bindings {
+            binding.can_unlink = binding.state == "bound"
+                && (password_usable || usable_external > usize::from(binding.provider_available));
+            binding.unlink_blocked_reason = if binding.state != "bound" {
+                Some("external_identity_unlinked".into())
+            } else if !binding.can_unlink {
+                Some("last_usable_authentication_method".into())
+            } else {
+                None
+            };
+        }
         Ok(AuthenticationMethodsView {
             password_configured,
             password_usable,

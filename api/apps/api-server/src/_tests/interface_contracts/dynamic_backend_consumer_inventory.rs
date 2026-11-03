@@ -107,7 +107,18 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
         let pending_official_catalog_release = matches!(
             interface.authorization_operation_id.as_deref(),
             Some(
-                "notifications.instances.list"
+                // Post-0afebdd20 source-owned contracts added by f5dabe046,
+                // d527d1fbd, 2552dfd65 and 441a4de9d. Keep their exact
+                // role-configurable inventory until the next official catalog seed.
+                "patch_me"
+                    | "patch_me_meta"
+                    | "assistant_update_settings"
+                    | "notifications.channels.read_all"
+                    | "notifications.messages.unread"
+                    | "notifications.messages.read"
+                    | "notifications.messages.read_all"
+                    | "files.access_links.create"
+                    | "notifications.instances.list"
                     // Communication contracts were added after the pinned official catalog.
                     | "communications.management.conversations.messages.list"
                     | "communications.management.conversations.list"

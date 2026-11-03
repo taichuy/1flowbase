@@ -235,7 +235,9 @@ impl I18nCatalogAdapter {
             if actor.current_workspace_id != self.0.bootstrap_workspace_id
                 || !actor.has_permission(operation)
             {
-                return Err(ControlPlaneError::PermissionDenied("i18n_catalog_read_required").into());
+                return Err(
+                    ControlPlaneError::PermissionDenied("i18n_catalog_read_required").into(),
+                );
             }
             actor.clone()
         } else {

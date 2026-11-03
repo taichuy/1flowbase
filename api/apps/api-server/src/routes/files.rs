@@ -284,7 +284,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
         .route(
             "/files/:file_table_id/records/:record_id/access-links",
-            console_post(create_file_share_link, ConsoleOperation("files.access_links.create".to_owned())),
+            console_post(
+                create_file_share_link,
+                ConsoleOperation("files.access_links.create".to_owned()),
+            ),
         )
         .route("/files/upload", console_post(upload_file, Authenticated))
         .route(

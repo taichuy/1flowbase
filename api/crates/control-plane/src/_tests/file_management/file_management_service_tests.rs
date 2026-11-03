@@ -1,14 +1,14 @@
 use uuid::Uuid;
 
-use control_plane::_tests::support::{MemoryFileManagementRepository, memory_actor_context};
+use control_plane::_tests::support::{memory_actor_context, MemoryFileManagementRepository};
 use control_plane::file_management::{
     BindFileTableStorageCommand, CreateFileStorageCommand, DeleteFileStorageCommand,
     DeleteFileTableCommand, FileStorageService, FileTableService, UpdateFileStorageCommand,
 };
 
 #[tokio::test]
-async fn file_table_create_can_inherit_without_resolving_default_but_explicit_binding_requires_root()
- {
+async fn file_table_create_can_inherit_without_resolving_default_but_explicit_binding_requires_root(
+) {
     let repository = MemoryFileManagementRepository::new(memory_actor_context(false, &[]));
     let service = FileTableService::new(repository);
     let error = service

@@ -118,25 +118,34 @@ impl<R: BillingRepository> CreditCommandService<R> {
         }
         match request.command.as_str() {
             "grant" | "charge" | "adjustment" | "enable_charge" | "disable_charge" | "refund" => {
+                // Let C be these six commands and i(r) the input below. At this point,
+                // V(r,P) := r.command in C && required(r.command) in P &&
+                // i(r).actor_user_id == None, with the request checks above satisfied.
+                // Command/permission checks dominate this branch; actor_user is fixed
+                // by construction. No await or mutable permission access intervenes.
+                // Under V, the old execute_plugin_command checks return success with
+                // no repository/audit calls, then set actor_plugin_id exactly as below.
+                // Thus F_old(r,P) == F_new(r,P): same repository input and result,
+                // and same ordered trace: [execute] on success; [execute, rejected]
+                // on repository error via execute_plugin_request. Audit failure still
+                // replaces that error. Outside V, the original rejection paths remain;
+                // the public execute_plugin_command keeps all independent checks.
                 let transaction = self
-                    .execute_plugin_command(
-                        plugin_id,
-                        granted_permissions,
-                        CreditCommandInput {
-                            workspace_id,
-                            user_id: request.user_id,
-                            amount: request.amount,
-                            credit_unit: request.credit_unit,
-                            command: request.command,
-                            reason: request.reason,
-                            source_type: request.source_type,
-                            source_id: request.source_id,
-                            idempotency_key: request.idempotency_key,
-                            actor_user_id: None,
-                            actor_plugin_id: None,
-                            metadata: request.metadata,
-                        },
-                    )
+                    .repository
+                    .execute_credit_command(&CreditCommandInput {
+                        workspace_id,
+                        user_id: request.user_id,
+                        amount: request.amount,
+                        credit_unit: request.credit_unit,
+                        command: request.command,
+                        reason: request.reason,
+                        source_type: request.source_type,
+                        source_id: request.source_id,
+                        idempotency_key: request.idempotency_key,
+                        actor_user_id: None,
+                        actor_plugin_id: Some(plugin_id.to_string()),
+                        metadata: request.metadata,
+                    })
                     .await?;
                 Ok(PluginCreditCommandResult::Transaction { transaction })
             }
