@@ -500,3 +500,22 @@ impl InMemoryOrchestrationRuntimeRepository {
         (alpha_instance_id, backup_instance_id)
     }
 }
+
+impl InMemoryOrchestrationRuntimeRepository {
+    pub(crate) fn replace_instance_runtime_configuration(
+        &self,
+        instance_id: Uuid,
+        config_json: Value,
+        secret_json: Value,
+    ) {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        inner
+            .instances_by_id
+            .get_mut(&instance_id)
+            .expect("provider instance should exist")
+            .config_json = config_json;
+        inner
+            .secret_json_by_instance_id
+            .insert(instance_id, secret_json);
+    }
+}
