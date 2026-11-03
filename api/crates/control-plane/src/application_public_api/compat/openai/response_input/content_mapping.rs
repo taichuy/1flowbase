@@ -167,17 +167,21 @@ pub(in super::super) fn openai_image_content_block(part: &Value) -> Option<Value
 /// moving system/context entries away from their submitted position.
 pub(crate) fn continuation_messages(items: &[Value]) -> Result<Vec<Value>, OpenAiCompatError> {
     let mut report = TranslationReportBuilder::new(TranslationProtocol::OpenAiResponses);
-    let items = if items
-        .last()
-        .is_some_and(super::super::compaction::is_compaction_trigger_item)
-    {
-        // A live callback takes priority over this control marker. Validate it
-        // without projecting it as a Provider message; the caller retains the
-        // complete ordered input, including the marker, in its history proof.
-        super::validate_responses_compaction_v2_input(&Value::Array(items.to_vec()), &mut report)?;
-        &items[..items.len() - 1]
-    } else {
-        items
+    let items = match items.split_last() {
+        Some((trigger, context))
+            if super::super::compaction::is_compaction_trigger_item(trigger) =>
+        {
+            // Validate only the control marker's shape with V2 rules. Context
+            // keeps the semantic contract, including messages without a type.
+            // Any earlier trigger remains in context and is rejected below.
+            // The caller retains the complete input in its history proof.
+            super::validate_responses_compaction_v2_input(
+                &Value::Array(vec![trigger.clone()]),
+                &mut report,
+            )?;
+            context
+        }
+        _ => items,
     };
     validate_responses_items(&Value::Array(items.to_vec()), false, &mut report, true)?;
     items.iter().map(|item| match item.get("type").and_then(Value::as_str) {
