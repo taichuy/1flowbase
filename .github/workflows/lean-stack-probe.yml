@@ -64,13 +64,12 @@ jobs:
           eval "$(cargo llvm-cov show-env --sh)"
           export CARGO_PROFILE_TEST_DEBUG=0
           export RUST_MIN_STACK=8388608
-          cargo clean --package api-server
           cargo nextest list --package api-server --message-format json > ../tmp/test-governance/stack-probe/inventory.json
           cargo nextest run --package api-server --test-threads 4 --no-fail-fast --no-tests=fail \
             -E 'test(_tests::application_public_api::compat_routes::auth::) | test(_tests::application_public_api::compat_routes::openai::openai_chat_) | test(_tests::application_public_api::compat_routes::openai::chat_route_captures_) | test(_tests::application_public_api::compat_routes::streaming::anthropic_blocking_) | test(_tests::application_public_api::compat_routes::compact::callback_compaction::) | test(_tests::ui_management_routes::template_creation_uses_backend_code_block_default)' \
             2>&1 | tee ../tmp/test-governance/stack-probe/nextest.log
       - name: Capture first SIGSEGV from the original instrumented route binary
-        if: ${{ failure() && !cancelled() }}
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -euo pipefail
@@ -116,7 +115,7 @@ jobs:
           do
             log_name="${test_name##*::}"
             timeout --signal=TERM --kill-after=15s 180s \
-              gdb --quiet --batch -x "$GITHUB_WORKSPACE/.github/lean-first-fault.gdb" \
+              gdb --quiet --batch -x "$GITHUB_WORKSPACE/.github/lean-selection-boundary.gdb" \
               --args "$test_binary" --exact "$test_name" --nocapture --test-threads=1 \
               > "$evidence_dir/$log_name.first-fault.log" 2>&1 || true
           done
