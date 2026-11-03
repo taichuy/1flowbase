@@ -323,18 +323,25 @@ impl FileTablesAdapter {
         );
         let model_id = table.table.model_definition_id;
         let mut permissions = FileRecordPermissionsResponse {
-            can_create: false, can_update: false, can_delete: false, can_share: false,
+            can_create: false,
+            can_update: false,
+            can_delete: false,
+            can_share: false,
         };
         for (action, allowed) in [
             (RuntimeDataAction::Create, &mut permissions.can_create),
             (RuntimeDataAction::Update, &mut permissions.can_update),
             (RuntimeDataAction::Delete, &mut permissions.can_delete),
         ] {
-            *allowed = models.load_runtime_scope_grant(actor, model_id, action).await?
+            *allowed = models
+                .load_runtime_scope_grant(actor, model_id, action)
+                .await?
                 .is_some_and(|grant| grant.enabled);
         }
         permissions.can_share = actor.has_permission("files.access_links.create")
-            && models.load_runtime_scope_grant(actor, model_id, RuntimeDataAction::View).await?
+            && models
+                .load_runtime_scope_grant(actor, model_id, RuntimeDataAction::View)
+                .await?
                 .is_some_and(|grant| grant.enabled);
         Ok(to_response(table, permissions))
     }
@@ -384,7 +391,9 @@ impl FileTablesAdapter {
                     })
                     .await?;
                 self.runtime_registry_sync.rebuild().await?;
-                Ok(FileTablesOutput::Item(self.response_for_actor(actor, created).await?))
+                Ok(FileTablesOutput::Item(
+                    self.response_for_actor(actor, created).await?,
+                ))
             }
             FileTablesInput::Bind {
                 file_table_id,
@@ -397,7 +406,9 @@ impl FileTablesAdapter {
                         bound_storage_id: body.bound_storage_id,
                     })
                     .await?;
-                Ok(FileTablesOutput::Item(self.response_for_actor(actor, updated).await?))
+                Ok(FileTablesOutput::Item(
+                    self.response_for_actor(actor, updated).await?,
+                ))
             }
             FileTablesInput::Delete { file_table_id } => {
                 FileTableService::new(self.store.clone())
@@ -462,7 +473,10 @@ fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
 }
 
-fn to_response(result: FileTableWithStorageTitle, record_permissions: FileRecordPermissionsResponse) -> FileTableResponse {
+fn to_response(
+    result: FileTableWithStorageTitle,
+    record_permissions: FileRecordPermissionsResponse,
+) -> FileTableResponse {
     let record = result.table;
     FileTableResponse {
         id: record.id.to_string(),

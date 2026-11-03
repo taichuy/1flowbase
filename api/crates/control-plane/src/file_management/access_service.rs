@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use rand::rngs::SysRng;
 use rand_core::TryRng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::{
