@@ -250,7 +250,7 @@ async fn template_creation_uses_backend_code_block_default() {
     let installation_id = Uuid::now_v7();
     sqlx::query("insert into extension_installations (id, category, organization, artifact_id, artifact_version, plugin_id, contract_version, protocol, display_name, source_kind, trust_level, verification_status, desired_state, signature_status, metadata_json, created_by) values ($1, 'capability-plugins', 'test', 'template-default', '1.0.0', 'template-default@1.0.0', '1flowbase.capability/v1', 'stdio_json', 'Template default test', 'uploaded', 'checksum_only', 'valid', 'active_requested', 'missing', '{}', $2)")
         .bind(installation_id).bind(actor_id).execute(&pool).await.unwrap();
-    sqlx::query("insert into extension_artifact_instances (node_id, installation_id, local_version, local_path, artifact_status, runtime_status, availability_status) values ($1, $2, '1.0.0', '/tmp/template-default', 'ready', 'inactive', 'available')")
+    sqlx::query("insert into extension_artifact_instances (node_id, installation_id, local_version, local_path, artifact_status, runtime_status, availability_status, is_current) values ($1, $2, '1.0.0', '/tmp/template-default', 'ready', 'inactive', 'available', true)")
         .bind(test_config().api_node_id).bind(installation_id).execute(&pool).await.unwrap();
     for (provider, contribution, title) in [
         ("other", "other-block", "AAA other block"),
