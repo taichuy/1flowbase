@@ -330,32 +330,32 @@ export function FrontstageNativeTrustedBlockPortalHost({
   };
   const content = (
     <Suspense fallback={<NativeBlockModuleLoadingShell />}>
-      <FrontstageNativeTrustedBlockErrorBoundary
-        context={{ ...providerContext, blockId: plan.blockId }}
-        onRuntimeError={onRuntimeError}
-      >
-        <BlockComponent
-          plan={plan}
-          props={plan.props}
-          ctx={blockContext}
-          portalContainment={portalContainment}
-        />
-      </FrontstageNativeTrustedBlockErrorBoundary>
+      <BlockComponent
+        plan={plan}
+        props={plan.props}
+        ctx={blockContext}
+        portalContainment={portalContainment}
+      />
     </Suspense>
   );
 
   return createPortal(
     <EChartResourceBoundary>
       <Activity mode={active ? 'visible' : 'hidden'}>
-        {wrapWithHostProviders(
-          content,
-          providerContext,
-          styleCache,
-          antdStylePrefix,
-          surfaceRuntime,
-          { ...providerScope, theme: runtimeMotionTheme },
-          providerWrapper
-        )}
+        <FrontstageNativeTrustedBlockErrorBoundary
+          context={{ ...providerContext, blockId: plan.blockId }}
+          onRuntimeError={onRuntimeError}
+        >
+          {wrapWithHostProviders(
+            content,
+            providerContext,
+            styleCache,
+            antdStylePrefix,
+            surfaceRuntime,
+            { ...providerScope, theme: runtimeMotionTheme },
+            providerWrapper
+          )}
+        </FrontstageNativeTrustedBlockErrorBoundary>
       </Activity>
     </EChartResourceBoundary>,
     surface.mountElement,
@@ -408,7 +408,8 @@ function attachModuleStyleAssets(
     element.dataset.moduleSource = asset.module_source;
     element.dataset.assetSha256 = asset.sha256;
     element.textContent = decodeModuleStyle(asset);
-    surface.shadowRoot.prepend(element);
+    // Keep the ordered asset precedence identical to adoptedStyleSheets.
+    surface.shadowRoot.append(element);
     return element;
   });
   return () => styles.forEach((style) => style.remove());

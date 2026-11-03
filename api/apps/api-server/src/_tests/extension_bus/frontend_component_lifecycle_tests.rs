@@ -44,11 +44,39 @@ fn install(candidate: &FrontendContributionCandidate) -> CommitPluginInstallatio
             trust_level: installation.trust_level.clone(),
             verification_status: installation.verification_status,
             desired_state: installation.desired_state,
-            expected_checksum: None,
+            // A managed reinstallation must retain a verified artifact identity.
+            // Reuse the fixture's known digest for both sides of that equality.
+            expected_checksum: Some(block.code_modules[0].assets[0].sha256.clone()),
             signature_status: installation.signature_status,
             signature_algorithm: None,
             signing_key_id: None,
-            metadata_json: serde_json::json!({}),
+            // Managed v2 frontstage contributions require exact declarative subject
+            // identity and a durable workspace permission; assignment alone grants nothing.
+            metadata_json: serde_json::json!({
+                "managed": {
+                    "module": {
+                        "bus_version": "v1",
+                        "module_id": installation.provider_code,
+                        "module_version": installation.plugin_version,
+                        "module_kind": "runtime",
+                        "contributions": [{
+                            "contribution_id": "fixture.frontend.hero",
+                            "contributor_module_id": installation.provider_code,
+                            "point_id": FRONTEND_BLOCK_CONTRIBUTION_POINT_ID,
+                            "contract_version": FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_VERSION,
+                            "required_permissions": [FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION],
+                            "mode": "append"
+                        }]
+                    },
+                    "execution_bindings": [{
+                        "contribution_id": "fixture.frontend.hero",
+                        "execution_mode": "declarative_only",
+                        "runtime": {"protocol": "stdio_json", "entry": "blocks/hero.js"},
+                        "handler": "hero",
+                        "payload": {"kind": "frontend_block", "contribution_code": "hero"}
+                    }]
+                }
+            }),
             is_system_reserved: false,
             actor_user_id: installation.created_by,
         },
@@ -56,7 +84,7 @@ fn install(candidate: &FrontendContributionCandidate) -> CommitPluginInstallatio
             node_id: artifact.node_id.clone(),
             installation_id: installation.id,
             local_version: artifact.local_version.clone(),
-            local_checksum: artifact.local_checksum.clone(),
+            local_checksum: Some(block.code_modules[0].assets[0].sha256.clone()),
             local_path: artifact.local_path.clone(),
             package_path: None,
             manifest_fingerprint: artifact.manifest_fingerprint.clone(),
@@ -167,6 +195,48 @@ async fn workspace_assets_and_reusable_records_fail_closed_on_assignment_disable
         })
         .await
         .unwrap();
+    // An assignment with no explicit durable contribution grant cannot mount
+    // trusted UI, read retained assets, or expose reusable plugin records.
+    assert!(assets
+        .get_module_asset(asset_query())
+        .await
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        service
+            .list_workspace_component_records_page(page(), workspace, &resolver)
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    let granted = store
+        .grant_contribution_authorization(&GrantContributionAuthorizationInput {
+            candidate_node_id: None,
+            expected_installation_updated_at: installed.updated_at,
+            installation_id: installed.id,
+            workspace_id: workspace,
+            contribution_id: "fixture.frontend.hero".into(),
+            point_id: FRONTEND_BLOCK_CONTRIBUTION_POINT_ID.into(),
+            permission: FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION.into(),
+            resource_scope: domain::ContributionResourceScope::Workspace,
+            permission_contract_id: FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_ID.into(),
+            permission_contract_version: FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_VERSION.into(),
+            actor_user_id: installed.created_by,
+            audit_log: domain::AuditLogRecord {
+                id: Uuid::now_v7(),
+                workspace_id: Some(workspace),
+                actor_user_id: Some(installed.created_by),
+                target_type: "plugin_contribution_authorization".into(),
+                target_id: Some(installed.id),
+                event_code: "plugin.contribution_authorization.granted".into(),
+                payload: serde_json::json!({}),
+                created_at: OffsetDateTime::now_utc(),
+            },
+        })
+        .await
+        .unwrap();
+    assert_eq!(granted.authorizations.len(), 1);
     assert_eq!(
         assets
             .get_module_asset(asset_query())

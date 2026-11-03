@@ -159,7 +159,7 @@ export function createFetchedNativeReactModuleRegistry({
           // This shares React/AntD identity without global variables, import maps,
           // or another React copy inside the verified plugin bundle.
           let namespace = imported;
-          let hostStyles: {
+          const hostStyles: {
             css: string;
             media_type: 'text/css; charset=utf-8';
           }[] = [];
@@ -197,14 +197,15 @@ export function createFetchedNativeReactModuleRegistry({
               bindings.map(({ source }) => source)
             );
             assertCurrent();
-            hostStyles = dependencyAssets
-              .filter(({ role }) => role === 'shadow_style')
-              .map((asset) => ({
+            for (const asset of dependencyAssets) {
+              if (asset.role !== 'shadow_style') continue;
+              hostStyles.push({
                 css: new TextDecoder('utf-8', { fatal: true }).decode(
                   asset.bytes
                 ),
-                media_type: 'text/css; charset=utf-8' as const
-              }));
+                media_type: 'text/css; charset=utf-8'
+              });
+            }
           }
           assertCurrent();
           if (module.exports.some((name) => !Object.hasOwn(namespace, name)))

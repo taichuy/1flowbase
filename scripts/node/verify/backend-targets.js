@@ -13,6 +13,7 @@ const BACKEND_SHARDS = [
       'runtime-core',
       'runtime-extension-host',
       'runtime-extension-sdk',
+      'sync-js-runtime',
       'orchestration-runtime',
       'storage-durable',
       'storage-ephemeral',
@@ -40,10 +41,12 @@ const BACKEND_RUNTIME_STORAGE_TEST_SHARDS = [
   {
     key: 'runtime-storage-fast',
     coverageOwnedPackages: ['runtime-extension-host', 'orchestration-runtime'],
+    requiredTestTargets: [{ label: 'sync-js-runtime-unit-tests', packageName: 'sync-js-runtime' }],
     packages: [
       'runtime-core',
       'runtime-extension-host',
       'runtime-extension-sdk',
+      'sync-js-runtime',
       'orchestration-runtime',
       'storage-durable',
       'storage-ephemeral',

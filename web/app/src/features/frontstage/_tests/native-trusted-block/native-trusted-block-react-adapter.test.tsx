@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import { FrontstageRuntimeActivityContext } from '../../lib/page-canvas/runtime-activity';
+import * as antdStyleRuntime from '../../lib/native-modules/antd-style-runtime';
 
 import type { BlockContext, BlockContextSeed } from '@1flowbase/page-protocol';
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
@@ -740,6 +741,60 @@ describe('frontstage native trusted block declarative portal host', () => {
     expect(root.shadowRoot?.querySelector('#icon-scoped')).toBeNull();
   });
 
+  test('D3R-AC-007 contains a style-provider load failure to one portal', async () => {
+    const failedRoot = createBlockRoot();
+    const stableRoot = createBlockRoot();
+    const onRuntimeError = vi.fn();
+    const loadStyle = vi.spyOn(antdStyleRuntime, 'loadAntdStyleModule');
+    loadStyle.mockRejectedValueOnce(new Error('native style provider unavailable'));
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    try {
+      const view = render(
+        <>
+          <FrontstageNativeTrustedBlockPortalHost
+            root={failedRoot}
+            renderEpoch="style-failed:1"
+            plan={createPlan({ blockId: 'style-failed' })}
+            component={() => <output>Must not mount</output>}
+            ctx={createContext()}
+            onRuntimeError={onRuntimeError}
+          />
+          <FrontstageNativeTrustedBlockPortalHost
+            root={stableRoot}
+            renderEpoch="style-stable:1"
+            plan={createPlan({ blockId: 'style-stable' })}
+            component={() => <output>Sibling is preserved</output>}
+            ctx={createContext()}
+          />
+        </>
+      );
+      await shadowQueries(stableRoot).findByText('Sibling is preserved');
+      await waitFor(() =>
+        expect(onRuntimeError).toHaveBeenCalledWith(
+          expect.objectContaining({
+            code: 'runtime_error',
+            path: 'runtime.render',
+            message: 'native style provider unavailable'
+          }),
+          expect.objectContaining({
+            blockId: 'style-failed',
+            root: failedRoot
+          })
+        )
+      );
+      expect(shadowQueries(failedRoot).queryByText('Must not mount')).not.toBeInTheDocument();
+      expect(shadowQueries(stableRoot).getByText('Sibling is preserved')).toBeInTheDocument();
+      view.unmount();
+    } finally {
+      consoleError.mockRestore();
+      loadStyle.mockRestore();
+      failedRoot.remove();
+      stableRoot.remove();
+    }
+  });
+
   test('D3R-AC-007 contains a render error to the current portal', async () => {
     const crashingRoot = createBlockRoot();
     const stableRoot = createBlockRoot();
@@ -830,6 +885,36 @@ describe('frontstage native trusted block declarative portal host', () => {
     view.unmount();
     expect(firstRoot.shadowRoot?.childNodes).toHaveLength(0);
     expect(secondRoot.shadowRoot?.childNodes).toHaveLength(0);
+  });
+
+  test('fallback style elements preserve host and bundle source order', async () => {
+    const root = createBlockRoot();
+    const view = render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="ordered-assets:1"
+        plan={createPlan({ blockId: 'ordered-assets' })}
+        component={() => <output>Ordered styles</output>}
+        ctx={createContext()}
+        moduleAssets={[
+          moduleStyle('a', '.same { color: red; }'),
+          moduleStyle('b', '.same { color: blue; }')
+        ]}
+      />
+    );
+    try {
+      await shadowQueries(root).findByText('Ordered styles');
+      const styles = root.shadowRoot!.querySelectorAll(
+        'style[data-module-source]'
+      );
+      expect([...styles].map((style) => style.textContent)).toEqual([
+        '.same { color: red; }',
+        '.same { color: blue; }'
+      ]);
+    } finally {
+      view.unmount();
+      root.remove();
+    }
   });
 
   test('AC-003 shares one constructable stylesheet by asset digest across ShadowRoots', async () => {

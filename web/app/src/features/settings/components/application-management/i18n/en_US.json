@@ -23,6 +23,8 @@
     "application_management_all_creators": "All creators",
     "application_management_creators_load_failed": "Failed to load creators",
     "application_management_export_applications": "Export applications ({{value1}})",
+    "application_management_access_denied": "Application management requires a separate permission. You can still access your authorized applications in the workbench.",
+    "application_management_back_to_workbench": "Go to workbench",
     "application_management_permission_required": "Application edit permission is required",
     "application_management_availability_status": "Publication / reception"
   },

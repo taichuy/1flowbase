@@ -112,6 +112,7 @@ function buildBackendCargoCommand({
     return {
       label: `cargo-test${labelSuffix}`,
       requireExecutedTests: true,
+      ...(normalizedShard?.requiredTestTargets ? { requiredTestTargets: normalizedShard.requiredTestTargets } : {}),
       command: 'cargo',
       args: [
         'test', ...packageArgs, ...(testSelection?.targetArgs ?? []),

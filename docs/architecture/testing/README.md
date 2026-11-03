@@ -8,6 +8,8 @@
 
 - `verify.yml` 是 PR / push 合并基线；`quality-gate.yml scope=ci` 是完整项目体检，额外包含完整测试分片、Clippy、覆盖率、特殊 feature 场景和 React Doctor。
 - 一次完整体检固定同一个 full SHA。根 `quality-gate-report.json` 必须为 `passed/0`，必需 component 唯一、成功且绑定同 SHA；四个 API coverage 分片经 merge 后才形成覆盖率 component。
+- 组件收据按 scope 必须唯一；即使两个同名 scope 都是成功且同 SHA，也必须拒绝聚合，不能用重复收据替换缺失 owner。
+- `sync-js-runtime` 归 `runtime-storage` 的 check/Clippy 与 `runtime-storage-fast` 行为测试所有；PR advisory 只建议对应检查分片，完整 CI 保留非零真实测试执行证据。 `runtime-storage-fast` 必须单独核证 `sync-js-runtime` 测试二进制有至少一例实际通过，不能用同一 Cargo 命令的邻包成功替代。
 - SDK / 内存 EventBus 的单元测试由 runtime-storage-fast 执行，贡献契约与插件事件注册测试由 core-libs 执行；Host、orchestration-runtime 和 PostgreSQL adapter 的完整包测试由各自 coverage owner 执行，跨层 control-plane-postgres-tests 仍由 storage-postgres 四分片完整执行，第一分片另执行 model-usage-report-postgres Node 集成；API lib 与 integration targets 由 API coverage nextest 分片执行。临时专项 workflow 的存在不代表必须重复执行同一组行为。
 - 定向 Cargo 命令必须有非零实际通过用例；编译、ignored 和空 filter 不等于行为通过。真实 managed worker 由 CI 先构建，再向行为测试注入路径。
 - `state-protocols --skip-live-acp` 不验证真实外部 ACP 服务；静态边界、单元测试与 component 收据也不证明所有页面视觉或生产运行态已经验收。报告分别列明证据范围。
@@ -111,6 +113,10 @@ Rust 文件按领域职责收纳物理子目录时，Cargo package identity、�
 [diagnostic-review](../../../scripts/node/react-doctor-gate/diagnostic-review.js) 从 `scripts/node/react-doctor-gate/reviews.json` 读取逐项证据。manifest 使用 `schemaVersion`、精确 `toolPackage` 和 `reviews`；每项由 `file + rule + sourceSha256` 绑定当前完整源文件，附明确 `reason` 和非空 `evidence` 仓库路径。重复 file/rule 身份不予授权。审查理由解释具体 contract 或合法反例，引用存在的源码/测试；文件存在不等于该测试已执行，也不能把一个 reviewed rule 扩展为文件级白名单。
 
 源码变化使 digest 失效；同文件新增 rule、工具版本不匹配、缺少理由或有效证据均需重新审查或修复。缺 diagnostics、总数不匹配、工具 error 或无效诊断身份不能形成完整 inventory。wrapper 对工具失败、未解决诊断、不完整报告以及配置中的任意 rule/file/override suppression 返回失败；缺失或无法解析配置也不能作为零 suppression。审查完整且无 suppression 是接受证据的前提，不能通过隐藏诊断使子进程 exit 0 等同门禁通过。
+
+原生 Block 的异步样式 Provider 必须处于**当前 Block** 的错误边界内：其加载失败进入该 Block 的 runtime 错误反馈，不跨越到兄弟 Block 或页面的错误兜底。ShadowRoot 样式资产的 fallback style 元素顺序和 adoptedStyleSheets 顺序一致，后声明者按 CSS 层叠顺序覆盖先声明者；定向行为测试验证失败区块隔离、同根样式顺序与卸载回收。React Doctor 原始诊断、完整 source/evidence 摘要绑定与零 suppression 规则继续独立保留。
+
+Managed RuntimeExtension 的前端贡献须保留精确声明与持久授权交集：安装、workspace assignment 不是 frontend-block.ui-mount.trusted-host 的替代授权；只有匹配 module/contribution_id/point_id/frontend_block payload 以及 workspace grant，才允许返回资产与可复用组件。正式 CI 使用实库正反例验证缺少 grant 不暴露，授予后可读，并保留篡改及卸载时的拒绝契约。
 
 ## 持久化与 wire 契约
 

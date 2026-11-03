@@ -632,6 +632,9 @@ describe('PageCanvas declarative Native block lifecycle', () => {
           ])}
         />
       );
+      // The portal may render in a later React commit than the outer canvas.
+      // Prove the failed epoch reached the block before capturing its output port.
+      await waitFor(() => expect(contexts.length).toBeGreaterThan(0));
       const firstPublish = contexts.at(-1)!.outputs.publish;
       const retry = await screen.findByRole('button', {
         name: (name) =>

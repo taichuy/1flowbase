@@ -55,6 +55,7 @@ pub(super) fn package(
     title: View {index}
     runtime: native_react
     entry: View{index}
+    ui_registration: component
     code_template: |
       import {{ useState }} from 'react';
       export default function View{index}() {{

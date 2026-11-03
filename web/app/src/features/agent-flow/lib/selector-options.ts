@@ -52,6 +52,17 @@ export interface FlowSelectorOption {
   displayLabel: string;
 }
 
+export function findSelectorOption(
+  options: FlowSelectorOption[],
+  selector: string[]
+) {
+  return options.find(
+    (option) =>
+      option.value.length === selector.length &&
+      option.value.every((segment, index) => selector[index] === segment)
+  );
+}
+
 interface CascaderSelectorOption {
   label: string;
   value: string;
@@ -452,17 +463,14 @@ export function isSelectorVisible(
     return false;
   }
 
-  return listVisibleSelectorOptions(
+  const options = listVisibleSelectorOptions(
     document,
     nodeId,
     environmentVariables,
     workflowTriggerContext,
     fieldKey
-  ).some(
-    (option) =>
-      option.value.length === selector.length &&
-      option.value.every((segment, index) => segment === selector[index])
   );
+  return findSelectorOption(options, selector) !== undefined;
 }
 
 export function encodeSelectorValue(value: string[]): string {

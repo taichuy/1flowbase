@@ -9,6 +9,7 @@ import {
   isNamedBindingNameAllowed
 } from '../named-binding-expressions';
 import {
+  findSelectorOption,
   listVisibleSelectorOptions,
   type FlowSelectorOption
 } from '../selector-options';
@@ -58,11 +59,7 @@ function isCodeSelectorCompatible(
     return true;
   }
 
-  const option = selectorOptions.find(
-    (candidate) =>
-      candidate.value.length === selector.length &&
-      candidate.value.every((segment, index) => selector[index] === segment)
-  );
+  const option = findSelectorOption(selectorOptions, selector);
 
   if (!option) {
     return true;

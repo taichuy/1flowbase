@@ -445,6 +445,7 @@ async fn component_pages_preserve_search_order_bodies_and_one_snapshot_without_o
             return body;
         end $$;
         create view ui_component_records as select id, scope_id, component_code, name,
+            owner_plugin_id, owner_contribution_code, owner_installation_id,
             page_metadata(description, {lock_id}) as description,
             page_source(import_code, component_code) as import_code,
             page_source(source_code, component_code) as source_code,
@@ -465,7 +466,7 @@ async fn component_pages_preserve_search_order_bodies_and_one_snapshot_without_o
         .await
         .unwrap();
     let reader = PgControlPlaneStore::new(store.pool().clone());
-    let page_task = tokio::spawn(async move {
+    let mut page_task = tokio::spawn(async move {
         reader
             .list_ui_component_records_page(ListUiComponentRecordsQuery {
                 plugin_contribution_ids: None,
@@ -477,6 +478,13 @@ async fn component_pages_preserve_search_order_bodies_and_one_snapshot_without_o
     });
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         loop {
+            if page_task.is_finished() {
+                match (&mut page_task).await {
+                    Ok(Err(error)) => panic!("page reader failed before metadata lock: {error:#}"),
+                    Ok(Ok(_)) => panic!("page reader completed before snapshot lock"),
+                    Err(error) => panic!("page reader task failed before metadata lock: {error}"),
+                }
+            }
             let waiting: bool = sqlx::query_scalar("select exists(select 1 from pg_locks where locktype = 'advisory' and classid = 9271 and objid = $1::int::oid and not granted)")
                 .bind(lock_id).fetch_one(&mut *writer).await.unwrap();
             if waiting { break; }
