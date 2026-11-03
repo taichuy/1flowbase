@@ -1315,3 +1315,78 @@ test('full quality and protocol fixtures supply an explicit external authenticat
   assert.match(readQualityGateAction(), /export API_AUTH_PUBLIC_ORIGIN="\$\{API_AUTH_PUBLIC_ORIGIN:-https:\/\/auth-fixture\.example\}"/u);
   assert.match(readAiGatewayConcurrencyWorkflow(), /id: protocol_conformance\s+env:\s+API_AUTH_PUBLIC_ORIGIN: https:\/\/auth-fixture\.example/u);
 });
+
+test('opt-in in-repository PR quality gate dispatch pins the full candidate SHA', () => {
+  const dispatcher = fs.readFileSync(
+    path.join(repoRoot, '.github/workflows/pr-quality-gate-dispatch.yml'),
+    'utf8',
+  );
+  const full = readQualityGateWorkflow();
+  const assertContract = (source) => {
+    assert.match(source, /pull_request:\s+types: \[labeled, synchronize\]/u);
+    assert.match(source, /github\.event\.pull_request\.head\.repo\.full_name == github\.repository/u);
+    assert.match(source, /github\.event\.label\.name == 'quality-gate'/u);
+    assert.match(source, /contains\(github\.event\.pull_request\.labels\.\*\.name, 'quality-gate'\)/u);
+    assert.match(source, /actual_sha.*gh api /u);
+    assert.match(source, /if \[\[ "\$actual_sha" != "\$CANDIDATE_SHA" \]\]/u);
+    assert.match(source, /gh workflow run quality-gate\.yml --repo "\$TARGET_REPO" --ref "\$CANDIDATE_REF"/u);
+    assert.match(source, /-f candidate_sha="\$CANDIDATE_SHA"/u);
+    assert.match(source, /-f react_doctor_base="\$BASE_SHA"/u);
+  };
+  assertContract(dispatcher);
+  assert.match(full, /EXPECTED_CANDIDATE_SHA: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci' && inputs\.candidate_sha \|\| '' \}\}/u);
+  assert.match(full, /if \[\[ -n "\$EXPECTED_CANDIDATE_SHA" && "\$actual_sha" != "\$EXPECTED_CANDIDATE_SHA" \]\]/u);
+  const mutations = [
+    ['remove same-repo guard', 'head.repo.full_name == github.repository', 'head.repo.full_name != github.repository'],
+    ['remove opt-in label', "github.event.label.name == 'quality-gate'", "github.event.label.name == 'random-label'"],
+    ['remove SHA compare', '"$actual_sha" != "$CANDIDATE_SHA"', '"$actual_sha" == "$CANDIDATE_SHA"'],
+    ['remove pinned SHA input', '-f candidate_sha="$CANDIDATE_SHA"', '-f candidate_sha="$BASE_SHA"'],
+    ['remove protected comparison ref', '-f react_doctor_base="$BASE_SHA"', '-f react_doctor_base="$CANDIDATE_SHA"'],
+  ];
+  for (const [name, before, after] of mutations) {
+    assert.ok(dispatcher.includes(before), name);
+    assert.throws(() => assertContract(dispatcher.replace(before, after)), { code: 'ERR_ASSERTION' }, name);
+  }
+});
+
+test('PR full quality dispatch fails closed on a moved head and sends exact candidate inputs', () => {
+  const { spawnSync } = require('node:child_process');
+  const source = fs.readFileSync(
+    path.join(repoRoot, '.github/workflows/pr-quality-gate-dispatch.yml'),
+    'utf8',
+  );
+  const script = source.split('        run: |\n')[1].trimEnd()
+    .split('\n').map((line) => line.slice(10)).join('\n');
+  const tmpRoot = path.join(repoRoot, 'tmp/test-governance');
+  fs.mkdirSync(tmpRoot, { recursive: true });
+  const fixture = fs.mkdtempSync(path.join(tmpRoot, 'pr-quality-dispatch-'));
+  try {
+    const log = path.join(fixture, 'invoked');
+    fs.writeFileSync(path.join(fixture, 'gh'), [
+      '#!/bin/sh',
+      'if [ "$1" = api ]; then printf "%s" "$FAKE_GH_HEAD_SHA"; exit 0; fi',
+      'if [ "$1" = workflow ] && [ "$2" = run ]; then printf "%s" "$*" >> "$FAKE_GH_LOG"; exit 0; fi',
+      'exit 97',
+    ].join('\n'), { mode: 0o755 });
+    const head = 'a'.repeat(40);
+    const base = 'b'.repeat(40);
+    const env = {
+      ...process.env, PATH: `${fixture}:${process.env.PATH}`,
+      TARGET_REPO: 'taichuy/1flowbase', CANDIDATE_REF: 'codex/lean-probe',
+      CANDIDATE_SHA: head, BASE_SHA: base, FAKE_GH_LOG: log, GH_TOKEN: 'fixture',
+    };
+    const stale = spawnSync('bash', ['-c', script], { env: { ...env, FAKE_GH_HEAD_SHA: 'c'.repeat(40) }, encoding: 'utf8' });
+    assert.equal(stale.status, 1, stale.stderr);
+    assert.equal(fs.existsSync(log), false, 'stale head must never dispatch');
+    const exact = spawnSync('bash', ['-c', script], { env: { ...env, FAKE_GH_HEAD_SHA: head }, encoding: 'utf8' });
+    assert.equal(exact.status, 0, exact.stderr);
+    const args = fs.readFileSync(log, 'utf8');
+    assert.match(args, /workflow run quality-gate\.yml/u);
+    assert.ok(args.includes(`candidate_sha=${head}`));
+    assert.ok(args.includes(`react_doctor_base=${base}`));
+    assert.ok(args.includes('target_branch=codex/lean-probe'));
+    assert.ok(args.includes('scope=ci'));
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
