@@ -1,6 +1,7 @@
 import { App as AntdApp } from 'antd';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -167,6 +168,7 @@ import {
   loadApplicationI18nResources
 } from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore } from '../../../../state/auth-store';
+import { authenticateEditor } from '../../../agent-flow/_tests/fixtures/editor-auth';
 import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
 import { getNativeSearchLandmark } from './support/native-search-landmark';
 
@@ -293,6 +295,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
   });
 
   afterEach(() => {
+    cleanup();
     resetAuthStore();
     getBoundingClientRectSpy?.mockRestore();
     getBoundingClientRectSpy = undefined;
@@ -359,6 +362,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
   });
 
   test('sizes log filter selects from their longest option label', async () => {
+    authenticateEditor(['applications.logs.delete.jobs.latest'], 'member');
     const cssSource = await readFile(
       path.resolve(
         process.cwd(),

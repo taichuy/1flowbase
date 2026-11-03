@@ -688,7 +688,7 @@ describe('ApplicationLogsPage - run export downloads', () => {
   });
 
   test('requires csrf token before selected zip export', async () => {
-    resetAuthStore();
+    useAuthStore.setState({ csrfToken: null });
 
     await renderLogsPage();
 
