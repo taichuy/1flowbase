@@ -154,6 +154,10 @@ fn domain_console_policy_group(
             domain::ConsolePolicyGroup::settings_feature(group_id)
                 .map_err(|_| ControlPlaneError::InvalidInput("console_policy_group"))
         }
+        RegisteredConsolePolicyGroup::Plugin(group_id) => {
+            domain::ConsolePolicyGroup::plugin(group_id)
+                .map_err(|_| ControlPlaneError::InvalidInput("console_policy_group"))
+        }
         RegisteredConsolePolicyGroup::Other(group_id) => {
             domain::ConsolePolicyGroup::other(group_id)
                 .map_err(|_| ControlPlaneError::InvalidInput("console_policy_group"))
@@ -310,6 +314,8 @@ fn build_console_policy_catalog_for_locale(
     for ((kind, group_id), operations) in operation_index {
         let registered_group = if kind == "settings_feature" {
             RegisteredConsolePolicyGroup::SettingsFeature(group_id.clone())
+        } else if kind == "plugin" {
+            RegisteredConsolePolicyGroup::Plugin(group_id.clone())
         } else {
             RegisteredConsolePolicyGroup::Other(group_id.clone())
         };
@@ -365,6 +371,8 @@ fn build_console_policy_catalog_for_locale(
             .collect::<Result<Vec<_>, ControlPlaneError>>()?;
         operation_views.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
         groups.push(ConsolePolicyCatalogGroup {
+            settings_feature_id: (group.kind() == domain::ConsolePolicyGroupKind::SettingsFeature)
+                .then(|| group_id.clone()),
             kind: group.kind(),
             group_id,
             label,
@@ -444,9 +452,31 @@ fn validate_complete_console_policy_catalog(
 
 fn apply_console_settings_order(
     catalog: &mut ConsolePolicyCatalog,
+    inventory: &ConsoleOperationCompiledInventory,
     stored_group_ids: &[String],
     settings_features: &[SettingsFeatureInventoryEntry],
 ) {
+    for group in &mut catalog.groups {
+        if group.kind == domain::ConsolePolicyGroupKind::Plugin {
+            group.settings_feature_id = settings_features
+                .iter()
+                .find(|feature| {
+                    feature.lifecycle == SettingsFeatureLifecycle::Active
+                        && feature.owner.kind
+                            == access_control::SettingsFeatureOwnerKind::ManagedService
+                        && feature.owner.owner_id == group.group_id
+                        && inventory
+                            .operations
+                            .iter()
+                            .filter(|operation| {
+                                operation.policy_group
+                                    == RegisteredConsolePolicyGroup::Plugin(group.group_id.clone())
+                            })
+                            .all(|operation| operation.owner == feature.owner)
+                })
+                .map(|feature| feature.feature_id.clone());
+        }
+    }
     let stored_positions = stored_group_ids
         .iter()
         .enumerate()
@@ -468,19 +498,19 @@ fn apply_console_settings_order(
         .map(|(position, feature)| (feature.feature_id.as_str(), position))
         .collect::<BTreeMap<_, _>>();
     catalog.groups.sort_by(|left, right| {
-        let left_kind_order = (left.kind == domain::ConsolePolicyGroupKind::Other) as u8;
-        let right_kind_order = (right.kind == domain::ConsolePolicyGroupKind::Other) as u8;
+        let left_kind_order = left.settings_feature_id.is_none() as u8;
+        let right_kind_order = right.settings_feature_id.is_none() as u8;
         left_kind_order.cmp(&right_kind_order).then_with(|| {
             match (
-                stored_positions.get(left.group_id.as_str()),
-                stored_positions.get(right.group_id.as_str()),
+                stored_positions.get(left.settings_feature_id.as_deref().unwrap_or("")),
+                stored_positions.get(right.settings_feature_id.as_deref().unwrap_or("")),
             ) {
                 (Some(left_position), Some(right_position)) => left_position.cmp(right_position),
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
                 (None, None) => match (
-                    default_positions.get(left.group_id.as_str()),
-                    default_positions.get(right.group_id.as_str()),
+                    default_positions.get(left.settings_feature_id.as_deref().unwrap_or("")),
+                    default_positions.get(right.settings_feature_id.as_deref().unwrap_or("")),
                 ) {
                     (Some(left_position), Some(right_position)) => {
                         left_position.cmp(right_position)
@@ -583,7 +613,7 @@ where
             .repository
             .get_workspace_console_settings_order(actor.current_workspace_id)
             .await?;
-        apply_console_settings_order(&mut catalog, &order.group_ids, settings_features);
+        apply_console_settings_order(&mut catalog, inventory, &order.group_ids, settings_features);
         catalog.settings_order_revision = order.revision;
         Ok(catalog)
     }
@@ -608,12 +638,13 @@ where
                 .ok_or(ControlPlaneError::InvalidInput(
                     "console_policy_locale_catalog",
                 ))?;
-        let catalog = build_console_policy_catalog_for_locale(inventory, locale_catalog, locale)?;
+        let mut catalog =
+            build_console_policy_catalog_for_locale(inventory, locale_catalog, locale)?;
+        apply_console_settings_order(&mut catalog, inventory, &[], settings_features);
         let valid_group_ids = catalog
             .groups
             .iter()
-            .filter(|group| group.kind == domain::ConsolePolicyGroupKind::SettingsFeature)
-            .map(|group| group.group_id.clone())
+            .filter_map(|group| group.settings_feature_id.clone())
             .collect::<BTreeSet<_>>();
         if command.group_ids.len() != valid_group_ids.len()
             || command.group_ids.iter().collect::<BTreeSet<_>>().len() != command.group_ids.len()
