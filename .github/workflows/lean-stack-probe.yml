@@ -86,19 +86,22 @@ jobs:
           evidence = root / 'tmp/test-governance/stack-probe'
           inventory = json.loads((evidence / 'inventory.json').read_text())
           test = '_tests::application_public_api::compat_routes::auth::compatible_anthropic_route_records_application_api_key_use'
-          matches = [suite['binary']['binary-path'] for suite in inventory['rust-suites'].values() if test in suite.get('testcases', {})]
+          matches = [suite for suite in inventory['rust-suites'].values() if test in suite.get('testcases', {})]
           if len(matches) != 1:
               raise SystemExit('Expected exactly one binary containing exact failing test; got ' + repr(matches))
-          binary = Path(matches[0]).resolve(strict=True)
+          binary = Path(matches[0]['binary']['binary-path']).resolve(strict=True)
           (evidence / 'test-binary.txt').write_text(str(binary) + '\n')
+          test_cwd = Path(matches[0]['cwd']).resolve(strict=True)
+          (evidence / 'test-cwd.txt').write_text(str(test_cwd) + '\n')
           PY
           test_binary="$(cat "$evidence_dir/test-binary.txt")"
           sha256sum "$test_binary" > "$evidence_dir/test-binary-before.sha256"
           cd api
-          # Keep the same working directory and llvm-cov environment as the failed run.
+          # Keep the same llvm-cov environment and nextest's per-suite working directory.
           eval "$(cargo llvm-cov show-env --sh)"
           export CARGO_PROFILE_TEST_DEBUG=0
           export RUST_MIN_STACK=8388608
+          cd "$(cat "$evidence_dir/test-cwd.txt")"
           for test_name in \
             _tests::application_public_api::compat_routes::auth::compatible_anthropic_route_records_application_api_key_use \
             _tests::application_public_api::compat_routes::openai::openai_chat_completions_accepts_bearer_and_preserves_model

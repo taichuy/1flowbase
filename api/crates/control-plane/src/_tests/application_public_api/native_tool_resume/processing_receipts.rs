@@ -433,6 +433,73 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
         grant.payload()["responses_continuation"]["ordered_messages"][2]["content"],
         "after"
     );
+    let mut compact_delta = delta.clone();
+    compact_delta["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"type": "compaction_trigger"}));
+    let compact_grant = correlate_semantic_responses_callback(
+        &repository,
+        &actor,
+        &OpenAiResponsesEnvelope::capture(compact_delta.clone()).unwrap(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(compact_grant.callback_task_id(), callback.id);
+    assert_eq!(
+        compact_grant.payload()["tool_results"],
+        grant.payload()["tool_results"]
+    );
+    assert_eq!(
+        compact_grant.payload()["responses_continuation"]["ordered_messages"],
+        grant.payload()["responses_continuation"]["ordered_messages"]
+    );
+    assert_eq!(
+        compact_grant.payload()["responses_continuation"]["ordered_input"],
+        compact_delta["input"]
+    );
+    assert_eq!(
+        compact_grant.input_history(),
+        &crate::application_public_api::compat::openai::history::append_items(
+            &callback.request_payload["responses_round"]["history"],
+            compact_delta["input"].as_array().unwrap(),
+        )
+        .unwrap()
+    );
+    assert_ne!(compact_grant.input_history(), grant.input_history());
+    for invalid_suffix in [
+        json!([{"type": "compaction_trigger"}, {"type": "compaction_trigger"}]),
+        json!([{"type": "compaction_trigger", "unexpected": true}]),
+        json!([{"type": "compaction_trigger"}, {"role": "user", "content": "after marker"}]),
+        json!([{"type": "item_reference", "id": "msg_unowned"}, {"type": "compaction_trigger"}]),
+    ] {
+        let mut changed = delta.clone();
+        changed["input"]
+            .as_array_mut()
+            .unwrap()
+            .extend(invalid_suffix.as_array().unwrap().iter().cloned());
+        let error = correlate_semantic_responses_callback(
+            &repository,
+            &actor,
+            &OpenAiResponsesEnvelope::capture(changed).unwrap(),
+        )
+        .await
+        .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("semantic_responses_continuation_item_unsupported"));
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap(),
+            callback
+        );
+        assert!(repository.callback_resume_attempts().is_empty());
+    }
+
     let mut full = first.clone();
     full["input"] = json!(first["input"]
         .as_array()
@@ -451,6 +518,24 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
     .unwrap()
     .unwrap();
     assert_eq!(grant.payload(), full_grant.payload());
+    let mut compact_full = full.clone();
+    compact_full["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"type": "compaction_trigger"}));
+    let compact_full_grant = correlate_semantic_responses_callback(
+        &repository,
+        &actor,
+        &OpenAiResponsesEnvelope::capture(compact_full).unwrap(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(compact_grant.payload(), compact_full_grant.payload());
+    assert_eq!(
+        compact_grant.input_history(),
+        compact_full_grant.input_history()
+    );
     let mut changed = full.clone();
     changed["input"][0]["content"] = json!("edited history");
     let stored = repository
