@@ -1,6 +1,6 @@
 # 业务不变量优先的代码与门禁精简（2026-11-03）
 
-实施基线：发布版本 `v0.6.1`（`842605b5e`），开发候选父提交 `5264a3cbd`。本次四个独立修改分别属于业务读模型、积分命令、Rust 静态扫描与仓库治理扫描，不能以扫描器通过代替业务行为验证。
+发布比较基准为 `v0.6.1`（`842605b5e`）；原候选共同祖先为 `5264a3cbd`，最新保护基线为 `97288b2c7`。本次集成必须保留最新保护基线的所有业务提交。本次四个独立修改分别属于业务读模型、积分命令、Rust 静态扫描与仓库治理扫描，不能以扫描器通过代替业务行为验证。
 
 ## 业务模型与保留条件
 
@@ -20,7 +20,7 @@
 
 遵循现有 Level 1 快速静态 / 定向测试、Level 2 PR 契约 / 集成 / 构建复用、Level 3 完整回归 / 发布收据；不增加 CI 工作流、不改变原有覆盖率阈值或原来应阻断的错误。比对完整有序 DTO / findings、repository/审计写轨迹以及至少一个会被旧门禁捕获的坏 fixture，缺陷检测保留率必须为 100%（分母为实际执行的非空反例集合）。
 
-同一时刻只允许一条重型 Cargo / Rust 测试；本地资源遵循仓库 .1flowbase.verify.local.json 与宿主 CPU 60%、内存 8GiB 上限。提交时分别报告基线、候选 SHA、测试用例数、P50/P95、Runner 分钟、RSS/OOM 和净行数；环境或数据不一致时不宣称性能改善。外部完整 CI 的 candidate-bound 收据不能由本地定向测试替代。
+同一时刻只允许一条重型 Cargo / Rust 测试；本地资源遵循仓库 .1flowbase.verify.local.json 与宿主 CPU 60%、内存 8GiB 的用户资源上限，且不得超过仓库 `api/AGENTS.md` 与共享预算入口计算的有效容量。提交时分别报告基线、候选 SHA、测试用例数、P50/P95、Runner 分钟、RSS/OOM 和净行数；环境或数据不一致时不宣称性能改善。外部完整 CI 的 candidate-bound 收据不能由本地定向测试替代。
 
 ## 历史基线恢复的 review 证据
 
@@ -30,8 +30,8 @@
 
 ## 2026-11-03：既有功能清单与 CI 运行前提回归
 
-- Console 权限投影的源真值是已编译 `ConsoleOperationRegistry`：继原 445 条固定清单之后，个人资料/偏好写入 3 条、通知状态写入 4 条、临时文件链接 1 条独立可授权操作使其成为 453 条。保持真实 `(method, normalized_route)` 的确定性排序与全量严格相等断言；不得通过回滚生产权限策略或者放宽断言收绿。
-- Core 文案注册表已包含“Personal account”及其描述，消费者固定清单从 86 条调整为 88 条；官方 seed 是固定外部版本，新增 8 项接口的 summary/description 尚未在 768 条消息键中发布，因此仅按具体 operation ID 使用已存在的 pending-official-release 路径，不修改 seed 字节。
+- Console 权限投影的源真值是已编译 `ConsoleOperationRegistry`：继原 445 条固定清单之后，个人资料/偏好写入 3 条、通知状态写入 3 条、临时文件链接 1 条独立可授权操作使其成为 452 条。保持真实 `(method, normalized_route)` 的确定性排序与全量严格相等断言；不得通过回滚生产权限策略或者放宽断言收绿。
+- Core 文案注册表已包含“Personal account”及其描述，消费者固定清单从 86 条调整为 88 条；官方 seed 是固定外部版本，新增 7 项接口的 summary/description 尚未在 768 条消息键中发布，因此仅按具体 operation ID 使用已存在的 pending-official-release 路径，不修改 seed 字节。
 - PostgreSQL 插件组件测试使用真实 Host TSX 编译器。CI Rust-only runner 必须为存储集成分片提供既有 pnpm、Node 及锁文件规定的 TypeScript、page-runtime，不绕过 duplicate-import 负例或引入新包；源测试所需的审计 actor 必须在隔离 schema 中真实存在，外键约束不变。
 - 本地低成本复核：业务接口与字符串源码锚定、Rustfmt、Git diff 检查、真实 Host TSX 编译+重复 import 拒绝；Node gate 测试 84/84，`/usr/bin/time` 单进程 maxRSS 246176 KB。以上不代替 Rust 真实数据库执行或候选 SHA 的远程完整门禁。
 

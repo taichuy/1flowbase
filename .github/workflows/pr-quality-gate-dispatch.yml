@@ -42,4 +42,3 @@ jobs:
           gh workflow run quality-gate.yml --repo "$TARGET_REPO" --ref "$CANDIDATE_REF" \
             -f target_branch="$CANDIDATE_REF" -f candidate_sha="$CANDIDATE_SHA" \
             -f scope=ci -f batch_mode=full -f react_doctor_base="$BASE_SHA"
-
