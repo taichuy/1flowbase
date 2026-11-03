@@ -30,12 +30,12 @@ pub(crate) fn reject_module_syntax(source: &str, legacy: bool) -> Result<(), Exe
         if keyword_at(bytes, index, b"import") {
             let next = skip_ascii_whitespace(bytes, index + b"import".len());
             if next < bytes.len() && bytes[next] == b'(' {
-                return Err(ExecutionError::from(ErrorKind::DynamicImportDenied).into());
+                return Err(ExecutionError::from(ErrorKind::DynamicImportDenied));
             }
-            return Err(ExecutionError::from(ErrorKind::ModuleImportDenied).into());
+            return Err(ExecutionError::from(ErrorKind::ModuleImportDenied));
         }
         if keyword_at(bytes, index, b"export") {
-            return Err(ExecutionError::from(ErrorKind::ModuleImportDenied).into());
+            return Err(ExecutionError::from(ErrorKind::ModuleImportDenied));
         }
         index += 1;
     }
