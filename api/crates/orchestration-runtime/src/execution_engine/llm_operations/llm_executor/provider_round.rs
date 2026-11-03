@@ -1,5 +1,20 @@
 use super::*;
 
+#[derive(Clone)]
+struct SelectedLlmInvocation {
+    invocation: BuiltProviderInvocation,
+    input_mode: RecoveryInputMode,
+    // These projections belong to the first canonical input, before native selection may
+    // remove canonical fields. Replaying must not derive them from a cleared native view.
+    tool_prompt_transcript: LlmToolPromptTranscript,
+    invocation_tools: Vec<Value>,
+}
+
+struct AutomaticTransportReplay {
+    resolved: llm_route_preflight::ResolvedLlmRequestRuntime,
+    selected: SelectedLlmInvocation,
+}
+
 pub(crate) async fn execute_llm_node_provider_round<I>(
     plan: &CompiledPlan,
     node: &CompiledNode,
@@ -173,45 +188,55 @@ where
     let mut retry_feedback: Option<String> = None;
     let mut configured_retries_used = 0_usize;
     let mut automatic_transport_retries_used = 0_usize;
+    // An automatic replay belongs to the selected logical invocation. In particular, rerunning
+    // distribution/route resolution could choose another account even at the same queue index.
+    let mut automatic_replay: Option<AutomaticTransportReplay> = None;
 
     for attempt_index in 0..request_count {
-        let resolved_attempt = match resolve_llm_request_runtime(
-            &node.node_id,
-            runtime,
-            runtime_context,
-            invoker,
-            &required_capabilities,
-            Some(&routing_probe.input),
-            configured_retries_used,
-        )
-        .await
-        {
-            Ok(attempt) => attempt,
-            Err(error) => {
-                let provider_error = provider_runtime_error_from_anyhow(&error);
-                let error_payload = build_provider_error_payload(runtime, &provider_error);
-                return build_failed_llm_execution(
-                    node,
+        let (resolved_attempt, replay_selected) = if let Some(replay) = automatic_replay.take() {
+            (replay.resolved, Some(replay.selected))
+        } else {
+            (
+                match resolve_llm_request_runtime(
+                    &node.node_id,
                     runtime,
-                    error_payload,
-                    LlmFailureProjection::NoNodeOutput,
-                    None,
-                    build_llm_metrics_payload(
-                        runtime,
-                        ProviderUsage::default(),
-                        Some(ProviderFinishReason::Error),
-                        0,
-                        attempt_metrics,
-                        None,
-                        None,
-                    ),
-                    Vec::new(),
-                    LlmDebugInvocation {
-                        messages: &[],
-                        context: None,
-                    },
-                );
-            }
+                    runtime_context,
+                    invoker,
+                    &required_capabilities,
+                    Some(&routing_probe.input),
+                    configured_retries_used,
+                )
+                .await
+                {
+                    Ok(attempt) => attempt,
+                    Err(error) => {
+                        let provider_error = provider_runtime_error_from_anyhow(&error);
+                        let error_payload = build_provider_error_payload(runtime, &provider_error);
+                        return build_failed_llm_execution(
+                            node,
+                            runtime,
+                            error_payload,
+                            LlmFailureProjection::NoNodeOutput,
+                            None,
+                            build_llm_metrics_payload(
+                                runtime,
+                                ProviderUsage::default(),
+                                Some(ProviderFinishReason::Error),
+                                0,
+                                attempt_metrics,
+                                None,
+                                None,
+                            ),
+                            Vec::new(),
+                            LlmDebugInvocation {
+                                messages: &[],
+                                context: None,
+                            },
+                        );
+                    }
+                },
+                None,
+            )
         };
         let generate_projection_receipt = resolved_attempt.generate_projection_receipt.clone();
         let distribution_selection_receipt =
@@ -296,69 +321,92 @@ where
             .retry_partition()
             .cloned()
             .unwrap_or_else(|| fallback_retry_partition(attempt_runtime));
-        // Candidate preflight may produce a lossy provider-bound projection. Invocation always
-        // starts again from the canonical node inputs so the routing copy can never reach a Provider.
-        let mut invocation = match build_provider_invocation(
-            plan,
-            node,
-            attempt_runtime,
-            resolved_inputs,
-            rendered_templates,
-            variable_pool,
-            runtime_context,
-            invoker,
-        )
-        .await
-        {
-            Ok(invocation) => invocation,
-            Err(error_payload) => {
-                return build_failed_llm_execution(
-                    node,
-                    attempt_runtime,
-                    error_payload,
-                    LlmFailureProjection::NoNodeOutput,
-                    None,
-                    build_llm_metrics_payload(
+        // Fresh/configured attempts start from canonical inputs after candidate preflight.
+        // Automatic transport replay uses the complete first selected post-pipeline snapshot:
+        // no new input pipeline, mutable protocol-context resolution, or host selection.
+        let selected = if let Some(selected) = replay_selected {
+            selected
+        } else {
+            let mut invocation = match build_provider_invocation(
+                plan,
+                node,
+                attempt_runtime,
+                resolved_inputs,
+                rendered_templates,
+                variable_pool,
+                runtime_context,
+                invoker,
+            )
+            .await
+            {
+                Ok(invocation) => invocation,
+                Err(error_payload) => {
+                    return build_failed_llm_execution(
+                        node,
                         attempt_runtime,
-                        ProviderUsage::default(),
-                        Some(ProviderFinishReason::Error),
-                        0,
-                        attempt_metrics,
+                        error_payload,
+                        LlmFailureProjection::NoNodeOutput,
                         None,
-                        None,
-                    ),
-                    Vec::new(),
-                    LlmDebugInvocation {
-                        messages: &[],
-                        context: None,
-                    },
-                );
+                        build_llm_metrics_payload(
+                            attempt_runtime,
+                            ProviderUsage::default(),
+                            Some(ProviderFinishReason::Error),
+                            0,
+                            attempt_metrics,
+                            None,
+                            None,
+                        ),
+                        Vec::new(),
+                        LlmDebugInvocation {
+                            messages: &[],
+                            context: None,
+                        },
+                    );
+                }
+            };
+            if let Some(feedback) = retry_feedback.as_ref() {
+                invocation.input.messages.push(ProviderMessage {
+                    role: ProviderMessageRole::User,
+                    content: feedback.clone(),
+                    name: None,
+                    tool_call_id: None,
+                    is_error: None,
+                    tool_calls: None,
+                    content_blocks: None,
+                });
+            }
+            let tool_prompt_transcript =
+                llm_tool_prompt_transcript(node, variable_pool, &invocation.input, runtime_context);
+            let invocation_tools = invocation.input.tools.clone();
+            let input_mode = invoker.prepare_selected_llm_input(
+                attempt_runtime,
+                &resolved_route,
+                &mut invocation.input,
+            )?;
+            SelectedLlmInvocation {
+                invocation,
+                input_mode,
+                tool_prompt_transcript,
+                invocation_tools,
             }
         };
-        if let Some(feedback) = retry_feedback.as_ref() {
-            invocation.input.messages.push(ProviderMessage {
-                role: ProviderMessageRole::User,
-                content: feedback.clone(),
-                name: None,
-                tool_call_id: None,
-                is_error: None,
-                tool_calls: None,
-                content_blocks: None,
-            });
-        }
-        let tool_prompt_transcript =
-            llm_tool_prompt_transcript(node, variable_pool, &invocation.input, runtime_context);
-        let invocation_tools = invocation.input.tools.clone();
-        let selected_input_mode = invoker.prepare_selected_llm_input(
-            attempt_runtime,
-            &resolved_route,
-            &mut invocation.input,
-        )?;
+        let replay_selected_snapshot = selected.clone();
+        let SelectedLlmInvocation {
+            mut invocation,
+            input_mode: selected_input_mode,
+            tool_prompt_transcript,
+            invocation_tools,
+        } = selected;
         recovery_ledger.select_input_representation(
             selected_input_mode,
             invocation.input.previous_response_id.is_none(),
         );
         let native_responses_passthrough = selected_input_mode == RecoveryInputMode::NativeOpaque;
+        if native_responses_passthrough
+            && invoker.permits_selected_native_exact_replay(&invocation.input)
+        {
+            recovery_ledger.authorize_native_exact_transport_replay();
+        }
         let reasoning_effort = invocation
             .input
             .model_parameters
@@ -450,6 +498,15 @@ where
         if let Some(communication) = &runtime_context.communication {
             communication.check_active().await?;
         }
+        let replay_attempt = AutomaticTransportReplay {
+            resolved: llm_route_preflight::ResolvedLlmRequestRuntime {
+                runtime: attempt_runtime.clone(),
+                route: Ok(resolved_route.clone()),
+                generate_projection_receipt: generate_projection_receipt.clone(),
+                distribution_selection_receipt: distribution_selection_receipt.clone(),
+            },
+            selected: replay_selected_snapshot,
+        };
         let mut output = match invoker
             .invoke_resolved_llm(attempt_runtime, resolved_route, invocation.input)
             .await
@@ -533,6 +590,7 @@ where
                 let retry_class = if recovery_receipt.decision == OuterReplayDecision::Retry {
                     Some(LlmRetryClass::AutomaticTransport)
                 } else if billing_allows_retry
+                    && !native_responses_passthrough
                     && retry_enabled
                     && provider_error_allows_retry(&provider_error)
                     && configured_retries_used + 1 < configured_request_count
@@ -552,6 +610,7 @@ where
                     match retry_class {
                         LlmRetryClass::AutomaticTransport => {
                             automatic_transport_retries_used += 1;
+                            automatic_replay = Some(replay_attempt);
                         }
                         LlmRetryClass::Configured => {
                             configured_retries_used += 1;
@@ -806,6 +865,7 @@ where
                 )
             });
             let configured_retry_allowed = retry_enabled
+                && !native_responses_passthrough
                 && (output_protocol_failure.is_some()
                     || retryable_invalid_finish_reason
                     || retryable_reasoning_only_output
@@ -833,7 +893,10 @@ where
             if let Some(retry_class) = retry_class {
                 let automatic_retry_ordinal = automatic_transport_retries_used;
                 match retry_class {
-                    LlmRetryClass::AutomaticTransport => automatic_transport_retries_used += 1,
+                    LlmRetryClass::AutomaticTransport => {
+                        automatic_transport_retries_used += 1;
+                        automatic_replay = Some(replay_attempt);
+                    }
                     LlmRetryClass::Configured => {
                         configured_retries_used += 1;
                         if provider_recovery_receipt

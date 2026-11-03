@@ -181,3 +181,54 @@ fn preferred_raw_transport_keeps_digest_and_native_affinity_remains_required() {
         .preferred()
         .is_preferred());
 }
+
+#[test]
+fn native_exact_replay_requires_self_contained_responses_input() {
+    for body in [
+        json!({"input":"question"}),
+        json!({"input":[]}),
+        json!({"input":[{"type":"reasoning","encrypted_content":"opaque"},
+            {"role":"user","content":"question"}], "previous_response_id":null,
+            "conversation":null}),
+        // Native tool payloads and nested application data stay opaque; only top-level
+        // Responses item references carry the external-state meaning checked here.
+        json!({"input":[{"type":"function_call_output","output":{
+            "type":"item_reference","id":"application-data"}}]}),
+    ] {
+        let payload = ProviderTransportPayload::openai_responses(body.clone()).unwrap();
+        assert!(payload.permits_native_exact_transport_replay(), "{body}");
+        assert_eq!(
+            payload.wire_body(),
+            &body,
+            "eligibility never rewrites native items"
+        );
+    }
+    for body in [
+        json!({"input":[] ,"previous_response_id":"resp_external"}),
+        json!({"input":[] ,"previous_response_id":"null"}),
+        json!({"input":[] ,"previous_response_id":false}),
+        json!({"input":[] ,"conversation":"conv_external"}),
+        json!({"input":[] ,"conversation":{"id":"conv_external"}}),
+        json!({"input":[{"type":"item_reference","id":"item_external"}]}),
+        json!({}),
+        json!({"input":null}),
+        json!({"input":{}}),
+        json!({"input":7}),
+    ] {
+        let payload = ProviderTransportPayload::openai_responses(body.clone()).unwrap();
+        assert!(!payload.permits_native_exact_transport_replay(), "{body}");
+    }
+    let original = ProviderTransportPayload::openai_responses(json!({"input":"question"})).unwrap();
+    let continued = original
+        .clone()
+        .bind_openai_continuation(
+            ProviderContinuation::new(
+                "resp_external",
+                ProviderTransportAffinity::new("instance", "openai", "openai_responses", "model"),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    assert!(original.permits_native_exact_transport_replay());
+    assert!(!continued.permits_native_exact_transport_replay());
+}

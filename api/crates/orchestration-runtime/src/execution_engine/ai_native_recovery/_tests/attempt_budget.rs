@@ -209,3 +209,118 @@ fn selected_representation_changes_policy_without_replenishing_budget_or_commit(
     assert!(!ledger.allows_configured_replay_at(1));
     assert_ne!(ledger.current_epoch(), epoch);
 }
+
+#[test]
+fn native_exact_authorization_preserves_opaque_policy_and_only_allows_transport_replay() {
+    let mut ledger = AiNativeRecoveryLedger::with_total_attempt_budget(
+        100,
+        2,
+        false,
+        RecoveryInputMode::NativeOpaque,
+        3,
+    )
+    .unwrap();
+    let epoch = ledger.current_epoch();
+    ledger.select_input_representation(RecoveryInputMode::NativeOpaque, true);
+    let denied = receipt(&ledger, 0);
+    assert_eq!(
+        decide(&mut ledger, Some(&denied)).decision,
+        OuterReplayDecision::NonReproducible
+    );
+    assert_eq!(ledger.total_attempts_charged, 1);
+    ledger.authorize_native_exact_transport_replay();
+    assert_eq!(
+        ledger.current_epoch(),
+        epoch,
+        "authorization cannot rotate epochs"
+    );
+    assert_eq!(
+        ledger.total_attempts_charged, 1,
+        "authorization cannot clear charges"
+    );
+    assert_eq!(ledger.total_attempt_budget, 3);
+    assert_eq!(ledger.absolute_deadline_unix_ms(), 100);
+    assert!(matches!(
+        ledger.provider_directive().policy,
+        RecoveryPolicy::NativeOpaque { .. }
+    ));
+    assert!(!ledger.allows_configured_replay_at(1));
+    let retry = receipt(&ledger, 0);
+    assert_eq!(
+        decide(&mut ledger, Some(&retry)).decision,
+        OuterReplayDecision::Retry
+    );
+    assert_eq!(ledger.total_attempts_charged, 2);
+    // Selecting the next representation revokes the previous snapshot's authorization.
+    ledger.select_input_representation(RecoveryInputMode::NativeOpaque, true);
+    assert!(!ledger.reproducible);
+    ledger.authorize_native_exact_transport_replay();
+    let exhausted = receipt(&ledger, 0);
+    assert_eq!(
+        decide(&mut ledger, Some(&exhausted)).decision,
+        OuterReplayDecision::AttemptBudgetExhausted
+    );
+    assert_eq!(ledger.total_attempts_charged, 3);
+}
+
+#[test]
+fn native_exact_authorization_does_not_erase_commit_terminal_or_deadline_gates() {
+    for commit in [CommitLevel::SemanticCommitted, CommitLevel::Terminal] {
+        let mut ledger = AiNativeRecoveryLedger::with_total_attempt_budget(
+            100,
+            2,
+            false,
+            RecoveryInputMode::NativeOpaque,
+            4,
+        )
+        .unwrap();
+        ledger.select_input_representation(RecoveryInputMode::NativeOpaque, false);
+        ledger.authorize_native_exact_transport_replay();
+        let mut last = receipt(&ledger, 0);
+        last.commit_level = commit;
+        last.disposition = if commit == CommitLevel::Terminal {
+            RecoveryDisposition::TerminalInterruption
+        } else {
+            RecoveryDisposition::SameEpochReconnect
+        };
+        let outcome = decide(&mut ledger, Some(&last));
+        assert!(matches!(
+            outcome.decision,
+            OuterReplayDecision::SemanticCommitted | OuterReplayDecision::SemanticTerminal
+        ));
+        let epoch = ledger.current_epoch();
+        ledger.authorize_native_exact_transport_replay();
+        assert!(ledger.semantic_replay_blocked());
+        assert_eq!(ledger.current_epoch(), epoch);
+        assert_eq!(ledger.total_attempts_charged, 1);
+        assert!(!ledger.allows_configured_replay_at(1));
+        assert!(ledger.rotate_epoch_for_configured_replay().is_err());
+    }
+    let mut expired = AiNativeRecoveryLedger::with_total_attempt_budget(
+        1,
+        2,
+        false,
+        RecoveryInputMode::NativeOpaque,
+        4,
+    )
+    .unwrap();
+    expired.authorize_native_exact_transport_replay();
+    let last = receipt(&expired, 0);
+    assert_eq!(
+        decide(&mut expired, Some(&last)).decision,
+        OuterReplayDecision::DeadlineExceeded
+    );
+    let mut semantic = AiNativeRecoveryLedger::with_total_attempt_budget(
+        100,
+        2,
+        false,
+        RecoveryInputMode::SemanticMapped,
+        4,
+    )
+    .unwrap();
+    semantic.authorize_native_exact_transport_replay();
+    assert!(
+        !semantic.reproducible,
+        "native grant cannot authorize an unrelated semantic input"
+    );
+}

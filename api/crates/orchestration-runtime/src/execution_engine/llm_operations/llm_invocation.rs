@@ -1,6 +1,7 @@
 use super::*;
 use extension_contracts::provider_contract::ProtocolContextEnvelope;
 
+#[derive(Clone)]
 pub(super) struct BuiltProviderInvocation {
     pub(super) input: ProviderInvocationInput,
     pub(super) debug_context: LlmInvocationDebugContext,
