@@ -1,8 +1,11 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { authenticateEditor } from '../../../../agent-flow/_tests/fixtures/editor-auth';
 
 import { i18nText } from '../../../../../shared/i18n/text';
 import { McpInstanceTable } from '../McpInstancesTab/McpInstanceTable';
+
+beforeEach(() => authenticateEditor(['mcp.instances.update'], 'member'));
 
 describe('McpInstanceTable', () => {
   test('shows instance_id without rendering the derived LLM registration column', () => {

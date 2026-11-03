@@ -1,5 +1,6 @@
 import { act, fireEvent, screen } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
+import { authenticateEditor } from '../../agent-flow/_tests/fixtures/editor-auth';
 import type { ReactElement } from 'react';
 import { createTestMemoryRouter } from '../../../test/renderers/create-test-memory-router';
 
@@ -60,6 +61,8 @@ const workflowNodeCatalog = createApplicationNodeCatalog([
     category: 'logic'
   })
 ]);
+
+beforeEach(() => authenticateEditor(['save_draft'], 'member'));
 
 describe('WorkflowEditor assembly', () => {
   test('AC-001/002 renders workflow entry and terminal nodes with directional connectors', async () => {

@@ -11,7 +11,8 @@ import { App } from 'antd';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest';
 import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
-import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
+import { resetAuthStore } from '../../../../state/auth-store';
+import { authenticateEditor } from '../fixtures/editor-auth';
 import * as runtime from '../../api/runtime';
 import { AgentFlowEditorAssembly } from '../../components/editor/AgentFlowEditorAssembly';
 import type { DraftAssistantPreview } from '../../components/assistant-plugin/DraftAssistantPreview';
@@ -127,7 +128,10 @@ function expectEmptyPreview() {
 beforeAll(() => loadApplicationI18nResources());
 beforeEach(() => {
   resetAuthStore();
-  useAuthStore.setState({ csrfToken: 'csrf-token' });
+  authenticateEditor(
+    ['start_flow_debug_run_stream', 'start_flow_debug_run'],
+    'member'
+  );
   vi.spyOn(runtime, 'fetchDebugVariableSnapshot').mockResolvedValue({
     variable_cache: {}
   });
