@@ -196,7 +196,7 @@
         },
         {
           "file": "api/crates/control-plane/src/plugin_management/install/projections.rs",
-          "sha256": "4ea4c985950fc7606978cbbbacf50e158da2158e746aebbc1f94056475e52217",
+          "sha256": "76884ca20412f45d589cc13a6ef26da318a10f8daf9cc86ec577d4a4f1239d55",
           "reason": "load_plugin_settings_templates reads immutable page sources as part of the same blocking preparation; no installation publication or API response happens in this helper."
         },
         {

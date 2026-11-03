@@ -21,3 +21,9 @@
 遵循现有 Level 1 快速静态 / 定向测试、Level 2 PR 契约 / 集成 / 构建复用、Level 3 完整回归 / 发布收据；不增加 CI 工作流、不改变原有覆盖率阈值或原来应阻断的错误。比对完整有序 DTO / findings、repository/审计写轨迹以及至少一个会被旧门禁捕获的坏 fixture，缺陷检测保留率必须为 100%（分母为实际执行的非空反例集合）。
 
 同一时刻只允许一条重型 Cargo / Rust 测试；本地资源遵循仓库 .1flowbase.verify.local.json 与宿主 CPU 60%、内存 8GiB 上限。提交时分别报告基线、候选 SHA、测试用例数、P50/P95、Runner 分钟、RSS/OOM 和净行数；环境或数据不一致时不宣称性能改善。外部完整 CI 的 candidate-bound 收据不能由本地定向测试替代。
+
+## 历史基线恢复的 review 证据
+
+2026-11-03 的合并前基线已有 Rust review evidence SHA 不匹配。逐文件核对发现 `projections.rs` 对比 `v0.6.1` 仅添加同步写入 DTO 的 `ui_registration` 字段，不改变 `load_plugin_settings_templates` 的阻塞路径、`spawn_blocking` 控制流或审查理由。因此更新原 review 证据 SHA，以继续保留 SHA 绑定与后续变更时的 fail closed。该修正不新增 review 条目，不更改原有规则或 suppress 范围。
+
+`sync-js-runtime` 是当前 workspace 中已有的无内部依赖 crate，改由 runtime-storage 的 check/Clippy 与 runtime-storage-fast 的直接包测试覆盖。既有 workspace inventory 负例仍必须能发现任何新出现的未归属 crate。Rust `cargo metadata` 源码检查改为验证分开的 `command.arg("metadata")` 和 `--locked`/`--offline` 选项，保留移除任一选项时的失败条件。
