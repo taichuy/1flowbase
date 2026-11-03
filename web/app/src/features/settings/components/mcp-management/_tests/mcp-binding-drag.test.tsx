@@ -65,6 +65,25 @@ function renderEditor() {
   return { client, get editor() { return current; } };
 }
 
+async function dropAndSettle(
+  view: ReturnType<typeof renderEditor>,
+  info: McpDirectoryTreeDropInfo
+) {
+  await act(async () => {
+    view.editor.handleTreeDrop(info);
+    // mutate() dispatches pending synchronously; denied drops create no mutation.
+    if (view.client.isMutating() === 0) return;
+    await new Promise<void>((resolve) => {
+      const unsubscribe = view.client.getMutationCache().subscribe(() => {
+        if (view.client.isMutating() !== 0) return;
+        unsubscribe();
+        resolve();
+      });
+    });
+  });
+  expect(view.client.isMutating()).toBe(0);
+}
+
 function dropInfo(dropToGap: boolean): McpDirectoryTreeDropInfo {
   return {
     dragNode: { key: `binding:${draggedBinding.id}` },
@@ -96,10 +115,7 @@ describe('MCP binding drag update identity', () => {
       view.editor.setEditingBinding(selectedBinding);
       view.editor.bindingForm.setFieldsValue({ instance_id: 'ops', group_path: '/target', tool_id: 'selected_tool', visible: false, sort_order: 99 });
     });
-    await act(async () => {
-      view.editor.handleTreeDrop(dropInfo(dropToGap));
-      await waitFor(() => expect(view.client.isMutating()).toBe(0));
-    });
+    await dropAndSettle(view, dropInfo(dropToGap));
     await waitFor(() => expect(api.updateSettingsMcpToolBinding).toHaveBeenCalledWith(
       draggedBinding.id,
       { group_path: '/target', tool_id: 'dragged_tool', display_alias: 'Dragged alias', visible: true, sort_order: 30 },
@@ -114,10 +130,7 @@ describe('MCP binding drag update identity', () => {
   test('moving a binding without an editor draft still uses update rather than create', async () => {
     grant(['mcp.tool_bindings.update']);
     const view = renderEditor();
-    await act(async () => {
-      view.editor.handleTreeDrop(dropInfo(false));
-      await waitFor(() => expect(view.client.isMutating()).toBe(0));
-    });
+    await dropAndSettle(view, dropInfo(false));
     await waitFor(() => expect(api.updateSettingsMcpToolBinding).toHaveBeenCalledTimes(1));
     expect(api.updateSettingsMcpToolBinding.mock.calls[0]?.[0]).toBe(draggedBinding.id);
     expect(api.createSettingsMcpToolBinding).not.toHaveBeenCalled();
@@ -126,7 +139,7 @@ describe('MCP binding drag update identity', () => {
   test('a create-only grant cannot move an existing binding', async () => {
     grant(['mcp.tool_bindings.create']);
     const view = renderEditor();
-    await act(async () => view.editor.handleTreeDrop(dropInfo(false)));
+    await dropAndSettle(view, dropInfo(false));
     expect(view.editor.saveBindingMutation.isIdle).toBe(true);
     expect(api.updateSettingsMcpToolBinding).not.toHaveBeenCalled();
     expect(api.createSettingsMcpToolBinding).not.toHaveBeenCalled();
