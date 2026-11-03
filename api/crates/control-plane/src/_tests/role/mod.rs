@@ -1173,8 +1173,7 @@ async fn workspace_role_system_all_is_configurable_for_view_but_never_for_writes
             model_policies: vec![],
         })
         .await
-        .err()
-        .expect("users without the policy operation cannot grant system-wide views");
+        .expect_err("users without the policy operation cannot grant system-wide views");
     assert!(error.to_string().contains("permission_denied"));
     assert_eq!(repository.audit_events(), audit_before);
     repository

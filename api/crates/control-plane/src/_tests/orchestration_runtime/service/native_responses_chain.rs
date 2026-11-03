@@ -174,12 +174,13 @@ async fn native_prewarm_tool_and_client_output_complete_without_external_callbac
     );
     assert!(completed.callback_tasks.is_empty());
     assert!(prewarm.callback_tasks.is_empty());
-    let inputs = captured.lock().unwrap();
-    assert_eq!(inputs.len(), 3);
-    let forwarded = &inputs[2].native_transport.as_ref().unwrap().wire_body;
-    assert_eq!(forwarded["input"], wire["input"]);
-    assert_eq!(forwarded["previous_response_id"], "upstream-tool-round");
-    drop(inputs);
+    {
+        let inputs = captured.lock().unwrap();
+        assert_eq!(inputs.len(), 3);
+        let forwarded = &inputs[2].native_transport.as_ref().unwrap().wire_body;
+        assert_eq!(forwarded["input"], wire["input"]);
+        assert_eq!(forwarded["previous_response_id"], "upstream-tool-round");
+    }
     for run_id in [
         prewarm.flow_run.id,
         waiting.flow_run.id,
