@@ -324,6 +324,20 @@ export function AgentFlowCanvasFrame({
     document: workingDocument,
     environmentVariables
   });
+  const canUpsertDebugVariableCache = can('upsert_debug_variable_cache_entry');
+  const variableCacheGroups = useMemo(
+    () =>
+      canUpsertDebugVariableCache
+        ? debugSession.variableGroups
+        : debugSession.variableGroups.map((group) => ({
+            ...group,
+            items: group.items.map((item) => ({
+              ...item,
+              isReadOnly: true
+            }))
+          })),
+    [canUpsertDebugVariableCache, debugSession.variableGroups]
+  );
   const {
     nodeDetailTab,
     setNodeDetailTab,
@@ -723,17 +737,7 @@ export function AgentFlowCanvasFrame({
           <DemandIsland>
             <AgentFlowVariableCachePanel
               applicationId={applicationId}
-              groups={
-                can('upsert_debug_variable_cache_entry')
-                  ? debugSession.variableGroups
-                  : debugSession.variableGroups.map((group) => ({
-                      ...group,
-                      items: group.items.map((item) => ({
-                        ...item,
-                        isReadOnly: true
-                      }))
-                    }))
-              }
+              groups={variableCacheGroups}
               height={boundedVariableCacheHeight}
               isResizing={isResizingVariableCache}
               isSidebarResizing={isResizingVariableCacheSidebar}
