@@ -177,6 +177,7 @@ where
                     instance,
                     installation,
                     package,
+                    effective_runtime_config: Arc::new(tokio::sync::OnceCell::new()),
                 },
             )
             .with_runtime_plugin_id(plugin_id)
