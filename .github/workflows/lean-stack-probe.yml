@@ -26,7 +26,6 @@ jobs:
       CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
       CARGO_PROFILE_TEST_DEBUG: '0'
       RUST_MIN_STACK: '8388608'
-      CARGO_NET_OFFLINE: 'true'
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v5
