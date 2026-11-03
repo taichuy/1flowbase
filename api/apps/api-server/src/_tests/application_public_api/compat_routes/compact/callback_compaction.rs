@@ -77,7 +77,7 @@ fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_prior
         .await;
         let mut initial = responses_body(false);
         initial["tools"] = json!([{
-            "type": "function", "name": "lookup_inventory", "strict": true,
+            "type": "function", "name": "lookup_inventory", "strict": false,
             "parameters": {
                 "type": "object",
                 "properties": {"sku": {"type": "string"}},
@@ -196,7 +196,7 @@ fn local_summary_with_pending_native_callback_starts_new_run_and_supersedes_pred
         });
         let mut initial = responses_body(false);
         initial["tools"] = json!([{
-            "type": "function", "name": "lookup_inventory", "strict": true,
+            "type": "function", "name": "lookup_inventory", "strict": false,
             "parameters": {
                 "type": "object", "properties": {"sku": {"type": "string"}},
                 "required": ["sku"], "additionalProperties": false
