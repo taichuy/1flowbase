@@ -21,33 +21,32 @@ where
         }
     }
 
-    pub async fn invoke<I, O, E>(
+    pub fn invoke<I, O, E>(
         &self,
         snapshot: Arc<CompiledInterfaceRegistry>,
         envelope: InvocationEnvelope<I, P>,
-    ) -> InterfaceInvocationResult<O>
+    ) -> impl Future<Output = InterfaceInvocationResult<O>> + '_
     where
         I: InterfaceContract,
         O: InterfaceContract,
         E: InterfaceContract,
     {
-        // Keep the frozen invocation state out of the caller's inline future.
-        // Nested protocol dispatch still uses this same lifecycle and controls.
-        Box::pin(self.invoke_internal::<I, O, E>(snapshot, envelope, None)).await
+        // Finish constructing the boxed state before its first poll.
+        Box::pin(self.invoke_internal::<I, O, E>(snapshot, envelope, None))
     }
 
-    pub async fn invoke_with_dispatch_target<I, O, E>(
+    pub fn invoke_with_dispatch_target<I, O, E>(
         &self,
         snapshot: Arc<CompiledInterfaceRegistry>,
         envelope: InvocationEnvelope<I, P>,
         target: ExecutionTargetPin,
-    ) -> InterfaceInvocationResult<O>
+    ) -> impl Future<Output = InterfaceInvocationResult<O>> + '_
     where
         I: InterfaceContract,
         O: InterfaceContract,
         E: InterfaceContract,
     {
-        Box::pin(self.invoke_internal::<I, O, E>(snapshot, envelope, Some(target))).await
+        Box::pin(self.invoke_internal::<I, O, E>(snapshot, envelope, Some(target)))
     }
 
     pub async fn invoke_server_stream_with_dispatch_target<I, S, O, E>(

@@ -45,6 +45,6 @@
 
 只读变量缓存的投影由 `AgentFlowCanvasFrame` 拥有：权限关闭时仍把每项标为 `isReadOnly`，但输入分组与权限不变时保持相同引用，避免 `DebugVariablesPane` 的选中项 effect 每次向父组件写入新对象而持续渲染。使用已有 `useMemo`，依赖真实权限布尔值和服务端运行态分组；权限变化、运行态数据变化仍重新投影，不修改原分组。真实 Assembly 回归覆盖选择第二项、无关消息更新、权限授予/撤销、固有只读项及新分组刷新。
 
-OpenAI Chat 与 Anthropic Messages 在协议观察 owner 和实际分派之间保留同一取消/收尾生命周期，使用同步构造函数返回静态类型的 pinned boxed execution future。大型执行状态不再内联存储在观察器的 poll frame；不增加 task、不改 scheduler，也不扩大既有 2 MiB 真实路由测试栈。代价是每次请求一次堆分配及释放，转移栈驻留而非宣称减少总驻留内存；结果、错误、poll/wake、取消和唯一 Drop owner 必须相同。实际 2 MiB 测试与全部兼容协议回归才是生产验证，独立标准库 Future 验证器仅检查机制的输出与生命周期轨迹。
+调用内核的 unary `invoke` / `invoke_with_dispatch_target` 和业务 `start_published_flow_run` 直接以同步工厂返回原有 pinned boxed inner future，去掉只负责再次等待的外层 async 状态机。输入仍由同一冻结 envelope / command 传入，内层业务代码仍在首次 poll 才执行；结果、错误、poll/wake、取消、审计和唯一 Drop owner 保持。已 poll 的调用仍只有原来一次装箱；从未 poll 的 future 会提前分配并随 drop 释放。这减少调用方捕获参数的外层状态与一层 poll 包装，不增加 task 或改变 scheduler；不将对象大小当作整个 poll 栈的字节数，也不扩大既有 2 MiB 真实路由测试栈。独立标准库 Rust 验证器在 debug 与优化构建下检查未 poll 释放、取消、成功/错误及 target owner 的 12 个有限调度组合；生产栈与协议行为仍由真实路由回归验证。
 
 独立有限模型检查认证 299,592 个组合及积分 896 个输入/返回/审计轨迹组合，均无反例；认证的任意有限绑定数等价性由逐项替换和前缀和归纳建立。此证据不等于运行 Rust 实现，也不替代真实 PostgreSQL 原子解绑、六命令及拒绝/审计行为测试。认证成员查询减少量为 enabled 且 bound 的绑定数；积分有效六命令各消除一次重复权限映射/集合查找与 actor 检查。两项渐近复杂度、数据库查询及持久化空间不变，不将常数项简化表述为算法阶数下降。

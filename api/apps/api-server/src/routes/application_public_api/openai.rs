@@ -168,18 +168,7 @@ pub async fn create_chat_completion(
     Ok(client_observer::observe_response(response, capture))
 }
 
-fn dispatch_chat_completion(
-    state: Arc<ApiState>,
-    headers: HeaderMap,
-    uri: Uri,
-    body: Bytes,
-    recorder: ClientTrajectoryRecorder,
-) -> impl std::future::Future<Output = Result<Response, OpenAiRouteError>> + Send {
-    // Construct the execution future outside the observer's poll frame, as in Responses.
-    Box::pin(execute_chat_completion(state, headers, uri, body, recorder))
-}
-
-async fn execute_chat_completion(
+async fn dispatch_chat_completion(
     state: Arc<ApiState>,
     headers: HeaderMap,
     uri: Uri,
