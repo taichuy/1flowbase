@@ -102,12 +102,9 @@ export function DebugAssistantMessage({
                 streaming={message.status === 'running'}
               />
             ) : !hasReasoning || message.status === 'cancelled' ? (
-              <span
-                className="agent-flow-editor__debug-message-content"
-                role="status"
-              >
+              <output className="agent-flow-editor__debug-message-content">
                 {fallbackContent(message)}
-              </span>
+              </output>
             ) : null}
           </>
         )}
