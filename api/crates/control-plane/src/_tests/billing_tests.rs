@@ -2,7 +2,8 @@ use crate::{
     billing::{rate_token_usage, CreditCommandService, PricingRule, TokenUsage},
     ports::{
         BillingRepository, CreditAccountRecord, CreditCommandInput, CreditReservation,
-        CreditTransactionRecord, ListCreditLedgerInput, ListPricingRulesInput, PricingRulesPage,
+        CreditTransactionRecord, ListCreditLedgerInput, ListPricingRulesInput,
+        PluginCreditCommandRequest, PluginCreditCommandResult, PricingRulesPage,
         ReserveCreditInput, SettleCreditInput, UpsertPricingRuleInput,
     },
 };
@@ -70,6 +71,8 @@ enum BillingWrite {
 struct RecordingBillingState {
     writes: Vec<BillingWrite>,
     accepted: Option<(RecordedCreditCommand, CreditTransactionRecord)>,
+    execute_error: Option<&'static str>,
+    audit_error: Option<&'static str>,
 }
 
 #[derive(Clone, Default)]
@@ -78,6 +81,16 @@ struct RecordingBillingRepository {
 }
 
 impl RecordingBillingRepository {
+    fn failing(execute_error: Option<&'static str>, audit_error: Option<&'static str>) -> Self {
+        Self {
+            state: Arc::new(Mutex::new(RecordingBillingState {
+                execute_error,
+                audit_error,
+                ..Default::default()
+            })),
+        }
+    }
+
     fn writes(&self) -> Vec<BillingWrite> {
         self.state
             .lock()
@@ -195,6 +208,9 @@ impl BillingRepository for RecordingBillingRepository {
         state
             .writes
             .push(BillingWrite::Execute(Box::new(command.clone())));
+        if let Some(error) = state.execute_error {
+            anyhow::bail!(error);
+        }
         if let Some((accepted, transaction)) = &state.accepted {
             if accepted.idempotency_key == command.idempotency_key {
                 if accepted == &command {
@@ -239,17 +255,20 @@ impl BillingRepository for RecordingBillingRepository {
         reason: &str,
         idempotency_key: &str,
     ) -> anyhow::Result<()> {
-        self.state
+        let mut state = self
+            .state
             .lock()
-            .expect("billing recording lock must not be poisoned")
-            .writes
-            .push(BillingWrite::Rejected {
-                workspace_id,
-                actor_plugin_id: actor_plugin_id.into(),
-                command: command.into(),
-                reason: reason.into(),
-                idempotency_key: idempotency_key.into(),
-            });
+            .expect("billing recording lock must not be poisoned");
+        state.writes.push(BillingWrite::Rejected {
+            workspace_id,
+            actor_plugin_id: actor_plugin_id.into(),
+            command: command.into(),
+            reason: reason.into(),
+            idempotency_key: idempotency_key.into(),
+        });
+        if let Some(error) = state.audit_error {
+            anyhow::bail!(error);
+        }
         Ok(())
     }
 
@@ -403,6 +422,434 @@ async fn plugin_credit_command_requires_capability_permission_and_remains_idempo
             BillingWrite::Execute(Box::new(conflicting_write)),
         ]
     );
+}
+
+// Explicit legacy permission table: do not derive the expected grants from production code.
+const ORDINARY_CREDIT_COMMANDS: [(&str, &str); 6] = [
+    ("grant", "credit.grant"),
+    ("charge", "credit.charge"),
+    ("adjustment", "credit.adjust"),
+    ("enable_charge", "credit.toggle"),
+    ("disable_charge", "credit.toggle"),
+    ("refund", "credit.refund"),
+];
+const CREDIT_PLUGIN: &str = "billing-test-plugin";
+
+// F_old(r,P) = F_new(r,P), with the same repository state and outcomes.
+// First matching row wins; E = execute(input), A = rejected(original error/key).
+// command known | permission | request valid | repository | result        | trace
+// no            | *          | *             | *          | unsupported   | A
+// yes           | no         | *             | *          | denied        | A
+// yes           | yes        | no            | *          | invalid       | A
+// ordinary six  | yes        | yes           | success(t) | Transaction(t)| E
+// ordinary six  | yes        | yes           | failure(e) | e             | E,A
+// Any A failure replaces the result with that audit error, without another A.
+// The request DTO has no actor fields; actor_user=None and plugin=host identity.
+fn plugin_request(command: &str) -> PluginCreditCommandRequest {
+    PluginCreditCommandRequest {
+        command: command.into(),
+        user_id: Uuid::now_v7(),
+        amount: "2.5000".into(),
+        credit_unit: "USD".into(),
+        reason: "  original reason  ".into(),
+        source_type: Some("fixture".into()),
+        source_id: Some("source-1".into()),
+        idempotency_key: "  original-key  ".into(),
+        billing_session_id: None,
+        provider_invocation_id: None,
+        pricing_rule_id: None,
+        flow_run_id: None,
+        reservation_expires_at: None,
+        price_snapshot: serde_json::json!({}),
+        usage_snapshot: serde_json::json!({}),
+        metadata: serde_json::json!({"nested": {"keep": [1, "two"]}}),
+    }
+}
+
+fn plugin_input(workspace_id: Uuid, r: &PluginCreditCommandRequest) -> CreditCommandInput {
+    CreditCommandInput {
+        workspace_id,
+        user_id: r.user_id,
+        amount: r.amount.clone(),
+        credit_unit: r.credit_unit.clone(),
+        command: r.command.clone(),
+        reason: r.reason.clone(),
+        source_type: r.source_type.clone(),
+        source_id: r.source_id.clone(),
+        idempotency_key: r.idempotency_key.clone(),
+        actor_user_id: None,
+        actor_plugin_id: Some(CREDIT_PLUGIN.into()),
+        metadata: r.metadata.clone(),
+    }
+}
+
+fn rejected_write(
+    workspace_id: Uuid,
+    r: &PluginCreditCommandRequest,
+    reason: &str,
+) -> BillingWrite {
+    BillingWrite::Rejected {
+        workspace_id,
+        actor_plugin_id: CREDIT_PLUGIN.into(),
+        command: r.command.clone(),
+        reason: reason.into(),
+        idempotency_key: r.idempotency_key.clone(),
+    }
+}
+
+#[tokio::test]
+async fn six_plugin_requests_preserve_exact_inputs_results_replay_and_conflict_trace() {
+    for (command, permission) in ORDINARY_CREDIT_COMMANDS {
+        let repository = RecordingBillingRepository::default();
+        let service = CreditCommandService::new(repository.clone());
+        let workspace_id = Uuid::now_v7();
+        let mut request = plugin_request(command);
+        if command == "adjustment" {
+            request.amount = "-2.5000".into();
+        } else if matches!(command, "enable_charge" | "disable_charge") {
+            request.amount = "0.0000".into();
+        }
+        let permissions = BTreeSet::from([permission.to_string()]);
+        let expected_input = RecordedCreditCommand::from(&plugin_input(workspace_id, &request));
+        let first = service
+            .execute_plugin_request(workspace_id, CREDIT_PLUGIN, &permissions, request.clone())
+            .await
+            .unwrap();
+        let PluginCreditCommandResult::Transaction { transaction } = &first else {
+            panic!("ordinary credit command must return a transaction");
+        };
+        let stored = repository.state.lock().unwrap().accepted.clone().unwrap().1;
+        assert_eq!(
+            serde_json::to_value(transaction).unwrap(),
+            serde_json::to_value(&stored).unwrap()
+        );
+        assert_eq!(transaction.actor_plugin_id.as_deref(), Some(CREDIT_PLUGIN));
+        assert_eq!(transaction.actor_user_id, None);
+        assert_eq!(transaction.amount, request.amount);
+        assert_eq!(transaction.transaction_type, command);
+        let replay = service
+            .execute_plugin_request(workspace_id, CREDIT_PLUGIN, &permissions, request.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(first).unwrap(),
+            serde_json::to_value(replay).unwrap()
+        );
+        assert_eq!(
+            repository.writes(),
+            vec![
+                BillingWrite::Execute(Box::new(expected_input.clone())),
+                BillingWrite::Execute(Box::new(expected_input.clone())),
+            ]
+        );
+
+        let mut conflict = request.clone();
+        conflict.metadata = serde_json::json!({"conflicting": true});
+        let error = service
+            .execute_plugin_request(workspace_id, CREDIT_PLUGIN, &permissions, conflict.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), "credit_idempotency_payload_mismatch");
+        assert_eq!(
+            repository.writes(),
+            vec![
+                BillingWrite::Execute(Box::new(expected_input.clone())),
+                BillingWrite::Execute(Box::new(expected_input)),
+                BillingWrite::Execute(Box::new(RecordedCreditCommand::from(&plugin_input(
+                    workspace_id,
+                    &conflict
+                )))),
+                rejected_write(
+                    workspace_id,
+                    &conflict,
+                    "credit_idempotency_payload_mismatch"
+                ),
+            ]
+        );
+        // A rejected conflicting replay must not replace the accepted transaction.
+        assert_eq!(
+            repository
+                .state
+                .lock()
+                .unwrap()
+                .accepted
+                .as_ref()
+                .unwrap()
+                .1
+                .id,
+            stored.id
+        );
+    }
+}
+
+#[tokio::test]
+async fn six_plugin_requests_reject_before_repository_and_audit_exactly_once() {
+    for (command, permission) in ORDINARY_CREDIT_COMMANDS {
+        // Permission denial precedes validation, even with another credit permission.
+        for case in 0..7 {
+            let repository = RecordingBillingRepository::default();
+            let service = CreditCommandService::new(repository.clone());
+            let workspace_id = Uuid::now_v7();
+            let mut request = plugin_request(command);
+            let mut permissions = BTreeSet::from([permission.to_string()]);
+            let expected_error = if case == 0 {
+                "credit_command_permission_denied"
+            } else {
+                "credit_command_invalid"
+            };
+            match case {
+                0 => {
+                    permissions = BTreeSet::from(["credit.reserve".into()]);
+                    request.credit_unit = "invalid".into();
+                }
+                1 => request.credit_unit = "EUR".into(),
+                2 => request.reason = " \t".into(),
+                3 => request.idempotency_key = " \n".into(),
+                4 => request.source_type = None,
+                5 => request.source_id = None,
+                6 => {
+                    request.credit_unit = "EUR".into();
+                    request.reason.clear();
+                    request.idempotency_key.clear();
+                }
+                _ => unreachable!(),
+            }
+            let error = service
+                .execute_plugin_request(workspace_id, CREDIT_PLUGIN, &permissions, request.clone())
+                .await
+                .unwrap_err();
+            assert_eq!(error.to_string(), expected_error, "{command}, case {case}");
+            assert_eq!(
+                repository.writes(),
+                vec![rejected_write(workspace_id, &request, expected_error)]
+            );
+        }
+    }
+    let repository = RecordingBillingRepository::default();
+    let service = CreditCommandService::new(repository.clone());
+    let workspace_id = Uuid::now_v7();
+    let mut request = plugin_request("unknown");
+    request.reason.clear();
+    let error = service
+        .execute_plugin_request(
+            workspace_id,
+            CREDIT_PLUGIN,
+            &BTreeSet::new(),
+            request.clone(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.to_string(), "credit_command_not_supported");
+    assert_eq!(
+        repository.writes(),
+        vec![rejected_write(
+            workspace_id,
+            &request,
+            "credit_command_not_supported"
+        )]
+    );
+}
+
+#[tokio::test]
+async fn six_plugin_requests_preserve_repository_then_audit_failure_order() {
+    for (command, permission) in ORDINARY_CREDIT_COMMANDS {
+        for audit_error in [None, Some("audit_unavailable")] {
+            let repository =
+                RecordingBillingRepository::failing(Some("repository_unavailable"), audit_error);
+            let service = CreditCommandService::new(repository.clone());
+            let workspace_id = Uuid::now_v7();
+            let request = plugin_request(command);
+            let permissions = BTreeSet::from([permission.to_string()]);
+            let error = service
+                .execute_plugin_request(workspace_id, CREDIT_PLUGIN, &permissions, request.clone())
+                .await
+                .unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                audit_error.unwrap_or("repository_unavailable")
+            );
+            assert_eq!(
+                repository.writes(),
+                vec![
+                    BillingWrite::Execute(Box::new(RecordedCreditCommand::from(&plugin_input(
+                        workspace_id,
+                        &request
+                    )))),
+                    rejected_write(workspace_id, &request, "repository_unavailable"),
+                ]
+            );
+            assert!(repository.state.lock().unwrap().accepted.is_none());
+
+            // The standalone public API propagates repository failures without
+            // adding the request wrapper's rejection audit, even if auditing fails.
+            let mut expected_writes = repository.writes();
+            let input = plugin_input(workspace_id, &request);
+            expected_writes.push(BillingWrite::Execute(Box::new(
+                RecordedCreditCommand::from(&input),
+            )));
+            let error = service
+                .execute_plugin_command(CREDIT_PLUGIN, &permissions, input)
+                .await
+                .unwrap_err();
+            assert_eq!(error.to_string(), "repository_unavailable");
+            assert_eq!(repository.writes(), expected_writes);
+        }
+        // Failed rejection auditing replaces the original denial; it never permits execution.
+        let repository = RecordingBillingRepository::failing(None, Some("audit_unavailable"));
+        let service = CreditCommandService::new(repository.clone());
+        let workspace_id = Uuid::now_v7();
+        let request = plugin_request(command);
+        let error = service
+            .execute_plugin_request(
+                workspace_id,
+                CREDIT_PLUGIN,
+                &BTreeSet::new(),
+                request.clone(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), "audit_unavailable");
+        assert_eq!(
+            repository.writes(),
+            vec![rejected_write(
+                workspace_id,
+                &request,
+                "credit_command_permission_denied"
+            )]
+        );
+    }
+}
+
+#[tokio::test]
+async fn ordinary_requests_without_source_preserve_full_result_and_skip_rejection_audit() {
+    for (command, permission) in ORDINARY_CREDIT_COMMANDS {
+        // A successful command must not attempt auditing, even when audit storage fails.
+        let repository = RecordingBillingRepository::failing(None, Some("audit_unavailable"));
+        let service = CreditCommandService::new(repository.clone());
+        let workspace_id = Uuid::now_v7();
+        let mut request = plugin_request(command);
+        request.source_type = None;
+        request.source_id = None;
+        let result = service
+            .execute_plugin_request(
+                workspace_id,
+                CREDIT_PLUGIN,
+                &BTreeSet::from([permission.into()]),
+                request.clone(),
+            )
+            .await
+            .unwrap();
+        let transaction = repository.state.lock().unwrap().accepted.clone().unwrap().1;
+        assert_eq!(
+            serde_json::to_value(result).unwrap(),
+            serde_json::json!({"result_kind": "transaction", "transaction": transaction})
+        );
+        assert_eq!(
+            repository.writes(),
+            vec![BillingWrite::Execute(Box::new(
+                RecordedCreditCommand::from(&plugin_input(workspace_id, &request))
+            ))],
+        );
+    }
+}
+
+#[tokio::test]
+async fn request_validation_audit_failure_overrides_original_error_without_execution() {
+    for (command, permission) in ORDINARY_CREDIT_COMMANDS
+        .into_iter()
+        .chain([("unknown", "credit.grant")])
+    {
+        let repository = RecordingBillingRepository::failing(None, Some("audit_unavailable"));
+        let service = CreditCommandService::new(repository.clone());
+        let workspace_id = Uuid::now_v7();
+        let mut request = plugin_request(command);
+        request.reason.clear();
+        let error = service
+            .execute_plugin_request(
+                workspace_id,
+                CREDIT_PLUGIN,
+                &BTreeSet::from([permission.into()]),
+                request.clone(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), "audit_unavailable");
+        let original_error = if command == "unknown" {
+            "credit_command_not_supported"
+        } else {
+            "credit_command_invalid"
+        };
+        assert_eq!(
+            repository.writes(),
+            vec![rejected_write(workspace_id, &request, original_error)]
+        );
+    }
+}
+
+#[tokio::test]
+async fn public_plugin_command_keeps_command_permission_actor_checks_and_error_order() {
+    for (command, permission) in ORDINARY_CREDIT_COMMANDS {
+        for case in 0..5 {
+            let audit_error = (case == 2).then_some("audit_unavailable");
+            let repository = RecordingBillingRepository::failing(None, audit_error);
+            let service = CreditCommandService::new(repository.clone());
+            let workspace_id = Uuid::now_v7();
+            let mut request = plugin_request(command);
+            let mut input = plugin_input(workspace_id, &request);
+            // Neither an actor user nor a forged plugin identity can bypass the checks.
+            input.actor_user_id = Some(Uuid::now_v7());
+            input.actor_plugin_id = Some("forged-plugin".into());
+            let mut permissions = BTreeSet::from([permission.to_string()]);
+            let expected_error = match case {
+                0 => {
+                    request.command = "unknown".into();
+                    input.command = request.command.clone();
+                    permissions.clear();
+                    "credit_command_not_supported"
+                }
+                1 | 2 => {
+                    permissions.clear();
+                    if case == 2 {
+                        "audit_unavailable"
+                    } else {
+                        "credit_command_permission_denied"
+                    }
+                }
+                3 => "plugin_credit_actor_invalid",
+                4 => {
+                    input.actor_user_id = None;
+                    let transaction = service
+                        .execute_plugin_command(CREDIT_PLUGIN, &permissions, input)
+                        .await
+                        .unwrap();
+                    assert_eq!(transaction.actor_plugin_id.as_deref(), Some(CREDIT_PLUGIN));
+                    assert_eq!(
+                        repository.writes(),
+                        vec![BillingWrite::Execute(Box::new(
+                            RecordedCreditCommand::from(&plugin_input(workspace_id, &request))
+                        ))]
+                    );
+                    continue;
+                }
+                _ => unreachable!(),
+            };
+            let error = service
+                .execute_plugin_command(CREDIT_PLUGIN, &permissions, input)
+                .await
+                .unwrap_err();
+            assert_eq!(error.to_string(), expected_error);
+            let expected_writes = if matches!(case, 1 | 2) {
+                vec![rejected_write(
+                    workspace_id,
+                    &request,
+                    "credit_command_permission_denied",
+                )]
+            } else {
+                vec![]
+            };
+            assert_eq!(repository.writes(), expected_writes);
+        }
+    }
 }
 
 #[test]

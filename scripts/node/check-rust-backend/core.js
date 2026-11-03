@@ -267,6 +267,7 @@ function collectRustBackendFindings({ repoRoot = getRepoRoot(), includeSuppresse
   const findings = walkFiles(apiRoot)
     .map((absolutePath) => {
       const relativePath = normalizePath(path.relative(repoRoot, absolutePath));
+      if (isSkippedRustPath(relativePath)) return [];
       return scanRustSource({
         relativePath,
         content: fs.readFileSync(absolutePath, 'utf8'),

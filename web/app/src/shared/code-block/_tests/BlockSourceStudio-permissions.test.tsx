@@ -74,7 +74,8 @@ describe('BlockSourceStudio permissions', () => {
       const run = screen.getByRole('button', {
         name: new RegExp(`^${i18nText('frontstage', 'auto.run').split('').join('\\s*')}$`)
       });
-      expect(run).toHaveProperty('disabled', !canRun);
+      if (canRun) expect(run).toBeEnabled();
+      else expect(run).toBeDisabled();
       fireEvent.click(run);
       expect(onRun).toHaveBeenCalledTimes(canRun ? 1 : 0);
       expect(onChange).not.toHaveBeenCalled();

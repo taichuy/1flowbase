@@ -12,6 +12,8 @@
 - 定向 Cargo 命令必须有非零实际通过用例；编译、ignored 和空 filter 不等于行为通过。真实 managed worker 由 CI 先构建，再向行为测试注入路径。
 - `state-protocols --skip-live-acp` 不验证真实外部 ACP 服务；静态边界、单元测试与 component 收据也不证明所有页面视觉或生产运行态已经验收。报告分别列明证据范围。
 
+业务不变量驱动的精简案例及复杂度模型见[业务与门禁精简](lean-source-and-gates.md)。
+
 ## 门禁执行与结果复用
 
 React Doctor 的 source/rule 审阅仍逐项绑定源码哈希、理由与全部契约证据。同一 owner 分组可用 `evidenceSets` 保存重复的完整证据数组，记录通过整数 `evidenceSet` 引用；私有加载器还原原有完整有序值，验收消费者只读共享证据数组，避免重复复制。证据变更仍使所有引用它的审阅失效；缺失、越界或与直接 `evidence` 并存的引用拒绝验收。完整诊断库存、工具版本和禁止 suppression 的规则不变。

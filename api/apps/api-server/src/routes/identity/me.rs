@@ -82,17 +82,12 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
         .route(
             "/me",
-            console_get(get_me, Authenticated).patch(
-                patch_me,
-                ConsoleOperation("patch_me".to_owned()),
-            ),
+            console_get(get_me, Authenticated)
+                .patch(patch_me, ConsoleOperation("patch_me".to_owned())),
         )
         .route(
             "/me/meta",
-            console_patch(
-                patch_me_meta,
-                ConsoleOperation("patch_me_meta".to_owned()),
-            ),
+            console_patch(patch_me_meta, ConsoleOperation("patch_me_meta".to_owned())),
         )
         .route(
             "/me/actions/change-password",

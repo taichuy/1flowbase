@@ -411,7 +411,8 @@ test.each([
   requestLogsApi.fetchSettingsModelProviderRequestLogs.mockResolvedValue({ total_count: 0, page: 1, page_size: 20, items: [] });
   renderPanel([...permissions]);
   await waitFor(() => expect(requestLogsApi.fetchSettingsModelProviderRequestLogs).toHaveBeenCalled());
-  expect(screen.getByRole('button', { name: /清空/ })).toHaveProperty('disabled', !canClear);
+  if (canClear) expect(screen.getByRole('button', { name: /清空/ })).toBeEnabled();
+  else expect(screen.getByRole('button', { name: /清空/ })).toBeDisabled();
   expect(requestLogsApi.clearSettingsModelProviderRequestLogsBatch).not.toHaveBeenCalled();
   expect(requestLogsApi.deleteSettingsModelProviderRequestLogs).not.toHaveBeenCalled();
 });

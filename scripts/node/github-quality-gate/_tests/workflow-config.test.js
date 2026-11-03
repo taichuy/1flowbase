@@ -149,7 +149,8 @@ test("root_1998_pg_shards_prepare_locked_metadata_before_offline_dependency_test
     path.join(repoRoot, "api/crates/control-plane-postgres-tests/tests/dependency_boundaries.rs"),
     "utf8",
   );
-  assert.match(dependencyTest, /"metadata",\s*"--locked",\s*"--offline"/u);
+  assert.match(dependencyTest, /command\.arg\("metadata"\)/u);
+  assert.match(dependencyTest, /\.args\(\[\s*"--locked",\s*"--offline",\s*"--format-version",\s*"1",\s*"--manifest-path"/u);
 });
 
 function readGitHubAutomationDocs() {
