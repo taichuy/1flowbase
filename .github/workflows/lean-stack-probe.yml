@@ -55,7 +55,7 @@ jobs:
             rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
             rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-
       - uses: ./.github/actions/build-sdk-worker-fixtures
-      - name: Execute actual failing routes with unchanged coverage profile and 2MiB route harness
+      - name: Execute complete semantic receipt assertion regression
         shell: bash
         run: |
           set -euo pipefail
@@ -63,73 +63,9 @@ jobs:
           cd api
           eval "$(cargo llvm-cov show-env --sh)"
           export CARGO_PROFILE_TEST_DEBUG=0
-          export RUST_MIN_STACK=8388608
-          cargo nextest list --package api-server --message-format json > ../tmp/test-governance/stack-probe/inventory.json
-          cargo nextest run --package api-server --test-threads 4 --no-fail-fast --no-tests=fail \
-            -E 'test(_tests::application_public_api::compat_routes::auth::) | test(_tests::application_public_api::compat_routes::openai::openai_chat_) | test(_tests::application_public_api::compat_routes::openai::chat_route_captures_) | test(_tests::application_public_api::compat_routes::streaming::anthropic_blocking_) | test(_tests::application_public_api::compat_routes::compact::callback_compaction::) | test(_tests::ui_management_routes::template_creation_uses_backend_code_block_default)' \
+          cargo nextest run --package control-plane --lib --no-tests=fail \
+            -E 'test(semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modified_inputs)' \
             2>&1 | tee ../tmp/test-governance/stack-probe/nextest.log
-      - name: Capture first SIGSEGV from the original instrumented route binary
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          evidence_dir="$GITHUB_WORKSPACE/tmp/test-governance/stack-probe"
-          mkdir -p "$evidence_dir"
-          sudo apt-get update > "$evidence_dir/debugger-install.log" 2>&1
-          sudo apt-get install --yes --no-install-recommends gdb >> "$evidence_dir/debugger-install.log" 2>&1
-          git rev-parse HEAD > "$evidence_dir/candidate-sha.txt"
-          rustc -Vv > "$evidence_dir/rustc-version.txt"
-          gdb --version > "$evidence_dir/gdb-version.txt"
-          python3 - <<'PY'
-          import json, os
-          from pathlib import Path
-          root = Path(os.environ['GITHUB_WORKSPACE'])
-          evidence = root / 'tmp/test-governance/stack-probe'
-          inventory = json.loads((evidence / 'inventory.json').read_text())
-          test = '_tests::application_public_api::compat_routes::auth::compatible_anthropic_route_records_application_api_key_use'
-          matches = [suite for suite in inventory['rust-suites'].values() if test in suite.get('testcases', {})]
-          if len(matches) != 1:
-              raise SystemExit('Expected exactly one binary containing exact failing test; got ' + str(len(matches)))
-          # Actual nextest inventory from run 41674167127 has flat suite fields.
-          # Preserve remote absolute strings; do not resolve cloud paths offline.
-          binary = Path(matches[0]['binary-path'])
-          test_cwd = Path(matches[0]['cwd'])
-          if not binary.is_absolute() or not test_cwd.is_absolute():
-              raise SystemExit('Expected absolute nextest binary-path and cwd')
-          (evidence / 'test-binary.txt').write_text(str(binary) + '\n')
-          (evidence / 'test-cwd.txt').write_text(str(test_cwd) + '\n')
-          PY
-          test_binary="$(cat "$evidence_dir/test-binary.txt")"
-          test -x "$test_binary"
-          test -d "$(cat "$evidence_dir/test-cwd.txt")"
-          sha256sum "$test_binary" > "$evidence_dir/test-binary-before.sha256"
-          cd api
-          # Keep the same llvm-cov environment and nextest's per-suite working directory.
-          eval "$(cargo llvm-cov show-env --sh)"
-          export CARGO_PROFILE_TEST_DEBUG=0
-          export RUST_MIN_STACK=8388608
-          cd "$(cat "$evidence_dir/test-cwd.txt")"
-          for test_name in \
-            _tests::application_public_api::compat_routes::auth::compatible_anthropic_route_records_application_api_key_use \
-            _tests::application_public_api::compat_routes::openai::openai_chat_completions_accepts_bearer_and_preserves_model
-          do
-            log_name="${test_name##*::}"
-            timeout --signal=TERM --kill-after=15s 180s \
-              gdb --quiet --batch -x "$GITHUB_WORKSPACE/.github/lean-selection-boundary.gdb" \
-              --args "$test_binary" --exact "$test_name" --nocapture --test-threads=1 \
-              > "$evidence_dir/$log_name.first-fault.log" 2>&1 || true
-          done
-          sha256sum "$test_binary" > "$evidence_dir/test-binary-after.sha256"
-          cmp "$evidence_dir/test-binary-before.sha256" "$evidence_dir/test-binary-after.sha256"
-          cp "$GITHUB_WORKSPACE/.github/lean-first-fault.gdb" "$evidence_dir/first-fault.gdb"
-      - uses: actions/cache/save@v5
-        if: ${{ !cancelled() }}
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
-          key: lean-route-probe-${{ runner.os }}-${{ github.sha }}
       - uses: actions/upload-artifact@v6
         if: always()
         with:
