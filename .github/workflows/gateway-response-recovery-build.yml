@@ -1,0 +1,57 @@
+name: Gateway response recovery candidate build
+
+on:
+  push:
+    branches: [codex/gateway-response-recovery-ci-20261103]
+    paths: ['.github/workflows/gateway-response-recovery-build.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gateway-response-recovery-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: gateway-target-handoff
+          cache-on-failure: true
+          workspaces: api -> target
+      - name: Verify frozen application source
+        run: |
+          set -euo pipefail
+          evidence=tmp/test-governance/gateway-response-recovery-20261103/ci
+          mkdir -p "$evidence"
+          git rev-parse HEAD > "$evidence/source-sha.txt"
+          git rev-parse HEAD:api > "$evidence/api-tree.txt"
+          test "$(cat "$evidence/api-tree.txt")" = bd7909bbdd0c2f06f2927b42297e161603977e5b
+          rustc -vV > "$evidence/rustc.txt"
+          cat /proc/meminfo > "$evidence/runner-memory.txt"
+          nproc > "$evidence/runner-cpus.txt"
+      - name: Build the complete candidate API
+        run: |
+          set -euo pipefail
+          evidence=tmp/test-governance/gateway-response-recovery-20261103/ci
+          /usr/bin/time -v -o "$evidence/build-resources.txt" cargo --config profile.dev.package.api-server.codegen-units=256 --config profile.dev.package.api-server.debug=0 build --locked --manifest-path api/Cargo.toml -j 2 -p api-server --bin api-server --features tikv-jemallocator/stats > "$evidence/build.log" 2>&1 || { tail -c 6000 "$evidence/build.log"; exit 1; }
+          cp api/target/debug/api-server "$evidence/api-server-candidate"
+          sha256sum "$evidence/api-server-candidate" > "$evidence/binary.sha256"
+          stat -c '%s' "$evidence/api-server-candidate" > "$evidence/binary-bytes.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gateway-response-recovery-${{ github.sha }}
+          path: tmp/test-governance/gateway-response-recovery-20261103/ci
+          retention-days: 5
