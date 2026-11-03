@@ -621,6 +621,30 @@ impl ProviderTransportPayload {
         &self.wire_body
     }
 
+    /// Whether this owned Responses snapshot can be resent without external conversation state.
+    /// This does not grant semantic reconstruction or configured retry permission.
+    pub fn permits_native_exact_transport_replay(&self) -> bool {
+        if self.protocol != ProviderTransportProtocol::OpenAiResponses {
+            return false;
+        }
+        let Some(body) = self.wire_body.as_object() else {
+            return false;
+        };
+        if ["previous_response_id", "conversation"]
+            .iter()
+            .any(|key| body.get(*key).is_some_and(|value| !value.is_null()))
+        {
+            return false;
+        }
+        match body.get("input") {
+            Some(Value::String(_)) => true,
+            Some(Value::Array(items)) => !items
+                .iter()
+                .any(|item| item.get("type").and_then(Value::as_str) == Some("item_reference")),
+            _ => false,
+        }
+    }
+
     pub fn into_wire_body(self) -> Value {
         Arc::try_unwrap(self.wire_body).unwrap_or_else(|shared| (*shared).clone())
     }
