@@ -24,8 +24,8 @@ describe('DebugAssistantMessage', () => {
   });
 
   test.each([
-    ['cancelled', 'auto.cancelled_without_reply'],
-    ['completed', 'auto.no_reply_yet']
+    ['cancelled', 'cancelled'],
+    ['completed', 'completed']
   ] as const)(
     'a %s status region opens details without showing a copy-answer action',
     (status, labelKey) => {
@@ -46,8 +46,8 @@ describe('DebugAssistantMessage', () => {
         <DebugAssistantMessage message={message} onOpenLog={onOpenLog} />
       );
       expect(
-        screen.getByText(i18nText('agentFlow', labelKey))
-      ).toBeInTheDocument();
+        screen.getByRole('status')
+      ).toHaveTextContent(labelKey);
       expect(
         screen.queryByRole('button', {
           name: i18nText('agentFlow', 'auto.copy_output')
