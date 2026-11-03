@@ -1,0 +1,74 @@
+name: lean stack regression probe
+on:
+  push:
+    branches: [codex/lean-stack-probe-20261103]
+permissions:
+  contents: read
+jobs:
+  actual-instrumented-api-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: 1flowbase
+        ports: [5432:5432]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      API_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/1flowbase
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/1flowbase
+      API_AUTH_PUBLIC_ORIGIN: https://auth-fixture.example
+      CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      RUST_MIN_STACK: '8388608'
+      CARGO_NET_OFFLINE: 'true'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm --dir web install --frozen-lockfile
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
+      - uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+          key: rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
+          restore-keys: |
+            rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
+            rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-
+      - uses: ./.github/actions/build-sdk-worker-fixtures
+      - name: Execute actual failing routes with unchanged coverage profile and 2MiB route harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/test-governance/stack-probe
+          cd api
+          eval "$(cargo llvm-cov show-env --sh)"
+          export CARGO_PROFILE_TEST_DEBUG=0
+          export RUST_MIN_STACK=8388608
+          cargo clean --package api-server
+          cargo nextest run --package api-server --test-threads 4 --no-fail-fast --no-tests=fail \
+            -E 'test(_tests::application_public_api::compat_routes::auth::) | test(_tests::application_public_api::compat_routes::openai::openai_chat_) | test(_tests::application_public_api::compat_routes::openai::chat_route_captures_) | test(_tests::application_public_api::compat_routes::streaming::anthropic_blocking_) | test(_tests::application_public_api::compat_routes::compact::callback_compaction::) | test(_tests::ui_management_routes::template_creation_uses_backend_code_block_default)' \
+            2>&1 | tee ../tmp/test-governance/stack-probe/nextest.log
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: lean-stack-probe
+          path: tmp/test-governance/stack-probe
