@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const { createHash } = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
+const { createRequire } = require('node:module');
 
 const {
   collectRustBackendFindings,
@@ -176,6 +177,127 @@ test('collectRustBackendFindings skips Rust files under test directories and tes
 
   assert.equal(findings.length, 1);
   assert.equal(findings[0].file, 'api/crates/domain/src/order.rs');
+});
+
+test('collection skips reads while preserving the legacy ordered findings and source-bound reviews', (t) => {
+  // Reconstruct only the pre-G1 read-before-scan pipeline. Keep the real scanner,
+  // traversal and baseline validation so the oracle compares complete findings.
+  const corePath = require.resolve('../core.js');
+  const coreSource = fs.readFileSync(corePath, 'utf8');
+  const earlySkip = '      if (isSkippedRustPath(relativePath)) return [];\n';
+  assert.equal(coreSource.split(earlySkip).length, 2);
+  const legacyModule = { exports: {} };
+  new Function('require', 'module', '__dirname', coreSource.replace(earlySkip, ''))(
+    createRequire(corePath), legacyModule, path.dirname(corePath)
+  );
+  const legacyCollect = legacyModule.exports.collectRustBackendFindings;
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'rust-gate-read-equivalence-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const skipped = [
+    'api/crates/domain/src/_tests/fixture.rs',
+    'api/crates/domain/tests/fixture.rs',
+    'api/crates/domain/benches/fixture.rs',
+    'api/crates/domain/src/tests.rs',
+    'api/crates/domain/src/_tests.rs',
+    'api/vendor/dependency/src/lib.rs',
+    'api/plugins/installed/plugin/src/lib.rs',
+  ];
+  const production = {
+    'api/crates/domain/src/a_reviewed.rs': 'pub fn reviewed() { Some(1).unwrap(); }\n',
+    'api/crates/domain/src/b_errors.rs': [
+      'pub fn broken() { Some(1).unwrap(); panic!("bad"); }',
+      'pub async fn blocking() { std::fs::read("file"); }',
+      '#[derive(Serialize)]',
+      'pub struct Response {',
+      '    pub token_hash: String,',
+      '}',
+    ].join('\n'),
+    'api/crates/domain/src/c_clean.rs': 'pub fn caller() { reviewed(); }\n',
+    // Similar names are production paths and must still be read and checked.
+    'api/crates/domain/src/tests_support.rs': 'pub fn helper() { todo!(); }\n',
+    'api/vendor_local/src/lib.rs': 'pub fn local() { dbg!(1); }\n',
+    'api/plugins/installed_local/src/lib.rs': 'pub fn local() { unimplemented!(); }\n',
+  };
+  for (const [file, content] of [
+    ...skipped.map((file) => [file, 'fn ignored() { Some(1).unwrap(); }\n']),
+    ...Object.entries(production),
+  ]) {
+    const absolute = path.join(repoRoot, file);
+    fs.mkdirSync(path.dirname(absolute), { recursive: true });
+    fs.writeFileSync(absolute, content);
+  }
+  const baselinePath = path.join(repoRoot, 'scripts/node/check-rust-backend/baseline.json');
+  fs.mkdirSync(path.dirname(baselinePath), { recursive: true });
+  const sourceFile = 'api/crates/domain/src/a_reviewed.rs';
+  const evidenceFile = 'api/crates/domain/src/c_clean.rs';
+  const sha = (content) => createHash('sha256').update(content).digest('hex');
+  const review = {
+    id: 'read-equivalence', rule: 'no-production-escape', file: sourceFile,
+    snippet: production[sourceFile].trim(), reason: 'fixed Some literal in fixture',
+    source_sha256: sha(production[sourceFile]),
+    evidence: [{ file: evidenceFile, sha256: sha(production[evidenceFile]), reason: 'fixture caller' }],
+  };
+  const originalRead = fs.readFileSync;
+  let reads = [];
+  t.mock.method(fs, 'readFileSync', function (file, ...args) {
+    if (typeof file === 'string' && file.startsWith(`${repoRoot}${path.sep}`)) {
+      reads.push([path.relative(repoRoot, file).split(path.sep).join('/'), args[0]]);
+    }
+    return originalRead.call(this, file, ...args);
+  });
+  for (const state of ['absent', 'valid', 'source-changed', 'evidence-changed', 'malformed']) {
+    if (state !== 'absent') {
+      const entry = structuredClone(review);
+      if (state === 'source-changed') entry.source_sha256 = '0'.repeat(64);
+      if (state === 'evidence-changed') entry.evidence[0].sha256 = '0'.repeat(64);
+      fs.writeFileSync(baselinePath, state === 'malformed' ? '{' : JSON.stringify({
+        version: 'rust-backend-reviews/v1', allowedFindings: [entry],
+      }));
+    }
+    for (const includeSuppressed of [false, true]) {
+      reads = [];
+      const before = legacyCollect({ repoRoot, includeSuppressed });
+      const beforeReads = [...reads];
+      reads = [];
+      const after = collectRustBackendFindings({ repoRoot, includeSuppressed });
+      assert.deepEqual(after, before, `${state}: complete findings, including order and severity`);
+      assert.equal(beforeReads.length - reads.length, skipped.length, state);
+      for (const file of skipped) {
+        assert.equal(beforeReads.filter(([name]) => name === file).length, 1, file);
+        assert.equal(reads.filter(([name]) => name === file).length, 0, file);
+        assert.deepEqual(scanRustSource({ relativePath: file, content: production[sourceFile] }), []);
+      }
+      for (const file of Object.keys(production)) {
+        assert.equal(reads.filter(([name, encoding]) => name === file && encoding === 'utf8').length, 1, file);
+      }
+      assert.ok(after.some((item) => item.file.endsWith('/b_errors.rs')
+        && item.rule === 'no-production-escape' && item.severity === 'error' && !item.suppressed));
+      assert.ok(after.some((item) => item.rule === 'blocking-in-async-context' && item.severity === 'warning'));
+      assert.ok(after.some((item) => item.rule === 'no-sensitive-serialize' && item.severity === 'error'));
+      if (state === 'valid' && includeSuppressed) {
+        assert.equal(after.find((item) => item.file === sourceFile).suppressed, true);
+      }
+      if (['source-changed', 'evidence-changed', 'malformed'].includes(state)) {
+        assert.ok(after.some((item) => item.rule === 'invalid-baseline-review' && !item.suppressed));
+        assert.equal(after.find((item) => item.file === sourceFile).suppressed, false);
+      }
+    }
+  }
+});
+
+test('collection propagates production read failures instead of silently dropping files', (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'rust-gate-read-failure-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const file = path.join(repoRoot, 'api/crates/domain/src/broken.rs');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, 'pub fn broken() { Some(1).unwrap(); }\n');
+  const originalRead = fs.readFileSync;
+  const failure = new Error('controlled production read failure');
+  t.mock.method(fs, 'readFileSync', function (candidate, ...args) {
+    if (candidate === file) throw failure;
+    return originalRead.call(this, candidate, ...args);
+  });
+  assert.throws(() => collectRustBackendFindings({ repoRoot }), (error) => error === failure);
 });
 
 test('main writes a report and fails when error findings exist', async () => {
