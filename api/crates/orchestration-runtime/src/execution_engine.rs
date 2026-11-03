@@ -274,6 +274,13 @@ pub trait ProviderInvoker: Send + Sync {
         )
     }
 
+    /// Trusted host-only authorization for the exact selected native snapshot. Implementations
+    /// must own the sealed body and verify its binding; Provider/client metadata is insufficient.
+    /// This capability is used only by automatic transport recovery, never configured retries.
+    fn permits_selected_native_exact_replay(&self, _input: &ProviderInvocationInput) -> bool {
+        false
+    }
+
     async fn invoke_resolved_llm(
         &self,
         runtime: &CompiledLlmRuntime,
