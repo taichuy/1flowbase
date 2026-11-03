@@ -164,6 +164,8 @@ describe('PageCanvas Native Signal context', () => {
     const utils = render(view('zh_Hans'));
     const slot = screen.getByTestId('block-slot-producer');
     expect(within(slot).getByText('账号')).toBeInTheDocument();
+    const root = await nativeRoot('producer');
+    await within(root.shadow).findByText('Content');
     utils.rerender(view('en_US'));
     expect(within(slot).getByText('Account')).toBeInTheDocument();
     expect(blocks[0].title).toBe('Account');

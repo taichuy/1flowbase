@@ -62,7 +62,7 @@ function renderEditor() {
     return <><Form form={current.groupForm} /><Form form={current.bindingForm} /></>;
   }
   render(<App><QueryClientProvider client={client}><Harness /></QueryClientProvider></App>);
-  return { get editor() { return current; } };
+  return { client, get editor() { return current; } };
 }
 
 function dropInfo(dropToGap: boolean): McpDirectoryTreeDropInfo {
@@ -82,8 +82,10 @@ beforeEach(() => {
   api.updateSettingsMcpToolBinding.mockResolvedValue({ ...draggedBinding, group_path: '/target', sort_order: 30 });
 });
 afterEach(() => {
-  clients.splice(0).forEach((client) => client.clear());
-  resetAuthStore();
+  act(() => {
+    clients.splice(0).forEach((client) => client.clear());
+    resetAuthStore();
+  });
 });
 
 describe('MCP binding drag update identity', () => {
@@ -94,7 +96,10 @@ describe('MCP binding drag update identity', () => {
       view.editor.setEditingBinding(selectedBinding);
       view.editor.bindingForm.setFieldsValue({ instance_id: 'ops', group_path: '/target', tool_id: 'selected_tool', visible: false, sort_order: 99 });
     });
-    act(() => view.editor.handleTreeDrop(dropInfo(dropToGap)));
+    await act(async () => {
+      view.editor.handleTreeDrop(dropInfo(dropToGap));
+      await waitFor(() => expect(view.client.isMutating()).toBe(0));
+    });
     await waitFor(() => expect(api.updateSettingsMcpToolBinding).toHaveBeenCalledWith(
       draggedBinding.id,
       { group_path: '/target', tool_id: 'dragged_tool', display_alias: 'Dragged alias', visible: true, sort_order: 30 },
@@ -109,7 +114,10 @@ describe('MCP binding drag update identity', () => {
   test('moving a binding without an editor draft still uses update rather than create', async () => {
     grant(['mcp.tool_bindings.update']);
     const view = renderEditor();
-    act(() => view.editor.handleTreeDrop(dropInfo(false)));
+    await act(async () => {
+      view.editor.handleTreeDrop(dropInfo(false));
+      await waitFor(() => expect(view.client.isMutating()).toBe(0));
+    });
     await waitFor(() => expect(api.updateSettingsMcpToolBinding).toHaveBeenCalledTimes(1));
     expect(api.updateSettingsMcpToolBinding.mock.calls[0]?.[0]).toBe(draggedBinding.id);
     expect(api.createSettingsMcpToolBinding).not.toHaveBeenCalled();

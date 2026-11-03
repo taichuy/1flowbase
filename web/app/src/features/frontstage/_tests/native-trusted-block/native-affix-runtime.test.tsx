@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react';
 import type { ComponentType } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
@@ -52,13 +52,11 @@ describe('native block Affix runtime adapter', () => {
       domRect({ top: 0, left: 0, width: 300, height: 80 });
 
     fixture.scrollOwner.scrollTop = 0;
-    fireEvent.scroll(fixture.scrollOwner);
-    await nextAnimationFrame();
+    await scrollAndSettle(fixture.scrollOwner);
     expect(layer).toHaveAttribute('data-flowbase-native-affix-state', 'flow');
 
     fixture.scrollOwner.scrollTop = 260;
-    fireEvent.scroll(fixture.scrollOwner);
-    await nextAnimationFrame();
+    await scrollAndSettle(fixture.scrollOwner);
     expect(layer).toHaveAttribute('data-flowbase-native-affix-state', 'pinned');
     expect(mount).toHaveStyle({ position: 'sticky', top: '24px' });
     expect(layer).toHaveStyle({
@@ -70,13 +68,11 @@ describe('native block Affix runtime adapter', () => {
     expect(onChange).toHaveBeenLastCalledWith(true);
 
     fixture.scrollOwner.scrollTop = 262;
-    fireEvent.scroll(fixture.scrollOwner);
-    await nextAnimationFrame();
+    await scrollAndSettle(fixture.scrollOwner);
     expect(onChange).toHaveBeenCalledTimes(1);
 
     fixture.scrollOwner.scrollTop = 1_150;
-    fireEvent.scroll(fixture.scrollOwner);
-    await nextAnimationFrame();
+    await scrollAndSettle(fixture.scrollOwner);
     expect(layer).toHaveAttribute(
       'data-flowbase-native-affix-state',
       'boundary'
@@ -258,8 +254,7 @@ describe('native block Affix runtime adapter', () => {
     mount.getBoundingClientRect = () =>
       domRect({ top: 0, left: 0, width: 160, height: 32 });
 
-    fireEvent.scroll(scrollOwner);
-    await nextAnimationFrame();
+    await scrollAndSettle(scrollOwner);
 
     expect(layer).toHaveAttribute('data-flowbase-native-affix-state', 'pinned');
     expect(mount).toHaveStyle({ position: 'absolute', top: '232px', bottom: '' });
@@ -318,10 +313,13 @@ async function findAffixLayer(
   });
 }
 
-async function nextAnimationFrame(): Promise<void> {
-  await new Promise<void>((resolve) =>
-    window.requestAnimationFrame(() => resolve())
-  );
+async function scrollAndSettle(scrollOwner: HTMLElement): Promise<void> {
+  await act(async () => {
+    fireEvent.scroll(scrollOwner);
+    await new Promise<void>((resolve) =>
+      window.requestAnimationFrame(() => resolve())
+    );
+  });
 }
 
 function createPlan(blockId: string): NativeTrustedBlockPreparePlan {
