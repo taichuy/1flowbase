@@ -199,7 +199,18 @@ pub async fn create_message(
     Ok(client_observer::observe_response(response, capture))
 }
 
-async fn dispatch_message(
+fn dispatch_message(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    uri: Uri,
+    body: Bytes,
+    recorder: ClientTrajectoryRecorder,
+) -> impl std::future::Future<Output = Result<Response, AnthropicRouteError>> + Send {
+    // Keep the large execution future outside the observer's poll frame.
+    Box::pin(execute_message(state, headers, uri, body, recorder))
+}
+
+async fn execute_message(
     state: Arc<ApiState>,
     headers: HeaderMap,
     uri: Uri,

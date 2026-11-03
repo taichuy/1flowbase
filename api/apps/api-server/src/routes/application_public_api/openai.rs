@@ -174,8 +174,7 @@ fn dispatch_chat_completion(
     uri: Uri,
     body: Bytes,
     recorder: ClientTrajectoryRecorder,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Response, OpenAiRouteError>> + Send>>
-{
+) -> impl std::future::Future<Output = Result<Response, OpenAiRouteError>> + Send {
     // Construct the execution future outside the observer's poll frame, as in Responses.
     Box::pin(execute_chat_completion(state, headers, uri, body, recorder))
 }
