@@ -391,3 +391,411 @@ async fn real_engine_recovers_one_of_four_llms_and_inherits_budget_without_recon
         "invalid parallel scope rejected before inference"
     );
 }
+
+struct ExactReplayInference {
+    native: bool,
+    authorize: bool,
+    typed_receipt: bool,
+    error_return: bool,
+    resolutions: std::sync::atomic::AtomicUsize,
+    pipeline_calls: std::sync::atomic::AtomicUsize,
+    pipeline_counts_at_send: std::sync::Mutex<Vec<usize>>,
+    calls: std::sync::Mutex<Vec<(CompiledLlmRuntime, usize, ProviderInvocationInput)>>,
+}
+
+#[async_trait::async_trait]
+impl ProviderInvoker for ExactReplayInference {
+    async fn pipeline_provider_input(
+        &self,
+        mut input: ProviderInvocationInput,
+    ) -> std::result::Result<
+        crate::provider_input_pipeline::ProviderInputPipelineOutput,
+        crate::provider_input_pipeline::ProviderInputPipelineError,
+    > {
+        let generation = self
+            .pipeline_calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        // A legal host pipeline can depend on live state. These extensions deliberately change
+        // on every build, including the routing probe, so replaying by rebuilding cannot pass.
+        input.client_protocol_envelope = Some(
+            serde_json::from_value(json!({
+                "source_protocol":"openai_responses",
+                "body":{"future_extension":{"generation":generation}},
+                "headers":{"conversation":[format!("header-{generation}")]},
+                "query":{"conversation":[format!("query-{generation}")]}
+            }))
+            .unwrap(),
+        );
+        input.request_context.end_user_reference = Some(format!("end-user-{generation}"));
+        input
+            .model_parameters
+            .insert("fixture_control".into(), json!(generation));
+        input
+            .run_context
+            .insert("fixture_business_snapshot".into(), json!(generation));
+        input.messages.push(ProviderMessage {
+            role: ProviderMessageRole::User,
+            content: format!("pipeline context {generation}"),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: None,
+        });
+        Ok(crate::provider_input_pipeline::ProviderInputPipelineOutput::unchanged(input))
+    }
+
+    async fn resolve_main_llm_routing(
+        &self,
+        runtime: &CompiledLlmRuntime,
+        _node_id: &str,
+    ) -> Result<Option<ResolvedMainLlmRouting>> {
+        let index = self
+            .resolutions
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let mut selected = runtime.clone();
+        selected.provider_instance_id = format!("provider-selection-{index}");
+        selected.model = format!("model-selection-{index}");
+        Ok(Some(ResolvedMainLlmRouting {
+            candidates: vec![ResolvedMainLlmRouteCandidate {
+                runtime: selected,
+                route: ResolvedProviderRoute::new(BTreeSet::new(), index),
+            }],
+            distribution_rule: crate::compiled_plan::LlmDistributionRule::None,
+            distribution_key: None,
+        }))
+    }
+
+    fn prepare_selected_llm_input(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _route: &ResolvedProviderRoute,
+        input: &mut ProviderInvocationInput,
+    ) -> Result<ai_native_recovery::RecoveryInputMode> {
+        if self.native {
+            input.native_transport = Some(
+                extension_contracts::provider_contract::ProviderNativeTransport {
+                    protocol: "openai_responses".into(),
+                    wire_body: json!({"input":[{"type":"reasoning","encrypted_content":"opaque"},
+                    {"role":"user","content":"frozen question"}]}),
+                    digest: "fixture-owned-native-digest".into(),
+                    size_bytes: 123,
+                },
+            );
+            Ok(ai_native_recovery::RecoveryInputMode::NativeOpaque)
+        } else {
+            Ok(ai_native_recovery::RecoveryInputMode::SemanticMapped)
+        }
+    }
+
+    fn permits_selected_native_exact_replay(&self, _input: &ProviderInvocationInput) -> bool {
+        // This fixture stands in for the trusted owner; real snapshot checks are exercised
+        // by control-plane's exact_native_replay_is_authorized_only_by_the_owned_matching_snapshot.
+        self.authorize
+    }
+
+    async fn invoke_resolved_llm(
+        &self,
+        runtime: &CompiledLlmRuntime,
+        route: ResolvedProviderRoute,
+        input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        use extension_contracts::provider_contract::{
+            CommitLevel, ProviderRecoveryDirective, ProviderRecoveryReceipt, RecoveryDisposition,
+            RecoveryReason, RecoveryTransport, SocketIncarnation,
+            PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY,
+        };
+        let directive: ProviderRecoveryDirective = serde_json::from_value(
+            input.run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY].clone(),
+        )?;
+        self.pipeline_counts_at_send.lock().unwrap().push(
+            self.pipeline_calls
+                .load(std::sync::atomic::Ordering::SeqCst),
+        );
+        let call_index = {
+            let mut calls = self.calls.lock().unwrap();
+            let index = calls.len();
+            calls.push((
+                runtime.clone(),
+                *route.invocation_pin::<usize>().unwrap(),
+                input,
+            ));
+            index
+        };
+        if call_index > 0 {
+            return Ok(ProviderInvocationOutput {
+                events: vec![
+                    ProviderStreamEvent::OutputItem {
+                        phase:
+                            extension_contracts::provider_contract::ProviderOutputItemPhase::Done,
+                        output_index: 0,
+                        item: json!({"type":"message","id":"msg_replayed","role":"assistant",
+                        "status":"completed","content":[{"type":"output_text","text":"recovered answer"}]}),
+                    },
+                    ProviderStreamEvent::Finish {
+                        reason: ProviderFinishReason::Stop,
+                    },
+                ],
+                result: ProviderInvocationResult {
+                    response_id: Some("resp_replayed".into()),
+                    final_content: Some("recovered answer".into()),
+                    finish_reason: Some(ProviderFinishReason::Stop),
+                    ..Default::default()
+                },
+                first_token_at: None,
+                time_to_first_token_ms: None,
+            });
+        }
+        let mut result = ProviderInvocationResult {
+            finish_reason: Some(ProviderFinishReason::Error),
+            provider_metadata: json!({}),
+            ..Default::default()
+        };
+        if self.typed_receipt {
+            result
+                .set_recovery_receipt(ProviderRecoveryReceipt {
+                    attempt: 0,
+                    transport: RecoveryTransport::AiNativeWebSocket,
+                    transport_epoch: directive.transport_epoch,
+                    socket_incarnation: Some(SocketIncarnation::new(1).unwrap()),
+                    commit_level: CommitLevel::LifecycleOnly,
+                    disposition: RecoveryDisposition::LogicalInvocationRetry,
+                    reason: RecoveryReason::TransportDisconnected,
+                })
+                .map_err(anyhow::Error::msg)?;
+        }
+        if self.error_return {
+            return Err(ExtensionContractError::runtime(
+                ProviderRuntimeError::normalize("invoke", "transport disconnected", None)
+                    .with_provider_details(result.provider_metadata),
+            )
+            .into());
+        }
+        Ok(ProviderInvocationOutput {
+            events: vec![ProviderStreamEvent::Finish {
+                reason: ProviderFinishReason::Error,
+            }],
+            result,
+            first_token_at: None,
+            time_to_first_token_ms: None,
+        })
+    }
+
+    async fn invoke_llm(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        panic!("engine must invoke the selected route")
+    }
+}
+
+async fn run_exact_replay_fixture(
+    native: bool,
+    authorize: bool,
+    typed_receipt: bool,
+    configured: bool,
+    error_return: bool,
+) -> ExactReplayInference {
+    let mut plan = executable_routed_plan();
+    let node = plan.nodes.get_mut("llm-b").unwrap();
+    node.config = json!({"retry_enabled": configured, "max_retries":1, "retry_interval_ms":0});
+    let invoker = ExactReplayInference {
+        native,
+        authorize,
+        typed_receipt,
+        error_return,
+        resolutions: std::sync::atomic::AtomicUsize::new(0),
+        pipeline_calls: std::sync::atomic::AtomicUsize::new(0),
+        pipeline_counts_at_send: std::sync::Mutex::new(Vec::new()),
+        calls: std::sync::Mutex::new(Vec::new()),
+    };
+    let pool = serde_json::from_value(json!({"start":{"query":"frozen question"}})).unwrap();
+    // This fixture invokes the provider round directly, after the outer engine's binding
+    // resolution/rendering boundary. Supply that boundary's output for semantic requests too.
+    let rendered_templates = serde_json::from_value(json!({"prompt_messages":[{
+        "id":"user-1", "role":"user", "content":"frozen question"
+    }]}))
+    .unwrap();
+    let execution = execute_llm_node_provider_round(
+        &plan,
+        &plan.nodes["llm-b"],
+        &Map::new(),
+        &rendered_templates,
+        &pool,
+        &ExecutionRuntimeContext::default(),
+        &invoker,
+    )
+    .await
+    .unwrap();
+    let should_recover = if native {
+        authorize && typed_receipt
+    } else {
+        configured || typed_receipt
+    };
+    assert_eq!(
+        execution.error_payload.is_none(), should_recover,
+        "native={native} authorize={authorize} typed={typed_receipt} configured={configured} error_return={error_return}; error={:?}; metrics={}; calls={}",
+        execution.error_payload, execution.metrics_payload, invoker.calls.lock().unwrap().len(),
+    );
+    if should_recover {
+        assert_eq!(execution.output_payload["text"], "recovered answer");
+    }
+    invoker
+}
+
+#[tokio::test]
+async fn engine_native_exact_transport_replay_reuses_selected_route_runtime_and_payload() {
+    use extension_contracts::provider_contract::{
+        ProviderRecoveryDirective, RecoveryPolicy, PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY,
+    };
+    let invoker = run_exact_replay_fixture(true, true, true, false, false).await;
+    let calls = invoker.calls.lock().unwrap();
+    assert_eq!(
+        calls.len(),
+        2,
+        "the owned native request must reach the automatic retry"
+    );
+    assert_eq!(
+        invoker
+            .resolutions
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "automatic retry cannot rerun account/provider distribution"
+    );
+    assert_eq!(
+        calls[0].0.provider_instance_id,
+        calls[1].0.provider_instance_id
+    );
+    assert_eq!(calls[0].0.model, calls[1].0.model);
+    assert_eq!(calls[0].1, calls[1].1, "same route invocation pin");
+    let native0 = calls[0].2.native_transport.as_ref().unwrap();
+    let native1 = calls[1].2.native_transport.as_ref().unwrap();
+    assert_eq!(native0.wire_body, native1.wire_body);
+    assert_eq!(native0.digest, native1.digest);
+    assert_eq!(native0.protocol, native1.protocol);
+    assert_eq!(native0.size_bytes, native1.size_bytes);
+    let directives = calls
+        .iter()
+        .map(|(_, _, input)| {
+            serde_json::from_value::<ProviderRecoveryDirective>(
+                input.run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY].clone(),
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert!(directives
+        .iter()
+        .all(|directive| matches!(directive.policy, RecoveryPolicy::NativeOpaque { .. })));
+    assert_ne!(directives[0].transport_epoch, directives[1].transport_epoch);
+    assert_eq!(
+        directives[0].policy.budget().absolute_deadline_unix_ms,
+        directives[1].policy.budget().absolute_deadline_unix_ms
+    );
+    let pipeline_counts = invoker.pipeline_counts_at_send.lock().unwrap();
+    assert!(
+        pipeline_counts[0] >= 2,
+        "routing probe and first real invocation both run the pipeline"
+    );
+    assert_eq!(
+        pipeline_counts[0], pipeline_counts[1],
+        "automatic send must not rerun the live pipeline"
+    );
+    let mut first = calls[0].2.clone();
+    let mut replay = calls[1].2.clone();
+    assert_ne!(
+        first.trace_context["provider_invocation_id"],
+        replay.trace_context["provider_invocation_id"]
+    );
+    assert_eq!(first.trace_context["provider_attempt_index"], "0");
+    assert_eq!(replay.trace_context["provider_attempt_index"], "1");
+    // Audit the complete input received at the provider boundary. Only these host-owned
+    // per-attempt accounting/recovery fields may change; envelope body/query/headers,
+    // canonical context, model controls and business run-context must remain identical.
+    for input in [&mut first, &mut replay] {
+        input.trace_context.remove("provider_invocation_id");
+        input.trace_context.remove("provider_attempt_index");
+        input
+            .run_context
+            .remove(PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY);
+    }
+    assert_eq!(first, replay);
+    let envelope = first.client_protocol_envelope.as_ref().unwrap();
+    assert!(envelope.body.contains_key("future_extension"));
+    assert!(envelope.headers.contains_key("conversation"));
+    assert!(envelope.query.contains_key("conversation"));
+}
+
+#[tokio::test]
+async fn engine_native_replay_capability_never_enables_configured_retry() {
+    let denied = run_exact_replay_fixture(true, false, true, true, false).await;
+    assert_eq!(
+        denied.calls.lock().unwrap().len(),
+        1,
+        "opaque mode without owner proof stays denied"
+    );
+    let unreported = run_exact_replay_fixture(true, true, false, true, false).await;
+    assert_eq!(
+        unreported.calls.lock().unwrap().len(),
+        1,
+        "missing typed receipt cannot fall into configured native retry"
+    );
+    let semantic = run_exact_replay_fixture(false, false, false, true, false).await;
+    assert_eq!(
+        semantic.calls.lock().unwrap().len(),
+        2,
+        "existing semantic configured retry remains available"
+    );
+    assert_eq!(
+        semantic
+            .resolutions
+            .load(std::sync::atomic::Ordering::SeqCst),
+        2,
+        "configured retry retains configured route selection policy"
+    );
+    assert!(
+        semantic.calls.lock().unwrap().iter().all(|(_, _, input)| {
+            input.messages.iter().any(|message| {
+                message.role == ProviderMessageRole::User && message.content == "frozen question"
+            })
+        }),
+        "both configured attempts must receive the resolved canonical prompt"
+    );
+    let counts = semantic.pipeline_counts_at_send.lock().unwrap();
+    assert!(
+        counts[1] > counts[0],
+        "configured retry must rebuild through the live pipeline"
+    );
+    let calls = semantic.calls.lock().unwrap();
+    assert_ne!(
+        calls[0].2.client_protocol_envelope,
+        calls[1].2.client_protocol_envelope
+    );
+    assert_ne!(
+        calls[0].2.run_context["fixture_business_snapshot"],
+        calls[1].2.run_context["fixture_business_snapshot"]
+    );
+}
+
+#[tokio::test]
+async fn engine_native_exact_replay_also_recovers_a_typed_invocation_error() {
+    let invoker = run_exact_replay_fixture(true, true, true, false, true).await;
+    let calls = invoker.calls.lock().unwrap();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(
+        invoker
+            .resolutions
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert_eq!(calls[0].1, calls[1].1);
+}
+
+#[test]
+fn provider_invoker_defaults_cannot_authorize_native_snapshot_replay() {
+    let mut input = ProviderInvocationInput::default();
+    input
+        .required_capabilities
+        .insert(ProviderInvocationCapability::ResponsesNativePassthrough);
+    assert!(!CapturingInference::default().permits_selected_native_exact_replay(&input));
+}
