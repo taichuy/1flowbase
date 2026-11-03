@@ -563,6 +563,26 @@ jobs:
             rust-quality-gate-backend-v2-${{ runner.os }}-${{ matrix.scope }}-${{ hashFiles('api/Cargo.lock') }}-
             rust-quality-gate-backend-v2-${{ runner.os }}-${{ matrix.scope }}-
             rust-quality-gate-backend-v2-${{ runner.os }}-
+      # The native_plugin_target_integration fixture invokes the real web Host
+      # compiler via TypeScript. Rust-only runners have no web/node_modules.
+      # Keep the existing compile + duplicate-import negative test intact.
+      - name: Provision existing pnpm for PostgreSQL integration shards
+        if: ${{ startsWith(matrix.scope, 'repo-backend-test-storage-postgres-') }}
+        uses: pnpm/action-setup@v5
+        with:
+          package_json_file: web/package.json
+      - name: Use existing locked Node toolchain for Studio compile fixture
+        if: ${{ startsWith(matrix.scope, 'repo-backend-test-storage-postgres-') }}
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install only existing Host compiler workspace dependencies
+        if: ${{ startsWith(matrix.scope, 'repo-backend-test-storage-postgres-') }}
+        run: >-
+          pnpm --dir web install --frozen-lockfile
+          --filter 1flowbase-web --filter '@1flowbase/page-runtime...'
       - name: Build API server worker fixtures
         if: ${{ startsWith(matrix.scope, 'repo-backend-test-api-server-') || matrix.scope == 'repo-backend-test-runtime-storage-fast' }}
         uses: ./.github/actions/build-sdk-worker-fixtures

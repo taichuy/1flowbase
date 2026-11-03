@@ -27,3 +27,10 @@
 2026-11-03 的合并前基线已有 Rust review evidence SHA 不匹配。逐文件核对发现 `projections.rs` 对比 `v0.6.1` 仅添加同步写入 DTO 的 `ui_registration` 字段，不改变 `load_plugin_settings_templates` 的阻塞路径、`spawn_blocking` 控制流或审查理由。因此更新原 review 证据 SHA，以继续保留 SHA 绑定与后续变更时的 fail closed。该修正不新增 review 条目，不更改原有规则或 suppress 范围。
 
 `sync-js-runtime` 是当前 workspace 中已有的无内部依赖 crate，改由 runtime-storage 的 check/Clippy 与 runtime-storage-fast 的直接包测试覆盖。既有 workspace inventory 负例仍必须能发现任何新出现的未归属 crate。Rust `cargo metadata` 源码检查改为验证分开的 `command.arg("metadata")` 和 `--locked`/`--offline` 选项，保留移除任一选项时的失败条件。
+
+## 2026-11-03：既有功能清单与 CI 运行前提回归
+
+- Console 权限投影的源真值是已编译 `ConsoleOperationRegistry`：继原 445 条固定清单之后，个人资料/偏好写入 3 条、通知状态写入 4 条、临时文件链接 1 条独立可授权操作使其成为 453 条。保持真实 `(method, normalized_route)` 的确定性排序与全量严格相等断言；不得通过回滚生产权限策略或者放宽断言收绿。
+- Core 文案注册表已包含“Personal account”及其描述，消费者固定清单从 86 条调整为 88 条；官方 seed 是固定外部版本，新增 8 项接口的 summary/description 尚未在 768 条消息键中发布，因此仅按具体 operation ID 使用已存在的 pending-official-release 路径，不修改 seed 字节。
+- PostgreSQL 插件组件测试使用真实 Host TSX 编译器。CI Rust-only runner 必须为存储集成分片提供既有 pnpm、Node 及锁文件规定的 TypeScript、page-runtime，不绕过 duplicate-import 负例或引入新包；源测试所需的审计 actor 必须在隔离 schema 中真实存在，外键约束不变。
+- 本地低成本复核：业务接口与字符串源码锚定、Rustfmt、Git diff 检查、真实 Host TSX 编译+重复 import 拒绝；Node gate 测试 84/84，`/usr/bin/time` 单进程 maxRSS 246176 KB。以上不代替 Rust 真实数据库执行或候选 SHA 的远程完整门禁。

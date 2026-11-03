@@ -127,6 +127,23 @@ async fn workspace_assets_and_reusable_records_fail_closed_on_assignment_disable
     let graph = Arc::new(assembly.compile_graph().unwrap());
     let resolver = FrontendContributionResolver::compile(Arc::clone(&graph)).unwrap();
     let (candidate, root) = candidate(workspace);
+    // Desired-state changes audit the acting user. Persist the fixture actor
+    // in this test's isolated schema instead of relying on a dangling UUID.
+    // A missing actor must remain a real database FK violation in production.
+    let account = format!(
+        "frontend-lifecycle-{}",
+        candidate.installation.created_by.simple()
+    );
+    sqlx::query(
+        "insert into users (id, account, email, password_hash, name, nickname, status) \
+         values ($1, $2, $3, 'hash', 'Fixture', 'Fixture', 'active')",
+    )
+    .bind(candidate.installation.created_by)
+    .bind(&account)
+    .bind(format!("{account}@example.test"))
+    .execute(store.pool())
+    .await
+    .unwrap();
     let input = install(&candidate);
     let installed = store.commit_plugin_installation(&input).await.unwrap();
     let digest = candidate.catalog_entry.code_modules[0].assets[0]
