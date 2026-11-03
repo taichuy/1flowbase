@@ -3,7 +3,7 @@ memory_type: project
 topic: taichuy-calendar-plugin
 summary: 日历插件迁移已在本地验收；后续修正明确组件注册与代码模板互斥，滚动交互归底座，插件0.1.5本地验收通过。源码推送、正式插件发布、云端部署须分别核验。
 created_at: 2026-11-01 09
-updated_at: 2026-11-01 15
+updated_at: 2026-11-03 23
 decision_policy: verify_before_decision
 scope: [runtime-extensions, frontstage, ui-management]
 ---
@@ -44,3 +44,9 @@ QA8有限候选PASS已关闭，Root主环境smoke9checks通过：实际3100双�
 
 ## 2026-11-01 15 Follow-up decision (supersedes registration ambiguity above)
 用户明确数据问题先归插件注册规范，列表滚动归底座；日历插件只注册到组件管理，不能用两个旧投影合理化重复入口。此修正保留代码模板独立用途、已有人工模板和组件；不合并或删除管理页签，不新增第三方依赖。本地实际入口已完成接口、桌面/手机及短视口滚轮验收；注册契约见 `api/plugins/frontend-ui-registration.md`。正式签名包发布与云端部署仍不等同于源码推送，无承诺完成日期。旧阶段进度只作历史，不作为继续执行状态。
+
+## 2026-11-03 23 Plugin policy registration decision
+用户已批准 Root #2776 / Delivery #2777：托管插件后端接口可独立注册，不强制后台设置页。权限管理增加「插件」页签，按稳定插件标识分组、显示插件名。用户特别确认：若同时声明后台设置，两处编辑必须等效，共用同一权限策略，不能形成两套授权；设置声明只增加可进入编辑的位置。授权迁移保留 enabled/full/custom/operation 明细，日历移除虚假设置入口。Root负责隔离assembly与集中QA；无承诺完成日期。当前正在验收，source integration、push、正式插件包发布与部署分别核验；后续只以Root及当前Git/证据判断完成状态。
+
+### Plugin policy source integration
+同一冻结候选 c018ef981 已通过集中Dev Acceptance：本地72前端、176Rust、7日历业务、8SQL场景；CI run 41667062386追加36次宿主用例执行（35唯一），含无页面boot和导航/接口同源权限。源码已本地FF合dev；插件候选6fd8bd2保留remote价格/OpenAI更新后合main为fa6cf913。完整导入业务E2E、部署态HTTP矩阵、浏览器视觉与正式插件发布不在已完成证据中；未重启服务/发布安装包。最终push状态见Root #2776与实时Git，不从本条推断部署。
