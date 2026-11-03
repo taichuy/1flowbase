@@ -160,11 +160,6 @@ export function DebugConversationPane({
         key: message.id,
         role: message.role,
         content: message,
-        loading:
-          message.role === 'assistant' &&
-          message.status === 'running' &&
-          !message.content &&
-          message.traceSummary.length === 0,
         status: bubbleMessageStatus(message),
         streaming: message.role === 'assistant' && message.status === 'running'
       })),

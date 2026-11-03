@@ -80,6 +80,41 @@ function configureScrollMetrics(element: HTMLElement) {
 }
 
 describe('DebugConversationPane auto scroll', () => {
+  test('shows a running placeholder until assistant output arrives', async () => {
+    const { rerender } = renderPane([assistantMessage('')]);
+
+    expect(screen.getByRole('status')).toHaveTextContent('running');
+
+    rerender(
+      <DebugConversationPane
+        messages={[{ ...assistantMessage(''), presentation: 'status' }]}
+        runContext={runContext}
+        status="running"
+        stopping={false}
+        onChangeQuery={vi.fn()}
+        onStopRun={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('running');
+
+    rerender(
+      <DebugConversationPane
+        messages={[assistantMessage('这是实际回复')]}
+        runContext={runContext}
+        status="running"
+        stopping={false}
+        onChangeQuery={vi.fn()}
+        onStopRun={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText('这是实际回复')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   test('keeps streamed output pinned to the bottom until the user scrolls', () => {
     const { rerender } = renderPane([assistantMessage('你好')]);
     const messagesElement = screen.getByTestId('debug-conversation-messages');
