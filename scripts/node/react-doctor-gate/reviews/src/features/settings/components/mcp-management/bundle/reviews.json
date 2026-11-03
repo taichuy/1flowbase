@@ -1,64 +1,64 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-bundles.test.tsx","sha256":"21e39554295adc69406ce64ede100f11f58b3b4fce9ba39c55bb5ca4a85488d8"},{"file":"web/app/src/features/settings/components/mcp-management/bundle/McpBundleImportFlow.tsx","sha256":"2c724c3e3818f23f89cd1b053491d6fb060fb0372ca0dc692e23bb884f351767"}],
+    [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-bundles.test.tsx","sha256":"21e39554295adc69406ce64ede100f11f58b3b4fce9ba39c55bb5ca4a85488d8"},{"file":"web/app/src/features/settings/components/mcp-management/bundle/McpBundleImportFlow.tsx","sha256":"d842b7a18a6f653efb6cda1620062b760eab9935ae166cff8a098412fc2f3023"}],
     [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-bundles.test.tsx","sha256":"21e39554295adc69406ce64ede100f11f58b3b4fce9ba39c55bb5ca4a85488d8"}]
   ],
   "reviews": [
     {
       "file": "web/app/src/features/settings/components/mcp-management/bundle/McpBundleImportFlow.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "2c724c3e3818f23f89cd1b053491d6fb060fb0372ca0dc692e23bb884f351767",
-      "reason": "The external owner/identity changed, so previous draft/error/resource state is explicitly invalidated; the nearest fixture/source demonstrates that lifecycle. McpBundleImportFlow stores one selected-source preview receipt and integrity override options, clears them on source identity change, and cancels late preview completions. installedOptions is produced asynchronously by preview and consumed in applySettingsInstalledMcpExtension, including required integrity acknowledgement. It is not an unused display-independent cache that can be discarded.",
+      "sourceSha256": "d842b7a18a6f653efb6cda1620062b760eab9935ae166cff8a098412fc2f3023",
+      "reason": "The external owner/identity changed, so previous draft/error/resource state is explicitly invalidated; the nearest fixture/source demonstrates that lifecycle. McpBundleImportFlow stores one selected-source preview receipt and integrity override options, clears them on source identity change, and cancels late preview completions. installedOptions is produced asynchronously by preview and consumed in applySettingsInstalledMcpExtension, including required integrity acknowledgement. It is not an unused display-independent cache that can be discarded. Reassessed 2026-11-03: Import operation follows upload/library/official source kind. Source-specific preview/integrity options still reset on source change and remain consumed by the final import transaction.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/mcp-management/bundle/McpBundleImportFlow.tsx",
       "rule": "react-doctor/no-cascading-set-state",
-      "sourceSha256": "2c724c3e3818f23f89cd1b053491d6fb060fb0372ca0dc692e23bb884f351767",
-      "reason": "These setters apply the same external lifecycle transition to separate state axes; there is no self-triggering feedback loop. McpBundleImportFlow stores one selected-source preview receipt and integrity override options, clears them on source identity change, and cancels late preview completions. installedOptions is produced asynchronously by preview and consumed in applySettingsInstalledMcpExtension, including required integrity acknowledgement. It is not an unused display-independent cache that can be discarded.",
+      "sourceSha256": "d842b7a18a6f653efb6cda1620062b760eab9935ae166cff8a098412fc2f3023",
+      "reason": "These setters apply the same external lifecycle transition to separate state axes; there is no self-triggering feedback loop. McpBundleImportFlow stores one selected-source preview receipt and integrity override options, clears them on source identity change, and cancels late preview completions. installedOptions is produced asynchronously by preview and consumed in applySettingsInstalledMcpExtension, including required integrity acknowledgement. It is not an unused display-independent cache that can be discarded. Reassessed 2026-11-03: Import operation follows upload/library/official source kind. Source-specific preview/integrity options still reset on source change and remain consumed by the final import transaction.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/mcp-management/bundle/McpBundleImportFlow.tsx",
       "rule": "react-doctor/rerender-state-only-in-handlers",
-      "sourceSha256": "2c724c3e3818f23f89cd1b053491d6fb060fb0372ca0dc692e23bb884f351767",
-      "reason": "installedOptions is filled by async installed-extension preview (lines136–146), contains instance_id/integrity_override, and is later passed to applySettingsInstalledMcpExtension (line221); integrity challenge handling can update it (line241). It is coupled to the displayed review/warnings and invalidated with source identity. McpBundleImportFlow stores one selected-source preview receipt and integrity override options, clears them on source identity change, and cancels late preview completions. installedOptions is produced asynchronously by preview and consumed in applySettingsInstalledMcpExtension, including required integrity acknowledgement. It is not an unused display-independent cache that can be discarded.",
+      "sourceSha256": "d842b7a18a6f653efb6cda1620062b760eab9935ae166cff8a098412fc2f3023",
+      "reason": "installedOptions is filled by async installed-extension preview (lines136–146), contains instance_id/integrity_override, and is later passed to applySettingsInstalledMcpExtension (line221); integrity challenge handling can update it (line241). It is coupled to the displayed review/warnings and invalidated with source identity. McpBundleImportFlow stores one selected-source preview receipt and integrity override options, clears them on source identity change, and cancels late preview completions. installedOptions is produced asynchronously by preview and consumed in applySettingsInstalledMcpExtension, including required integrity acknowledgement. It is not an unused display-independent cache that can be discarded. Reassessed 2026-11-03: Import operation follows upload/library/official source kind. Source-specific preview/integrity options still reset on source change and remain consumed by the final import transaction.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/mcp-management/bundle/McpBundleReviewModal.tsx",
       "rule": "react-doctor/rerender-memo-with-default-value",
-      "sourceSha256": "27a352a725e8459ce8cba75cb8d1221989e75e774d03672ac82dcc98068ac57a",
-      "reason": "McpBundleReviewModal.tsx:107,163–180 的缺省 integrityWarnings=[] 仅用于 length 与 map 为 li，没有进入 memo/effect dependency，也没有以数组身份传给 memo child 或创建资源。mcp-management-bundles.test.tsx 的 previews an MCP bundle, warns for older source and imports the remaining items 断言版本警告、缺接口/凭据行、确认导入及部分警告结果；library 场景断言真实预检和导入 API。无 identity 依赖由源码直接证明，这些 flow 测试支持 modal 内容/确认合同，但没有单独测试省略 prop 的默认分支。",
+      "sourceSha256": "d05bee6be33ecfe676e09835c00b2febaed7e7d73f3d1eea790b73317e276b95",
+      "reason": "McpBundleReviewModal.tsx:107,163–180 的缺省 integrityWarnings=[] 仅用于 length 与 map 为 li，没有进入 memo/effect dependency，也没有以数组身份传给 memo child 或创建资源。mcp-management-bundles.test.tsx 的 previews an MCP bundle, warns for older source and imports the remaining items 断言版本警告、缺接口/凭据行、确认导入及部分警告结果；library 场景断言真实预检和导入 API。无 identity 依赖由源码直接证明，这些 flow 测试支持 modal 内容/确认合同，但没有单独测试省略 prop 的默认分支。 Reassessed 2026-11-03: canImport now disables confirmation before import completion; the imported receipt retains its close action and existing modal ownership.",
       "evidenceSet": 1
     },
     {
       "file": "web/app/src/features/settings/components/mcp-management/bundle/McpTemplateLibrary.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "488d88547c14b749ef5e89a8fb79c910d9fb803e288e5e6e56be461abb7f0ee3",
-      "reason": "The external owner/identity changed, so previous draft/error/resource state is explicitly invalidated; the nearest fixture/source demonstrates that lifecycle. McpTemplateLibrary queries only when canManage && enabled. selectedKey is local user selection; when a refreshed backend catalog no longer contains it, the guarded effect clears it. This is identity invalidation of an externally removed bundle, not an event handler or pure derived display value. Import flow and operation actions are separate child/async owners.",
+      "sourceSha256": "cd6489e509a66a9939cd7f422503106ad96701dfacad5c7c5de045e67de7df53",
+      "reason": "The external owner/identity changed, so previous draft/error/resource state is explicitly invalidated; the nearest fixture/source demonstrates that lifecycle. McpTemplateLibrary queries only when canManage && enabled. selectedKey is local user selection; when a refreshed backend catalog no longer contains it, the guarded effect clears it. This is identity invalidation of an externally removed bundle, not an event handler or pure derived display value. Import flow and operation actions are separate child/async owners. Reassessed 2026-11-03: Template library remains readable independently of manage access; import/sync/switch/repair/delete controls consume individual operations. Selected-version and per-operation pending owners remain.",
       "evidenceSet": 1
     },
     {
       "file": "web/app/src/features/settings/components/mcp-management/bundle/McpTemplateLibrary.tsx",
       "rule": "react-doctor/no-chain-state-updates",
-      "sourceSha256": "488d88547c14b749ef5e89a8fb79c910d9fb803e288e5e6e56be461abb7f0ee3",
-      "reason": "The guarded correction responds to an external catalog/permission/viewport change; it is not a derivation chain which can be removed without retaining an invalid selection. McpTemplateLibrary queries only when canManage && enabled. selectedKey is local user selection; when a refreshed backend catalog no longer contains it, the guarded effect clears it. This is identity invalidation of an externally removed bundle, not an event handler or pure derived display value. Import flow and operation actions are separate child/async owners.",
+      "sourceSha256": "cd6489e509a66a9939cd7f422503106ad96701dfacad5c7c5de045e67de7df53",
+      "reason": "The guarded correction responds to an external catalog/permission/viewport change; it is not a derivation chain which can be removed without retaining an invalid selection. McpTemplateLibrary queries only when canManage && enabled. selectedKey is local user selection; when a refreshed backend catalog no longer contains it, the guarded effect clears it. This is identity invalidation of an externally removed bundle, not an event handler or pure derived display value. Import flow and operation actions are separate child/async owners. Reassessed 2026-11-03: Template library remains readable independently of manage access; import/sync/switch/repair/delete controls consume individual operations. Selected-version and per-operation pending owners remain.",
       "evidenceSet": 1
     },
     {
       "file": "web/app/src/features/settings/components/mcp-management/bundle/McpTemplateLibrary.tsx",
       "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "488d88547c14b749ef5e89a8fb79c910d9fb803e288e5e6e56be461abb7f0ee3",
-      "reason": "This exact branch is a query/read-model/availability or resource synchronization expression, not a callback that can move solely into a click handler. McpTemplateLibrary queries only when canManage && enabled. selectedKey is local user selection; when a refreshed backend catalog no longer contains it, the guarded effect clears it. This is identity invalidation of an externally removed bundle, not an event handler or pure derived display value. Import flow and operation actions are separate child/async owners.",
+      "sourceSha256": "cd6489e509a66a9939cd7f422503106ad96701dfacad5c7c5de045e67de7df53",
+      "reason": "This exact branch is a query/read-model/availability or resource synchronization expression, not a callback that can move solely into a click handler. McpTemplateLibrary queries only when canManage && enabled. selectedKey is local user selection; when a refreshed backend catalog no longer contains it, the guarded effect clears it. This is identity invalidation of an externally removed bundle, not an event handler or pure derived display value. Import flow and operation actions are separate child/async owners. Reassessed 2026-11-03: Template library remains readable independently of manage access; import/sync/switch/repair/delete controls consume individual operations. Selected-version and per-operation pending owners remain.",
       "evidenceSet": 1
     },
     {
       "file": "web/app/src/features/settings/components/mcp-management/bundle/McpTemplateLibrary.tsx",
       "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "488d88547c14b749ef5e89a8fb79c910d9fb803e288e5e6e56be461abb7f0ee3",
-      "reason": "The named owner and extracted child/controller boundaries below explain this component; declaration length alone is not a demonstrated competing responsibility or behavior failure. McpTemplateLibrary queries only when canManage && enabled. selectedKey is local user selection; when a refreshed backend catalog no longer contains it, the guarded effect clears it. This is identity invalidation of an externally removed bundle, not an event handler or pure derived display value. Import flow and operation actions are separate child/async owners.",
+      "sourceSha256": "cd6489e509a66a9939cd7f422503106ad96701dfacad5c7c5de045e67de7df53",
+      "reason": "The named owner and extracted child/controller boundaries below explain this component; declaration length alone is not a demonstrated competing responsibility or behavior failure. McpTemplateLibrary queries only when canManage && enabled. selectedKey is local user selection; when a refreshed backend catalog no longer contains it, the guarded effect clears it. This is identity invalidation of an externally removed bundle, not an event handler or pure derived display value. Import flow and operation actions are separate child/async owners. Reassessed 2026-11-03: Template library remains readable independently of manage access; import/sync/switch/repair/delete controls consume individual operations. Selected-version and per-operation pending owners remain.",
       "evidenceSet": 1
     }
   ]

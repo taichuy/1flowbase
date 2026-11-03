@@ -1,21 +1,21 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/settings/_tests/settings-extension-center/application-flows.test.tsx","sha256":"3b516ae59a5eaf0c79e4168f6cbbb22b7b0a4d4bc4c778aa07b61cb171a4833d"},{"file":"web/app/src/features/settings/pages/i18n-catalog/_tests/i18n-catalog-page.test.tsx","sha256":"1f5b2014a2a069a0a7328dae6f0eb983c780618b8d597408540a1a15b95639cf"}]
+    [{"file":"web/app/src/features/settings/_tests/settings-extension-center/application-flows.test.tsx","sha256":"3b516ae59a5eaf0c79e4168f6cbbb22b7b0a4d4bc4c778aa07b61cb171a4833d"},{"file":"web/app/src/features/settings/pages/i18n-catalog/_tests/i18n-catalog-page.test.tsx","sha256":"2756f2d18f1fe57b44609c7f34bf991607785bfea717140bf8db4882c64e4627"}]
   ],
   "reviews": [
     {
       "file": "web/app/src/features/settings/components/i18n-catalog/I18nCatalogActivationFlow.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "7efabefc65c57ad511db4a552c06473daaa45a4c9d5fbdb05bc105734d089607",
-      "reason": "I18nCatalogActivationFlow.tsx:64–125 按 sourceKind/installationId 加载 official 或 installed review，先清 review 并置 busy，响应后才获得版本及 expected_revision；cleanup 的 cancelled 防止旧请求完成写回。settings-extension-center/application-flows.test.tsx 的 D6-AC-003 通过真实 flow 展示 2.0.0/2.0.1 并断言 installed 激活载荷 expected_revision:4；i18n-catalog-page.test.tsx 的 AC-005 对 official flow 断言对应版本及 expected_revision:8。不能在 opener 中预先派生未知响应；这些测试是正向会话合同，不是切源竞态测试。",
+      "sourceSha256": "fdb629ae0261964072eac31f8c566aa262aef9504701b665a21eb89d41f21c27",
+      "reason": "I18nCatalogActivationFlow.tsx:64–125 按 sourceKind/installationId 加载 official 或 installed review，先清 review 并置 busy，响应后才获得版本及 expected_revision；cleanup 的 cancelled 防止旧请求完成写回。settings-extension-center/application-flows.test.tsx 的 D6-AC-003 通过真实 flow 展示 2.0.0/2.0.1 并断言 installed 激活载荷 expected_revision:4；i18n-catalog-page.test.tsx 的 AC-005 对 official flow 断言对应版本及 expected_revision:8。不能在 opener 中预先派生未知响应；这些测试是正向会话合同，不是切源竞态测试。 Reassessed 2026-11-03: Installed versus official activation consumes separate operations. Source identity still loads version/expected_revision asynchronously, clears prior review and ignores cancelled completions.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/i18n-catalog/I18nCatalogActivationFlow.tsx",
       "rule": "react-doctor/no-cascading-set-state",
-      "sourceSha256": "7efabefc65c57ad511db4a552c06473daaa45a4c9d5fbdb05bc105734d089607",
-      "reason": "I18nCatalogActivationFlow.tsx:68–125 的 review/busy setters 属一次外部 source review 的清理、加载与异步完成阶段；effect 不依赖其写入的 review/busy，不存在由这些 setters 形成的依赖反馈。settings-extension-center/application-flows.test.tsx D6-AC-003 与 i18n-catalog-page.test.tsx AC-005 分别断言 installed/official 的版本展示和 expected_revision:4/8 激活载荷。两个状态表达待确认结果和等待状态，测试不据此证明 render 次数。",
+      "sourceSha256": "fdb629ae0261964072eac31f8c566aa262aef9504701b665a21eb89d41f21c27",
+      "reason": "I18nCatalogActivationFlow.tsx:68–125 的 review/busy setters 属一次外部 source review 的清理、加载与异步完成阶段；effect 不依赖其写入的 review/busy，不存在由这些 setters 形成的依赖反馈。settings-extension-center/application-flows.test.tsx D6-AC-003 与 i18n-catalog-page.test.tsx AC-005 分别断言 installed/official 的版本展示和 expected_revision:4/8 激活载荷。两个状态表达待确认结果和等待状态，测试不据此证明 render 次数。 Reassessed 2026-11-03: Installed versus official activation consumes separate operations. Source identity still loads version/expected_revision asynchronously, clears prior review and ignores cancelled completions.",
       "evidenceSet": 0
     }
   ]

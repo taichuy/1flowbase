@@ -4,8 +4,8 @@
     {
       "file": "web/app/package.json",
       "rule": "deslop/unused-dependency",
-      "sourceSha256": "601065d4d790537a4c9837e4920bfd60d5e8f8e96ce927aa7d313b51537b4889",
-      "reason": "web/app/package.json 的 is-mobile 是 Vite 开发态 interop cache 的直接依赖，由 vite/dev-runtime.ts 的 DEV_CRITICAL_INTEROP_SPECIFIERS 字符串列表和 verifyCriticalInteropCache 消费，不要求业务 TSX 直接 import。scripts/node/dev-up/_tests/vite-config-text.test.js 的 DRS-001 critical CommonJS dependencies share the optimized ESM boundary 断言 is-mobile/react-is、optimize include/needsInterop 引用及 appPackage.dependencies 实际存在。删除会破坏该真实开发配置合同；此证据是现存静态 contract test，不冒充浏览器验证。",
+      "sourceSha256": "5361a61c8709470acde05111ebe68b32e7e551aaa515cc7c0273e820d03040da",
+      "reason": "web/app/package.json 的 is-mobile 是 Vite 开发态 interop cache 的直接依赖，由 vite/dev-runtime.ts 的 DEV_CRITICAL_INTEROP_SPECIFIERS 字符串列表和 verifyCriticalInteropCache 消费，不要求业务 TSX 直接 import。scripts/node/dev-up/_tests/vite-config-text.test.js 的 DRS-001 critical CommonJS dependencies share the optimized ESM boundary 断言 is-mobile/react-is、optimize include/needsInterop 引用及 appPackage.dependencies 实际存在。删除会破坏该真实开发配置合同；此证据是现存静态 contract test，不冒充浏览器验证。 Reassessed 2026-11-03: Only the package version changes from 0.6.1 to 0.6.2; the is-mobile dependency and Vite interop consumer remain.",
       "evidence": [{"file":"web/app/vite/dev-runtime.ts","sha256":"ce4f288569437405cd9b1becdb2b80d17e14e9573534a8262e47ae422e496bef"}, {"file":"scripts/node/dev-up/_tests/vite-config-text.test.js","sha256":"c3eb165ba5c7644691211e59da2203a10df8b411da34133a289aef4406fb11a1"}]
     },
     {
@@ -27,7 +27,7 @@
       "rule": "react-doctor/query-mutation-missing-invalidation",
       "sourceSha256": "d57ab150ee89d01b743412791753783b46745c8a2d50e037b2f9f84645f783ec",
       "reason": "authorize navigates the entire document to the returned authorization_url; the current account cache is not rendered after navigation. switchAccount delegates to the inline callback supplied by MePage, which logs out and invokes endSession: ['me'] queries are removed, the auth store becomes anonymous and navigation returns to sign-in. In contrast, unlink remains on this page and explicitly invalidates authenticationMethodsQueryKey on success and error. Authentication-methods tests retain CSRF-bound unlink/refresh and explicit account-switch assertions. The callback owner supplies the session/cache transition the local useMutation heuristic cannot see.",
-      "evidence": [{"file":"web/app/src/features/me/components/AuthenticationMethodsPanel.tsx","sha256":"d57ab150ee89d01b743412791753783b46745c8a2d50e037b2f9f84645f783ec"}, {"file":"web/app/src/features/me/pages/MePage.tsx","sha256":"9f47bb43c273b48800c867a7decc8c917464e6a03f18b40cd9b9054d98aa8a80"}, {"file":"web/app/src/features/me/_tests/authentication-methods.test.tsx","sha256":"9c6d6123ec5e3c23a07f9508f1a358affa992c031af08f92d4a8008706f9ccd1"}, {"file":"web/app/src/features/me/_tests/me-page.test.tsx","sha256":"d5e580c38bcec32d72b09a6cabb6347de1efe75348eb726f772cec957031fb54"}]
+      "evidence": [{"file":"web/app/src/features/me/components/AuthenticationMethodsPanel.tsx","sha256":"d57ab150ee89d01b743412791753783b46745c8a2d50e037b2f9f84645f783ec"}, {"file":"web/app/src/features/me/pages/MePage.tsx","sha256":"914511083e753303e042bea773374346e835184a0af811c85dac0f65022ea511"}, {"file":"web/app/src/features/me/_tests/authentication-methods.test.tsx","sha256":"9c6d6123ec5e3c23a07f9508f1a358affa992c031af08f92d4a8008706f9ccd1"}, {"file":"web/app/src/features/me/_tests/me-page.test.tsx","sha256":"299309a1e6c82c6bfdf038dd2119845894ff7eb9b45194eb2d81e9b181d9875b"}]
     }
   ]
 }

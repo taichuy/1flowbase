@@ -3,8 +3,8 @@
   "evidenceSets": [
     [{"file":"web/app/src/features/frontstage/components/page-tree-actions/_tests/MovePageModal.test.tsx","sha256":"b0dfae6c685541ee4c5b77dbeda3bac20616bbe1a06573e35c712e52ca9fb4a7"}],
     [{"file":"web/app/src/features/frontstage/components/page-tree-actions/_tests/NavigationMoveTree.test.tsx","sha256":"809fe8b13445dbf73740c599a9efe0bb246bfac55ef3a730f5d29ec39b3d1b7b"}],
-    [{"file":"web/app/src/features/frontstage/components/page-tree-actions/_tests/NavigationMoveTree.test.tsx","sha256":"809fe8b13445dbf73740c599a9efe0bb246bfac55ef3a730f5d29ec39b3d1b7b"},{"file":"web/app/src/features/settings/_tests/ui-management/ui-management-routes.test.tsx","sha256":"596579bb7cd80d95607df52dcc97f53ec5586d2ada7aff5e9a17a622f42a678e"}],
-    [{"file":"web/app/src/features/settings/_tests/ui-management/ui-management-routes.test.tsx","sha256":"596579bb7cd80d95607df52dcc97f53ec5586d2ada7aff5e9a17a622f42a678e"}]
+    [{"file":"web/app/src/features/frontstage/components/page-tree-actions/_tests/NavigationMoveTree.test.tsx","sha256":"809fe8b13445dbf73740c599a9efe0bb246bfac55ef3a730f5d29ec39b3d1b7b"},{"file":"web/app/src/features/settings/_tests/ui-management/ui-management-routes.test.tsx","sha256":"edb9d1218f853506e7ca8e75436b7dbcfb76d419a5ca5f56c419a03c9bc0c95e"}],
+    [{"file":"web/app/src/features/settings/_tests/ui-management/ui-management-routes.test.tsx","sha256":"edb9d1218f853506e7ca8e75436b7dbcfb76d419a5ca5f56c419a03c9bc0c95e"}]
   ],
   "reviews": [
     {

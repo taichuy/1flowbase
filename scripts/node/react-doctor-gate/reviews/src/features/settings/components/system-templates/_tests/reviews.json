@@ -4,9 +4,9 @@
     {
       "file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx",
       "rule": "react-doctor/rendering-hydration-mismatch-time",
-      "sourceSha256": "f0da474aff042dcde306aab485e116695d1d5f30a1bea899bdfeda8101870686",
-      "reason": "SystemTemplateDialog.test.tsx:30–53 的 Date.now() 只在 browser-only Harness 的 export click 与 file onChange handler 内生成新 dialog key，render 本身不求时间，也没有 SSR/hydration 入口。该文件的 ZIP export 场景通过 Export template→Download ZIP 断言后端字节/文件名，v2 与 opaque ZIP 场景通过 file input 断言 preview/install 完整同包；这些是真实事件 consumer，不是仅定义 fixture。不存在服务端/客户端首屏时间差的命中前提，不用 suppressHydrationWarning 掩盖。",
-      "evidence": [{"file":"web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx","sha256":"f0da474aff042dcde306aab485e116695d1d5f30a1bea899bdfeda8101870686"}]
+      "sourceSha256": "782038ab611f4da2cc4f439628731b5ced0d7512abe894136b832b7fd700da0e",
+      "reason": "SystemTemplateDialog.test.tsx:30–53 的 Date.now() 只在 browser-only Harness 的 export click 与 file onChange handler 内生成新 dialog key，render 本身不求时间，也没有 SSR/hydration 入口。该文件的 ZIP export 场景通过 Export template→Download ZIP 断言后端字节/文件名，v2 与 opaque ZIP 场景通过 file input 断言 preview/install 完整同包；这些是真实事件 consumer，不是仅定义 fixture。不存在服务端/客户端首屏时间差的命中前提，不用 suppressHydrationWarning 掩盖。 Reassessed 2026-11-03: Test module fixture now uses exact operation authorization while retaining its assertions and module-level exports.",
+      "evidence": [{"file":"web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx","sha256":"782038ab611f4da2cc4f439628731b5ced0d7512abe894136b832b7fd700da0e"}]
     }
   ]
 }

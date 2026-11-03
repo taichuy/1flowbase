@@ -1,7 +1,7 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/frontstage/_tests/PageCanvas.test.tsx","sha256":"f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"},{"file":"web/app/src/features/frontstage/_tests/isolated-frontend-block/PageCanvas-isolated-frontend-block.test.tsx","sha256":"805af8203aa334f7d686f6fb50d5a8bd6817590cd1904224d7ae355399173d82"},{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx","sha256":"43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"},{"file":"web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx","sha256":"f5d883f799e6710fbb088a1e2bf6f656353995c9862ed4fc76778239c5761785"}]
+    [{"file":"web/app/src/features/frontstage/_tests/PageCanvas.test.tsx","sha256":"f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"},{"file":"web/app/src/features/frontstage/_tests/isolated-frontend-block/PageCanvas-isolated-frontend-block.test.tsx","sha256":"805af8203aa334f7d686f6fb50d5a8bd6817590cd1904224d7ae355399173d82"},{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx","sha256":"85df665888a037be266f7c12da7d417e03768e876ff6d278b620702e9d184753"},{"file":"web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx","sha256":"f5d883f799e6710fbb088a1e2bf6f656353995c9862ed4fc76778239c5761785"}]
   ],
   "reviews": [
     {
