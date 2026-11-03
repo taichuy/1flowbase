@@ -186,7 +186,8 @@ describe('FileTableView', () => {
       ];
       for (const { name, allowed } of actions) {
         const button = screen.getByRole('button', { name });
-        expect(button).toHaveProperty('disabled', !allowed);
+        if (allowed) expect(button).toBeEnabled();
+        else expect(button).toBeDisabled();
         if (!allowed) await click(button);
       }
       expect(client.uploadConsoleFile).not.toHaveBeenCalled();

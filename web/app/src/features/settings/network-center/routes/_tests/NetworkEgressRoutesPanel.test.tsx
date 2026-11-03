@@ -207,7 +207,9 @@ describe('NetworkEgressRoutesPanel', () => {
     renderPanel();
     const row = await screen.findByRole('row', { name: /github.*US proxy/ });
     expect(screen.getByRole('button', { name: /创建路由规则|Create routing rule/ })).toBeDisabled();
-    expect(within(row).getByRole('button', { name: /删除|Delete/ }).hasAttribute('disabled')).toBe(!deleteGranted);
+    const deleteButton = within(row).getByRole('button', { name: /删除|Delete/ });
+    if (deleteGranted) expect(deleteButton).toBeEnabled();
+    else expect(deleteButton).toBeDisabled();
     fireEvent.click(within(row).getByRole('button', { name: /编辑|Edit/ }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByLabelText(/代理映射|Proxy mapping/)).toBeDisabled();
