@@ -239,6 +239,31 @@ where
         })
     }
 
+    fn permits_selected_native_exact_replay(&self, input: &ProviderInvocationInput) -> bool {
+        let Some(payload) = self.provider_transport_payload.as_ref() else {
+            return false;
+        };
+        input.previous_response_id.is_none()
+            && payload.permits_native_exact_transport_replay()
+            // The plugin restores only matching Responses envelopes. Their body extensions
+            // can supply conversation state absent from the sealed native body. Query/header
+            // extensions remain in their own carrier and do not grant a JSON-body cursor.
+            && input.client_protocol_envelope.as_ref().is_none_or(|envelope| {
+                envelope.source_protocol != "openai_responses"
+                    || ["previous_response_id", "conversation"].iter().all(|key| {
+                        envelope.body.get(*key).is_none_or(Value::is_null)
+                    })
+            })
+            && input.native_transport.as_ref().is_some_and(|transport| {
+                transport.protocol == "openai_responses"
+                    && transport.digest == payload.digest()
+                    && transport.size_bytes == payload.size_bytes() as u64
+                    // The public input type is mutable: matching digest claims alone cannot
+                    // prove that its body still equals the host-owned sealed snapshot.
+                    && &transport.wire_body == payload.wire_body()
+            })
+    }
+
     async fn invoke_resolved_llm(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
@@ -271,15 +296,20 @@ where
         .await?;
 
         let runtime_config_started = std::time::Instant::now();
-        input.provider_config = build_provider_runtime_config(
-            &self.repository,
-            &self.runtime,
-            &self.provider_secret_master_key,
-            &package,
-            &installation,
-            &instance,
-        )
-        .await?;
+        input.provider_config = pin
+            .effective_runtime_config
+            .get_or_try_init(|| {
+                build_provider_runtime_config(
+                    &self.repository,
+                    &self.runtime,
+                    &self.provider_secret_master_key,
+                    &package,
+                    &installation,
+                    &instance,
+                )
+            })
+            .await?
+            .clone();
         tracing::debug!(
             runtime_config_ms = runtime_config_started.elapsed().as_millis() as u64,
             "runtime config finished"
