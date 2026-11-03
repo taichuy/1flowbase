@@ -7,6 +7,7 @@ const path = require("node:path");
 const {
   OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST,
   collectRepoHygieneFindings,
+  collectSourceFiles,
   main,
   partitionTrackedWarnings,
   scanSourceFile,
@@ -46,6 +47,168 @@ function writeFile(repoRoot, relativePath, content) {
   fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
   fs.writeFileSync(absolutePath, content, "utf8");
 }
+
+test("repository scan preserves the complete ordered multi-file finding contract", () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "oneflowbase-hygiene-ordered-"));
+  try {
+    const sources = new Map([
+      ["web/_tests/c.test.ts", "test('beta title', () => {});\n"],
+      ["web/_tests/b.test.ts", "test('alpha title', () => {});\n"],
+      ["web/_tests/a.test.ts", [
+        "test('beta   title', () => {});",
+        "test('alpha title', () => {});",
+        "test('alpha title', () => {});",
+        "test('local title', () => {});",
+        "test('local title', () => {});",
+        "test.only('focused', () => {});",
+        "test.skip('pending', () => {});",
+        "expect(value).toBeDefined();",
+        "expect(value).not.toBeTruthy();",
+      ].join("\n")],
+      ["web/Rows.tsx", "const row = <div key={`${index}-${row.key}`} />;\n"],
+      ["api/apps/api-server/src/client.rs", "let client = reqwest::Client::new();\n"],
+      ["api/src/large.rs", "// stable source\n".repeat(1501)],
+      ["api/src/debt.rs", "// FIXME: preserve failure owner\n"],
+      ["docker/local.env", "VALUE=example\n"],
+      ["test_dir.txt", "scratch\n"],
+      ["web/app/tsconfig.tsbuildinfo", "{}\n"],
+      ["web/clean.ts", "const text = 'test.only( TODO';\n"],
+      ["docker/local.env.example", "VALUE=\n"],
+    ]);
+    for (let index = 0; index < 16; index += 1) {
+      sources.set(`scripts/dense/file-${index}.js`, "module.exports = {};\n");
+    }
+    for (const [file, content] of sources) writeFile(repoRoot, file, content);
+
+    const finding = (rule, file, message, snippet = "", line = null, severity = "warning") =>
+      ({ severity, rule, file, line, message, snippet });
+    const expected = [
+      finding("tracked-env-artifact", "docker/local.env",
+        "local env files should be untracked or converted to an example/template file"),
+      finding("root-scratch-artifact", "test_dir.txt",
+        "root-level scratch files should not be tracked as source"),
+      finding("tracked-build-artifact", "web/app/tsconfig.tsbuildinfo",
+        "generated build metadata should not be tracked as source"),
+      finding("unowned-outbound-http-client", "api/apps/api-server/src/client.rs",
+        "production modules must obtain HTTP clients from the Host-owned Network Egress boundary",
+        "let client = reqwest::Client::new();", 1, "error"),
+      finding("source-debt-marker", "api/src/debt.rs",
+        "source declares actionable TODO/FIXME/HACK debt or an explicit @deprecated API; review its owner and removal path",
+        "// FIXME: preserve failure owner", 1),
+      finding("file-size-pressure", "api/src/large.rs",
+        "file is at or over the repository split pressure line", "1501 lines", null, "error"),
+      finding("focused-test", "web/_tests/a.test.ts",
+        "focused test would make CI execute an incomplete test set",
+        "test.only('focused', () => {});", 6, "error"),
+      finding("skipped-test", "web/_tests/a.test.ts",
+        "skipped or todo test needs an explicit owner and removal path",
+        "test.skip('pending', () => {});", 7),
+      finding("weak-test-assertion", "web/_tests/a.test.ts",
+        "weak assertion should be replaced with a behavior-specific expectation",
+        "expect(value).toBeDefined();", 8),
+      finding("mutable-jsx-list-key", "web/Rows.tsx",
+        "JSX list key uses editable-looking data plus position; use a stable row id to avoid remounting focused controls",
+        "const row = <div key={`${index}-${row.key}`} />;", 1, "error"),
+      finding("directory-pressure", "scripts/dense",
+        "directory has more than 15 source files and should be reviewed for owner subfolders",
+        "16 files", null, "error"),
+      finding("duplicate-test-title", "web/_tests/a.test.ts, web/_tests/c.test.ts",
+        "duplicate test title makes failure triage less precise", "beta title"),
+      finding("duplicate-test-title", "web/_tests/a.test.ts, web/_tests/b.test.ts",
+        "duplicate test title makes failure triage less precise", "alpha title"),
+    ];
+    // Null means unavailable Git inventory: artifact reporting must fail closed.
+    assert.deepEqual(collectRepoHygieneFindings({ repoRoot, trackedFiles: null }), expected);
+    assert.deepEqual(
+      collectRepoHygieneFindings({ repoRoot, trackedFiles: new Set(sources.keys()) }),
+      expected,
+    );
+    assert.deepEqual(
+      collectRepoHygieneFindings({ repoRoot, trackedFiles: new Set() }),
+      expected.slice(3),
+    );
+  } finally {
+    fs.rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("repository scan reads each selected file once and scans it before the next read", (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "oneflowbase-hygiene-single-pass-"));
+  try {
+    const sources = new Map([
+      ["api/src/source.rs", "// TODO: keep this advisory visible\n"],
+      ["docker/local.env", "VALUE=example\n"],
+      ["web/_tests/a.test.ts", "test('shared title', () => {});\n"],
+      ["web/_tests/b.test.ts", "it('shared title', () => {});\n"],
+      ["web/empty.ts", ""],
+    ]);
+    for (const [file, content] of sources) writeFile(repoRoot, file, content);
+    writeFile(repoRoot, "web/node_modules/ignored.js", "test.only('ignored', () => {});\n");
+    writeFile(repoRoot, "web/ignored.bin", "binary\n");
+    const selected = collectSourceFiles(repoRoot).map(({ relativePath }) => relativePath);
+    assert.deepEqual(selected, [...sources.keys()]);
+    const reads = [];
+    const scanned = new Set();
+    const readFileSync = fs.readFileSync;
+    const split = String.prototype.split;
+    // Observe the real scanner's line traversal without replacing scan behavior.
+    t.mock.method(String.prototype, "split", function (...args) {
+      if (args[0] instanceof RegExp && args[0].source === "\\r?\\n") {
+        scanned.add(String(this));
+      }
+      return Reflect.apply(split, this, args);
+    });
+    t.mock.method(fs, "readFileSync", function (file, ...args) {
+      const relativePath = path.relative(repoRoot, file).split(path.sep).join("/");
+      if (reads.length > 0) {
+        assert.ok(scanned.has(sources.get(reads.at(-1))), "previous file must be scanned before reading another body");
+      }
+      reads.push(relativePath);
+      assert.equal(args[0], "utf8");
+      return Reflect.apply(readFileSync, this, [file, ...args]);
+    });
+
+    const findings = collectRepoHygieneFindings({ repoRoot, trackedFiles: null });
+    assert.deepEqual(reads, selected);
+    assert.deepEqual(scanned, new Set(sources.values()));
+    assert.deepEqual(findings.map(({ rule }) => rule), [
+      "tracked-env-artifact", "source-debt-marker", "duplicate-test-title",
+    ]);
+  } finally {
+    t.mock.restoreAll();
+    fs.rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("repository scan propagates file read failures without returning partial findings", (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "oneflowbase-hygiene-read-error-"));
+  try {
+    for (const name of ["a", "b", "c"]) {
+      writeFile(repoRoot, `web/${name}.ts`, "// TODO: must not become a partial report\n");
+    }
+    const readFileSync = fs.readFileSync;
+    for (const code of ["EACCES", "ENOENT", "EIO"]) {
+      const failure = Object.assign(new Error(`fixture ${code}`), { code });
+      const reads = [];
+      const mock = t.mock.method(fs, "readFileSync", function (file, ...args) {
+        reads.push(path.basename(file));
+        if (path.basename(file) === "b.ts") throw failure;
+        return Reflect.apply(readFileSync, this, [file, ...args]);
+      });
+      try {
+        assert.throws(
+          () => collectRepoHygieneFindings({ repoRoot, trackedFiles: null }),
+          (error) => error === failure,
+        );
+        assert.deepEqual(reads, ["a.ts", "b.ts"]);
+      } finally {
+        mock.mock.restore();
+      }
+    }
+  } finally {
+    fs.rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
 
 test("scanSourceFile reports debt markers and weak assertions without failing the gate", () => {
   const findings = scanSourceFile({
