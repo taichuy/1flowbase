@@ -115,7 +115,6 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "assistant_update_settings"
                     | "notifications.channels.read_all"
                     | "notifications.messages.unread"
-                    | "notifications.messages.read"
                     | "notifications.messages.read_all"
                     | "files.access_links.create"
                     | "notifications.instances.list"
