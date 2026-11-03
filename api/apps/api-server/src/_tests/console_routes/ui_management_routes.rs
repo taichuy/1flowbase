@@ -256,7 +256,7 @@ async fn template_creation_uses_backend_code_block_default() {
         ("other", "other-block", "AAA other block"),
         ("1flowbase", "frontstage.js-ui-block", "Code block"),
     ] {
-        sqlx::query("insert into frontend_block_catalog (id, installation_id, provider_code, plugin_id, plugin_version, contribution_code, title, runtime, entry, context_contract, permission_network, permission_storage, permission_secrets, ui_capabilities, code_template, code_template_version, code_template_language, code_modules) values ($1, $2, $3, 'template-default@1.0.0', '1.0.0', $4, $5, 'native_react', 'index.js', '{\"primitives\":[],\"input_schema\":{}}', 'none', 'none', 'none', '[]', 'export default function Demo() { return null; }', '1.0.0', 'tsx', '[]')")
+        sqlx::query("insert into frontend_block_catalog (id, installation_id, provider_code, plugin_id, plugin_version, contribution_code, title, runtime, entry, ui_registration, context_contract, permission_network, permission_storage, permission_secrets, ui_capabilities, code_template, code_template_version, code_template_language, code_modules) values ($1, $2, $3, 'template-default@1.0.0', '1.0.0', $4, $5, 'native_react', 'index.js', 'code_template', '{\"primitives\":[],\"input_schema\":{}}', 'none', 'none', 'none', '[]', 'export default function Demo() { return null; }', '1.0.0', 'tsx', '[]')")
             .bind(Uuid::now_v7()).bind(installation_id).bind(provider).bind(contribution).bind(title).execute(&pool).await.unwrap();
     }
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

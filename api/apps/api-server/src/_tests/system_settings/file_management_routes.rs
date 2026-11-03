@@ -487,6 +487,46 @@ async fn register_files_feature_permission(database_url: &str) {
         .expect("files feature permission should be seeded");
 }
 
+// Grant only operations exercised by the scenario. Storage reads require their
+// own operation; storage mutations still enforce the root domain boundary.
+async fn grant_file_operations(
+    app: &axum::Router,
+    root_cookie: &str,
+    root_csrf: &str,
+    role_code: &str,
+    operation_ids: &[&str],
+) {
+    let operations = operation_ids
+        .iter()
+        .map(
+            |operation_id| json!({"kind": "simple", "operation_id": operation_id, "enabled": true}),
+        )
+        .collect::<Vec<_>>();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/settings/roles/{role_code}/console-policy"
+                ))
+                .header("cookie", root_cookie)
+                .header("x-csrf-token", root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"groups": [{
+                        "kind": "settings_feature", "group_id": "system.files",
+                        "enabled": true, "strategy": "custom", "operations": operations
+                    }]})
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
 async fn grant_file_admin_data_policy(app: &axum::Router, root_cookie: &str, root_csrf: &str) {
     let response = app
         .clone()
@@ -519,20 +559,25 @@ async fn grant_file_admin_data_policy(app: &axum::Router, root_cookie: &str, roo
     assert_eq!(response.status(), StatusCode::OK);
 }
 
-// AC-003/AC-004: system.files alone may list the current workspace's file tables,
-// while system file-storage administration remains a root-only domain boundary.
+// AC-003/AC-004: file-table operations stay within the current workspace;
+// storage reads need their own grant and storage mutations remain root-only.
 #[tokio::test]
 async fn settings_feature_files_route_keeps_storage_root_boundary() {
     let (app, database_url) = test_app_with_database_url().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     register_files_feature_permission(&database_url).await;
     create_role(&app, &root_cookie, &root_csrf, "files_feature_only").await;
-    replace_role_permissions(
+    grant_file_operations(
         &app,
         &root_cookie,
         &root_csrf,
         "files_feature_only",
-        &[FILES_FEATURE_PERMISSION],
+        &[
+            "file_tables.create",
+            "file_tables.list",
+            "file_storages.create",
+            "file_tables.storage.bind",
+        ],
     )
     .await;
     let actor_id = create_member(
