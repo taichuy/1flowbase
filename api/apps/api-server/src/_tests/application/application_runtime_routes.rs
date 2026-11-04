@@ -72,9 +72,9 @@ config_schema:
     fs::write(
         root.join("bin/fixture_provider-provider"),
         r#"#!/usr/bin/env node
-pub const fs = require('node:fs');
+const fs = require('node:fs');
 
-pub const request = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
+const request = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
 
 let result = {};
 let streamed = false;
