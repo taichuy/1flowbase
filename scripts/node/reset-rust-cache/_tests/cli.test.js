@@ -19,5 +19,7 @@ test('help and invalid options never start cache cleanup or compilation', async 
   let help = '';
   assert.equal(await main({ argv: ['--help'], runImpl, writeStdout: (text) => { help += text; } }), 0);
   assert.match(help, /--warmup-only/);
+  assert.match(help, /jobs=1/);
+  assert.match(help, /至少 4/);
   await assert.rejects(main({ argv: ['--invalid'], runImpl }), /未知参数/);
 });
