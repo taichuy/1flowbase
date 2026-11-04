@@ -1,11 +1,6 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
-
 use crate::_tests::support::{
     login_and_capture_cookie, test_api_state_with_database_url, test_app,
-    test_app_with_database_url, test_config, write_provider_manifest_v2,
+    test_app_with_database_url, test_config,
 };
 use axum::{
     body::{Body, to_bytes},
@@ -15,7 +10,7 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use api_server::test_support::application::*;
+pub(crate) use api_server::test_support::application::*;
 
 #[path = "../../application/application_runtime_routes/artifacts_billing_routes.rs"]
 mod artifacts_billing_routes;
