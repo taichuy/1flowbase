@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn write_test_executable(path: &Path, content: &str) {
+pub fn write_test_executable(path: &Path, content: &str) {
     fs::write(path, content).unwrap();
     #[cfg(unix)]
     {
@@ -12,7 +12,7 @@ pub(crate) fn write_test_executable(path: &Path, content: &str) {
     }
 }
 
-pub(crate) fn write_provider_manifest_v2(
+pub fn write_provider_manifest_v2(
     root: &Path,
     provider_code: &str,
     display_name: &str,
@@ -58,7 +58,7 @@ runtime:
     .unwrap();
 }
 
-pub(crate) fn write_provider_runtime_script(path: &Path, model_id: &str, model_label: &str) {
+pub fn write_provider_runtime_script(path: &Path, model_id: &str, model_label: &str) {
     let script = format!(
         r#"#!/usr/bin/env node
 const fs = require('node:fs');
@@ -185,7 +185,7 @@ pub(super) fn official_upload_public_key() -> plugin_framework::TrustedPublicKey
     }
 }
 
-pub(crate) fn build_official_provider_package(version: &str) -> Vec<u8> {
+pub fn build_official_provider_package(version: &str) -> Vec<u8> {
     let package_root =
         std::env::temp_dir().join(format!("official-plugin-route-package-{}", Uuid::now_v7()));
     create_official_provider_fixture(&package_root);
@@ -256,13 +256,4 @@ fn package_file_mode(path: &Path) -> u32 {
 #[cfg(not(unix))]
 fn package_file_mode(_path: &Path) -> u32 {
     0o644
-}
-
-#[test]
-fn official_provider_package_is_deterministic_across_file_timestamps() {
-    let first = build_official_provider_package("0.2.0");
-    std::thread::sleep(std::time::Duration::from_millis(1_100));
-    let second = build_official_provider_package("0.2.0");
-
-    assert_eq!(Sha256::digest(first), Sha256::digest(second));
 }

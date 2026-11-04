@@ -3,23 +3,22 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::_tests::support::{
+use crate::test_support::support::{
     login_and_capture_cookie, test_api_state_with_database_url, test_app,
     test_app_with_database_url, test_config, write_provider_manifest_v2,
 };
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-const DEBUG_SESSION_ID: &str = "application-runtime-debug-session";
-pub(crate) const PROVIDER_MARKER_LIKE_OUTPUT: &str =
-    "<think>provider marker</think><tool_call>marker</tool_call>\n\n---\n\n下面是美化后内容\n\nvisible marker output";
+pub const DEBUG_SESSION_ID: &str = "application-runtime-debug-session";
+pub const PROVIDER_MARKER_LIKE_OUTPUT: &str = "<think>provider marker</think><tool_call>marker</tool_call>\n\n---\n\n下面是美化后内容\n\nvisible marker output";
 
-fn create_provider_fixture(root: &Path) {
+pub fn create_provider_fixture(root: &Path) {
     fs::create_dir_all(root.join("provider")).unwrap();
     fs::create_dir_all(root.join("bin")).unwrap();
     fs::create_dir_all(root.join("models/llm")).unwrap();
@@ -73,9 +72,9 @@ config_schema:
     fs::write(
         root.join("bin/fixture_provider-provider"),
         r#"#!/usr/bin/env node
-const fs = require('node:fs');
+pub const fs = require('node:fs');
 
-const request = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
+pub const request = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
 
 let result = {};
 let streamed = false;
@@ -185,7 +184,7 @@ capabilities:
     fs::write(root.join("scripts/demo.sh"), "echo demo").unwrap();
 }
 
-pub(crate) async fn create_ready_provider_instance(
+pub async fn create_ready_provider_instance(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
@@ -193,7 +192,7 @@ pub(crate) async fn create_ready_provider_instance(
     create_provider_instance(app, cookie, csrf, None, None).await
 }
 
-pub(crate) struct ProviderInvocationGate {
+pub struct ProviderInvocationGate {
     ready_path: PathBuf,
     release_path: PathBuf,
 }
@@ -211,11 +210,11 @@ impl ProviderInvocationGate {
         }
     }
 
-    pub(crate) fn is_ready(&self) -> bool {
+    pub fn is_ready(&self) -> bool {
         self.ready_path.exists()
     }
 
-    pub(crate) fn release(&self) {
+    pub fn release(&self) {
         let _ = fs::write(&self.release_path, "release");
     }
 }
@@ -226,7 +225,7 @@ impl Drop for ProviderInvocationGate {
     }
 }
 
-pub(crate) async fn create_gated_provider_instance(
+pub async fn create_gated_provider_instance(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
@@ -236,7 +235,7 @@ pub(crate) async fn create_gated_provider_instance(
     (instance_id, gate)
 }
 
-pub(crate) async fn create_marker_output_provider_instance(
+pub async fn create_marker_output_provider_instance(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
@@ -244,7 +243,7 @@ pub(crate) async fn create_marker_output_provider_instance(
     create_provider_instance(app, cookie, csrf, None, Some(PROVIDER_MARKER_LIKE_OUTPUT)).await
 }
 
-async fn create_provider_instance(
+pub async fn create_provider_instance(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
@@ -369,7 +368,7 @@ async fn create_provider_instance(
     instance_id
 }
 
-fn build_ready_provider_document(flow_id: &str, provider_instance_id: &str) -> Value {
+pub fn build_ready_provider_document(flow_id: &str, provider_instance_id: &str) -> Value {
     json!({
         "schemaVersion": "1flowbase.flow/v2",
         "meta": { "flowId": flow_id, "name": "Support Agent", "description": "", "tags": [] },
@@ -432,7 +431,7 @@ fn build_ready_provider_document(flow_id: &str, provider_instance_id: &str) -> V
     })
 }
 
-pub(crate) async fn seed_agent_flow_application(
+pub async fn seed_agent_flow_application(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
@@ -516,7 +515,7 @@ pub(crate) async fn seed_agent_flow_application(
     application_id
 }
 
-async fn create_application_public_api_key(
+pub async fn create_application_public_api_key(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
@@ -551,7 +550,7 @@ async fn create_application_public_api_key(
     payload["data"]["token"].as_str().unwrap().to_string()
 }
 
-async fn publish_application_public_api(
+pub async fn publish_application_public_api(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
@@ -597,7 +596,7 @@ async fn publish_application_public_api(
     assert_eq!(response.status(), StatusCode::CREATED);
 }
 
-fn build_human_input_document(flow_id: &str, provider_instance_id: &str) -> Value {
+pub fn build_human_input_document(flow_id: &str, provider_instance_id: &str) -> Value {
     json!({
         "schemaVersion": "1flowbase.flow/v2",
         "meta": { "flowId": flow_id, "name": "Support Agent", "description": "", "tags": [] },
@@ -675,7 +674,7 @@ fn build_human_input_document(flow_id: &str, provider_instance_id: &str) -> Valu
     })
 }
 
-pub(crate) async fn seed_human_input_application(
+pub async fn seed_human_input_application(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
@@ -731,21 +730,17 @@ pub(crate) async fn seed_human_input_application(
     application_id
 }
 
-async fn rebuild_trace_projection_for_test(
+pub async fn rebuild_trace_projection_for_test(
     state: &crate::app_state::ApiState,
     application_id: Uuid,
     flow_run_id: Uuid,
 ) {
-    crate::workers::trace_projection::rebuild_trace_projection(
-        &state.store,
-        application_id,
-        flow_run_id,
-    )
-    .await
-    .expect("trace projection should rebuild from the seeded source");
+    crate::test_support::rebuild_trace_projection(&state.store, application_id, flow_run_id)
+        .await
+        .expect("trace projection should rebuild from the seeded source");
 }
 
-async fn wait_for_run_detail(
+pub async fn wait_for_run_detail(
     app: &axum::Router,
     cookie: &str,
     application_id: &str,
@@ -793,7 +788,7 @@ async fn wait_for_run_detail(
 /// event appends after a flow run commits terminal (`conflict: flow_run_terminal`), so read-side
 /// tests seed the historical rows they need directly instead of appending post-terminal.
 /// Returns the assigned sequences in input order.
-async fn seed_flow_run_history_events(
+pub async fn seed_flow_run_history_events(
     database_url: &str,
     inputs: &[control_plane::ports::AppendRuntimeEventInput],
 ) -> sqlx::Result<Vec<i64>> {
@@ -852,7 +847,7 @@ async fn seed_flow_run_history_events(
 /// Rewrites a node run's persisted result as pre-terminal history via direct SQL, for the same
 /// reason as `seed_flow_run_history_events`: `update_node_run` is fenced once the owning flow
 /// run is terminal.
-async fn seed_node_run_history(
+pub async fn seed_node_run_history(
     database_url: &str,
     input: &control_plane::ports::UpdateNodeRunInput,
 ) -> sqlx::Result<()> {
@@ -883,7 +878,7 @@ async fn seed_node_run_history(
 
 /// Inserts an extra node run as pre-terminal history via direct SQL, because `create_node_run`
 /// is fenced once the owning flow run is terminal. Returns the new node run id.
-async fn seed_node_run_history_record(
+pub async fn seed_node_run_history_record(
     database_url: &str,
     input: &control_plane::ports::CreateNodeRunInput,
 ) -> sqlx::Result<Uuid> {
@@ -923,7 +918,7 @@ async fn seed_node_run_history_record(
     Ok(id)
 }
 
-async fn load_trace_node_content_payload(
+pub async fn load_trace_node_content_payload(
     app: &axum::Router,
     cookie: &str,
     application_id: &str,
@@ -950,7 +945,7 @@ async fn load_trace_node_content_payload(
     serde_json::from_slice(&body).unwrap()
 }
 
-async fn load_trace_node_detail_payload(
+pub async fn load_trace_node_detail_payload(
     app: &axum::Router,
     cookie: &str,
     application_id: &str,
@@ -978,7 +973,7 @@ async fn load_trace_node_detail_payload(
     serde_json::from_slice(&body).unwrap()
 }
 
-async fn load_trace_node_detail_payload_for_kind(
+pub async fn load_trace_node_detail_payload_for_kind(
     app: &axum::Router,
     cookie: &str,
     application_id: &str,
@@ -1011,16 +1006,8 @@ async fn load_trace_node_detail_payload_for_kind(
     )
 }
 
-mod artifacts_billing_routes;
-mod lazy_tree_contract_routes;
-mod logs_routes;
-mod mcp_settings;
-mod read_side_effect_routes;
-mod resume_cancel_routes;
-mod stream_routes;
-
 /// Reuses the installed provider fixture; only its deterministic model response differs.
-pub(crate) async fn create_communication_provider_instance(
+pub async fn create_communication_provider_instance(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
@@ -1037,7 +1024,7 @@ pub(crate) async fn create_communication_provider_instance(
 }
 
 /// Records real provider invocations and blocks only explicitly selected final rounds.
-pub(crate) async fn create_turn_communication_provider_instance(
+pub async fn create_turn_communication_provider_instance(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,

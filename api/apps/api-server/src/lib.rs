@@ -65,15 +65,19 @@ pub mod runtime_profile_client;
 pub mod runtime_registry_sync;
 pub mod system_backup;
 pub mod system_recovery;
+/// Shared fixtures for the native API integration targets.
+#[doc(hidden)]
+#[cfg(feature = "test-support")]
+pub mod test_support;
 #[path = "catalog_sources/ui_component_catalog_source.rs"]
 pub mod ui_component_catalog_source;
 pub mod workers;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use anyhow::{anyhow, Result};
-use argon2::{password_hash::PasswordHasher, Argon2};
-use axum::{middleware as axum_middleware, routing::get, Json, Router};
+use anyhow::{Result, anyhow};
+use argon2::{Argon2, password_hash::PasswordHasher};
+use axum::{Json, Router, middleware as axum_middleware, routing::get};
 use control_plane::{
     bootstrap::{BootstrapConfig, BootstrapService},
     plugin_management::ready_current_node_plugin_installation,
@@ -85,12 +89,12 @@ use tower_http::{
     cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer},
     trace::TraceLayer,
 };
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::{Config as SwaggerUiConfig, SwaggerUi};
 
 use crate::{
-    app_state::{build_official_i18n_catalog_update_service, ApiState},
+    app_state::{ApiState, build_official_i18n_catalog_update_service},
     config::{ApiConfig, ApiEnvironment},
     host_extension_loader::{
         activate_prepared_host_extensions, prepare_host_extensions_at_startup,
@@ -582,7 +586,7 @@ pub fn init_tracing() {
 #[cfg(test)]
 mod tests {
     use super::{
-        api_workspace_root, parse_bind_addr, resolve_system_backup_startup, DEFAULT_API_SERVER_ADDR,
+        DEFAULT_API_SERVER_ADDR, api_workspace_root, parse_bind_addr, resolve_system_backup_startup,
     };
 
     #[test]

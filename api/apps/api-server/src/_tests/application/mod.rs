@@ -1,22 +1,9 @@
-mod application_api_docs_routes;
-mod application_api_routes;
-mod application_delete_routes;
-mod application_js_dependency_routes;
-mod application_management_routes;
-mod application_orchestration_routes;
-mod application_routes;
-mod application_runtime_routes;
-mod application_runtime_snapshot_routes;
-mod application_runtime_stream_routes;
-mod model_definition_routes;
-mod node_contribution_routes;
-mod runtime_model_routes;
-
-pub(crate) use application_runtime_routes::{
-    create_communication_provider_instance, create_gated_provider_instance,
-    create_marker_output_provider_instance, create_ready_provider_instance,
-    create_turn_communication_provider_instance, seed_agent_flow_application,
-    seed_human_input_application, ProviderInvocationGate,
-};
-
-mod application_archive_batch_routes;
+pub(crate) use crate::test_support::application::*;
+pub(crate) mod application_runtime_routes {
+    pub(crate) use crate::test_support::application::*;
+    mod logs_routes {
+        mod unified_log_queries {
+            include!("../targets/retained/application_query.rs");
+        }
+    }
+}

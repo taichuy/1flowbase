@@ -62,3 +62,31 @@ workspace 全量预热的 feature 图。Root 在上述冻结提交的 unit-graph
 `--all-targets` 图的子集；仅 `-p api-server --test api_config` 缺少 Tokio `test-util`，
 可能导致依赖重编。此结论只绑定当前仓库取证，不泛化到其他 Cargo 版本、目标或后续依赖变化。
 `--workspace` 与 `--package`/`-p` 互斥；原 package 选择继续可用。
+
+## HTTP behavior partitions
+
+The `test-support` feature is enabled by the package's dev self-dependency. It adds
+explicit fixture factories; ordinary production constructors keep their behavior.
+Each target below mounts original test leaves and shares one fixture library.
+Private implementation cases remain in the library harness, including private contract checks extracted from otherwise public test leaves.
+
+| Target | Scope |
+| --- | --- |
+| `api_application` | Application, runtime, logs and model HTTP behavior |
+| `api_identity` | Authentication, members, roles and sessions |
+| `api_console` | Console policy and Frontstage HTTP behavior |
+| `api_system_settings` | Data sources, files and system settings |
+| `api_mcp_management` | MCP management, bundles, OAuth and upstreams |
+| `api_documentation` | Public OpenAPI and documentation contracts |
+| `api_extension_catalog` | Model providers, plugin HTTP behavior and network center |
+| `api_catalog_sources` | Catalog icons, i18n and UI component source contracts |
+
+Run `node scripts/node/test-backend.js --workspace --test api_application` from
+the repository root, with an optional `--filter`. Full workspace/package tests
+continue to discover every target. Executable discovery and behavioral runs remain the acceptance evidence for
+complete coverage; selecting a target does not run the remaining targets.
+
+Fixture resources remain owned by runtime services after state/provider clones.
+The owner is declared last so backend/session destructors finish before cleanup.
+Integration fixtures use the production UUID artifact resolver; library unit
+fixtures retain their existing path resolver. `ApiState` gains no feature field.

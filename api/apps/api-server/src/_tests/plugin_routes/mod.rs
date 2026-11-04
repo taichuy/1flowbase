@@ -1,6 +1,4 @@
-mod catalog_and_upload;
-mod extension_center;
 mod extension_center_install;
-mod family_management;
+#[path = "install_and_access_private.rs"]
 mod install_and_access;
 mod support;
