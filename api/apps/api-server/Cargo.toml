@@ -7,7 +7,8 @@ license.workspace = true
 
 [features]
 # Builds only the Root #1805 consumer authenticity fixture. The normal lib-test target keeps
-# the complete API-server suite; this narrow target prevents a fresh QA run from compiling every
+# the internal unit suite; ordinary package tests also discover the independent contract targets.
+# This narrow lib target prevents a fresh QA run from compiling every
 # unrelated API test module before it can exercise the persisted egress path.
 root-1805-consumer-fixture = []
 

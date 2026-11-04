@@ -41,7 +41,8 @@ function usageBackend(writeStdout = (text) => process.stdout.write(text)) {
     "Usage: node scripts/node/test-backend.js [--package <crate> ...] [--lib | --test <target> | --bin <target>] [--filter <name>] [--exact]\n" +
       "No arguments: Rust static gate and full Cargo workspace tests.\n" +
       "Selection requires --package (or -p); --filter is a substring, --exact matches its full test name.\n" +
-      "Cargo jobs and test threads always use the repository runtime configuration.\n",
+      "Cargo jobs and test threads always use the repository runtime configuration.\n" +
+      "Choose --test <target> to limit compilation; --filter only selects tests after that target is built.\n",
   );
 }
 
