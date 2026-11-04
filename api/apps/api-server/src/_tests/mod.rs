@@ -85,3 +85,6 @@ mod runtime_event_stream;
 mod official_extension_catalog_source;
 #[path = "catalog_sources/official_i18n_catalog_source.rs"]
 mod official_i18n_catalog_source;
+
+#[path = "mcp_routes/mcp_oauth_routes.rs"]
+mod mcp_oauth_routes;
