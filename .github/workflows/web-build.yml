@@ -36,7 +36,7 @@ jobs:
           cp -a web/app/dist tmp/shared-web/dist
           (cd tmp/shared-web/dist && find . -type f -print0 | sort -z | xargs -0 sha256sum) > tmp/shared-web/web-dist.sha256
       - name: Upload shared web dist
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: tmp/shared-web

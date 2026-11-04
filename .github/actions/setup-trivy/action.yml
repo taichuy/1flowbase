@@ -1,0 +1,13 @@
+name: Install Trivy from GitHub Release
+description: Install a pinned Trivy binary after verifying its release checksum.
+inputs:
+  version:
+    description: Exact stable Trivy release tag.
+    default: v0.76.1
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        TRIVY_VERSION: ${{ inputs.version }}
+      run: bash "$GITHUB_ACTION_PATH/install.sh"

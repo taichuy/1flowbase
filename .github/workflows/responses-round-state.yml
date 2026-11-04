@@ -87,7 +87,7 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server > "$out/build.log" 2>&1 || { tail -c 6000 "$out/build.log"; exit 1; }
           cp api/target/debug/api-server "$out/api-server-candidate"
           sha256sum "$out/api-server-candidate" > "$out/binary.sha256"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ always() }}
         with:
           name: responses-round-state-${{ github.sha }}
@@ -164,7 +164,7 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server --features tikv-jemallocator/stats > "$out/build.log" 2>&1 || { tail -c 8000 "$out/build.log"; exit 1; }
           cp api/target/debug/api-server "$out/api-server-candidate"
           sha256sum "$out/api-server-candidate" > "$out/binary.sha256"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: responses-client-history-${{ github.sha }}

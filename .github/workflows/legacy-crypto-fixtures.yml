@@ -50,7 +50,7 @@ jobs:
           set -euo pipefail
           cargo run --locked --manifest-path tmp/test-governance/legacy-crypto-fixtures/producer/Cargo.toml -- tmp/test-governance/legacy-crypto-fixtures/artifact/fixtures.json > tmp/test-governance/legacy-crypto-fixtures/produce.log 2>&1 || { tail -c 6000 tmp/test-governance/legacy-crypto-fixtures/produce.log; exit 1; }
           node scripts/node/legacy-crypto-fixtures/prepare.mjs provenance
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: legacy-crypto-fixtures-${{ github.run_id }}

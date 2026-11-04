@@ -98,7 +98,7 @@ jobs:
             ~/.cargo/git
             api/target
           key: ${{ steps.rust-cache.outputs.cache-primary-key }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: model-pricing-pagination-${{ github.sha }}

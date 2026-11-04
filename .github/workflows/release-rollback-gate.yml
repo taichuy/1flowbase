@@ -72,7 +72,7 @@ jobs:
           start_postgres: "false"
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-release-rollback

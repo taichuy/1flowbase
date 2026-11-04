@@ -93,7 +93,7 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server > tmp/test-governance/gateway-payload-policy/ci/build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-payload-policy/ci/build.log; exit 1; }
           cp api/target/debug/api-server tmp/test-governance/gateway-payload-policy/ci/api-server-candidate
           sha256sum tmp/test-governance/gateway-payload-policy/ci/api-server-candidate > tmp/test-governance/gateway-payload-policy/ci/binary.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ always() }}
         with:
           name: gateway-payload-policy-${{ github.sha }}

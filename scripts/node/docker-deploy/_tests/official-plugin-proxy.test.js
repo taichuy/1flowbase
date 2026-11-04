@@ -923,7 +923,8 @@ test('container image workflow scans temporary image tags before official promot
   assert.doesNotMatch(workflow, /Build and push[\s\S]*?ghcr\.io\/\$\{\{ github\.repository_owner \}\}\/1flowbase-web:latest/u);
 
   assert.match(workflow, /aquasecurity\/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25/u);
-  assert.match(workflow, /version: v0\.70\.0/u);
+  assert.match(workflow, /uses: \.\/\.github\/actions\/setup-trivy/u);
+  assert.match(workflow, /skip-setup-trivy: true/u);
   assert.match(workflow, /name: Generate HIGH Trivy warning report/u);
   assert.match(workflow, /severity: HIGH/u);
   assert.match(workflow, /exit-code: "0"/u);

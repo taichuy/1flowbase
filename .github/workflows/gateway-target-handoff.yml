@@ -261,7 +261,7 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin responses-history-migrate --features responses-history-migration > tmp/test-governance/gateway-target-handoff/ci/history-maintenance-build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-maintenance-build.log; exit 1; }
           cp api/target/debug/responses-history-migrate tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate
           sha256sum tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate > tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate.sha256
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: gateway-target-handoff-evidence
@@ -340,7 +340,7 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server --features tikv-jemallocator/stats > tmp/test-governance/gateway-target-handoff/ci/build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/build.log; exit 1; }
           cp api/target/debug/api-server tmp/test-governance/gateway-target-handoff/ci/api-server
           sha256sum tmp/test-governance/gateway-target-handoff/ci/api-server > tmp/test-governance/gateway-target-handoff/ci/api-server.sha256
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: gateway-target-handoff-evidence
@@ -386,7 +386,7 @@ jobs:
           cp api/target/debug/api-server tmp/test-governance/responses-websocket-transport/ci/api-server
           strip --strip-debug tmp/test-governance/responses-websocket-transport/ci/api-server
           sha256sum tmp/test-governance/responses-websocket-transport/ci/api-server > tmp/test-governance/responses-websocket-transport/ci/api-server.sha256
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: responses-websocket-transport-evidence
@@ -430,7 +430,7 @@ jobs:
           strip --strip-debug tmp/test-governance/weak-network-provider/ci/openai-provider
           node scripts/node/plugin/cli.js package "$PLUGIN_DIR" --out tmp/test-governance/weak-network-provider/ci --runtime-binary tmp/test-governance/weak-network-provider/ci/openai-provider --target x86_64-unknown-linux-gnu
           sha256sum tmp/test-governance/weak-network-provider/ci/openai-provider > tmp/test-governance/weak-network-provider/ci/openai-provider.sha256
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: weak-network-provider-evidence
@@ -557,7 +557,7 @@ jobs:
           cargo fetch --locked --manifest-path api/Cargo.toml > tmp/test-governance/session-affinity-20261017/ci/fetch.log 2>&1 || { tail -c 4000 tmp/test-governance/session-affinity-20261017/ci/fetch.log; exit 1; }
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test dependency_boundaries > tmp/test-governance/session-affinity-20261017/ci/dependencies.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/dependencies.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/session-affinity-20261017/ci/dependencies.log
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: session-affinity-${{ github.sha }}

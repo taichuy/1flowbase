@@ -125,7 +125,7 @@ jobs:
           cp api/target/debug/api-server "$evidence/api-server-candidate"
           git rev-parse HEAD > "$evidence/candidate-sha.txt"
           sha256sum "$evidence/api-server-candidate" > "$evidence/binary-sha256.txt"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: browser-managed-host-${{ inputs.candidate_sha || github.sha }}

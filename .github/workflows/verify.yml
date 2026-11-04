@@ -66,7 +66,7 @@ jobs:
           report_type: ci
           publish_issue: "false"
           start_postgres: "false"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-provider-conformance
@@ -99,7 +99,7 @@ jobs:
           report_type: ci
           publish_issue: "false"
           start_postgres: "false"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-repo-tooling
@@ -128,7 +128,7 @@ jobs:
           report_type: ci
           publish_issue: "false"
           start_postgres: "false"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-repo-frontend-pr
@@ -160,7 +160,7 @@ jobs:
           report_type: ci
           publish_issue: "false"
           start_postgres: "false"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-${{ matrix.scope }}
@@ -195,7 +195,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.main_source_sha || github.sha }}
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           pattern: "test-governance-!(artifacts)"
           path: tmp/test-governance/parallel
@@ -230,7 +230,7 @@ jobs:
           INPUT_PUBLISH_PR_COMMENT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
           INPUT_PR_NUMBER: ${{ github.event.pull_request.number }}
           INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-artifacts
