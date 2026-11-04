@@ -46,10 +46,9 @@ pub(crate) use settings_group::{
 
 pub const PUBLIC_API_PATH_PREFIX: &str = "/api/public/";
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod _tests;
-}
 
 pub mod mcp_oauth;
 

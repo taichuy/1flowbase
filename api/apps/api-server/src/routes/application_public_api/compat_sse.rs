@@ -2,10 +2,10 @@ use super::openai::native_response_id;
 use std::{convert::Infallible, sync::Arc, time::Duration};
 
 use control_plane::ports::OrchestrationRuntimeRepository;
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 use std::collections::HashSet;
-}
 
 use axum::response::{
     sse::{Event, KeepAlive, Sse},
@@ -36,10 +36,10 @@ use tokio::sync::mpsc;
 
 use crate::routes::application_public_api::delivery_receipt::RuntimeEventDeliveryReceipt;
 use tracing::warn;
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 use tracing::{debug, info};
-}
 
 use crate::routes::application_public_api::tool_callback_ids::{
     encode_anthropic_callback_tool_use_id, encode_openai_callback_tool_call_id,
@@ -72,23 +72,24 @@ use callback_execution::open_compatible_turn_with_invoker;
 pub(crate) use callback_reservation::CompatibleCallbackReservation;
 mod event_forwarding;
 mod protocol_mappers;
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests;
-}
 
 use event_forwarding::{
     append_compatible_resume_terminal_event, is_answer_presentation_delta,
     send_subscribed_compatible_typed_event_stream, SubscribedCompatibleTypedEventStream,
 };
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 use event_forwarding::{send_compatible_runtime_event_stream, take_ordered_compatible_event};
-}
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 use protocol_mappers::anthropic_completed_run_to_sse;
-}
+
 use protocol_mappers::{AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -432,7 +433,7 @@ pub(crate) fn openai_chat_resume_interface_projection(
     )
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(crate) fn openai_responses_interface_projection(
     model: String,
@@ -442,7 +443,6 @@ pub(crate) fn openai_responses_interface_projection(
         model,
         previous_response_id,
     ))
-}
 }
 
 pub(crate) fn openai_responses_interface_projection_with_mode(
@@ -600,7 +600,7 @@ fn compatible_resume_plan(
     }))
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[derive(Debug, Default)]
 struct CompatibleStreamStats {
@@ -608,9 +608,8 @@ struct CompatibleStreamStats {
     emitted_content_bytes: usize,
     forwarded_event_identities: HashSet<CompatiblePublicEventIdentity>,
 }
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct CompatiblePublicEventIdentity {
@@ -622,9 +621,8 @@ struct CompatiblePublicEventIdentity {
     source_node_run_id: Option<String>,
     source_output_key: Option<String>,
 }
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 impl CompatibleStreamStats {
     fn emitted_content(&self) -> bool {
@@ -661,9 +659,8 @@ impl CompatibleStreamStats {
         }
     }
 }
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 fn compatible_public_event_identity(
     event: &RuntimeEventEnvelope,
@@ -698,9 +695,8 @@ fn compatible_public_event_identity(
         source_output_key: presentation_value_identity(presentation, "source_output_key"),
     })
 }
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 fn presentation_value_identity(presentation: Option<&Value>, key: &str) -> Option<String> {
     presentation
@@ -709,7 +705,6 @@ fn presentation_value_identity(presentation: Option<&Value>, key: &str) -> Optio
             Value::String(text) => text.clone(),
             other => other.to_string(),
         })
-}
 }
 
 /// Compact is a unary provider operation, so its completed Responses event is
@@ -741,7 +736,7 @@ pub(crate) fn openai_compact_sse_response(response: Value) -> Result<Response, N
     )
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 fn test_projected_events_response(events: Vec<Result<Event, Infallible>>) -> Response {
     Sse::new(tokio_stream::iter(events))
@@ -751,7 +746,6 @@ fn test_projected_events_response(events: Vec<Result<Event, Infallible>>) -> Res
                 .text("heartbeat"),
         )
         .into_response()
-}
 }
 
 pub(crate) async fn start_compatible_typed_start_stream_for_actor(
@@ -1267,14 +1261,14 @@ pub(crate) fn openai_chat_completion_id_from_callback_task(
 ) -> String {
     format!("chatcmpl-{run_id}-{callback_task_id}")
 }
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 const OPENAI_CHAT_SSE_PROJECTION: &str = "openai_chat";
-}
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 const ANTHROPIC_SSE_PROJECTION: &str = "anthropic";
-}
 
 mod responses_projection;
 pub(crate) use responses_projection::ResponsesProjectionSelector;

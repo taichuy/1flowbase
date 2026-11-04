@@ -1158,8 +1158,7 @@ pub async fn update_version(
     Ok(Json(ApiSuccess::new(output.into_state()?)))
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "application_orchestration/_tests/time_response.rs"]
 mod time_response_tests;
-}

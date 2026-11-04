@@ -137,14 +137,13 @@ fn other_policy_group_keys(group_id: &str) -> (&'static str, &'static str) {
     }
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn core_console_display_inventory() -> Vec<&'static str> {
     catalog::TEXTS.iter().map(|text| text.key).collect()
 }
-}
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn core_console_static_reference_inventory() -> Vec<&'static str> {
     catalog::TEXTS
@@ -152,7 +151,6 @@ pub(crate) fn core_console_static_reference_inventory() -> Vec<&'static str> {
         .filter(|text| text.locale_catalog_ref != text.key)
         .map(|text| text.locale_catalog_ref)
         .collect()
-}
 }
 
 fn dynamic_display_key(key: &str) -> Option<&'static str> {
@@ -175,7 +173,7 @@ pub(crate) async fn resolve_core_console_display_with(
         .await
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::dynamic_display_key;
@@ -192,5 +190,4 @@ mod tests {
             None
         );
     }
-}
 }

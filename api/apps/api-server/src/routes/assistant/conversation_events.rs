@@ -127,8 +127,7 @@ fn format_timestamp(value: time::OffsetDateTime) -> String {
         .expect("OffsetDateTime must format as RFC3339")
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/conversation_events.rs"]
 mod tests;
-}

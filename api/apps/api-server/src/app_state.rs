@@ -396,6 +396,7 @@ fn validate_linked_host_console_route_assembly(
 }
 
 #[derive(Clone)]
+#[cfg_attr(test, api_test_selection::fixture(contracts, public_api))]
 pub struct ApiState {
     #[cfg(test)]
     pub(crate) test_resources: Option<Arc<TestResources>>,

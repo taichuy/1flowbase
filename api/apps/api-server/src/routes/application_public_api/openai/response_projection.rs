@@ -194,7 +194,7 @@ pub(in super::super) fn native_response_id(run: &NativeRunResult) -> String {
         .unwrap_or_else(|| response_id_from_run_id(run.id))
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(in super::super) fn to_openai_responses_response(
     run: NativeRunResult,
@@ -202,7 +202,6 @@ pub(in super::super) fn to_openai_responses_response(
     previous_response_id: Option<String>,
 ) -> Result<OpenAiResponsesObject, OpenAiRouteError> {
     to_openai_responses_response_with_native_items(run, model, previous_response_id, None)
-}
 }
 
 pub(super) fn to_openai_responses_response_for_round(

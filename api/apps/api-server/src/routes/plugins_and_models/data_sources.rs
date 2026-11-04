@@ -1111,8 +1111,7 @@ pub async fn map_resource_to_model(
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "data_sources/_tests/time_response.rs"]
 mod time_response_tests;
-}

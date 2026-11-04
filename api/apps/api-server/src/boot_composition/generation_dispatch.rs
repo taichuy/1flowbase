@@ -98,24 +98,24 @@ impl GenerationDispatch {
             .map_err(|_| unavailable())
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn compile(state: &Arc<ApiState>) -> Result<Arc<Self>, ApiError> {
-            let boot = state
-                .extension_boot_snapshot
-                .as_ref()
-                .ok_or_else(unavailable)?;
-            let registry = boot
-                .interface_registry()
-                .ok_or_else(unavailable)?
-                .snapshot();
-            let owner = Self::new(boot.generation_id());
-            owner.compile_router(state, &registry, None)?;
-            Ok(owner)
-        }
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    #[cfg(test)]
+    pub(crate) fn compile(state: &Arc<ApiState>) -> Result<Arc<Self>, ApiError> {
+        let boot = state
+            .extension_boot_snapshot
+            .as_ref()
+            .ok_or_else(unavailable)?;
+        let registry = boot
+            .interface_registry()
+            .ok_or_else(unavailable)?
+            .snapshot();
+        let owner = Self::new(boot.generation_id());
+        owner.compile_router(state, &registry, None)?;
+        Ok(owner)
     }
 
     #[cfg(test)]
+    #[cfg_attr(test, api_test_selection::group(core, contracts, public_api))]
     pub(crate) fn retirement_notification(&self) -> Arc<tokio::sync::Notify> {
         self.retired.clone()
     }

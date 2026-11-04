@@ -366,6 +366,113 @@ fn d_004_plugin_runner_is_absent_from_the_workspace_and_production_dependencies(
     assert!(!api.join("apps/plugin-runner").exists());
 }
 
+// The selector is compiler-only tooling, never a runtime/internal service edge.
+fn api_test_selection_violations(metadata: &serde_json::Value) -> Vec<String> {
+    let packages = metadata["packages"].as_array().expect("metadata packages");
+    let mut violations = Vec::new();
+    let selector = packages
+        .iter()
+        .find(|package| package["name"] == "api-test-selection");
+    match selector {
+        None => violations.push("api-test-selection package must exist".to_string()),
+        Some(package) => {
+            if !package["dependencies"]
+                .as_array()
+                .expect("selector dependencies")
+                .is_empty()
+            {
+                violations.push("api-test-selection must have no Cargo dependencies".to_string());
+            }
+            let proc_macro = package["targets"]
+                .as_array()
+                .expect("selector targets")
+                .iter()
+                .any(|target| {
+                    target["kind"]
+                        .as_array()
+                        .expect("target kinds")
+                        .iter()
+                        .any(|kind| kind == "proc-macro")
+                });
+            if !proc_macro {
+                violations.push("api-test-selection must be a proc-macro crate".to_string());
+            }
+        }
+    }
+    let mut api_dev_edges = 0;
+    for package in packages {
+        let source = package["name"].as_str().expect("package name");
+        for dependency in package["dependencies"]
+            .as_array()
+            .expect("package dependencies")
+        {
+            // Cargo metadata's name is the actual package, even with a rename.
+            if dependency["name"] != "api-test-selection" {
+                continue;
+            }
+            if source == "api-server" && dependency["kind"] == "dev" {
+                api_dev_edges += 1;
+            } else {
+                let alias = dependency["rename"]
+                    .as_str()
+                    .unwrap_or("api_test_selection");
+                violations.push(format!(
+                    "{source} -> api-test-selection must be api-server dev-only (crate alias {alias})"
+                ));
+            }
+        }
+    }
+    if api_dev_edges != 1 {
+        violations.push("api-server must declare exactly one selector dev-dependency".to_string());
+    }
+    violations.sort();
+    violations
+}
+
+#[test]
+fn api_test_selection_is_dependency_free_and_consumed_only_by_api_tests() {
+    let api = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    assert_eq!(
+        api_test_selection_violations(&cargo_metadata(&api)),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn controlled_negative_rejects_selector_runtime_edges_and_dependency_rename() {
+    let mut fixture = serde_json::json!({
+        "packages": [
+            {
+                "name": "api-test-selection",
+                "dependencies": [],
+                "targets": [{"kind": ["proc-macro"]}]
+            },
+            {
+                "name": "api-server",
+                "dependencies": [{"name": "api-test-selection", "kind": "dev", "rename": "selector_dev"}]
+            },
+            {"name": "domain", "dependencies": []}
+        ]
+    });
+    assert!(api_test_selection_violations(&fixture).is_empty());
+    fixture["packages"][0]["dependencies"] = serde_json::json!([{"name": "syn"}]);
+    fixture["packages"][1]["dependencies"][0]["kind"] = serde_json::Value::Null;
+    fixture["packages"][2]["dependencies"] = serde_json::json!([{"name": "api-test-selection", "kind": "dev", "rename": "hidden_selector"}]);
+    assert_eq!(
+        api_test_selection_violations(&fixture),
+        vec![
+            "api-server -> api-test-selection must be api-server dev-only (crate alias selector_dev)",
+            "api-server must declare exactly one selector dev-dependency",
+            "api-test-selection must have no Cargo dependencies",
+            "domain -> api-test-selection must be api-server dev-only (crate alias hidden_selector)",
+        ]
+    );
+    fixture["packages"][0]["targets"] = serde_json::json!([{"kind": ["lib"]}]);
+    assert!(api_test_selection_violations(&fixture)
+        .iter()
+        .any(|violation| violation == "api-test-selection must be a proc-macro crate"));
+}
+
 #[test]
 fn runtime_consumer_fixture_uses_runtime_crates_only_as_dev_dependencies() {
     let api = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");

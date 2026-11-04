@@ -156,7 +156,6 @@ fn asset_stream(
     )
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod _tests;
-}

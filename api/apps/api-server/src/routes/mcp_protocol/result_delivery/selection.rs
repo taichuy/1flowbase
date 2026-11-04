@@ -115,8 +115,7 @@ fn includes(parent: &str, pointer: &str) -> bool {
             .is_some_and(|suffix| suffix.starts_with('/'))
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/selection.rs"]
 mod tests;
-}

@@ -37,6 +37,7 @@
 | `storage/durable/postgres` (`storage-durable-postgres`) | PostgreSQL repository、SQL、事务、migration 与 mapper | `control-plane-contracts`、`domain`、`extension-contracts`、`storage-durable` |
 | `storage/ephemeral` | session、cache、lease、lock、queue 等短期状态实现 | `control-plane-contracts`、`domain` |
 | `storage/object` | 业务文件对象存储 driver | 无 |
+| `api-test-selection` | API 测试 root 的窄 item 分组选取与 fixture 局部 lint；仅 proc_macro/标准库，不承载生产职责 | 无；仅允许 `api-server` 的 dev-dependency 使用 |
 | `control-plane-test-support` | Control Plane 测试 fixture 与 builder | 仅测试使用 |
 | `postgres-test-support` | PostgreSQL 隔离 schema、migration 与数据库 fixture | 仅测试使用 |
 | `control-plane-postgres-tests` | 真实 Control Plane + PostgreSQL 跨层验收 | 仅测试使用，不承载生产实现；`runtime-core`、`orchestration-runtime` 仅作 dev-dependency 装配真实执行 consumer |

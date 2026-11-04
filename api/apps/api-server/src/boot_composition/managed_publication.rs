@@ -116,11 +116,10 @@ impl ManagedGenerationPublisher {
         Some(crate::generation_dispatch::GenerationLease { state, owner })
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn current_state(&self) -> Option<Arc<ApiState>> {
-            self.current_generation().map(|lease| lease.state)
-        }
+    #[cfg_attr(test, api_test_selection::group(core, contracts))]
+    #[cfg(test)]
+    pub(crate) fn current_state(&self) -> Option<Arc<ApiState>> {
+        self.current_generation().map(|lease| lease.state)
     }
 
     pub(crate) fn interface_module(
@@ -282,8 +281,7 @@ impl ManagedGenerationPublisher {
     }
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/generation_ownership.rs"]
 mod generation_ownership;
-}

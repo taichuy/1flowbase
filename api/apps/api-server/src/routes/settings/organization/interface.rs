@@ -230,8 +230,7 @@ pub(crate) fn compile_registry(
     )
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/registry.rs"]
 mod tests;
-}

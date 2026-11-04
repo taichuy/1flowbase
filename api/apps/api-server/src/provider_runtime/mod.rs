@@ -383,17 +383,16 @@ impl ApiRuntimeServices {
         self
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn fixture_resource_owner(
-            &self,
-        ) -> std::sync::Weak<crate::test_support::TestResources> {
-            Arc::downgrade(
-                self.fixture_resources
-                    .as_ref()
-                    .expect("fixture resources must be attached"),
-            )
-        }
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    #[cfg(test)]
+    pub(crate) fn fixture_resource_owner(
+        &self,
+    ) -> std::sync::Weak<crate::test_support::TestResources> {
+        Arc::downgrade(
+            self.fixture_resources
+                .as_ref()
+                .expect("fixture resources must be attached"),
+        )
     }
 
     pub(crate) fn start_transport_session_scheduler(&self) {
@@ -1119,11 +1118,10 @@ fn preserve_provider_invocation_outcome(
     }
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/invocation_outcome.rs"]
 mod invocation_outcome_tests;
-}
 
 fn map_runtime_backend_error(error: RuntimeBackendError) -> anyhow::Error {
     match error {

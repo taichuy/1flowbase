@@ -18,10 +18,11 @@ mod actor;
 mod auth;
 mod projector;
 pub(crate) mod schema;
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests;
-}
+
 mod transport;
 mod turn_bridge;
 use transport::WebSocketUpgrade;

@@ -322,33 +322,32 @@ impl ManagedExtensionComposition {
         Ok(lease)
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) async fn execute(
-            &self,
-            workspace_id: Uuid,
-            contribution_id: &ContributionId,
-            principal: RuntimeExecutionPrincipal,
-            config_payload: serde_json::Value,
-            input_payload: serde_json::Value,
-        ) -> Result<serde_json::Value> {
-            if principal.workspace_id != workspace_id.to_string() {
-                bail!("managed execution workspace mismatch");
-            }
-            let snapshot = self
-                .snapshot(workspace_id)
-                .await
-                .context("managed workspace is not activated")?;
-            self.execute_snapshot(
-                snapshot,
-                workspace_id,
-                contribution_id,
-                principal,
-                config_payload,
-                input_payload,
-            )
-            .await
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    #[cfg(test)]
+    pub(crate) async fn execute(
+        &self,
+        workspace_id: Uuid,
+        contribution_id: &ContributionId,
+        principal: RuntimeExecutionPrincipal,
+        config_payload: serde_json::Value,
+        input_payload: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        if principal.workspace_id != workspace_id.to_string() {
+            bail!("managed execution workspace mismatch");
         }
+        let snapshot = self
+            .snapshot(workspace_id)
+            .await
+            .context("managed workspace is not activated")?;
+        self.execute_snapshot(
+            snapshot,
+            workspace_id,
+            contribution_id,
+            principal,
+            config_payload,
+            input_payload,
+        )
+        .await
     }
 
     /// Reset the exact pool that executed the successful mutation, preserving its mounts.

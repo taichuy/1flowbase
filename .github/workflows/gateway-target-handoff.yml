@@ -111,7 +111,7 @@ jobs:
       - name: Production catalogue generation ownership (default lane)
         if: ${{ !inputs.verify_generation_ownership }}
         run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib _tests::extension_bus::boot_snapshot_tests -- --nocapture > tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log; exit 1; }
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_contracts _tests::extension_bus::boot_snapshot_tests -- --nocapture > tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log
       - name: Prepare existing real SDK workers for host contracts
         if: ${{ inputs.verify_generation_ownership }}
@@ -182,16 +182,18 @@ jobs:
             tail -c 16000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log
             exit "$status"
           fi
-          # Preserve route-private matches without selecting this API-only target in other packages.
-          route_command=(cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_routes -- "${selectors[@]}")
-          printf '%q ' "${route_command[@]}" >> tmp/test-governance/gateway-target-handoff/ci/catalog-command.txt
-          printf '\n' >> tmp/test-governance/gateway-target-handoff/ci/catalog-command.txt
-          /usr/bin/time -v -o tmp/test-governance/gateway-target-handoff/ci/catalog-route-resources.log "${route_command[@]}" >> tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log 2>&1 || status=$?
-          printf '%s\n' "$status" > tmp/test-governance/gateway-target-handoff/ci/catalog-exit.txt
-          if [ "$status" -ne 0 ]; then
-            tail -c 16000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log
-            exit "$status"
-          fi
+          # Keep the original four-package library command, then add only API-owned native targets.
+          for api_target in api_private_contracts api_public_api api_private_routes; do
+            api_command=(cargo test --locked --manifest-path api/Cargo.toml -p api-server --test "$api_target" -- "${selectors[@]}")
+            printf '%q ' "${api_command[@]}" >> tmp/test-governance/gateway-target-handoff/ci/catalog-command.txt
+            printf '\n' >> tmp/test-governance/gateway-target-handoff/ci/catalog-command.txt
+            /usr/bin/time -v -o "tmp/test-governance/gateway-target-handoff/ci/catalog-$api_target-resources.log" "${api_command[@]}" >> tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log 2>&1 || status=$?
+            printf '%s\n' "$status" > tmp/test-governance/gateway-target-handoff/ci/catalog-exit.txt
+            if [ "$status" -ne 0 ]; then
+              tail -c 16000 tmp/test-governance/gateway-target-handoff/ci/catalog-ownership.log
+              exit "$status"
+            fi
+          done
           # Public documentation contracts moved to a native target; retain the private lib probes above.
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_documentation _tests::route_docs > tmp/test-governance/gateway-target-handoff/ci/catalog-documentation.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/catalog-documentation.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/catalog-documentation.log -- _tests::route_docs
@@ -222,14 +224,14 @@ jobs:
       - name: Callback attachment live and durable delivery regressions
         if: ${{ !cancelled() && inputs.verify_callback_attachment && !inputs.verify_generation_ownership }}
         run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_routes routes::application_public_api::compat_sse::tests::forwarding > tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log; exit 1; }
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_public_api routes::application_public_api::compat_sse::tests::forwarding > tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_routes routes::application_public_api::compat_sse::event_forwarding::committed_event_index_tests > tmp/test-governance/gateway-target-handoff/ci/callback-canonical-index.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-canonical-index.log; exit 1; }
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_public_api routes::application_public_api::compat_sse::event_forwarding::committed_event_index_tests > tmp/test-governance/gateway-target-handoff/ci/callback-canonical-index.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-canonical-index.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/callback-canonical-index.log
       - name: Runtime event generation retirement regressions
         if: ${{ !cancelled() && inputs.verify_callback_attachment && !inputs.verify_generation_ownership }}
         run: |
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib _tests::runtime_event_stream > tmp/test-governance/gateway-target-handoff/ci/runtime-event-stream.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/runtime-event-stream.log; exit 1; }
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_contracts _tests::runtime_event_stream > tmp/test-governance/gateway-target-handoff/ci/runtime-event-stream.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/runtime-event-stream.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/runtime-event-stream.log
       - name: Build candidate API for task-owned runtime verification
         run: |
@@ -392,7 +394,7 @@ jobs:
         run: |
           for selector in transport_session_lifecycle responses_websocket::tests::turn_finalization external_protocol_context_cannot_claim_host_transport_connection_scope routes::application_public_api::openai::tests; do
             log="tmp/test-governance/responses-websocket-transport/ci/${selector//::/-}.log"
-            target_args=(--test api_private_routes)
+            target_args=(--test api_public_api)
             if [[ "$selector" == transport_session_lifecycle ]]; then target_args=(--lib); fi
             cargo test --locked --manifest-path api/Cargo.toml -p api-server "${target_args[@]}" "$selector" > "$log" 2>&1 || { tail -c 6000 "$log"; exit 1; }
             node scripts/node/verify/cargo-test-results.js "$log"
@@ -510,7 +512,7 @@ jobs:
       - name: Three protocol ingress identities through the Native mapper
         run: |
           for suite in provider_session::tests responses_session_identity_reaches_native_input_and_headerless_continuation claude_code_session_header_fills_missing_metadata_session_id; do
-            cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_routes "$suite" > "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log" 2>&1 || { tail -c 6000 "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log"; exit 1; }
+            cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_public_api "$suite" > "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log" 2>&1 || { tail -c 6000 "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log"; exit 1; }
             node scripts/node/verify/cargo-test-results.js "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log"
           done
       - name: PostgreSQL first writer, persistence and deletion behavior

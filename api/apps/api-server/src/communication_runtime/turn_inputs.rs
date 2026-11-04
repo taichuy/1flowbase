@@ -107,8 +107,7 @@ fn prepare_input(
     })
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/turn_inputs.rs"]
 mod tests;
-}

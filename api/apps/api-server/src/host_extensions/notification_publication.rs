@@ -36,7 +36,7 @@ impl OptionalNotificationPublicationPort for HostOptionalNotificationPublication
     }
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,5 +80,4 @@ mod tests {
             .contains("source unavailable"));
         assert!(owner.activate(Arc::new(UnavailablePublication)).is_err());
     }
-}
 }

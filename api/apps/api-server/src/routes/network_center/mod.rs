@@ -473,7 +473,7 @@ pub async fn delete_network_egress_route(
     Ok(StatusCode::NO_CONTENT)
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -552,10 +552,8 @@ mod tests {
         assert!(!serialized.to_string().contains("secret://"));
     }
 }
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/provider_projection.rs"]
 mod provider_projection_tests;
-}

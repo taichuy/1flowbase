@@ -481,12 +481,11 @@ fn injected_path_parameters(
         .collect()
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableFrontstageCallableDispatchPort;
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<FrontstageCallableDispatchInput, FrontstageCallableDispatchOutput>
     for UnavailableFrontstageCallableDispatchPort
@@ -503,9 +502,8 @@ impl ConsoleInterfacePort<FrontstageCallableDispatchInput, FrontstageCallableDis
         })
     }
 }
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -540,5 +538,4 @@ mod tests {
         }
         assert!(canonical_route_key("TRACE", "/api/console/applications").is_err());
     }
-}
 }

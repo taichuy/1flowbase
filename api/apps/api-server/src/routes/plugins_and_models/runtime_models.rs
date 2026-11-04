@@ -118,14 +118,13 @@ pub(crate) fn compile_runtime_model_interface_registry(
     interface::compile_registry(port)
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn compile_runtime_model_interface_registry_for_test() -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
     interface::compile_registry_for_test()
-}
 }
 
 impl interface::RuntimeModelOperationPort for RuntimeModelOperationAdapter {
@@ -1024,10 +1023,9 @@ async fn delete_record(
     Ok(result)
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests;
-}
 
 #[path = "runtime_models/record_cache.rs"]
 mod record_cache;

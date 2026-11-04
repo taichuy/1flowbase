@@ -267,7 +267,7 @@ fn base_router(include_docs_ui: bool, static_openapi: bool) -> Router {
     }
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn root_external_endpoint_contributions(
     include_docs: bool,
@@ -294,7 +294,6 @@ pub(crate) fn root_external_endpoint_contributions(
         );
     }
     contributions
-}
 }
 
 fn publish_external_endpoint_catalog(
@@ -376,7 +375,7 @@ pub fn app_with_state(state: Arc<ApiState>) -> Router {
         .layer(TraceLayer::new_for_http().make_span_with(safe_http_trace_span))
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core, contracts))]
 #[cfg(test)]
 fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
     let interface_snapshot = state
@@ -385,7 +384,6 @@ fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
         .and_then(|snapshot| snapshot.interface_registry())
         .map(|registry| registry.snapshot());
     console_router_for_registry(state, include_openapi, interface_snapshot.as_deref())
-}
 }
 
 fn console_router_for_registry(
@@ -584,11 +582,11 @@ pub fn init_tracing() {
         .try_init();
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_API_SERVER_ADDR, api_workspace_root, parse_bind_addr, resolve_system_backup_startup,
+        api_workspace_root, parse_bind_addr, resolve_system_backup_startup, DEFAULT_API_SERVER_ADDR,
     };
 
     #[test]
@@ -632,18 +630,15 @@ mod tests {
         assert!(result.is_none());
     }
 }
-}
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(all(test, feature = "root-1805-consumer-fixture"))]
 #[path = "_tests/root_1805_consumer_fixture.rs"]
 mod _tests;
-}
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
 mod _tests;
-}
 
 /// Actual server shutdown owner. A timeout preserves closed admission and all unfinished owners.
 pub struct ApiRuntimeShutdown {
@@ -687,6 +682,17 @@ mod startup_assembly;
 
 use startup_assembly::*;
 
+#[cfg_attr(test, api_test_selection::group(contracts, routes))]
 #[cfg(test)]
 #[path = "_tests/support/native_settings_fixture.rs"]
 mod native_settings_fixture;
+
+#[cfg_attr(test, api_test_selection::group(core))]
+#[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
+#[path = "_tests/private_root_support.rs"]
+mod _tests;
+
+#[cfg_attr(test, api_test_selection::group(contracts))]
+#[cfg(all(test, feature = "root-1805-consumer-fixture"))]
+#[path = "_tests/private_root_support.rs"]
+mod _tests;

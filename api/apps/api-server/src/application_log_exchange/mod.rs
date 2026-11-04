@@ -251,7 +251,7 @@ fn date_filter(from: Option<String>, to: Option<String>) -> Result<Filter, ApiEr
             .collect(),
     ))
 }
-api_nonroute_tests! {
+
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod _tests;
-}

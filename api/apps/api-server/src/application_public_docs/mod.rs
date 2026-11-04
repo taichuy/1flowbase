@@ -1023,7 +1023,7 @@ static PUBLIC_OPERATION_REGISTRY: &[PublicOperation] = &[
     },
 ];
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -1093,5 +1093,4 @@ mod tests {
             );
         }
     }
-}
 }

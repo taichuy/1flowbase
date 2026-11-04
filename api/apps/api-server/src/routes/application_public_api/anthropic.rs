@@ -727,7 +727,6 @@ fn callback_task_id_from_required_action(run: &NativeRunResult) -> Option<Uuid> 
         .and_then(|value| Uuid::parse_str(value).ok())
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests;
-}

@@ -619,7 +619,7 @@ fn decode_runtime_debug_artifact_preview(payload: &Value) -> Option<Value> {
     })
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests {
     use control_plane::application_public_api::native::{
@@ -825,5 +825,4 @@ mod tests {
         assert_eq!(deltas[1].kind, TerminalAnswerDeltaKind::Text);
         assert_eq!(deltas[1].text, "结构化回答");
     }
-}
 }

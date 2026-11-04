@@ -12,10 +12,11 @@ use domain::{
     McpCatalogSnapshot, McpGroupRecord, McpInstanceRecord, McpInstanceStatus, McpRiskLevel,
     McpToolBindingRecord, McpToolRecord, McpToolStatus,
 };
-api_nonroute_tests! {
+
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 use serde_json::json;
-}
+
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use storage_durable_postgres::MainDurableStore;
@@ -343,8 +344,8 @@ pub(crate) fn append_service(
     }
     Ok(())
 }
-api_nonroute_tests! {
+
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/mcp_routes/managed_service_mcp.rs"]
 mod tests;
-}

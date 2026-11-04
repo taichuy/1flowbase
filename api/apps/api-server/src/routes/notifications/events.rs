@@ -91,8 +91,7 @@ pub async fn events(
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/events.rs"]
 mod tests;
-}

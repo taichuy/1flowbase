@@ -1059,18 +1059,17 @@ pub async fn get_task(
     Ok(Json(ApiSuccess::new(task)))
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "plugins/_tests/time_response.rs"]
 mod time_response_tests;
-}
 
 #[path = "plugins/response_mapping.rs"]
 mod response_mapping;
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) use response_mapping::runtime_slot_for_contract;
-}
+
 pub(crate) use response_mapping::to_install_response;
 use response_mapping::*;

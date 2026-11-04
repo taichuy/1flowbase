@@ -525,7 +525,7 @@ async fn send_durable_backfill(
     read_any
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1097,5 +1097,4 @@ mod tests {
         assert_eq!(receiver.recv().await.unwrap()["payload"], terminal.payload);
         assert!(receiver.recv().await.is_none());
     }
-}
 }

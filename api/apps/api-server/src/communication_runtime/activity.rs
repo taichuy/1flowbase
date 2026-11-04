@@ -342,8 +342,7 @@ impl CommunicationExecutionResolver for CommunicationActivity {
     }
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/activity.rs"]
 pub(crate) mod tests;
-}

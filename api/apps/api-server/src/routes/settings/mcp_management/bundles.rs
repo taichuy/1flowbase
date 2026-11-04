@@ -901,7 +901,7 @@ fn bundle_file_path(directory: &str, stable_id: &str) -> String {
     )
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::parse_bundle_archive;
@@ -910,5 +910,4 @@ mod tests {
     fn rejects_non_zip_bundle() {
         assert!(parse_bundle_archive(b"not-a-zip").is_err());
     }
-}
 }

@@ -3,10 +3,11 @@ use super::{
     ManagedSchemaPreviewEntryResponse, ManagedSchemaPreviewResponse,
 };
 use crate::error_response::ApiError;
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use control_plane::ports::ManagedSchemaOperation;
-}
+
 use control_plane::ports::{
     ManagedSchemaApplyReceipt, ManagedSchemaPlan, ManagedSchemaPreview, ManagedSchemaRepository,
 };
@@ -139,7 +140,6 @@ fn receipt_response(receipt: ManagedSchemaApplyReceipt) -> ManagedSchemaApplyRec
     }
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod _tests;
-}

@@ -54,20 +54,18 @@ impl DocumentCache {
         cache.get_or_load(key, load).await
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        async fn run_pending_tasks(&self) {
-            if let Some(cache) = self.0.active.get() {
-                cache.run_pending_tasks().await;
-            }
+    #[cfg_attr(test, api_test_selection::group(core))]
+    #[cfg(test)]
+    async fn run_pending_tasks(&self) {
+        if let Some(cache) = self.0.active.get() {
+            cache.run_pending_tasks().await;
         }
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        fn entry_count(&self) -> u64 {
-            self.0.active.get().map_or(0, |cache| cache.entry_count())
-        }
+    #[cfg_attr(test, api_test_selection::group(core))]
+    #[cfg(test)]
+    fn entry_count(&self) -> u64 {
+        self.0.active.get().map_or(0, |cache| cache.entry_count())
     }
 }
 
@@ -135,8 +133,7 @@ pub(super) fn document_weight(value: &EncodedApiDocument) -> u64 {
     value.body.len() as u64
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "../_tests/route_docs/docs_cache_tests.rs"]
 mod tests;
-}

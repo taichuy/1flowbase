@@ -56,12 +56,11 @@ impl InterfaceRegistryContribution {
         }
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn with_test_contribution_id(mut self, contribution_id: &'static str) -> Self {
-            self.contribution_id = contribution_id.into();
-            self
-        }
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    #[cfg(test)]
+    pub(crate) fn with_test_contribution_id(mut self, contribution_id: &'static str) -> Self {
+        self.contribution_id = contribution_id.into();
+        self
     }
 
     fn console_binding_contributions(&self) -> Vec<ConsoleBindingOwnershipContribution> {

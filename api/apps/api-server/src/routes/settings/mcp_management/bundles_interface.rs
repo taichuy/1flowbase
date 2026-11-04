@@ -937,11 +937,12 @@ pub(crate) fn compile_registry(
         port,
     )
 }
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableMcpBundlesPort;
-}
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<McpBundlesInput, McpBundlesOutput> for UnavailableMcpBundlesPort {
     fn execute<'a>(
@@ -956,8 +957,8 @@ impl ConsoleInterfacePort<McpBundlesInput, McpBundlesOutput> for UnavailableMcpB
         })
     }
 }
-}
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -974,5 +975,4 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
-}
 }

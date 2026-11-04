@@ -663,7 +663,7 @@ fn process_rss_bytes() -> Option<u64> {
     }
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -835,10 +835,8 @@ mod tests {
         );
     }
 }
-}
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "runtime_activity/_tests/sampling.rs"]
 mod sampling_tests;
-}

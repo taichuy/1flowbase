@@ -17,6 +17,7 @@ impl<P: InvocationPrincipal> AuthenticatedInvocation<P> {
         &self.principal
     }
     #[cfg(test)]
+    #[cfg_attr(test, api_test_selection::group(contracts, routes))]
     pub(crate) fn lineage(&self) -> &InvocationLineage {
         self.attempt.lineage()
     }

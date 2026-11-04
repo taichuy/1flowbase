@@ -233,7 +233,7 @@ jobs:
             node scripts/node/test-backend.js --package control-plane --lib --filter "$filter" > "$evidence/$filter.log" 2>&1
           done
           for filter in compat_sse responses_websocket; do
-            node scripts/node/test-backend.js --package api-server --test api_private_routes --filter "$filter" > "$evidence/$filter.log" 2>&1
+            node scripts/node/test-backend.js --package api-server --test api_public_api --filter "$filter" > "$evidence/$filter.log" 2>&1
           done
       - uses: actions/upload-artifact@v7
         if: always()

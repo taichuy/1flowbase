@@ -186,8 +186,7 @@ fn channel_input_mapping(
     json!({"interface_parameters":interface_parameters,"mappings":mappings})
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/provisioning.rs"]
 mod tests;
-}

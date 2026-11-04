@@ -72,8 +72,7 @@ pub(super) fn builtin_event_bus_factories() -> Result<EventBusActivationFactoryR
     Ok(factories)
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "../_tests/host_infrastructure/event_bus_activation_tests.rs"]
 mod tests;
-}

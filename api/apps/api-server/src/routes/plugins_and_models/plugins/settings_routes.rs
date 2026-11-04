@@ -165,7 +165,7 @@ pub(super) fn model_provider_catalog_install_status(
     }
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod catalog_identity_tests {
     use super::{
@@ -215,7 +215,6 @@ mod catalog_identity_tests {
             "assigned"
         );
     }
-}
 }
 
 fn catalog_metadata_required(

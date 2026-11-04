@@ -224,7 +224,7 @@ fn version_parts(version: &str) -> [u64; 3] {
     parts
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,5 +289,4 @@ mod tests {
     fn release_status_cache_is_short_enough_for_manual_release_checks() {
         assert_eq!(RELEASE_STATUS_CACHE_SECONDS, 60);
     }
-}
 }

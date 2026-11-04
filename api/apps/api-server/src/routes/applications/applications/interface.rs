@@ -1031,12 +1031,11 @@ fn parse_workflow_trigger_type(
     }
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableApplicationsPort;
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<ApplicationsInput, ApplicationsOutput> for UnavailableApplicationsPort {
     fn execute<'a>(
@@ -1051,9 +1050,8 @@ impl ConsoleInterfacePort<ApplicationsInput, ApplicationsOutput> for Unavailable
         })
     }
 }
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;
@@ -1071,10 +1069,8 @@ mod tests {
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/collectors.rs"]
 mod collector_tests;
-}

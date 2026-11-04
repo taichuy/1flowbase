@@ -64,13 +64,14 @@ impl ExtensionBootSnapshot {
         self.dispatch_assemblies
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn dispatch_assembly_count(&self) -> usize {
-            self.dispatch_assemblies
-                .load(std::sync::atomic::Ordering::Relaxed)
-        }
+
+    #[cfg_attr(test, api_test_selection::group(core, contracts))]
+    #[cfg(test)]
+    pub(crate) fn dispatch_assembly_count(&self) -> usize {
+        self.dispatch_assemblies
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
+
     pub(crate) fn generation_id(&self) -> uuid::Uuid {
         self.generation_id
     }
@@ -134,26 +135,25 @@ impl ExtensionBootSnapshot {
         self.managed_snapshots.get()?.get(&workspace_id).cloned()
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
-            Self {
-                generation_id: uuid::Uuid::now_v7(),
-                #[cfg(test)]
-                dispatch_assemblies: std::sync::atomic::AtomicUsize::new(0),
-                dispatch_owner: OnceLock::new(),
-                publication: Mutex::new(()),
-                graph,
-                interface_registry: None,
-                authentication_factories: Arc::new(
-                    AuthenticationAdapterFactoryRegistry::built_in()
-                        .expect("built-in authentication factories must be valid"),
-                ),
-                managed_snapshots: OnceLock::new(),
-                managed_composition: OnceLock::new(),
-                external_endpoint_catalog: OnceLock::new(),
-                console_operation_snapshot: OnceLock::new(),
-            }
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    #[cfg(test)]
+    pub(crate) fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
+        Self {
+            generation_id: uuid::Uuid::now_v7(),
+            #[cfg(test)]
+            dispatch_assemblies: std::sync::atomic::AtomicUsize::new(0),
+            dispatch_owner: OnceLock::new(),
+            publication: Mutex::new(()),
+            graph,
+            interface_registry: None,
+            authentication_factories: Arc::new(
+                AuthenticationAdapterFactoryRegistry::built_in()
+                    .expect("built-in authentication factories must be valid"),
+            ),
+            managed_snapshots: OnceLock::new(),
+            managed_composition: OnceLock::new(),
+            external_endpoint_catalog: OnceLock::new(),
+            console_operation_snapshot: OnceLock::new(),
         }
     }
 
@@ -192,14 +192,13 @@ impl ExtensionBootSnapshot {
         })
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn compile_for_test(
-            graph: Arc<EffectiveExtensionGraph>,
-            descriptors: &[plugin_framework::HostExtensionInterfaceOperationManifest],
-        ) -> anyhow::Result<Self> {
-            Self::compile(graph, descriptors, Vec::new())
-        }
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    #[cfg(test)]
+    pub(crate) fn compile_for_test(
+        graph: Arc<EffectiveExtensionGraph>,
+        descriptors: &[plugin_framework::HostExtensionInterfaceOperationManifest],
+    ) -> anyhow::Result<Self> {
+        Self::compile(graph, descriptors, Vec::new())
     }
 
     pub fn graph(&self) -> &EffectiveExtensionGraph {
@@ -226,13 +225,12 @@ impl ExtensionBootSnapshot {
             .get_or_init(|| Arc::new(catalog))
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn external_endpoint_catalog(
-            &self,
-        ) -> Option<&Arc<crate::external_endpoint_catalog::ExternalEndpointCatalog>> {
-            self.external_endpoint_catalog.get()
-        }
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    #[cfg(test)]
+    pub(crate) fn external_endpoint_catalog(
+        &self,
+    ) -> Option<&Arc<crate::external_endpoint_catalog::ExternalEndpointCatalog>> {
+        self.external_endpoint_catalog.get()
     }
 
     pub(crate) fn dispatch_owner(

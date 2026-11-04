@@ -724,17 +724,15 @@ pub(crate) fn compile_run_stream_registry(
     )
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableAssistantSettingsPort;
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableAssistantConversationsPort;
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<AssistantSettingsInput, AssistantSettingsOutput>
     for UnavailableAssistantSettingsPort
@@ -751,9 +749,8 @@ impl ConsoleInterfacePort<AssistantSettingsInput, AssistantSettingsOutput>
         })
     }
 }
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<AssistantConversationsInput, AssistantConversationsOutput>
     for UnavailableAssistantConversationsPort
@@ -770,9 +767,8 @@ impl ConsoleInterfacePort<AssistantConversationsInput, AssistantConversationsOut
         })
     }
 }
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;
@@ -804,5 +800,4 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), CONVERSATION_DECLARATIONS.len());
     }
-}
 }

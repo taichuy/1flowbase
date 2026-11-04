@@ -152,25 +152,22 @@ pub(crate) struct ExternalEndpointRow {
 }
 
 impl ExternalEndpointRow {
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn classification(&self) -> ExternalEndpointClassification {
-            self.classification
-        }
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    #[cfg(test)]
+    pub(crate) fn classification(&self) -> ExternalEndpointClassification {
+        self.classification
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn sources(&self) -> &BTreeSet<String> {
-            &self.sources
-        }
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    #[cfg(test)]
+    pub(crate) fn sources(&self) -> &BTreeSet<String> {
+        &self.sources
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn binding_id(&self) -> Option<&str> {
-            self.binding_id.as_deref()
-        }
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    #[cfg(test)]
+    pub(crate) fn binding_id(&self) -> Option<&str> {
+        self.binding_id.as_deref()
     }
 }
 
@@ -908,21 +905,19 @@ impl ExternalEndpointCatalogCompiler {
         }
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn reject_unapproved_control(
-            &self,
-            identity: ExternalEndpointIdentity,
-        ) -> ExternalEndpointCatalogError {
-            ExternalEndpointCatalogError::UnknownControl { identity }
-        }
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    #[cfg(test)]
+    pub(crate) fn reject_unapproved_control(
+        &self,
+        identity: ExternalEndpointIdentity,
+    ) -> ExternalEndpointCatalogError {
+        ExternalEndpointCatalogError::UnknownControl { identity }
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn compile(self) -> ExternalEndpointCatalog {
-            ExternalEndpointCatalog { rows: self.rows }
-        }
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    #[cfg(test)]
+    pub(crate) fn compile(self) -> ExternalEndpointCatalog {
+        ExternalEndpointCatalog { rows: self.rows }
     }
 
     pub(crate) fn compile_complete(
@@ -1018,11 +1013,10 @@ impl ExternalEndpointCatalog {
         self.rows.values()
     }
 
-    api_nonroute_tests! {
-        #[cfg(test)]
-        pub(crate) fn row(&self, identity: &ExternalEndpointIdentity) -> Option<&ExternalEndpointRow> {
-            self.rows.get(identity)
-        }
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    #[cfg(test)]
+    pub(crate) fn row(&self, identity: &ExternalEndpointIdentity) -> Option<&ExternalEndpointRow> {
+        self.rows.get(identity)
     }
 
     pub(crate) fn classification_count(
@@ -1068,7 +1062,7 @@ fn merge_classification(
     }
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod construction_controls {
     use super::*;
@@ -1086,5 +1080,4 @@ mod construction_controls {
             Err(ExternalEndpointCatalogError::UnknownControl { .. })
         ));
     }
-}
 }

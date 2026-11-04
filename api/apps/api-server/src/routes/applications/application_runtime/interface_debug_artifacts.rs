@@ -230,7 +230,7 @@ pub(crate) fn compile_registry(
     )
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;
@@ -273,5 +273,4 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
-}
 }

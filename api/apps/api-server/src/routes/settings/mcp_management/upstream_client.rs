@@ -221,14 +221,12 @@ pub struct McpStreamableHttpClient {
     authentication_headers: HeaderMap,
 }
 
-api_test_fixture! {
-routes;
+#[cfg_attr(test, api_test_selection::fixture(routes))]
 #[derive(Clone, Copy)]
 enum McpEgressPolicy {
     PublicHttps,
     #[cfg(test)]
     TestLoopbackHttp,
-}
 }
 
 pub fn map_proxy_arguments(
@@ -346,20 +344,19 @@ impl McpStreamableHttpClient {
         .await
     }
 
-    api_route_tests! {
-        #[cfg(test)]
-        async fn connect_test_loopback(
-            connection: &domain::McpUpstreamConnectionRecord,
-        ) -> Result<Self, McpUpstreamClientError> {
-            Self::connect_configuration_with_policy(
-                &connection.endpoint,
-                connection.auth_type,
-                connection.custom_header_name.as_deref(),
-                None,
-                McpEgressPolicy::TestLoopbackHttp,
-            )
-            .await
-        }
+    #[cfg_attr(test, api_test_selection::group(routes))]
+    #[cfg(test)]
+    async fn connect_test_loopback(
+        connection: &domain::McpUpstreamConnectionRecord,
+    ) -> Result<Self, McpUpstreamClientError> {
+        Self::connect_configuration_with_policy(
+            &connection.endpoint,
+            connection.auth_type,
+            connection.custom_header_name.as_deref(),
+            None,
+            McpEgressPolicy::TestLoopbackHttp,
+        )
+        .await
     }
 
     pub async fn connect_and_discover(
@@ -371,14 +368,13 @@ impl McpStreamableHttpClient {
             .map(|(_, discovery)| discovery)
     }
 
-    api_route_tests! {
-        #[cfg(test)]
-        async fn connect_and_discover_test_loopback(
-            connection: &domain::McpUpstreamConnectionRecord,
-        ) -> Result<(Self, McpDiscoveryResult), McpUpstreamClientError> {
-            Self::complete_discovery_within(Self::connect_test_loopback(connection), DISCOVERY_DEADLINE)
-                .await
-        }
+    #[cfg_attr(test, api_test_selection::group(routes))]
+    #[cfg(test)]
+    async fn connect_and_discover_test_loopback(
+        connection: &domain::McpUpstreamConnectionRecord,
+    ) -> Result<(Self, McpDiscoveryResult), McpUpstreamClientError> {
+        Self::complete_discovery_within(Self::connect_test_loopback(connection), DISCOVERY_DEADLINE)
+            .await
     }
 
     async fn complete_discovery_within<F>(
@@ -677,7 +673,7 @@ impl McpStreamableHttpClient {
     }
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1181,5 +1177,4 @@ mod tests {
         );
         server.abort();
     }
-}
 }

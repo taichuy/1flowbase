@@ -111,7 +111,7 @@ pub const fn recovery_intent_ttl() -> Duration {
     RECOVERY_INTENT_TTL
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn expire_reauth_challenge(token: Uuid) {
     if let Some(challenge) = state()
@@ -123,9 +123,8 @@ pub(crate) fn expire_reauth_challenge(token: Uuid) {
         challenge.expires_at = OffsetDateTime::now_utc() - Duration::seconds(1);
     }
 }
-}
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn mark_reauth_challenge_consumed(token: Uuid) {
     if let Some(challenge) = state()
@@ -137,9 +136,8 @@ pub(crate) fn mark_reauth_challenge_consumed(token: Uuid) {
         challenge.consumed = true;
     }
 }
-}
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,5 +188,4 @@ mod tests {
             Err("recovery_reauth_replayed")
         );
     }
-}
 }

@@ -153,7 +153,7 @@ fn stable_runtime_plugin_id(plugin_id: &str) -> &str {
         .unwrap_or(plugin_id)
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,5 +272,4 @@ mod tests {
             .unwrap();
         assert_eq!(target, "session_retry_distribution@1.1.0");
     }
-}
 }

@@ -137,7 +137,7 @@ pub async fn require_settings_feature_permission(
     Err(ControlPlaneError::PermissionDenied("console_operation_permission_denied").into())
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use std::{panic::AssertUnwindSafe, sync::Arc};
@@ -350,5 +350,4 @@ mod tests {
             "unexpected publication failure: {message}"
         );
     }
-}
 }

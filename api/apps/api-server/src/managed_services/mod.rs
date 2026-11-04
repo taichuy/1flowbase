@@ -38,8 +38,7 @@ impl ManagedServiceFailure {
     }
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;
-}

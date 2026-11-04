@@ -50,11 +50,10 @@ impl RuntimeEventDeliveryReceipt {
         self.settle(RuntimeEventDeliveryVerdict::Projected);
     }
 
-    api_route_tests! {
-        #[cfg(test)]
-        pub(crate) fn event_id(&self) -> Option<uuid::Uuid> {
-            self.claim.as_ref().map(|claim| claim.event.id)
-        }
+    #[cfg_attr(test, api_test_selection::group(public_api))]
+    #[cfg(test)]
+    pub(crate) fn event_id(&self) -> Option<uuid::Uuid> {
+        self.claim.as_ref().map(|claim| claim.event.id)
     }
 
     fn settle(&mut self, verdict: RuntimeEventDeliveryVerdict) {
@@ -65,39 +64,36 @@ impl RuntimeEventDeliveryReceipt {
         }
     }
 
-    api_route_tests! {
-        /// A receipt whose verdict is observed by the test instead of the store.
-        #[cfg(test)]
-        pub(crate) fn probe(
-            claim: RuntimeEventDeliveryClaim,
-        ) -> (Self, RuntimeEventDeliveryVerdictProbe) {
-            let (sender, receiver) = mpsc::unbounded_channel();
-            (
-                Self {
-                    claim: Some(claim),
-                    write_started: false,
-                    settler: sender,
-                },
-                RuntimeEventDeliveryVerdictProbe { receiver },
-            )
-        }
+    #[cfg_attr(test, api_test_selection::group(public_api))]
+    /// A receipt whose verdict is observed by the test instead of the store.
+    #[cfg(test)]
+    pub(crate) fn probe(
+        claim: RuntimeEventDeliveryClaim,
+    ) -> (Self, RuntimeEventDeliveryVerdictProbe) {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        (
+            Self {
+                claim: Some(claim),
+                write_started: false,
+                settler: sender,
+            },
+            RuntimeEventDeliveryVerdictProbe { receiver },
+        )
     }
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(crate) struct RuntimeEventDeliveryVerdictProbe {
     receiver: mpsc::UnboundedReceiver<RuntimeEventDeliveryOutcome>,
 }
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 impl RuntimeEventDeliveryVerdictProbe {
     pub(crate) async fn verdict(mut self) -> Option<RuntimeEventDeliveryVerdict> {
         self.receiver.recv().await.map(|outcome| outcome.verdict)
     }
-}
 }
 
 impl Drop for RuntimeEventDeliveryReceipt {

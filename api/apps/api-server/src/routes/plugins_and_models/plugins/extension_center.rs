@@ -1038,12 +1038,12 @@ mod application;
 use application::{
     catalog_application_action, default_application_status, workspace_application_status,
 };
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod _tests;
-}
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(contracts))]
 /// Test assembly uses the production schema owner, without a duplicate ownership registry.
 #[cfg(test)]
 pub(crate) async fn apply_fixture_managed_schema(
@@ -1058,7 +1058,6 @@ pub(crate) async fn apply_fixture_managed_schema(
         prepared.apply(dependencies).await?;
     }
     Ok(())
-}
 }
 
 #[path = "extension_center/catalog_projection.rs"]

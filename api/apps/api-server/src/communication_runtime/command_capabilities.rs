@@ -44,8 +44,7 @@ fn project(
     Ok((capabilities, reason))
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/command_capabilities.rs"]
 mod tests;
-}

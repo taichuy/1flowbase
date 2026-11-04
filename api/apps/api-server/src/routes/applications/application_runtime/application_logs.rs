@@ -99,7 +99,7 @@ pub fn input_cache_hit_rate_for_response(
     Some(((input_cache_hit_tokens as f64 / input_tokens as f64) * 10_000.0).round() / 10_000.0)
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,7 +119,6 @@ mod tests {
             None
         );
     }
-}
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]

@@ -49,7 +49,7 @@ fn node_input_payload_view(payload: &serde_json::Value) -> serde_json::Value {
     payload.clone()
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn decode_runtime_debug_artifact_preview(payload: &serde_json::Value) -> Option<serde_json::Value> {
     let object = payload.as_object()?;
@@ -66,16 +66,14 @@ fn decode_runtime_debug_artifact_preview(payload: &serde_json::Value) -> Option<
         .and_then(serde_json::Value::as_str)
         .and_then(|preview| serde_json::from_str(preview).ok())
 }
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn start_input_payload(payload: &serde_json::Value) -> &serde_json::Value {
     payload
         .get("node-start")
         .or_else(|| payload.get("start"))
         .unwrap_or(payload)
-}
 }
 
 fn to_checkpoint_response(checkpoint: domain::CheckpointRecord) -> CheckpointResponse {

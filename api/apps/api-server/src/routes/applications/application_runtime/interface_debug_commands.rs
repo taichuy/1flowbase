@@ -1200,8 +1200,7 @@ impl StartFlowDebugRunBody {
     }
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/generation_factory.rs"]
 mod generation_factory_tests;
-}

@@ -104,7 +104,7 @@ impl ResponsesTurnBridge {
     }
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(super) async fn project_turn(
     events: mpsc::Receiver<CompatibilityStreamEvent>,
@@ -116,7 +116,6 @@ pub(super) async fn project_turn(
     frames: mpsc::Sender<String>,
 ) -> Result<(), ResponsesTurnBridgeError> {
     project_observed_turn(events, completion, projector, frames, None, None).await
-}
 }
 
 async fn project_observed_turn(

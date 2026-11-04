@@ -20,30 +20,28 @@ pub(crate) use selection::ResultSelection;
 
 #[path = "result_delivery/paging.rs"]
 mod paging;
-api_route_tests! {
+
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use paging::page_leaves;
-}
+
 use paging::{bounded_page, json_leaves, serialized, JsonLeaf};
 pub(crate) use paging::{inline_limit, ContinuationCursor, DEFAULT_INLINE_CHARS};
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "result_delivery/_tests/cache.rs"]
 mod cache_tests;
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "result_delivery/_tests/chunked_cache.rs"]
 mod chunked_cache_tests;
-}
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "result_delivery/_tests/protocol.rs"]
 mod protocol_tests;
-}
 
 /// Storage dependencies for MCP result continuation and receipt delivery.
 ///
@@ -63,6 +61,7 @@ impl McpResultDeliveryDependencies {
 }
 
 #[cfg(test)]
+#[cfg_attr(test, api_test_selection::group(contracts, routes))]
 pub(crate) const MAX_INLINE_CHARS: usize = 16_000;
 pub(crate) const DETAIL_TTL_SECONDS: i64 = 10 * 60;
 
@@ -216,7 +215,7 @@ async fn save_selection(
     )
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) async fn deliver_oversized_result(
     dependencies: &McpResultDeliveryDependencies,
@@ -225,7 +224,6 @@ pub(crate) async fn deliver_oversized_result(
     detail: Value,
 ) -> Value {
     deliver_cached_result(dependencies, actor, operation, &detail, None).await
-}
 }
 
 async fn deliver_cached_result(
@@ -486,7 +484,7 @@ pub(crate) fn tool_result(value: Value) -> Value {
     })
 }
 
-api_nonroute_tests! {
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) async fn read_continuation(
     dependencies: &McpResultDeliveryDependencies,
@@ -504,7 +502,6 @@ pub(crate) async fn read_continuation(
         }),
     )
     .await
-}
 }
 
 fn receipt_projection(receipt: &control_plane::ports::McpResultReceipt) -> Value {
@@ -754,7 +751,7 @@ fn contains_base64_like(value: &Value, field_name: Option<&str>) -> bool {
     }
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod assistant_mcp_tests {
     use super::*;
@@ -851,5 +848,4 @@ mod assistant_mcp_tests {
         );
         assert_eq!(ContinuationCursor::parse("v2:bad:cursor"), None);
     }
-}
 }

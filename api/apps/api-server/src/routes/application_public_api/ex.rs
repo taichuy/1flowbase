@@ -538,7 +538,7 @@ fn accepted_response(run_id: uuid::Uuid, status: domain::FlowRunStatus) -> Respo
         .into_response()
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod error_mapping_tests {
     use super::*;
@@ -563,5 +563,4 @@ mod error_mapping_tests {
         assert_eq!(response.code, "internal_error");
         assert_eq!(response.message, "workflow extension service failed");
     }
-}
 }

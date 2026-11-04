@@ -810,7 +810,7 @@ pub(super) fn to_cache_entry_metadata_response(
     }
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use domain::{
@@ -896,5 +896,4 @@ mod tests {
             &["mcp.instances.create"]
         ));
     }
-}
 }

@@ -1,9 +1,11 @@
 use control_plane::ports::PluginRepository;
 use domain::NativePluginTarget;
-api_nonroute_tests! {
+
+#[cfg_attr(test, api_test_selection::group(contracts))]
 use control_plane::ports::{ReviseUiCodeTemplateInput, UiManagementRepository};
+#[cfg_attr(test, api_test_selection::group(contracts))]
 use domain::UiCodeTemplateLanguage;
-}
+
 use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
@@ -34,11 +36,12 @@ impl NativeSettingsFixture {
                 .join(format!("native-settings-fixture-{}", Uuid::now_v7())),
         }
     }
-    api_nonroute_tests! {
-        pub async fn select(&self, version: &str) -> NativePluginTarget {
-            self.select_with_modules(version, false).await
-        }
+
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    pub async fn select(&self, version: &str) -> NativePluginTarget {
+        self.select_with_modules(version, false).await
     }
+
     pub async fn select_with_modules(&self, version: &str, modules: bool) -> NativePluginTarget {
         let root = self.source_root.join(version);
         std::fs::create_dir_all(&root).unwrap();
@@ -133,42 +136,42 @@ impl NativeSettingsFixture {
             ..(*self.state).clone()
         })
     }
-    api_nonroute_tests! {
-        pub async fn prepare(&self) -> crate::host_extension_loader::PreparedHostExtensionsAtStartup {
-            crate::host_extension_loader::prepare_host_extensions_at_startup(
-                &self.state.store,
-                &self.state.api_node_id,
-                &self.state.provider_install_root,
-                &self.state.host_extension_dropin_root,
-                self.state.allow_unverified_filesystem_dropins,
-            )
+
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    pub async fn prepare(&self) -> crate::host_extension_loader::PreparedHostExtensionsAtStartup {
+        crate::host_extension_loader::prepare_host_extensions_at_startup(
+            &self.state.store,
+            &self.state.api_node_id,
+            &self.state.provider_install_root,
+            &self.state.host_extension_dropin_root,
+            self.state.allow_unverified_filesystem_dropins,
+        )
+        .await
+        .unwrap()
+    }
+
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    pub async fn edit(&self, source: &str) -> Uuid {
+        let template = self
+            .state
+            .store
+            .list_ui_code_templates()
             .await
             .unwrap()
-        }
-    }
-    api_nonroute_tests! {
-        pub async fn edit(&self, source: &str) -> Uuid {
-            let template = self
-                .state
-                .store
-                .list_ui_code_templates()
-                .await
-                .unwrap()
-                .into_iter()
-                .find(|t| t.owner_plugin_code.as_deref() == Some("northwind.settings-page"))
-                .unwrap();
-            self.state
-                .store
-                .revise_ui_code_template(&ReviseUiCodeTemplateInput {
-                    template_id: template.id,
-                    name: "User settings".into(),
-                    source: source.into(),
-                    language: UiCodeTemplateLanguage::Tsx,
-                    actor_user_id: self.actor,
-                })
-                .await
-                .unwrap();
-            template.id
-        }
+            .into_iter()
+            .find(|t| t.owner_plugin_code.as_deref() == Some("northwind.settings-page"))
+            .unwrap();
+        self.state
+            .store
+            .revise_ui_code_template(&ReviseUiCodeTemplateInput {
+                template_id: template.id,
+                name: "User settings".into(),
+                source: source.into(),
+                language: UiCodeTemplateLanguage::Tsx,
+                actor_user_id: self.actor,
+            })
+            .await
+            .unwrap();
+        template.id
     }
 }

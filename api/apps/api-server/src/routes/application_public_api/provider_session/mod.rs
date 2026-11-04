@@ -92,8 +92,7 @@ fn seal(
     format!("{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
-api_route_tests! {
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;
-}

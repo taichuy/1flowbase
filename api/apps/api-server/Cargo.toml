@@ -12,6 +12,14 @@ path = "src/lib_root.rs"
 name = "api_private_routes"
 path = "src/private_routes_test.rs"
 
+[[test]]
+name = "api_private_contracts"
+path = "src/private_contracts_test.rs"
+
+[[test]]
+name = "api_public_api"
+path = "src/public_api_test.rs"
+
 [features]
 test-support = ["dep:postgres-test-support", "dep:ed25519-dalek"]
 # Builds only the Root #1805 consumer authenticity fixture. The normal lib-test target keeps
@@ -104,6 +112,7 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Globa
 
 [dev-dependencies]
 api-server = { path = ".", features = ["test-support"] }
+api-test-selection = { path = "../../crates/api-test-selection" }
 tokio-tungstenite = "0.30.0"
 serde_yaml = "0.9.34"
 ed25519-dalek = { version = "3.0.0", features = ["pem"] }
