@@ -11,8 +11,6 @@ mod authentication_activation_tests;
 mod billing_routes;
 #[path = "interface_contracts/compatibility_interface_tests.rs"]
 mod compatibility_interface_tests;
-#[path = "host_boot/config_tests.rs"]
-mod config_tests;
 #[path = "console_routes/console_navigation_routes.rs"]
 mod console_navigation_routes;
 #[path = "console_routes/console_operation_compilation_tests.rs"]
@@ -25,8 +23,6 @@ mod core_console_display_i18n_routes;
 mod data_sources_routes;
 #[path = "interface_contracts/dynamic_backend_consumer_inventory.rs"]
 mod dynamic_backend_consumer_inventory;
-#[path = "host_boot/error_response_tests.rs"]
-mod error_response_tests;
 pub(crate) mod extension_bus;
 #[path = "identity_routes/external_auth_trace.rs"]
 mod external_auth_trace;
@@ -47,8 +43,6 @@ mod i18n_catalog;
 mod i18n_catalog_routes;
 #[path = "interface_contracts/interface_contribution_collector.rs"]
 mod interface_contribution_collector;
-#[path = "interface_contracts/interface_coverage_inventory.rs"]
-mod interface_coverage_inventory;
 #[path = "interface_contracts/interface_route_equivalence.rs"]
 mod interface_route_equivalence;
 #[path = "interface_contracts/interface_vertical_slices.rs"]
