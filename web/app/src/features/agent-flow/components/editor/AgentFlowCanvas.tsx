@@ -46,6 +46,7 @@ import { i18nText } from '../../../../shared/i18n/text';
 
 interface AgentFlowCanvasProps {
   issueCountByNodeId: Record<string, number>;
+  workflowTriggerContext?: AgentFlowCanvasNode['data']['workflowTriggerContext'];
   nodePickerOptions?: NodePickerOption[];
   onRunNode?: (nodeId: string) => void;
   onViewportSnapshotChange?: (
@@ -193,6 +194,7 @@ function PendingLocateNodeEffect() {
 
 function AgentFlowCanvasInner({
   issueCountByNodeId,
+  workflowTriggerContext,
   nodePickerOptions = EMPTY_NODE_PICKER_OPTIONS,
   onRunNode,
   onViewportSnapshotChange,
@@ -237,6 +239,7 @@ function AgentFlowCanvasInner({
           onSelectNode: nodeInteractions.selectNode,
           onInsertNode: readOnly ? () => {} : nodeInteractions.insertAfterNode,
           onRunNode,
+          workflowTriggerContext,
           onReplaceNode: readOnly ? () => {} : nodeInteractions.replaceNode,
           onDeleteNode: readOnly ? () => {} : nodeInteractions.deleteNode,
           onResizeContainer: readOnly
@@ -254,6 +257,7 @@ function AgentFlowCanvasInner({
       nodeInteractions,
       nodePickerOptions,
       onRunNode,
+      workflowTriggerContext,
       nodePickerState.anchorCanvasPosition,
       nodePickerState.anchorNodeId,
       nodePickerState.open,
