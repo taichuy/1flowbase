@@ -89,3 +89,7 @@ Fixture resources remain owned by runtime services after state/provider clones.
 The owner is declared last so backend/session destructors finish before cleanup.
 Integration fixtures use the production UUID artifact resolver; library unit
 fixtures retain their existing path resolver. `ApiState` gains no feature field.
+
+The workspace test profile defaults to `debug = 0`, matching cache warmup.
+Ordinary target selection therefore reuses the same dependency profile without an extra environment override.
+The existing API package override still retains line-table debug information.

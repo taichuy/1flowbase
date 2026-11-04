@@ -101,8 +101,9 @@ debug = "line-tables-only"
 [profile.dev.package.sha2]
 opt-level = 3
 
+# Match cache warmup and ordinary test commands so dependency artifacts are reusable.
 [profile.test]
-debug = 1
+debug = 0
 
 # Managed hook admission hashes installed worker bytes inside the invocation's
 # 1 s observer finalization budget. Keep that SHA-256 path representative of
