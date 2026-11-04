@@ -320,7 +320,7 @@ impl ApiRuntimeServices {
     }
 
     /// Explicit fixture factory: the ordinary library keeps production UUID artifact references.
-    #[cfg(feature = "test-support")]
+    #[cfg(all(feature = "test-support", not(test)))]
     pub(crate) fn for_test_support(
         store: MainDurableStore,
         api_node_id: &str,
