@@ -76,7 +76,7 @@ Private implementation cases remain in the library harness, including private co
 | `api_identity` | Authentication, members, roles and sessions |
 | `api_console` | Console policy and Frontstage HTTP behavior |
 | `api_system_settings` | Data sources, files and system settings |
-| `api_mcp_management` | MCP management, bundles, OAuth and upstreams |
+| `api_mcp_management` | MCP management, bundles and upstreams |
 | `api_documentation` | Public OpenAPI and documentation contracts |
 | `api_extension_catalog` | Model providers, plugin HTTP behavior and network center |
 
