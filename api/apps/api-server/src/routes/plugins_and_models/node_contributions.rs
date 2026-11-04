@@ -132,6 +132,9 @@ pub struct ApplicationNodeCatalogEntryResponse {
     pub runtime_status: ApplicationNodeRuntimeStatusResponse,
     pub dependency_status: ApplicationNodeDependencyStatusResponse,
     pub field_contract: ApplicationNodeFieldContractResponse,
+    /// Structural JSON Schema constraints on the flow-document node, independent of execution readiness.
+    #[schema(value_type = Option<Object>)]
+    pub document_schema: Option<serde_json::Value>,
     /// Present only when source_kind is plugin.
     pub plugin: Option<ApplicationPluginNodeIdentityResponse>,
 }
@@ -273,6 +276,7 @@ fn to_response(
             }
         },
         field_contract: to_field_contract(entry.field_contract),
+        document_schema: entry.document_schema,
         plugin: entry.plugin.map(to_plugin_identity),
     }
 }

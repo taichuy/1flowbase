@@ -11,6 +11,24 @@ use plugin_framework::error::PluginFrameworkError;
 use uuid::Uuid;
 
 #[tokio::test]
+async fn invalid_workflow_start_outputs_return_actionable_validation_details() {
+    let error = domain::flow::validate_flow_draft_structure(&serde_json::json!({
+        "graph": {"nodes": [{"id":"node-workflow-start","type":"workflow_start","outputs":[{"key":"name"}]}]}
+    })).unwrap_err();
+    let response =
+        ApiError(orchestration_runtime::compiler::FlowValidationError::from(error).into())
+            .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(payload["code"], "flow_validation_failed");
+    let diagnostic = &payload["details"]["diagnostics"][0];
+    assert_eq!(diagnostic["node_id"], "node-workflow-start");
+    assert_eq!(diagnostic["field_path"], "/outputs");
+    assert_eq!(diagnostic["expected"], serde_json::json!([]));
+}
+
+#[tokio::test]
 async fn error_response_includes_status_field() {
     let response = ApiError(anyhow::anyhow!("test error")).into_response();
 

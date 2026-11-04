@@ -317,6 +317,21 @@ impl ApplicationJsDependencySelectionRepository for InMemoryOrchestrationRuntime
 
 #[async_trait]
 impl FlowRepository for InMemoryOrchestrationRuntimeRepository {
+    async fn load_flow_version_document(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        version_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
+        FlowRepository::load_flow_version_document(
+            &self.flow,
+            workspace_id,
+            application_id,
+            version_id,
+        )
+        .await
+    }
+
     async fn get_or_create_editor_state(
         &self,
         workspace_id: Uuid,

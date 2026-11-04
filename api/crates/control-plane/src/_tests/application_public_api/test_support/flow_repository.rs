@@ -2,6 +2,35 @@ use super::*;
 
 #[async_trait]
 impl FlowRepository for ApplicationPublicApiTestRepository {
+    async fn load_flow_version_document(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        version_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
+        let inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        if !inner
+            .applications
+            .get(&application_id)
+            .is_some_and(|app| app.workspace_id == workspace_id)
+        {
+            return Ok(None);
+        }
+        Ok(inner
+            .editor_states
+            .get(&application_id)
+            .and_then(|state| {
+                state
+                    .versions
+                    .iter()
+                    .find(|version| version.id == version_id)
+            })
+            .map(|version| version.document.clone()))
+    }
+
     async fn get_or_create_editor_state(
         &self,
         workspace_id: Uuid,

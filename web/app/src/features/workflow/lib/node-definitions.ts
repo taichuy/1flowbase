@@ -77,10 +77,7 @@ export const workflowEndNodeMeta: NodeDefinitionMeta = {
 export function getWorkflowStartNodeVariableOutputs(
   node: Pick<FlowNodeDocument, 'config' | 'outputs'>
 ): FlowNodeOutputDocument[] {
-  if (node.outputs.length > 0) {
-    throw new Error('Workflow start node outputs must be empty');
-  }
-
+  // Inputs own these variables. Invalid persisted outputs are reported by authoring validation.
   return getStartInputFields(node).map((field) => ({
     key: field.key,
     title: `input.${field.key}`,

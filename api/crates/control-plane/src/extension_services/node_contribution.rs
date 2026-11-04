@@ -92,6 +92,7 @@ pub struct ApplicationNodeCatalogEntry {
     pub runtime_status: ApplicationNodeRuntimeStatus,
     pub dependency_status: ApplicationNodeDependencyStatus,
     pub field_contract: ApplicationNodeFieldContract,
+    pub document_schema: Option<serde_json::Value>,
     pub plugin: Option<domain::NodeContributionRegistryEntry>,
 }
 
@@ -265,6 +266,7 @@ fn builtin_application_node(spec: BuiltinNodeSpec) -> ApplicationNodeCatalogEntr
         runtime_status: spec.runtime_status,
         dependency_status: ApplicationNodeDependencyStatus::NotApplicable,
         field_contract: builtin_field_contract(spec.node_type),
+        document_schema: domain::flow::flow_node_document_schema(spec.node_type),
         plugin: None,
     }
 }
@@ -285,6 +287,7 @@ fn plugin_application_node(
     ApplicationNodeCatalogEntry {
         source_kind: ApplicationNodeSourceKind::Plugin,
         node_type: "plugin_node".to_string(),
+        document_schema: None,
         title,
         category,
         authoring_status: ApplicationNodeAuthoringStatus::Published,
