@@ -259,7 +259,7 @@ jobs:
           cp api/target/debug/examples/notification_authorization_worker tmp/test-governance/communications/ci/notification_authorization_worker
           git rev-parse HEAD > tmp/test-governance/communications/ci/candidate-sha.txt
           sha256sum tmp/test-governance/communications/ci/api-server-candidate > tmp/test-governance/communications/ci/binary-sha256.txt
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: communications-${{ inputs.candidate_sha || github.sha }}

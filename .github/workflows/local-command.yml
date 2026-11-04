@@ -53,7 +53,7 @@ jobs:
           git rev-parse HEAD > "$evidence/candidate-sha.txt"
           rustc --version > "$evidence/rust-version.txt"
           cargo test --locked --manifest-path api/apps/api-server/tests/local-command-platform/Cargo.toml --lib -- --nocapture 2>&1 | tee "$evidence/native-${{ matrix.platform }}.log"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: local-command-${{ matrix.platform }}-${{ github.sha }}

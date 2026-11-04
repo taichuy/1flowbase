@@ -148,7 +148,7 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server > tmp/test-governance/event-lifecycle/ci/build.log 2>&1 || { tail -c 7000 tmp/test-governance/event-lifecycle/ci/build.log; exit 1; }
           cp api/target/debug/api-server tmp/test-governance/event-lifecycle/ci/api-server-candidate
           sha256sum tmp/test-governance/event-lifecycle/ci/api-server-candidate > tmp/test-governance/event-lifecycle/ci/binary-sha256.txt
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: event-lifecycle-${{ github.sha }}

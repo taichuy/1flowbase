@@ -106,7 +106,7 @@ jobs:
             --foundation "$REQUESTED_FOUNDATION" \
             --lane "$REQUESTED_LANE" \
             --event "$EVENT_NAME"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: foundation-contract-plan-${{ steps.candidate.outputs.sha }}
           path: tmp/test-governance/foundation-contracts/foundation-contract-plan.json
@@ -125,7 +125,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: web/.nvmrc
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           name: foundation-contract-plan-${{ needs.route.outputs.candidate_sha }}
           path: tmp/test-governance/foundation-contracts
@@ -133,7 +133,7 @@ jobs:
           node scripts/node/tooling.js foundation-contracts run-fast
           --foundation ai-gateway --candidate-sha "${{ needs.route.outputs.candidate_sha }}"
           --plan tmp/test-governance/foundation-contracts/foundation-contract-plan.json
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: foundation-contract-component-ai-gateway-${{ needs.route.outputs.candidate_sha }}
@@ -168,7 +168,7 @@ jobs:
         with:
           ref: ${{ needs.route.outputs.candidate_sha }}
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           name: foundation-contract-plan-${{ needs.route.outputs.candidate_sha }}
           path: tmp/test-governance/foundation-contracts
@@ -176,7 +176,7 @@ jobs:
           node scripts/node/tooling.js foundation-contracts run-fast
           --foundation mcp-gateway --candidate-sha "${{ needs.route.outputs.candidate_sha }}"
           --plan tmp/test-governance/foundation-contracts/foundation-contract-plan.json
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: foundation-contract-component-mcp-gateway-${{ needs.route.outputs.candidate_sha }}
@@ -211,7 +211,7 @@ jobs:
         with:
           ref: ${{ needs.route.outputs.candidate_sha }}
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           name: foundation-contract-plan-${{ needs.route.outputs.candidate_sha }}
           path: tmp/test-governance/foundation-contracts
@@ -219,7 +219,7 @@ jobs:
           node scripts/node/tooling.js foundation-contracts run-fast
           --foundation application-backend --candidate-sha "${{ needs.route.outputs.candidate_sha }}"
           --plan tmp/test-governance/foundation-contracts/foundation-contract-plan.json
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: foundation-contract-component-application-backend-${{ needs.route.outputs.candidate_sha }}
@@ -245,7 +245,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm --dir web install --frozen-lockfile
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           name: foundation-contract-plan-${{ needs.route.outputs.candidate_sha }}
           path: tmp/test-governance/foundation-contracts
@@ -253,7 +253,7 @@ jobs:
           node scripts/node/tooling.js foundation-contracts run-fast
           --foundation native-react --candidate-sha "${{ needs.route.outputs.candidate_sha }}"
           --plan tmp/test-governance/foundation-contracts/foundation-contract-plan.json
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: foundation-contract-component-native-react-${{ needs.route.outputs.candidate_sha }}
@@ -278,11 +278,11 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: web/.nvmrc
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           name: foundation-contract-plan-${{ needs.route.outputs.candidate_sha }}
           path: tmp/test-governance/foundation-contracts
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         if: needs.route.outputs.any_selected == 'true'
         with:
           pattern: foundation-contract-component-*-${{ needs.route.outputs.candidate_sha }}
@@ -294,7 +294,7 @@ jobs:
           --plan tmp/test-governance/foundation-contracts/foundation-contract-plan.json
           --component-root tmp/test-governance/foundation-contracts/downloaded-components
           --event "${{ github.event_name }}"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-foundation-contracts-${{ needs.route.outputs.candidate_sha }}

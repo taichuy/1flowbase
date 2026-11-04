@@ -125,7 +125,7 @@ jobs:
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/agent-logs-regression/callback-resume.log
       - name: Upload core regression evidence before broader consumers
         if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: agent-logs-core
           path: tmp/test-governance/agent-logs-regression
@@ -189,7 +189,7 @@ jobs:
       - name: Preserve SQL regression failure after independent Rust evidence
         if: ${{ always() && steps.projection.outcome == 'failure' }}
         run: exit 1
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: agent-logs-regression

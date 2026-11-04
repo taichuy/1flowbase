@@ -175,7 +175,7 @@ jobs:
           done
       - name: Upload comparison evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: gateway-resource-evidence-${{ github.sha }}
           path: |
@@ -235,7 +235,7 @@ jobs:
           for filter in compat_sse responses_websocket; do
             node scripts/node/test-backend.js --package api-server --lib --filter "$filter" > "$evidence/$filter.log" 2>&1
           done
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: gateway-source-acceptance-${{ github.sha }}

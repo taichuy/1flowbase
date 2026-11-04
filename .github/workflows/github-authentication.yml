@@ -133,7 +133,7 @@ jobs:
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/github-authentication/ci/api-methods.log
       - name: Preserve candidate-bound evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: github-authentication-${{ inputs.candidate_sha || github.sha }}
           path: tmp/test-governance/github-authentication/ci/
