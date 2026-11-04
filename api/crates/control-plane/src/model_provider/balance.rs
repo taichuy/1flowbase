@@ -3,19 +3,11 @@ use uuid::Uuid;
 
 use crate::{
     data_source::{collect_secret_strings, redact_value},
-    errors::ControlPlaneError,
-    installed_provider_package::load_installed_provider_package,
     model_provider::{ModelProviderBalanceResult, ModelProviderUseCase},
     ports::{AuthRepository, ModelProviderRepository, PluginRepository, ProviderRuntimePort},
 };
 
-use super::{
-    instances::maintain_provider_runtime_config,
-    shared::{
-        empty_object, ensure_model_provider_permission, load_actor_context_for_user,
-        ready_model_provider_installation, ModelProviderNodeArtifactContext,
-    },
-};
+use super::shared::{empty_object, ModelProviderNodeArtifactContext};
 
 pub(super) async fn get_balance<R, H>(
     repository: &R,
@@ -30,31 +22,19 @@ where
     R: AuthRepository + PluginRepository + ModelProviderRepository,
     H: ProviderRuntimePort,
 {
-    let actor = load_actor_context_for_user(repository, actor_user_id).await?;
-    ensure_model_provider_permission(&actor, "manage", &use_case).await?;
-    let instance = repository
-        .get_instance(actor.current_workspace_id, instance_id)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("model_provider_instance"))?;
-    let installation = ready_model_provider_installation(
-        repository,
-        node_artifact_context,
-        instance.installation_id,
-    )
-    .await?;
-    if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
-        return Err(ControlPlaneError::PluginUnavailable.into());
-    }
-    let package = load_installed_provider_package(&installation)?;
-    let provider_config = maintain_provider_runtime_config(
+    let target = super::account::resolve_provider_account_runtime_target(
         repository,
         runtime,
         provider_secret_master_key,
-        &package,
-        &installation,
-        &instance,
+        actor_user_id,
+        instance_id,
+        node_artifact_context,
+        use_case,
     )
     .await?;
+    let instance = target.instance;
+    let installation = target.installation;
+    let provider_config = target.provider_config;
     let secret_json = repository
         .get_secret_json(instance.id, provider_secret_master_key)
         .await?

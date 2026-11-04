@@ -4,9 +4,25 @@
     {
       "file": "web/app/src/features/applications/components/api/ApplicationApiKeysPanel.tsx",
       "rule": "react-doctor/prefer-module-scope-pure-function",
-      "sourceSha256": "e18db4a93423dae5abd9bd57d423511d3ceb36ef9217dfe09b5bf78ece0b394a",
-      "reason": "web/app/src/features/applications/components/api/ApplicationApiKeysPanel.tsx:114（react-doctor/prefer-module-scope-pure-function）：本地函数仅把传入数值格式化、window.location.assign 或 mask token 文本，使用点是同步调用/局部 event 闭包；函数本身不传给 memoized child，且未在 hot collection 内重复创建。模块化是代码整理选择，不能把局部分配直接认定为可见重绘错误。",
-      "evidence": [{"file": "web/app/src/features/applications/_tests/application-api-page.test.tsx", "sha256": "77c5cb5be2a30220a4a627e0720bd22a2646431eccb169bef9dc539f7086f6bf"}, {"file": "web/app/src/features/applications/components/api/ApplicationApiKeysPanel.tsx", "sha256": "e18db4a93423dae5abd9bd57d423511d3ceb36ef9217dfe09b5bf78ece0b394a"}, {"file": "web/app/src/features/applications/pages/ApplicationApiPage.tsx", "sha256": "b4f2799e04e01e00ad2b7739c2910749c711f6cb2a141bdac54338b9d0ef31f2"}]
+      "sourceSha256": "e64322a66647dcb47e17c10d8db6e75bbac2c1c0f7dfc4f46d65fa8890097bb9",
+      "reason": "web/app/src/features/applications/components/api/ApplicationApiKeysPanel.tsx:114（react-doctor/prefer-module-scope-pure-function）：本地函数仅把传入数值格式化、window.location.assign 或 mask token 文本，使用点是同步调用/局部 event 闭包；函数本身不传给 memoized child，且未在 hot collection 内重复创建。模块化是代码整理选择，不能把局部分配直接认定为可见重绘错误。 Reassessed 2026-11-03: Create and revoke consume separate operations at mutation entry and both presentation variants. One query/form/one-time-secret owner remains; both mutations invalidate keys and application detail.",
+      "evidence": [{"file": "web/app/src/features/applications/_tests/application-api-page.test.tsx", "sha256": "eaba60cdcdc3c4f6a05e5fe7b12dfb76668df51efecbfad1e99a3226df30b54d"}, {"file": "web/app/src/features/applications/components/api/ApplicationApiKeysPanel.tsx", "sha256": "e64322a66647dcb47e17c10d8db6e75bbac2c1c0f7dfc4f46d65fa8890097bb9"}, {"file": "web/app/src/features/applications/pages/ApplicationApiPage.tsx", "sha256": "9e7f7d3df8e760d8aef3aee0b944dba981d12c9486e1bcfae91f9efc2c171d0f"}]
+    },
+    {
+      "file": "web/app/src/features/applications/components/api/ApplicationApiKeysPanel.tsx",
+      "rule": "react-doctor/no-giant-component",
+      "sourceSha256": "e64322a66647dcb47e17c10d8db6e75bbac2c1c0f7dfc4f46d65fa8890097bb9",
+      "reason": "ApplicationApiKeysPanel owns one application credential lifecycle: the scoped key query, create/revoke mutations, create form and one-time created token. Its panel and embedded variants share the same keyTable and transactions; the repeated JSX is presentation of those same modal states, not a second backend owner. Both writes guard their individual operation and invalidate applicationApiKeysQueryKey plus applicationDetailQueryKey. Closing the secret modal clears createdKey and no storage/URL persistence exists. application-api-page tests cover exact create/revoke grants, read-only key inspection and a token shown once without storage/URL writes. Source reassessed 2026-11-03; test source is contract evidence, not a new execution claim.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/applications/_tests/application-api-page.test.tsx",
+          "sha256": "eaba60cdcdc3c4f6a05e5fe7b12dfb76668df51efecbfad1e99a3226df30b54d"
+        },
+        {
+          "file": "web/app/src/features/applications/pages/ApplicationApiPage.tsx",
+          "sha256": "9e7f7d3df8e760d8aef3aee0b944dba981d12c9486e1bcfae91f9efc2c171d0f"
+        }
+      ]
     }
   ]
 }

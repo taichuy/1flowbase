@@ -582,6 +582,7 @@ async fn terminal_flow_run_fences_late_run_and_runtime_event_appends() {
             flow_run_id: run.id,
             expected_status: FlowRunStatus::Running,
             require_initial_execution: false,
+            tool_delivery_events: Vec::new(),
             result: CommitFlowRunTerminalResult::Cancelled {
                 output_payload: json!({}),
                 error_payload: None,

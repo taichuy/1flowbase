@@ -497,7 +497,7 @@ impl ConsoleIdentityAdapter {
             }
             ConsoleIdentityInput::PatchMeMeta(body) => {
                 let profile = ProfileService::new(self.store.clone())
-                    .update_me_meta(UpdateMeMetaCommand {
+                    .update_me_preferences(UpdateMeMetaCommand {
                         actor_user_id: actor.user_id,
                         tenant_id: actor.tenant_id,
                         workspace_id: actor.current_workspace_id,

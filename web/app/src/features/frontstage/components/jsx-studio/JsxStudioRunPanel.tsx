@@ -21,9 +21,14 @@ import {
   type NativeReactModuleRegistryFactory,
   type NativeReactSourcePreparationDiagnostic
 } from '../../../../shared/code-block/native-react-source-preparation';
-import { FrontstageNativeTrustedBlockPortalHost, type FrontstageNativeTrustedBlockReactComponent } from '../../lib/native-adapter/native-trusted-block-react-adapter';
+import {
+  FrontstageNativeTrustedBlockPortalHost,
+  type FrontstageNativeTrustedBlockReactComponent
+} from '../../lib/native-adapter/native-trusted-block-react-adapter';
 import { createFrontstageUnavailableBlockContext } from '../../lib/native-trusted-block/unavailable-context';
-import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-modules/registry';
+import { fetchFrontstageBlockCatalog } from '../../api/block-catalog';
+import { normalizeFrontstageBlockCatalog } from '../../lib/block-catalog';
+import { createContributionModuleRegistry } from '../../lib/native-modules/contributions/registry';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { JsxStudioPreviewConsole } from './JsxStudioPreviewConsole';
 import {
@@ -90,7 +95,7 @@ export function JsxStudioRunPanel({
   revision,
   nativeCompiler = compileNativeReactComponentInBrowser,
   nativeCompilerWorkerFactory,
-  nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry,
+  nativeModuleRegistryFactory,
   createBlockContext,
   onPrepareDraftRun,
   onRevokeDraftRun
@@ -99,6 +104,9 @@ export function JsxStudioRunPanel({
   const [consoleStore] = useState(createStudioRunConsoleStore);
   const generationRef = useRef(0);
   const activeRunRef = useRef<ActiveStudioRun | null>(null);
+  const moduleLoaderRef = useRef<ReturnType<
+    typeof createContributionModuleRegistry
+  > | null>(null);
   const latestDraftRef = useRef({ block, code, revision });
   latestDraftRef.current = { block, code, revision };
   const createBlockContextRef = useRef(createBlockContext);
@@ -123,6 +131,8 @@ export function JsxStudioRunPanel({
   const disposeActiveRun = useCallback(() => {
     const active = activeRunRef.current;
     activeRunRef.current = null;
+    moduleLoaderRef.current?.dispose();
+    moduleLoaderRef.current = null;
     if (active) onRevokeDraftRunRef.current?.(active.requestId);
   }, []);
 
@@ -193,6 +203,33 @@ export function JsxStudioRunPanel({
       }
       if (generationRef.current !== generation) return;
 
+      let registryFactory = nativeModuleRegistryFactory;
+      if (!registryFactory) {
+        try {
+          const catalog = await fetchFrontstageBlockCatalog();
+          if (generationRef.current !== generation) return;
+          const loader = createContributionModuleRegistry(
+            normalizeFrontstageBlockCatalog(catalog.entries).items
+          );
+          moduleLoaderRef.current = loader;
+          registryFactory = () => loader.registry;
+        } catch (error) {
+          if (generationRef.current !== generation) return;
+          setSnapshot({
+            status: 'failed',
+            requestId,
+            diagnostics: [
+              {
+                phase: 'runtime',
+                code: 'runtime_error',
+                path: 'runtime.modules',
+                message: getErrorMessage(error)
+              }
+            ]
+          });
+          return;
+        }
+      }
       const prepared = await prepareNativeReactSource({
         frozenSource,
         requestId,
@@ -200,7 +237,7 @@ export function JsxStudioRunPanel({
         ...(nativeCompilerWorkerFactory
           ? { workerFactory: nativeCompilerWorkerFactory }
           : {}),
-        registryFactory: nativeModuleRegistryFactory,
+        registryFactory,
         evaluateArtifact: evaluateFrontstageReactArtifact,
         evaluationBindings: {
           console: createStudioRunConsole({

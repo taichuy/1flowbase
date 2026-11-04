@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { Alert, Button, Form, Input, Space } from 'antd';
 import { useState } from 'react';
 import type {
@@ -64,6 +65,7 @@ export function McpProxyToolDebugPanel({
     csrfToken: string
   ) => Promise<ConsoleMcpProxyToolDebugResponse>;
 }) {
+  const can = useConsoleOperationAccess();
   const [values, setValues] = useState<Record<string, string>>({});
   const [result, setResult] = useState<ConsoleMcpProxyToolDebugResponse | null>(
     null
@@ -116,7 +118,7 @@ export function McpProxyToolDebugPanel({
           />
         </Form.Item>
       ))}
-      <Button type="primary" loading={running} onClick={() => void run()}>
+      <Button type="primary" disabled={!can('mcp.upstream_tools.debug')} loading={running} onClick={() => void run()}>
         {text('proxy_run_debug')}
       </Button>
       {error ? <Alert type="error" title={error} /> : null}

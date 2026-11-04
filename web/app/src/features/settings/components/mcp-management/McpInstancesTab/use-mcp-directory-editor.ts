@@ -12,7 +12,8 @@ import {
 import {
   applyMcpDirectoryTreeDrop,
   buildMcpDirectoryEditorTreeData,
-  type McpDirectoryTreeDropInfo
+  type McpDirectoryTreeDropInfo,
+  type MoveBindingValues
 } from './directory-tree';
 import {
   countMcpInstanceDirectoryItems,
@@ -33,6 +34,7 @@ import {
   upsertSettingsMcpGroup
 } from '../../../api/mcp-management';
 import { useAuthStore } from '../../../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { i18nText } from '../../../../../shared/i18n/text';
 
 import {
@@ -50,6 +52,7 @@ import type { GroupFormValues, BindingFormValues } from './editor-types';
 
 /** Owns group/binding draft sessions, dirty guards, tree selection/drop and catalog mutations. */
 export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
+  const can = useConsoleOperationAccess();
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
@@ -238,6 +241,21 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
       });
     }
   });
+  const moveBindingMutation = useMutation({
+    mutationFn: ({
+      bindingId,
+      values
+    }: {
+      bindingId: string;
+      values: MoveBindingValues;
+    }) => updateSettingsMcpToolBinding(bindingId, values, csrfToken),
+    onSuccess: async () => {
+      message.success(i18nText('settings', 'auto.mcp_saved'));
+      await queryClient.invalidateQueries({
+        queryKey: settingsMcpCatalogQueryKey
+      });
+    }
+  });
   const deleteGroupMutation = useMutation({
     mutationFn: (path: string) => {
       if (!selectedInstance) throw new Error('No selected instance');
@@ -354,6 +372,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
 
   const handleTreeDrop = (info: McpDirectoryTreeDropInfo) => {
     if (!selectedInstance) return;
+    if (String(info.dragNode.key).startsWith('binding:') && !can('mcp.tool_bindings.update')) return;
     applyMcpDirectoryTreeDrop({
       info,
       selectedInstance,
@@ -361,8 +380,8 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
       selectedInstanceGroups,
       bindingById,
       groupByPath,
-      onSaveBinding: (values, options) =>
-        saveBindingMutation.mutate(values, options),
+      onMoveBinding: (bindingId, values, options) =>
+        moveBindingMutation.mutate({ bindingId, values }, options),
       onMoveGroup: (values, options) =>
         moveGroupMutation.mutate(values, options),
       onSelectKey: setSelectedDirectoryKey

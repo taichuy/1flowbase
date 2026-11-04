@@ -62,6 +62,8 @@ pub struct PricingRulesPageResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct PricingCatalogQuery {
+    /// Return counts without downloading pricing rule pages.
+    pub(crate) metadata_only: Option<bool>,
     pub(crate) provider_code: Option<String>,
     pub(crate) upstream_model_id: Option<String>,
     pub(crate) page: Option<usize>,

@@ -126,6 +126,13 @@ impl ModelProviderRepository for MemoryModelProviderRepository {
         &self,
         input: &UpsertModelProviderCatalogCacheInput,
     ) -> Result<ModelProviderCatalogCacheRecord> {
+        self.operation_trace
+            .write()
+            .await
+            .push(match input.refresh_status {
+                ModelProviderCatalogRefreshStatus::Ready => "cache_ready",
+                _ => "cache_failed",
+            });
         let record = ModelProviderCatalogCacheRecord {
             provider_instance_id: input.provider_instance_id,
             model_discovery_mode: input.model_discovery_mode,
@@ -147,6 +154,10 @@ impl ModelProviderRepository for MemoryModelProviderRepository {
         &self,
         provider_instance_id: Uuid,
     ) -> Result<Option<ModelProviderCatalogCacheRecord>> {
+        self.operation_trace.write().await.push("get_catalog_cache");
+        if *self.catalog_read_error.read().await {
+            anyhow::bail!("catalog read failed for test");
+        }
         Ok(self.caches.read().await.get(&provider_instance_id).cloned())
     }
 
@@ -343,6 +354,7 @@ impl ModelProviderRepository for MemoryModelProviderRepository {
         provider_instance_id: Uuid,
         _master_key: &str,
     ) -> Result<Option<Value>> {
+        self.operation_trace.write().await.push("get_secret_json");
         Ok(self
             .secrets
             .read()

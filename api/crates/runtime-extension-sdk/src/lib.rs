@@ -5,7 +5,10 @@
 
 mod application_logs;
 pub use application_logs::{ApplicationLogsClient, ApplicationLogsClientError};
-pub use extension_contracts::{ApplicationLogsRequest, ApplicationLogsResponse};
+pub use extension_contracts::{
+    ApplicationLogsRequest, ApplicationLogsResponse, CapabilityExecutionBudget,
+    CAPABILITY_STDIO_FRAME_BYTES,
+};
 pub use extension_contracts::{
     AuthenticationProviderDescriptor, AuthenticationRequest, AuthenticationResponse,
     AUTHENTICATION_CONTRACT_V1, AUTHENTICATION_PERMISSION, AUTHENTICATION_POINT,
@@ -113,3 +116,7 @@ pub use extension_contracts::{FileReadError, FileReadMetadata};
 pub use file_read::{FileReadClient, FileReadClientError, FileReader, TransferReport};
 
 pub use extension_contracts::ManagedServiceCallContext;
+
+/// Optional per-call synchronous JavaScript and release-anchored packaged scripts.
+#[cfg(feature = "javascript")]
+pub use sync_js_runtime as javascript;

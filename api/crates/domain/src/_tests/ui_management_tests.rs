@@ -53,3 +53,54 @@ fn wp_d2_component_record_validates_shape_without_interpreting_code() {
     )
     .is_ok());
 }
+
+#[test]
+fn plugin_component_complete_source_can_own_all_imports_without_changing_other_origins() {
+    let upstream = UiComponentRecordUpstream {
+        identity: "fixture:view".into(),
+        version: "1.0.0-beta.1".into(),
+    };
+    let validate = |origin, imports, version| {
+        validate_ui_component_record_fields(
+            "plugin.fixture",
+            "View",
+            "Complete plugin source",
+            imports,
+            "export default function Block() { return null; }",
+            origin,
+            "plugin",
+            "components",
+            &upstream,
+            version,
+            &[],
+        )
+    };
+    assert!(validate(UiComponentRecordOrigin::Plugin, "", "1.0.0-beta.1").is_ok());
+    assert!(validate(
+        UiComponentRecordOrigin::Plugin,
+        "// Plugin component: fixture:view",
+        "1.0.0"
+    )
+    .is_ok());
+    for origin in [
+        UiComponentRecordOrigin::Custom,
+        UiComponentRecordOrigin::Official,
+    ] {
+        assert_eq!(
+            validate(origin, "", "1.0.0"),
+            Err(UiManagementInvariantError::EmptyComponentImportCode)
+        );
+        assert_eq!(
+            validate(origin, "// import owned by source", "1.0.0-beta.1"),
+            Err(UiManagementInvariantError::InvalidComponentVersion)
+        );
+    }
+    assert_eq!(
+        validate(UiComponentRecordOrigin::Plugin, "", ""),
+        Err(UiManagementInvariantError::InvalidComponentVersion)
+    );
+    assert_eq!(
+        UiComponentRecordOrigin::try_from("plugin"),
+        Ok(UiComponentRecordOrigin::Plugin)
+    );
+}

@@ -747,11 +747,18 @@ function collectDuplicateTestTitleFindings(fileContents) {
     );
 }
 
-function loadFileContents(files) {
-  return files.map(({ absolutePath, relativePath }) => ({
-    relativePath,
-    content: fs.readFileSync(absolutePath, "utf8"),
-  }));
+function* scanFileContents(files, findings) {
+  // Keep only the current body and its scan temporaries, rather than all bodies.
+  // The file inventory, findings and duplicate-title index retain their existing costs.
+  for (const { absolutePath, relativePath } of files) {
+    const fileContent = {
+      relativePath,
+      content: fs.readFileSync(absolutePath, "utf8"),
+    };
+    findings.push(...scanSourceFile(fileContent));
+    findings.push(...collectLinePressureFindings(fileContent));
+    yield fileContent;
+  }
 }
 
 function collectTrackedFiles(repoRoot) {
@@ -822,18 +829,17 @@ function collectRepoHygieneFindings({
   trackedFiles = collectTrackedFiles(repoRoot),
 } = {}) {
   const files = collectSourceFiles(repoRoot);
-  const fileContents = loadFileContents(files);
   const findings = [];
 
   findings.push(...collectLocalArtifactFindings(files, { trackedFiles }));
 
-  for (const fileContent of fileContents) {
-    findings.push(...scanSourceFile(fileContent));
-    findings.push(...collectLinePressureFindings(fileContent));
-  }
+  // Exhaust the single-pass scan through the existing iterable title collector.
+  const duplicateTitleFindings = collectDuplicateTestTitleFindings(
+    scanFileContents(files, findings),
+  );
 
   findings.push(...collectDirectoryPressureFindings(files));
-  findings.push(...collectDuplicateTestTitleFindings(fileContents));
+  findings.push(...duplicateTitleFindings);
 
   return findings;
 }

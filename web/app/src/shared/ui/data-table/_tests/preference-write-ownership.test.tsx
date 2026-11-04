@@ -33,7 +33,7 @@ const profile = (visibleColumnKeys: string[]): ConsoleMe => ({
   avatar_url: null,
   introduction: '',
   effective_display_role: 'member',
-  permissions: [],
+  permissions: ['patch_me_meta'],
   meta: { ui: { data_tables: { first: table(visibleColumnKeys) } } }
 });
 
@@ -130,6 +130,90 @@ describe('data table preference write ownership', () => {
     expect(patchUserPreferences).not.toHaveBeenCalled();
     expect(result.current.visibleColumnKeys).toEqual(['name', 'owner']);
     // Release auth-store subscriptions before afterEach resets the session.
+    unmount();
+  });
+  it.each(
+    [[], ['patch_me'], ['assistant_update_settings']].map(
+      (permissions) => ({ permissions })
+    )
+  )(
+    'keeps table edits temporary with unrelated grants $permissions',
+    async ({ permissions }) => {
+      const me = { ...profile(['name']), permissions };
+      useAuthStore.setState({ me });
+      const write = vi.spyOn(Storage.prototype, 'setItem');
+      const { result, unmount } = renderHook(() => ({
+        server: useUserPreferenceDataTableConfiguration({
+          preferenceKey: 'first',
+          columns
+        }),
+        local: usePersistedDataTableConfiguration({
+          storageKey: 'first',
+          columns
+        })
+      }));
+      act(() => {
+        result.current.server.setVisibleColumnKeys(['owner']);
+        result.current.server.setColumnWidths({ name: 260, owner: 140 });
+        result.current.local.setVisibleColumnKeys(['owner']);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(result.current.server.visibleColumnKeys).toEqual(['owner']);
+      expect(result.current.server.columnWidths.name).toBe(260);
+      expect(result.current.local.visibleColumnKeys).toEqual(['owner']);
+      expect(patchUserPreferences).not.toHaveBeenCalled();
+      expect(write).not.toHaveBeenCalled();
+      expect(useAuthStore.getState().me).toEqual(me);
+      unmount();
+      write.mockRestore();
+    }
+  );
+
+  it('lets root persist table preferences without explicit grants', async () => {
+    const me = { ...profile(['name']), permissions: [] };
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf',
+      actor: {
+        id: me.id,
+        account: me.account,
+        effective_display_role: 'root',
+        current_workspace_id: 'workspace'
+      },
+      me
+    });
+    patchUserPreferences.mockResolvedValue(me);
+    const { result, unmount } = renderHook(() =>
+      useUserPreferenceDataTableConfiguration({
+        preferenceKey: 'first',
+        columns
+      })
+    );
+    act(() => result.current.setVisibleColumnKeys(['owner']));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(patchUserPreferences).toHaveBeenCalledOnce();
+    unmount();
+  });
+
+  it('cancels a pending persistence when the exact preference grant is revoked', async () => {
+    const { result, unmount } = renderHook(() =>
+      useUserPreferenceDataTableConfiguration({
+        preferenceKey: 'first',
+        columns
+      })
+    );
+    act(() => result.current.setVisibleColumnKeys(['owner']));
+    act(() =>
+      useAuthStore.getState().setMe({ ...profile(['name']), permissions: [] })
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(result.current.visibleColumnKeys).toEqual(['owner']);
+    expect(patchUserPreferences).not.toHaveBeenCalled();
     unmount();
   });
 });

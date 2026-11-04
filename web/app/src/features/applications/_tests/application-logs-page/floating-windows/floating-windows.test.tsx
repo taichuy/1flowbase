@@ -181,12 +181,16 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     expect(
       screen.queryByRole('button', { name: '查看执行轨迹' })
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByPlaceholderText('和 Bot 聊天')
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: '发送调试消息' })
-    ).not.toBeInTheDocument();
+    const readOnlyInput = screen.getByRole('textbox', {
+      name: '只读消息输入框'
+    });
+    expect(readOnlyInput).toBeDisabled();
+    expect(readOnlyInput).toHaveAttribute('placeholder', '和 Bot 聊天');
+    const readOnlySend = screen.getByRole('button', { name: '发送调试消息' });
+    expect(readOnlySend).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(readOnlySend);
+    });
     expect(runtimeApi.resumeFlowRun).not.toHaveBeenCalled();
     expect(runtimeApi.completeCallbackTask).not.toHaveBeenCalled();
     expect(screen.queryByText('功能已开启')).not.toBeInTheDocument();

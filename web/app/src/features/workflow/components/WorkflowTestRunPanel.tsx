@@ -12,11 +12,13 @@ import {
   Typography
 } from 'antd';
 
+import type { ConsoleApplicationRunDetail } from '@1flowbase/api-client';
 import type {
-  ConsoleApplicationRunDetail
-} from '@1flowbase/api-client';
-import type { FlowAuthoringDocument, FlowStartInputSource } from '@1flowbase/flow-schema';
+  FlowAuthoringDocument,
+  FlowStartInputSource
+} from '@1flowbase/flow-schema';
 
+import { useConsoleOperationAccess } from '../../../state/console-operation-access';
 import { useAuthStore } from '../../../state/auth-store';
 import { i18nText } from '../../../shared/i18n/text';
 import { startFlowDebugRun } from '../../agent-flow/api/runtime';
@@ -34,10 +36,7 @@ const EXTENSION_SOURCES: FlowStartInputSource[] = [
   'body'
 ];
 
-const EXTENSION_SOURCE_LABEL_KEYS: Record<
-  FlowStartInputSource,
-  string
-> = {
+const EXTENSION_SOURCE_LABEL_KEYS: Record<FlowStartInputSource, string> = {
   path: 'auto.workflow_test_run_path_parameters',
   query: 'auto.workflow_test_run_query_parameters',
   form: 'auto.workflow_test_run_form_parameters',
@@ -156,6 +155,8 @@ export function WorkflowTestRunPanel({
   );
   const [failure, setFailure] = useState<string | null>(null);
   const [form] = Form.useForm<WorkflowTestRunFormValues>();
+  const can = useConsoleOperationAccess();
+  const canRun = can('start_flow_debug_run');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const extensionInputFields = useMemo(
     () => listWorkflowHttpInputFields(document),
@@ -177,7 +178,7 @@ export function WorkflowTestRunPanel({
   );
 
   async function runWorkflow(values: WorkflowTestRunFormValues) {
-    if (!csrfToken || !triggerContext.triggerType) {
+    if (!canRun || !csrfToken || !triggerContext.triggerType) {
       setFailure(i18nText('workflow', 'auto.workflow_test_run_unavailable'));
       return;
     }
@@ -189,21 +190,21 @@ export function WorkflowTestRunPanel({
       const triggerType = triggerContext.triggerType;
       const runInput =
         triggerType === 'schedule'
-            ? buildWorkflowTestRunInput({
-                document,
-                triggerType,
-                schedulePayload: JSON.parse(values.schedulePayload ?? '{}')
-              })
-            : buildWorkflowTestRunInput({
-                document,
-                triggerType,
-                extensionInputs: {
-                  path: values.extensionInputs?.path ?? {},
-                  query: values.extensionInputs?.query ?? {},
-                  form: values.extensionInputs?.form ?? {},
-                  body: values.extensionInputs?.body ?? {}
-                }
-              });
+          ? buildWorkflowTestRunInput({
+              document,
+              triggerType,
+              schedulePayload: JSON.parse(values.schedulePayload ?? '{}')
+            })
+          : buildWorkflowTestRunInput({
+              document,
+              triggerType,
+              extensionInputs: {
+                path: values.extensionInputs?.path ?? {},
+                query: values.extensionInputs?.query ?? {},
+                form: values.extensionInputs?.form ?? {},
+                body: values.extensionInputs?.body ?? {}
+              }
+            });
       const nextDetail = await startRun(
         applicationId,
         { ...runInput, document },
@@ -219,7 +220,7 @@ export function WorkflowTestRunPanel({
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>
+      <Button disabled={!canRun} onClick={() => setOpen(true)}>
         {i18nText('workflow', 'auto.workflow_test_run')}
       </Button>
       <Drawer
@@ -303,10 +304,7 @@ export function WorkflowTestRunPanel({
             <Alert
               showIcon
               type="warning"
-              title={i18nText(
-                'workflow',
-                'auto.workflow_test_run_unavailable'
-              )}
+              title={i18nText('workflow', 'auto.workflow_test_run_unavailable')}
             />
           )}
 
@@ -314,7 +312,7 @@ export function WorkflowTestRunPanel({
             type="primary"
             htmlType="submit"
             loading={running}
-            disabled={!triggerContext.triggerType}
+            disabled={!canRun || !triggerContext.triggerType}
           >
             {i18nText('workflow', 'auto.workflow_test_run_execute')}
           </Button>
@@ -345,7 +343,11 @@ export function WorkflowTestRunPanel({
         {detail ? (
           <>
             <Divider />
-            <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+            <Space
+              orientation="vertical"
+              size="middle"
+              style={{ width: '100%' }}
+            >
               <Descriptions column={1} size="small">
                 <Descriptions.Item
                   label={i18nText('workflow', 'auto.workflow_test_run_status')}

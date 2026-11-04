@@ -363,3 +363,25 @@ test.each(['options', 'binding'] as const)(
     expect(writes).toEqual([]);
   }
 );
+
+
+test('read binding grants preserve saved configuration but cannot change or persist commands', async () => {
+  const { ref, writes } = setup({ existing: true, permissions: ['communications.binding.get', 'communications.options.get'] });
+  await screen.findByDisplayValue('Custom prompt');
+  expect(screen.getByRole('textbox', { name: 'System prompt' })).toBeDisabled();
+  await waitFor(() => {
+    expect(commandSwitch('help')).toBeDisabled();
+    expect(commandSwitch('summary')).toBeDisabled();
+  });
+  await expect(ref.current?.save('channel-1')).rejects.toThrow('operation not permitted');
+  expect(writes).toEqual([]);
+});
+
+test('the binding update operation enables saving without instance update permission', async () => {
+  const { ref, writes } = setup({ existing: true, permissions: ['communications.binding.get', 'communications.options.get', 'communications.binding.update'] });
+  await settle();
+  fireEvent.change(screen.getByRole('textbox', { name: 'System prompt' }), { target: { value: 'Custom binding only' } });
+  await act(async () => { await ref.current?.save('channel-1'); });
+  expect(writes).toHaveLength(1);
+  expect(writes[0]?.system_prompt).toBe('Custom binding only');
+});

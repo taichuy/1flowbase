@@ -1142,6 +1142,7 @@ impl FrontendBlockCatalogRepository for MemoryPluginManagementRepository {
                     title: entry.title.clone(),
                     runtime: entry.runtime.clone(),
                     entry: entry.entry.clone(),
+                    ui_registration: entry.ui_registration.clone(),
                     code_template: entry.code_template.clone(),
                     code_template_version: entry.code_template_version.clone(),
                     code_template_language: entry.code_template_language.clone(),

@@ -26,6 +26,9 @@ export type BlockContextRecord = Record<string, unknown>;
 export interface BlockContextIdentity {
   id: string;
   displayName?: string;
+  /** Effective console operations projected by the host; UI hints never authorize API calls. */
+  readonly permissions?: readonly string[];
+  readonly isRoot?: boolean;
 }
 
 export interface BlockContextEntity {

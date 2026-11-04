@@ -15,8 +15,12 @@ import './debug-message.css';
 import { i18nText } from '../../../../../shared/i18n/text';
 
 function fallbackContent(message: AgentFlowDebugMessage) {
+  if (message.presentation === 'status') {
+    return message.status;
+  }
+
   if (message.status === 'running') {
-    return i18nText('agentFlow', 'auto.running');
+    return message.status;
   }
 
   if (message.status === 'waiting_human') {
@@ -28,18 +32,14 @@ function fallbackContent(message: AgentFlowDebugMessage) {
   }
 
   if (message.status === 'cancelled') {
-    return message.presentation === 'status'
-      ? i18nText('agentFlow', 'auto.cancelled_without_reply')
-      : i18nText('agentFlow', 'auto.stopped');
+    return i18nText('agentFlow', 'auto.stopped');
   }
 
   if (message.status === 'failed') {
     return i18nText('agentFlow', 'auto.debug_run_failed_alt');
   }
 
-  return message.presentation === 'status'
-    ? i18nText('agentFlow', 'auto.no_reply_yet')
-    : i18nText('agentFlow', 'auto.no_output_yet');
+  return i18nText('agentFlow', 'auto.no_output_yet');
 }
 
 export function DebugAssistantMessage({
@@ -95,16 +95,16 @@ export function DebugAssistantMessage({
                 onLoadArtifacts={onLoadArtifacts}
               />
             ) : null}
-            {hasAnswer || !hasReasoning || message.status === 'cancelled' ? (
+            {hasAnswer ? (
               <DebugMarkdownContent
                 className="agent-flow-editor__debug-message-content"
-                content={
-                  hasAnswer
-                    ? parsedContent.answerText
-                    : fallbackContent(message)
-                }
+                content={parsedContent.answerText}
                 streaming={message.status === 'running'}
               />
+            ) : !hasReasoning || message.status === 'cancelled' ? (
+              <output className="agent-flow-editor__debug-message-content">
+                {fallbackContent(message)}
+              </output>
             ) : null}
           </>
         )}

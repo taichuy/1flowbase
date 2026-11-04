@@ -1,5 +1,9 @@
 use super::*;
 
+#[cfg(test)]
+#[path = "_tests/model_list.rs"]
+mod tests;
+
 pub(super) fn to_openai_model_list_response(
     models: Vec<OpenAiCompatibleModel>,
     created: i64,
@@ -63,6 +67,11 @@ fn codex_model_metadata(model: OpenAiCompatibleModel) -> Value {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
+    let input_modalities = if model.capabilities.multimodal {
+        vec!["text", "image"]
+    } else {
+        vec!["text"]
+    };
     json!({
         "slug": model.id,
         "display_name": display_name,
@@ -92,7 +101,7 @@ fn codex_model_metadata(model: OpenAiCompatibleModel) -> Value {
         "effective_context_window_percent": 95,
         "limit": opencode_limit_projection(&model),
         "experimental_supported_tools": [],
-        "input_modalities": ["text"]
+        "input_modalities": input_modalities
     })
 }
 

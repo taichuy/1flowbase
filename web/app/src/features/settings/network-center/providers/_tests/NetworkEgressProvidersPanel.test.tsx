@@ -33,6 +33,7 @@ const networkCenterApi = vi.hoisted(() => ({
 vi.mock('../../../api/network-center', () => networkCenterApi);
 
 import { AppI18nProvider } from '../../../../../app/AppI18nProvider';
+import { useAuthStore } from '../../../../../state/auth-store';
 import { NetworkEgressProvidersPanel } from '../NetworkEgressProvidersPanel';
 
 function renderPanel() {
@@ -43,6 +44,7 @@ function renderPanel() {
 
 describe('NetworkEgressProvidersPanel', () => {
   beforeEach(() => {
+    useAuthStore.setState({ csrfToken: 'csrf-123', actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace-1' }, me: null });
     networkCenterApi.fetchSettingsNetworkEgressProviderTypes.mockReset();
     networkCenterApi.fetchSettingsNetworkEgressOfficialPluginCatalog.mockReset();
     networkCenterApi.fetchSettingsNetworkEgressPluginFamilies.mockReset();
@@ -199,4 +201,27 @@ describe('NetworkEgressProvidersPanel', () => {
     expect(within(row).getByRole('button', { name: /Clash \/ Mihomo Proxy.*更新|Clash \/ Mihomo Proxy.*update/i })).toBeEnabled();
     expect(within(row).getByRole('button', { name: /Clash \/ Mihomo Proxy.*卸载|Clash \/ Mihomo Proxy.*uninstall/i })).toBeEnabled();
   });
+  test.each([false, true])('official install grant %s never enables upload, switch or uninstall', async (installGranted) => {
+    setOperations(installGranted ? ['network_egress_plugins.install.official'] : ['network_egress_proxy_types.list']);
+    networkCenterApi.fetchSettingsNetworkEgressProviderTypes.mockResolvedValue([{ provider_code: 'test', display_name: 'Test proxy', form_schema: { fields: [] } }]);
+    networkCenterApi.fetchSettingsNetworkEgressPluginFamilies.mockResolvedValue([{ provider_code: 'test', current_installation_id: 'v1', can_uninstall: true, installed_versions: [{ installation_id: 'v1', plugin_version: '1' }] }]);
+    networkCenterApi.fetchSettingsNetworkEgressOfficialPluginCatalog.mockResolvedValue({ entries: [{ plugin_id: 'test', provider_code: 'test', display_name: 'Test plugin', latest_version: '2', has_update: true, install_status: 'not_installed', help_url: 'https://example.com/docs' }] });
+    renderPanel();
+    await screen.findByRole('button', { name: /Test proxy.*更新|Test proxy.*update/i });
+    const updateButton = screen.getByRole('button', { name: /Test proxy.*更新|Test proxy.*update/i });
+    if (installGranted) expect(updateButton).toBeEnabled();
+    else expect(updateButton).toBeDisabled();
+    expect(screen.getByRole('button', { name: /上传插件|Upload plugin/i })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: /Test proxy.*版本|Test proxy.*version/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Test proxy.*卸载|Test proxy.*uninstall/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /文\s*档|Documentation/i })).toBeEnabled();
+  });
+
 });
+
+function setOperations(permissions: string[]) {
+  useAuthStore.setState({
+    actor: { id: 'member', account: 'member', effective_display_role: 'member', current_workspace_id: 'workspace-1' },
+    me: { id: 'member', account: 'member', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: 'member', permissions }
+  });
+}

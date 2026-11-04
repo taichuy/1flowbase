@@ -292,8 +292,8 @@ describe('SettingsPage', () => {
     ).not.toBeInTheDocument();
   }, 10000);
 
-  test('shows 文件管理 when file_table.view.own is present', async () => {
-    authenticateWithPermissions(['file_table.view.own']);
+  test('shows 文件管理 when file_tables.list is present', async () => {
+    authenticateWithPermissions(['file_tables.list']);
 
     renderApp('/settings/files');
 

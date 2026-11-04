@@ -1,7 +1,8 @@
 import { act, fireEvent, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ConsoleAssistantSettings } from '@1flowbase/api-client';
 import { useEmbeddedAssistantSettings } from '../../hooks/useEmbeddedAssistantSettings';
+import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 
 const { getSettings, saveSettings } = vi.hoisted(() => ({
   getSettings: vi.fn(),
@@ -39,6 +40,28 @@ function settings(model: string): ConsoleAssistantSettings {
     }
   };
 }
+function setAccess(role: string, permissions: string[]) {
+  useAuthStore.setState({
+    actor: {
+      id: 'user-1',
+      account: 'member',
+      effective_display_role: role,
+      current_workspace_id: 'workspace'
+    },
+    me: {
+      id: 'user-1',
+      account: 'member',
+      name: 'Member',
+      nickname: 'Member',
+      email: 'member@example.com',
+      phone: null,
+      avatar_url: null,
+      introduction: '',
+      effective_display_role: role,
+      permissions
+    }
+  });
+}
 const props = {
   open: true,
   workspaceId: 'workspace',
@@ -46,10 +69,13 @@ const props = {
   csrfToken: 'csrf'
 };
 beforeEach(() => {
+  resetAuthStore();
+  setAccess('member', ['assistant_update_settings']);
   getSettings.mockReset();
   saveSettings.mockReset();
   getSettings.mockResolvedValue(settings('old'));
 });
+afterEach(() => resetAuthStore());
 describe('assistant published configuration refresh', () => {
   test('reopening loads the new published model catalog', async () => {
     const { result, rerender } = renderHook(useEmbeddedAssistantSettings, {
@@ -323,3 +349,51 @@ test('fallback keeps the previous reasoning habit when the new first model suppo
   );
   expect(result.current.settings?.preference.reasoning_effort).toBe('high');
 });
+
+test.each([
+  { role: 'member', permissions: [], allowed: false },
+  {
+    role: 'member',
+    permissions: ['patch_me'],
+    allowed: false
+  },
+  {
+    role: 'member',
+    permissions: ['patch_me_meta'],
+    allowed: false
+  },
+  { role: 'member', permissions: ['assistant_update_settings'], allowed: true },
+  { role: 'root', permissions: [], allowed: true }
+])(
+  'automatic model correction respects exact grants $role/$permissions',
+  async ({ role, permissions, allowed }) => {
+    setAccess(role, permissions);
+    const published = settings('first');
+    published.preference.model = 'removed';
+    getSettings.mockResolvedValue(published);
+    const saved = {
+      ...published,
+      preference: {
+        ...published.preference,
+        model: 'first',
+        reasoning_effort: null
+      }
+    };
+    saveSettings.mockResolvedValue(saved);
+    const { result, unmount } = renderHook(useEmbeddedAssistantSettings, {
+      initialProps: props
+    });
+    await waitFor(() => expect(result.current.refreshing).toBe(false));
+    expect(result.current.settings?.run_capabilities.models[0].id).toBe(
+      'first'
+    );
+    expect(result.current.settings?.preference.model).toBe(
+      allowed ? 'first' : 'removed'
+    );
+    expect(result.current.refreshError).toBe(false);
+    if (allowed)
+      expect(saveSettings).toHaveBeenCalledWith(saved.preference, 'csrf');
+    else expect(saveSettings).not.toHaveBeenCalled();
+    unmount();
+  }
+);

@@ -1,7 +1,8 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useCallback, useMemo, useState, type HTMLAttributes } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Button, Flex, Space, Tag } from 'antd';
+import { Alert, App, Button, Flex, Space, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -60,7 +61,8 @@ function requireToken(token: string | null): string {
   return token;
 }
 
-export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
+export function CodeTemplatesTab(_props: { canManage?: boolean } = {}) {
+  const can = useConsoleOperationAccess();
   const { t } = useTranslation('settingsUiManagement');
   const { message, modal } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
@@ -177,11 +179,11 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
     [t]
   );
   const openManaged = useCallback(
-    (row: ManagedRow, mode: 'edit' | 'copy') =>
+    (row: ManagedRow, mode: 'view' | 'edit' | 'copy') =>
       setStudio({
         mode,
-        templateId: mode === 'edit' ? row.id : null,
-        managedTemplate: mode === 'edit' ? row : undefined,
+        templateId: mode !== 'copy' ? row.id : null,
+        managedTemplate: mode !== 'copy' ? row : undefined,
         initialValue: {
           provider_code: row.provider_code,
           contribution_code: row.contribution_code,
@@ -268,16 +270,15 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
               <Button
                 type="text"
                 size="small"
-                disabled={!canManage}
-                onClick={() => openManaged(row, 'edit')}
+                onClick={() => openManaged(row, can('ui_management.templates.update') ? 'edit' : 'view')}
               >
-                {t('edit')}
+                {t(can('ui_management.templates.update') ? 'edit' : 'view')}
               </Button>
             )}
             <Button
               type="text"
               size="small"
-              disabled={!canManage}
+              disabled={!can('ui_management.templates.create')}
               onClick={() =>
                 row.kind === 'official'
                   ? openOfficial(row, 'copy')
@@ -290,7 +291,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
               <Button
                 type="text"
                 size="small"
-                disabled={!canManage || row.latest_revision.is_published}
+                disabled={!can('ui_management.templates.publish') || row.latest_revision.is_published}
                 onClick={() =>
                   runAction(() =>
                     publishSettingsUiTemplate(
@@ -308,7 +309,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
               type="text"
               size="small"
               disabled={
-                !canManage ||
+                !can(row.kind === 'official' ? 'ui_management.templates.default.reset' : 'ui_management.templates.default.set') ||
                 row.is_default ||
                 (row.kind === 'managed' && !row.published_revision)
               }
@@ -336,7 +337,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
                 type="text"
                 size="small"
                 danger
-                disabled={!canManage || !csrfToken || actionPending}
+                disabled={!can('ui_management.templates.delete') || !csrfToken || actionPending}
                 onClick={async () => {
                   await modal.confirm({
                     title: t('delete_template_title'),
@@ -365,7 +366,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
     ],
     [
       t,
-      canManage,
+      can,
       csrfToken,
       modal,
       runAction,
@@ -386,13 +387,28 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
     Math.max(1, Math.ceil(rows.length / pageSize))
   );
 
+  const loadError = query.isError ? (
+    <Alert
+      type="error"
+      showIcon
+      title={t('templates_load_failed')}
+      action={
+        <Button loading={query.isFetching} onClick={() => void query.refetch()}>
+          {t('routes_retry')}
+        </Button>
+      }
+    />
+  ) : undefined;
+
   return (
     <SettingsSectionSurface
+      heightMode="fill"
+      status={loadError}
       toolbar={
         <Flex justify="space-between" align="center" gap={8} wrap>
           <Button
             type="primary"
-            disabled={!canManage || !query.data?.default_template}
+            disabled={!can('ui_management.templates.create') || !query.data?.default_template}
             onClick={openCreate}
           >
             {t('new_template')}
@@ -404,25 +420,27 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
         </Flex>
       }
     >
-      <DataTable<TemplateRow>
-        columns={columns}
-        configuration={tableConfiguration}
-        page={currentPage}
-        pageSize={pageSize}
-        total={rows.length}
-        onPageChange={setPage}
-        loading={query.isLoading}
-        rowKey="key"
-        onRow={(row) =>
-          ({
-            'data-template-id': row.kind === 'managed' ? row.id : undefined
-          }) as HTMLAttributes<HTMLTableRowElement>
-        }
-        dataSource={rows.slice(
-          (currentPage - 1) * pageSize,
-          currentPage * pageSize
-        )}
-      />
+      {!query.isError || rows.length > 0 ? (
+        <DataTable<TemplateRow>
+          columns={columns}
+          configuration={tableConfiguration}
+          page={currentPage}
+          pageSize={pageSize}
+          total={rows.length}
+          onPageChange={setPage}
+          loading={query.isFetching}
+          rowKey="key"
+          onRow={(row) =>
+            ({
+              'data-template-id': row.kind === 'managed' ? row.id : undefined
+            }) as HTMLAttributes<HTMLTableRowElement>
+          }
+          dataSource={rows.slice(
+            (currentPage - 1) * pageSize,
+            currentPage * pageSize
+          )}
+        />
+      ) : null}
       {studio ? (
         <UiCodeTemplateStudio
           initialValue={studio.initialValue}
@@ -433,7 +451,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
           saving={save.isPending}
           workspaceId={workspaceId}
           onClose={() => setStudio(null)}
-          onSave={(value) => save.mutate(value)}
+          onSave={(value) => { if (can(studio.mode === 'edit' ? 'ui_management.templates.update' : 'ui_management.templates.create')) save.mutate(value); }}
         />
       ) : null}
     </SettingsSectionSurface>

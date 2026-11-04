@@ -252,6 +252,7 @@ export function NotificationBell() {
                     </Button>
                     <Button
                       disabled={
+                        !inbox.canReadAll ||
                         !inbox.selected ||
                         !inbox.messages.data?.unread_count ||
                         inbox.write.isPending
@@ -282,7 +283,8 @@ export function NotificationBell() {
                             className="notification-inbox__message-title"
                             disabled={inbox.write.isPending}
                             onClick={() => {
-                              if (!item.read_at) inbox.markRead(item.id);
+                              if (!item.read_at && inbox.canMarkRead)
+                                inbox.markRead(item.id);
                             }}
                           >
                             {item.title}
@@ -306,7 +308,12 @@ export function NotificationBell() {
                           <Button
                             type="text"
                             size="small"
-                            disabled={inbox.write.isPending}
+                            disabled={
+                              inbox.write.isPending ||
+                              (item.read_at
+                                ? !inbox.canMarkUnread
+                                : !inbox.canMarkRead)
+                            }
                             loading={
                               inbox.write.isPending &&
                               inbox.write.variables?.id === item.id

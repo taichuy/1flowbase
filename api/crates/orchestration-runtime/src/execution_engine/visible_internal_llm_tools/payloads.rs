@@ -125,6 +125,9 @@ pub(super) fn attach_visible_internal_llm_tool_events(
     if route_events.is_empty() {
         return;
     }
+    if let Some(wait) = execution.pending_callback.as_mut() {
+        wait.retain_agentflow_ownership();
+    }
     if !execution.debug_payload.is_object() {
         execution.debug_payload = json!({});
     }

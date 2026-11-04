@@ -832,3 +832,212 @@ async fn delete_scope_grant_rejects_invisible_model_and_wrong_model_grant_pair()
         .audit_events()
         .contains(&"state_model.scope_grant_deleted".to_string()));
 }
+
+#[tokio::test]
+async fn explicit_system_view_resolves_existing_system_grants_without_expanding_other_actions() {
+    use domain::RoleDataPolicyScope::{Own, ScopeAll, SystemAll};
+    use runtime_core::runtime_acl::{resolve_access_scope, RuntimeDataAction};
+    // name, default scope, model view override, can_view, system grant,
+    // system enabled, workspace grant, action, expected resolved profile
+    let cases = [
+        (
+            "default system read",
+            SystemAll,
+            None,
+            true,
+            true,
+            true,
+            true,
+            RuntimeDataAction::View,
+            Some(domain::ScopeDataModelPermissionProfile::SystemAll),
+        ),
+        (
+            "per-model system read",
+            ScopeAll,
+            Some(SystemAll),
+            true,
+            true,
+            true,
+            true,
+            RuntimeDataAction::View,
+            Some(domain::ScopeDataModelPermissionProfile::SystemAll),
+        ),
+        (
+            "workspace remains isolated",
+            ScopeAll,
+            None,
+            true,
+            true,
+            true,
+            true,
+            RuntimeDataAction::View,
+            Some(domain::ScopeDataModelPermissionProfile::ScopeAll),
+        ),
+        (
+            "scope_all has no system fallback",
+            ScopeAll,
+            None,
+            true,
+            true,
+            true,
+            false,
+            RuntimeDataAction::View,
+            None,
+        ),
+        (
+            "model own overrides system default",
+            SystemAll,
+            Some(Own),
+            true,
+            true,
+            true,
+            true,
+            RuntimeDataAction::View,
+            Some(domain::ScopeDataModelPermissionProfile::Owner),
+        ),
+        (
+            "disabled action",
+            SystemAll,
+            Some(SystemAll),
+            false,
+            true,
+            true,
+            true,
+            RuntimeDataAction::View,
+            None,
+        ),
+        (
+            "disabled system blocks workspace fallback",
+            SystemAll,
+            None,
+            true,
+            true,
+            false,
+            true,
+            RuntimeDataAction::View,
+            None,
+        ),
+        (
+            "missing grants",
+            SystemAll,
+            None,
+            true,
+            false,
+            true,
+            false,
+            RuntimeDataAction::View,
+            None,
+        ),
+        (
+            "ordinary workspace with system view",
+            SystemAll,
+            None,
+            true,
+            false,
+            true,
+            true,
+            RuntimeDataAction::View,
+            Some(domain::ScopeDataModelPermissionProfile::ScopeAll),
+        ),
+        (
+            "system create denied",
+            SystemAll,
+            None,
+            true,
+            true,
+            true,
+            false,
+            RuntimeDataAction::Create,
+            None,
+        ),
+        (
+            "system update denied",
+            SystemAll,
+            None,
+            true,
+            true,
+            true,
+            false,
+            RuntimeDataAction::Update,
+            None,
+        ),
+        (
+            "system delete denied",
+            SystemAll,
+            None,
+            true,
+            true,
+            true,
+            false,
+            RuntimeDataAction::Delete,
+            None,
+        ),
+    ];
+    for (
+        name,
+        default_scope,
+        view_override,
+        can_view,
+        has_system,
+        system_enabled,
+        has_workspace,
+        action,
+        expected,
+    ) in cases
+    {
+        let actor_id = Uuid::now_v7();
+        let workspace_id = Uuid::now_v7();
+        let model_id = Uuid::now_v7();
+        let actor = ActorContext::scoped(actor_id, workspace_id, "member", Vec::<String>::new());
+        let mut policy = role_data_policy(can_view, true, true, true, ScopeAll);
+        policy.default_view_scope = default_scope;
+        let model_policy =
+            role_data_model_policy(policy.role_id, model_id, view_override, None, None);
+        let mut repository = ScopedModelDefinitionRepository::new(scoped_manager_in_workspace(
+            actor_id,
+            workspace_id,
+        ))
+        .with_model(system_model(model_id))
+        .with_role_data_policy(policy, Some(model_policy));
+        if has_system {
+            let mut grant = scope_grant(
+                Uuid::now_v7(),
+                model_id,
+                DataModelScopeKind::System,
+                SYSTEM_SCOPE_ID,
+            );
+            grant.permission_profile = domain::ScopeDataModelPermissionProfile::SystemAll;
+            grant.enabled = system_enabled;
+            repository = repository.with_grant(grant);
+        }
+        if has_workspace {
+            repository = repository.with_grant(scope_grant(
+                Uuid::now_v7(),
+                model_id,
+                DataModelScopeKind::Workspace,
+                workspace_id,
+            ));
+        }
+        let grant = ModelDefinitionService::new(repository)
+            .load_runtime_scope_grant(&actor, model_id, action)
+            .await
+            .unwrap();
+        assert_eq!(
+            grant.as_ref().map(|grant| grant.permission_profile),
+            expected,
+            "{name}"
+        );
+        if let Some(grant) = grant {
+            let access = resolve_access_scope(&actor, action, model_id, Some(&grant)).unwrap();
+            assert_eq!(
+                access.scope_id,
+                if expected == Some(domain::ScopeDataModelPermissionProfile::SystemAll) {
+                    None
+                } else {
+                    Some(workspace_id)
+                },
+                "{name}"
+            );
+        }
+    }
+}

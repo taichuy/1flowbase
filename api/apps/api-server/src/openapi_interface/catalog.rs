@@ -5,6 +5,10 @@ use serde_json::{Map, Value};
 
 use crate::openapi_docs::{DocsCatalogOperation, OperationSpecView};
 
+mod schema;
+
+use schema::{resolve_object, resolve_schema};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OpenApiParameterLocation {
@@ -106,7 +110,7 @@ fn catalog_entry(
         request_schema: input_schema(spec, path_item_node, operation_node),
         response_schema: response_contract
             .as_ref()
-            .map(|(_, schema)| schema.clone())
+            .map(|(_, schema)| resolve_schema(spec, schema))
             .unwrap_or(Value::Bool(true)),
         request_media_type: request_contract.map(|(media_type, _, _)| media_type),
         response_media_type: response_contract.map(|(media_type, _)| media_type),
@@ -168,7 +172,7 @@ fn input_schema(spec: &CatalogSpec<'_>, path_item: &Value, operation: &Value) ->
             required.push(Value::String("body".into()));
         }
     }
-    object_schema(properties, required)
+    resolve_schema(spec, &object_schema(properties, required))
 }
 
 fn parameter_descriptors(
@@ -183,7 +187,7 @@ fn parameter_descriptors(
         ("header", OpenApiParameterLocation::Header),
     ] {
         for raw in all_parameters(path_item, operation) {
-            let parameter = resolve(spec, raw, 0);
+            let parameter = resolve_object(spec, raw);
             if parameter.get("in").and_then(Value::as_str) != Some(location) {
                 continue;
             }
@@ -192,7 +196,7 @@ fn parameter_descriptors(
             };
             let schema = parameter
                 .get("schema")
-                .map(|schema| resolve(spec, schema, 0))
+                .map(|schema| resolve_schema(spec, schema))
                 .unwrap_or_else(string_schema);
             descriptors.push(OpenApiParameterDescriptor {
                 name: name.to_string(),
@@ -242,7 +246,7 @@ fn parameter_location_schema(
     let mut properties = Map::new();
     let mut required = Vec::new();
     for raw in all_parameters(path_item, operation) {
-        let parameter = resolve(spec, raw, 0);
+        let parameter = resolve_object(spec, raw);
         if parameter.get("in").and_then(Value::as_str) != Some(location) {
             continue;
         }
@@ -251,15 +255,17 @@ fn parameter_location_schema(
         };
         let mut schema = parameter
             .get("schema")
-            .map(|schema| resolve(spec, schema, 0))
+            .cloned()
             .unwrap_or_else(string_schema);
-        if let (Some(description), Value::Object(schema)) = (
-            parameter.get("description").and_then(Value::as_str),
-            &mut schema,
-        ) {
-            schema
-                .entry("description")
-                .or_insert_with(|| Value::String(description.to_string()));
+        if let Some(description) = parameter.get("description").and_then(Value::as_str) {
+            // This is a fallback annotation, not a $ref sibling override. Keep
+            // inherited component descriptions while delaying schema closure.
+            let has_description = resolve_object(spec, &schema).get("description").is_some();
+            if let Value::Object(schema) = &mut schema {
+                if !has_description {
+                    schema.insert("description".into(), Value::String(description.to_string()));
+                }
+            }
         }
         properties.insert(name.to_string(), schema);
         if location == "path"
@@ -282,8 +288,8 @@ fn request_body_contract(
     spec: &CatalogSpec<'_>,
     operation: &Value,
 ) -> Option<(String, Value, bool)> {
-    let body = resolve(spec, operation.get("requestBody")?, 0);
-    let (media_type, schema) = media_schema(spec, body.get("content")?)?;
+    let body = resolve_object(spec, operation.get("requestBody")?);
+    let (media_type, schema) = media_schema(body.get("content")?)?;
     Some((
         media_type,
         schema,
@@ -297,7 +303,7 @@ fn body_descriptors(spec: &CatalogSpec<'_>, operation: &Value) -> Vec<OpenApiPar
     let Some(raw_body) = operation.get("requestBody") else {
         return Vec::new();
     };
-    let body = resolve(spec, raw_body, 0);
+    let body = resolve_object(spec, raw_body);
     let body_required = body
         .get("required")
         .and_then(Value::as_bool)
@@ -313,8 +319,14 @@ fn body_descriptors(spec: &CatalogSpec<'_>, operation: &Value) -> Vec<OpenApiPar
     } else {
         OpenApiParameterLocation::JsonBody
     };
+    let schema = resolve_schema(spec, &schema);
     let mut result = Vec::new();
     append_body_descriptors(&mut result, String::new(), &schema, location, body_required);
+    // A descriptor is a new schema root: references cannot point back into the
+    // parent body's definitions after that parent has been discarded.
+    for descriptor in &mut result {
+        descriptor.schema = resolve_schema(&CatalogSpec::Full(&schema), &descriptor.schema);
+    }
     result
 }
 
@@ -376,18 +388,15 @@ fn response_contract(spec: &CatalogSpec<'_>, operation: &Value) -> Option<(Strin
         .collect::<Vec<_>>();
     statuses.sort();
     for status in statuses {
-        let response = resolve(spec, &responses[status], 0);
-        if let Some(contract) = response
-            .get("content")
-            .and_then(|value| media_schema(spec, value))
-        {
+        let response = resolve_object(spec, &responses[status]);
+        if let Some(contract) = response.get("content").and_then(media_schema) {
             return Some(contract);
         }
     }
     None
 }
 
-fn media_schema(spec: &CatalogSpec<'_>, content: &Value) -> Option<(String, Value)> {
+fn media_schema(content: &Value) -> Option<(String, Value)> {
     let content = content.as_object()?;
     let selected = content
         .get_key_value("application/json")
@@ -398,10 +407,7 @@ fn media_schema(spec: &CatalogSpec<'_>, content: &Value) -> Option<(String, Valu
         .or_else(|| content.get_key_value("application/zip"))
         .or_else(|| content.get_key_value("text/event-stream"))
         .or_else(|| content.iter().next())?;
-    Some((
-        selected.0.clone(),
-        resolve(spec, selected.1.get("schema")?, 0),
-    ))
+    Some((selected.0.clone(), selected.1.get("schema")?.clone()))
 }
 
 fn object_schema(properties: Map<String, Value>, required: Vec<Value>) -> Value {
@@ -425,42 +431,4 @@ fn field_type(schema: &Value) -> String {
         .and_then(Value::as_str)
         .unwrap_or("object")
         .to_string()
-}
-
-fn resolve(spec: &CatalogSpec<'_>, value: &Value, depth: usize) -> Value {
-    if depth > 16 {
-        return value.clone();
-    }
-    match value {
-        Value::Object(map) => {
-            if let Some(reference) = map.get("$ref").and_then(Value::as_str) {
-                if let Some(target) = reference
-                    .strip_prefix('#')
-                    .and_then(|pointer| spec.pointer(pointer))
-                {
-                    let mut resolved = resolve(spec, &target, depth + 1);
-                    if let Value::Object(resolved) = &mut resolved {
-                        for (key, sibling) in map {
-                            if key != "$ref" {
-                                resolved.insert(key.clone(), resolve(spec, sibling, depth + 1));
-                            }
-                        }
-                    }
-                    return resolved;
-                }
-            }
-            Value::Object(
-                map.iter()
-                    .map(|(key, nested)| (key.clone(), resolve(spec, nested, depth + 1)))
-                    .collect(),
-            )
-        }
-        Value::Array(items) => Value::Array(
-            items
-                .iter()
-                .map(|item| resolve(spec, item, depth + 1))
-                .collect(),
-        ),
-        _ => value.clone(),
-    }
 }

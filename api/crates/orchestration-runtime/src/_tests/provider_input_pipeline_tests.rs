@@ -336,6 +336,74 @@ async fn empty_pipeline_preserves_the_exact_canonical_input() {
 }
 
 #[tokio::test]
+async fn empty_pipeline_keeps_complete_history_and_the_existing_audit_receipt() {
+    use sha2::{Digest, Sha256};
+
+    let pipeline = pipeline(Vec::new(), Vec::new());
+    let mut input = canonical_input();
+    input.messages[0].content = "完整历史🙂\u{0000}".repeat(16 * 1024);
+    input.messages[0].content_blocks = Some(json!([
+        {"type":"text", "text":"工具调用前"},
+        {"type":"reasoning", "encrypted_content":"opaque+/=密文"},
+        {"type":"image", "url":"https://example.invalid/image"},
+        {"type":"file", "file_id":"file-reference"}
+    ]));
+    input.messages[0].tool_calls = Some(json!([
+        {"id":"tool-1", "type":"function", "function":{"name":"echo", "arguments":"{\"text\":\"🙂\"}"}}
+    ]));
+    let mut result = message("工具结果");
+    result.role = ProviderMessageRole::Tool;
+    result.tool_call_id = Some("tool-1".into());
+    input.messages.push(result);
+    input.system.push(NativePromptBlock::text("系统🙂"));
+    input
+        .tools
+        .push(json!({"name":"echo", "unknown":{"preserve":true}}));
+    input.response_format = Some(json!({"type":"json_object"}));
+    input
+        .model_parameters
+        .insert("reasoning".into(), json!({"effort":"max"}));
+
+    let visible = serde_json::to_vec(&(
+        &input.messages,
+        &input.system,
+        &input.tools,
+        &input.response_format,
+        &input.model_parameters,
+    ))
+    .unwrap();
+    let expected = format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&Sha256::digest(visible))
+    );
+    let output = pipeline.execute(input.clone()).await.unwrap();
+    assert_eq!(output.input, input);
+    let receipt = output
+        .receipt
+        .expect("identity pipelines still issue their audit receipt");
+    assert_eq!(receipt.before_digest, expected);
+    assert_eq!(receipt.after_digest, expected);
+    assert_eq!(receipt.point_id, PROVIDER_INPUT_PIPELINE_POINT_ID);
+    assert_eq!(receipt.graph_fingerprint, "provider-input-pipeline-fixture");
+    assert!(receipt.contributions.is_empty());
+    let material = serde_json::to_vec(&(
+        "provider-input-pipeline-fixture",
+        PROVIDER_INPUT_PIPELINE_POINT_ID,
+        &expected,
+        &expected,
+        Vec::<serde_json::Value>::new(),
+    ))
+    .unwrap();
+    assert_eq!(
+        receipt.receipt_digest,
+        format!(
+            "sha256:{:x}",
+            base16ct::HexDisplay(&Sha256::digest(material))
+        )
+    );
+}
+
+#[tokio::test]
 async fn graph_dependency_order_wins_over_registration_order() {
     let contributors = vec![
         contributor(

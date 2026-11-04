@@ -37,24 +37,44 @@ impl PgControlPlaneStore {
                    and h.state_code = 'waiting_callback'
             ), bounds as (
                 select a.event_sequence as lower_sequence, a.recovery_sequence as lower_recovery_sequence,
-                       n.event_sequence as upper_sequence, n.sequence as upper_recovery_sequence, n.id as upper_recovery_id
+                       n.event_sequence as upper_sequence, n.recovery_sequence as upper_recovery_sequence,
+                       n.recovery_id as upper_recovery_id, n.terminal_event_id as upper_terminal_event_id
                   from anchor a
                   left join lateral (
-                      select h.id, h.sequence, h.event_sequence
-                        from flow_run_recovery_history h
-                       where h.flow_run_id = $1 and h.sequence > a.recovery_sequence
-                         and h.state_code in ('waiting_callback', 'waiting_human')
-                       order by h.sequence limit 1
+                      select stops.* from (
+                          select w.event_sequence, w.sequence as recovery_sequence,
+                                 w.id as recovery_id, null::uuid as terminal_event_id
+                            from (
+                                select h.id, h.sequence, h.event_sequence
+                                  from flow_run_recovery_history h
+                                 where h.flow_run_id = $1 and h.sequence > a.recovery_sequence
+                                   and h.state_code in ('waiting_callback', 'waiting_human')
+                                 order by h.sequence limit 1
+                            ) w
+                          union all
+                          select e.sequence, null::bigint, null::uuid, e.id
+                            from runtime_events e join flow_runs f on f.id = e.flow_run_id
+                           where e.flow_run_id = $1 and e.sequence > a.event_sequence
+                             and f.status = 'succeeded' and e.event_type = 'flow_finished'
+                             and e.source = 'host' and e.trust_level = 'host_fact'
+                             and e.layer = 'agent_transition' and e.node_run_id is null
+                             and e.payload->'terminal_commit' = 'true'::jsonb
+                             and not exists (
+                                 select 1 from flow_run_recovery_history h
+                                  where h.flow_run_id = $1 and h.sequence > a.recovery_sequence
+                                    and h.state_code in ('waiting_callback', 'waiting_human')
+                             )
+                      ) stops order by stops.event_sequence limit 1
                   ) n on true
             ), eligible as materialized (
                 select e.id from runtime_events e cross join bounds b
                  where $6::boolean and e.flow_run_id = $1 and e.sequence > b.lower_sequence
-                   and (b.upper_recovery_sequence is null or e.sequence < b.upper_sequence)
+                   and ((b.upper_recovery_id is null and b.upper_terminal_event_id is null) or e.sequence < b.upper_sequence)
                    and e.delivery_status in ('pending', 'claimed', 'acked', 'uncertain')
             ), candidates as (
                 select e.id from runtime_events e cross join bounds b
                  where e.flow_run_id = $1 and e.sequence > b.lower_sequence
-                   and (b.upper_recovery_sequence is null or e.sequence < b.upper_sequence)
+                   and ((b.upper_recovery_id is null and b.upper_terminal_event_id is null) or e.sequence < b.upper_sequence)
                    and (e.delivery_status = 'pending'
                         or (e.delivery_status = 'claimed' and e.delivery_lease_expires_at <= now()))
                  order by e.sequence, e.id
@@ -73,7 +93,7 @@ impl PgControlPlaneStore {
                 select id, false as proof_fact from claimed where not $6::boolean
             )
             select b.lower_sequence, b.lower_recovery_sequence, b.upper_sequence,
-                   b.upper_recovery_sequence, b.upper_recovery_id, f.proof_fact,
+                   b.upper_recovery_sequence, b.upper_recovery_id, b.upper_terminal_event_id, f.proof_fact,
                    e.id, e.flow_run_id, e.node_run_id, e.span_id, e.parent_span_id, e.sequence,
                    e.event_type, e.layer, e.source, e.trust_level, e.item_id, e.ledger_ref,
                    runtime_original_json(e.payload, e.raw_json_payloads, 'payload') as payload,
@@ -111,17 +131,33 @@ impl PgControlPlaneStore {
                     ControlPlaneError::Conflict("runtime_event_delivery_scope_unresolved").into(),
                 );
             }
-            if let Some(upper_id) = row.get::<Option<Uuid>, _>("upper_recovery_id") {
+            let upper = match (
+                row.get::<Option<Uuid>, _>("upper_recovery_id"),
+                row.get::<Option<Uuid>, _>("upper_terminal_event_id"),
+            ) {
+                (Some(recovery_id), None) => Some(RuntimeEventDeliveryUpperBoundary::Recovery(
+                    RuntimeEventDeliveryBoundary {
+                        recovery_id,
+                        recovery_sequence: row.get("upper_recovery_sequence"),
+                        event_sequence: row.get("upper_sequence"),
+                    },
+                )),
+                (None, Some(event_id)) => {
+                    Some(RuntimeEventDeliveryUpperBoundary::SuccessfulTerminal {
+                        event_id,
+                        event_sequence: row.get("upper_sequence"),
+                    })
+                }
+                (None, None) => None,
+                _ => return Err(anyhow!("runtime event delivery boundary is ambiguous")),
+            };
+            if let Some(upper) = upper {
                 batch.closed_proof = Some(RuntimeEventDeliveryClosedProof {
                     flow_run_id: input.flow_run_id,
                     scope: input.scope,
                     lower_sequence: row.get("lower_sequence"),
                     lower_recovery_sequence: row.get("lower_recovery_sequence"),
-                    upper: RuntimeEventDeliveryBoundary {
-                        recovery_id: upper_id,
-                        recovery_sequence: row.get("upper_recovery_sequence"),
-                        event_sequence: row.get("upper_sequence"),
-                    },
+                    upper,
                 });
             }
             if row.get::<Option<Uuid>, _>("id").is_none() {

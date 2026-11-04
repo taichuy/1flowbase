@@ -83,6 +83,9 @@ pub(super) fn openai_inputs(
             if let Some(description) = function.get("description").and_then(Value::as_str) {
                 native_tool["description"] = Value::String(description.to_string());
             }
+            if let Some(strict) = function.get("strict").and_then(Value::as_bool) {
+                native_tool["strict"] = Value::Bool(strict);
+            }
             normalized.push(native_tool);
             report.record(
                 &format!("$.tools[{index}]"),

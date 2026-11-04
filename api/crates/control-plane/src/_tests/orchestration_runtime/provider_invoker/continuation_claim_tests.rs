@@ -460,3 +460,274 @@ fn sparse_completed_output_indexes_keep_a_provable_native_history() {
         "an announced but unfinished item cannot establish history"
     );
 }
+
+#[test]
+fn exact_native_replay_is_authorized_only_by_the_owned_matching_snapshot() {
+    use orchestration_runtime::execution_engine::ProviderInvoker;
+    let runtime = issue_1743_runtime(Uuid::now_v7());
+    let base = issue_1743_invoker(
+        Uuid::now_v7(),
+        Arc::new(Issue1743ContinuationStore::default()),
+        None,
+    );
+    let sealed = crate::ports::ProviderTransportPayload::openai_responses(json!({
+        "input":[{"type":"reasoning","encrypted_content":"opaque"},
+            {"role":"user","content":"question"}]
+    }))
+    .unwrap();
+    let owner = base.with_provider_transport_payload(Some(sealed));
+    let mut input = ProviderInvocationInput::default();
+    owner
+        .apply_provider_transport(&runtime, &mut input)
+        .unwrap();
+    assert!(owner.permits_selected_native_exact_replay(&input));
+    for (source, body, expected) in [
+        (
+            "openai_responses",
+            json!({"conversation":"conv_external"}),
+            false,
+        ),
+        (
+            "openai_responses",
+            json!({"conversation":{"id":"conv_external"}}),
+            false,
+        ),
+        ("openai_responses", json!({"conversation":"null"}), false),
+        (
+            "openai_responses",
+            json!({"previous_response_id":"resp_external"}),
+            false,
+        ),
+        (
+            "openai_responses",
+            json!({"previous_response_id":"null"}),
+            false,
+        ),
+        (
+            "openai_responses",
+            json!({"previous_response_id":null,"conversation":null}),
+            true,
+        ),
+        (
+            "openai_responses",
+            json!({"future_extension":{"supported":"opaque"}}),
+            true,
+        ),
+        // Foreign envelopes are ignored by the actual Responses plugin restore boundary.
+        (
+            "openai_chat",
+            json!({"previous_response_id":"resp_foreign","conversation":"conv_foreign"}),
+            true,
+        ),
+    ] {
+        let mut with_envelope = input.clone();
+        with_envelope.client_protocol_envelope = Some(
+            serde_json::from_value(json!({
+                "source_protocol":source, "body":body,
+                "headers":{"conversation":["legal-header-extension"]},
+                "query":{"conversation":["legal-query-extension"]}
+            }))
+            .unwrap(),
+        );
+        assert_eq!(
+            owner.permits_selected_native_exact_replay(&with_envelope),
+            expected,
+            "source={source}; body={body}"
+        );
+    }
+    assert!(
+        !base.permits_selected_native_exact_replay(&input),
+        "matching claims without ownership are insufficient"
+    );
+    let mut missing = input.clone();
+    missing.native_transport = None;
+    assert!(
+        !owner.permits_selected_native_exact_replay(&missing),
+        "capability-only is insufficient"
+    );
+    let mut cursor = input.clone();
+    cursor.previous_response_id = Some("resp_canonical".into());
+    assert!(!owner.permits_selected_native_exact_replay(&cursor));
+    for mutation in 0..4 {
+        let mut changed = input.clone();
+        let native = changed.native_transport.as_mut().unwrap();
+        match mutation {
+            0 => native.protocol = "other".into(),
+            1 => native.digest = "forged".into(),
+            2 => native.size_bytes += 1,
+            _ => native.wire_body["input"] = json!("tampered with unchanged digest claim"),
+        }
+        assert!(!owner.permits_selected_native_exact_replay(&changed));
+    }
+    for body in [
+        json!({"input":"question", "previous_response_id":"resp_wire"}),
+        json!({"input":"question", "conversation":"conv_wire"}),
+        json!({"input":[{"type":"item_reference","id":"item_wire"}]}),
+    ] {
+        let owner = base.with_provider_transport_payload(Some(
+            crate::ports::ProviderTransportPayload::openai_responses(body).unwrap(),
+        ));
+        let mut input = ProviderInvocationInput::default();
+        owner
+            .apply_provider_transport(&runtime, &mut input)
+            .unwrap();
+        assert!(!owner.permits_selected_native_exact_replay(&input));
+    }
+}
+
+fn exact_replay_config_input(
+    runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+) -> ProviderInvocationInput {
+    ProviderInvocationInput {
+        provider_code: runtime.provider_code.clone(),
+        protocol: runtime.protocol.clone(),
+        model: runtime.model.clone(),
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::User,
+            content: "same logical request".into(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: None,
+        }],
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn selected_route_reuses_effective_configuration_while_new_route_reads_fresh_source() {
+    use orchestration_runtime::execution_engine::ProviderInvoker;
+    let mut invoker = issue_1743_invoker(
+        Uuid::now_v7(),
+        Arc::new(Issue1743ContinuationStore::default()),
+        None,
+    );
+    // Exercise the actual host send/config path without creating a workflow or billing session.
+    invoker.flow_run_id = None;
+    invoker.api_node_id = Some("local:test".into());
+    invoker.provider_install_root = Some(std::env::temp_dir());
+    let (provider_runtime, captured) =
+        test_support::InMemoryProviderRuntime::with_invocation_capture();
+    invoker.runtime = provider_runtime;
+    let instance = invoker.repository.seed_provider_instance(
+        "fixture_provider",
+        "exact replay",
+        true,
+        domain::ModelProviderInstanceStatus::Ready,
+        vec!["gpt-5.4-mini"],
+    );
+    let runtime = issue_1743_runtime(instance);
+    invoker.repository.replace_instance_runtime_configuration(
+        instance,
+        json!({"base_url":"https://original.example/v1"}),
+        json!({"api_key":"original-secret"}),
+    );
+    let route = invoker.resolve_llm_route(&runtime).await.unwrap();
+    invoker
+        .invoke_resolved_llm(&runtime, route.clone(), exact_replay_config_input(&runtime))
+        .await
+        .unwrap();
+    invoker.repository.replace_instance_runtime_configuration(
+        instance,
+        json!({"base_url":"https://replacement.example/v1"}),
+        json!({"api_key":"replacement-secret"}),
+    );
+    invoker
+        .invoke_resolved_llm(&runtime, route.clone(), exact_replay_config_input(&runtime))
+        .await
+        .unwrap();
+    let configured_route = invoker.resolve_llm_route(&runtime).await.unwrap();
+    invoker
+        .invoke_resolved_llm(
+            &runtime,
+            configured_route,
+            exact_replay_config_input(&runtime),
+        )
+        .await
+        .unwrap();
+    let calls = captured.lock().unwrap();
+    assert_eq!(calls.len(), 3);
+    assert_eq!(
+        calls[0].provider_config, calls[1].provider_config,
+        "automatic retry must keep the effective account/endpoint/credential snapshot"
+    );
+    assert_eq!(calls[1].provider_config["api_key"], "original-secret");
+    assert_eq!(
+        calls[1].provider_config["base_url"],
+        "https://original.example/v1"
+    );
+    assert_eq!(calls[2].provider_config["api_key"], "replacement-secret");
+    assert_eq!(
+        calls[2].provider_config["base_url"],
+        "https://replacement.example/v1"
+    );
+    assert_eq!(
+        route
+            .invocation_pin::<RuntimeProviderInvocationPin>()
+            .unwrap()
+            .effective_runtime_config
+            .get()
+            .unwrap(),
+        &calls[0].provider_config
+    );
+}
+
+#[tokio::test]
+async fn failed_configuration_maintenance_is_visible_and_does_not_seal_a_snapshot() {
+    use orchestration_runtime::execution_engine::ProviderInvoker;
+    let mut invoker = issue_1743_invoker(
+        Uuid::now_v7(),
+        Arc::new(Issue1743ContinuationStore::default()),
+        None,
+    );
+    invoker.flow_run_id = None;
+    invoker.api_node_id = Some("local:test".into());
+    invoker.provider_install_root = Some(std::env::temp_dir());
+    let (provider_runtime, captured) =
+        test_support::InMemoryProviderRuntime::with_invocation_capture();
+    invoker.runtime = provider_runtime;
+    let instance = invoker.repository.seed_provider_instance(
+        "fixture_provider",
+        "exact replay",
+        true,
+        domain::ModelProviderInstanceStatus::Ready,
+        vec!["gpt-5.4-mini"],
+    );
+    let runtime = issue_1743_runtime(instance);
+    invoker.repository.replace_instance_runtime_configuration(
+        instance,
+        json!({"base_url":"https://original.example/v1"}),
+        json!({}),
+    );
+    let route = invoker.resolve_llm_route(&runtime).await.unwrap();
+    assert!(invoker
+        .invoke_resolved_llm(&runtime, route.clone(), exact_replay_config_input(&runtime))
+        .await
+        .is_err());
+    assert!(
+        captured.lock().unwrap().is_empty(),
+        "maintenance failure cannot reach the provider"
+    );
+    assert!(
+        route
+            .invocation_pin::<RuntimeProviderInvocationPin>()
+            .unwrap()
+            .effective_runtime_config
+            .get()
+            .is_none(),
+        "failed initialization cannot become a successful config snapshot"
+    );
+    invoker.repository.replace_instance_runtime_configuration(
+        instance,
+        json!({"base_url":"https://original.example/v1"}),
+        json!({"api_key":"repaired-secret"}),
+    );
+    invoker
+        .invoke_resolved_llm(&runtime, route, exact_replay_config_input(&runtime))
+        .await
+        .unwrap();
+    let calls = captured.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].provider_config["api_key"], "repaired-secret");
+}

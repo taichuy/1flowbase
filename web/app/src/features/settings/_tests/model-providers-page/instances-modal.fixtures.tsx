@@ -1,3 +1,4 @@
+import { modelProviderManagerOperations } from './operation-permission-fixture';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { Grid } from 'antd';
 import { vi } from 'vitest';
@@ -184,10 +185,7 @@ function authenticateWithPermissions(
 }
 
 function authenticateAsModelProviderManager() {
-  authenticateWithPermissions([
-    'state_model.view.all',
-    'state_model.manage.all'
-  ]);
+  authenticateWithPermissions(modelProviderManagerOperations);
 }
 
 function renderApp(pathname: string) {

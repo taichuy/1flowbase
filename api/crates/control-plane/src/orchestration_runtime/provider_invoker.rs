@@ -151,6 +151,10 @@ struct RuntimeProviderInvocationPin {
     instance: domain::ModelProviderInstanceRecord,
     installation: domain::LocalPluginInstallationRecord,
     package: ProviderPackage,
+    // Selected-route lifetime only. The first send performs normal auth maintenance, including
+    // refresh/CAS errors; automatic replay reuses that effective endpoint/account/credential.
+    // Configured retry resolves a new route and therefore performs maintenance again.
+    effective_runtime_config: Arc<tokio::sync::OnceCell<Value>>,
 }
 
 const GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY: &str = "1flowbase_gateway_provider_stages";

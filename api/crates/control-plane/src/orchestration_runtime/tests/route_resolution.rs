@@ -269,3 +269,66 @@ async fn root_1534_resolved_provider_route_pins_the_installation_used_for_invoca
         "the next attempt must observe the disabled current installation"
     );
 }
+
+// B2: exercise the private mapper used by both compile catalog and live routing.
+#[test]
+fn shared_distribution_mapper_preserves_rules_metadata_and_typed_config() {
+    use crate::orchestration_runtime::map_llm_distribution_rule;
+    use domain::{
+        ModelProviderDistributionConfigValue as DomainConfig,
+        ModelProviderDistributionRule as DomainRule,
+    };
+    use extension_contracts::ProviderDistributionConfigValue as CompiledConfig;
+    use orchestration_runtime::compiled_plan::LlmDistributionRule as CompiledRule;
+    use std::collections::BTreeMap;
+
+    for (input, expected) in [
+        (DomainRule::None, CompiledRule::None),
+        (DomainRule::RoundRobin, CompiledRule::RoundRobin),
+        (DomainRule::RetryRoundRobin, CompiledRule::RetryRoundRobin),
+    ] {
+        assert_eq!(map_llm_distribution_rule(input), expected);
+    }
+
+    for (config, expected_config) in [
+        (BTreeMap::new(), BTreeMap::new()),
+        (
+            BTreeMap::from([
+                ("text".into(), DomainConfig::String(" 值\0 ".into())),
+                ("integer".into(), DomainConfig::Integer(i64::MIN)),
+                ("boolean".into(), DomainConfig::Boolean(false)),
+            ]),
+            BTreeMap::from([
+                ("text".into(), CompiledConfig::String(" 值\0 ".into())),
+                ("integer".into(), CompiledConfig::Integer(i64::MIN)),
+                ("boolean".into(), CompiledConfig::Boolean(false)),
+            ]),
+        ),
+        (
+            BTreeMap::from([
+                ("".into(), DomainConfig::String(String::new())),
+                ("integer".into(), DomainConfig::Integer(i64::MAX)),
+                ("boolean".into(), DomainConfig::Boolean(true)),
+            ]),
+            BTreeMap::from([
+                ("".into(), CompiledConfig::String(String::new())),
+                ("integer".into(), CompiledConfig::Integer(i64::MAX)),
+                ("boolean".into(), CompiledConfig::Boolean(true)),
+            ]),
+        ),
+    ] {
+        let input = DomainRule::Dynamic {
+            rule_id: " 规则 ".into(),
+            rule_version: "not-semver\0".into(),
+            contract_version: String::new(),
+            config,
+        };
+        let expected = CompiledRule::Dynamic {
+            rule_id: " 规则 ".into(),
+            rule_version: "not-semver\0".into(),
+            contract_version: String::new(),
+            config: expected_config,
+        };
+        assert_eq!(map_llm_distribution_rule(input), expected);
+    }
+}

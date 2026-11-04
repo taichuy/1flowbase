@@ -8,7 +8,8 @@ import {
   within
 } from '@testing-library/react';
 import { App } from 'antd';
-import { beforeAll, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
+import { authenticateEditor } from '../fixtures/editor-auth';
 import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
 import { AgentFlowEditorAssembly } from '../../components/editor/AgentFlowEditorAssembly';
 
@@ -56,6 +57,12 @@ vi.mock('../../hooks/runtime/useAgentFlowDebugSession', () => ({
   })
 }));
 beforeAll(() => loadApplicationI18nResources());
+beforeEach(() =>
+  authenticateEditor(
+    ['start_flow_debug_run_stream', 'start_flow_debug_run'],
+    'member'
+  )
+);
 
 test('#2018 AC-101/103 preview uses the assistant plugin and writes model selection to draft inputs', async () => {
   const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });

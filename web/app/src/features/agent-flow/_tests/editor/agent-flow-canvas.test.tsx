@@ -1,5 +1,6 @@
+import { authenticateEditor } from '../fixtures/editor-auth';
 import { fireEvent, screen } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
 
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 import { AgentFlowEditorShell } from '../../components/editor/AgentFlowEditorShell';
@@ -31,6 +32,8 @@ function createInitialState() {
     user_protection_limit: 10
   };
 }
+
+beforeEach(() => authenticateEditor());
 
 describe('AgentFlowCanvas', () => {
   test('adds a node from the plus picker after the selected node', async () => {

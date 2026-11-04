@@ -3,6 +3,7 @@ import { App, Button, Drawer, Form, Input } from 'antd';
 import {
   deleteConsoleRuntimeModelRecord,
   updateConsoleRuntimeModelRecord,
+  type ConsoleFileTable,
   type ConsoleFileRecord
 } from '@1flowbase/api-client';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -12,15 +13,20 @@ export function FileRecordActions({
   record,
   fileTableCode,
   csrfToken,
+  record_permissions,
   onShare,
   onChanged
 }: {
   record: ConsoleFileRecord;
   fileTableCode: string;
   csrfToken?: string | null;
+  record_permissions: ConsoleFileTable['record_permissions'] | undefined;
   onShare: () => void;
   onChanged: () => Promise<void>;
 }) {
+  const canUpdate = record_permissions?.can_update === true;
+  const canDelete = record_permissions?.can_delete === true;
+  const canShare = record_permissions?.can_share === true;
   const { message, modal } = App.useApp();
   const surface = useNativeBlockSurface();
   const confirmation = useRef<{ destroy: () => void } | null>(null);
@@ -34,15 +40,18 @@ export function FileRecordActions({
         <Button
           className="file-table-view__share"
           type="text"
-          disabled={!csrfToken}
-          onClick={onShare}
+          disabled={!canShare || !csrfToken}
+          onClick={() => {
+            if (canShare) onShare();
+          }}
         >
           {i18nText('frontstage', 'files.share')}
         </Button>
         <Button
           type="text"
-          disabled={!csrfToken}
+          disabled={!canUpdate || !csrfToken}
           onClick={() => {
+            if (!canUpdate) return;
             form.setFieldsValue({ filename: record.filename });
             setEditing(true);
           }}
@@ -52,8 +61,9 @@ export function FileRecordActions({
         <Button
           danger
           type="text"
-          disabled={!csrfToken}
+          disabled={!canDelete || !csrfToken}
           onClick={() => {
+            if (!canDelete) return;
             confirmation.current = modal.confirm({
               title: i18nText('frontstage', 'files.delete_title'),
               content: i18nText('frontstage', 'files.delete_description', {
@@ -67,7 +77,7 @@ export function FileRecordActions({
               },
               getContainer: surface?.overlayHost.getPopupContainer,
               onOk: async () => {
-                if (!csrfToken) return;
+                if (!canDelete || !csrfToken) return;
                 try {
                   await deleteConsoleRuntimeModelRecord(
                     fileTableCode,
@@ -100,6 +110,7 @@ export function FileRecordActions({
           <Button
             type="primary"
             aria-label={i18nText('frontstage', 'files.save')}
+            disabled={!canUpdate || !csrfToken}
             loading={saving}
             onClick={() => form.submit()}
           >
@@ -110,8 +121,9 @@ export function FileRecordActions({
         <Form
           form={form}
           layout="vertical"
+          disabled={!canUpdate}
           onFinish={async ({ filename }) => {
-            if (!csrfToken) return;
+            if (!canUpdate || !csrfToken) return;
             setSaving(true);
             try {
               await updateConsoleRuntimeModelRecord(

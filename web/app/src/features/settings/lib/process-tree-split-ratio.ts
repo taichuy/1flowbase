@@ -1,3 +1,5 @@
+import { hasUserPreferenceWriteAccess } from '../../../shared/user-preferences/user-preferences';
+
 const STORAGE_KEY = '1flowbase.settings.process_tree_split_ratio';
 const DEFAULT_RATIO = 40;
 
@@ -26,7 +28,9 @@ export function persistProcessTreeSplitRatio(sizes: number[]) {
     Math.max(20, Math.round((sizes[0] / total) * 1000) / 10)
   );
   try {
-    window.localStorage.setItem(STORAGE_KEY, String(ratio));
+    if (hasUserPreferenceWriteAccess()) {
+      window.localStorage.setItem(STORAGE_KEY, String(ratio));
+    }
   } catch {
     // The current split remains usable when browser storage is unavailable.
   }

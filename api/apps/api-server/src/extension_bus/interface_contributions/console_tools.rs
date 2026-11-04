@@ -81,6 +81,8 @@ pub(super) fn contributions(
                 crate::routes::frontstage::components::FrontstageComponentsDependencies {
                     store: state.store.clone(),
                     api_node_id: state.api_node_id.clone(),
+                    graph: Arc::clone(state.extension_boot_snapshot.as_ref()
+                        .expect("production interface publication requires ExtensionBootSnapshot").graph_arc()),
                 },
             )?,
         ),

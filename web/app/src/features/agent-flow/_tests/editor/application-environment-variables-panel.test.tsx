@@ -1,8 +1,11 @@
+import { authenticateEditor } from '../fixtures/editor-auth';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { ApplicationEnvironmentVariablesPanel } from '../../components/editor/ApplicationEnvironmentVariablesPanel';
 import { EnvironmentVariableValueEditor } from '../../components/editor/environment-variables/EnvironmentVariableValueEditor';
+
+beforeEach(() => authenticateEditor());
 
 describe('ApplicationEnvironmentVariablesPanel', () => {
   test('switches the value editor when the variable type changes', async () => {

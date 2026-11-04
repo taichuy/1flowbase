@@ -14,6 +14,8 @@ interface AgentFlowOverlayProps {
   autosaveLabel: string;
   autosaveStatus: 'idle' | 'saving' | 'saved' | 'error';
   onSaveDraft: () => void;
+  previewDisabled?: boolean;
+  exportDisabled?: boolean;
   saveDisabled: boolean;
   saveLoading: boolean;
   onOpenDebugConsole: () => void;
@@ -37,6 +39,8 @@ export function AgentFlowOverlay({
   autosaveLabel,
   autosaveStatus,
   onSaveDraft,
+  previewDisabled = false,
+  exportDisabled = false,
   saveDisabled,
   saveLoading,
   onOpenDebugConsole,
@@ -79,6 +83,7 @@ export function AgentFlowOverlay({
             aria-label={i18nText('agentFlow', 'auto.preview')}
             autoInsertSpace={false}
             icon={<PlayCircleOutlined />}
+            disabled={previewDisabled}
             onClick={onOpenDebugConsole}
             title={i18nText('agentFlow', 'auto.preview')}
           >
@@ -97,6 +102,7 @@ export function AgentFlowOverlay({
           aria-label={i18nText('agentFlow', 'auto.export_template')}
           autoInsertSpace={false}
           icon={<ExportOutlined />}
+          disabled={exportDisabled}
           loading={exportLoading}
           onClick={onExportTemplate}
           title={i18nText('agentFlow', 'auto.export_template')}

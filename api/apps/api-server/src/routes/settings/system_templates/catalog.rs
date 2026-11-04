@@ -25,7 +25,6 @@ pub struct ExportQuery {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum TemplateRequest {
-    Catalog(CatalogRequest),
     Archive(ArchiveRequest),
     Package(Box<PortableTemplatePackage>),
 }
@@ -154,57 +153,57 @@ pub(crate) async fn list(
     }
     Ok(json!({"application_templates":entries,"next_cursor":next_cursor,"total":total}))
 }
-pub(crate) async fn resolve(
-    dependencies: &TemplateDependencies,
-    actor: &domain::ActorContext,
-    request: TemplateRequest,
-) -> Result<PortableTemplatePackage> {
+pub(crate) async fn resolve(request: TemplateRequest) -> Result<PortableTemplatePackage> {
     match request {
         TemplateRequest::Package(package) => Ok(*package),
         TemplateRequest::Archive(request) => decode_uploaded_archive(request.archive_base64).await,
-        TemplateRequest::Catalog(request) => {
-            if let Some(id) = request.catalog_id.strip_prefix("builtin:") {
-                let item = releases::discover(&dependencies.application_template_root)
-                    .await?
-                    .into_iter()
-                    .find(|r| {
-                        r.release.template_id == id
-                            && r.release.release_version == request.release_version
-                    })
-                    .context("application_template_release_not_found")?;
-                return item.load().await;
-            }
-            let located = dependencies
-                .official_catalog_source
-                .find_entry_for_workspace(actor.current_workspace_id, CATEGORY, &request.catalog_id)
-                .await?
-                .context("application_template_catalog_not_found")?;
-            let metadata = official_metadata(&located.entry)?;
-            ensure!(
-                metadata["release_version"].as_u64() == Some(request.release_version),
-                "application_template_release_changed"
-            );
-            let downloaded = dependencies
-                .official_catalog_source
-                .download_artifact_for_workspace(actor.current_workspace_id, &located.entry)
-                .await?;
-            let template_id = metadata["template_id"]
-                .as_str()
-                .context("application_template_id")?
-                .to_owned();
-            let trusted_keys = dependencies.official_plugin_source.trusted_public_keys();
-            tokio::task::spawn_blocking(move || {
-                decode_verified_archive(
-                    &downloaded,
-                    &template_id,
-                    request.release_version,
-                    &trusted_keys,
-                )
-            })
-            .await
-            .context("application_template_verified_decode_task")?
-        }
     }
+}
+
+pub(crate) async fn download(
+    dependencies: &TemplateDependencies,
+    actor: &domain::ActorContext,
+    request: CatalogRequest,
+) -> Result<PortableTemplatePackage> {
+    if let Some(id) = request.catalog_id.strip_prefix("builtin:") {
+        let item = releases::discover(&dependencies.application_template_root)
+            .await?
+            .into_iter()
+            .find(|r| {
+                r.release.template_id == id && r.release.release_version == request.release_version
+            })
+            .context("application_template_release_not_found")?;
+        return item.load().await;
+    }
+    let located = dependencies
+        .official_catalog_source
+        .find_entry_for_workspace(actor.current_workspace_id, CATEGORY, &request.catalog_id)
+        .await?
+        .context("application_template_catalog_not_found")?;
+    let metadata = official_metadata(&located.entry)?;
+    ensure!(
+        metadata["release_version"].as_u64() == Some(request.release_version),
+        "application_template_release_changed"
+    );
+    let downloaded = dependencies
+        .official_catalog_source
+        .download_artifact_for_workspace(actor.current_workspace_id, &located.entry)
+        .await?;
+    let template_id = metadata["template_id"]
+        .as_str()
+        .context("application_template_id")?
+        .to_owned();
+    let trusted_keys = dependencies.official_plugin_source.trusted_public_keys();
+    tokio::task::spawn_blocking(move || {
+        decode_verified_archive(
+            &downloaded,
+            &template_id,
+            request.release_version,
+            &trusted_keys,
+        )
+    })
+    .await
+    .context("application_template_verified_decode_task")?
 }
 
 pub(super) async fn decode_uploaded_archive(

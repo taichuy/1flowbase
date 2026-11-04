@@ -302,13 +302,14 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
     '@1flowbase/rich-text',
     ['VditorEditor', 'VditorPreview'],
     async () => {
-      const [module, vditorStyle, richTextStyle] = await Promise.all([
+      const [module, host, vditorStyle, richTextStyle] = await Promise.all([
         import('@1flowbase/rich-text'),
+        import('../../../../shared/ui/markdown-ir-editor/UserPreferenceVditorEditor'),
         import('vditor/dist/index.css?inline'),
         import('@1flowbase/rich-text/styles.css?inline')
       ]);
       return {
-        module,
+        module: { ...module, VditorEditor: host.UserPreferenceVditorEditor },
         styles: [{ css: vditorStyle.default }, { css: richTextStyle.default }]
       };
     }

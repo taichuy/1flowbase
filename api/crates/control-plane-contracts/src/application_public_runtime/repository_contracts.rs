@@ -270,6 +270,8 @@ pub struct PublishedRunStreamState {
     pub output_payload: Value,
     pub error_payload: Option<Value>,
     pub node_usages: Vec<PublishedRunNodeUsage>,
+    /// Whole-run additive counters from the provider-call ledger.
+    pub usage_totals: Option<Value>,
     pub latest_pending_callback: Option<PublishedRunPendingCallback>,
 }
 

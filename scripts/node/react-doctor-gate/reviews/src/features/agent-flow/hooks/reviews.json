@@ -1,8 +1,8 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/assistant-fixture.tsx","sha256":"f126d80efbb1a546411c281908a66ab0e5c6d1f9fc7c22406d1bab842d5ceb90"},{"file":"web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx","sha256":"b87265efb4690b0d4074b3388394ce1e817ac2814a0ac7b2bafe6d706fcac690"},{"file":"web/app/src/features/agent-flow/components/embedded-assistant/assistant-conversation-presentation.tsx","sha256":"101bd9950459ec9cf5791cb89ab3c63b2d244f3fde1f0a9c2729ec41766b28ce"},{"file":"web/app/src/features/agent-flow/components/embedded-assistant/AssistantConversationSubtitle.tsx","sha256":"7622500c5a5e126181cf9f424c337616d51c073ae627c5850867b89177718ac8"},{"file":"web/app/src/features/agent-flow/hooks/useEmbeddedAssistantSession.ts","sha256":"54b3bede52c000e99146e7626dde4b8f27010c558edd02343b00eda1c8712e70"}],
-    [{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/settings-refresh.test.tsx","sha256":"4468594d454505b7d672a90771033f2a26a9a23a43d20e6b028a5c6cc4614971"}]
+    [{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/assistant-fixture.tsx","sha256":"f126d80efbb1a546411c281908a66ab0e5c6d1f9fc7c22406d1bab842d5ceb90"},{"file":"web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx","sha256":"8206e67466948ba2217b26811fd6cc782c819ac02b529b4f3050c325416b4acb"},{"file":"web/app/src/features/agent-flow/components/embedded-assistant/assistant-conversation-presentation.tsx","sha256":"101bd9950459ec9cf5791cb89ab3c63b2d244f3fde1f0a9c2729ec41766b28ce"},{"file":"web/app/src/features/agent-flow/components/embedded-assistant/AssistantConversationSubtitle.tsx","sha256":"7622500c5a5e126181cf9f424c337616d51c073ae627c5850867b89177718ac8"},{"file":"web/app/src/features/agent-flow/hooks/useEmbeddedAssistantSession.ts","sha256":"54b3bede52c000e99146e7626dde4b8f27010c558edd02343b00eda1c8712e70"}],
+    [{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/settings-refresh.test.tsx","sha256":"05591c29fb0d89f3e33ba6157f5b3b29e8edcd63c01e611b2f49eb2c0dd538c4"}]
   ],
   "reviews": [
     {
@@ -22,22 +22,22 @@
     {
       "file": "web/app/src/features/agent-flow/hooks/useEmbeddedAssistantSettings.ts",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "1e060f4022fc07a8d040d49e395cc5acc6969f2263dec770a52b9f5e040a4e9f",
-      "reason": "workspaceId 变化调用 setSettings(null) 同时增加 generation，防旧 workspace pending read 覆盖；refresh 由 open/visibility/poll 管理。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。",
+      "sourceSha256": "ebc0eeb24a64c4bfba1ee950e89fbbd63e138bee8c31cf24631dbb12e0a66740",
+      "reason": "workspaceId 变化调用 setSettings(null) 同时增加 generation，防旧 workspace pending read 覆盖；refresh 由 open/visibility/poll 管理。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。 Reassessed 2026-11-03: Automatic model/effort correction writes only with assistant_update_settings, checked against current auth. Published model catalog remains readable without mutating unauthorized preferences.",
       "evidenceSet": 1
     },
     {
       "file": "web/app/src/features/agent-flow/hooks/useEmbeddedAssistantSettings.ts",
       "rule": "react-doctor/no-derived-state",
-      "sourceSha256": "1e060f4022fc07a8d040d49e395cc5acc6969f2263dec770a52b9f5e040a4e9f",
-      "reason": "workspaceId 变化调用 setSettings(null) 同时增加 generation，防旧 workspace pending read 覆盖；refresh 由 open/visibility/poll 管理。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。",
+      "sourceSha256": "ebc0eeb24a64c4bfba1ee950e89fbbd63e138bee8c31cf24631dbb12e0a66740",
+      "reason": "workspaceId 变化调用 setSettings(null) 同时增加 generation，防旧 workspace pending read 覆盖；refresh 由 open/visibility/poll 管理。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。 Reassessed 2026-11-03: Automatic model/effort correction writes only with assistant_update_settings, checked against current auth. Published model catalog remains readable without mutating unauthorized preferences.",
       "evidenceSet": 1
     },
     {
       "file": "web/app/src/features/agent-flow/hooks/useEmbeddedAssistantSettings.ts",
       "rule": "react-doctor/no-derived-state-effect",
-      "sourceSha256": "1e060f4022fc07a8d040d49e395cc5acc6969f2263dec770a52b9f5e040a4e9f",
-      "reason": "workspaceId 变化调用 setSettings(null) 同时增加 generation，防旧 workspace pending read 覆盖；refresh 由 open/visibility/poll 管理。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。",
+      "sourceSha256": "ebc0eeb24a64c4bfba1ee950e89fbbd63e138bee8c31cf24631dbb12e0a66740",
+      "reason": "workspaceId 变化调用 setSettings(null) 同时增加 generation，防旧 workspace pending read 覆盖；refresh 由 open/visibility/poll 管理。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。 Reassessed 2026-11-03: Automatic model/effort correction writes only with assistant_update_settings, checked against current auth. Published model catalog remains readable without mutating unauthorized preferences.",
       "evidenceSet": 1
     }
   ]

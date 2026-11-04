@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Descriptions, Space, Tag, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 
+import { useConsoleOperationAccess } from '../../../state/console-operation-access';
 import { useAuthStore } from '../../../state/auth-store';
 import type { ApplicationDetail } from '../api/applications';
 import {
@@ -19,6 +20,7 @@ export function WorkflowExtensionApiPage({
   application: ApplicationDetail;
 }) {
   const { t } = useTranslation('applications');
+  const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
   const mappingQuery = useQuery({
@@ -42,6 +44,7 @@ export function WorkflowExtensionApiPage({
     ]);
   const publishMutation = useMutation({
     mutationFn: async () => {
+      if (!can('publish_application_api')) throw new Error('permission denied');
       const mapping =
         mappingQuery.data ?? (await fetchApplicationApiMapping(application.id));
       return publishApplicationApiVersion(application.id, mapping, csrfToken);
@@ -49,14 +52,20 @@ export function WorkflowExtensionApiPage({
     onSuccess: invalidate
   });
   const unpublishMutation = useMutation({
-    mutationFn: () => unpublishApplicationApiVersion(application.id, csrfToken),
+    mutationFn: () => {
+      if (!can('unpublish_application_api'))
+        throw new Error('permission denied');
+      return unpublishApplicationApiVersion(application.id, csrfToken);
+    },
     onSuccess: invalidate
   });
   const publication = publicationQuery.data ?? null;
   const operation = publication?.operation ?? null;
 
   if (mappingQuery.isError) {
-    return <Alert type="error" showIcon title={t('auto.trigger_load_failed')} />;
+    return (
+      <Alert type="error" showIcon title={t('auto.trigger_load_failed')} />
+    );
   }
 
   return (
@@ -71,6 +80,13 @@ export function WorkflowExtensionApiPage({
             : t('auto.publication_draft')}
         </Tag>
         <Button
+          disabled={
+            !can(
+              publication?.api_enabled
+                ? 'unpublish_application_api'
+                : 'publish_application_api'
+            )
+          }
           type={publication?.api_enabled ? 'default' : 'primary'}
           loading={publishMutation.isPending || unpublishMutation.isPending}
           onClick={() =>

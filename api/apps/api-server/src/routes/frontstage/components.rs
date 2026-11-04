@@ -39,6 +39,9 @@ pub struct FrontstageComponentUpstreamResponse {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct FrontstageComponentResponse {
+    pub owner_plugin_id: Option<String>,
+    pub owner_contribution_code: Option<String>,
+    pub owner_installation_id: Option<String>,
     pub id: String,
     pub scope_id: String,
     pub component_code: String,
@@ -162,7 +165,7 @@ pub async fn get_frontstage_component_module_asset(
     );
     response.headers_mut().insert(
         header::CACHE_CONTROL,
-        HeaderValue::from_static("private, max-age=31536000, immutable"),
+        HeaderValue::from_static("private, no-store"),
     );
     response.headers_mut().insert(
         header::ETAG,
@@ -614,6 +617,7 @@ pub(crate) struct FrontstageComponentAsset {
 pub(crate) struct FrontstageComponentsDependencies {
     pub(crate) store: storage_durable_postgres::MainDurableStore,
     pub(crate) api_node_id: String,
+    pub(crate) graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
 }
 struct FrontstageComponentsAdapter(FrontstageComponentsDependencies);
 
@@ -635,17 +639,28 @@ impl
                 .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
             let service =
                 UiManagementService::new(self.0.store.clone(), self.0.api_node_id.clone());
+            let resolver =
+                control_plane::frontend_block_catalog::FrontendContributionResolver::compile(
+                    Arc::clone(&self.0.graph),
+                )
+                .map_err(ApiError)
+                .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
             match input {
                 FrontstageComponentsInput::List(query) => {
                     let page = service
-                        .list_component_records_page(ListUiComponentRecordsQuery {
-                            query: query.query,
-                            offset: query.offset.unwrap_or(0),
-                            limit: query
-                                .limit
-                                .unwrap_or(COMPONENT_PAGE_SIZE)
-                                .clamp(1, COMPONENT_PAGE_SIZE),
-                        })
+                        .list_workspace_component_records_page(
+                            ListUiComponentRecordsQuery {
+                                plugin_contribution_ids: None,
+                                query: query.query,
+                                offset: query.offset.unwrap_or(0),
+                                limit: query
+                                    .limit
+                                    .unwrap_or(COMPONENT_PAGE_SIZE)
+                                    .clamp(1, COMPONENT_PAGE_SIZE),
+                            },
+                            actor.current_workspace_id,
+                            &resolver,
+                        )
                         .await
                         .map_err(ApiError)
                         .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
@@ -668,7 +683,7 @@ impl
                 }
                 FrontstageComponentsInput::Get(id) => {
                     let record = service
-                        .get_component_record(id)
+                        .get_workspace_component_record(id, actor.current_workspace_id, &resolver)
                         .await
                         .map_err(ApiError)
                         .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
@@ -682,7 +697,10 @@ impl
                     let asset = FrontendModuleAssetService::new(
                         self.0.store.clone(),
                         self.0.api_node_id.clone(),
+                        Arc::clone(&self.0.graph),
                     )
+                    .map_err(ApiError)
+                    .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?
                     .get_module_asset(GetFrontendModuleAssetQuery {
                         workspace_id: actor.current_workspace_id,
                         sha256,
@@ -754,6 +772,9 @@ fn require_design_permission(actor: &domain::ActorContext) -> Result<(), ApiErro
 fn component_response(value: UiComponentRecord) -> Result<FrontstageComponentResponse, ApiError> {
     use time::format_description::well_known::Rfc3339;
     Ok(FrontstageComponentResponse {
+        owner_plugin_id: value.owner_plugin_id,
+        owner_contribution_code: value.owner_contribution_code,
+        owner_installation_id: value.owner_installation_id.map(|id| id.to_string()),
         id: value.id.to_string(),
         scope_id: value.scope_id.to_string(),
         component_code: value.component_code,

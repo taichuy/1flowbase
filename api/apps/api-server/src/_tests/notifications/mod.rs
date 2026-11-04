@@ -1,5 +1,6 @@
 use crate::_tests::support::{
-    create_member, get_json, login_and_capture_cookie, read_first_sse_frame, test_app,
+    create_member, create_role, get_json, login_and_capture_cookie, read_first_sse_frame,
+    replace_member_roles, test_app,
 };
 use axum::{
     body::{to_bytes, Body},
@@ -32,7 +33,14 @@ async fn request(
         .unwrap();
     let status = response.status();
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    (status, serde_json::from_slice(&bytes).unwrap())
+    (
+        status,
+        if bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes).unwrap()
+        },
+    )
 }
 
 #[tokio::test]
@@ -166,6 +174,121 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
     let read_path = format!(
         "/api/console/notifications/messages/{}/read",
         first["data"]["items"][0]["id"].as_str().unwrap()
+    );
+    let unread_path = read_path.replace("/read", "/unread");
+    let channel_path = format!("/api/console/notifications/channels/{id}/read-all");
+    let state_writes = [
+        ("notifications.messages.unread", unread_path.as_str()),
+        ("notifications.channels.read_all", channel_path.as_str()),
+        (
+            "notifications.messages.read_all",
+            "/api/console/notifications/messages/read-all",
+        ),
+    ];
+    // Reading one's own message is self-service even without role operation grants.
+    let (status, read) = request(
+        &app,
+        &first_cookie,
+        &first_csrf,
+        "POST",
+        &read_path,
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{read}");
+    assert!(read["data"]["read_at"].is_string());
+    let (status, denied) = request(
+        &app,
+        &second_cookie,
+        &second_csrf,
+        "POST",
+        &read_path,
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{denied}");
+    for (_, path) in state_writes {
+        let (status, error) =
+            request(&app, &first_cookie, &first_csrf, "POST", path, Value::Null).await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "read-only notification state {path}: {error}"
+        );
+    }
+    assert_eq!(
+        get_json(
+            &app,
+            "/api/console/notifications/messages/unread-count",
+            &first_cookie
+        )
+        .await["data"]["unread_count"],
+        0
+    );
+    create_role(&app, &root_cookie, &root_csrf, "notification_status_editor").await;
+    for user_id in [&first_id, &second_id] {
+        replace_member_roles(
+            &app,
+            &root_cookie,
+            &root_csrf,
+            user_id,
+            &["notification_status_editor"],
+        )
+        .await;
+    }
+    let (first_cookie, first_csrf) =
+        login_and_capture_cookie(&app, "notification-first", "temp-pass").await;
+    let (second_cookie, second_csrf) =
+        login_and_capture_cookie(&app, "notification-second", "temp-pass").await;
+    let policy = |operations: &[&str]| json!({"groups":[{"kind":"other","group_id":"other.personal-account","enabled":true,"strategy":"custom","operations":operations.iter().map(|id|json!({"kind":"simple","operation_id":id,"enabled":true})).collect::<Vec<_>>()}]});
+    let policy_path = "/api/console/settings/roles/notification_status_editor/console-policy";
+    // Each independent write reaches its real recipient-owned record; its siblings stay denied.
+    // End with unread so the existing read/idempotency assertions below keep their precondition.
+    for allowed in [
+        "notifications.channels.read_all",
+        "notifications.messages.read_all",
+        "notifications.messages.unread",
+    ] {
+        assert_eq!(
+            request(
+                &app,
+                &root_cookie,
+                &root_csrf,
+                "PUT",
+                policy_path,
+                policy(&[allowed])
+            )
+            .await
+            .0,
+            StatusCode::NO_CONTENT
+        );
+        for (operation, path) in state_writes {
+            let (status, result) =
+                request(&app, &first_cookie, &first_csrf, "POST", path, Value::Null).await;
+            assert_eq!(
+                status,
+                if allowed == operation {
+                    StatusCode::OK
+                } else {
+                    StatusCode::FORBIDDEN
+                },
+                "grant {allowed}, target {operation}: {result}"
+            );
+        }
+    }
+    let all_operations = state_writes.map(|(id, _)| id);
+    assert_eq!(
+        request(
+            &app,
+            &root_cookie,
+            &root_csrf,
+            "PUT",
+            policy_path,
+            policy(&all_operations)
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
     );
     for (csrf, expected_status) in csrf_rejections {
         let (status, denied) =

@@ -141,6 +141,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
                 flow_run_id: input.flow_run_id,
                 expected_status: input.from_status,
                 require_initial_execution: false,
+                tool_delivery_events: Vec::new(),
                 result: CommitFlowRunTerminalResult::Cancelled {
                     output_payload: input.output_payload.clone(),
                     error_payload: input.error_payload.clone(),
@@ -482,6 +483,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
             output_payload: row.get("output_payload"),
             error_payload: row.get("error_payload"),
             node_usages,
+            usage_totals: self.read_flow_run_usage_totals(flow_run_id).await?,
             latest_pending_callback,
         }))
     }

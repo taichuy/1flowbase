@@ -11,6 +11,7 @@ import { AgentFlowNodeCard } from '../nodes/AgentFlowNodeCard';
 import { AgentFlowCustomEdge, type AgentFlowCanvasEdge } from './custom-edge';
 
 export interface AgentFlowCanvasNodeData extends Record<string, unknown> {
+  readOnly?: boolean;
   nodeId: string;
   nodeType: FlowNodeType;
   nodeSchema: CanvasNodeSchema;

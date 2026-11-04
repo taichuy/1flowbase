@@ -3,6 +3,7 @@ import { App } from 'antd';
 
 import { i18nText } from '../../../shared/i18n/text';
 import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
+import { useConsoleOperationAccess } from '../../../state/console-operation-access';
 import { useAuthStore } from '../../../state/auth-store';
 import {
   applicationDetailQueryKey,
@@ -28,13 +29,8 @@ export function ApplicationApiPage({
   application: ApplicationDetail;
 }) {
   const { modal, message } = App.useApp();
-  const actor = useAuthStore((state) => state.actor);
-  const permissions = useAuthStore((state) => state.me?.permissions) ?? [];
-  const canSetApiStatus =
-    actor?.effective_display_role === 'root' ||
-    permissions.includes('application.edit.all') ||
-    (permissions.includes('application.edit.own') &&
-      application.created_by === actor?.id);
+  const can = useConsoleOperationAccess();
+  const canSetApiStatus = can('applications.api.set_enabled');
   const isLogCollection = application.application_type === 'agent_logs';
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
@@ -61,6 +57,7 @@ export function ApplicationApiPage({
   };
   const publishMutation = useMutation({
     mutationFn: async () => {
+      if (!can('publish_application_api')) throw new Error('permission denied');
       const mapping =
         mappingQuery.data ?? (await fetchApplicationApiMapping(application.id));
       return publishApplicationApiVersion(application.id, mapping, csrfToken);
@@ -68,13 +65,19 @@ export function ApplicationApiPage({
     onSuccess: invalidatePublication
   });
   const revertToDraftMutation = useMutation({
-    mutationFn: () => unpublishApplicationApiVersion(application.id, csrfToken),
+    mutationFn: () => {
+      if (!can('unpublish_application_api'))
+        throw new Error('permission denied');
+      return unpublishApplicationApiVersion(application.id, csrfToken);
+    },
     onSuccess: invalidatePublication
   });
 
   const receptionMutation = useMutation({
-    mutationFn: (api_enabled: boolean) =>
-      updateApplicationApiStatus(application.id, api_enabled, csrfToken),
+    mutationFn: (api_enabled: boolean) => {
+      if (!canSetApiStatus) throw new Error('permission denied');
+      return updateApplicationApiStatus(application.id, api_enabled, csrfToken);
+    },
     onSuccess: () => {
       invalidatePublication();
       void queryClient.invalidateQueries({
@@ -112,6 +115,13 @@ export function ApplicationApiPage({
           receptionMutation.isPending
         }
         apiToggleDisabled={!canSetApiStatus}
+        publishToggleDisabled={
+          !can(
+            publication
+              ? 'unpublish_application_api'
+              : 'publish_application_api'
+          )
+        }
         onToggleApiEnabled={(api_enabled) =>
           receptionMutation.mutate(api_enabled)
         }

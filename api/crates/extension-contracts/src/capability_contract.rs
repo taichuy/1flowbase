@@ -33,3 +33,16 @@ pub struct CapabilityStdioError {
     #[serde(default)]
     pub provider_summary: Option<String>,
 }
+
+/// Existing unary capability transport frame bound, shared with SDK workers.
+pub const CAPABILITY_STDIO_FRAME_BYTES: u64 = 1024 * 1024;
+
+/// Host-selected policy for one managed stdio execution, never user body input.
+/// Optional memory matches the existing PluginRuntimeLimits policy (no guessed worker cap).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CapabilityExecutionBudget {
+    pub timeout_ms: u64,
+    pub memory_bytes: Option<u64>,
+    pub max_output_bytes: u64,
+}

@@ -214,7 +214,8 @@
     "proxy_local_arguments": "Local arguments",
     "proxy_remote_arguments": "Remote arguments",
     "proxy_upstream_result": "Raw upstream result",
-    "proxy_mapped_result": "Local mapped result"
+    "proxy_mapped_result": "Local mapped result",
+    "upstream_save_credentials": "Save credentials"
   },
   "mcp_mapping_default_value": "Default value",
   "mcp_mapping_hidden": "Hidden",

@@ -597,39 +597,49 @@ describe('frontstage native trusted block declarative portal host', () => {
     expect(document.head).not.toHaveTextContent(/\.native-same/);
   });
 
-  test('I1907-AC-001/002 injects antd-style rules into the importing block ShadowRoot', async () => {
-    const root = createBlockRoot();
-    const useStyles = createStyles({
-      shell: {
-        border: '3px solid rgb(22, 119, 255)',
-        padding: 17
-      }
-    });
-    const Block = () => {
-      const { styles } = useStyles();
-      return <output className={styles.shell}>antd-style scoped</output>;
-    };
+  test.each([
+    { label: 'direct import', moduleSources: ['antd-style'] },
+    {
+      label: 'fetched dependency',
+      moduleSources: ['@example/fetched-calendar']
+    },
+    { label: 'indirect component', moduleSources: [] }
+  ])(
+    'injects $label style hooks into the owning ShadowRoot',
+    async ({ moduleSources }) => {
+      const root = createBlockRoot();
+      const useStyles = createStyles({
+        shell: {
+          border: '3px solid rgb(22, 119, 255)',
+          padding: 17
+        }
+      });
+      const Block = () => {
+        const { styles } = useStyles();
+        return <output className={styles.shell}>antd-style scoped</output>;
+      };
 
-    render(
-      <FrontstageNativeTrustedBlockPortalHost
-        root={root}
-        renderEpoch="antd-style:1"
-        plan={createPlan({
-          source:
-            "import { createStyles } from 'antd-style'; export default function Block() { return null; }"
-        })}
-        component={Block}
-        ctx={createContext()}
-        moduleSources={['antd-style']}
-      />
-    );
+      render(
+        <FrontstageNativeTrustedBlockPortalHost
+          root={root}
+          renderEpoch="antd-style:1"
+          plan={createPlan({
+            source:
+              "import { createStyles } from 'antd-style'; export default function Block() { return null; }"
+          })}
+          component={Block}
+          ctx={createContext()}
+          moduleSources={moduleSources}
+        />
+      );
 
-    const output = await shadowQueries(root).findByText('antd-style scoped');
-    const ownedStyle = root.shadowRoot?.querySelector('style[data-emotion]');
-    expect(output.getRootNode()).toBe(root.shadowRoot);
-    expect(ownedStyle?.getRootNode()).toBe(root.shadowRoot);
-    expect(document.head.querySelector(`style[data-emotion]`)).toBeNull();
-  });
+      const output = await shadowQueries(root).findByText('antd-style scoped');
+      const ownedStyle = root.shadowRoot?.querySelector('style[data-emotion]');
+      expect(output.getRootNode()).toBe(root.shadowRoot);
+      expect(ownedStyle?.getRootNode()).toBe(root.shadowRoot);
+      expect(document.head.querySelector(`style[data-emotion]`)).toBeNull();
+    }
+  );
 
   test('I1907-AC-002/005 isolates antd-style caches for two surfaces and cleans them on dispose', async () => {
     const firstRoot = createBlockRoot();

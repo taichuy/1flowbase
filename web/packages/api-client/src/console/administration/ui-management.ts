@@ -1,7 +1,7 @@
 import { apiFetch, apiFetchBlob } from '../../transport';
 
 export type UiCodeTemplateLanguage = 'jsx' | 'tsx';
-export type UiComponentOrigin = 'official' | 'custom';
+export type UiComponentOrigin = 'official' | 'custom' | 'plugin';
 
 export interface ConsoleUiTemplateRevision {
   revision: number;

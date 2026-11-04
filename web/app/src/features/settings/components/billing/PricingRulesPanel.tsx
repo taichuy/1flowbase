@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useCallback, useMemo, useState } from 'react';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
@@ -102,7 +103,8 @@ function formatWeekdayMask(weekdayMask: number) {
   return weekdays.join(', ');
 }
 
-export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
+export function PricingRulesPanel(_props: { canManage?: boolean } = {}) {
+  const can = useConsoleOperationAccess();
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [form] = Form.useForm();
@@ -382,20 +384,20 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
             <Button
               size="small"
               icon={<EditOutlined />}
-              disabled={!canManage}
               onClick={() => openEditor(row)}
             >
               {i18nText('settings', 'auto.edit')}
             </Button>
             <Popconfirm
               title={i18nText('settings', 'auto.billing_delete_rule_confirm')}
+              disabled={!can('billing.pricing_rules.delete')}
               onConfirm={() => deletePricingRule(row.id)}
             >
               <Button
                 size="small"
                 danger
                 icon={<DeleteOutlined />}
-                disabled={!canManage}
+                disabled={!can('billing.pricing_rules.delete')}
               >
                 {i18nText('settings', 'auto.delete')}
               </Button>
@@ -404,7 +406,7 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
         )
       }
     ],
-    [canManage, deletePricingRule, openEditor]
+    [can, deletePricingRule, openEditor]
   );
   const tableConfiguration = useUserPreferenceDataTableConfiguration({
     columns,
@@ -516,7 +518,7 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                disabled={!canManage}
+                disabled={!can('billing.pricing_rules.create')}
                 onClick={() => openEditor()}
               >
                 {i18nText('settings', 'auto.billing_add_rule')}
@@ -540,14 +542,16 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
         }
         onCancel={() => setOpen(false)}
         onOk={() => form.submit()}
+        okButtonProps={{ disabled: !can(editing ? 'billing.pricing_rules.update' : 'billing.pricing_rules.create') }}
         confirmLoading={saveMutation.isPending}
         width={760}
         destroyOnHidden
       >
         <Form
+          disabled={!can(editing ? 'billing.pricing_rules.update' : 'billing.pricing_rules.create')}
           form={form}
           layout="vertical"
-          onFinish={(values) => saveMutation.mutate(values)}
+          onFinish={(values) => { if (can(editing ? 'billing.pricing_rules.update' : 'billing.pricing_rules.create')) saveMutation.mutate(values); }}
         >
           <Space align="start" wrap>
             <Form.Item

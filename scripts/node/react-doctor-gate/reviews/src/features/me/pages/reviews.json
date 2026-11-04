@@ -4,9 +4,9 @@
     {
       "file": "web/app/src/features/me/pages/MePage.tsx",
       "rule": "react-doctor/query-mutation-missing-invalidation",
-      "sourceSha256": "9f47bb43c273b48800c867a7decc8c917464e6a03f18b40cd9b9054d98aa8a80",
-      "reason": "The flagged password mutation calls endSession on success. endSession removes all ['me'] query caches, sets the auth store anonymous and navigates to sign-in, so retaining the current page to refetch its data would contradict session invalidation. The separate profile mutation cancels profileQueryKey, sets the returned profile into that cache and calls setMe. MePage tests cover profile persistence and password-driven session exit; cache maintenance is delegated, not omitted.",
-      "evidence": [{"file":"web/app/src/features/me/_tests/me-page.test.tsx","sha256":"d5e580c38bcec32d72b09a6cabb6347de1efe75348eb726f772cec957031fb54"}, {"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}, {"file":"web/app/src/features/me/api/me.ts","sha256":"bcdf66baa93533f665d9f2261c7959e07de15f4d64fa84463035a0ceff25c8bf"}]
+      "sourceSha256": "914511083e753303e042bea773374346e835184a0af811c85dac0f65022ea511",
+      "reason": "The flagged password mutation calls endSession on success. endSession removes all ['me'] query caches, sets the auth store anonymous and navigates to sign-in, so retaining the current page to refetch its data would contradict session invalidation. The separate profile mutation cancels profileQueryKey, sets the returned profile into that cache and calls setMe. MePage tests cover profile persistence and password-driven session exit; cache maintenance is delegated, not omitted. Reassessed 2026-11-03: patch_me now gates profile mutation and ProfileForm.canEdit. Password success still ends the session; profile success still publishes the returned profile to query/auth owners.",
+      "evidence": [{"file":"web/app/src/features/me/_tests/me-page.test.tsx","sha256":"299309a1e6c82c6bfdf038dd2119845894ff7eb9b45194eb2d81e9b181d9875b"}, {"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}, {"file":"web/app/src/features/me/api/me.ts","sha256":"bcdf66baa93533f665d9f2261c7959e07de15f4d64fa84463035a0ceff25c8bf"}]
     }
   ]
 }

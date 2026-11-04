@@ -6,49 +6,57 @@ use plugin_framework::provider_contract::{
 };
 
 #[tokio::test]
-async fn native_empty_prewarm_cross_flow_delta_creates_verified_callback_history() {
+async fn native_prewarm_tool_and_client_output_complete_without_external_callbacks() {
     let tool_item = json!({"type":"function_call", "id":"fc_native", "call_id":"call_native",
         "name":"lookup_weather", "arguments":"{\"city\":\"Shanghai\"}"});
-    let service = OrchestrationRuntimeService::for_tests_with_provider_outputs(vec![
-        ProviderRuntimeInvocationOutput {
-            events: vec![ProviderStreamEvent::Finish {
-                reason: ProviderFinishReason::Stop,
-            }],
-            result: ProviderInvocationResult {
-                response_id: Some("upstream-pwarm".into()),
-                finish_reason: Some(ProviderFinishReason::Stop),
-                ..Default::default()
-            },
-        },
-        ProviderRuntimeInvocationOutput {
-            events: vec![
-                ProviderStreamEvent::OutputItem {
-                    phase: ProviderOutputItemPhase::Added,
-                    output_index: 0,
-                    item: tool_item.clone(),
-                },
-                ProviderStreamEvent::OutputItem {
-                    phase: ProviderOutputItemPhase::Done,
-                    output_index: 0,
-                    item: tool_item.clone(),
-                },
-                ProviderStreamEvent::Finish {
-                    reason: ProviderFinishReason::ToolCall,
-                },
-            ],
-            result: ProviderInvocationResult {
-                response_id: Some("upstream-tool-round".into()),
-                tool_calls: vec![ProviderToolCall {
-                    id: "call_native".into(),
-                    name: "lookup_weather".into(),
-                    arguments: json!({"city":"Shanghai"}),
-                    provider_metadata: json!({}),
+    let (service, captured) =
+        OrchestrationRuntimeService::for_tests_with_captured_provider_outputs(vec![
+            ProviderRuntimeInvocationOutput {
+                events: vec![ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Stop,
                 }],
-                finish_reason: Some(ProviderFinishReason::ToolCall),
-                ..Default::default()
+                result: ProviderInvocationResult {
+                    response_id: Some("upstream-pwarm".into()),
+                    finish_reason: Some(ProviderFinishReason::Stop),
+                    ..Default::default()
+                },
             },
-        },
-    ]);
+            ProviderRuntimeInvocationOutput {
+                events: vec![
+                    ProviderStreamEvent::OutputItem {
+                        phase: ProviderOutputItemPhase::Added,
+                        output_index: 0,
+                        item: tool_item.clone(),
+                    },
+                    ProviderStreamEvent::OutputItem {
+                        phase: ProviderOutputItemPhase::Done,
+                        output_index: 0,
+                        item: tool_item.clone(),
+                    },
+                    ProviderStreamEvent::Finish {
+                        reason: ProviderFinishReason::ToolCall,
+                    },
+                ],
+                result: ProviderInvocationResult {
+                    response_id: Some("upstream-tool-round".into()),
+                    tool_calls: vec![ProviderToolCall {
+                        id: "call_native".into(),
+                        name: "lookup_weather".into(),
+                        arguments: json!({"city":"Shanghai"}),
+                        provider_metadata: json!({}),
+                    }],
+                    finish_reason: Some(ProviderFinishReason::ToolCall),
+                    usage: plugin_framework::provider_contract::ProviderUsage {
+                        input_tokens: Some(31),
+                        output_tokens: Some(7),
+                        total_tokens: Some(38),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            },
+            text_output(true),
+        ]);
     service.enable_native_responses_fixture().await;
     let seeded = service
         .seed_application_with_flow("Native warmup chain")
@@ -109,52 +117,83 @@ async fn native_empty_prewarm_cross_flow_delta_creates_verified_callback_history
         .unwrap();
     assert_eq!(
         waiting.flow_run.status,
-        domain::FlowRunStatus::WaitingCallback,
-        "native delta must reach callback: {:?}",
+        domain::FlowRunStatus::Succeeded,
+        "client-owned native tool output completes sampling: {:?}",
         waiting.flow_run.error_payload
     );
-    assert_eq!(waiting.callback_tasks.len(), 1);
-    let checkpoint = service
-        .checkpoint_snapshot_for_tests(waiting.checkpoints.last().unwrap())
+    assert!(waiting.callback_tasks.is_empty());
+    let llm = waiting
+        .node_runs
+        .iter()
+        .find(|node| node.node_type == "llm")
+        .unwrap();
+    assert_eq!(llm.metrics_payload["usage"]["input_tokens"], 31);
+    assert_eq!(llm.metrics_payload["usage"]["output_tokens"], 7);
+    assert_eq!(llm.output_payload["tool_calls"][0]["id"], "call_native");
+    let continuation = service
+        .native_continuation_fixture(waiting.flow_run.id)
         .await;
-    let metadata = &checkpoint.variable_pool["node-llm"]["__llm_tool_callback"]
-        ["provider_metadata"]["native_response"];
-    // Validate the stored proof through its version-aware contract, not a stale version literal.
+    let history = continuation
+        .native_history()
+        .expect("tool round continuation history");
     let mut full_input = initial_input.as_array().unwrap().clone();
-    full_input.push(tool_item);
-    full_input
-        .push(json!({"type":"function_call_output","call_id":"call_native","output":"sunny"}));
+    full_input.push(tool_item.clone());
+    let client_output = json!({"type":"function_call_output","call_id":"call_native",
+        "output":"sunny\0opaque","future":{"untouched":[1,null,false]}});
+    full_input.push(client_output.clone());
     crate::_tests::validate_full_retry_input(
-        &Value::Array(full_input.clone()),
-        &metadata["history"],
+        &Value::Array(full_input),
+        history,
         &["call_native".into()],
     )
-    .expect("cross-flow history must include the prewarm input and canonical completed tool item");
-    full_input[0]["content"] = json!("different request");
-    assert!(
-        crate::_tests::validate_full_retry_input(
-            &Value::Array(full_input),
-            &metadata["history"],
-            &["call_native".into()],
+    .expect("tool round proof preserves prewarm and formal tool item");
+    let followup = service.start_flow_debug_run(start()).await.unwrap();
+    let wire = json!({"model":"gpt-5.4-mini",
+        "previous_response_id":format!("resp_{}",waiting.flow_run.id),
+        "tools":tools,"input":[client_output]});
+    let payload = ProviderTransportPayload::openai_responses(wire.clone())
+        .unwrap()
+        .bind_openai_continuation(continuation)
+        .unwrap();
+    let completed = service
+        .continue_native_responses_fixture(
+            ContinueFlowDebugRunCommand {
+                application_id: seeded.application_id,
+                flow_run_id: followup.flow_run.id,
+                workspace_id: Uuid::nil(),
+            },
+            payload,
         )
-        .is_err(),
-        "the proof must reject a changed prewarm input"
-    );
-    assert_eq!(metadata["binding"]["node_id"], "node-llm");
+        .await
+        .unwrap();
     assert_eq!(
-        service
-            .list_model_failover_attempt_ledger(prewarm.flow_run.id)
-            .await
-            .len(),
-        1
+        completed.flow_run.status,
+        domain::FlowRunStatus::Succeeded,
+        "client output must start a new sampling invocation: {:?}",
+        completed.flow_run.error_payload
     );
-    assert_eq!(
-        service
-            .list_model_failover_attempt_ledger(waiting.flow_run.id)
-            .await
-            .len(),
-        1
-    );
+    assert!(completed.callback_tasks.is_empty());
+    assert!(prewarm.callback_tasks.is_empty());
+    {
+        let inputs = captured.lock().unwrap();
+        assert_eq!(inputs.len(), 3);
+        let forwarded = &inputs[2].native_transport.as_ref().unwrap().wire_body;
+        assert_eq!(forwarded["input"], wire["input"]);
+        assert_eq!(forwarded["previous_response_id"], "upstream-tool-round");
+    }
+    for run_id in [
+        prewarm.flow_run.id,
+        waiting.flow_run.id,
+        completed.flow_run.id,
+    ] {
+        assert_eq!(
+            service
+                .list_model_failover_attempt_ledger(run_id)
+                .await
+                .len(),
+            1
+        );
+    }
 }
 
 #[tokio::test]
@@ -650,5 +689,139 @@ async fn selected_input_fact_commits_before_provider_output_and_failure_prevents
             assert!(selection_index < output_index);
             assert_eq!(detail.flow_run.status, domain::FlowRunStatus::Succeeded);
         }
+    }
+}
+
+#[tokio::test]
+async fn native_client_tool_completion_commits_durable_formal_items() {
+    for custom in [false, true] {
+        let item = if custom {
+            json!({"type":"custom_tool_call","id":"ct_opaque","call_id":"call_delivery",
+                "name":"exec","input":"read\0opaque","future":{"preserve":[1,null,false]}})
+        } else {
+            json!({"type":"function_call","id":"fc_opaque","call_id":"call_delivery",
+                "name":"exec","arguments":"{ \"path\": \"fixture\" }","future":{"preserve":[1,null,false]}})
+        };
+        let output = ProviderRuntimeInvocationOutput {
+            events: [
+                ProviderOutputItemPhase::Added,
+                ProviderOutputItemPhase::Done,
+            ]
+            .into_iter()
+            .map(|phase| ProviderStreamEvent::OutputItem {
+                phase,
+                output_index: 0,
+                item: item.clone(),
+            })
+            .collect(),
+            result: ProviderInvocationResult {
+                response_id: Some("provider-delivery".into()),
+                finish_reason: Some(ProviderFinishReason::ToolCall),
+                tool_calls: vec![ProviderToolCall {
+                    id: "call_delivery".into(),
+                    name: "exec".into(),
+                    arguments: if custom {
+                        json!({"input":"read\0opaque"})
+                    } else {
+                        json!({"path":"fixture"})
+                    },
+                    provider_metadata: if custom {
+                        json!({"type":"custom_tool_call"})
+                    } else {
+                        json!({})
+                    },
+                }],
+                ..Default::default()
+            },
+        };
+        let stream = std::sync::Arc::new(crate::_tests::RecordingRuntimeEventStream::default());
+        let service = OrchestrationRuntimeService::for_tests_with_provider_outputs(vec![output])
+            .with_runtime_event_stream(stream.clone());
+        service.enable_native_responses_fixture().await;
+        let seeded = service
+            .seed_application_with_flow("Native committed client tool")
+            .await;
+        let started = service
+            .start_flow_debug_run(StartFlowDebugRunCommand {
+                actor_user_id: seeded.actor_user_id,
+                application_id: seeded.application_id,
+                input_payload: json!({"node-start":{"query":"run tool"}}),
+                document_snapshot: None,
+                debug_session_id: None,
+            })
+            .await
+            .unwrap();
+        let detail = service
+            .continue_native_responses_fixture(
+                ContinueFlowDebugRunCommand {
+                    application_id: seeded.application_id,
+                    flow_run_id: started.flow_run.id,
+                    workspace_id: Uuid::nil(),
+                },
+                ProviderTransportPayload::openai_responses(
+                    json!({"model":"gpt-5.4-mini","input":"run tool"}),
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(detail.flow_run.status, domain::FlowRunStatus::Succeeded);
+        assert!(detail.callback_tasks.is_empty());
+        let events = service
+            .llm_selection_events_fixture(detail.flow_run.id)
+            .await;
+        let formal: Vec<_> = events
+            .iter()
+            .filter(|event| event.event_type == "provider_output_item_done")
+            .collect();
+        assert_eq!(
+            formal.len(),
+            1,
+            "successful client tool must commit its formal Done"
+        );
+        assert_eq!(formal[0].payload["item"], item);
+        assert_eq!(formal[0].payload["committed_delivery"], true);
+        let terminal = events
+            .iter()
+            .find(|event| event.event_type == "flow_finished")
+            .unwrap();
+        assert!(formal[0].sequence < terminal.sequence);
+        // HTTP SSE and Responses WS both obtain executable formal items through
+        // this shared durable delivery batch, including after producer completion.
+        let batch = service
+            .claim_native_tool_deliveries_fixture(detail.flow_run.id)
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                batch.closed_proof.as_ref().map(|proof| proof.upper),
+                Some(crate::ports::RuntimeEventDeliveryUpperBoundary::SuccessfulTerminal { .. })
+            ),
+            "the shared forwarding outlet requires closed terminal membership"
+        );
+        assert_eq!(batch.claims.len(), 1);
+        assert_eq!(batch.events.len(), 1);
+        assert_eq!(batch.claims[0].event.payload["item"], item);
+        assert_eq!(batch.events[0].id, formal[0].id);
+        let live = stream.events();
+        let delivered: Vec<_> = live
+            .iter()
+            .filter(|event| event.event_type == "provider_output_item_done")
+            .collect();
+        assert_eq!(
+            delivered.len(),
+            1,
+            "committed formal output must reach the shared live outlet"
+        );
+        assert_eq!(delivered[0].payload["item"], item);
+        let delivered_position = live
+            .iter()
+            .position(|event| event.event_type == "provider_output_item_done")
+            .unwrap();
+        let terminal_position = live
+            .iter()
+            .position(|event| event.event_type == "flow_finished")
+            .unwrap();
+        assert!(delivered_position < terminal_position);
     }
 }

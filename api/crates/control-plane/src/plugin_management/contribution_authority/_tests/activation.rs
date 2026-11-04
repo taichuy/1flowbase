@@ -321,3 +321,92 @@ fn communication_receive_activation_grants_only_its_declared_workspace_contract(
         .declared_activation_grants(&installation, &manifest)
         .is_err());
 }
+
+#[test]
+fn frontend_activation_delegates_only_exact_trusted_host_workspace_contract() {
+    use crate::frontend_block_catalog::*;
+    let (mut installation, mut manifest) = fixture();
+    installation.scope_id = domain::DEFAULT_SCOPE_ID;
+    installation.metadata_json = json!({"binding_targets": ["workspace"]});
+    manifest.data_models.clear();
+    manifest.managed.as_mut().unwrap().module.contributions = vec![serde_json::from_value(json!({
+        "contribution_id": "managed_fixture.frontend", "contributor_module_id": "managed_fixture",
+        "point_id": FRONTEND_BLOCK_CONTRIBUTION_POINT_ID, "contract_version": "1", "mode": "append",
+        "required_permissions": [FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION]
+    }))
+    .unwrap()];
+    let policy = HostContributionGrantPolicy::root_composition();
+    let grants = policy
+        .declared_activation_grants(&installation, &manifest)
+        .unwrap();
+    assert_eq!(grants.len(), 1);
+    let grant = &grants[0];
+    assert_eq!(grant.permission, FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION);
+    assert_eq!(
+        grant.permission_contract_id,
+        FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_ID
+    );
+    assert_eq!(grant.permission_contract_version, "1");
+    assert_eq!(grant.resource_scope, ContributionResourceScope::Workspace);
+    let contribution = &manifest.managed.as_ref().unwrap().module.contributions[0];
+    for permission in [
+        "*",
+        "frontend-block.ui-mount.*",
+        FRONTEND_BLOCK_ISOLATED_UI_MOUNT_PERMISSION,
+    ] {
+        let mut denied = grant.clone();
+        denied.permission = permission.into();
+        assert!(!policy.admits(&installation, contribution, &denied));
+    }
+    for scope in [
+        ContributionResourceScope::System,
+        ContributionResourceScope::OwnedCollection {
+            collection_code: "views".into(),
+        },
+    ] {
+        let mut denied = grant.clone();
+        denied.resource_scope = scope;
+        assert!(!policy.admits(&installation, contribution, &denied));
+    }
+    let mut denied = grant.clone();
+    denied.permission_contract_id = "managed-hook".into();
+    assert!(!policy.admits(&installation, contribution, &denied));
+    denied = grant.clone();
+    denied.permission_contract_version = "2".into();
+    assert!(!policy.admits(&installation, contribution, &denied));
+    for (point, version) in [
+        ("acme.frontend", "1"),
+        ("1flowbase.workspace.frontend-block-contribution.extra", "1"),
+        (FRONTEND_BLOCK_CONTRIBUTION_POINT_ID, "2"),
+    ] {
+        let mut wrong_manifest = manifest.clone();
+        let descriptor = &mut wrong_manifest
+            .managed
+            .as_mut()
+            .unwrap()
+            .module
+            .contributions[0];
+        descriptor.point_id =
+            plugin_framework::extension_bus::ExtensionPointId::new(point).unwrap();
+        descriptor.contract_version =
+            plugin_framework::extension_bus::ContractVersion::new(version).unwrap();
+        assert!(policy
+            .declared_activation_grants(&installation, &wrong_manifest)
+            .is_err());
+    }
+    let mut old_ceiling = policy.clone();
+    old_ceiling
+        .rules
+        .retain(|rule| rule.point_id != FRONTEND_BLOCK_CONTRIBUTION_POINT_ID);
+    assert_ne!(
+        policy.identity(),
+        old_ceiling.identity(),
+        "compiled ceiling changes must invalidate authority fingerprints"
+    );
+    assert!(
+        old_ceiling
+            .declared_activation_grants(&installation, &manifest)
+            .is_err(),
+        "regression: QA1 ceiling rejected real frontend enable"
+    );
+}

@@ -10,6 +10,83 @@ use axum::{
 use serde_json::json;
 use tower::ServiceExt;
 
+#[tokio::test]
+async fn role_routes_authorized_policy_manager_can_grant_system_visibility() {
+    use crate::_tests::support::{create_member, create_role, replace_member_roles};
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_role(&app, &root_cookie, &root_csrf, "workspace_policy_editor").await;
+    let user_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "workspace-policy-member",
+        "temp-pass",
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &user_id,
+        &["workspace_policy_editor"],
+    )
+    .await;
+    let request = |cookie: &str, csrf: &str, path: &str, body: serde_json::Value| {
+        Request::builder()
+            .method("PUT")
+            .uri(path)
+            .header("cookie", cookie)
+            .header("x-csrf-token", csrf)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    };
+    let (cookie, csrf) =
+        login_and_capture_cookie(&app, "workspace-policy-member", "temp-pass").await;
+    let path = "/api/console/settings/roles/workspace_policy_editor/data-policy";
+    let system = json!({"default_policy":{"can_view":true,"can_create":false,"can_update":false,"can_delete":false,"default_view_scope":"system_all","default_update_scope":"own","default_delete_scope":"own"},"model_policies":[]});
+    assert_eq!(
+        app.clone()
+            .oneshot(request(&cookie, &csrf, path, system))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    let grant = app.clone().oneshot(request(&root_cookie, &root_csrf,
+        "/api/console/settings/roles/workspace_policy_editor/console-policy",
+        json!({"groups":[{"kind":"settings_feature","group_id":"system.roles","enabled":true,"strategy":"custom","operations":[{"kind":"simple","operation_id":"roles.data_policy.replace","enabled":true}]}]})
+    )).await.unwrap();
+    assert_eq!(grant.status(), StatusCode::NO_CONTENT);
+    let (cookie, csrf) =
+        login_and_capture_cookie(&app, "workspace-policy-member", "temp-pass").await;
+    let path = "/api/console/settings/roles/workspace_policy_editor/data-policy";
+    let scoped = json!({"default_policy":{"can_view":true,"can_create":false,"can_update":false,"can_delete":false,"default_view_scope":"scope_all","default_update_scope":"own","default_delete_scope":"own"},"model_policies":[]});
+    assert_eq!(
+        app.clone()
+            .oneshot(request(&cookie, &csrf, path, scoped.clone()))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let mut system = scoped;
+    system["default_policy"]["default_view_scope"] = json!("system_all");
+    let allowed = app
+        .clone()
+        .oneshot(request(&cookie, &csrf, path, system.clone()))
+        .await
+        .unwrap();
+    assert_eq!(allowed.status(), StatusCode::OK);
+    let root_allowed = app
+        .clone()
+        .oneshot(request(&root_cookie, &root_csrf, path, system))
+        .await
+        .unwrap();
+    assert_eq!(root_allowed.status(), StatusCode::OK);
+}
+
 #[test]
 fn role_console_policy_routes_use_the_api_client_paths_and_explicit_operations() {
     let route_assembly = crate::routes::roles::route_assembly();
@@ -309,7 +386,7 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
         Some(false)
     );
 
-    let reject_default_system_all_response = app
+    let allow_default_system_view_response = app
         .clone()
         .oneshot(
             Request::builder()
@@ -337,12 +414,9 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
         )
         .await
         .unwrap();
-    assert_eq!(
-        reject_default_system_all_response.status(),
-        StatusCode::BAD_REQUEST
-    );
+    assert_eq!(allow_default_system_view_response.status(), StatusCode::OK);
 
-    let reject_model_system_all_response = app
+    let allow_model_system_view_response = app
         .clone()
         .oneshot(
             Request::builder()
@@ -375,10 +449,7 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
         )
         .await
         .unwrap();
-    assert_eq!(
-        reject_model_system_all_response.status(),
-        StatusCode::BAD_REQUEST
-    );
+    assert_eq!(allow_model_system_view_response.status(), StatusCode::OK);
 
     let protect_root_response = app
         .clone()

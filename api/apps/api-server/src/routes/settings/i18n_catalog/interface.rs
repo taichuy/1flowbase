@@ -223,7 +223,26 @@ impl I18nCatalogAdapter {
         principal: &UserPrincipal,
         input: I18nCatalogInput,
     ) -> Result<I18nCatalogOutput, ApiError> {
-        let actor = self.require_root(principal)?;
+        let read_operation = match &input {
+            I18nCatalogInput::GetState => Some("i18n_catalog.state.get"),
+            I18nCatalogInput::CheckUpdate => Some("i18n_catalog.update.check"),
+            I18nCatalogInput::ListEntries(_) => Some("i18n_catalog.entries.list"),
+            I18nCatalogInput::GetEntry(_) => Some("i18n_catalog.entries.detail"),
+            _ => None,
+        };
+        let actor = if let Some(operation) = read_operation {
+            let actor = principal.actor();
+            if actor.current_workspace_id != self.0.bootstrap_workspace_id
+                || !actor.has_permission(operation)
+            {
+                return Err(
+                    ControlPlaneError::PermissionDenied("i18n_catalog_read_required").into(),
+                );
+            }
+            actor.clone()
+        } else {
+            self.require_root(principal)?
+        };
         let workspace_id = actor.current_workspace_id;
         match input {
             I18nCatalogInput::GetState => {

@@ -293,6 +293,14 @@ async fn test_state_with_runtime_profile_state(
         Some(interface_snapshot.as_ref()),
     )
     .expect("test console boot plan should compile with interface operations");
+    // Match production startup: publish once after compilation, before any test
+    // requests or explicit policy edits, including the pristine Admin baseline.
+    control_plane::role::sync_console_permission_catalog(
+        &store,
+        console_boot_plan.console_operation_registry.inventory(),
+    )
+    .await
+    .expect("test console permission catalog should publish before serving");
     let settings_feature_registry = console_boot_plan.settings_feature_registry;
     let console_operation_registry = console_boot_plan.console_operation_registry;
     let console_surface_registry = console_boot_plan.console_surface_registry;

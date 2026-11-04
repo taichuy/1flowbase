@@ -25,6 +25,7 @@ vi.mock('../../api/ui-management', () => uiManagementApi);
 
 import { AppI18nProvider } from '../../../../app/AppI18nProvider';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
+import { authenticateEditor } from '../../../agent-flow/_tests/fixtures/editor-auth';
 import { UiComponentCatalogPanel } from '../../components/extension-center/UiComponentCatalogPanel';
 
 const catalogComponent = {
@@ -71,6 +72,7 @@ describe('Extension Center UI component catalog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetAuthStore();
+    authenticateEditor(['ui_management.catalog.download'], 'member');
     useAuthStore.setState({ csrfToken: 'csrf' });
     uiManagementApi.fetchSettingsUiCatalogPage.mockResolvedValue({
       catalog_version: '1.0.0',

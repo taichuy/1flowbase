@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { extensionOperationErrorText } from '../../lib/extension-operation-error';
 import { extensionRiskWarningText } from '../../lib/extension-risk-warning';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -53,6 +54,7 @@ export function useExtensionCenterController({
   cursor?: string;
   q?: string;
 }) {
+  const can = useConsoleOperationAccess();
   const { message } = App.useApp();
   const { t } = useTranslation('settings');
   const navigate = useNavigate();
@@ -140,7 +142,7 @@ export function useExtensionCenterController({
 
   const checkVisibleUpdates = useCallback(
     async (candidateRows: ExtensionRow[]) => {
-      if (!csrfToken || candidateRows.length === 0) return;
+      if (!csrfToken || !can('extension_center.update_check') || candidateRows.length === 0) return;
 
       const checkableRows = candidateRows.filter(
         (row) =>
@@ -199,7 +201,7 @@ export function useExtensionCenterController({
         ...Object.fromEntries(results.flat())
       }));
     },
-    [csrfToken]
+    [csrfToken, can]
   );
 
   useEffect(() => {
@@ -610,7 +612,7 @@ export function useExtensionCenterController({
                       row.status !== 'uninstalled' &&
                       row.desired_state !== 'disabled'
                     }
-                    disabled={row.status === 'uninstalled'}
+                    disabled={row.status === 'uninstalled' || !can(row.desired_state === 'disabled' ? 'extension_center.installed.enable' : 'extension_center.installed.disable')}
                     loading={activatingInstallationId === row.id}
                     onChange={(enabled) =>
                       toggleInstalledExtensionActivation({
@@ -685,6 +687,7 @@ export function useExtensionCenterController({
                         type="link"
                         loading={activeOperationKey === key}
                         disabled={
+                          !can('extension_center.update') ||
                           updateState !== 'update_available' ||
                           (activeOperationKey !== null &&
                             activeOperationKey !== key)
@@ -701,6 +704,7 @@ export function useExtensionCenterController({
                 <Button
                   type="link"
                   loading={activeOperationKey === key}
+                  disabled={!can('extension_center.install')}
                   onClick={() => void resolveInstalledReinstall(row)}
                 >
                   {t('auto.reinstall')}
@@ -711,6 +715,7 @@ export function useExtensionCenterController({
                   type="link"
                   loading={deletingInstalledExtensionId === row.id}
                   disabled={
+                    !can('extension_center.installed.delete') ||
                     deletingInstalledExtensionId !== null &&
                     deletingInstalledExtensionId !== row.id
                   }
@@ -733,7 +738,7 @@ export function useExtensionCenterController({
               ) : row.application_action !== 'none' ? (
                 <Button
                   type="link"
-                  disabled={row.application_status === 'applied'}
+                  disabled={row.application_status === 'applied' || !can(row.application_action === 'import_mcp' ? 'import_official_mcp_bundle' : row.application_action === 'activate_i18n' ? 'i18n_catalog.update.activate' : 'applications.orchestration.template.import')}
                   onClick={() =>
                     setApplicationTarget({
                       installationId: row.id,
@@ -775,6 +780,7 @@ export function useExtensionCenterController({
                   type="link"
                   loading={activeOperationKey === key}
                   disabled={
+                    !can(row.installation_status === 'installed' ? 'extension_center.update' : 'extension_center.install') ||
                     activeOperationKey !== null && activeOperationKey !== key
                   }
                   onClick={() =>
@@ -806,6 +812,7 @@ export function useExtensionCenterController({
       }
     ],
     [
+      can,
       activeOperationKey,
       activeTab,
       activatingInstallationId,

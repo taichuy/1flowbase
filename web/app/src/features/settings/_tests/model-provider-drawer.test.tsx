@@ -1,5 +1,6 @@
+import { useAuthStore } from '../../../state/auth-store';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { modelProviderCatalogEntries } from '../../../test/model-provider-contract-fixtures';
 import { ModelProviderInstanceDrawer } from '../components/model-providers/ModelProviderInstanceDrawer';
 import {
@@ -17,6 +18,10 @@ const pricingTargets = buildSettingsModelProviderOptions().pricing_targets;
 const unsupportedAuthentication = async () => {
   throw new Error('provider authentication is not configured');
 };
+
+beforeEach(() => {
+  useAuthStore.setState({ actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace' }, me: null });
+});
 
 describe('model-context-window helpers', () => {
   test.each([

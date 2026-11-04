@@ -4,7 +4,7 @@
   "export": "Export template",
   "import": "Import template",
   "preview_failed": "Template preview failed. Clear this file and import it again.",
-  "preview": "Installation preview",
+  "preview": "Installation changes",
   "pages": "Page trees",
   "applications": "Applications",
   "data_models": "Data models",
@@ -37,13 +37,12 @@
   "template_name": "Template name",
   "installed_version": "Installed version",
   "not_installed": "Not installed",
-  "preview_action": "Preview installation",
   "catalog_title": "Application templates",
   "access_denied": "System backup and template permission is required.",
   "catalog_empty": "No application templates available.",
   "catalog_retry": "Reload templates",
   "catalog_load_failed": "Could not load application templates.",
-  "catalog_preview_failed": "Template preview failed. Close this preview and try again.",
+  "catalog_preview_failed": "Could not check installation changes. Close this dialog and try again.",
   "invalid_file": "Could not read this template file. Choose a ZIP archive or a legacy JSON file.",
   "description": "Description",
   "source": "Source",
@@ -61,5 +60,7 @@
   "skip_preserved": "Existing content is preserved because it cannot be safely updated.",
   "skipped_notice": "Resources preserved and skipped: {{count}}. Other eligible resources were processed.",
   "skip_user_deleted": "This resource was deleted locally and will not be recreated.",
-  "skip_pending_write": "A previous write has an unconfirmed outcome. This resource was skipped; check its state before retrying."
+  "skip_pending_write": "A previous write has an unconfirmed outcome. This resource was skipped; check its state before retrying.",
+  "downloading": "Downloading template…",
+  "download_failed": "Could not download the template. Close this dialog and try again."
 }

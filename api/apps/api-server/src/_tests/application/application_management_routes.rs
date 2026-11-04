@@ -204,6 +204,26 @@ async fn ac_002_008_own_viewer_keeps_workbench_access_without_settings_managemen
         .unwrap();
     assert_eq!(legacy_only.status(), StatusCode::FORBIDDEN);
 
+    let legacy_navigation = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/navigation")
+                .header("cookie", &member_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(legacy_navigation.status(), StatusCode::OK);
+    assert!(
+        response_json(legacy_navigation).await["data"]["navigation_items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["route_id"] != "settings.applications")
+    );
+
     replace_application_console_policy(&app, &root_cookie, &root_csrf, "application_own_viewer")
         .await;
     create_application(
@@ -261,9 +281,11 @@ async fn ac_002_008_own_viewer_keeps_workbench_access_without_settings_managemen
         .unwrap();
     assert_eq!(navigation.status(), StatusCode::OK);
     let navigation = response_json(navigation).await;
+    // Any granted operation makes its settings surface discoverable; this does not
+    // grant the distinct settings management GET operation checked above.
     assert!(navigation["data"]["navigation_items"]
         .as_array()
         .unwrap()
         .iter()
-        .all(|item| item["route_id"] != "settings.applications"));
+        .any(|item| item["route_id"] == "settings.applications"));
 }

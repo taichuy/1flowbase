@@ -1,0 +1,16 @@
+name: Build SDK worker fixtures
+description: Build, strip and export the managed workers required by backend behavior tests.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        set -euo pipefail
+        examples=(managed_hook_worker managed_event_worker notification_worker notification_authorization_worker)
+        cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk "${examples[@]/#/--example=}"
+        for example in "${examples[@]}"; do
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/$example"
+        done
+        for example in "${examples[@]}"; do
+          printf '%s=%s/debug/examples/%s\n' "${example^^}_FIXTURE" "$CARGO_TARGET_DIR" "$example" >> "$GITHUB_ENV"
+        done

@@ -2,7 +2,13 @@ import { describe, test, expect, vi } from 'vitest';
 import './embedded-agent-assistant.fixtures';
 import { AppProviders } from '../../../../app/AppProviders';
 import { EmbeddedAgentAssistant } from '../../components/embedded-assistant/EmbeddedAgentAssistant';
-import { act, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import {
   attachConsoleAssistantRunWebSocket,
   createConsoleAssistantConversation,
@@ -12,9 +18,11 @@ import {
   getConsoleAssistantSettings,
   listConsoleAssistantConversations,
   renderSettled,
-  subscribeConsoleAssistantConversationsWebSocket
+  subscribeConsoleAssistantConversationsWebSocket,
+  updateConsoleAssistantSettings
 } from './assistant-fixture';
 import { i18nText } from '../../../../shared/i18n/text';
+import { useAuthStore } from '../../../../state/auth-store';
 
 describe('EmbeddedAgentAssistant', () => {
   test('AC-001 opens the Agent Flow Preview console instead of a hand-written drawer', async () => {
@@ -120,9 +128,7 @@ describe('EmbeddedAgentAssistant', () => {
     const history = await findReadyHistoryButton();
     await domEvents.click(history);
     expect(await screen.findByText('First conversation')).toBeInTheDocument();
-    expect(
-      subscribeConsoleAssistantConversationsWebSocket
-    ).toHaveBeenCalledWith(
+    expect(subscribeConsoleAssistantConversationsWebSocket).toHaveBeenCalledWith(
       'flow-1',
       'csrf-token',
       expect.objectContaining({
@@ -485,4 +491,63 @@ describe('EmbeddedAgentAssistant', () => {
     await domEvents.click(history);
     expect(controller.signal.aborted).toBe(true);
   });
+  test.each([
+    { permissions: [], allowed: false },
+    { permissions: ['patch_me'], allowed: false },
+    { permissions: ['patch_me_meta'], allowed: false },
+    { permissions: ['assistant_update_settings'], allowed: true }
+  ])(
+    'personal assistant settings preserve viewing with exact grants $permissions',
+    async ({ permissions, allowed }) => {
+      const auth = useAuthStore.getState();
+      useAuthStore.setState({
+        actor: { ...auth.actor!, effective_display_role: 'member' },
+        me: { ...auth.me!, effective_display_role: 'member', permissions }
+      });
+      updateConsoleAssistantSettings.mockImplementation(async (preference) => ({
+        ...(await getConsoleAssistantSettings()),
+        preference
+      }));
+      const view = await renderSettled(
+        <AppProviders>
+          <EmbeddedAgentAssistant />
+        </AppProviders>
+      );
+      await domEvents.click(
+        screen.getByRole('button', {
+          name: i18nText('appShell', 'auto.assistant')
+        })
+      );
+      const settings = await screen.findByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_settings')
+      });
+      await waitFor(() => expect(settings).toBeEnabled());
+      await domEvents.click(settings);
+      const dialog = await screen.findByRole('dialog', {
+        name: i18nText('appShell', 'auto.assistant_settings')
+      });
+      await waitFor(() => expect(dialog).toBeVisible());
+      const save = within(dialog).getByRole('button', { name: /确\s*定|OK/ });
+      const reset = within(dialog).getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_reset_defaults')
+      });
+      if (allowed) {
+        expect(save).toBeEnabled();
+        expect(reset).toBeEnabled();
+        await domEvents.click(reset);
+        await waitFor(() =>
+          expect(updateConsoleAssistantSettings).toHaveBeenCalled()
+        );
+      } else {
+        expect(save).toBeDisabled();
+        expect(reset).toBeDisabled();
+        for (const select of within(dialog).getAllByRole('combobox'))
+          expect(select).toBeDisabled();
+        await domEvents.click(reset);
+        fireEvent.click(save);
+        expect(updateConsoleAssistantSettings).not.toHaveBeenCalled();
+      }
+      view.unmount();
+    }
+  );
 });

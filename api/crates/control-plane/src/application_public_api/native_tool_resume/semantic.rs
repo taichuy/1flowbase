@@ -153,6 +153,10 @@ pub async fn correlate_semantic_responses_callback<R: ApplicationPublishedRunCon
     if super::is_independent_session_history(envelope, &run, &expected) {
         return Ok(None);
     }
+    let mut remaining = expected.iter().map(String::as_str).collect::<BTreeSet<_>>();
+    if remaining.len() != expected.len() || remaining.is_empty() {
+        return Err(ControlPlaneError::Conflict("responses_tool_output_round_invalid").into());
+    }
     let ordered_input = if previous.is_none()
         && input.iter().any(|item| {
             matches!(
@@ -160,21 +164,30 @@ pub async fn correlate_semantic_responses_callback<R: ApplicationPublishedRunCon
                 Some("function_call" | "custom_tool_call")
             )
         }) {
-        super::super::compat::openai::history::prove_full_context_input(
+        match super::super::compat::openai::history::prove_full_context_input(
             &request["input"],
             &evidence.history,
             &expected,
-        )
-        .map_err(|_| ControlPlaneError::Conflict("responses_tool_output_history_mismatch"))?
-        .continuation()
-        .ordered_input
+        ) {
+            Ok(proof) => proof.continuation().ordered_input,
+            Err(_)
+                if is_closed_tool_history(input)
+                    && ids.len() == remaining.len()
+                    && ids.iter().map(String::as_str).collect::<BTreeSet<_>>() == remaining =>
+            {
+                // Closed history is new sampling, not permission to recover or
+                // consume a receipt whose predecessor proof no longer matches.
+                return Ok(None);
+            }
+            Err(_) => {
+                return Err(
+                    ControlPlaneError::Conflict("responses_tool_output_history_mismatch").into(),
+                );
+            }
+        }
     } else {
         input.clone()
     };
-    let mut remaining = expected.iter().map(String::as_str).collect::<BTreeSet<_>>();
-    if remaining.len() != expected.len() || remaining.is_empty() {
-        return Err(ControlPlaneError::Conflict("responses_tool_output_round_invalid").into());
-    }
     let mut results = Vec::new();
     for item in &ordered_input {
         match item.get("type").and_then(Value::as_str) {

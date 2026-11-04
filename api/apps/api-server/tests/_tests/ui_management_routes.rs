@@ -3,6 +3,117 @@ use super::*;
 const ROLE: &str = "ui_menu_limited";
 const GROUP: &str = "system.ui-management";
 
+#[tokio::test]
+async fn readonly_console_grants_keep_system_reads_separate_from_writes() {
+    let (state, config, database) = fixture_state().await;
+    control_plane::ports::I18nCatalogRepository::bootstrap_workspace_catalog_state(
+        &state.store,
+        state.bootstrap_workspace_id,
+    )
+    .await
+    .unwrap();
+    let fixture = Fixture {
+        app: app_with_state_and_config(state, &config),
+        _database: database,
+    };
+    let app = &fixture.app;
+    let (root, csrf) = login(app, "root", "change-me").await;
+    create_member(app, &root, &csrf, "readonly-console", "temp-pass").await;
+    let (cookie, _) = login(app, "readonly-console", "temp-pass").await;
+    let (user_id, _) = session_identity(app, &cookie).await;
+    let (status, payload) = json_request(app, "POST", "/api/console/settings/roles", &root, &csrf,
+        json!({"code":"readonly_console", "name":"Read only", "introduction":"Explicit reads only"})).await;
+    assert_eq!(status, StatusCode::CREATED, "{payload}");
+    let groups = [
+        ("settings_feature", "system.files", vec!["file_storages.list", "file_tables.list"]),
+        ("settings_feature", "system.i18n-catalog", vec!["i18n_catalog.state.get", "i18n_catalog.entries.list", "i18n_catalog.entries.detail"]),
+        ("settings_feature", "system.backups", vec!["system_backups.recovery.status"]),
+        ("other", "other.plugins", vec!["plugin_list_tasks", "plugin_get_task"]),
+    ].into_iter().map(|(kind, group_id, operations)| json!({
+        "kind":kind,"group_id":group_id,"enabled":true,"strategy":"custom",
+        "operations":operations.into_iter().map(|id| json!({"kind":"simple","operation_id":id,"enabled":true})).collect::<Vec<_>>()
+    })).collect::<Vec<_>>();
+    assert_eq!(
+        json_request(
+            app,
+            "PUT",
+            "/api/console/settings/roles/readonly_console/console-policy",
+            &root,
+            &csrf,
+            json!({"groups":groups})
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        json_request(
+            app,
+            "PUT",
+            &format!("/api/console/settings/members/{user_id}/roles"),
+            &root,
+            &csrf,
+            json!({"role_codes":["readonly_console"]})
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    let (cookie, user_csrf) = login(app, "readonly-console", "temp-pass").await;
+    for path in [
+        "/api/console/settings/files/storages",
+        "/api/console/settings/files/tables",
+        "/api/console/settings/i18n/catalog",
+        "/api/console/settings/i18n/entries",
+        "/api/console/plugins/tasks",
+    ] {
+        let (root_status, _) = get(app, path, &root).await;
+        let (status, payload) = get(app, path, &cookie).await;
+        assert_eq!(root_status, StatusCode::OK, "root {path}");
+        assert_eq!(status, StatusCode::OK, "{path}: {payload}");
+        if path.ends_with("/tables") {
+            for table in payload["data"].as_array().unwrap() {
+                assert_eq!(
+                    table["record_permissions"],
+                    json!({"can_create":false,"can_update":false,"can_delete":false,"can_share":false})
+                );
+            }
+        }
+    }
+    // No backup runtime is configured in this fixture. Both identities pass ACL and
+    // reach the same unavailable runtime; root-only recovery mutation stays blocked.
+    let path = "/api/console/settings/system-backups/recovery/status";
+    assert_eq!(
+        get(app, path, &cookie).await.0,
+        get(app, path, &root).await.0
+    );
+    for (method, path, body) in [
+        (
+            "POST",
+            "/api/console/settings/files/storages".to_owned(),
+            json!({"code":"denied","title":"Denied","driver_type":"local","enabled":true,"is_default":false,"config_json":{},"rule_json":{}}),
+        ),
+        (
+            "PUT",
+            "/api/console/settings/i18n/custom-translations".to_owned(),
+            json!({"key":"readonly.probe","locale":"en-US","translation":"Denied","expected_revision":0}),
+        ),
+        (
+            "POST",
+            format!(
+                "/api/console/files/{}/records/{}/access-links",
+                Uuid::now_v7(),
+                Uuid::now_v7()
+            ),
+            json!({"expires_in_seconds":60}),
+        ),
+    ] {
+        let (status, payload) = json_request(app, method, &path, &cookie, &user_csrf, body).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{path}: {payload}");
+    }
+    assert!(!design_permission(app, &cookie).await);
+}
+
 async fn ui_policy(
     app: &Router,
     cookie: &str,
@@ -73,6 +184,18 @@ async fn ui_management_controls_menu_operations_and_design_visibility() {
         StatusCode::NO_CONTENT
     );
     assert!(!design_permission(app, &cookie).await);
+    ui_policy(
+        app, &root, &root_csrf, true, "custom",
+        json!([{ "kind": "simple", "operation_id": "ui_management.components.list", "enabled": true }]),
+    ).await;
+    assert!(
+        !design_permission(app, &cookie).await,
+        "viewing components must not enable page design"
+    );
+    let (_, me) = get(app, "/api/console/me", &cookie).await;
+    let permissions = me["data"]["permissions"].as_array().unwrap();
+    assert!(permissions.contains(&json!("ui_management.components.list")));
+    assert!(!permissions.contains(&json!("ui_management.components.create")));
     let groups_path = "/api/console/frontstage/pages/groups";
     let pages_path = "/api/console/frontstage/pages";
     assert_eq!(

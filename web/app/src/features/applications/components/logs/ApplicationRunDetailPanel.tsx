@@ -3,6 +3,7 @@ import { ProviderTrajectory } from '../../../agent-flow/components/debug-console
 import type { ConversationLogTraceLoader } from '../../../agent-flow/components/debug-console/conversation-log-trace-model';
 import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
 import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, App, Button, Empty, Spin, Tooltip } from 'antd';
@@ -117,7 +118,13 @@ const runConversationContext: AgentFlowRunContext = {
   fields: []
 };
 
-function RunIdSubtitle({ runId }: { runId: string }) {
+function RunIdSubtitle({
+  runId,
+  onOpenRunTrace
+}: {
+  runId: string;
+  onOpenRunTrace?: () => void;
+}) {
   const { message } = App.useApp();
   const { copied, copy } = useClipboardCopy();
 
@@ -143,6 +150,17 @@ function RunIdSubtitle({ runId }: { runId: string }) {
           type="text"
         />
       </Tooltip>
+      {onOpenRunTrace ? (
+        <Tooltip title={i18nText('applications', 'auto.view_execution_trace')}>
+          <Button
+            aria-label={i18nText('applications', 'auto.view_execution_trace')}
+            icon={<FileTextOutlined />}
+            onClick={onOpenRunTrace}
+            size="small"
+            type="text"
+          />
+        </Tooltip>
+      ) : null}
     </span>
   );
 }
@@ -662,13 +680,6 @@ function RunConversation({
       {recordId && recordQuery.isSuccess && messages.length === 0 ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : null}
-      {initialConversationQuery.isSuccess &&
-      messages.length === 0 &&
-      onOpenRunTrace ? (
-        <Button onClick={onOpenRunTrace}>
-          {i18nText('applications', 'auto.view_execution_trace')}
-        </Button>
-      ) : null}
       <AgentFlowDebugConsole
         ariaLabel={i18nText('applications', 'auto.run_details_preview')}
         closeLabel={i18nText('applications', 'auto.close_run_details')}
@@ -736,7 +747,16 @@ function RunConversation({
             : conversationSessionStatus(conversationItems, outputState)
         }
         stopping={false}
-        subtitle={<RunIdSubtitle runId={runId} />}
+        subtitle={
+          <RunIdSubtitle
+            runId={runId}
+            onOpenRunTrace={
+              initialConversationQuery.isSuccess && messages.length === 0
+                ? onOpenRunTrace
+                : undefined
+            }
+          />
+        }
         title={i18nText('applications', 'auto.run_details')}
         onChangeRunContextValue={() => {}}
         onClearSession={() => {}}

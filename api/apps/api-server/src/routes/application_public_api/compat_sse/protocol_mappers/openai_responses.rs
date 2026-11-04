@@ -19,6 +19,7 @@ pub(crate) struct OpenAiResponseStreamMapper {
     output_item_index: usize,
     next_sequence_number: u64,
     state: OpenAiResponseStreamState,
+    usage_baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
 }
 
 impl OpenAiResponseStreamMapper {
@@ -49,7 +50,16 @@ impl OpenAiResponseStreamMapper {
             output_item_index: 0,
             next_sequence_number: 0,
             state: OpenAiResponseStreamState::Initial,
+            usage_baseline: Default::default(),
         }
+    }
+
+    pub(in crate::routes::application_public_api) fn with_usage_baseline(
+        mut self,
+        baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
+    ) -> Self {
+        self.usage_baseline = baseline;
+        self
     }
 
     fn event(&mut self, event_name: &str, mut payload: Value) -> Result<Event, Infallible> {
@@ -254,7 +264,9 @@ impl OpenAiResponseStreamMapper {
             &self.completed_output_items,
             event.into_envelope(),
         );
-        for (event_name, payload) in runtime_events {
+        for (event_name, mut payload) in runtime_events {
+            self.usage_baseline
+                .project_responses_event(&mut payload, initial_run.usage.as_ref());
             events.push(self.event(event_name, payload));
         }
         if is_terminal {

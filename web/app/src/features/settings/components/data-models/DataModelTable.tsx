@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useState } from 'react';
 
 import {
@@ -107,7 +108,6 @@ function useDataModelTableController({
   selectedModelId,
   loading,
   saving,
-  canManage,
   onSelectModel,
   onEditModel,
   onDeleteModel,
@@ -119,7 +119,7 @@ function useDataModelTableController({
   selectedModelId: string | null;
   loading: boolean;
   saving: boolean;
-  canManage: boolean;
+  canManage?: boolean;
   onSelectModel: (model: SettingsDataModel) => void;
   onEditModel: (model: SettingsDataModel) => void;
   onDeleteModel: (model: SettingsDataModel) => void;
@@ -129,6 +129,7 @@ function useDataModelTableController({
     input: UpdateSettingsDataModelInput
   ) => void;
 }) {
+  const can = useConsoleOperationAccess();
   const { message } = App.useApp();
   const screens = Grid.useBreakpoint();
   const useMobileList = Boolean(screens.xs && !screens.md);
@@ -236,13 +237,12 @@ function useDataModelTableController({
               size="small"
               icon={<EditOutlined aria-hidden="true" />}
               style={{ padding: 0 }}
-              disabled={!canManage}
               onClick={(event) => {
                 event.stopPropagation();
                 onEditModel(model);
               }}
             >
-              {i18nText('settings', 'auto.edit')}
+              {i18nText('settings', can('model_definitions.update') ? 'auto.edit' : 'auto.view')}
             </Button>
             {canDeleteModel ? (
               <Button
@@ -254,7 +254,7 @@ function useDataModelTableController({
                 aria-label={i18nText('settings', 'auto.delete_data_table', {
                   value1: model.title
                 })}
-                disabled={!canManage}
+                disabled={!can('delete_model')}
                 onClick={(event) => {
                   event.stopPropagation();
                   setDeleteTarget(model);
@@ -269,7 +269,7 @@ function useDataModelTableController({
     }
   ];
   return {
-    selectedSource, canManage, setDrawerState, updateDefaultsMutation, useMobileList,
+    selectedSource, can, setDrawerState, updateDefaultsMutation, useMobileList,
     loading, columns, models, selectedModelId, onSelectModel, onEditModel,
     setDeleteTarget, drawerState, compatibleTemplatesQuery, message, saving,
     onCreateModel, onUpdateModel, deleteTarget, onDeleteModel
@@ -278,7 +278,7 @@ function useDataModelTableController({
 
 export function DataModelTable(props: Parameters<typeof useDataModelTableController>[0]) {
   const {
-    selectedSource, canManage, setDrawerState, updateDefaultsMutation, useMobileList,
+    selectedSource, can, setDrawerState, updateDefaultsMutation, useMobileList,
     loading, columns, models, selectedModelId, onSelectModel, onEditModel,
     setDeleteTarget, drawerState, compatibleTemplatesQuery, saving,
     onCreateModel, onUpdateModel, deleteTarget, onDeleteModel
@@ -301,7 +301,7 @@ export function DataModelTable(props: Parameters<typeof useDataModelTableControl
           <Button
             type="primary"
             icon={<PlusOutlined aria-hidden="true" />}
-            disabled={!canManage}
+            disabled={!can('model_definitions.create')}
             onClick={() =>
               setDrawerState({ open: true, mode: 'create', model: null })
             }
@@ -335,12 +335,12 @@ export function DataModelTable(props: Parameters<typeof useDataModelTableControl
                   checkedChildren={i18nText('settings', 'auto.open')}
                   unCheckedChildren={i18nText('settings', 'auto.closed')}
                   disabled={
-                    !canManage ||
+                    !can('data_sources.defaults.update') ||
                     !selectedSource.capabilities.can_update_defaults ||
                     updateDefaultsMutation.isPending
                   }
                   onChange={(value) =>
-                    updateDefaultsMutation.mutate({
+                    can('data_sources.defaults.update') && updateDefaultsMutation.mutate({
                       source: selectedSource,
                       patch: {
                         default_data_model_status: apiOpenStatus(value)
@@ -433,7 +433,7 @@ export function DataModelTable(props: Parameters<typeof useDataModelTableControl
                   width: '100%'
                 }}
               >
-                {canManage ? (
+                {(
                   <Space size={16}>
                     <Button
                       type="link"
@@ -445,7 +445,7 @@ export function DataModelTable(props: Parameters<typeof useDataModelTableControl
                         onEditModel(model);
                       }}
                     >
-                      {i18nText('settings', 'auto.edit')}
+                      {i18nText('settings', can('model_definitions.update') ? 'auto.edit' : 'auto.view')}
                     </Button>
                     {model.capabilities.can_delete ? (
                       <Button
@@ -459,6 +459,7 @@ export function DataModelTable(props: Parameters<typeof useDataModelTableControl
                           'auto.delete_data_table',
                           { value1: model.title }
                         )}
+                        disabled={!can('delete_model')}
                         onClick={(event) => {
                           event.stopPropagation();
                           setDeleteTarget(model);
@@ -468,7 +469,7 @@ export function DataModelTable(props: Parameters<typeof useDataModelTableControl
                       </Button>
                     ) : null}
                   </Space>
-                ) : null}
+                )}
               </span>
             </div>
           ))}
@@ -503,10 +504,10 @@ export function DataModelTable(props: Parameters<typeof useDataModelTableControl
         okText={i18nText('settings', 'auto.confirm')}
         okType="danger"
         cancelText={i18nText('settings', 'auto.cancel')}
-        okButtonProps={{ 'aria-label': i18nText('settings', 'auto.confirm') }}
+        okButtonProps={{ 'aria-label': i18nText('settings', 'auto.confirm'), disabled: !can('delete_model') }}
         onCancel={() => setDeleteTarget(null)}
         onOk={() => {
-          if (deleteTarget) {
+          if (deleteTarget && can('delete_model')) {
             onDeleteModel(deleteTarget);
           }
           setDeleteTarget(null);

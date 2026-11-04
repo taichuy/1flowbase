@@ -1,3 +1,4 @@
+import { useAuthStore } from '../../../../state/auth-store';
 import {
   act,
   fireEvent,
@@ -96,6 +97,7 @@ const selectedTemplate: SettingsCompatibleDataModelTemplate = {
 };
 
 beforeEach(() => {
+  useAuthStore.setState({ actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace' } });
   vi.clearAllMocks();
   compatibleTemplatesApi.fetch.mockResolvedValue([selectedTemplate]);
 });

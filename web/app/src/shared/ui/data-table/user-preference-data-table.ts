@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
 import { useAuthStore } from '../../../state/auth-store';
+import {
+  hasConsoleOperationAccess,
+  useConsoleOperationAccess
+} from '../../../state/console-operation-access';
 import { patchUserPreferences } from '../../user-preferences/user-preferences';
 import {
   normalizeDataTableState,
@@ -53,6 +57,8 @@ export function useUserPreferenceDataTableConfiguration<T extends object>({
   columns: Array<DataTableColumn<T>>;
   preferenceKey: string;
 }): DataTableConfiguration {
+  const canAccess = useConsoleOperationAccess();
+  const canUpdatePreferences = canAccess('patch_me_meta');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const me = useAuthStore((state) => state.me);
   const setMe = useAuthStore((state) => state.setMe);
@@ -116,14 +122,24 @@ export function useUserPreferenceDataTableConfiguration<T extends object>({
 
   useEffect(() => {
     // Only setters create a draft; server/meta hydration cannot schedule a PATCH.
-    if (!draft || draft.owner !== owner || !csrfToken) return;
+    if (!draft || draft.owner !== owner || !csrfToken || !canUpdatePreferences)
+      return;
     const userId = me?.id;
     const nextState = normalizeDataTableState(columns, draft.state);
     let active = true;
     const timeout = window.setTimeout(() => {
       // Preserve edit order when a later debounce expires during an earlier request.
       saveQueue.current = saveQueue.current!.then(async () => {
-        if (!active) return;
+        const auth = useAuthStore.getState();
+        if (
+          !active ||
+          !hasConsoleOperationAccess(
+            auth.actor?.effective_display_role,
+            auth.me?.permissions,
+            'patch_me_meta'
+          )
+        )
+          return;
         try {
           const updatedMe = await patchUserPreferences(
             buildDataTableMetaPatch(preferenceKey, nextState),
@@ -147,7 +163,16 @@ export function useUserPreferenceDataTableConfiguration<T extends object>({
       active = false;
       window.clearTimeout(timeout);
     };
-  }, [columns, csrfToken, draft, me?.id, owner, preferenceKey, setMe]);
+  }, [
+    canUpdatePreferences,
+    columns,
+    csrfToken,
+    draft,
+    me?.id,
+    owner,
+    preferenceKey,
+    setMe
+  ]);
 
   return { ...state, setVisibleColumnKeys, setColumnWidths };
 }

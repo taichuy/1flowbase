@@ -325,6 +325,11 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         flow_run_id: Uuid,
     ) -> anyhow::Result<Vec<crate::application_public_runtime::PublishedRunNodeUsage>>;
+    /// Additive provider-call counters from the immutable usage ledger, never node snapshots.
+    async fn get_flow_run_usage_totals(
+        &self,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<serde_json::Value>>;
     /// Observational append only: may record client delivery after business terminal.
     async fn append_client_trajectory(
         &self,

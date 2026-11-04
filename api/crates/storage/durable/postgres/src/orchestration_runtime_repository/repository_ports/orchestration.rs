@@ -66,6 +66,9 @@ log_operations::with_log_operations! {
     ) -> Result<Vec<PublishedRunNodeUsage>> {
         self.read_flow_run_node_usages(flow_run_id).await
     }
+    async fn get_flow_run_usage_totals(&self, flow_run_id: Uuid) -> Result<Option<Value>> {
+        self.read_flow_run_usage_totals(flow_run_id).await
+    }
     async fn upsert_compiled_plan(
         &self,
         input: &UpsertCompiledPlanInput,

@@ -60,6 +60,7 @@ function renderPanel() {
 
 describe('PersonalAccessTokensPanel', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     resetAuthStore();
     authenticate();
     personalAccessTokensApi.fetchSettingsPersonalAccessTokens.mockResolvedValue(
@@ -207,4 +208,31 @@ describe('PersonalAccessTokensPanel', () => {
       ).toHaveBeenCalledWith('key-1', 'csrf-123');
     });
   });
+  test('read permission retains token metadata without add or revoke', async () => {
+    setOperations(['list_user_api_keys']);
+    renderPanel();
+    await screen.findByText('Existing automation');
+    expect(screen.getByRole('button', { name: /添加/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /删除/ })).toBeDisabled();
+    expect(screen.getByLabelText('状态')).toBeEnabled();
+    expect(personalAccessTokensApi.createSettingsPersonalAccessToken).not.toHaveBeenCalled();
+    expect(personalAccessTokensApi.revokeSettingsPersonalAccessToken).not.toHaveBeenCalled();
+  });
+
+  test('revoke permission does not enable token creation', async () => {
+    setOperations(['list_user_api_keys', 'revoke_user_api_key']);
+    renderPanel();
+    await screen.findByText('Existing automation');
+    expect(screen.getByRole('button', { name: /添加/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /删除/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+    await waitFor(() => expect(personalAccessTokensApi.revokeSettingsPersonalAccessToken).toHaveBeenCalledWith('key-1', 'csrf-123'));
+    expect(personalAccessTokensApi.createSettingsPersonalAccessToken).not.toHaveBeenCalled();
+  });
+
 });
+
+function setOperations(permissions: string[]) {
+  const { actor, me } = useAuthStore.getState();
+  useAuthStore.setState({ actor: { ...actor!, effective_display_role: 'member' }, me: { ...me!, effective_display_role: 'member', permissions } });
+}

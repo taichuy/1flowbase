@@ -6,12 +6,20 @@ async fn file_management_settings_routes_enforce_root_only_storage_and_binding_r
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     register_files_feature_permission(&database_url).await;
     create_role(&app, &root_cookie, &root_csrf, "file_admin").await;
-    replace_role_permissions(
+    grant_file_operations(
         &app,
         &root_cookie,
         &root_csrf,
         "file_admin",
-        &[FILES_FEATURE_PERMISSION],
+        &[
+            "file_tables.create",
+            "file_tables.list",
+            "file_tables.delete",
+            "file_tables.storage.bind",
+            "file_storages.create",
+            "file_storages.update",
+            "file_storages.delete",
+        ],
     )
     .await;
     let member_id = create_member(&app, &root_cookie, &root_csrf, "file-admin", "change-me").await;

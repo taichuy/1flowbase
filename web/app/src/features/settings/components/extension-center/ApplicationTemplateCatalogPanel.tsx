@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import type {
   ApplicationTemplateCatalogItem,
   ApplicationTemplateReference
@@ -26,16 +27,11 @@ export function ApplicationTemplateCatalogPanel({
   const navigate = useNavigate();
   const { t } = useTranslation('settingsSystemTemplates');
   const { t: settingsT } = useTranslation('settings');
-  const canManage = useAuthStore(
-    (state) =>
-      state.actor?.effective_display_role === 'root' ||
-      (state.me?.permissions.includes(
-        'settings_feature.access.system.backups'
-      ) ??
-        false)
-  );
+  const can = useConsoleOperationAccess();
+  const canViewCatalog = can('system_templates.catalog');
+  const canInstall = can('system_templates.install');
   const csrfToken = useAuthStore((state) => state.csrfToken);
-  const catalog = useApplicationTemplateCatalog(canManage, { cursor, q });
+  const catalog = useApplicationTemplateCatalog(canViewCatalog, { cursor, q });
   const [searchText, setSearchText] = useState(q ?? '');
   const [selected, setSelected] = useState<{
     name: string;
@@ -104,7 +100,7 @@ export function ApplicationTemplateCatalogPanel({
         width: 180,
         render: (_, item) => (
           <Button
-            disabled={!csrfToken}
+            disabled={!csrfToken || !canInstall}
             onClick={() =>
               setSelected({
                 name: item.name,
@@ -115,12 +111,12 @@ export function ApplicationTemplateCatalogPanel({
               })
             }
           >
-            {t('preview_action')}
+            {t('install')}
           </Button>
         )
       }
     ],
-    [t, csrfToken]
+    [t, csrfToken, canInstall]
   );
   const tableConfiguration = usePersistedDataTableConfiguration({
     columns,
@@ -159,7 +155,7 @@ export function ApplicationTemplateCatalogPanel({
           ]}
         />
         <Typography.Title level={4}>{t('catalog_title')}</Typography.Title>
-        {!canManage ? (
+        {!canViewCatalog ? (
           <Alert type="warning" showIcon title={t('access_denied')} />
         ) : (
           <>
@@ -224,11 +220,11 @@ export function ApplicationTemplateCatalogPanel({
           </>
         )}
       </Flex>
-      {selected && canManage && (
+      {selected && canViewCatalog && (
         <SystemTemplateDialog
           mode="import"
           template={selected}
-          canInstall={canManage && Boolean(csrfToken)}
+          canInstall={canInstall && Boolean(csrfToken)}
           onClose={() => setSelected(undefined)}
         />
       )}

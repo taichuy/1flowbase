@@ -83,3 +83,13 @@ where
     Repository: BillingRepository + ?Sized,
 {
 }
+
+#[test]
+fn official_pricing_sync_session_is_an_object_safe_storage_owned_port() {
+    fn opaque_session(
+        session: Box<dyn crate::ports::OfficialPricingCatalogSync>,
+    ) -> Box<dyn crate::ports::OfficialPricingCatalogSync> {
+        session
+    }
+    let _contract = opaque_session;
+}

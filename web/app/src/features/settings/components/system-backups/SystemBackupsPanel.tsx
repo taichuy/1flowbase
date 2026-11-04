@@ -49,6 +49,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { formatDateTime } from '../../../../shared/i18n/format';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
 import { SystemTemplateDialog } from '../system-templates/SystemTemplateDialog';
@@ -75,6 +76,16 @@ export function SystemBackupsPanel() {
   const { t } = useTranslation('settingsSystemBackups');
   const { t: settingsT } = useTranslation('settings');
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
+  const can = useConsoleOperationAccess();
+  const canCreate = can('system_backups.create');
+  const canImport = can('system_backups.import');
+  const canPreviewTemplate = can('system_templates.preview');
+  const canExportTemplate = can('system_templates.export');
+  const canVerify = can('system_backups.verify');
+  const canDelete = can('system_backups.delete');
+  const canPreflight = can('system_backups.recovery.preflight');
+  const canRestore =
+    can('system_backups.recovery.reauth') && can('system_backups.recovery.intent');
   const queryClient = useQueryClient();
   const { message, modal } = App.useApp();
   const [keyword, setKeyword] = useState('');
@@ -296,6 +307,7 @@ export function SystemBackupsPanel() {
     setRecoveryJobId(undefined);
   };
   const openRestore = (item: BackupSetSummaryResponse) => {
+    if (!canPreflight) return;
     setConfirmMissingPlugins(false);
     setRecoverySucceeded(false);
     setRestartRequired(false);
@@ -334,10 +346,13 @@ export function SystemBackupsPanel() {
           <Space wrap>
             <Upload
               accept=".1fb-backup,.zip,.json,application/octet-stream,application/zip,application/json"
+              disabled={!canImport && !canPreviewTemplate}
               beforeUpload={(file) => {
                 if (/\.(zip|json)$/i.test(file.name)) {
+                  if (!canPreviewTemplate) return Upload.LIST_IGNORE;
                   setTemplateDialog({ mode: 'import', file });
                 } else {
+                  if (!canImport) return Upload.LIST_IGNORE;
                   setPendingImport(file);
                 }
                 return false;
@@ -345,7 +360,11 @@ export function SystemBackupsPanel() {
               maxCount={1}
               showUploadList={false}
             >
-              <Button icon={<UploadOutlined />}>{t('import')}</Button>
+              <Button icon={<UploadOutlined />}>
+                {!canImport && canPreviewTemplate
+                  ? t('import', { ns: 'settingsSystemTemplates' })
+                  : t('import')}
+              </Button>
             </Upload>
             <Button
               icon={<ReloadOutlined />}
@@ -360,7 +379,9 @@ export function SystemBackupsPanel() {
                   {
                     key: 'backup',
                     label: t('create_settings_backup'),
+                    disabled: !canCreate,
                     onClick: () => {
+                      if (!canCreate) return;
                       setSelection({ features: [], include_file_bytes: false });
                       setCreateOpen(true);
                     }
@@ -368,7 +389,10 @@ export function SystemBackupsPanel() {
                   {
                     key: 'template',
                     label: t('create_template'),
-                    onClick: () => setTemplateDialog({ mode: 'export' })
+                    disabled: !canExportTemplate,
+                    onClick: () => {
+                      if (canExportTemplate) setTemplateDialog({ mode: 'export' });
+                    }
                   }
                 ]
               }}
@@ -377,8 +401,9 @@ export function SystemBackupsPanel() {
                 type="primary"
                 icon={<PlusOutlined />}
                 loading={createMutation.isPending}
+                disabled={!canCreate && !canExportTemplate}
               >
-                {t('create')}
+                {!canCreate && canExportTemplate ? t('create_template') : t('create')}
               </Button>
             </Dropdown>
           </Space>
@@ -501,19 +526,24 @@ export function SystemBackupsPanel() {
                       key: 'verify',
                       icon: <SafetyCertificateOutlined />,
                       label: t('verify'),
-                      onClick: () => setVerifyTarget(item)
+                      disabled: !canVerify,
+                      onClick: () => { if (canVerify) setVerifyTarget(item); }
                     },
                     {
                       key: 'download',
                       icon: <DownloadOutlined />,
                       label: t('download'),
-                      onClick: () => startDirectDownload(item.backup_set_id)
+                      disabled: !can('system_backups.download'),
+                      onClick: () => {
+                        if (can('system_backups.download')) startDirectDownload(item.backup_set_id);
+                      }
                     },
                     {
                       key: 'restore',
                       danger: true,
                       icon: <WarningOutlined />,
                       label: t('restore'),
+                      disabled: !canPreflight,
                       onClick: () => openRestore(item)
                     },
                     { type: 'divider' },
@@ -522,12 +552,14 @@ export function SystemBackupsPanel() {
                       danger: true,
                       icon: <DeleteOutlined />,
                       label: t('delete'),
+                      disabled: !canDelete,
                       onClick: () =>
-                        modal.confirm({
+                        canDelete && modal.confirm({
                           title: t('delete_confirm'),
                           okButtonProps: { danger: true },
-                          onOk: () =>
-                            deleteMutation.mutateAsync(item.backup_set_id)
+                          onOk: () => {
+                            if (canDelete) return deleteMutation.mutateAsync(item.backup_set_id);
+                          }
                         })
                     }
                   ]
@@ -773,7 +805,7 @@ export function SystemBackupsPanel() {
         width={800}
         okButtonProps={{
           disabled:
-            !selectedFeatures.length || catalog.isLoading || catalog.isError
+            !canCreate || !selectedFeatures.length || catalog.isLoading || catalog.isError
         }}
         title={t('create')}
         okText={t('create')}
@@ -782,7 +814,9 @@ export function SystemBackupsPanel() {
           setCreateOpen(false);
           setBackupPassword('');
         }}
-        onOk={() => createMutation.mutate(backupPassword || undefined)}
+        onOk={() => {
+          if (canCreate) createMutation.mutate(backupPassword || undefined);
+        }}
       >
         <Typography.Paragraph>{t('selection_help')}</Typography.Paragraph>
         {catalog.isError ? (
@@ -882,12 +916,13 @@ export function SystemBackupsPanel() {
         title={t('import')}
         okText={t('import')}
         confirmLoading={importMutation.isPending}
+        okButtonProps={{ disabled: !canImport }}
         onCancel={() => {
           setPendingImport(undefined);
           setImportPassword('');
         }}
         onOk={() => {
-          if (pendingImport) {
+          if (canImport && pendingImport) {
             importMutation.mutate({
               file: pendingImport,
               password: importPassword || undefined
@@ -910,12 +945,13 @@ export function SystemBackupsPanel() {
         title={t('verify')}
         okText={t('verify')}
         confirmLoading={verifyMutation.isPending}
+        okButtonProps={{ disabled: !canVerify }}
         onCancel={() => {
           setVerifyTarget(undefined);
           setVerifyPassword('');
         }}
         onOk={() => {
-          if (verifyTarget) {
+          if (canVerify && verifyTarget) {
             verifyMutation.mutate({
               id: verifyTarget.backup_set_id,
               password: verifyPassword || undefined
@@ -983,8 +1019,9 @@ export function SystemBackupsPanel() {
                 }
               />
               <Button
+                disabled={!canPreflight}
                 onClick={() =>
-                  restoreTarget &&
+                  canPreflight && restoreTarget &&
                   preflightMutation.mutate({
                     id: restoreTarget.backup_set_id,
                     password: recoveryBackupPassword || undefined
@@ -1089,7 +1126,7 @@ export function SystemBackupsPanel() {
                   danger
                   type="primary"
                   disabled={
-                    preflightMutation.isPending ||
+                    !canRestore || preflightMutation.isPending ||
                     !preflight.compatible ||
                     Boolean(preflight.selective?.failures.length) ||
                     (Boolean(preflight.selective?.missing_plugins.length) &&
@@ -1098,7 +1135,7 @@ export function SystemBackupsPanel() {
                     exactName !== restoreTarget?.exact_backup_name
                   }
                   loading={intentMutation.isPending}
-                  onClick={() => intentMutation.mutate()}
+                  onClick={() => { if (canRestore) intentMutation.mutate(); }}
                 >
                   {preflight.selective
                     ? t('confirm_selective_restore')

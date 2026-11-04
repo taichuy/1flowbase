@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { Button, Modal, Progress, Space, Typography } from 'antd';
 import { useState } from 'react';
 
@@ -51,6 +52,7 @@ export function ModelProviderAccountOperationsCard({
   onCountResetCredits,
   onConsumeResetCredit
 }: ModelProviderAccountOperationsCardProps) {
+  const can = useConsoleOperationAccess();
   const supportsUsage =
     catalogEntry.operational_capabilities.includes('usage_windows');
   const supportsResetCredits =
@@ -69,7 +71,7 @@ export function ModelProviderAccountOperationsCard({
   }
 
   async function refreshUsage() {
-    if (!onRefreshUsage) {
+    if (!can('model_providers.instances.usage.view') || !onRefreshUsage) {
       return false;
     }
 
@@ -93,7 +95,7 @@ export function ModelProviderAccountOperationsCard({
   }
 
   async function refreshResetCreditCount() {
-    if (!onCountResetCredits) {
+    if (!can('model_providers.instances.reset_credits.view') || !onCountResetCredits) {
       return false;
     }
 
@@ -116,7 +118,7 @@ export function ModelProviderAccountOperationsCard({
   }
 
   function confirmResetCreditConsume() {
-    if (!onConsumeResetCredit || !availableCount || operation) {
+    if (!can('model_providers.instances.reset_credits.consume') || !onConsumeResetCredit || !availableCount || operation) {
       return;
     }
 
@@ -197,7 +199,7 @@ export function ModelProviderAccountOperationsCard({
             {supportsUsage && onRefreshUsage ? (
               <Button
                 loading={operation === 'usage'}
-                disabled={operation !== null && operation !== 'usage'}
+                disabled={!can('model_providers.instances.usage.view') || operation !== null && operation !== 'usage'}
                 onClick={() => {
                   void refreshUsage();
                 }}
@@ -208,7 +210,7 @@ export function ModelProviderAccountOperationsCard({
             {supportsResetCredits && onCountResetCredits ? (
               <Button
                 loading={operation === 'count'}
-                disabled={operation !== null && operation !== 'count'}
+                disabled={!can('model_providers.instances.reset_credits.view') || operation !== null && operation !== 'count'}
                 onClick={() => {
                   void refreshResetCreditCount();
                 }}
@@ -228,7 +230,7 @@ export function ModelProviderAccountOperationsCard({
               <Button
                 danger
                 loading={operation === 'consume'}
-                disabled={!availableCount || operation !== null}
+                disabled={!can('model_providers.instances.reset_credits.consume') || !availableCount || operation !== null}
                 onClick={confirmResetCreditConsume}
               >
                 {i18nText('settings', 'auto.reset')}

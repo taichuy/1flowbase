@@ -1,4 +1,5 @@
-import { apiFetch } from '../transport';
+import { apiFetch, apiFetchBlob } from '../transport';
+import type { ConsolePluginSettingsCodeModule } from './administration/ui-management';
 
 export interface ConsoleFrontendBlockContextContract {
   primitives: string[];
@@ -42,6 +43,7 @@ export interface ConsoleFrontendBlockCatalogEntry {
   code_template?: string | null;
   code_template_version?: string | null;
   code_template_language?: 'jsx' | 'tsx' | null;
+  code_modules: ConsolePluginSettingsCodeModule[];
   isolated_entry_asset?: {
     media_type: string;
     sha256: string;
@@ -74,4 +76,18 @@ export function listConsoleFrontendBlocks(
     method: 'GET',
     baseUrl
   });
+}
+
+/** Asset access is checked against the caller's current workspace assignment. */
+export async function fetchConsoleFrontendModuleAsset(
+  sha256: string,
+  signal?: AbortSignal,
+  baseUrl?: string
+): Promise<ArrayBuffer> {
+  const result = await apiFetchBlob({
+    path: `/api/console/frontstage/component-module-assets/${encodeURIComponent(sha256)}`,
+    signal,
+    baseUrl
+  });
+  return result.blob.arrayBuffer();
 }

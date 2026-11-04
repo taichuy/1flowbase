@@ -154,6 +154,12 @@ SQL 节点唯一输入字段为 `bindings.sql`。`config.sql` 属于已退出支
 
 `api-server/resources/ctx/block-context.v1.json` 是供页面编写与 MCP discovery 消费的 Host ABI 描述；接口返回成员的类型与说明，不执行这些成员。前端 Block SDK 定义 `BlockContext`，Host facade 提供实际能力。`i18n` 描述包含 `locale`、`status` 和 `t`，语言状态与翻译 fallback 由前端 Host 提供；后端描述、SDK 类型和真实 facade 的一致性由 contract parity 测试检查。
 
+### Provider 管理目标与分配规则
+
+Provider 账户操作、余额查询和目录刷新共用 `model_provider::account` 的运行目标解析链，依次完成 actor、manage 授权、工作区实例、ready installation、可用性、package 和运行配置维护。解析结果只投影后续需要的值及 discovery mode，不缓存解析结果、不重复读取 package。余额仍在维护后读取 secret 并脱敏；刷新仍独自持有显式加载、失败缓存和审计边界。
+
+编译目录与运行时路由共用 `control-plane::orchestration_runtime` 内部的分配规则映射；它只转换四种规则和配置值，不读取状态。编译快照缓存与运行期当前配置的读取仍由原 owner 分别负责。
+
 ### 供应商会话归属
 
 认证后的协议入口将 Responses、Messages、Chat 的显式会话信号封装为宿主身份，经 Native metadata / input mapping 进入 FlowRun；不从消息正文猜测会话。无信号的独立请求不共享绑定；受信 Responses continuation 可以继承原身份。业务 conversation 字段仍保持原义。
@@ -225,6 +231,10 @@ Compact 的 unary 执行可以投影为 SSE；有效工具回调则可能继续�
 未知 Binding、其他入口或认证配置不匹配时拒绝；不重复认证、不重读当前可变 Registry、不回退为丢失 lineage 的 Envelope。认证失败仍使用入口候选计划记录拒绝。进入业务 Resolve 后不再切换 Binding/Plan。
 
 OpenAI Responses 的 `response_dispatch` 分开承接准备与执行：准备阶段完成认证、历史响应与 callback admission、翻译及 continuation claim，产出拥有完整冻结身份的 Start / Resume 数据；`response_dispatch/execution` 按 Generate、Compact、Resume 选择独立 future，保留各 binding、HTTP / SSE / typed events 投影及 recorder / completion / reservation 的原 owner。准备与执行的 future 均由非 async factory 构造，再由原任务等待；准备完成后释放其 future 和 poll 栈，避免 Compact 执行时叠加无关 resume / Generate 分支的 poll 帧。此边界不创建新任务，不重做认证，也不把冻结身份降为脱离原 carrier / snapshot 的 Principal。原 2 MiB 路由测试验证既有协议行为；该测试线程大小不是服务端业务容量上限。
+
+原生 Responses 的客户端工具生命周期归客户端。实际选型为 `NativeOpaque` 时，纯客户端工具输出结束本次 invocation；预热、工具结果增量和完整历史重放走 Start 与作用域内的 Provider continuation，不通过历史 call ID 认领旧 callback。宿主内部工具循环可以临时使用 checkpoint；实际参与宿主工具执行的续跑保留 AgentFlow 所有权，并由宿主在 callback 顶层写入 `host_tool_continuation_owner=agentflow`。公开 Responses 入口优先按该明确归属的原生 callback 准入；升级前的在途 workflow 仅凭精确 cursor 或完整前序证明延续，已消费的旧 receipt 还必须匹配已有 durable resume attempt 才能回放，不能重新推理或重复计费。合法 checkpoint 恢复由宿主补齐归属，取消的旧 receipt 不参与新请求准入。显式 cursor 不命中时不退回 call ID 接管；encoded / semantic AgentFlow 的权限与幂等检查仍由原 owner 负责。纯客户端工具的正式完成事件与成功终态 CAS 同事务持久化，由提交成功的一方经原有 delivery claim/ack 出口发布。交付集合闭合上界明确区分原始 Waiting Recovery 与成功终态事件；后者只由赢得 CAS 的宿主事务写入 `terminal_commit` 证明，SQL 在同一快照中读取闭合边界与完整成员，诊断副本不能代替业务终态；按 node execution 与最终存活 call 匹配，内部已消费工具不交付给客户端。该标记不从请求 JSON 或 Provider metadata 取得，不改写历史 callback；原生工具与宿主工具的区分不改变认证、路由、usage 或真实上游错误。
+
+Responses / Chat 的请求用量由追加写入的 `runtime_usage_ledger` 累计值与 callback 准入时冻结的同源边界做差；流状态与边界读取共享窄账本查询。节点 metrics / output 只表示当前快照，不能当作累计计数做差。callback 边界携带 `native_usage_baseline_source = usage_ledger`，缺少同源证明的旧边界返回未知用量；账务账本、聊天内容与模型窗口配置不因此改写。
 
 Responses 输入由协议入口校验结构、字段类型、continuation 身份和 callback 关联；不设置独立于协议与供应商契约的 input 条数上限。普通请求与 V2 compaction 都保留完整输入，V2 trigger 的唯一性与末尾位置仍由原协议校验负责。
 

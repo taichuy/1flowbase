@@ -1,3 +1,4 @@
+import { ConfigProvider } from 'antd';
 import type { CanvasNodeSchema } from '../../../../../shared/schema-ui/v1/contracts/canvas-node-schema';
 import type { SchemaAdapter } from '../../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 
@@ -6,8 +7,10 @@ import { useNodeSchemaRuntime } from '../../inspector/use-node-schema-runtime';
 
 export function NodeConfigTab({
   schema,
-  adapter
+  adapter,
+  readOnly = false
 }: {
+  readOnly?: boolean;
   schema?: CanvasNodeSchema;
   adapter?: SchemaAdapter;
 } = {}) {
@@ -21,7 +24,14 @@ export function NodeConfigTab({
 
   return (
     <div className="agent-flow-node-detail__config-tab">
-      <NodeInspector schema={activeSchema} adapter={activeAdapter} />
+      <ConfigProvider componentDisabled={readOnly}>
+        <fieldset
+          disabled={readOnly}
+          style={{ border: 0, padding: 0, margin: 0 }}
+        >
+          <NodeInspector schema={activeSchema} adapter={activeAdapter} />
+        </fieldset>
+      </ConfigProvider>
     </div>
   );
 }

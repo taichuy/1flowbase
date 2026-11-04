@@ -34,6 +34,7 @@ import {
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { i18nText } from '../../../../shared/i18n/text';
 import { useAuthStore } from '../../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 
 type Values = {
   target: string;
@@ -46,6 +47,7 @@ function useNetworkEgressRoutesController() {
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
+  const can = useConsoleOperationAccess();
   const [route, setRoute] = useState<
     SettingsNetworkEgressRoute | null | undefined
   >();
@@ -133,6 +135,7 @@ function useNetworkEgressRoutesController() {
     });
   };
   const submit = (values: Values) => {
+    if (!can(route ? 'network_egress_routes.update' : 'network_egress_routes.create')) return;
     if (route)
       return update.mutate({
         id: route.id,
@@ -162,6 +165,7 @@ function useNetworkEgressRoutesController() {
     (models.data ?? []).map((item) => [item.id, item.display_name])
   );
   const movePoolMember = (index: number, offset: -1 | 1) => {
+    if (!can(route ? 'network_egress_routes.update' : 'network_egress_routes.create')) return;
     const nextIndex = index + offset;
     if (nextIndex < 0 || nextIndex >= selectedPoolMemberIds.length) return;
     const next = [...selectedPoolMemberIds];
@@ -179,11 +183,15 @@ export function NetworkEgressRoutesPanel() {
     open, routes, pools, models, modelName, proxyName, remove, route, setRoute, form,
     submit, create, update, target, poolMembers, selectedPoolMemberIds, movePoolMember
   } = useNetworkEgressRoutesController();
+  const can = useConsoleOperationAccess();
+  const canCreate = can('network_egress_routes.create');
+  const canDelete = can('network_egress_routes.delete');
+  const canSave = can(route ? 'network_egress_routes.update' : 'network_egress_routes.create');
   return (
     <SettingsSectionSurface heightMode="fill">
       <Flex vertical gap={16}>
         <Flex justify="flex-end" data-testid="network-center-routes-shell">
-          <Button type="primary" onClick={() => open(null)}>
+          <Button type="primary" disabled={!canCreate} onClick={() => { if (canCreate) open(null); }}>
             {i18nText('settings', 'auto.network_center_route_create')}
           </Button>
         </Flex>
@@ -269,9 +277,10 @@ export function NetworkEgressRoutesPanel() {
                         'settings',
                         'auto.network_center_route_delete_confirm'
                       )}
-                      onConfirm={() => remove.mutate(item.id)}
+                      disabled={!canDelete}
+                      onConfirm={() => { if (canDelete) remove.mutate(item.id); }}
                     >
-                      <Button type="link" danger>
+                      <Button type="link" danger disabled={!canDelete}>
                         {i18nText('settings', 'auto.delete')}
                       </Button>
                     </Popconfirm>
@@ -291,17 +300,18 @@ export function NetworkEgressRoutesPanel() {
             : 'auto.network_center_route_create'
         )}
         onCancel={() => setRoute(undefined)}
-        onOk={() => form.submit()}
+        okButtonProps={{ disabled: !canSave }}
+        onOk={() => { if (canSave) form.submit(); }}
         confirmLoading={create.isPending || update.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={submit}>
+        <Form form={form} disabled={!canSave} layout="vertical" onFinish={submit}>
           <Form.Item
             name="target"
             label={i18nText('settings', 'auto.network_center_route_consumer')}
             rules={[{ required: true }]}
           >
             <Select
-              disabled={Boolean(route)}
+              disabled={!canSave || Boolean(route)}
               options={[
                 {
                   value: 'github',
@@ -351,7 +361,7 @@ export function NetworkEgressRoutesPanel() {
               rules={[{ required: true }]}
             >
               <Select
-                disabled={Boolean(route)}
+                disabled={!canSave || Boolean(route)}
                 options={(models.data ?? []).map((item) => ({
                   value: item.id,
                   label: item.display_name
@@ -390,7 +400,7 @@ export function NetworkEgressRoutesPanel() {
                         type="text"
                         size="small"
                         icon={<ArrowUpOutlined />}
-                        disabled={index === 0}
+                        disabled={!canSave || index === 0}
                         aria-label={`${i18nText('settings', 'auto.move_up')}：${displayName}`}
                         onClick={() => movePoolMember(index, -1)}
                       />
@@ -398,7 +408,7 @@ export function NetworkEgressRoutesPanel() {
                         type="text"
                         size="small"
                         icon={<ArrowDownOutlined />}
-                        disabled={index === selectedPoolMemberIds.length - 1}
+                        disabled={!canSave || index === selectedPoolMemberIds.length - 1}
                         aria-label={`${i18nText('settings', 'auto.move_down')}：${displayName}`}
                         onClick={() => movePoolMember(index, 1)}
                       />

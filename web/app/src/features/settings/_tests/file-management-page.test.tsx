@@ -299,7 +299,7 @@ describe('File management settings page', () => {
   }, 20_000);
 
   test('workspace mode only shows file table tab when table view is allowed', async () => {
-    authenticateWithPermissions(['file_table.view.own']);
+    authenticateWithPermissions(['file_tables.list']);
 
     renderApp('/settings/files');
 
@@ -313,7 +313,7 @@ describe('File management settings page', () => {
   });
 
   test('create-only workspace mode hides file table tab and keeps create entry visible', async () => {
-    authenticateWithPermissions(['file_table.create.all']);
+    authenticateWithPermissions(['file_tables.create']);
     fileManagementApi.fetchSettingsFileTables.mockClear();
 
     renderApp('/settings/files');

@@ -9,6 +9,8 @@
     "billing_catalog_sync": "同步",
     "billing_catalog_sync_complete": "模型价格同步完成",
     "billing_catalog_sync_summary": "新增: {{inserted}}；更新: {{updated}}；未变化: {{unchanged}}；停用重复项: {{retired}}",
-    "billing_catalog_sync_failed": "同步失败，请检查网络或本地计价规则冲突后重试。"
+    "billing_catalog_sync_failed": "同步失败，请检查网络或本地计价规则冲突后重试。",
+    "billing_catalog_retained": "加载失败，保留上次成功加载的第 {{page}} 页；请重试。",
+    "billing_catalog_pagination": "共 {{total}} 条 / {{pages}} 页，每页 {{page_size}} 条"
   }
 }

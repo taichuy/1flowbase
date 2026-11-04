@@ -196,6 +196,14 @@ pub struct PricingCatalogSyncSummary {
     pub retired: usize,
 }
 
+/// A storage-owned synchronization transaction. Staged pages are not installed until finish;
+/// abandoning the session rolls back. Implementations must not accumulate full rule bodies.
+#[async_trait]
+pub trait OfficialPricingCatalogSync: Send {
+    async fn stage(&mut self, rules: &[PricingRule]) -> anyhow::Result<()>;
+    async fn finish(self: Box<Self>) -> anyhow::Result<PricingCatalogSyncSummary>;
+}
+
 #[async_trait]
 pub trait BillingRepository: Send + Sync {
     async fn list_pricing_rules(
@@ -224,6 +232,9 @@ pub trait BillingRepository: Send + Sync {
         &self,
         input: &UpsertPricingRuleInput,
     ) -> anyhow::Result<Option<PricingRule>>;
+    async fn begin_official_pricing_sync(
+        &self,
+    ) -> anyhow::Result<Box<dyn OfficialPricingCatalogSync>>;
     /// Atomically merge official catalog records, preserving manual records and local IDs.
     async fn sync_official_pricing_rules(
         &self,

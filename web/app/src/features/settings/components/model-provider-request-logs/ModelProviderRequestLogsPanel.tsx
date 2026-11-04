@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useMemo, useState } from 'react';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -107,6 +108,7 @@ function statusTag(record: ConsoleModelProviderRequestLog) {
 }
 
 export function ModelProviderRequestLogsPanel() {
+  const can = useConsoleOperationAccess();
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [page, setPage] = useState(1);
@@ -418,7 +420,7 @@ export function ModelProviderRequestLogsPanel() {
   }
 
   async function deleteSelectedRequestLogs() {
-    if (!csrfToken || selectedAttemptIds.length === 0) return;
+    if (!can('model_providers.request_logs.delete') || !csrfToken || selectedAttemptIds.length === 0) return;
     setDeletingSelected(true);
     try {
       await deleteSettingsModelProviderRequestLogs(
@@ -437,7 +439,7 @@ export function ModelProviderRequestLogsPanel() {
     continuationToken?: string,
     alreadyDeleted = 0
   ) {
-    if (!csrfToken) return;
+    if (!can('model_providers.request_logs.clear') || !csrfToken) return;
     setClearConfirmOpen(false);
     let continuation = continuationToken;
     let deletedCount = alreadyDeleted;
@@ -695,7 +697,7 @@ export function ModelProviderRequestLogsPanel() {
               </Button>
               <Button
                 danger
-                disabled={selectedAttemptIds.length === 0}
+                disabled={!can('model_providers.request_logs.delete') || selectedAttemptIds.length === 0}
                 loading={deletingSelected}
                 onClick={() => setDeleteConfirmOpen(true)}
               >
@@ -703,7 +705,7 @@ export function ModelProviderRequestLogsPanel() {
               </Button>
               <Button
                 danger
-                disabled={clearProgress?.status === 'running'}
+                disabled={!can('model_providers.request_logs.clear') || clearProgress?.status === 'running'}
                 onClick={() => setClearConfirmOpen(true)}
               >
                 {i18nText('settings', 'auto.request_log_clear')}
@@ -727,6 +729,7 @@ export function ModelProviderRequestLogsPanel() {
             clearProgress.status === 'failed' ? (
               <Button
                 size="small"
+                disabled={!can('model_providers.request_logs.clear')}
                 onClick={() =>
                   void clearRequestLogs(
                     clearProgress.continuationToken,
@@ -754,6 +757,7 @@ export function ModelProviderRequestLogsPanel() {
       ) : null}
       <Modal
         cancelText={i18nText('settings', 'auto.cancel')}
+        okButtonProps={{ disabled: !can('model_providers.request_logs.delete') }}
         confirmLoading={deletingSelected}
         okText={i18nText('settings', 'auto.confirm_delete')}
         open={deleteConfirmOpen}
@@ -769,7 +773,7 @@ export function ModelProviderRequestLogsPanel() {
       </Modal>
       <Modal
         cancelText={i18nText('settings', 'auto.cancel')}
-        okButtonProps={{ danger: true }}
+        okButtonProps={{ danger: true, disabled: !can('model_providers.request_logs.clear') }}
         okText={i18nText('settings', 'auto.request_log_confirm_clear')}
         open={clearConfirmOpen}
         title={i18nText('settings', 'auto.request_log_clear')}

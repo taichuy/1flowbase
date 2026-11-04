@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useEffect, useState } from 'react';
 
 import {
@@ -44,7 +45,6 @@ export function DataSourceResourcesPanel({
   discovering,
   previewingResourceKey,
   mappingResourceKey,
-  canManage,
   onValidate,
   onDiscover,
   onPreview,
@@ -57,7 +57,7 @@ export function DataSourceResourcesPanel({
   discovering: boolean;
   previewingResourceKey: string | null;
   mappingResourceKey: string | null;
-  canManage: boolean;
+  canManage?: boolean;
   onValidate: () => void;
   onDiscover: () => void;
   onPreview: (resource: SettingsDataSourceRemoteResource) => void;
@@ -66,6 +66,7 @@ export function DataSourceResourcesPanel({
     template: SettingsCompatibleDataModelTemplate
   ) => void;
 }) {
+  const can = useConsoleOperationAccess();
   const [mappingTarget, setMappingTarget] =
     useState<SettingsDataSourceRemoteResource | null>(null);
   const [selectedTemplate, setSelectedTemplate] =
@@ -178,9 +179,10 @@ export function DataSourceResourcesPanel({
         </Button>
         <Button
           type="primary"
-          disabled={!selectedTemplateIsCompatible || !mappingTarget}
+          disabled={!can('data_sources.map_to_model') || !selectedTemplateIsCompatible || !mappingTarget}
           onClick={() => {
             if (
+              can('data_sources.map_to_model') &&
               mappingTarget &&
               selectedTemplate &&
               selectedTemplateIsCompatible
@@ -228,10 +230,10 @@ export function DataSourceResourcesPanel({
             type="link"
             icon={<EyeOutlined aria-hidden="true" />}
             disabled={
-              !canManage || !dataSource.capabilities.can_preview_resources
+              !can('data_sources.preview') || !dataSource.capabilities.can_preview_resources
             }
             loading={previewingResourceKey === resource.resource_key}
-            onClick={() => onPreview(resource)}
+            onClick={() => { if (can('data_sources.preview')) onPreview(resource); }}
           >
             {i18nText('settings', 'auto.preview')}
           </Button>
@@ -250,7 +252,7 @@ export function DataSourceResourcesPanel({
               type="link"
               icon={<LinkOutlined aria-hidden="true" />}
               disabled={
-                !canManage || !dataSource.capabilities.can_map_resources
+                !can('data_sources.map_to_model') || !dataSource.capabilities.can_map_resources
               }
               loading={mappingResourceKey === resource.resource_key}
               onClick={() => setMappingTarget(resource)}
@@ -276,9 +278,9 @@ export function DataSourceResourcesPanel({
         {dataSource.capabilities.can_discover_resources ? (
           <Button
             icon={<ReloadOutlined aria-hidden="true" />}
-            disabled={!canManage}
+            disabled={!can('data_sources.discover')}
             loading={discovering}
-            onClick={onDiscover}
+            onClick={() => { if (can('data_sources.discover')) onDiscover(); }}
           >
             {i18nText('settings', 'auto.discover_resources')}
           </Button>
@@ -286,9 +288,9 @@ export function DataSourceResourcesPanel({
           <Button
             type="primary"
             icon={<CheckCircleOutlined aria-hidden="true" />}
-            disabled={!canManage}
+            disabled={!can('data_sources.validate')}
             loading={validating}
-            onClick={onValidate}
+            onClick={() => { if (can('data_sources.validate')) onValidate(); }}
           >
             {i18nText('settings', 'auto.validate_data_source')}
           </Button>

@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -90,11 +91,8 @@ function writeSourceIdToLocation(sourceId: string | null) {
   window.history.pushState({}, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
-export function SettingsDataModelsSection({
-  canManage
-}: {
-  canManage: boolean;
-}) {
+export function SettingsDataModelsSection(_props: { canManage?: boolean } = {}) {
+  const can = useConsoleOperationAccess();
   const queryClient = useQueryClient();
   const { message: messageApi } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
@@ -595,7 +593,6 @@ export function SettingsDataModelsSection({
                       null)
                     : null
                 }
-                canManage={canManage}
                 onValidate={() =>
                   validateDataSourceMutation.mutate(
                     selectedRuntimeExtensionDataSource
@@ -639,7 +636,6 @@ export function SettingsDataModelsSection({
                 updateModelMutation.isPending ||
                 deleteModelMutation.isPending
               }
-              canManage={canManage}
               onSelectModel={(model) => setSelectedModelId(model.id)}
               onEditModel={(model) => {
                 setSelectedModelId(model.id);
@@ -655,9 +651,9 @@ export function SettingsDataModelsSection({
             <DataModelDetailDrawer
               title={
                 editingModel
-                  ? i18nText('settings', 'auto.edit_item', {
-                      value1: editingModel.title
-                    })
+                  ? can('model_definitions.update')
+                    ? i18nText('settings', 'auto.edit_item', { value1: editingModel.title })
+                    : `${i18nText('settings', 'auto.view')} ${editingModel.title}`
                   : i18nText('settings', 'auto.edit_data_model')
               }
               open={Boolean(editingModel)}
@@ -667,7 +663,6 @@ export function SettingsDataModelsSection({
                 <DataModelDetail
                   model={editingModel}
                   allModels={models}
-                  canManage={canManage}
                   grants={scopeGrantsQuery.data ?? []}
                   grantsLoading={scopeGrantsQuery.isLoading}
                   grantsSaving={saveGrantMutation.isPending}
@@ -711,7 +706,6 @@ export function SettingsDataModelsSection({
             creationErrorMessage={getErrorMessage(
               createDataSourceMutation.error
             )}
-            canManage={canManage}
             onRefresh={async () => {
               await Promise.all([
                 dataSourcesQuery.refetch(),

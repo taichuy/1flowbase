@@ -50,12 +50,14 @@ function formatLocaleLabel(
 
 export function ProfileForm({
   me,
+  canEdit,
   statusLabel,
   submitting,
   errorMessage,
   onSubmit
 }: {
   me: MyProfile;
+  canEdit: boolean;
   statusLabel: string;
   submitting: boolean;
   errorMessage: string | null;
@@ -79,7 +81,7 @@ export function ProfileForm({
   }, [form, me]);
 
   const handleEditClick = () => {
-    setDrawerVisible(true);
+    if (canEdit) setDrawerVisible(true);
   };
 
   const handleDrawerClose = () => {
@@ -87,6 +89,7 @@ export function ProfileForm({
   };
 
   const handleFinish = async (values: ProfileFormValues) => {
+    if (!canEdit) return;
     await onSubmit({
       name: values.name.trim(),
       nickname: values.nickname.trim(),
@@ -114,6 +117,7 @@ export function ProfileForm({
             type="primary"
             icon={<EditOutlined />}
             onClick={handleEditClick}
+            disabled={!canEdit}
           >
             {t('profile.actions.edit')}
           </Button>
@@ -205,7 +209,7 @@ export function ProfileForm({
         title={t('profile.drawer.title')}
         size={400}
         onClose={handleDrawerClose}
-        open={drawerVisible}
+        open={drawerVisible && canEdit}
         extra={
           <Space>
             <Button onClick={handleDrawerClose}>
@@ -215,6 +219,7 @@ export function ProfileForm({
               type="primary"
               onClick={() => form.submit()}
               loading={submitting}
+              disabled={!canEdit}
             >
               {t('profile.actions.save')}
             </Button>
@@ -233,6 +238,7 @@ export function ProfileForm({
         <Form<ProfileFormValues>
           form={form}
           layout="vertical"
+          disabled={!canEdit}
           onFinish={handleFinish}
         >
           <Form.Item

@@ -318,3 +318,6 @@ async fn root_2014_ac_013_concurrent_native_selection_rejects_stale_revision() {
         .await
         .unwrap();
 }
+
+#[path = "native_plugin_target_integration/_tests/plugin_component_install.rs"]
+mod plugin_component_install;

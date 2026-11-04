@@ -524,7 +524,12 @@ async function renderAuthCenterReady() {
       onTimeout: (error) => new Error(context(phase), { cause: error })
     });
 
-  const view = renderApp('/settings/auth-center');
+  // Flush the real cached lazy route promises before measuring navigation.
+  // Navigation itself stays pending until the assertions below release it.
+  let view!: ReturnType<typeof renderApp>;
+  await act(async () => {
+    view = renderApp('/settings/auth-center');
+  });
   await waitForPhase('navigation-pending', () => {
     const pendingContext = context('navigation-pending');
     expect(

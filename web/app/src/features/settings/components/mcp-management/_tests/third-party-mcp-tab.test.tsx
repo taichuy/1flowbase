@@ -1,3 +1,4 @@
+import { useAuthStore } from '../../../../../state/auth-store';
 import {
   fireEvent,
   render,
@@ -59,6 +60,7 @@ function renderTab(onImported = vi.fn()) {
 
 describe('ThirdPartyMcpTab', () => {
   beforeEach(() => {
+    useAuthStore.setState({ csrfToken: 'csrf-123', actor: { id: 'root-1', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace-1' } });
     vi.clearAllMocks();
     upstreamApi.fetchSettingsMcpUpstreamConnections.mockResolvedValue([
       connection
@@ -187,7 +189,7 @@ describe('ThirdPartyMcpTab', () => {
           custom_header_name: null,
           status: 'enabled'
         },
-        ''
+        'csrf-123'
       );
     });
     await waitFor(() => {
@@ -252,7 +254,7 @@ describe('ThirdPartyMcpTab', () => {
           custom_header_name: null,
           credential: null
         },
-        ''
+        'csrf-123'
       );
     });
     expect(
@@ -293,7 +295,7 @@ describe('ThirdPartyMcpTab', () => {
           custom_header_name: null,
           credential: null
         },
-        ''
+        'csrf-123'
       );
     });
     expect(
@@ -332,7 +334,7 @@ describe('ThirdPartyMcpTab', () => {
       expect(upstreamApi.importSettingsMcpUpstreamTools).toHaveBeenCalledWith(
         connection.connection_id,
         { remote_tool_names: ['search_documents'] },
-        ''
+        'csrf-123'
       );
     });
     expect(onImported).toHaveBeenCalledTimes(1);

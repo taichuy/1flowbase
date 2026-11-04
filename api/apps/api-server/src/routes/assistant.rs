@@ -73,7 +73,7 @@ use crate::{
     },
 };
 
-const ASSISTANT_META_KEY: &str = "embedded_assistant";
+use control_plane::profile::ASSISTANT_META_KEY;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -372,12 +372,15 @@ pub(crate) fn run_dependencies(state: Arc<ApiState>) -> AssistantRunDependencies
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::Authenticated;
+    use access_control::ConsoleRouteOwnership::{Authenticated, ConsoleOperation};
 
     ConsoleRouteAssembly::new()
         .route(
             "/assistant/settings",
-            console_get(get_settings, Authenticated).patch(update_settings, Authenticated),
+            console_get(get_settings, Authenticated).patch(
+                update_settings,
+                ConsoleOperation("assistant_update_settings".to_owned()),
+            ),
         )
         .route(
             "/assistant/conversations",

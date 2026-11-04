@@ -298,6 +298,69 @@ impl FrontendBlockCatalogRepository for MemoryNodeContributionRepository {
     }
 }
 
+// These repository fixtures exercise legacy, non-managed frontend contributions.
+// A durable-authority request must fail the test instead of implicitly granting it.
+#[async_trait]
+impl control_plane::ports::PluginContributionAuthorityRepository
+    for MemoryNodeContributionRepository
+{
+    async fn lock_managed_installation_switch(
+        &self,
+        _: &control_plane::ports::ManagedInstallationSwitch,
+    ) -> Result<Box<dyn control_plane::ports::ManagedInstallationSwitchLease>> {
+        panic!("unexpected managed installation switch in legacy frontend fixture")
+    }
+
+    async fn lock_contribution_authority_batch(
+        &self,
+        _: &[(Uuid, Uuid)],
+    ) -> Result<Box<dyn control_plane::ports::ContributionAuthorityLease>> {
+        panic!("unexpected authority batch in legacy frontend fixture")
+    }
+
+    async fn contribution_authority_workspaces(&self, _: Uuid) -> Result<Vec<Uuid>> {
+        panic!("unexpected authority workspaces in legacy frontend fixture")
+    }
+
+    async fn lock_installation_contribution_authority(
+        &self,
+        _: Uuid,
+        _: Uuid,
+    ) -> Result<Box<dyn control_plane::ports::ContributionAuthorityLease>> {
+        panic!("unexpected installation authority lock in legacy frontend fixture")
+    }
+
+    async fn grant_contribution_authorization(
+        &self,
+        _: &control_plane::ports::GrantContributionAuthorizationInput,
+    ) -> Result<domain::PluginContributionAuthoritySnapshot> {
+        panic!("unexpected authority grant in legacy frontend fixture")
+    }
+
+    async fn revoke_contribution_authorization(
+        &self,
+        _: &control_plane::ports::RevokeContributionAuthorizationInput,
+    ) -> Result<domain::PluginContributionAuthoritySnapshot> {
+        panic!("unexpected authority revoke in legacy frontend fixture")
+    }
+
+    async fn query_contribution_authority(
+        &self,
+        _: Uuid,
+        _: Uuid,
+        _: &domain::AuditLogRecord,
+    ) -> Result<domain::PluginContributionAuthoritySnapshot> {
+        panic!("unexpected authority query in legacy frontend fixture")
+    }
+
+    async fn lock_contribution_authority(
+        &self,
+        _: &extension_contracts::extension_bus::ManagedContributionSubject,
+    ) -> Result<Box<dyn control_plane::ports::ContributionAuthorityLease>> {
+        panic!("unexpected contribution authority lock in legacy frontend fixture")
+    }
+}
+
 #[async_trait]
 impl PluginRepository for MemoryNodeContributionRepository {
     async fn upsert_installation(
@@ -867,6 +930,7 @@ fn frontend_candidate(
         title: "Hero".into(),
         runtime: "native_react".into(),
         entry: "blocks/hero.js".into(),
+        ui_registration: "code_template".into(),
         code_template: Some("official".into()),
         code_template_version: Some("official-v1".into()),
         code_template_language: Some("jsx".into()),
@@ -888,6 +952,7 @@ fn frontend_candidate(
         artifact,
         assignment: Some(assignment),
         catalog_entry,
+        authority: None,
     }
 }
 
@@ -1092,4 +1157,79 @@ async fn frontend_catalog_missing_facts_are_reused_and_read_errors_keep_lazy_ord
         repository.frontend.read().await.reads,
         ["blocks", "defaults", "assignments"]
     );
+}
+
+#[test]
+fn mixed_system_service_frontend_retains_explicit_assignment_and_durable_authority() {
+    use control_plane::frontend_block_catalog::{
+        FrontendContributionResolution, FrontendContributionResolver,
+    };
+    use domain::{ContributionAuthorizationStatus, ContributionResourceScope};
+    let workspace = Uuid::now_v7();
+    let mut candidate = frontend_candidate(workspace, "1.0.0");
+    candidate.installation.contract_version = "1flowbase.extension-bus/v1".into();
+    let owner = candidate.installation.provider_code.clone();
+    let contribution = format!("{owner}.hero");
+    candidate.installation.metadata_json = serde_json::json!({
+        "managed_service": {"scope":"system"},
+        "managed": {
+            "module": {"bus_version":"v1", "module_id":owner, "module_version":"1.0.0", "module_kind":"capability",
+                "contributions":[{"contribution_id":contribution,"contributor_module_id":owner,"point_id":FRONTEND_BLOCK_CONTRIBUTION_POINT_ID,
+                    "contract_version":"1","required_permissions":[FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION],"mode":"append"}]},
+            "execution_bindings":[{"contribution_id":contribution,"execution_mode":"declarative_only",
+                "runtime":{"protocol":"stdio_json","entry":"bin/fixture"},"handler":"render.hero","payload":{"kind":"frontend_block","contribution_code":"hero"}}]
+        }
+    });
+    candidate.authority = Some(domain::PluginContributionAuthoritySnapshot {
+        installation_id: candidate.installation.id,
+        workspace_id: domain::SYSTEM_SCOPE_ID,
+        revision: 1,
+        authorizations: vec![domain::PluginContributionAuthorization {
+            id: Uuid::now_v7(),
+            installation_id: candidate.installation.id,
+            workspace_id: domain::SYSTEM_SCOPE_ID,
+            contribution_id: contribution,
+            point_id: FRONTEND_BLOCK_CONTRIBUTION_POINT_ID.into(),
+            permission: FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION.into(),
+            resource_scope: ContributionResourceScope::Workspace,
+            permission_contract_id: FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_ID.into(),
+            permission_contract_version: "1".into(),
+            status: ContributionAuthorizationStatus::Active,
+            granted_by: Uuid::nil(),
+            revoked_by: None,
+            granted_at: time::OffsetDateTime::UNIX_EPOCH,
+            revoked_at: None,
+            revision: 1,
+        }],
+    });
+    let resolver = FrontendContributionResolver::compile(frontend_contribution_graph()).unwrap();
+    assert!(matches!(
+        resolver.resolve(candidate.clone()),
+        FrontendContributionResolution::Active(_)
+    ));
+    let mut missing_assignment = candidate.clone();
+    missing_assignment.assignment = None;
+    assert!(matches!(
+        resolver.resolve(missing_assignment),
+        FrontendContributionResolution::Disabled(_)
+    ));
+    let mut wrong_workspace = candidate.clone();
+    wrong_workspace.workspace_id = Uuid::now_v7();
+    assert!(matches!(
+        resolver.resolve(wrong_workspace),
+        FrontendContributionResolution::Disabled(_)
+    ));
+    let mut revoked = candidate.clone();
+    revoked.authority.as_mut().unwrap().authorizations[0].status =
+        ContributionAuthorizationStatus::Revoked;
+    assert!(matches!(
+        resolver.resolve(revoked),
+        FrontendContributionResolution::Disabled(_)
+    ));
+    let mut wrong_scope = candidate;
+    wrong_scope.authority.as_mut().unwrap().workspace_id = workspace;
+    assert!(matches!(
+        resolver.resolve(wrong_scope),
+        FrontendContributionResolution::Disabled(_)
+    ));
 }

@@ -174,6 +174,43 @@ where
     })
 }
 
+/// A client call owns only the latest candidate from its exact node execution.
+/// The waiting owner supplies the remaining external set after internal tools run.
+fn retain_client_tool_deliveries(
+    events: &mut Vec<crate::ports::RuntimeEventPayload>,
+    scopes: &[(&str, Uuid, &[Value])],
+) {
+    let mut retained_calls = std::collections::BTreeSet::new();
+    events.reverse();
+    events.retain(|event| {
+        let item = &event.payload["item"];
+        let call_id = item
+            .get("call_id")
+            .or_else(|| item.get("id"))
+            .and_then(Value::as_str);
+        let node_run_id = event.payload["node_run_id"]
+            .as_str()
+            .and_then(|id| Uuid::parse_str(id).ok());
+        call_id
+            .zip(node_run_id)
+            .is_some_and(|(call_id, node_run_id)| {
+                scopes.iter().any(|(node_id, execution_id, calls)| {
+                    event.payload["node_id"].as_str() == Some(*node_id)
+                        && *execution_id == node_run_id
+                        && calls.iter().any(|call| {
+                            call.get("call_id")
+                                .or_else(|| call.get("id"))
+                                .and_then(Value::as_str)
+                                == Some(call_id)
+                                && call.get("name").or_else(|| call.pointer("/function/name"))
+                                    == item.get("name")
+                        })
+                }) && retained_calls.insert((node_run_id, call_id.to_owned()))
+            })
+    });
+    events.reverse();
+}
+
 pub(super) async fn persist_flow_debug_outcome<R>(
     repository: &R,
     input: PersistFlowDebugOutcomeInput<'_>,
@@ -317,25 +354,37 @@ where
     let mut stream_events = persisted_node_traces.stream_events;
     let mut close_reason = None;
 
-    // Buffered tool deliveries are candidates until the llm_tool_calls waiting
-    // state commits them. Any other outcome (a provider fault after the tool
-    // call was generated, a human wait, a terminal) discards them: the client
-    // never received an executable event, so nothing is owed.
-    if !tool_delivery_events.is_empty()
-        && !matches!(
-            &outcome.stop_reason,
-            orchestration_runtime::execution_state::ExecutionStopReason::WaitingCallback(wait)
-                if wait.callback_kind == "llm_tool_calls"
-        )
-    {
-        tracing::warn!(
-            flow_run_id = %flow_run.id,
-            discarded = tool_delivery_events.len(),
-            stop_reason = ?std::mem::discriminant(&outcome.stop_reason),
-            "uncommitted tool delivery candidates discarded with a non-tool-wait outcome"
-        );
-        tool_delivery_events.clear();
-    }
+    // Only tools still owed to the client can cross the durable handoff. Host
+    // tools consumed inline may share the same flow and node execution buffer.
+    let delivery_scopes = match &outcome.stop_reason {
+        orchestration_runtime::execution_state::ExecutionStopReason::WaitingCallback(wait)
+            if wait.callback_kind == "llm_tool_calls" =>
+        {
+            waiting_node_run
+                .as_ref()
+                .zip(
+                    wait.request_payload
+                        .get("tool_calls")
+                        .and_then(Value::as_array),
+                )
+                .map(|(node, calls)| vec![(node.node_id.as_str(), node.id, calls.as_slice())])
+                .unwrap_or_default()
+        }
+        orchestration_runtime::execution_state::ExecutionStopReason::Completed => outcome
+            .node_traces
+            .iter()
+            .filter_map(|trace| {
+                let node = prepared_node_runs.and_then(|nodes| nodes.get(&trace.node_id))?;
+                let calls = trace
+                    .output_payload
+                    .get("tool_calls")
+                    .and_then(Value::as_array)?;
+                Some((trace.node_id.as_str(), node.id, calls.as_slice()))
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    retain_client_tool_deliveries(&mut tool_delivery_events, &delivery_scopes);
 
     let persisted_flow_run = match &outcome.stop_reason {
         orchestration_runtime::execution_state::ExecutionStopReason::WaitingHuman(wait) => {
@@ -431,13 +480,11 @@ where
             )?;
             let mut request_payload = wait.request_payload.clone();
             if wait.callback_kind == "llm_tool_calls" {
-                let node_usages = repository.get_flow_run_node_usages(flow_run.id).await?;
-                request_payload["native_usage_baseline"] = serde_json::to_value(
-                    crate::application_public_api::run_service::native_usage_for_output_and_nodes(
-                        &answer_output_payload,
-                        &node_usages,
-                    ),
-                )?;
+                request_payload["native_usage_baseline"] = repository
+                    .get_flow_run_usage_totals(flow_run.id)
+                    .await?
+                    .unwrap_or(Value::Null);
+                request_payload["native_usage_baseline_source"] = json!("usage_ledger");
             }
             let mut snapshot = snapshot.clone();
             if wait.callback_kind == "llm_tool_calls" {
@@ -611,7 +658,28 @@ where
                     )?,
                 )?;
             }
+            for event in &mut tool_delivery_events {
+                event.payload["committed_delivery"] = json!(true);
+                event.persist_required = false;
+            }
+            let tool_delivery_inputs = tool_delivery_events
+                .iter()
+                .map(|event| {
+                    runtime_event_persister::build_runtime_event_input(
+                        flow_run.id,
+                        event
+                            .payload
+                            .get("node_run_id")
+                            .and_then(Value::as_str)
+                            .and_then(|id| Uuid::parse_str(id).ok()),
+                        event.event_type.clone(),
+                        event.source,
+                        event.payload.clone(),
+                    )
+                })
+                .collect();
             stream_events.extend(presentation_events);
+            stream_events.extend(tool_delivery_events);
             let terminal_event =
                 debug_stream_events::flow_finished(flow_run.id, output_payload.clone());
             return commit_terminal_outcome(
@@ -621,6 +689,7 @@ where
                     flow_run_id: flow_run.id,
                     expected_status: flow_run.status,
                     require_initial_execution: false,
+                    tool_delivery_events: tool_delivery_inputs,
                     result: CommitFlowRunTerminalResult::Succeeded {
                         output_payload: output_payload.clone(),
                     },
@@ -649,6 +718,7 @@ where
                     flow_run_id: flow_run.id,
                     expected_status: flow_run.status,
                     require_initial_execution: false,
+                    tool_delivery_events: Vec::new(),
                     result: CommitFlowRunTerminalResult::Incomplete {
                         output_payload: output_payload.clone(),
                     },
@@ -678,6 +748,7 @@ where
                     flow_run_id: flow_run.id,
                     expected_status: flow_run.status,
                     require_initial_execution: false,
+                    tool_delivery_events: Vec::new(),
                     result: CommitFlowRunTerminalResult::Failed {
                         output_payload,
                         error_payload: error_payload.clone(),

@@ -38,7 +38,11 @@ function PublicBrandObserver() {
 beforeEach(() => {
   fetchSettings.mockReset().mockResolvedValue(initial);
   saveSettings.mockReset().mockImplementation(async (value) => value);
-  useAuthStore.setState({ csrfToken: 'csrf-test' });
+  useAuthStore.setState({
+    csrfToken: 'csrf-test',
+    actor: { id: 'user-1', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace-1' },
+    me: null
+  });
 });
 test('saves the entire form, preserves HTML and publishes updated public metadata', async () => {
   render(
@@ -100,4 +104,31 @@ test('reset restores persisted values and a blank system name does not save', as
   fireEvent.click(screen.getByRole('button', { name: '保 存' }));
   await screen.findByText('请输入系统名称');
   expect(saveSettings).not.toHaveBeenCalled();
+});
+
+function setOperations(permissions: string[]) {
+  useAuthStore.setState({
+    actor: { id: 'user-1', account: 'member', effective_display_role: 'member', current_workspace_id: 'workspace-1' },
+    me: { id: 'user-1', account: 'member', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: 'member', permissions }
+  });
+}
+
+test('view access preserves branding data while save and upload stay disabled', async () => {
+  setOperations(['system.branding.get']);
+  const { container } = render(<AppProviders><SystemSettingsPanel /></AppProviders>);
+  await screen.findByDisplayValue('1flowbase');
+  expect(screen.getByLabelText('系统名称')).toBeDisabled();
+  expect(screen.getByRole('button', { name: '保 存' })).toBeDisabled();
+  expect(container.querySelector('input[type="file"]')).toBeDisabled();
+  fireEvent.submit(container.querySelector('form')!);
+  expect(saveSettings).not.toHaveBeenCalled();
+});
+
+test('the exact branding save grant enables a member to save', async () => {
+  setOperations(['system.branding.get', 'system.branding.save']);
+  render(<AppProviders><SystemSettingsPanel /></AppProviders>);
+  await screen.findByDisplayValue('1flowbase');
+  fireEvent.change(screen.getByLabelText('系统名称'), { target: { value: 'Member brand' } });
+  fireEvent.click(screen.getByRole('button', { name: '保 存' }));
+  await waitFor(() => expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ system_name: 'Member brand' }), 'csrf-test'));
 });

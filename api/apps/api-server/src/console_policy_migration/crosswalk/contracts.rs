@@ -11,17 +11,25 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         &["system.branding.get", "system.branding.save"],
     ),
     core_authenticated_other("core.authenticated", &["core.authenticated"]),
+    core_simple_other(
+        "other.personal-account",
+        &[
+            "patch_me",
+            "patch_me_meta",
+            "assistant_update_settings",
+            "notifications.channels.read_all",
+            "notifications.messages.unread",
+            "notifications.messages.read_all",
+        ],
+    ),
     core_simple_other("other.local-commands", &["local_commands.execute"]),
     core_authenticated_other(
         "core.authenticated",
         &[
             "notifications.events.subscribe",
             "notifications.channels.list",
-            "notifications.channels.read_all",
-            "notifications.messages.unread",
             "notifications.messages.list",
             "notifications.messages.read",
-            "notifications.messages.read_all",
             "notifications.messages.unread_count",
             "notifications.types.list",
         ],
@@ -199,6 +207,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "file_tables.delete",
             "file_tables.list",
             "file_tables.storage.bind",
+            "files.access_links.create",
         ],
     ),
     core_simple_settings(
@@ -439,6 +448,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "system_backups.catalog",
             "system_templates.catalog",
             "system_templates.export",
+            "system_templates.download",
             "system_templates.preview",
             "system_templates.install",
             "system_backups.create",
@@ -490,6 +500,16 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // Bulk and unread changes are configurable; reading an owned message is self-service.
+    "notifications.channels.read_all",
+    "notifications.messages.unread",
+    "notifications.messages.read_all",
+    // Personal writes are independently configurable; authenticated security actions stay open.
+    "patch_me",
+    "patch_me_meta",
+    "assistant_update_settings",
+    // A data read grant must not silently acquire temporary anonymous-link authority.
+    "files.access_links.create",
     // Previously root-only; historic role grants must not acquire host command access.
     "local_commands.execute",
     // Proxy discovery is a new authoring grant, independent of secret-management access.
@@ -586,6 +606,7 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "system_backups.catalog",
     "system_templates.catalog",
     "system_templates.export",
+    "system_templates.download",
     "system_templates.preview",
     "system_templates.install",
     "system_backups.create",

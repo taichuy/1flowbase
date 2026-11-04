@@ -91,7 +91,7 @@ pub(super) fn completed_v2_compaction_response(
         model,
         output: vec![compaction_item],
         output_text: String::new(),
-        usage: OpenAiResponsesUsage::default(),
+        usage: Some(OpenAiResponsesUsage::default()),
         incomplete_details: None,
         previous_response_id: None,
     }

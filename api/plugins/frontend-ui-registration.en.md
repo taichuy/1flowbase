@@ -1,0 +1,52 @@
+# Plugin frontend UI registration
+
+[中文](frontend-ui-registration.md)
+
+`block_contributions[].ui_registration` explicitly selects the management destination:
+
+| Value | Destination | Behavior |
+| --- | --- | --- |
+| `code_template` (default when omitted) | Settings → UI Management → Code Templates | A complete block template for copying, editing and publishing. Does not automatically create a UI component record. |
+| `component` | Settings → UI Management → Components | An automatically registered, plugin-owned read-only UI component. Excluded from both settings and workspace code-template lists. |
+
+The destinations are mutually exclusive. The presence of `code_template` source alone must not register a contribution in both places.
+`component` requires `native_react`, nonempty `code_template`, a version and JSX/TSX language.
+The source still supports block mounting and component insertion; the destination does not change the runtime module/asset loading contract.
+
+```yaml
+block_contributions:
+  - contribution_code: Calendar
+    title: Calendar
+    runtime: native_react
+    entry: default
+    ui_registration: component
+    code_template: "import { Calendar } from '@taichuy/taichuy-calendar'; export default () => <Calendar />;"
+    code_template_version: 0.1.5
+    code_template_language: tsx
+    # Declare code_modules, context_contract and permissions as required by the manifest contract.
+```
+
+Plugins declare contributions only. The host owns transactional installation, idempotent publisher/contribution upgrades, read-only provenance and uninstall cleanup.
+Existing manually maintained templates and components are not deleted or rewritten. Older packages without this field remain code templates; selecting Components requires a plugin version upgrade with an explicit `component` declaration.
+A host source build supporting this field is required; an older published binary with the same version number is not necessarily compatible.
+
+## Component codes
+
+The host generates `component_code` as `<publisher_namespace>.<artifact_id>.<component-name>`:
+
+- Publisher and artifact identifiers come from the durable installation, not the npm scope, display name, or frontend.
+- The component name comes from `contribution_code`: split PascalCase/camelCase including acronym boundaries, replace runs of non-ASCII-alphanumeric separators with `-`, trim leading/trailing `-`, then lowercase. For example, `BirthInfo` becomes `birth-info`, and `HTTPClient` becomes `http-client`.
+- Versions are excluded. Upgrades retain component UUIDs and ownership; the normalized component name must not be empty.
+- Normalization does not guarantee uniqueness. If different contributions or owners produce the same code, the entire transaction is rejected and rolled back. Existing records are never overwritten and no hash or numeric suffix is appended.
+- A formal migration renames existing `plugin.<hash>` records in place, preserving official/custom records, component sources, and page references.
+
+For the calendar package above (`publisher_namespace: 1flowbase`, `plugin_id: taichuy-calendar`):
+
+| contribution_code | component_code |
+| --- | --- |
+| Calendar | `1flowbase.taichuy-calendar.calendar` |
+| Almanac | `1flowbase.taichuy-calendar.almanac` |
+| BirthInfo | `1flowbase.taichuy-calendar.birth-info` |
+| ZiWei | `1flowbase.taichuy-calendar.zi-wei` |
+| Bazi | `1flowbase.taichuy-calendar.bazi` |
+| CalendarPage | `1flowbase.taichuy-calendar.calendar-page` |

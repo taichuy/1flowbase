@@ -127,7 +127,52 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
     );
 
     assert_eq!(routes("system.model-providers").len(), 26);
-    assert_eq!(routes("system.backups").len(), 16);
+    assert_eq!(
+        routes("system.backups"),
+        vec![
+            (
+                "DELETE",
+                "/api/console/settings/system-backups/{backup_set_id}"
+            ),
+            ("GET", "/api/console/settings/system-backups"),
+            ("GET", "/api/console/settings/system-backups/catalog"),
+            (
+                "GET",
+                "/api/console/settings/system-backups/recovery/status"
+            ),
+            (
+                "GET",
+                "/api/console/settings/system-backups/{backup_set_id}"
+            ),
+            (
+                "GET",
+                "/api/console/settings/system-backups/{backup_set_id}/download"
+            ),
+            ("GET", "/api/console/settings/system-templates/catalog"),
+            ("POST", "/api/console/settings/system-backups"),
+            ("POST", "/api/console/settings/system-backups/import"),
+            (
+                "POST",
+                "/api/console/settings/system-backups/recovery/reauth"
+            ),
+            (
+                "POST",
+                "/api/console/settings/system-backups/{backup_set_id}/recovery/intents"
+            ),
+            (
+                "POST",
+                "/api/console/settings/system-backups/{backup_set_id}/recovery/preflight"
+            ),
+            (
+                "POST",
+                "/api/console/settings/system-backups/{backup_set_id}/verify"
+            ),
+            ("POST", "/api/console/settings/system-templates/download"),
+            ("POST", "/api/console/settings/system-templates/export"),
+            ("POST", "/api/console/settings/system-templates/install"),
+            ("POST", "/api/console/settings/system-templates/preview"),
+        ]
+    );
     assert_eq!(
         routes("system.extension-center"),
         vec![

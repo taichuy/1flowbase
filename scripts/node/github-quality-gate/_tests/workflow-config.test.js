@@ -149,7 +149,8 @@ test("root_1998_pg_shards_prepare_locked_metadata_before_offline_dependency_test
     path.join(repoRoot, "api/crates/control-plane-postgres-tests/tests/dependency_boundaries.rs"),
     "utf8",
   );
-  assert.match(dependencyTest, /"metadata",\s*"--locked",\s*"--offline"/u);
+  assert.match(dependencyTest, /command\.arg\("metadata"\)/u);
+  assert.match(dependencyTest, /\.args\(\[\s*"--locked",\s*"--offline",\s*"--format-version",\s*"1",\s*"--manifest-path"/u);
 });
 
 function readGitHubAutomationDocs() {
@@ -766,60 +767,61 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
   assert.doesNotMatch(workflow, /test-binar(?:y|ies)/u);
 });
 
-test("API-server and Host quality-gate shards build and export the real SDK worker fixtures", () => {
+test("backend fixture callers keep their scope and target while sharing one SDK build", () => {
   const workflow = readQualityGateWorkflow();
-  const singleScope = workflow.slice(
-    workflow.indexOf("  single-scope-gate:\n"),
-    workflow.indexOf("  repo-tooling-gate:\n"),
-  );
-  const backendMatrix = workflow.slice(
-    workflow.indexOf("  repo-backend-gate:\n"),
-    workflow.indexOf("  coverage-frontend-gate:\n"),
-  );
-
-  for (const [job, scope, target] of [
-    [singleScope, "inputs.scope", "rust-single-backend/${{ inputs.scope }}/target"],
-    [backendMatrix, "matrix.scope", "rust-backend/${{ matrix.scope }}/target"],
+  const matches = [...workflow.matchAll(/^      - name: Build [^\n]*worker fixtures\n(?:(?!^      - ).*\n)*/gmu)];
+  const callers = matches.map((match) => match[0]);
+  assert.equal(callers.length, 5);
+  for (const [index, scope, target, condition] of [
+    [0, "inputs.scope", "rust-single-backend/${{ inputs.scope }}/target", "startsWith(inputs.scope, 'repo-backend-test-api-server-') || inputs.scope == 'repo-backend-test-runtime-storage-fast'"],
+    [1, "inputs.scope", "rust-single-coverage/${{ inputs.scope }}/target", "inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || inputs.scope == 'coverage-backend-api-server' || inputs.scope == 'coverage-backend-runtime-extension-host'"],
+    [2, "matrix.scope", "rust-backend/${{ matrix.scope }}/target", "startsWith(matrix.scope, 'repo-backend-test-api-server-') || matrix.scope == 'repo-backend-test-runtime-storage-fast'"],
+    [3, "matrix.scope", "rust-coverage/${{ matrix.scope }}/target", "matrix.scope == 'coverage-backend-runtime-extension-host'"],
+    [4, null, "rust-coverage/api-server-shadow/target", null],
   ]) {
-    const stepStart = job.indexOf("      - name: Build API server worker fixtures\n");
-    const actionStart = job.indexOf("      - uses: ./.github/actions/quality-gate\n", stepStart);
-    assert.ok(
-      stepStart >= 0 && actionStart > stepStart,
-      "fixture build must precede the quality gate action",
-    );
-
-    const step = job.slice(stepStart, actionStart);
-    assert.ok(
-      step.includes("if: ${{ startsWith(" + scope + ", 'repo-backend-test-api-server-') || " + scope + " == 'repo-backend-test-runtime-storage-fast' }}"),
-    );
-    assert.ok(
-      step.includes("CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/" + target),
-    );
-    assert.match(
-      step,
-      /cargo build --locked --manifest-path api\/Cargo\.toml -p runtime-extension-sdk --example managed_hook_worker[\s\S]*cargo build --locked --manifest-path api\/Cargo\.toml -p runtime-extension-sdk --example managed_event_worker/u,
-    );
-    assert.match(
-      step,
-      /strip --strip-debug "\$CARGO_TARGET_DIR\/debug\/examples\/managed_hook_worker"[\s\S]*strip --strip-debug "\$CARGO_TARGET_DIR\/debug\/examples\/managed_event_worker"[\s\S]*MANAGED_HOOK_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/managed_hook_worker[\s\S]*MANAGED_EVENT_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/managed_event_worker/u,
-    );
+    const step = callers[index];
+    const jobTail = workflow.slice(matches[index].index).split(/\n  [\w-]+:\n/u)[0];
+    assert.ok(jobTail.includes("      - uses: ./.github/actions/quality-gate\n"), "fixture action precedes its job gate");
+    assert.match(step, /uses: \.\/\.github\/actions\/build-sdk-worker-fixtures/u);
+    assert.ok(step.includes("CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/" + target));
+    if (scope) assert.ok(step.includes("if: ${{ " + condition + " }}"));
+    else assert.doesNotMatch(step, /if:/u);
+    assert.doesNotMatch(step, /run:|shell:|cargo build/u);
   }
 });
 
-test("API-server coverage shards build, strip and export managed SDK fixtures", () => {
-  const workflow = readQualityGateWorkflow();
-  const coverage = workflow.slice(
-    workflow.indexOf("  coverage-backend-api-server-sharded:\n"),
-    workflow.indexOf("  coverage-backend-api-server-sharded-merge:\n"),
-  );
-  const fixtureStart = coverage.indexOf("      - name: Build API server coverage worker fixtures\n");
-  const actionStart = coverage.indexOf("      - uses: ./.github/actions/quality-gate\n", fixtureStart);
-  assert.ok(fixtureStart >= 0 && actionStart > fixtureStart);
-  const step = coverage.slice(fixtureStart, actionStart);
-  assert.match(step, /CARGO_TARGET_DIR: \$\{\{ github\.workspace \}\}\/tmp\/quality-gate-cache\/rust-coverage\/api-server-shadow\/target/u);
-  assert.match(step, /cargo build[\s\S]*managed_hook_worker[\s\S]*cargo build[\s\S]*managed_event_worker/u);
-  assert.match(step, /strip --strip-debug[\s\S]*managed_hook_worker[\s\S]*strip --strip-debug[\s\S]*managed_event_worker/u);
-  assert.match(step, /MANAGED_HOOK_WORKER_FIXTURE=\$CARGO_TARGET_DIR[\s\S]*MANAGED_EVENT_WORKER_FIXTURE=\$CARGO_TARGET_DIR/u);
+test("shared SDK fixture action builds every worker once and exports only after all strips succeed", () => {
+  const { spawnSync } = require("node:child_process");
+  const os = require("node:os");
+  const action = fs.readFileSync(path.join(repoRoot, ".github/actions/build-sdk-worker-fixtures/action.yml"), "utf8");
+  assert.match(action, /using: composite/u);
+  assert.match(action, /shell: bash/u);
+  const script = action.split("      run: |\n")[1];
+  assert.ok(script);
+  const examples = ["managed_hook_worker", "managed_event_worker", "notification_worker", "notification_authorization_worker"];
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-worker-fixtures-"));
+  try {
+    for (const [cargoStatus, stripStatus] of [[0, 0], [9, 0], [0, 7]]) {
+      const envFile = path.join(dir, "env");
+      const logFile = path.join(dir, "commands");
+      fs.writeFileSync(envFile, "");
+      fs.writeFileSync(logFile, "");
+      const result = spawnSync("bash", ["-c", `
+        cargo() { printf 'cargo %s\\n' "$*" >> "$COMMAND_LOG"; return "$CARGO_STATUS"; }
+        strip() { printf 'strip %s\\n' "$*" >> "$COMMAND_LOG"; return "$STRIP_STATUS"; }
+        ${script}
+      `], { encoding: "utf8", env: { ...process.env, CARGO_TARGET_DIR: dir, GITHUB_ENV: envFile, COMMAND_LOG: logFile, CARGO_STATUS: String(cargoStatus), STRIP_STATUS: String(stripStatus) } });
+      assert.equal(result.status, cargoStatus || stripStatus, result.stderr);
+      const commands = fs.readFileSync(logFile, "utf8").trim().split("\n");
+      assert.equal(commands[0], "cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk " + examples.map((name) => "--example=" + name).join(" "));
+      assert.equal(commands.filter((line) => line.startsWith("cargo ")).length, 1);
+      assert.equal(commands.length, cargoStatus ? 1 : stripStatus ? 2 : 5);
+      assert.equal(fs.readFileSync(envFile, "utf8"), cargoStatus || stripStatus ? "" : examples.map((name) => `${name.toUpperCase()}_FIXTURE=${dir}/debug/examples/${name}\n`).join(""));
+      if (!cargoStatus && !stripStatus) assert.deepEqual(commands.slice(1), examples.map((name) => `strip --strip-debug ${dir}/debug/examples/${name}`));
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("container image workflows keep vulnerability findings as warnings", () => {
@@ -989,25 +991,6 @@ test('default aggregate requires exactly the current full online component inven
   const scopes = workflow.match(/INPUT_EXPECTED_SCOPES: '([^']+)'/u)?.[1].split(',');
   assert.ok(scopes, 'full online gate must declare its component inventory');
   assert.deepEqual([...DEFAULT_AGGREGATE_SCOPES].sort(), scopes.sort());
-});
-
-
-test("Host coverage lanes prepare real SDK executable fixtures before running transport tests", () => {
-  const workflow = readQualityGateWorkflow();
-  for (const jobName of ["single-scope-gate", "coverage-backend-gate"]) {
-    const jobStart = workflow.indexOf(`  ${jobName}:`);
-    const fixtureStart = workflow.indexOf("      - name: Build Host coverage worker fixtures\n", jobStart);
-    const gateStart = workflow.indexOf("      - uses: ./.github/actions/quality-gate", jobStart);
-    assert.ok(fixtureStart > jobStart && fixtureStart < gateStart, `${jobName} must prepare fixtures before tests`);
-    const fixture = workflow.slice(fixtureStart, gateStart);
-    assert.match(fixture, /coverage-backend-runtime-extension-host/u);
-    assert.match(fixture, /CARGO_TARGET_DIR: .*rust-(?:single-coverage|coverage)\//u);
-    for (const kind of ["hook", "event"]) {
-      assert.ok(fixture.includes(`--example managed_${kind}_worker`));
-      assert.ok(fixture.includes(`strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_${kind}_worker"`));
-      assert.ok(fixture.includes(`MANAGED_${kind.toUpperCase()}_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_${kind}_worker`));
-    }
-  }
 });
 
 
@@ -1323,16 +1306,7 @@ test('aggregate downloads current component artifacts without its own archived r
 });
 
 
-test('every full or scoped SDK worker prebuild exports the real notification process', () => {
-  const workflow = readQualityGateWorkflow();
-  const steps = workflow.split(/      - name: Build (?:API server|Host)(?: coverage)? worker fixtures\n/u).slice(1);
-  assert.equal(steps.length, 5);
-  for (const step of steps) {
-    const build = step.slice(0, step.indexOf('      - '));
-    assert.match(build, /cargo build --locked --manifest-path api\/Cargo.toml -p runtime-extension-sdk --example notification_worker/u);
-    assert.match(build, /strip --strip-debug "\$CARGO_TARGET_DIR\/debug\/examples\/notification_worker"/u);
-    assert.match(build, /NOTIFICATION_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/notification_worker/u);
-  }
+test('plugin composition batch supplies the real notification fixture', () => {
   const runner = fs.readFileSync(path.join(repoRoot, 'scripts/node/plugin-composition-test-batch/runner.js'), 'utf8');
   assert.match(runner, /example: 'notification_worker', env: 'NOTIFICATION_WORKER_FIXTURE'/u);
 });
@@ -1340,4 +1314,79 @@ test('every full or scoped SDK worker prebuild exports the real notification pro
 test('full quality and protocol fixtures supply an explicit external authentication callback origin', () => {
   assert.match(readQualityGateAction(), /export API_AUTH_PUBLIC_ORIGIN="\$\{API_AUTH_PUBLIC_ORIGIN:-https:\/\/auth-fixture\.example\}"/u);
   assert.match(readAiGatewayConcurrencyWorkflow(), /id: protocol_conformance\s+env:\s+API_AUTH_PUBLIC_ORIGIN: https:\/\/auth-fixture\.example/u);
+});
+
+test('opt-in in-repository PR quality gate dispatch pins the full candidate SHA', () => {
+  const dispatcher = fs.readFileSync(
+    path.join(repoRoot, '.github/workflows/pr-quality-gate-dispatch.yml'),
+    'utf8',
+  );
+  const full = readQualityGateWorkflow();
+  const assertContract = (source) => {
+    assert.match(source, /pull_request:\s+types: \[labeled, synchronize\]/u);
+    assert.match(source, /github\.event\.pull_request\.head\.repo\.full_name == github\.repository/u);
+    assert.match(source, /github\.event\.label\.name == 'quality-gate'/u);
+    assert.match(source, /contains\(github\.event\.pull_request\.labels\.\*\.name, 'quality-gate'\)/u);
+    assert.match(source, /actual_sha.*gh api /u);
+    assert.match(source, /if \[\[ "\$actual_sha" != "\$CANDIDATE_SHA" \]\]/u);
+    assert.match(source, /gh workflow run quality-gate\.yml --repo "\$TARGET_REPO" --ref "\$CANDIDATE_REF"/u);
+    assert.match(source, /-f candidate_sha="\$CANDIDATE_SHA"/u);
+    assert.match(source, /-f react_doctor_base="\$BASE_SHA"/u);
+  };
+  assertContract(dispatcher);
+  assert.match(full, /EXPECTED_CANDIDATE_SHA: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci' && inputs\.candidate_sha \|\| '' \}\}/u);
+  assert.match(full, /if \[\[ -n "\$EXPECTED_CANDIDATE_SHA" && "\$actual_sha" != "\$EXPECTED_CANDIDATE_SHA" \]\]/u);
+  const mutations = [
+    ['remove same-repo guard', 'head.repo.full_name == github.repository', 'head.repo.full_name != github.repository'],
+    ['remove opt-in label', "github.event.label.name == 'quality-gate'", "github.event.label.name == 'random-label'"],
+    ['remove SHA compare', '"$actual_sha" != "$CANDIDATE_SHA"', '"$actual_sha" == "$CANDIDATE_SHA"'],
+    ['remove pinned SHA input', '-f candidate_sha="$CANDIDATE_SHA"', '-f candidate_sha="$BASE_SHA"'],
+    ['remove protected comparison ref', '-f react_doctor_base="$BASE_SHA"', '-f react_doctor_base="$CANDIDATE_SHA"'],
+  ];
+  for (const [name, before, after] of mutations) {
+    assert.ok(dispatcher.includes(before), name);
+    assert.throws(() => assertContract(dispatcher.replace(before, after)), { code: 'ERR_ASSERTION' }, name);
+  }
+});
+
+test('PR full quality dispatch fails closed on a moved head and sends exact candidate inputs', () => {
+  const { spawnSync } = require('node:child_process');
+  const source = fs.readFileSync(
+    path.join(repoRoot, '.github/workflows/pr-quality-gate-dispatch.yml'),
+    'utf8',
+  );
+  const script = source.split('        run: |\n')[1].trimEnd()
+    .split('\n').map((line) => line.slice(10)).join('\n');
+  const tmpRoot = path.join(repoRoot, 'tmp/test-governance');
+  fs.mkdirSync(tmpRoot, { recursive: true });
+  const fixture = fs.mkdtempSync(path.join(tmpRoot, 'pr-quality-dispatch-'));
+  try {
+    const log = path.join(fixture, 'invoked');
+    fs.writeFileSync(path.join(fixture, 'gh'), [
+      '#!/bin/sh',
+      'if [ "$1" = api ]; then printf "%s" "$FAKE_GH_HEAD_SHA"; exit 0; fi',
+      'if [ "$1" = workflow ] && [ "$2" = run ]; then printf "%s" "$*" >> "$FAKE_GH_LOG"; exit 0; fi',
+      'exit 97',
+    ].join('\n'), { mode: 0o755 });
+    const head = 'a'.repeat(40);
+    const base = 'b'.repeat(40);
+    const env = {
+      ...process.env, PATH: `${fixture}:${process.env.PATH}`,
+      TARGET_REPO: 'taichuy/1flowbase', CANDIDATE_REF: 'codex/lean-probe',
+      CANDIDATE_SHA: head, BASE_SHA: base, FAKE_GH_LOG: log, GH_TOKEN: 'fixture',
+    };
+    const stale = spawnSync('bash', ['-c', script], { env: { ...env, FAKE_GH_HEAD_SHA: 'c'.repeat(40) }, encoding: 'utf8' });
+    assert.equal(stale.status, 1, stale.stderr);
+    assert.equal(fs.existsSync(log), false, 'stale head must never dispatch');
+    const exact = spawnSync('bash', ['-c', script], { env: { ...env, FAKE_GH_HEAD_SHA: head }, encoding: 'utf8' });
+    assert.equal(exact.status, 0, exact.stderr);
+    const args = fs.readFileSync(log, 'utf8');
+    assert.match(args, /workflow run quality-gate\.yml/u);
+    assert.ok(args.includes(`candidate_sha=${head}`));
+    assert.ok(args.includes(`react_doctor_base=${base}`));
+    assert.ok(args.includes('target_branch=codex/lean-probe'));
+    assert.ok(args.includes('scope=ci'));
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
 });

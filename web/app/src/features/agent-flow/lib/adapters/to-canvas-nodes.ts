@@ -58,6 +58,7 @@ export function toCanvasNodes(
   issueCountByNodeId: Record<string, number>,
   actions: Pick<
     AgentFlowCanvasNodeData,
+    | 'readOnly'
     | 'onOpenPicker'
     | 'onClosePicker'
     | 'onOpenContainer'

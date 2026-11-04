@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { Button, Checkbox, Form, Select, Space, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useEffect, useState } from 'react';
@@ -36,6 +37,8 @@ export function DataModelPermissionsTab({
     input: UpdateSettingsDataModelScopeGrantInput
   ) => void;
 }) {
+  const can = useConsoleOperationAccess();
+  const canUpdate = can('model_scope_grants.update');
   const [drafts, setDrafts] = useState<DraftGrant[]>([]);
 
   useEffect(() => {
@@ -102,7 +105,7 @@ export function DataModelPermissionsTab({
       render: (_, grant) => (
         <Checkbox
           checked={grant.confirm_unsafe_external_source_system_all}
-          disabled={grant.permission_profile !== 'system_all'}
+          disabled={!canUpdate || grant.permission_profile !== 'system_all'}
           onChange={(event) =>
             updateDraft(grant.id, {
               confirm_unsafe_external_source_system_all: event.target.checked
@@ -115,7 +118,7 @@ export function DataModelPermissionsTab({
   ];
 
   return (
-    <Form layout="vertical">
+    <Form disabled={!canUpdate} layout="vertical">
       <Table
         rowKey="id"
         size="small"
@@ -128,8 +131,9 @@ export function DataModelPermissionsTab({
         <Button
           type="primary"
           loading={saving}
-          disabled={drafts.length === 0}
+          disabled={!canUpdate || drafts.length === 0}
           onClick={() => {
+            if (!canUpdate) return;
             drafts.forEach((draft) => {
               const original = grants.find((grant) => grant.id === draft.id);
               if (!original) return;

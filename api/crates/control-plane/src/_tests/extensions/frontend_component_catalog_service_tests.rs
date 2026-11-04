@@ -20,6 +20,7 @@ use domain::{
 #[derive(Clone)]
 struct MemoryPersistedComponentCatalog {
     records: Vec<UiComponentRecord>,
+    blocks: Option<Vec<domain::FrontendBlockCatalogEntry>>,
 }
 
 #[async_trait]
@@ -36,14 +37,20 @@ impl FrontendBlockCatalogRepository for MemoryPersistedComponentCatalog {
         _node_id: &str,
         _workspace_id: Uuid,
     ) -> Result<Vec<domain::FrontendBlockCatalogEntry>> {
-        panic!("persisted component catalog must not query workspace frontend blocks")
+        Ok(self
+            .blocks
+            .clone()
+            .expect("persisted component catalog must not infer frontend blocks"))
     }
 
     async fn list_system_frontend_blocks(
         &self,
         _node_id: &str,
     ) -> Result<Vec<domain::FrontendBlockCatalogEntry>> {
-        panic!("persisted component catalog must not query system frontend blocks")
+        Ok(self
+            .blocks
+            .clone()
+            .expect("persisted component catalog must not infer frontend blocks"))
     }
 }
 
@@ -186,6 +193,9 @@ impl UiManagementRepository for MemoryPersistedComponentCatalog {
 fn opaque_record() -> UiComponentRecord {
     let timestamp = OffsetDateTime::UNIX_EPOCH;
     UiComponentRecord {
+        owner_plugin_id: None,
+        owner_contribution_code: None,
+        owner_installation_id: None,
         id: Uuid::now_v7(),
         scope_id: SYSTEM_SCOPE_ID,
         component_code: "taichuy.opaque.widget".into(),
@@ -219,6 +229,7 @@ async fn wp_d4_persisted_record_is_listed_and_gettable_without_module_or_export_
     let record = opaque_record();
     let service = UiManagementService::new(
         MemoryPersistedComponentCatalog {
+            blocks: None,
             records: vec![record.clone()],
         },
         "test-node",
@@ -226,6 +237,7 @@ async fn wp_d4_persisted_record_is_listed_and_gettable_without_module_or_export_
 
     let page = service
         .list_component_records_page(ListUiComponentRecordsQuery {
+            plugin_contribution_ids: None,
             query: Some("not-installed".into()),
             offset: 0,
             limit: 20,
@@ -245,12 +257,16 @@ async fn wp_d4_persisted_record_is_listed_and_gettable_without_module_or_export_
 #[tokio::test]
 async fn wp_d4_empty_persistence_yields_empty_catalog_without_inferred_exports() {
     let service = UiManagementService::new(
-        MemoryPersistedComponentCatalog { records: vec![] },
+        MemoryPersistedComponentCatalog {
+            records: vec![],
+            blocks: None,
+        },
         "test-node",
     );
 
     let page = service
         .list_component_records_page(ListUiComponentRecordsQuery {
+            plugin_contribution_ids: None,
             query: Some("hooks message theme version icons".into()),
             offset: 0,
             limit: 20,
@@ -262,4 +278,129 @@ async fn wp_d4_empty_persistence_yields_empty_catalog_without_inferred_exports()
     assert!(page.items.is_empty());
     assert!(!page.has_more);
     assert_eq!(page.next_offset, None);
+}
+
+#[tokio::test]
+async fn plugin_owned_components_reject_management_update_and_delete_before_repository_writes() {
+    let mut record = opaque_record();
+    record.origin = UiComponentRecordOrigin::Plugin;
+    record.owner_plugin_id = Some("fixture".into());
+    record.owner_contribution_code = Some("view".into());
+    record.owner_installation_id = Some(Uuid::now_v7());
+    let service = UiManagementService::new(
+        MemoryPersistedComponentCatalog {
+            blocks: None,
+            records: vec![record.clone()],
+        },
+        "node",
+    );
+    let update = service
+        .update_component_record(
+            record.id,
+            UiComponentRecordPatch {
+                name: record.name.clone(),
+                description: record.description.clone(),
+                import_code: record.import_code.clone(),
+                source_code: record.source_code.clone(),
+                source: record.source.clone(),
+                group: record.group.clone(),
+                upstream: record.upstream.clone(),
+                version: record.version.clone(),
+                keywords: record.keywords.clone(),
+                actor_user_id: Uuid::now_v7(),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        update.downcast_ref::<crate::errors::ControlPlaneError>(),
+        Some(crate::errors::ControlPlaneError::Conflict(
+            "plugin_ui_component_read_only"
+        ))
+    ));
+    let delete = service
+        .delete_component_record(record.id)
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        delete.downcast_ref::<crate::errors::ControlPlaneError>(),
+        Some(crate::errors::ControlPlaneError::Conflict(
+            "plugin_ui_component_read_only"
+        ))
+    ));
+}
+
+#[tokio::test]
+async fn component_registration_is_not_a_code_template_in_either_catalog() {
+    let mut block = domain::FrontendBlockCatalogEntry {
+        installation_id: Uuid::nil(),
+        provider_code: "test".into(),
+        plugin_id: "test.plugin".into(),
+        plugin_version: "1.0.0".into(),
+        contribution_code: "Calendar".into(),
+        title: "Calendar".into(),
+        runtime: "native_react".into(),
+        entry: "default".into(),
+        ui_registration: "component".into(),
+        code_template: Some("export default () => <p />".into()),
+        code_template_version: Some("1.0.0".into()),
+        code_template_language: Some("tsx".into()),
+        code_modules: vec![],
+        context_contract: domain::FrontendBlockContextContract {
+            primitives: vec![],
+            input_schema: serde_json::json!({}),
+        },
+        permissions: domain::FrontendBlockPermissions {
+            network: "none".into(),
+            storage: "none".into(),
+            secrets: "none".into(),
+        },
+        ui_capabilities: vec![],
+    };
+    let mut record = opaque_record();
+    record.origin = UiComponentRecordOrigin::Plugin;
+    let service = UiManagementService::new(
+        MemoryPersistedComponentCatalog {
+            records: vec![record],
+            blocks: Some(vec![block.clone()]),
+        },
+        "test-node",
+    );
+    assert!(service.list_templates().await.unwrap().official.is_empty());
+    assert!(service
+        .list_published_templates_for_workspace(Uuid::nil())
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        service
+            .list_component_records_page(ListUiComponentRecordsQuery {
+                plugin_contribution_ids: None,
+                query: None,
+                offset: 0,
+                limit: 20
+            })
+            .await
+            .unwrap()
+            .total,
+        1
+    );
+    // Same runtime/source, different explicit destination: legitimate templates must still work.
+    block.ui_registration = "code_template".into();
+    let service = UiManagementService::new(
+        MemoryPersistedComponentCatalog {
+            records: vec![],
+            blocks: Some(vec![block]),
+        },
+        "test-node",
+    );
+    assert_eq!(service.list_templates().await.unwrap().official.len(), 1);
+    assert_eq!(
+        service
+            .list_published_templates_for_workspace(Uuid::nil())
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 }

@@ -52,6 +52,7 @@ pub(super) fn build_llm_tool_callback_wait(
     let serialized_system = serde_json::to_value(&transcript.system)
         .map_err(|error| anyhow!("failed to serialize LLM tool callback system: {error}"))?;
     Ok(Some(LlmToolCallbackWait {
+        continuation_owner: LlmToolContinuationOwner::AgentFlow,
         node_id: node.node_id.clone(),
         node_alias: node.alias.clone(),
         request_payload: build_llm_tool_callback_request_payload(output_payload),
@@ -308,6 +309,10 @@ pub(super) fn append_llm_tool_result_messages(
     let provider_route = state.get("provider_route").cloned();
     let provider_continuation = state.get("provider_continuation").cloned();
     let provider_metadata = state.get("provider_metadata").cloned();
+    // This function is entered only by the host checkpoint-resume owner or its
+    // internal tool loop. Completing that owned receipt retains the workflow,
+    // including legacy checkpoints that predate explicit owner evidence.
+    let host_tool_continuation_owner = json!("agentflow");
     let visible_internal_transcript = state.get("visible_internal_llm_tool_transcript").cloned();
     let visible_internal_events = state.get("visible_internal_llm_tool_events").cloned();
     let pending_tool_calls = state
@@ -411,7 +416,27 @@ pub(super) fn append_llm_tool_result_messages(
             serde_json::from_value(value.clone())?;
         // The control-plane verified ingress binds these messages to the owned full
         // tool set. Replace only this round's append, preserving predecessor state.
-        if continuation.ordered_input.len() != continuation.ordered_messages.len() {
+        let is_control_marker =
+            |item: &Value| item.get("type").and_then(Value::as_str) == Some("compaction_trigger");
+        let ordered_input = match continuation.ordered_input.split_last() {
+            Some((trigger, context)) if is_control_marker(trigger) => {
+                if trigger.as_object().is_none_or(|object| object.len() != 1) {
+                    return Err(anyhow!("invalid ordered compaction trigger"));
+                }
+                // Keep the wire marker in the receipt/history proof, while the
+                // Provider messages correspond only to the semantic context.
+                context
+            }
+            _ => continuation.ordered_input.as_slice(),
+        };
+        if ordered_input
+            .iter()
+            .chain(continuation.ordered_messages.iter())
+            .any(is_control_marker)
+        {
+            return Err(anyhow!("unexpected ordered compaction trigger"));
+        }
+        if ordered_input.len() != continuation.ordered_messages.len() {
             return Err(anyhow!("ordered continuation item count mismatch"));
         }
         let results = delta_messages
@@ -423,13 +448,9 @@ pub(super) fn append_llm_tool_result_messages(
                     .map(|id| (id.to_owned(), message.clone()))
             })
             .collect::<BTreeMap<_, _>>();
-        let mut ordered = Vec::with_capacity(continuation.ordered_input.len());
+        let mut ordered = Vec::with_capacity(ordered_input.len());
         let mut seen = BTreeSet::new();
-        for (item, context) in continuation
-            .ordered_input
-            .iter()
-            .zip(continuation.ordered_messages)
-        {
+        for (item, context) in ordered_input.iter().zip(continuation.ordered_messages) {
             if item.get("type").and_then(Value::as_str) == Some("function_call_output")
                 && !item.get("call_id").is_none_or(Value::is_null)
             {
@@ -482,6 +503,10 @@ pub(super) fn append_llm_tool_result_messages(
     if !delta_messages.is_empty() {
         callback_state.insert("delta_messages".to_string(), Value::Array(delta_messages));
     }
+    callback_state.insert(
+        "host_tool_continuation_owner".into(),
+        host_tool_continuation_owner,
+    );
     if let Some(visible_internal_transcript) = visible_internal_transcript {
         callback_state.insert(
             "visible_internal_llm_tool_transcript".to_string(),
@@ -925,6 +950,107 @@ mod tests {
                 .collect::<Vec<_>>()
         );
     }
+    #[test]
+    fn semantic_callback_control_marker_preserves_messages_and_rejects_invalid_receipts() {
+        let initial = json!({"llm":{"__llm_tool_callback":{
+            "pending_tool_calls":[{"id":"a","name":"read"}],
+            "history":[{"role":"user","content":"original"}],"system":[]
+        }}})
+        .as_object()
+        .unwrap()
+        .clone();
+        let receipt = json!({
+            "tool_results":[{"tool_call_id":"a","content":"canonical result"}],
+            "responses_continuation":{
+                "ordered_input":[
+                    {"role":"user","content":"before"},
+                    {"type":"function_call_output","call_id":"a","output":"canonical result"},
+                    {"role":"user","content":"after"}
+                ],
+                "ordered_messages":[
+                    {"role":"user","content":"before"},
+                    {"role":"tool","tool_call_id":"a","content":"must not replace canonical result"},
+                    {"role":"user","content":"after"}
+                ]
+            }
+        });
+        let mut baseline = initial.clone();
+        append_llm_tool_result_messages(&mut baseline, "llm", &receipt).unwrap();
+        let mut marked = receipt.clone();
+        marked["responses_continuation"]["ordered_input"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"type":"compaction_trigger"}));
+        let mut actual = initial.clone();
+        append_llm_tool_result_messages(&mut actual, "llm", &marked).unwrap();
+        assert_eq!(actual, baseline);
+        assert_eq!(
+            actual["llm"]["__llm_tool_callback"]["delta_messages"][1]["content"],
+            "canonical result"
+        );
+        assert_eq!(
+            marked["responses_continuation"]["ordered_input"][3],
+            json!({"type":"compaction_trigger"})
+        );
+
+        let mut invalid = Vec::new();
+        for suffix in [
+            json!([{"type":"compaction_trigger"},{"type":"compaction_trigger"}]),
+            json!([{"type":"compaction_trigger","unexpected":true}]),
+            json!([{"type":"compaction_trigger"},{"role":"user","content":"after marker"}]),
+        ] {
+            let mut changed = receipt.clone();
+            changed["responses_continuation"]["ordered_input"]
+                .as_array_mut()
+                .unwrap()
+                .extend(suffix.as_array().unwrap().iter().cloned());
+            invalid.push(changed);
+        }
+        let mut mapped_marker = marked.clone();
+        mapped_marker["responses_continuation"]["ordered_messages"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"type":"compaction_trigger"}));
+        invalid.push(mapped_marker);
+        let mut replaced_context = marked.clone();
+        replaced_context["responses_continuation"]["ordered_messages"][2] =
+            json!({"type":"compaction_trigger"});
+        invalid.push(replaced_context);
+        let mut missing = marked.clone();
+        missing["responses_continuation"]["ordered_input"]
+            .as_array_mut()
+            .unwrap()
+            .remove(1);
+        missing["responses_continuation"]["ordered_messages"]
+            .as_array_mut()
+            .unwrap()
+            .remove(1);
+        invalid.push(missing);
+        let mut unknown = marked.clone();
+        unknown["responses_continuation"]["ordered_input"][1]["call_id"] = json!("unknown");
+        invalid.push(unknown);
+        let mut duplicate = marked.clone();
+        let item = duplicate["responses_continuation"]["ordered_input"][1].clone();
+        duplicate["responses_continuation"]["ordered_input"]
+            .as_array_mut()
+            .unwrap()
+            .insert(2, item);
+        let message = duplicate["responses_continuation"]["ordered_messages"][1].clone();
+        duplicate["responses_continuation"]["ordered_messages"]
+            .as_array_mut()
+            .unwrap()
+            .insert(2, message);
+        invalid.push(duplicate);
+        for (index, changed) in invalid.iter().enumerate() {
+            let mut pool = initial.clone();
+            assert!(
+                append_llm_tool_result_messages(&mut pool, "llm", changed).is_err(),
+                "case {index}"
+            );
+            assert_eq!(pool, initial, "case {index}");
+        }
+    }
+
     #[test]
     fn semantic_ordered_receipt_reuses_multimodal_tool_result_conversion() {
         let initial = json!({"llm":{"__llm_tool_callback":{"pending_tool_calls":[{"id":"a","name":"image_tool"}],"history":[],"system":[]}}}).as_object().unwrap().clone();

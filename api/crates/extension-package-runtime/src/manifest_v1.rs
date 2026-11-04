@@ -215,6 +215,10 @@ pub enum FrontendModuleAssetRoleManifest {
     Support,
 }
 
+fn default_frontend_ui_registration() -> String {
+    "code_template".into()
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FrontendBlockContributionManifest {
@@ -222,6 +226,9 @@ pub struct FrontendBlockContributionManifest {
     pub title: String,
     pub runtime: String,
     pub entry: String,
+    /// Management destination, independent of source used to mount the block.
+    #[serde(default = "default_frontend_ui_registration")]
+    pub ui_registration: String,
     #[serde(default)]
     pub code_template: Option<String>,
     #[serde(default)]

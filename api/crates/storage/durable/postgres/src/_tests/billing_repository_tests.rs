@@ -668,37 +668,7 @@ async fn official_pricing_import_deduplicates_model_identity_and_preserves_manua
 #[tokio::test]
 async fn official_pricing_sync_merges_atomically_and_preserves_manual_rules() {
     let (store, _, user_id) = seeded_store().await;
-    let base = PricingRule {
-        id: Uuid::now_v7(),
-        provider_code: "standard-identity".into(),
-        upstream_model_id: "model".into(),
-        input_token_unit_size: 1_000_000,
-        input_token_unit_price: Decimal::ONE,
-        output_token_unit_size: 1_000_000,
-        output_token_unit_price: Decimal::from(2),
-        cache_hit_token_unit_size: 1_000_000,
-        cache_hit_token_unit_price: Decimal::ZERO,
-        cache_write_token_unit_size: 1_000_000,
-        cache_write_token_unit_price: Decimal::ONE,
-        currency_code: "USD".into(),
-        effective_from: OffsetDateTime::now_utc() - Duration::hours(1),
-        effective_to: None,
-        timezone: "UTC".into(),
-        weekday_mask: 127,
-        local_time_start: None,
-        local_time_end: None,
-        priority: 10,
-        enabled: true,
-        rules: json!([]),
-        source_kind: "manual".into(),
-        source_catalog_id: None,
-        source_version: None,
-        source_checksum: None,
-        extensions: json!({}),
-        created_by: Some(user_id),
-        created_at: OffsetDateTime::now_utc(),
-        updated_at: OffsetDateTime::now_utc(),
-    };
+    let base = official_sync_fixture(user_id);
     let manual = store
         .upsert_pricing_rule(&UpsertPricingRuleInput { rule: base.clone() })
         .await
@@ -824,4 +794,126 @@ async fn official_pricing_sync_merges_atomically_and_preserves_manual_rules() {
         store.get_pricing_rule(base.id).await.unwrap().unwrap(),
         manual
     );
+}
+
+fn official_sync_fixture(user_id: Uuid) -> PricingRule {
+    PricingRule {
+        id: Uuid::now_v7(),
+        provider_code: "standard-identity".into(),
+        upstream_model_id: "model".into(),
+        input_token_unit_size: 1_000_000,
+        input_token_unit_price: Decimal::ONE,
+        output_token_unit_size: 1_000_000,
+        output_token_unit_price: Decimal::from(2),
+        cache_hit_token_unit_size: 1_000_000,
+        cache_hit_token_unit_price: Decimal::ZERO,
+        cache_write_token_unit_size: 1_000_000,
+        cache_write_token_unit_price: Decimal::ONE,
+        currency_code: "USD".into(),
+        effective_from: OffsetDateTime::now_utc() - Duration::hours(1),
+        effective_to: None,
+        timezone: "UTC".into(),
+        weekday_mask: 127,
+        local_time_start: None,
+        local_time_end: None,
+        priority: 10,
+        enabled: true,
+        rules: json!([]),
+        source_kind: "manual".into(),
+        source_catalog_id: None,
+        source_version: None,
+        source_checksum: None,
+        extensions: json!({}),
+        created_by: Some(user_id),
+        created_at: OffsetDateTime::now_utc(),
+        updated_at: OffsetDateTime::now_utc(),
+    }
+}
+
+#[tokio::test]
+async fn official_pricing_sync_stages_multiple_pages_and_discards_failed_or_abandoned_sessions() {
+    let (store, _, user_id) = seeded_store().await;
+    let mut first = official_sync_fixture(user_id);
+    first.source_kind = "official".into();
+    first.source_catalog_id = Some(first.id.to_string());
+    let mut second = first.clone();
+    second.id = Uuid::now_v7();
+    second.source_catalog_id = Some(second.id.to_string());
+    second.upstream_model_id = "second".into();
+    let mut session = store.begin_official_pricing_sync().await.unwrap();
+    session.stage(&[first.clone()]).await.unwrap();
+    assert!(
+        store.get_pricing_rule(first.id).await.unwrap().is_none(),
+        "staging must not publish partial prices"
+    );
+    session.stage(&[second.clone()]).await.unwrap();
+    assert_eq!(session.finish().await.unwrap().inserted, 2);
+    let mut repeat = store.begin_official_pricing_sync().await.unwrap();
+    repeat.stage(&[second.clone()]).await.unwrap();
+    repeat.stage(&[first.clone()]).await.unwrap();
+    assert_eq!(repeat.finish().await.unwrap().unchanged, 2);
+    let before = store.get_pricing_rule(first.id).await.unwrap().unwrap();
+    first.input_token_unit_price = Decimal::from(77);
+    let mut failed = store.begin_official_pricing_sync().await.unwrap();
+    failed.stage(&[first.clone()]).await.unwrap();
+    assert!(
+        failed.stage(&[first.clone()]).await.is_err(),
+        "cross-batch duplicate ID must fail"
+    );
+    assert!(failed.finish().await.is_err());
+    assert_eq!(
+        store.get_pricing_rule(first.id).await.unwrap().unwrap(),
+        before
+    );
+    let mut abandoned = store.begin_official_pricing_sync().await.unwrap();
+    abandoned.stage(&[first.clone()]).await.unwrap();
+    drop(abandoned);
+    assert_eq!(
+        store.get_pricing_rule(first.id).await.unwrap().unwrap(),
+        before
+    );
+    let mut duplicate_target = store.begin_official_pricing_sync().await.unwrap();
+    duplicate_target.stage(&[first.clone()]).await.unwrap();
+    first.id = Uuid::now_v7();
+    first.source_catalog_id = Some(first.id.to_string());
+    assert!(
+        duplicate_target.stage(&[first]).await.is_err(),
+        "cross-batch duplicate target must fail"
+    );
+    assert!(duplicate_target.finish().await.is_err());
+}
+
+#[tokio::test]
+async fn official_pricing_sync_late_merge_batch_conflict_rolls_back_all_installed_batches() {
+    let (store, _, user_id) = seeded_store().await;
+    let mut template = official_sync_fixture(user_id);
+    template.source_kind = "official".into();
+    template.priority = 0;
+    let mut batches = Vec::new();
+    for number in 0..101 {
+        let mut rule = template.clone();
+        rule.id = Uuid::now_v7();
+        rule.source_catalog_id = Some(rule.id.to_string());
+        rule.upstream_model_id = format!("model-{number:04}");
+        batches.push(rule);
+    }
+    let mut conflict = batches[100].clone();
+    conflict.id = Uuid::now_v7();
+    conflict.source_kind = "manual".into();
+    conflict.source_catalog_id = None;
+    store
+        .upsert_pricing_rule(&UpsertPricingRuleInput {
+            rule: conflict.clone(),
+        })
+        .await
+        .unwrap();
+    let mut session = store.begin_official_pricing_sync().await.unwrap();
+    for batch in batches.chunks(17) {
+        session.stage(batch).await.unwrap();
+    }
+    assert!(session.finish().await.is_err());
+    for rule in &batches {
+        assert!(store.get_pricing_rule(rule.id).await.unwrap().is_none());
+    }
+    assert!(store.get_pricing_rule(conflict.id).await.unwrap().is_some());
 }

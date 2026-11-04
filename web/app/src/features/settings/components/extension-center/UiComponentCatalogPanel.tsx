@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
 import { UiComponentCatalogContent } from '../ui-management/UiComponentCatalogContent';
 
-export function UiComponentCatalogPanel({ canManage }: { canManage: boolean }) {
+export function UiComponentCatalogPanel(_props: { canManage?: boolean } = {}) {
   const navigate = useNavigate();
   const { t: settingsT } = useTranslation('settings');
   const { t } = useTranslation('settingsUiManagement');
@@ -49,7 +49,7 @@ export function UiComponentCatalogPanel({ canManage }: { canManage: boolean }) {
             }
           ]}
         />
-        <UiComponentCatalogContent canManage={canManage} />
+        <UiComponentCatalogContent />
       </Flex>
     </SettingsSectionSurface>
   );

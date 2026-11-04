@@ -7,6 +7,10 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore};
 
+#[path = "multiplex_framing.rs"]
+mod framing;
+use framing::read_frame;
+
 const QUEUE_CAPACITY: usize = 8;
 const WRITER_BYTES: usize = MULTIPLEX_OUTPUT_BUDGET_BYTES;
 const CANCEL_GRACE: Duration = Duration::from_secs(2);
@@ -600,39 +604,6 @@ fn encode(message: MultiplexHostMessage) -> Result<Vec<u8>, String> {
         serde_json::to_vec(&MultiplexEnvelope::new(message)).map_err(|error| error.to_string())?;
     bytes.push(b'\n');
     Ok(bytes)
-}
-
-async fn read_frame(
-    reader: &mut BufReader<ChildStdout>,
-    bytes: &mut Vec<u8>,
-) -> Result<Option<(MultiplexWorkerMessage, usize)>, String> {
-    loop {
-        let available = reader.fill_buf().await.map_err(|error| error.to_string())?;
-        if available.is_empty() {
-            return if bytes.is_empty() {
-                Ok(None)
-            } else {
-                Err("partial multiplex frame".into())
-            };
-        }
-        let count = available
-            .iter()
-            .position(|byte| *byte == b'\n')
-            .map_or(available.len(), |i| i + 1);
-        bytes.extend_from_slice(&available[..count]);
-        reader.consume(count);
-        if bytes.last() == Some(&b'\n') {
-            bytes.pop();
-            let envelope: MultiplexEnvelope<MultiplexWorkerMessage> =
-                serde_json::from_slice(bytes.as_slice()).map_err(|error| error.to_string())?;
-            if !envelope.is_supported() {
-                return Err("unsupported multiplex protocol".into());
-            }
-            let frame_bytes = bytes.len() + 1;
-            bytes.clear();
-            return Ok(Some((envelope.message, frame_bytes)));
-        }
-    }
 }
 
 async fn writer(

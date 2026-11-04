@@ -14,6 +14,7 @@ export function ApplicationApiStatusBar({
   onTogglePublished,
   onToggleApiEnabled,
   apiToggleDisabled,
+  publishToggleDisabled,
   toolbar,
   children
 }: {
@@ -23,6 +24,7 @@ export function ApplicationApiStatusBar({
   onTogglePublished?: (published: boolean) => void;
   onToggleApiEnabled?: (api_enabled: boolean) => void;
   apiToggleDisabled?: boolean;
+  publishToggleDisabled?: boolean;
   toolbar?: ReactNode;
   children?: ReactNode;
 }) {
@@ -59,6 +61,7 @@ export function ApplicationApiStatusBar({
             </>
           ) : (
             <Switch
+              disabled={publishToggleDisabled}
               checked={published}
               loading={loading}
               checkedChildren={t('auto.publication_published')}

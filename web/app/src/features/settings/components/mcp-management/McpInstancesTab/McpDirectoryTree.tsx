@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
 import FileOutlined from '@ant-design/icons/es/icons/FileOutlined';
@@ -10,7 +11,7 @@ import type { McpDirectoryTreeNode } from '../mcp-management-view-model';
 import type { McpDirectoryTreeDropInfo } from './directory-tree';
 
 type McpDirectoryTreeProps = {
-  canManage: boolean;
+  canManage?: boolean;
   expandedKeys: string[];
   selectedKey: string;
   treeData: McpDirectoryTreeNode[];
@@ -24,7 +25,6 @@ type McpDirectoryTreeProps = {
 };
 
 export function McpDirectoryTree({
-  canManage,
   expandedKeys,
   selectedKey,
   treeData,
@@ -36,10 +36,11 @@ export function McpDirectoryTree({
   onDeleteGroup,
   onDeleteBinding
 }: McpDirectoryTreeProps) {
+  const can = useConsoleOperationAccess();
   return (
     <Tree<McpDirectoryTreeNode>
       className="mcp-management__directory-tree"
-      draggable={canManage ? { icon: false } : false}
+      draggable={{ icon: false, nodeDraggable: (node) => can(String(node.key).startsWith('group:') ? 'mcp.groups.move' : 'mcp.tool_bindings.update') }}
       blockNode
       expandedKeys={expandedKeys}
       showIcon
@@ -51,7 +52,9 @@ export function McpDirectoryTree({
       onSelect={(selectedKeys) => {
         if (selectedKeys.length > 0) onSelect(String(selectedKeys[0]));
       }}
-      onDrop={onDrop}
+      onDrop={(info) => {
+        if (can(String(info.dragNode.key).startsWith('group:') ? 'mcp.groups.move' : 'mcp.tool_bindings.update')) onDrop(info);
+      }}
       titleRender={(node) => {
         const [type, ...parts] = node.key.split(':');
         const isInstance = type === 'instance';
@@ -92,7 +95,7 @@ export function McpDirectoryTree({
         return (
           <span className="mcp-management__tree-node-title">
             {titleNode}
-            {canManage && (isInstance || isGroup || isBinding) ? (
+            {(isInstance || isGroup || isBinding) ? (
               <span
                 className={
                   isInstance
@@ -104,6 +107,7 @@ export function McpDirectoryTree({
                 {!isInstance ? (
                   <Tooltip title={i18nText('settings', 'auto.edit')}>
                     <Button
+                      disabled={!can(isGroup ? 'mcp.groups.upsert' : 'mcp.tool_bindings.update')}
                       type="text"
                       size="small"
                       icon={<EditOutlined />}
@@ -126,6 +130,7 @@ export function McpDirectoryTree({
                           )
                         : i18nText('settings', 'auto.mcp_hard_delete_confirm')
                     }
+                    disabled={!can(isGroup ? 'mcp.groups.delete' : 'mcp.tool_bindings.delete')}
                     onConfirm={() =>
                       isGroup
                         ? onDeleteGroup(parts.join(':'))
@@ -134,6 +139,7 @@ export function McpDirectoryTree({
                   >
                     <Button
                       type="text"
+                      disabled={!can(isGroup ? 'mcp.groups.delete' : 'mcp.tool_bindings.delete')}
                       danger
                       size="small"
                       icon={<DeleteOutlined />}

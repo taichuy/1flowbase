@@ -4,6 +4,7 @@ import {
   cleanup,
   fireEvent,
   render,
+  renderHook,
   screen,
   waitFor
 } from '@testing-library/react';
@@ -17,6 +18,8 @@ import { appI18n } from '../../../shared/i18n/app-i18n';
 import { useAuthStore, resetAuthStore } from '../../../state/auth-store';
 import { NotificationsPage } from '../../settings/pages/notifications/NotificationsPage';
 import { NotificationBell } from '../components/NotificationBell';
+import { useNotificationInbox } from '../hooks/use-notification-inbox';
+import { selectNavigationQueryScope } from '../../../state/navigation-query-scope';
 
 class SignalStream {
   static instances: SignalStream[] = [];
@@ -871,3 +874,227 @@ test('preserves the HTTP snapshot after a failed page fetch and does not falsify
   expect(screen.getByRole('button', { name: '发布完成' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '标为未读' })).toBeInTheDocument();
 });
+
+function setInboxAccess(permissions: string[]) {
+  useAuthStore.setState({
+    actor: {
+      ...useAuthStore.getState().actor!,
+      effective_display_role: 'member'
+    },
+    me: {
+      id: 'user-1',
+      account: 'member',
+      name: 'Member',
+      nickname: 'Member',
+      email: 'member@example.com',
+      phone: null,
+      avatar_url: null,
+      introduction: '',
+      effective_display_role: 'member',
+      permissions
+    }
+  });
+}
+
+const unrelatedInboxGrants = [
+  { permissions: [] },
+  { permissions: ['patch_me_meta'] },
+  { permissions: ['notifications.messages.read_all'] }
+];
+
+test.each(unrelatedInboxGrants)(
+  'reader can browse and automatically mark only the opened owned message read: $permissions',
+  async ({ permissions }) => {
+    setInboxAccess(permissions);
+    serverPagination = true;
+    renderUI(<NotificationBell />);
+    await click(screen.getByRole('menuitem', { name: '通知消息' }));
+    await click(
+      await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
+    );
+    await click(await screen.findByRole('button', { name: '发布完成' }));
+    expect(screen.getByText('流程运行成功')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '全部已读' })).toBeDisabled();
+    await waitFor(() => expect(read_at).not.toBeNull());
+    expect(screen.getByRole('button', { name: '标为未读' })).toBeDisabled();
+    await click(screen.getByRole('button', { name: '全部已读' }));
+    await click(screen.getByRole('tab', { name: '未读' }));
+    await waitForRequests();
+    expect(
+      calls.filter((call) => call.url.includes('/messages?')).at(-1)?.url
+    ).toContain('read_status=unread');
+    await waitFor(() => expect(
+      screen.queryByRole('button', { name: '发布完成' })
+    ).not.toBeInTheDocument());
+    await click(screen.getByRole('tab', { name: '全部' }));
+    await screen.findByRole('button', { name: '发布完成' });
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: '下一页' })[1]).toBeEnabled()
+    );
+    await click(screen.getAllByRole('button', { name: '下一页' })[1]);
+    await screen.findByRole('button', { name: '第二页消息' });
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: '上一页' })[1]).toBeEnabled()
+    );
+    await click(screen.getAllByRole('button', { name: '上一页' })[1]);
+    await screen.findByRole('button', { name: '发布完成' });
+    await click(screen.getByRole('button', { name: /刷\s*新/ }));
+    await waitForRequests();
+    expect(read_at).not.toBeNull();
+    const writes = calls.filter((call) => call.method !== 'GET');
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ method: 'POST' });
+    expect(writes[0].url).toContain('/messages/message-1/read');
+  }
+);
+
+test.each(unrelatedInboxGrants)(
+  'reader sees read content while mark-unread stays disabled: $permissions',
+  async ({ permissions }) => {
+    setInboxAccess(permissions);
+    read_at = '2026-10-13T01:00:00Z';
+    renderUI(<NotificationBell />);
+    await click(screen.getByRole('menuitem', { name: '通知消息' }));
+    await click(
+      await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
+    );
+    await click(await screen.findByRole('button', { name: '发布完成' }));
+    const unread = screen.getByRole('button', { name: '标为未读' });
+    expect(unread).toBeDisabled();
+    await click(unread);
+    await waitForRequests();
+    expect(read_at).toBe('2026-10-13T01:00:00Z');
+    expect(calls.filter((call) => call.method !== 'GET')).toHaveLength(0);
+  }
+);
+
+test.each([
+  {
+    grant: 'notifications.messages.unread',
+    action: '标为未读',
+    endpoint: '/messages/message-1/unread',
+    initiallyRead: true
+  },
+  {
+    grant: 'notifications.channels.read_all',
+    action: '全部已读',
+    endpoint: '/channels/instance-1/read-all',
+    initiallyRead: false
+  }
+])(
+  'permits only the notification state operation $grant',
+  async ({ grant, action, endpoint, initiallyRead }) => {
+    setInboxAccess([grant]);
+    read_at = initiallyRead ? '2026-10-13T01:00:00Z' : null;
+    renderUI(<NotificationBell />);
+    await click(screen.getByRole('menuitem', { name: '通知消息' }));
+    await click(
+      await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
+    );
+    const stateAction = await screen.findByRole('button', { name: action });
+    expect(stateAction).toBeEnabled();
+    if (grant !== 'notifications.channels.read_all')
+      expect(screen.getByRole('button', { name: '全部已读' })).toBeDisabled();
+    if (grant === 'notifications.channels.read_all') {
+      expect(screen.getByRole('button', { name: '标为已读' })).toBeEnabled();
+      expect(read_at).toBeNull();
+    }
+    await click(stateAction);
+    await waitForRequests();
+    const writes = calls.filter((call) => call.method === 'POST');
+    expect(writes).toHaveLength(1);
+    expect(writes[0].url).toContain(endpoint);
+    expect(Boolean(read_at)).toBe(!initiallyRead);
+    const oppositeAction = screen.getByRole('button', {
+      name: initiallyRead ? '标为已读' : '标为未读'
+    });
+    if (initiallyRead) expect(oppositeAction).toBeEnabled();
+    else expect(oppositeAction).toBeDisabled();
+  }
+);
+
+test.each([
+  ...unrelatedInboxGrants,
+  { permissions: ['notifications.messages.unread'] },
+  { permissions: ['notifications.channels.read_all'] }
+])(
+  'hook callbacks and mutation entry enforce exact grants $permissions',
+  async ({ permissions }) => {
+    setInboxAccess(permissions);
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    });
+    const { result } = renderHook(() => useNotificationInbox(true), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      )
+    });
+    await waitFor(() =>
+      expect(result.current.channels.data?.items[0]).toBeDefined()
+    );
+    await act(async () => {
+      result.current.select(result.current.channels.data!.items[0]);
+    });
+    await waitForRequests();
+    expect(result.current.canMarkRead).toBe(true);
+    expect(result.current.canMarkUnread).toBe(
+      permissions.includes('notifications.messages.unread')
+    );
+    expect(result.current.canReadAll).toBe(
+      permissions.includes('notifications.channels.read_all')
+    );
+    const cases = [
+      {
+        operation: 'read' as const,
+        grant: 'notifications.messages.read',
+        id: 'message-1',
+        callback: () => result.current.markRead('message-1')
+      },
+      {
+        operation: 'unread' as const,
+        grant: 'notifications.messages.unread',
+        id: 'message-1',
+        callback: () => result.current.markUnread('message-1')
+      },
+      {
+        operation: 'channel' as const,
+        grant: 'notifications.channels.read_all',
+        id: 'instance-1',
+        callback: () => result.current.readAll()
+      }
+    ];
+    for (const entry of cases.filter(
+      (entry) => entry.operation !== 'read' && !permissions.includes(entry.grant)
+    )) {
+      await act(async () => {
+        entry.callback();
+      });
+      await waitForRequests();
+      // Invoke the raw mutation as a controlled bypass of the normal callback gate.
+      await act(async () => {
+        await expect(
+          result.current.write.mutateAsync({
+            id: entry.id,
+            operation: entry.operation,
+            requestScope: selectNavigationQueryScope(useAuthStore.getState())
+          })
+        ).rejects.toThrow('operation access denied');
+      });
+    }
+    expect(calls.filter((call) => call.method !== 'GET')).toHaveLength(0);
+    await act(async () => {
+      result.current.markRead('message-1');
+    });
+    await waitFor(() => expect(read_at).not.toBeNull());
+    const writes = calls.filter((call) => call.method !== 'GET');
+    expect(writes).toHaveLength(1);
+    expect(writes[0].url).toContain('/messages/message-1/read');
+    await act(async () => { resetAuthStore(); });
+    await act(async () => {
+      await expect(result.current.write.mutateAsync({
+        id: 'message-1', operation: 'read', requestScope: 'signed-out'
+      })).rejects.toThrow('operation access denied');
+    });
+    expect(calls.filter((call) => call.method !== 'GET')).toHaveLength(1);
+  }
+);

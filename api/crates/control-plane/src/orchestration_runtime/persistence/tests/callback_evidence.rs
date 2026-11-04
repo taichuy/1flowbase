@@ -37,6 +37,8 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
         .await
         .unwrap();
     for index in 0..3 {
+        // The trace writer owns this invocation’s usage ledger entry. Adding an
+        // unrelated manual ledger entry here would count the same usage twice.
         let payload =
             json!({"tool_calls":[{"id":format!("call-{index}"),"name":"read","arguments":{}}]});
         let mut node_trace = trace(&node.node_id, payload.clone(), None);
@@ -104,10 +106,20 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
             .unwrap();
         let index: u64 = call.strip_prefix("call-").unwrap().parse().unwrap();
         let baseline = &task.request_payload["native_usage_baseline"];
-        assert_eq!(baseline["prompt_tokens"], (index + 1) * 11);
-        assert_eq!(baseline["completion_tokens"], (index + 1) * 3);
-        assert_eq!(baseline["total_tokens"], (index + 1) * 14);
-        assert_eq!(baseline["input_cache_hit_tokens"], index * 2);
+        assert_eq!(
+            baseline["prompt_tokens"],
+            (index + 1) * (index + 2) / 2 * 11
+        );
+        assert_eq!(
+            baseline["completion_tokens"],
+            (index + 1) * (index + 2) / 2 * 3
+        );
+        assert_eq!(baseline["total_tokens"], (index + 1) * (index + 2) / 2 * 14);
+        assert_eq!(baseline["input_cache_hit_tokens"], index * (index + 1));
+        assert_eq!(
+            task.request_payload["native_usage_baseline_source"],
+            "usage_ledger"
+        );
     }
 
     assert!(detail
@@ -360,4 +372,260 @@ async fn semantic_round_evidence_is_atomic_with_callback_and_checkpoint() {
         .callback_tasks
         .iter()
         .all(|task| task.node_run_id == node.id));
+}
+
+#[tokio::test]
+async fn successful_native_terminal_commits_only_latest_scoped_tool_candidate() {
+    use crate::orchestration_runtime::{OrchestrationRuntimeService, StartFlowDebugRunCommand};
+    use crate::ports::{CreateNodeRunInput, OrchestrationRuntimeRepository};
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service
+        .seed_application_with_flow("native successful tool delivery")
+        .await;
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({"node-start":{"query":"tool"}}),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    let run = started.flow_run;
+    let node = service
+        .repository
+        .create_node_run(&CreateNodeRunInput {
+            flow_run_id: run.id,
+            node_id: "node-llm".into(),
+            node_type: "llm".into(),
+            node_alias: "LLM".into(),
+            status: domain::NodeRunStatus::Running,
+            input_payload: json!({}),
+            debug_payload: json!({}),
+            started_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    let outcome = FlowDebugExecutionOutcome {
+        stop_reason: ExecutionStopReason::Completed,
+        variable_pool: Map::new(),
+        checkpoint_snapshot: None,
+        operation_terminal: None,
+        node_traces: vec![trace(
+            &node.node_id,
+            json!({"tool_calls":[{"id":"same-call","name":"exec","arguments":{"input":"latest"}}]}),
+            None,
+        )],
+    };
+    let candidate = |node_run_id, call_id: &str, input: &str| {
+        crate::orchestration_runtime::debug_stream_events::provider_output_item_done(
+            &node.node_id,
+            node_run_id,
+            0,
+            json!({"type":"custom_tool_call","call_id":call_id,"name":"exec","input":input}),
+        )
+    };
+    let prepared = [(node.node_id.clone(), node.clone())].into_iter().collect();
+    let persisted = super::super::persist_flow_debug_outcome(
+        &service.repository,
+        super::super::PersistFlowDebugOutcomeInput {
+            responses_round: None,
+            scope_id: Uuid::nil(),
+            application_name: "native successful tool delivery",
+            task_queue: None,
+            application_id: seeded.application_id,
+            flow_run: &run,
+            compiled_plan: None,
+            outcome: &outcome,
+            prepared_node_runs: Some(&prepared),
+            answer_presentation: None,
+            trigger_event_type: "fixture",
+            trigger_event_payload: json!({}),
+            base_started_at: OffsetDateTime::now_utc(),
+            waiting_node_resume: None,
+            resume_claim_id: None,
+            resume_claim_token: None,
+            tool_delivery_events: vec![
+                candidate(node.id, "same-call", "older internal round"),
+                candidate(node.id, "internal-consumed", "already executed"),
+                candidate(node.id, "same-call", "latest"),
+                candidate(Uuid::now_v7(), "same-call", "another node execution"),
+            ],
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(persisted.flow_run.status, domain::FlowRunStatus::Succeeded);
+    let delivered: Vec<_> = persisted
+        .stream_events
+        .iter()
+        .filter(|event| event.event_type == "provider_output_item_done")
+        .collect();
+    assert_eq!(delivered.len(), 1);
+    assert_eq!(delivered[0].payload["item"]["input"], "latest");
+    assert_eq!(delivered[0].payload["committed_delivery"], true);
+    assert!(!delivered[0].persist_required);
+    let events = service
+        .repository
+        .list_runtime_events(run.id, 0)
+        .await
+        .unwrap();
+    let formal: Vec<_> = events
+        .iter()
+        .filter(|event| event.event_type == "provider_output_item_done")
+        .collect();
+    assert_eq!(formal.len(), 1);
+    assert_eq!(formal[0].payload["item"]["input"], "latest");
+    assert!(
+        formal[0].sequence
+            < events
+                .iter()
+                .find(|event| event.event_type == "flow_finished")
+                .unwrap()
+                .sequence
+    );
+    let detail = service
+        .repository
+        .get_application_run_detail(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(detail.callback_tasks.is_empty());
+}
+
+#[tokio::test]
+async fn native_tool_wait_delivers_only_actual_mounted_wait_owner() {
+    use crate::orchestration_runtime::{OrchestrationRuntimeService, StartFlowDebugRunCommand};
+    use crate::ports::{CreateNodeRunInput, OrchestrationRuntimeRepository};
+    use orchestration_runtime::execution_state::{CheckpointSnapshot, PendingCallbackTask};
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service
+        .seed_application_with_flow("mounted native delivery")
+        .await;
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({"node-start":{"query":"mounted tool"}}),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    let run = started.flow_run;
+    let mut prepared = std::collections::BTreeMap::new();
+    for node_id in ["node-main", "node-mounted"] {
+        let node = service
+            .repository
+            .create_node_run(&CreateNodeRunInput {
+                flow_run_id: run.id,
+                node_id: node_id.into(),
+                node_type: "llm".into(),
+                node_alias: node_id.into(),
+                status: domain::NodeRunStatus::Running,
+                input_payload: json!({}),
+                debug_payload: json!({}),
+                started_at: OffsetDateTime::now_utc(),
+            })
+            .await
+            .unwrap();
+        prepared.insert(node_id.to_owned(), node);
+    }
+    let main = &prepared["node-main"];
+    let mounted = &prepared["node-mounted"];
+    let calls =
+        json!([{"id":"external-call","name":"exec","arguments":{"input":"mounted external"}}]);
+    let outcome = FlowDebugExecutionOutcome {
+        stop_reason: ExecutionStopReason::WaitingCallback(PendingCallbackTask {
+            node_id: mounted.node_id.clone(),
+            node_alias: mounted.node_alias.clone(),
+            callback_kind: "llm_tool_calls".into(),
+            request_payload: json!({"host_tool_continuation_owner":"agentflow","tool_calls":calls}),
+        }),
+        variable_pool: Map::new(),
+        checkpoint_snapshot: Some(CheckpointSnapshot {
+            container_state: None,
+            next_node_index: 0,
+            variable_pool: Map::new(),
+            active_node_ids: vec![mounted.node_id.clone()],
+        }),
+        operation_terminal: None,
+        node_traces: vec![
+            trace(
+                &main.node_id,
+                json!({"tool_calls":[{"id":"external-call","name":"exec"}]}),
+                None,
+            ),
+            trace(&mounted.node_id, json!({"tool_calls":calls}), None),
+        ],
+    };
+    let candidate = |node_id: &str, node_run_id, input: &str| {
+        crate::orchestration_runtime::debug_stream_events::provider_output_item_done(
+            node_id,
+            node_run_id,
+            0,
+            json!({"type":"custom_tool_call","call_id":"external-call","name":"exec","input":input}),
+        )
+    };
+    let persisted = super::super::persist_flow_debug_outcome(
+        &service.repository,
+        super::super::PersistFlowDebugOutcomeInput {
+            responses_round: None,
+            scope_id: Uuid::nil(),
+            application_name: "mounted native delivery",
+            task_queue: None,
+            application_id: seeded.application_id,
+            flow_run: &run,
+            compiled_plan: None,
+            outcome: &outcome,
+            prepared_node_runs: Some(&prepared),
+            answer_presentation: None,
+            trigger_event_type: "fixture",
+            trigger_event_payload: json!({}),
+            base_started_at: OffsetDateTime::now_utc(),
+            waiting_node_resume: None,
+            resume_claim_id: None,
+            resume_claim_token: None,
+            tool_delivery_events: vec![
+                candidate(&main.node_id, main.id, "main already executed"),
+                candidate(&mounted.node_id, mounted.id, "mounted external"),
+                candidate(&mounted.node_id, Uuid::now_v7(), "other execution"),
+            ],
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        persisted.flow_run.status,
+        domain::FlowRunStatus::WaitingCallback
+    );
+    let delivered: Vec<_> = persisted
+        .stream_events
+        .iter()
+        .filter(|event| event.event_type == "provider_output_item_done")
+        .collect();
+    assert_eq!(delivered.len(), 1);
+    assert_eq!(delivered[0].payload["node_run_id"], mounted.id.to_string());
+    assert_eq!(delivered[0].payload["item"]["input"], "mounted external");
+    let detail = service
+        .repository
+        .get_application_run_detail(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(detail.callback_tasks.len(), 1);
+    assert_eq!(detail.callback_tasks[0].node_run_id, mounted.id);
+    let events = service
+        .repository
+        .list_runtime_events(run.id, 0)
+        .await
+        .unwrap();
+    let formal: Vec<_> = events
+        .iter()
+        .filter(|event| event.event_type == "provider_output_item_done")
+        .collect();
+    assert_eq!(formal.len(), 1);
+    assert_eq!(formal[0].node_run_id, Some(mounted.id));
+    assert_eq!(formal[0].payload["item"]["input"], "mounted external");
 }

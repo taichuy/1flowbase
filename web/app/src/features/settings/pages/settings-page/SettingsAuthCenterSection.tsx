@@ -20,6 +20,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
 import {
@@ -158,7 +159,7 @@ function authCenterLifecycleErrorMessage(error: unknown, fallbackKey: string) {
 function LoginEntryConfigDrawer({
   authenticator,
   open,
-  canManageLoginEntries,
+  canUpdateConfig,
   hasCsrfToken,
   submitting,
   onClose,
@@ -166,7 +167,7 @@ function LoginEntryConfigDrawer({
 }: {
   authenticator: LoginEntryRow | null;
   open: boolean;
-  canManageLoginEntries: boolean;
+  canUpdateConfig: boolean;
   hasCsrfToken: boolean;
   submitting: boolean;
   onClose: () => void;
@@ -175,7 +176,7 @@ function LoginEntryConfigDrawer({
     values: LoginEntryConfigFormValues
   ) => Promise<void>;
 }) {
-  const accessErrorMessage = !canManageLoginEntries
+  const accessErrorMessage = !canUpdateConfig
     ? i18nText('settings', 'auto.auth_center_manage_permission_required')
     : !hasCsrfToken
       ? i18nText('settings', 'auto.auth_center_csrf_required')
@@ -249,11 +250,16 @@ export function SettingsAuthCenterSection() {
   >(null);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const actor = useAuthStore((state) => state.actor);
-  const me = useAuthStore((state) => state.me);
   const queryClient = useQueryClient();
-  const canManageLoginEntries =
-    actor?.effective_display_role === 'root' ||
-    (me?.permissions ?? []).includes('user.manage.all');
+  const can = useConsoleOperationAccess();
+  const canCreate = can('auth_center.login_entries.create');
+  const canDelete = can('auth_center.login_entries.delete');
+  const canUpdateEnabled = can('auth_center.login_entries.enabled.update');
+  const canOrder = can('auth_center.login_entries.order');
+  const canUpdateConfig = can('update_auth_center_authenticator_config');
+  const canUpdatePublicUi = can(
+    'update_auth_center_authenticator_public_ui_block'
+  );
   const overviewQuery = useQuery({
     queryKey: settingsAuthCenterOverviewQueryKey,
     queryFn: fetchSettingsAuthCenterOverview
@@ -270,8 +276,8 @@ export function SettingsAuthCenterSection() {
           (row) => row.id === selectedUiLoginEntryId
         ) ?? null)
       : null;
-  const requireAuthCenterWrite = () => {
-    if (!canManageLoginEntries) {
+  const requireAuthCenterWrite = (operationId: string) => {
+    if (!can(operationId)) {
       throw new Error(
         i18nText('settings', 'auto.auth_center_manage_permission_required')
       );
@@ -296,13 +302,13 @@ export function SettingsAuthCenterSection() {
   };
   const enabledMutation = useMutation({
     mutationFn: (input: { loginEntryId: string; enabled: boolean }) => {
-      if (!csrfToken) {
-        throw new Error('missing csrf token');
-      }
+      const token = requireAuthCenterWrite(
+        'auth_center.login_entries.enabled.update'
+      );
       return updateSettingsAuthCenterLoginEntryEnabled(
         input.loginEntryId,
         { enabled: input.enabled },
-        csrfToken
+        token
       );
     },
     onMutate: () => {
@@ -336,7 +342,7 @@ export function SettingsAuthCenterSection() {
       loginEntryId: string;
       values: LoginEntryConfigFormValues;
     }) => {
-      if (!canManageLoginEntries) {
+      if (!canUpdateConfig) {
         throw new Error(
           i18nText('settings', 'auto.auth_center_manage_permission_required')
         );
@@ -377,7 +383,7 @@ export function SettingsAuthCenterSection() {
   });
   const publicUiBlockMutation = useMutation({
     mutationFn: (input: { loginEntryId: string; publicUiBlock: string }) => {
-      if (!canManageLoginEntries) {
+      if (!canUpdatePublicUi) {
         throw new Error(
           i18nText('settings', 'auto.auth_center_manage_permission_required')
         );
@@ -419,7 +425,7 @@ export function SettingsAuthCenterSection() {
           enabled: Boolean(values.enabled),
           sort_order: nextSortOrder
         },
-        requireAuthCenterWrite()
+        requireAuthCenterWrite('auth_center.login_entries.create')
       ),
     onSuccess: async (authenticator) => {
       queryClient.setQueryData<SettingsAuthCenterOverview>(
@@ -452,7 +458,7 @@ export function SettingsAuthCenterSection() {
     mutationFn: (loginEntryId: string) =>
       deleteSettingsAuthCenterLoginEntry(
         loginEntryId,
-        requireAuthCenterWrite()
+        requireAuthCenterWrite('auth_center.login_entries.delete')
       ),
     onSuccess: async (_, loginEntryId) => {
       queryClient.setQueryData<SettingsAuthCenterOverview>(
@@ -479,7 +485,10 @@ export function SettingsAuthCenterSection() {
   });
   const reorderMutation = useMutation({
     mutationFn: (ids: string[]) =>
-      reorderSettingsAuthCenterLoginEntries(ids, requireAuthCenterWrite()),
+      reorderSettingsAuthCenterLoginEntries(
+        ids,
+        requireAuthCenterWrite('auth_center.login_entries.order')
+      ),
     onSuccess: (overview) => {
       queryClient.setQueryData<SettingsAuthCenterOverview>(
         settingsAuthCenterOverviewQueryKey,
@@ -497,7 +506,7 @@ export function SettingsAuthCenterSection() {
   });
   const canDragSortLoginEntries =
     Boolean(csrfToken) &&
-    canManageLoginEntries &&
+    canOrder &&
     !reorderMutation.isPending &&
     (overviewQuery.data?.login_entries.length ?? 0) > 1;
   const getDraggedLoginEntryId = (event: DragEvent<HTMLElement>) =>
@@ -597,7 +606,7 @@ export function SettingsAuthCenterSection() {
       render: (enabled: boolean, row) => (
         <Switch
           checked={enabled}
-          disabled={!csrfToken || !canManageLoginEntries}
+          disabled={!csrfToken || !canUpdateEnabled}
           loading={
             enabledMutation.isPending &&
             enabledMutation.variables?.loginEntryId === row.id
@@ -645,7 +654,7 @@ export function SettingsAuthCenterSection() {
             })}
             okText={i18nText('settings', 'auto.delete')}
             cancelText={i18nText('settings', 'auto.cancel')}
-            disabled={row.is_builtin || !csrfToken || !canManageLoginEntries}
+            disabled={row.is_builtin || !csrfToken || !canDelete}
             onConfirm={() => {
               setOperationErrorMessage(null);
               deleteMutation.mutate(row.id);
@@ -670,7 +679,7 @@ export function SettingsAuthCenterSection() {
                 disabled={
                   row.is_builtin ||
                   !csrfToken ||
-                  !canManageLoginEntries ||
+                  !canDelete ||
                   (deleteMutation.isPending &&
                     deleteMutation.variables === row.id)
                 }
@@ -700,7 +709,7 @@ export function SettingsAuthCenterSection() {
               icon={<PlusOutlined aria-hidden="true" />}
               disabled={
                 !csrfToken ||
-                !canManageLoginEntries ||
+                !canCreate ||
                 overviewQuery.data.supported_auth_types.length === 0
               }
               onClick={openCreateLoginEntry}
@@ -760,7 +769,7 @@ export function SettingsAuthCenterSection() {
       <LoginEntryConfigDrawer
         authenticator={selectedLoginEntry}
         open={selectedLoginEntryId != null}
-        canManageLoginEntries={canManageLoginEntries}
+        canUpdateConfig={canUpdateConfig}
         hasCsrfToken={csrfToken != null}
         submitting={configMutation.isPending}
         onClose={() => {
@@ -811,7 +820,7 @@ export function SettingsAuthCenterSection() {
               : null
           }
           open={selectedUiLoginEntryId != null}
-          readOnly={!canManageLoginEntries || csrfToken == null}
+          readOnly={!canUpdatePublicUi || csrfToken == null}
           saving={publicUiBlockMutation.isPending}
           source={selectedUiLoginEntry.public_ui_block}
           onClose={() => {

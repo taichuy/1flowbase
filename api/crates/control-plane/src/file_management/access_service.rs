@@ -158,6 +158,9 @@ where
         record_id: Uuid,
         expires_in_seconds: i64,
     ) -> Result<FileShareLink> {
+        if !actor.has_permission("files.access_links.create") {
+            return Err(ControlPlaneError::PermissionDenied("files.access_links.create").into());
+        }
         if expires_in_seconds <= 0 {
             return Err(ControlPlaneError::InvalidInput("expires_in_seconds").into());
         }

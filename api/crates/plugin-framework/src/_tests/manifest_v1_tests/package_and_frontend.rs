@@ -1067,3 +1067,40 @@ block_contributions:
         "block_contributions[].ui_capabilities[] must be one of responsive, configurable, theming, data_binding"
     ));
 }
+
+#[test]
+fn frontend_ui_registration_is_explicit_and_validated() {
+    let baseline = valid_frontend_block_manifest_with_code_template(
+        "export default function Block() { return <p>test</p>; }",
+    );
+    let default = parse_plugin_manifest(&baseline).unwrap();
+    assert_eq!(
+        default.block_contributions[0].ui_registration,
+        "code_template"
+    );
+    let component = baseline.replace(
+        "    runtime: native_react",
+        "    ui_registration: component\n    runtime: native_react",
+    );
+    assert_eq!(
+        parse_plugin_manifest(&component)
+            .unwrap()
+            .block_contributions[0]
+            .ui_registration,
+        "component"
+    );
+    let invalid = component.replace("ui_registration: component", "ui_registration: both");
+    assert!(parse_plugin_manifest(&invalid)
+        .unwrap_err()
+        .to_string()
+        .contains("ui_registration"));
+    let missing_source = component
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("code_template"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(parse_plugin_manifest(&missing_source)
+        .unwrap_err()
+        .to_string()
+        .contains("component requires"));
+}

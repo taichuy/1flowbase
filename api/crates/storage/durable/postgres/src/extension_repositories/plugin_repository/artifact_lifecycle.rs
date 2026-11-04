@@ -205,6 +205,18 @@ impl PgControlPlaneStore {
             .execute(&mut *transaction)
             .await?;
         }
+        // Family uninstall retains installation/audit history but revokes reusable projections.
+        let installation_ids: Vec<_> = input
+            .artifact_instances
+            .iter()
+            .map(|artifact| artifact.installation_id)
+            .collect();
+        sqlx::query("delete from ui_component_records where origin='plugin' and owner_installation_id=any($1)")
+            .bind(&installation_ids).execute(&mut *transaction).await?;
+        sqlx::query("delete from frontend_block_catalog where installation_id=any($1)")
+            .bind(&installation_ids)
+            .execute(&mut *transaction)
+            .await?;
         for cleanup in &input.artifact_cleanups {
             sqlx::query(
                 r#"

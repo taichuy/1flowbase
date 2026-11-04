@@ -22,6 +22,7 @@ import {
   type AgentFlowEnvironmentVariable
 } from '../../lib/variables/application-environment-variables';
 import { EnvironmentVariableValueEditor } from './environment-variables/EnvironmentVariableValueEditor';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { i18nText } from '../../../../shared/i18n/text';
 
 const valueTypeOptions = [
@@ -185,6 +186,8 @@ function useEnvironmentVariableDraftController({
   onClose,
   onSave
 }: ApplicationEnvironmentVariablesPanelProps) {
+  const can = useConsoleOperationAccess();
+  const canSave = can('replace_application_environment_variables');
   const [draftVariables, setDraftVariables] = useState(variables);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -213,6 +216,7 @@ function useEnvironmentVariableDraftController({
   );
 
   function openCreateModal() {
+    if (!canSave) return;
     setEditingIndex(null);
     setValueError(null);
     form.setFieldsValue({
@@ -225,6 +229,7 @@ function useEnvironmentVariableDraftController({
   }
 
   function openEditModal(index: number) {
+    if (!canSave) return;
     const variable = draftVariables[index];
     setEditingIndex(index);
     setValueError(null);
@@ -246,6 +251,7 @@ function useEnvironmentVariableDraftController({
   }
 
   async function submitModal() {
+    if (!canSave) return;
     const values = await form.validateFields();
     let parsedValue: unknown;
 
@@ -276,6 +282,7 @@ function useEnvironmentVariableDraftController({
   }
 
   function deleteVariable(index: number) {
+    if (!canSave) return;
     const nextVariables = draftVariables.filter(
       (_, candidate) => candidate !== index
     );
@@ -283,17 +290,47 @@ function useEnvironmentVariableDraftController({
     onSave(nextVariables);
   }
   return {
-    onClose, openCreateModal, loading, draftVariables, openEditModal, deleteVariable,
-    modalTitle, modalOpen, setModalOpen, submitModal, form, existingNames,
-    handleValueTypeChange, valueError, selectedValueType, setValueError
+    canSave,
+    onClose,
+    openCreateModal,
+    loading,
+    draftVariables,
+    openEditModal,
+    deleteVariable,
+    modalTitle,
+    modalOpen,
+    setModalOpen,
+    submitModal,
+    form,
+    existingNames,
+    handleValueTypeChange,
+    valueError,
+    selectedValueType,
+    setValueError
   };
 }
 
-export function ApplicationEnvironmentVariablesPanel(props: Parameters<typeof useEnvironmentVariableDraftController>[0]) {
+export function ApplicationEnvironmentVariablesPanel(
+  props: Parameters<typeof useEnvironmentVariableDraftController>[0]
+) {
   const {
-    onClose, openCreateModal, loading, draftVariables, openEditModal, deleteVariable,
-    modalTitle, modalOpen, setModalOpen, submitModal, form, existingNames,
-    handleValueTypeChange, valueError, selectedValueType, setValueError
+    canSave,
+    onClose,
+    openCreateModal,
+    loading,
+    draftVariables,
+    openEditModal,
+    deleteVariable,
+    modalTitle,
+    modalOpen,
+    setModalOpen,
+    submitModal,
+    form,
+    existingNames,
+    handleValueTypeChange,
+    valueError,
+    selectedValueType,
+    setValueError
   } = useEnvironmentVariableDraftController(props);
 
   return (
@@ -326,6 +363,7 @@ export function ApplicationEnvironmentVariablesPanel(props: Parameters<typeof us
       <div className="agent-flow-editor__environment-variables-body">
         <div className="agent-flow-editor__environment-variables-toolbar">
           <Button
+            disabled={!canSave}
             icon={<PlusOutlined />}
             type="primary"
             onClick={openCreateModal}
@@ -376,6 +414,7 @@ export function ApplicationEnvironmentVariablesPanel(props: Parameters<typeof us
                       aria-label={i18nText('agentFlow', 'auto.edit', {
                         value1: variable.name
                       })}
+                      disabled={!canSave}
                       icon={<EditOutlined />}
                       size="small"
                       type="text"
@@ -397,6 +436,7 @@ export function ApplicationEnvironmentVariablesPanel(props: Parameters<typeof us
                           value1: variable.name
                         })}
                         danger
+                        disabled={!canSave}
                         icon={<DeleteOutlined />}
                         size="small"
                         type="text"

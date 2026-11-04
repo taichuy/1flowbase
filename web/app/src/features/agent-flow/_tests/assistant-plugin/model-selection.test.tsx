@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, expect, test, vi } from 'vitest';
 import {
   AssistantPanelPlugin,
@@ -146,3 +146,45 @@ test('refreshing prevents selecting from a stale menu', async () => {
   fireEvent.click(reset);
   expect(onChangePreference).not.toHaveBeenCalled();
 });
+
+test.each(['reset', 'model', 'reasoning effort'] as const)(
+  'read-only runtime keeps the published model list visible and disables every preference write: %s',
+  async (action) => {
+    const onChangePreference = vi.fn();
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    render(
+      panel({
+        ...runtime,
+        preference: { model: 'published-model', reasoning_effort: 'low' },
+        readOnly: true,
+        onRefresh,
+        onChangePreference
+      })
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Published model/ }));
+    expect(onRefresh).toHaveBeenCalledOnce();
+
+    let option: HTMLElement;
+    if (action === 'reset') {
+      option = await screen.findByRole('menuitem', {
+        name: i18nText('appShell', 'auto.assistant_reset_defaults')
+      });
+    } else {
+      const submenu = screen.getByRole('menuitem', {
+        name: action === 'model'
+          ? /模型 Published model|Model Published model/
+          : /^推理强度 low(?: right)?$|^Reasoning effort low(?: right)?$/i
+      });
+      await waitFor(() => expect(submenu).toBeVisible());
+      expect(submenu).not.toHaveAttribute('aria-disabled', 'true');
+      fireEvent.mouseEnter(submenu);
+      option = await screen.findByRole('menuitem', {
+        name: action === 'model' ? /^Published model(?: check)?$/ : /^low(?: check)?$/
+      });
+    }
+    await waitFor(() => expect(option).toBeVisible());
+    expect(option).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(option);
+    expect(onChangePreference).not.toHaveBeenCalled();
+  }
+);

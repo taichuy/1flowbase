@@ -8,7 +8,7 @@ use domain::{CallbackTaskRecord, CallbackTaskStatus, FlowRunStatus};
 use serde_json::{json, Value};
 
 use super::api_keys::ApplicationApiKeyActor;
-use super::compat::openai::responses_index::native_tool_results;
+use super::compat::openai::responses_index::{is_closed_tool_history, native_tool_results};
 use super::compat::openai::OpenAiResponsesEnvelope;
 use crate::errors::ControlPlaneError;
 
@@ -36,6 +36,40 @@ pub async fn correlate_native_responses_callback_from_envelope<R>(
 where
     R: ApplicationPublishedRunControlRepository,
 {
+    correlate_responses_callback(repository, actor, envelope, false, None).await
+}
+
+/// Public Responses admission only resumes tools explicitly owned by the host.
+/// Native client history is not callback authority merely because call IDs match.
+/// Legacy pending workflows additionally require explicit predecessor proof.
+/// The marker is written by host tool
+/// execution, never accepted from request JSON or provider metadata.
+pub async fn correlate_host_owned_responses_callback<R>(
+    repository: &R,
+    actor: &ApplicationApiKeyActor,
+    envelope: &OpenAiResponsesEnvelope,
+) -> Result<Option<(CallbackTaskRecord, Value)>>
+where
+    R: ApplicationPublishedRunControlRepository
+        + control_plane_contracts::application_public_runtime::ApplicationPublishedCallbackAttemptRepository,
+{
+    correlate_responses_callback(repository, actor, envelope, true, Some(repository)).await
+}
+
+async fn correlate_responses_callback<R>(
+    repository: &R,
+    actor: &ApplicationApiKeyActor,
+    envelope: &OpenAiResponsesEnvelope,
+    host_owned_only: bool,
+    attempt_repository: Option<&dyn control_plane_contracts::application_public_runtime::ApplicationPublishedCallbackAttemptRepository>,
+) -> Result<Option<(CallbackTaskRecord, Value)>>
+where
+    R: ApplicationPublishedRunControlRepository,
+{
+    // Prewarming is connection setup, not submission of a workflow receipt.
+    if host_owned_only && envelope.raw_body().get("generate") == Some(&Value::Bool(false)) {
+        return Ok(None);
+    }
     // Structural protocol errors remain owned by the Responses translator. Correlation runs
     // before translation and must only claim a request when a bounded index can be built.
     let request = envelope.raw_body();
@@ -50,16 +84,20 @@ where
         return Ok(None);
     }
 
-    let tool_results =
-        native_tool_results(output_positions.iter().map(|position| &input[*position]))?;
-    let call_ids: BTreeSet<String> = tool_results
+    // Before establishing ownership, inspect identities only. Native client
+    // payload validation belongs to the provider, not the workflow tool codec.
+    let tool_results = if host_owned_only {
+        None
+    } else {
+        Some(native_tool_results(
+            output_positions.iter().map(|position| &input[*position]),
+        )?)
+    };
+    let call_ids: BTreeSet<String> = output_positions
         .iter()
-        .map(|result| {
-            result["tool_call_id"]
-                .as_str()
-                .expect("validated output ID")
-                .to_owned()
-        })
+        .filter_map(|position| input[*position].get("call_id").and_then(Value::as_str))
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
         .collect();
     debug_assert!(call_ids.iter().all(|call_id| {
         index
@@ -79,7 +117,7 @@ where
                 response_id,
             )
             .await?;
-        if response_candidates.is_empty() {
+        if response_candidates.is_empty() && !host_owned_only {
             // Preserve a precise mismatch result when the call set identifies an owned round;
             // this diagnostic fallback never overrides a response-id match.
             repository
@@ -105,8 +143,38 @@ where
             )
             .await?
     };
-    let mut candidates = candidates.into_iter();
+    let mut candidates = candidates.into_iter().filter(|callback| {
+        if !host_owned_only || host_owns_callback(callback) {
+            return true;
+        }
+        // Preserve an in-flight workflow created before owner evidence existed.
+        // An exact cursor or verified complete predecessor is required; an ID
+        // copied into arbitrary history cannot acquire this legacy authority.
+        matches!(
+            callback.status,
+            CallbackTaskStatus::Pending | CallbackTaskStatus::Completed
+        ) && (previous_response_id.is_some_and(|previous| {
+            callback
+                .request_payload
+                .pointer("/provider_metadata/native_response/response_id")
+                .and_then(Value::as_str)
+                == Some(previous)
+        }) || (previous_response_id.is_none()
+            && input.len() > output_positions.len()
+            && super::compat::openai::history::prove_full_context_input(
+                input_value,
+                &callback.request_payload["provider_metadata"]["native_response"]["history"],
+                &call_id_list,
+            )
+            .is_ok()))
+    });
     let Some(callback) = candidates.next() else {
+        if host_owned_only {
+            return Ok(None);
+        }
+        if previous_response_id.is_none() && is_closed_tool_history(input) {
+            return Ok(None);
+        }
         // A self-contained history can come from another session/key or provider.
         // Its past outputs are not submissions to an owned callback round.
         if previous_response_id.is_none() && index.has_assistant_message_after_tool_outputs() {
@@ -125,6 +193,10 @@ where
     if candidates.next().is_some() {
         return Err(ControlPlaneError::Conflict("native_tool_output_ambiguous_round").into());
     }
+    let tool_results = match tool_results {
+        Some(results) => results,
+        None => native_tool_results(output_positions.iter().map(|position| &input[*position]))?,
+    };
     let flow_run = repository
         .get_published_flow_run(callback.flow_run_id)
         .await?
@@ -134,6 +206,34 @@ where
         || flow_run.created_by != actor.creator_user_id
     {
         return Err(ControlPlaneError::PermissionDenied("native_tool_output_owner").into());
+    }
+    if host_owned_only
+        && !host_owns_callback(&callback)
+        && callback.status == CallbackTaskStatus::Pending
+        && !matches!(
+            flow_run.status,
+            FlowRunStatus::WaitingCallback | FlowRunStatus::Running
+        )
+    {
+        return Ok(None);
+    }
+    if host_owned_only
+        && !host_owns_callback(&callback)
+        && callback.status == CallbackTaskStatus::Completed
+    {
+        let attempt = attempt_repository
+            .expect("host admission supplies attempt repository")
+            .get_published_callback_resume_attempt(callback.id)
+            .await?;
+        // A consumed legacy receipt grants only an exact durable replay, never
+        // fresh inference on account of historical tool IDs.
+        if !attempt.is_some_and(|attempt| {
+            attempt.flow_run_id == callback.flow_run_id
+                && attempt.source == "openai_responses"
+                && attempt.response_payload == json!({"tool_results": tool_results})
+        }) {
+            return Ok(None);
+        }
     }
     let expected_calls = callback
         .request_payload
@@ -202,6 +302,11 @@ where
             &call_id_list,
         )
         .is_ok();
+    if full_context_required && !full_context_proven && is_closed_tool_history(input) {
+        // A self-contained history may legitimately prune or rebuild old context.
+        // Failed predecessor proof cannot grant authority over the owned receipt.
+        return Ok(None);
+    }
     let digest = super::native::NativeExecutionModelParameters::
         configuration_digest_with_published_reasoning_default(&flow_run.input_payload, request)?;
     if metadata.get("configuration_digest").and_then(Value::as_str) != Some(digest.as_str()) {
@@ -246,6 +351,14 @@ where
         return Err(ControlPlaneError::Conflict("native_tool_output_round_not_pending").into());
     }
     Ok(Some((callback, json!({"tool_results": tool_results}))))
+}
+
+fn host_owns_callback(callback: &CallbackTaskRecord) -> bool {
+    callback
+        .request_payload
+        .get("host_tool_continuation_owner")
+        .and_then(Value::as_str)
+        == Some("agentflow")
 }
 
 /// A self-contained request in another authenticated session starts new sampling.

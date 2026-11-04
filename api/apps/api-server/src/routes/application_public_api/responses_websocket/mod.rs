@@ -63,9 +63,10 @@ pub(crate) async fn upgrade(
         transport_scope,
     };
 
-    Ok(websocket
+    let response = websocket
         .on_upgrade(move |socket| async move {
             actor::run_connection(socket, state, Arc::new(authorization)).await;
         })
-        .await)
+        .await;
+    Ok(response)
 }

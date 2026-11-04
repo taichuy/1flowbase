@@ -24,7 +24,15 @@ beforeEach(async () => {
   for (const fn of Object.values(api)) fn.mockReset();
   save.mockReset();
   await appI18n.changeLanguage('zh_Hans');
-  useAuthStore.setState({ csrfToken: 'fixture-csrf' });
+  useAuthStore.setState({
+    csrfToken: 'fixture-csrf',
+    actor: {
+      id: 'root-1',
+      account: 'root',
+      effective_display_role: 'root',
+      current_workspace_id: 'workspace-1'
+    }
+  });
 });
 function open(
   selectedRecords: Array<{
@@ -112,7 +120,9 @@ test('pending exchange blocks backdrop and Escape dismissal until the download f
   const dialog = screen.getByRole('dialog');
   const backdrop = dialog.closest<HTMLElement>('.ant-modal-wrap');
   expect(backdrop).not.toBeNull();
-  expect(within(dialog).getByRole('button', { name: /^关\s*闭$/ })).toBeDisabled();
+  expect(
+    within(dialog).getByRole('button', { name: /^关\s*闭$/ })
+  ).toBeDisabled();
   fireEvent.mouseDown(backdrop!);
   fireEvent.mouseUp(backdrop!);
   fireEvent.click(backdrop!);
@@ -127,12 +137,16 @@ test('pending exchange blocks backdrop and Escape dismissal until the download f
   });
   await screen.findByText('已下载 completed.json');
   await waitFor(() =>
-    expect(within(dialog).getByRole('button', { name: /^关\s*闭$/ })).toBeEnabled()
+    expect(
+      within(dialog).getByRole('button', { name: /^关\s*闭$/ })
+    ).toBeEnabled()
   );
   fireEvent.mouseDown(backdrop!);
   fireEvent.mouseUp(backdrop!);
   fireEvent.click(backdrop!);
-  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  );
 });
 
 test('OTLP file import uses the object unchanged and shows actual duplicate receipt', async () => {

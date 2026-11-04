@@ -556,6 +556,7 @@ pub struct FrontendBlockCatalogRegistryInput {
     pub title: String,
     pub runtime: String,
     pub entry: String,
+    pub ui_registration: String,
     pub code_template: Option<String>,
     pub code_template_version: Option<String>,
     pub code_template_language: Option<String>,

@@ -160,7 +160,7 @@ async fn standalone_notification_after_an_answer_does_not_reopen_a_completed_rec
 #[tokio::test]
 async fn standalone_notifications_do_not_weaken_native_receipt_or_history_validation() {
     let (repository, actor, run) = fixture().await;
-    let (_, mut full) = seed_proven_full_round(&repository, run, true);
+    let (callback, mut full) = seed_proven_full_round(&repository, run, true);
     full["input"].as_array_mut().unwrap().push(notification());
     let mut incomplete = full.clone();
     incomplete["input"].as_array_mut().unwrap().remove(3);
@@ -177,7 +177,6 @@ async fn standalone_notifications_do_not_weaken_native_receipt_or_history_valida
         (incomplete, "native_tool_output_incomplete_round"),
         (duplicate, "native_tool_output_duplicate"),
         (unknown, "native_tool_output_incomplete_round"),
-        (tampered, "native_tool_output_history_mismatch"),
     ] {
         assert!(
             correlate_native_responses_callback(&repository, &actor, &body)
@@ -188,16 +187,47 @@ async fn standalone_notifications_do_not_weaken_native_receipt_or_history_valida
             "expected {code}"
         );
     }
+    assert!(
+        correlate_native_responses_callback(&repository, &actor, &tampered)
+            .await
+            .unwrap()
+            .is_none()
+    );
     let mut other = actor.clone();
     other.api_key_id = Uuid::now_v7();
     assert!(
         correlate_native_responses_callback(&repository, &other, &full)
             .await
-            .unwrap_err()
-            .to_string()
-            .contains("native_tool_output_unknown")
+            .expect(
+                "closed history under another key starts sampling without claiming the callback"
+            )
+            .is_none()
     );
+    let mut with_parent = full.clone();
+    with_parent["previous_response_id"] = json!("resp_round");
+    let mut output_only = request();
+    output_only["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(notification());
+    for body in [with_parent, output_only] {
+        assert_eq!(
+            correlate_native_responses_callback(&repository, &other, &body)
+                .await
+                .unwrap_err()
+                .downcast_ref::<ControlPlaneError>(),
+            Some(&ControlPlaneError::Conflict("native_tool_output_unknown"))
+        );
+    }
+    let unchanged = repository
+        .get_published_callback_task(callback.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(unchanged.status, CallbackTaskStatus::Pending);
+    assert_eq!(unchanged.response_payload, callback.response_payload);
     assert!(repository.callback_resume_attempts().is_empty());
+    assert_eq!(repository.flow_run_count(), 1);
 }
 
 #[tokio::test]

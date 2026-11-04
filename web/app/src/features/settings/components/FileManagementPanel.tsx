@@ -19,6 +19,7 @@ import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import type { ColumnsType } from 'antd/es/table';
 
 import { useAuthStore } from '../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../state/console-operation-access';
 import {
   deleteSettingsFileStorage,
   deleteSettingsFileTable,
@@ -38,6 +39,7 @@ import { i18nText } from '../../../shared/i18n/text';
 
 interface FileManagementPanelProps {
   isRoot: boolean;
+  canViewStorages: boolean;
   canViewTables: boolean;
   canCreateTables: boolean;
 }
@@ -65,11 +67,21 @@ function getHealthStatusMeta(status: string) {
 
 function useFileManagementController({
   isRoot,
+  canViewStorages,
   canViewTables,
   canCreateTables
 }: FileManagementPanelProps) {
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
+  const can = useConsoleOperationAccess();
+  const canListStorages = canViewStorages && can('file_storages.list');
+  const canListTables = canViewTables && can('file_tables.list');
+  const canCreateTable = canCreateTables && can('file_tables.create');
+  const canBindTables = can('file_tables.storage.bind');
+  const canDeleteTables = can('file_tables.delete');
+  const canCreateStorage = isRoot && can('file_storages.create');
+  const canUpdateStorage = isRoot && can('file_storages.update');
+  const canDeleteStorage = isRoot && can('file_storages.delete');
 
   const [storageSearch, setStorageSearch] = useState('');
   const [tableSearch, setTableSearch] = useState('');
@@ -91,7 +103,7 @@ function useFileManagementController({
   } = useQuery({
     queryKey: settingsFileStoragesQueryKey,
     queryFn: fetchSettingsFileStorages,
-    enabled: isRoot
+    enabled: canListStorages
   });
 
   const {
@@ -101,7 +113,7 @@ function useFileManagementController({
   } = useQuery({
     queryKey: settingsFileTablesQueryKey,
     queryFn: fetchSettingsFileTables,
-    enabled: canViewTables
+    enabled: canListTables
   });
 
   const filteredStorages = useMemo(
@@ -141,6 +153,7 @@ function useFileManagementController({
   };
 
   const handleDeleteStorage = (record: SettingsFileStorage) => {
+    if (!canDeleteStorage || record.is_default) return;
     Modal.confirm({
       title: i18nText('settings', 'auto.confirm_delete'),
       content: i18nText(
@@ -153,6 +166,7 @@ function useFileManagementController({
       cancelText: i18nText('settings', 'auto.cancel'),
       onOk: async () => {
         try {
+          if (!canDeleteStorage) return;
           await deleteSettingsFileStorage(record.id, ensureCsrfToken());
           message.success(
             i18nText('settings', 'auto.storage_configuration_deleted')
@@ -170,6 +184,7 @@ function useFileManagementController({
   };
 
   const handleDeleteTable = (record: SettingsFileTable) => {
+    if (!canDeleteTables || record.is_builtin) return;
     Modal.confirm({
       title: i18nText('settings', 'auto.confirm_delete'),
       content: i18nText('settings', 'auto.delete_file_table_content', {
@@ -181,6 +196,7 @@ function useFileManagementController({
       cancelText: i18nText('settings', 'auto.cancel'),
       onOk: async () => {
         try {
+          if (!canDeleteTables) return;
           await deleteSettingsFileTable(record.id, ensureCsrfToken());
           message.success(i18nText('settings', 'auto.file_table_deleted'));
           await refetchTables();
@@ -199,6 +215,7 @@ function useFileManagementController({
     tableId: string,
     storageId: string | null
   ) => {
+    if (!canBindTables) throw new Error('operation not permitted');
     await updateSettingsFileTableBinding(
       tableId,
       { bound_storage_id: storageId },
@@ -283,8 +300,9 @@ function useFileManagementController({
               type="link"
               size="small"
               icon={<EditOutlined />}
+              disabled={!canUpdateStorage}
               onClick={() =>
-                setStorageDrawer({ open: true, mode: 'edit', record })
+                canUpdateStorage && setStorageDrawer({ open: true, mode: 'edit', record })
               }
             >
               {i18nText('settings', 'auto.edit')}
@@ -301,7 +319,7 @@ function useFileManagementController({
               type="link"
               size="small"
               danger
-              disabled={record.is_default}
+              disabled={!canDeleteStorage || record.is_default}
               icon={<DeleteOutlined />}
               onClick={() => handleDeleteStorage(record)}
             >
@@ -364,7 +382,7 @@ function useFileManagementController({
     {
       title: i18nText('settings', 'auto.operation'),
       key: 'actions',
-      width: isRoot ? 220 : 96,
+      width: canBindTables || canDeleteTables ? 220 : 96,
       render: (_value, record) => (
         <Space size="small">
           <Tooltip title={i18nText('settings', 'auto.view')}>
@@ -379,7 +397,7 @@ function useFileManagementController({
               {i18nText('settings', 'auto.view')}
             </Button>
           </Tooltip>
-          {isRoot ? (
+          {canBindTables ? (
             <Tooltip title={i18nText('settings', 'auto.edit')}>
               <Button
                 type="link"
@@ -393,7 +411,7 @@ function useFileManagementController({
               </Button>
             </Tooltip>
           ) : null}
-          {isRoot ? (
+          {canDeleteTables ? (
             <Tooltip
               title={
                 record.is_builtin
@@ -421,7 +439,7 @@ function useFileManagementController({
     }
   ];
 
-  const showCreateOnlyTable = !canViewTables && canCreateTables;
+  const showCreateOnlyTable = !canListTables && canCreateTable;
 
   const storagePanel = (
     <div className="fm-tab-panel">
@@ -431,8 +449,9 @@ function useFileManagementController({
             type="primary"
             size="small"
             icon={<PlusOutlined />}
+            disabled={!canCreateStorage}
             onClick={() =>
-              setStorageDrawer({ open: true, mode: 'create', record: null })
+              canCreateStorage && setStorageDrawer({ open: true, mode: 'create', record: null })
             }
           >
             {i18nText('settings', 'auto.new')}
@@ -473,7 +492,7 @@ function useFileManagementController({
     <div className="fm-tab-panel">
       <div className="fm-tab-toolbar">
         <div className="fm-toolbar">
-          {canCreateTables ? (
+          {canCreateTable ? (
             <Button
               type="primary"
               size="small"
@@ -518,7 +537,7 @@ function useFileManagementController({
   );
 
   const managementTabs = [
-    ...(isRoot
+    ...(canListStorages
       ? [
           {
             key: 'storages',
@@ -527,7 +546,7 @@ function useFileManagementController({
           }
         ]
       : []),
-    ...(canViewTables
+    ...(canListTables
       ? [
           {
             key: 'tables',
@@ -538,14 +557,14 @@ function useFileManagementController({
       : [])
   ];
   return {
-    managementTabs, showCreateOnlyTable, setTableDrawer, storageDrawer, setStorageDrawer,
+    canListTables, managementTabs, showCreateOnlyTable, setTableDrawer, storageDrawer, setStorageDrawer,
     refetchStorages, tableDrawer, storages, refetchTables, handleUpdateBinding
   };
 }
 
 export function FileManagementPanel(props: Parameters<typeof useFileManagementController>[0]) {
   const {
-    managementTabs, showCreateOnlyTable, setTableDrawer, storageDrawer, setStorageDrawer,
+    canListTables, managementTabs, showCreateOnlyTable, setTableDrawer, storageDrawer, setStorageDrawer,
     refetchStorages, tableDrawer, storages, refetchTables, handleUpdateBinding
   } = useFileManagementController(props);
 
@@ -605,7 +624,7 @@ export function FileManagementPanel(props: Parameters<typeof useFileManagementCo
             setTableDrawer({ open: false, mode: null, record: null })
           }
           onSuccess={() => {
-            refetchTables();
+            if (canListTables) refetchTables();
           }}
           onUpdateBinding={handleUpdateBinding}
         />

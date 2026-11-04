@@ -237,8 +237,10 @@ pub(super) fn map_callback_task_tool_summary_record(
         });
         // This immutable usage boundary belongs to the public completion projection;
         // keep its presence (including explicit null) without exposing provider context.
-        if let Some(baseline) = record.request_payload.get("native_usage_baseline") {
-            summary["native_usage_baseline"] = baseline.clone();
+        for key in ["native_usage_baseline", "native_usage_baseline_source"] {
+            if let Some(value) = record.request_payload.get(key) {
+                summary[key] = value.clone();
+            }
         }
         record.request_payload = summary;
         record.external_ref_payload = None;

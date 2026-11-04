@@ -7,6 +7,7 @@ import providerTrajectoryStyles from '../../../agent-flow/components/debug-conso
 import workflowTrajectoryStyles from '../../../agent-flow/components/debug-console/trajectory/workflow/workflow-trajectory.css?inline';
 import clientTrajectoryStyles from '../../../agent-flow/components/debug-console/trajectory/client/client-trajectory.css?inline';
 import trajectoryVirtualListStyles from '../../../agent-flow/components/debug-console/trajectory/virtual/trajectory-virtual-list.css?inline';
+import readOnlyConversationInputStyles from '../../../agent-flow/components/debug-console/conversation/read-only/read-only-conversation-input.css?inline';
 import runDetailStyles from './application-run-detail-panel.css?inline';
 import applicationLogsStyles from '../../pages/application-logs-page.css?inline';
 
@@ -27,6 +28,7 @@ export const shadowViewerStyles = [
   workflowTrajectoryStyles,
   clientTrajectoryStyles,
   trajectoryVirtualListStyles,
+  readOnlyConversationInputStyles,
   runDetailStyles,
   applicationLogsStyles
 ].join('\n');

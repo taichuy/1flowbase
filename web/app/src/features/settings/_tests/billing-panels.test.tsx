@@ -1,5 +1,6 @@
 import '../../../test/fixtures/rc-util-unique-ids';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -47,7 +48,10 @@ vi.mock('../api/billing', () => billingApi);
 vi.mock('../api/identity-access/members', () => membersApi);
 
 import { AppProviders } from '../../../app/AppProviders';
-import { loadApplicationI18nResources } from '../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 import { CreditManagementPanel } from '../components/billing/CreditManagementPanel';
 import { PricingCatalogPanel } from '../components/billing/PricingCatalogPanel';
@@ -221,6 +225,47 @@ describe('billing settings panels', () => {
     }
   });
 
+  test('weekday projection keeps sparse Monday-first order and resolves the current locale per render', async () => {
+    const page = await billingApi.listSettingsPricingRules();
+    billingApi.listSettingsPricingRules.mockResolvedValue({
+      ...page,
+      items: [{ ...page.items[0]!, weekday_mask: 0b100_0101 }]
+    });
+    try {
+      // Same loaded module, real field-visibility control, three rendered states.
+      // A module-hoisted Intl instance would retain its original locale.
+      for (const [locale, expected] of [
+        ['zh_Hans', '周一, 周三, 周日'],
+        ['en_US', 'Mon, Wed, Sun'],
+        ['zh_Hans', '周一, 周三, 周日']
+      ] as const) {
+        window.localStorage.setItem('1flowbase.ui.locale_preference', locale);
+        await act(async () => { await appI18n.changeLanguage(locale); });
+        const view = await renderWithProviders(<PricingRulesPanel canManage />);
+        try {
+          await screen.findByText('gpt-test');
+          fireEvent.click(screen.getByRole('button', {
+            name: appI18n.t('auto.field_configuration', { ns: 'sharedUi' })
+          }));
+          const panel = await screen.findByRole('dialog', {
+            name: appI18n.t('table.customize', { ns: 'sharedUi' })
+          });
+          const checkbox = within(panel).getByRole('checkbox', {
+            name: appI18n.t('auto.billing_weekday_mask', { ns: 'settings' })
+          });
+          if (!checkbox.matches(':checked')) fireEvent.click(checkbox);
+          fireEvent.keyDown(panel, { key: 'Escape' });
+          expect(await screen.findByText(expected)).toBeInTheDocument();
+        } finally {
+          view.unmount();
+        }
+      }
+    } finally {
+      window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
+      await act(async () => { await appI18n.changeLanguage('zh_Hans'); });
+    }
+  });
+
   test('AC5 edits and saves cache-write defaults and sparse rules without losing fields', async () => {
     const page = await billingApi.listSettingsPricingRules();
     const rules = [
@@ -360,6 +405,24 @@ describe('billing settings panels', () => {
     );
   });
 
+  test.each([
+    [[], false, false],
+    [['billing.pricing_catalog.import'], true, false],
+    [['billing.pricing_catalog.sync'], false, true]
+  ])('pricing catalog isolates import and sync grants %j', async (permissions, canImport, canSync) => {
+    const state = useAuthStore.getState();
+    useAuthStore.setState({ actor: { ...state.actor!, effective_display_role: 'readonly.audit.20261102' }, me: { ...state.me!, effective_display_role: 'readonly.audit.20261102', permissions: permissions as string[] } });
+    await renderWithProviders(<PricingCatalogPanel />);
+    await screen.findByText('zero');
+    if (canImport) expect(screen.getByRole('button', { name: /安装当前页/ })).toBeEnabled();
+    else expect(screen.getByRole('button', { name: /安装当前页/ })).toBeDisabled();
+    if (canSync) expect(screen.getByRole('button', { name: /同\s*步/ })).toBeEnabled();
+    else expect(screen.getByRole('button', { name: /同\s*步/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /刷新远程目录/ })).toBeEnabled();
+    expect(billingApi.importSettingsPricingCatalog).not.toHaveBeenCalled();
+    expect(billingApi.syncSettingsPricingCatalog).not.toHaveBeenCalled();
+  });
+
   test('loads, refreshes, and installs the remote official catalog without update semantics', async () => {
     await renderWithProviders(<PricingCatalogPanel />);
     expect(await screen.findByText('zero')).toBeInTheDocument();
@@ -370,7 +433,7 @@ describe('billing settings panels', () => {
     expect(screen.getByText('1M / 12.50$')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /刷新远程目录/ }));
     await waitFor(() =>
-      expect(billingApi.getSettingsPricingCatalog).toHaveBeenCalledTimes(2)
+      expect(billingApi.getSettingsPricingCatalog).toHaveBeenCalledTimes(4)
     );
     fireEvent.click(screen.getByRole('button', { name: /安装当前页/ }));
     await waitFor(() =>
@@ -396,6 +459,54 @@ describe('billing settings panels', () => {
         page_size: 20
       })
     );
+  });
+
+  test('loads totals before rows and retains the successful page through paging and refresh failures', async () => {
+    const first = await billingApi.getSettingsPricingCatalog();
+    let rejectNext: ((error: Error) => void) | undefined;
+    billingApi.getSettingsPricingCatalog.mockReset().mockImplementation((filter) => {
+      if (filter.metadata_only) return Promise.resolve({ ...first, items: [], total_count: 41 });
+      if (filter.page === 2) return new Promise((_resolve, reject) => { rejectNext = reject; });
+      return Promise.resolve({ ...first, total_count: 41 });
+    });
+    await renderWithProviders(<PricingCatalogPanel />);
+    expect(await screen.findByText('zero')).toBeInTheDocument();
+    expect(screen.getByText('共 41 条 / 3 页，每页 20 条')).toBeInTheDocument();
+    expect(billingApi.getSettingsPricingCatalog.mock.calls[0][0]).toMatchObject({ metadata_only: true });
+    fireEvent.click(screen.getByTitle('2'));
+    await waitFor(() => expect(rejectNext).toBeDefined());
+    expect(screen.getByText('zero')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /安装当前页/ })).toBeDisabled();
+    rejectNext!(new Error('page unavailable'));
+    expect(await screen.findByText('加载失败，保留上次成功加载的第 1 页；请重试。')).toBeInTheDocument();
+    expect(screen.getByText('zero')).toBeInTheDocument();
+    expect(screen.getByText('共 41 条 / 3 页，每页 20 条')).toBeInTheDocument();
+    billingApi.getSettingsPricingCatalog.mockRejectedValue(new Error('offline'));
+    fireEvent.click(screen.getByRole('button', { name: /刷新远程目录/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /刷新远程目录/ })).not.toHaveClass('ant-btn-loading'));
+    expect(screen.getByText('zero')).toBeInTheDocument();
+    expect(screen.getByText('共 41 条 / 3 页，每页 20 条')).toBeInTheDocument();
+    billingApi.getSettingsPricingCatalog.mockImplementation((filter) => Promise.resolve({
+      ...first, page: filter.page ?? 1, total_count: 41,
+      items: filter.metadata_only ? [] : [{ ...first.items[0], upstream_model_id: 'recovered-page-two' }]
+    }));
+    fireEvent.click(screen.getByRole('button', { name: /刷新远程目录/ }));
+    expect(await screen.findByText('recovered-page-two')).toBeInTheDocument();
+    expect(screen.queryByText('any')).not.toBeInTheDocument();
+  });
+
+  test('keeps totals when the first rule page fails and does not call an error an empty catalog', async () => {
+    const first = await billingApi.getSettingsPricingCatalog();
+    billingApi.getSettingsPricingCatalog.mockReset().mockImplementation((filter) =>
+      filter.metadata_only
+        ? Promise.resolve({ ...first, items: [], total_count: 2442 })
+        : Promise.reject(new Error('page offline'))
+    );
+    await renderWithProviders(<PricingCatalogPanel />);
+    expect(await screen.findByText('共 2442 条 / 123 页，每页 20 条')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText('远程计费目录暂时不可用').length).toBeGreaterThan(0));
+    expect(screen.queryByText(/当前内置目录没有可导入规则/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /安装当前页/ })).toBeDisabled();
   });
 
   test('AC-001 submits and reports success when crypto.randomUUID is unavailable', async () => {

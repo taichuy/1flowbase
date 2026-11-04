@@ -113,6 +113,18 @@ async fn identical_processing_native_callback_attaches_without_second_consumer()
     ));
     let mut changed_history = full_body;
     changed_history["input"][0]["content"] = json!("different predecessor");
+    let stored = repository
+        .get_published_callback_task(callback.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let attempts = repository.callback_resume_attempts();
+    assert!(
+        correlate_native_responses_callback(&repository, &actor, &changed_history)
+            .await
+            .unwrap()
+            .is_none()
+    );
     conflicting = command;
     conflicting.native_transport =
         Some(ProviderTransportPayload::openai_responses(changed_history).unwrap());
@@ -121,6 +133,15 @@ async fn identical_processing_native_callback_attaches_without_second_consumer()
         .await
         .is_err());
     assert!(consumer.calls.lock().unwrap().is_empty());
+    assert_eq!(
+        repository
+            .get_published_callback_task(callback.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        stored
+    );
+    assert_eq!(repository.callback_resume_attempts(), attempts);
 }
 
 #[tokio::test]
@@ -412,6 +433,80 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
         grant.payload()["responses_continuation"]["ordered_messages"][2]["content"],
         "after"
     );
+    let mut compact_delta = delta.clone();
+    compact_delta["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"type": "compaction_trigger"}));
+    let compact_grant = correlate_semantic_responses_callback(
+        &repository,
+        &actor,
+        &OpenAiResponsesEnvelope::capture(compact_delta.clone()).unwrap(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(compact_grant.callback_task_id(), callback.id);
+    assert_eq!(
+        compact_grant.payload()["tool_results"],
+        grant.payload()["tool_results"]
+    );
+    assert_eq!(
+        compact_grant.payload()["responses_continuation"]["ordered_messages"],
+        grant.payload()["responses_continuation"]["ordered_messages"]
+    );
+    assert_eq!(
+        compact_grant.payload()["responses_continuation"]["ordered_input"],
+        compact_delta["input"]
+    );
+    assert_eq!(
+        compact_grant.input_history(),
+        &crate::application_public_api::compat::openai::history::append_items(
+            &callback.request_payload["responses_round"]["history"],
+            compact_delta["input"].as_array().unwrap(),
+        )
+        .unwrap()
+    );
+    assert_ne!(compact_grant.input_history(), grant.input_history());
+    for invalid_suffix in [
+        json!([{"type": "compaction_trigger"}, {"type": "compaction_trigger"}]),
+        json!([{"type": "compaction_trigger", "unexpected": true}]),
+        json!([{"type": "compaction_trigger"}, {"role": "user", "content": "after marker"}]),
+        json!([{"type": "item_reference", "id": "msg_unowned"}, {"type": "compaction_trigger"}]),
+    ] {
+        let mut changed = delta.clone();
+        changed["input"]
+            .as_array_mut()
+            .unwrap()
+            .extend(invalid_suffix.as_array().unwrap().iter().cloned());
+        let error = correlate_semantic_responses_callback(
+            &repository,
+            &actor,
+            &OpenAiResponsesEnvelope::capture(changed).unwrap(),
+        )
+        .await
+        .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("semantic_responses_continuation_item_unsupported"));
+        // The public task getter projects only tool-call summaries. Check the
+        // complete scoped receipt here so round evidence must also stay intact.
+        assert_eq!(
+            repository
+                .find_semantic_responses_callbacks_by_response_id(
+                    actor.workspace_id,
+                    actor.application_id,
+                    actor.api_key_id,
+                    actor.creator_user_id,
+                    &format!("resp_{run}"),
+                )
+                .await
+                .unwrap(),
+            vec![callback.clone()]
+        );
+        assert!(repository.callback_resume_attempts().is_empty());
+    }
+
     let mut full = first.clone();
     full["input"] = json!(first["input"]
         .as_array()
@@ -430,15 +525,48 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
     .unwrap()
     .unwrap();
     assert_eq!(grant.payload(), full_grant.payload());
+    let mut compact_full = full.clone();
+    compact_full["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"type": "compaction_trigger"}));
+    let compact_full_grant = correlate_semantic_responses_callback(
+        &repository,
+        &actor,
+        &OpenAiResponsesEnvelope::capture(compact_full).unwrap(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(compact_grant.payload(), compact_full_grant.payload());
+    assert_eq!(
+        compact_grant.input_history(),
+        compact_full_grant.input_history()
+    );
     let mut changed = full.clone();
     changed["input"][0]["content"] = json!("edited history");
+    let stored = repository
+        .get_published_callback_task(callback.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(correlate_semantic_responses_callback(
         &repository,
         &actor,
         &OpenAiResponsesEnvelope::capture(changed).unwrap()
     )
     .await
-    .is_err());
+    .unwrap()
+    .is_none());
+    assert_eq!(
+        repository
+            .get_published_callback_task(callback.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        stored
+    );
+    assert!(repository.callback_resume_attempts().is_empty());
     let mut changed = delta.clone();
     changed["instructions"] = json!("new instructions");
     assert!(correlate_semantic_responses_callback(
@@ -471,7 +599,11 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
     .is_err());
     for unsupported in [
         json!({"role":"user","content":"context","phase":"analysis"}),
-        json!({"role":"assistant","content":"context","id":"msg_unowned"}),
+        // A delivery ID on complete inline text is not a stored-item lookup.
+        // These inputs really need a persisted/native owner instead.
+        json!({"type":"item_reference","id":"msg_unowned"}),
+        json!({"type":"message","role":"assistant","id":"msg_unowned"}),
+        json!({"role":"assistant","content":"context","id":"msg_unowned","status":"in_progress"}),
         json!({"role":7,"content":"context"}),
         json!({"role":"user","content":[{"type":"input_text","text":"context","unknown_extension":true}]}),
         json!({"role":"user","content":[{"type":"input_image","image_url":{"url":"https://example.test/image.png","unknown_extension":true}}]}),
@@ -587,9 +719,19 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
             &OpenAiResponsesEnvelope::capture(fork.clone()).unwrap(),
         )
         .await
-        .is_err(),
-        "an assistant message must not bypass a pending receipt"
+        .unwrap()
+        .is_none(),
+        "rebuilt closed history starts new sampling without a pending receipt grant"
     );
+    assert_eq!(
+        repository
+            .get_published_callback_task(callback.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        stored
+    );
+    assert!(repository.callback_resume_attempts().is_empty());
     repository.complete_callback_task_for_test(callback.id);
     let mut cursor_retry = fork.clone();
     cursor_retry["previous_response_id"] = json!(format!("resp_{run}"));
@@ -622,4 +764,89 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
     .await
     .unwrap()
     .is_none());
+}
+
+#[tokio::test]
+async fn semantic_owned_round_accepts_complete_inline_delivery_id_without_item_lookup() {
+    let first = json!({"model":"fixture", "tools":[], "input":[{"role":"user","content":"work"}]});
+    let digest = ProviderTransportPayload::openai_responses(first.clone())
+        .unwrap()
+        .configuration_digest()
+        .unwrap();
+    let (repository, actor, run) =
+        fixture_with_input(json!({"sys":{"responses_configuration_digest":digest}})).await;
+    let calls = vec![json!({"id":"call_semantic","name":"read","arguments":{}})];
+    let output =
+        crate::application_public_api::compat::openai::projection::function_call_items(&calls);
+    let history = crate::application_public_api::compat::openai::history::completed_history(
+        &first, None, &output,
+    )
+    .unwrap()
+    .unwrap();
+    let callback = repository.seed_pending_llm_tool_callback_task(run, json!({
+        "tool_calls":calls,
+        "responses_round":{"response_id":format!("resp_{run}"),"history":history,"output":output}
+    }));
+    let before = repository
+        .get_published_callback_task(callback.id)
+        .await
+        .unwrap()
+        .unwrap();
+    for id in ["msg_unowned", "opaque/delivery-id"] {
+        let message = json!({"type":"message","role":"assistant","id":id,
+            "status":"completed","content":[{"type":"output_text","text":"  context λ\n","annotations":[]}]});
+        let mut delta = first.clone();
+        delta["previous_response_id"] = json!(format!("resp_{run}"));
+        delta["input"] = json!([message, {"type":"function_call_output","call_id":"call_semantic","output":"ok"}]);
+        let grant = correlate_semantic_responses_callback(
+            &repository,
+            &actor,
+            &OpenAiResponsesEnvelope::capture(delta.clone()).unwrap(),
+        )
+        .await
+        .unwrap()
+        .expect("complete inline content is not a persisted-item reference");
+        assert_eq!(grant.callback_task_id(), callback.id);
+        let continuation = &grant.payload()["responses_continuation"];
+        assert_eq!(continuation["ordered_input"][0], message);
+        assert_eq!(
+            continuation["ordered_messages"][0],
+            json!({"role":"assistant","content":"  context λ\n"})
+        );
+        assert_eq!(
+            continuation["ordered_messages"][1]["tool_call_id"],
+            "call_semantic"
+        );
+
+        // Delivery metadata alone cannot mint callback authority.
+        let mut context_only = delta.clone();
+        context_only["input"] = json!([message]);
+        assert!(correlate_semantic_responses_callback(
+            &repository,
+            &actor,
+            &OpenAiResponsesEnvelope::capture(context_only).unwrap(),
+        )
+        .await
+        .unwrap()
+        .is_none());
+        let mut other_key = actor.clone();
+        other_key.api_key_id = Uuid::now_v7();
+        assert!(correlate_semantic_responses_callback(
+            &repository,
+            &other_key,
+            &OpenAiResponsesEnvelope::capture(delta).unwrap(),
+        )
+        .await
+        .unwrap()
+        .is_none());
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap(),
+            before
+        );
+        assert!(repository.callback_resume_attempts().is_empty());
+    }
 }

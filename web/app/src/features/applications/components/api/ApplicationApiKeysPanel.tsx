@@ -18,6 +18,7 @@ import {
   Typography
 } from 'antd';
 
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { formatDateTime } from '../../../../shared/i18n/format';
 import { copyTextToClipboard } from '../../../../shared/ui/clipboard/copy-text';
 import { applicationDetailQueryKey } from '../../api/applications';
@@ -69,6 +70,9 @@ export function ApplicationApiKeysPanel({
 }) {
   const { t } = useTranslation('applications');
   const queryClient = useQueryClient();
+  const can = useConsoleOperationAccess();
+  const canCreate = can('create_application_api_key');
+  const canRevoke = can('revoke_application_api_key');
   const { message } = App.useApp();
   const [createOpen, setCreateOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
@@ -81,8 +85,10 @@ export function ApplicationApiKeysPanel({
     queryFn: () => fetchApplicationApiKeys(applicationId)
   });
   const createMutation = useMutation({
-    mutationFn: (name: string) =>
-      createApplicationApiKey(applicationId, name, csrfToken),
+    mutationFn: (name: string) => {
+      if (!canCreate) throw new Error('permission denied');
+      return createApplicationApiKey(applicationId, name, csrfToken);
+    },
     onSuccess: (key) => {
       setCreatedKey(key);
       onCreatedToken(key.token);
@@ -97,8 +103,10 @@ export function ApplicationApiKeysPanel({
     }
   });
   const revokeMutation = useMutation({
-    mutationFn: (keyId: string) =>
-      revokeApplicationApiKey(applicationId, keyId, csrfToken),
+    mutationFn: (keyId: string) => {
+      if (!canRevoke) throw new Error('permission denied');
+      return revokeApplicationApiKey(applicationId, keyId, csrfToken);
+    },
     onSuccess: () => {
       message.success(t('auto.api_key_deleted'));
       void queryClient.invalidateQueries({
@@ -171,6 +179,7 @@ export function ApplicationApiKeysPanel({
               size="small"
               type="text"
               aria-label={t('auto.delete')}
+              disabled={!canRevoke}
               loading={revokeMutation.isPending}
               onClick={() => revokeMutation.mutate(record.id)}
             />
@@ -209,7 +218,11 @@ export function ApplicationApiKeysPanel({
                 {t('auto.created')}
                 {keys.length} {t('auto.key_count_suffix')}
               </Typography.Text>
-              <Button type="primary" onClick={() => setCreateOpen(true)}>
+              <Button
+                type="primary"
+                disabled={!canCreate}
+                onClick={() => setCreateOpen(true)}
+              >
                 {t('auto.create_key')}
               </Button>
             </div>
@@ -221,6 +234,7 @@ export function ApplicationApiKeysPanel({
           open={createOpen}
           destroyOnHidden
           okText={t('auto.create')}
+          okButtonProps={{ disabled: !canCreate }}
           confirmLoading={createMutation.isPending}
           onCancel={() => setCreateOpen(false)}
           onOk={() => form.submit()}
@@ -282,7 +296,11 @@ export function ApplicationApiKeysPanel({
             {t('auto.current_application_public_api_usage')}
           </Typography.Text>
         </div>
-        <Button type="primary" onClick={() => setCreateOpen(true)}>
+        <Button
+          type="primary"
+          disabled={!canCreate}
+          onClick={() => setCreateOpen(true)}
+        >
           {t('auto.create_key')}
         </Button>
       </div>
@@ -292,6 +310,7 @@ export function ApplicationApiKeysPanel({
         open={createOpen}
         destroyOnHidden
         okText={t('auto.create')}
+        okButtonProps={{ disabled: !canCreate }}
         confirmLoading={createMutation.isPending}
         onCancel={() => setCreateOpen(false)}
         onOk={() => form.submit()}

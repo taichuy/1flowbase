@@ -17,6 +17,7 @@ import {
   type ApplicationLogPartialImportReceipt,
   type ApplicationLogImportReceipt
 } from '@1flowbase/api-client';
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { useAuthStore } from '../../../../../state/auth-store';
 import {
   exportApplicationLogsOtlp,
@@ -82,6 +83,11 @@ function readPartialImportReceipt(
 
 export function AgentLogsExchange(props: Props) {
   const { t } = useTranslation('applications');
+  const can = useConsoleOperationAccess();
+  const canExchange =
+    Boolean(props.onExportArchive && can('export_application_runs_zip')) ||
+    can('applications.logs.otlp.export') ||
+    (props.allowImport !== false && can('applications.logs.otlp.import'));
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -90,13 +96,15 @@ export function AgentLogsExchange(props: Props) {
           <Button
             aria-label={t('auto.export_selected_runs_trace_dump')}
             icon={<UploadOutlined aria-hidden="true" />}
-            disabled={props.selectedRecords.length === 0}
+            disabled={!canExchange || props.selectedRecords.length === 0}
             loading={props.exportingArchive}
             onClick={() => setOpen(true)}
           />
         </Tooltip>
       ) : (
-        <Button onClick={() => setOpen(true)}>{t('logs.exchange.open')}</Button>
+        <Button disabled={!canExchange} onClick={() => setOpen(true)}>
+          {t('logs.exchange.open')}
+        </Button>
       )}
       {open && <ExchangeModal {...props} onClose={() => setOpen(false)} />}
     </>
@@ -113,11 +121,16 @@ function ExchangeModal({
   onClose
 }: Props & { onClose: () => void }) {
   const { t } = useTranslation('applications');
+  const can = useConsoleOperationAccess();
+  const canNativeExport =
+    Boolean(onExportArchive) && can('export_application_runs_zip');
+  const canOtlpExport = can('applications.logs.otlp.export');
+  const canImport = allowImport && can('applications.logs.otlp.import');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [operation, setOperation] = useState<Operation>(
-    onExportArchive
+    canNativeExport
       ? 'native_export'
-      : selectedRecords.length || !allowImport
+      : canOtlpExport && (selectedRecords.length || !canImport)
         ? 'otlp_export'
         : 'otlp_import'
   );
@@ -134,6 +147,11 @@ function ExchangeModal({
   );
   const ready = Boolean(
     csrfToken &&
+    (operation === 'native_export'
+      ? canNativeExport
+      : operation === 'otlp_export'
+        ? canOtlpExport
+        : canImport) &&
     (!importing
       ? selectedRecords.length &&
         (operation === 'native_export' || !missingConversation)
@@ -258,14 +276,20 @@ function ExchangeModal({
               setReceipts([]);
             }}
             options={[
-              ...(onExportArchive
+              ...(canNativeExport
                 ? [{ value: 'native_export', label: '1flowbase' }]
                 : []),
-              {
-                value: 'otlp_export',
-                label: onExportArchive ? 'OTLP' : t('logs.exchange.otlp_export')
-              },
-              ...(allowImport
+              ...(canOtlpExport
+                ? [
+                    {
+                      value: 'otlp_export',
+                      label: onExportArchive
+                        ? 'OTLP'
+                        : t('logs.exchange.otlp_export')
+                    }
+                  ]
+                : []),
+              ...(canImport
                 ? [
                     {
                       value: 'otlp_import',
@@ -342,7 +366,11 @@ function ExchangeModal({
           </Form.Item>
         )}
       </Form>
-      <Space orientation="vertical" style={{ width: '100%' }} aria-live="polite">
+      <Space
+        orientation="vertical"
+        style={{ width: '100%' }}
+        aria-live="polite"
+      >
         {receipts.map((receipt) => (
           <div key={receipt.application_id}>
             <Typography.Text strong>

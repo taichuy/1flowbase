@@ -11,7 +11,7 @@ pub(crate) struct OpenAiChatStreamMapper {
     model: String,
     chat_completion_id: String,
     state: OpenAiChatStreamState,
-    usage_baseline: crate::routes::application_public_api::openai::chat_usage::ChatUsageBaseline,
+    usage_baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
 }
 
 impl OpenAiChatStreamMapper {
@@ -29,7 +29,7 @@ impl OpenAiChatStreamMapper {
 
     pub(in crate::routes::application_public_api::compat_sse) fn with_usage_baseline(
         mut self,
-        baseline: crate::routes::application_public_api::openai::chat_usage::ChatUsageBaseline,
+        baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
     ) -> Self {
         self.usage_baseline = baseline;
         self

@@ -829,7 +829,6 @@ fn communication_operations_preserve_authenticated_access_without_legacy_managem
         "notifications.events.subscribe",
         "notifications.messages.list",
         "notifications.messages.read",
-        "notifications.messages.read_all",
         "notifications.messages.unread_count",
         "notifications.types.list",
     ] {
@@ -840,6 +839,16 @@ fn communication_operations_preserve_authenticated_access_without_legacy_managem
             disposition.disposition,
             crate::console_policy_migration::ConsolePolicyMigrationOperationDispositionKind::NoProjection { .. }
         ));
+    }
+
+    for operation_id in [
+        "notifications.channels.read_all",
+        "notifications.messages.unread",
+        "notifications.messages.read_all",
+    ] {
+        let disposition = migration.disposition(operation_id).unwrap();
+        assert_eq!(disposition.policy_group_id, "other.personal-account");
+        assert!(disposition.is_default_disabled_new_operation());
     }
 
     for mapping in migration.legacy_mappings() {

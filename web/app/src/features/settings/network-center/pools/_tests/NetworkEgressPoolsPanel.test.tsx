@@ -83,7 +83,7 @@ describe('NetworkEgressPoolsPanel', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    useAuthStore.setState({ csrfToken: 'csrf-123' });
+    useAuthStore.setState({ csrfToken: 'csrf-123', actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace-1' }, me: null });
     networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([
       {
         id: 'global-pool',
@@ -656,6 +656,38 @@ describe('NetworkEgressPoolsPanel', () => {
       )
     );
   });
+  test('read grants retain proxy details and filters without create, edit, delete or connection tests', async () => {
+    setOperations(['network_egress_pools.list', 'network_egress_proxies.get']);
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([{ id: 'global-pool', members: [proxyPoolMember(1)] }]);
+    await renderPanel();
+    const row = await screen.findByRole('row', { name: /Proxy 1/ });
+    expect(within(row).getByRole('switch')).toBeDisabled();
+    expect(within(row).getByRole('button', { name: /测试|Test/ })).toBeDisabled();
+    expect(within(row).getByRole('button', { name: /删除|Delete/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /添加代理|Add proxy/ })).toBeDisabled();
+    await domEvents.click(within(row).getByRole('button', { name: /编辑|Edit/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByDisplayValue('US proxy')).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: /^保\s*存$|^Save$/ })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: /取\s*消|Cancel/ })).toBeEnabled();
+    expect(networkCenterApi.updateSettingsNetworkEgressProxy).not.toHaveBeenCalled();
+    expect(networkCenterApi.testSettingsNetworkEgressPoolMember).not.toHaveBeenCalled();
+  });
+
+  test('connection-test permission does not enable proxy or member mutation', async () => {
+    setOperations(['network_egress_pools.list', 'network_egress_pool_members.test_connection']);
+    networkCenterApi.testSettingsNetworkEgressPoolMember.mockResolvedValue({ probe_status: 'succeeded' });
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([{ id: 'global-pool', members: [proxyPoolMember(1)] }]);
+    await renderPanel();
+    const row = await screen.findByRole('row', { name: /Proxy 1/ });
+    expect(within(row).getByRole('switch')).toBeDisabled();
+    expect(within(row).getByRole('button', { name: /删除|Delete/ })).toBeDisabled();
+    await domEvents.click(within(row).getByRole('button', { name: /测试|Test/ }));
+    await waitFor(() => expect(networkCenterApi.testSettingsNetworkEgressPoolMember).toHaveBeenCalledWith('global-pool', 'member-1', 'csrf-123'));
+    expect(networkCenterApi.updateSettingsNetworkEgressPoolMember).not.toHaveBeenCalled();
+    expect(networkCenterApi.deleteSettingsNetworkEgressPoolMember).not.toHaveBeenCalled();
+  });
+
 });
 
 async function dispatch<T>(event: () => T) {
@@ -692,3 +724,10 @@ afterEach(async () => {
     mountedClients.clear();
   }
 });
+
+function setOperations(permissions: string[]) {
+  useAuthStore.setState({
+    actor: { id: 'member', account: 'member', effective_display_role: 'member', current_workspace_id: 'workspace-1' },
+    me: { id: 'member', account: 'member', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: 'member', permissions }
+  });
+}

@@ -18,6 +18,7 @@ import {
 } from '../../../notifications/api/queries';
 import { NotificationAuthorization } from './NotificationAuthorization';
 import { useAuthStore } from '../../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useNotificationTypeLocalization } from '../../../notifications/hooks/use-notification-type-localization';
 import './notification-instance-drawer.css';
 import {
@@ -50,6 +51,10 @@ export function NotificationInstanceDrawer({
     );
     return selected && localizeType(selected);
   }, [types, typeIdentity, localizeType]);
+  const can = useConsoleOperationAccess();
+  const canWriteInstance = can(savedInstance ? 'notifications.instances.update' : 'notifications.instances.create');
+  const canWriteBinding = can('communications.binding.update');
+  const canSave = canWriteInstance || Boolean(savedInstance && type?.receive && canWriteBinding);
   const createdInSubmit = useRef(false);
   const bindingForm = useRef<CommunicationBindingHandle>(null);
   const draftConfig = useRef<SchemaFormValues | undefined>(undefined);
@@ -64,7 +69,7 @@ export function NotificationInstanceDrawer({
     return {
       ...form,
       fields: form.fields.map((field) =>
-        savedInstance?.configured_secret_fields.includes(field.key)
+        !canWriteInstance ? { ...field, read_only: true, required: false, control: field.control === 'inline-switch' ? undefined : field.control } : savedInstance?.configured_secret_fields.includes(field.key)
           ? {
               ...field,
               required: false,
@@ -74,7 +79,7 @@ export function NotificationInstanceDrawer({
           : field
       )
     };
-  }, [savedInstance, type, t]);
+  }, [canWriteInstance, savedInstance, type, t]);
   const initialValuesScope = useRef<{
     schema: PluginFormSchema;
     instance: NotificationInstance | undefined;
@@ -126,6 +131,7 @@ export function NotificationInstanceDrawer({
         )
       }
       schema={schema}
+      disabled={!canSave}
       initialValues={initialValues}
       resizable
       defaultWidth={720}
@@ -133,7 +139,7 @@ export function NotificationInstanceDrawer({
       maxWidth={1200}
       resizeLabel={t('resize_drawer')}
       submitText={
-        !savedInstance && type?.authorization
+        !savedInstance && type?.authorization && can('notifications.instances.authorization')
           ? t('save_and_authorize')
           : savedInstance
             ? t('save_changes')
@@ -153,6 +159,7 @@ export function NotificationInstanceDrawer({
                 className="notification-instance-drawer__name"
                 size="large"
                 autoFocus
+                disabled={!canWriteInstance}
                 value={display_name}
                 onChange={(event) => {
                   setDisplayName(event.target.value);
@@ -177,6 +184,7 @@ export function NotificationInstanceDrawer({
                   className="notification-instance-drawer__type"
                   size="large"
                   aria-label={t('type')}
+                  disabled={!canWriteInstance}
                   value={selectedIdentity}
                   options={types
                     .filter((item) => item.available)
@@ -220,7 +228,7 @@ export function NotificationInstanceDrawer({
         </div>
       }
       submitDisabled={
-        !display_name.trim() || (!savedInstance && !type?.available)
+        !canSave || !display_name.trim() || (!savedInstance && !type?.available)
       }
       onCancel={onClose}
       onValuesChange={(values) => {
@@ -228,13 +236,15 @@ export function NotificationInstanceDrawer({
         draftConfig.current = values;
       }}
       onBeforeSubmit={() => {
+        if (!canSave) return false;
         if (!display_name.trim()) {
           setNameError(true);
           return false;
         }
-        if (type?.receive && !bindingForm.current?.validate()) return false;
+        if (type?.receive && canWriteBinding && !bindingForm.current?.validate()) return false;
       }}
       onSubmit={async (values) => {
+        if (!canSave) return savedInstance;
         let bindingFailed = false;
         try {
           const config_json = Object.fromEntries(
@@ -247,8 +257,8 @@ export function NotificationInstanceDrawer({
                 )
             )
           );
-          let result: NotificationInstance | undefined;
-          if (savedInstance) {
+          let result: NotificationInstance | undefined = savedInstance;
+          if (savedInstance && canWriteInstance) {
             result = await updateNotificationInstance(
               savedInstance.id,
               {
@@ -257,7 +267,7 @@ export function NotificationInstanceDrawer({
               },
               csrfToken
             );
-          } else if (type?.available) {
+          } else if (!savedInstance && canWriteInstance && type?.available) {
             createdInSubmit.current = true;
             result = await createNotificationInstance(
               {
@@ -269,7 +279,7 @@ export function NotificationInstanceDrawer({
               csrfToken
             );
           }
-          if (result && type?.receive) {
+          if (result && type?.receive && canWriteBinding) {
             // Persist the channel identity before the second write, so retry cannot duplicate it.
             setBeginOnMount(createdInSubmit.current);
             setSavedInstance(result);

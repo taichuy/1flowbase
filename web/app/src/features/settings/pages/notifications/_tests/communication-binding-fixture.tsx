@@ -86,7 +86,8 @@ export function setupCommunicationBinding({
   omitRetiredFromCatalog = false,
   pluginUnavailableReason = 'plugin_unavailable',
   duplicateIdentity = false,
-  applicationUnavailable = false
+  applicationUnavailable = false,
+  permissions
 }: {
   existing?: boolean;
   failSave?: boolean;
@@ -96,6 +97,7 @@ export function setupCommunicationBinding({
   pluginUnavailableReason?: string;
   duplicateIdentity?: boolean;
   applicationUnavailable?: boolean;
+  permissions?: string[];
 } = {}) {
   const writes: CommunicationBindingInput[] = [];
   const optionRequests: URL[] = [];
@@ -223,7 +225,11 @@ export function setupCommunicationBinding({
       return failure();
     })
   );
-  useAuthStore.setState({ csrfToken: 'csrf' });
+  useAuthStore.setState({
+    csrfToken: 'csrf',
+    actor: { id: 'user-1', account: 'test', effective_display_role: permissions ? 'member' : 'root', current_workspace_id: 'workspace-1' },
+    me: { id: 'user-1', account: 'test', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: permissions ? 'member' : 'root', permissions: permissions ?? [] }
+  });
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } }
   });

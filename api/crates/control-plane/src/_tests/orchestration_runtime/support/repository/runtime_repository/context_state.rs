@@ -99,11 +99,40 @@ impl InMemoryOrchestrationRuntimeRepository {
                     )
             })
             .min_by_key(|h| h.sequence)
-            .map(|h| crate::ports::RuntimeEventDeliveryBoundary {
-                recovery_id: h.id,
-                recovery_sequence: h.sequence,
-                event_sequence: h.coordinate.event_sequence,
+            .map(|h| {
+                crate::ports::RuntimeEventDeliveryUpperBoundary::Recovery(
+                    crate::ports::RuntimeEventDeliveryBoundary {
+                        recovery_id: h.id,
+                        recovery_sequence: h.sequence,
+                        event_sequence: h.coordinate.event_sequence,
+                    },
+                )
             });
+        let terminal = inner
+            .flow_runs_by_id
+            .get(&input.flow_run_id)
+            .filter(|run| run.status == domain::FlowRunStatus::Succeeded)
+            .and_then(|_| {
+                events
+                    .iter()
+                    .filter(|event| {
+                        event.sequence > lower
+                            && event.event_type == "flow_finished"
+                            && event.source == domain::RuntimeEventSource::Host
+                            && event.trust_level == domain::RuntimeTrustLevel::HostFact
+                            && event.layer == domain::RuntimeEventLayer::AgentTransition
+                            && event.node_run_id.is_none()
+                            && event.payload["terminal_commit"] == true
+                    })
+                    .min_by_key(|event| event.sequence)
+            })
+            .map(
+                |event| crate::ports::RuntimeEventDeliveryUpperBoundary::SuccessfulTerminal {
+                    event_id: event.id,
+                    event_sequence: event.sequence,
+                },
+            );
+        let upper = upper.or(terminal);
         let closed_proof = upper.map(|upper| crate::ports::RuntimeEventDeliveryClosedProof {
             flow_run_id: input.flow_run_id,
             scope: input.scope,
@@ -115,7 +144,7 @@ impl InMemoryOrchestrationRuntimeRepository {
             .into_iter()
             .filter(|e| {
                 e.sequence > lower
-                    && upper.is_none_or(|upper| e.sequence < upper.event_sequence)
+                    && upper.is_none_or(|upper| e.sequence < upper.event_sequence())
                     && e.payload.get("committed_delivery").and_then(Value::as_bool) == Some(true)
             })
             .collect::<Vec<_>>();

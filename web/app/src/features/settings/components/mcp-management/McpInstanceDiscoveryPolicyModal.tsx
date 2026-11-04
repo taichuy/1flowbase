@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -105,19 +106,19 @@ function ReturnFieldsEditor({
 }
 
 export function McpInstanceDiscoveryPolicyModal({
-  canManage,
   instance,
   policy,
   open,
   onClose
 }: {
-  canManage: boolean;
+  canManage?: boolean;
   instance: ConsoleMcpInstance;
   policy: ConsoleMcpInstanceDiscoveryPolicy;
   open: boolean;
   onClose: () => void;
 }) {
   const { message } = App.useApp();
+  const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
   const [form] = Form.useForm<DiscoveryPolicyFormValues>();
@@ -177,7 +178,7 @@ export function McpInstanceDiscoveryPolicyModal({
           <Button
             type="primary"
             icon={<SaveOutlined />}
-            disabled={!canManage}
+            disabled={!can('mcp.discovery_policy.update')}
             loading={saveMutation.isPending}
             onClick={() => {
               if (!returnFieldsValidRef.current) {
@@ -208,6 +209,7 @@ export function McpInstanceDiscoveryPolicyModal({
           {instance.instance_id}
         </Typography.Text>
         <Form
+          disabled={!can('mcp.discovery_policy.update')}
           form={form}
           layout="vertical"
           initialValues={initialValues}

@@ -30,6 +30,12 @@ export interface ConsoleFileTable {
   scope_kind: 'system' | 'workspace';
   scope_id: string;
   model_definition_id: string;
+  record_permissions: {
+    can_create: boolean;
+    can_update: boolean;
+    can_delete: boolean;
+    can_share: boolean;
+  };
   bound_storage_id: string | null;
   bound_storage_title: string | null;
   is_builtin: boolean;

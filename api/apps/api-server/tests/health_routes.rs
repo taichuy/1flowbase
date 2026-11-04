@@ -145,6 +145,13 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
         .await
         .unwrap();
 
+    control_plane::ports::I18nCatalogRepository::bootstrap_workspace_catalog_state(
+        &store,
+        bootstrap.workspace_id,
+    )
+    .await
+    .unwrap();
+
     let runtime_host = std::sync::Arc::new(
         runtime_extension_host::RuntimeExtensionHost::new(OffsetDateTime::now_utc()).unwrap(),
     );
@@ -279,7 +286,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             model_billing_require_provider_usage: config.model_billing_require_provider_usage,
             api_node_id: config.api_node_id.clone(),
             provider_install_root: config.provider_install_root.clone(),
-        application_template_root: String::new(),
+        application_template_root: config.application_template_root.clone(),
             provider_secret_master_key: config.provider_secret_master_key.clone(),
             host_extension_dropin_root: config.host_extension_dropin_root.clone(),
             allow_unverified_filesystem_dropins: config.allow_unverified_filesystem_dropins,
@@ -488,3 +495,6 @@ async fn production_router_hides_legacy_openapi_endpoints() {
         .unwrap();
     assert_eq!(openapi_response.status(), StatusCode::NOT_FOUND);
 }
+
+#[path = "_tests/system_templates_download.rs"]
+mod system_templates_download;

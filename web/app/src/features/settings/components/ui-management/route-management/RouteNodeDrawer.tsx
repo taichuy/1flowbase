@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { lazy, Suspense, useState } from 'react';
 import {
   Alert,
@@ -76,18 +77,19 @@ function IconField({
 export function RouteNodeDrawer({
   editor,
   workspaceId,
-  editable,
   onClose
 }: {
   editor: RouteNodeEditor;
   workspaceId: string;
-  editable: boolean;
+  editable?: boolean;
   onClose: () => void;
 }) {
+  const can = useConsoleOperationAccess();
   const { t } = useTranslation('settingsUiManagement');
   const node = editor.kind === 'edit' ? editor.node : null;
   const kind =
     node?.kind ?? (editor.kind === 'create' ? editor.nodeKind : 'page');
+  const editable = can(editor.kind === 'create' ? (kind === 'group' ? 'frontstage.groups.create' : 'frontstage.pages.create') : 'frontstage.pages.update');
   const isTopbar = node
     ? node.placement === 'topbar'
     : editor.kind === 'create' && editor.parent_id === null;
@@ -289,7 +291,6 @@ export function RouteNodeDrawer({
                       workspaceId={workspaceId}
                       pageId={node.id}
                       presentation={node.content_presentation}
-                      editable={editable}
                     />
                   )
                 }

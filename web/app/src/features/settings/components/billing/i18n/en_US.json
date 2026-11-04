@@ -9,6 +9,8 @@
     "billing_catalog_sync": "Sync",
     "billing_catalog_sync_complete": "Model pricing synchronized",
     "billing_catalog_sync_summary": "Added: {{inserted}}; Updated: {{updated}}; Unchanged: {{unchanged}}; Retired duplicates: {{retired}}",
-    "billing_catalog_sync_failed": "Sync failed. Check the connection or local pricing conflicts and retry."
+    "billing_catalog_sync_failed": "Sync failed. Check the connection or local pricing conflicts and retry.",
+    "billing_catalog_retained": "Loading failed. Showing the last successfully loaded page ({{page}}). Please retry.",
+    "billing_catalog_pagination": "{{total}} items / {{pages}} pages, {{page_size}} per page"
   }
 }

@@ -1,4 +1,5 @@
 import { apiFetch, apiFetchResource, apiFetchStream } from '../transport';
+import type { UiComponentOrigin } from './administration/ui-management';
 
 export type ConsoleFrontstageNavigationPlacement = 'topbar' | 'sidebar';
 export type ConsoleFrontstagePageContentPresentation = 'single' | 'tabs';
@@ -172,7 +173,7 @@ export interface ConsoleFrontstageComponent {
   description: string;
   import_code: string;
   source_code: string;
-  origin: 'official' | 'custom';
+  origin: UiComponentOrigin;
   source: string;
   group: string;
   upstream: ConsoleFrontstageComponentUpstream;

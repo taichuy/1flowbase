@@ -35,6 +35,27 @@ async fn file_table_create_can_inherit_without_resolving_default_but_explicit_bi
 }
 
 #[tokio::test]
+async fn explicit_storage_read_does_not_grant_storage_writes() {
+    let actor = memory_actor_context(false, &["file_storages.list"]);
+    let user_id = actor.user_id;
+    let repository = MemoryFileManagementRepository::new(actor);
+    let service = FileStorageService::new(repository);
+    assert!(service.list_storages(user_id).await.is_ok());
+    let error = service
+        .delete_storage(DeleteFileStorageCommand {
+            actor_user_id: user_id,
+            file_storage_id: Uuid::now_v7(),
+        })
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("permission_denied"));
+    let service = FileStorageService::new(MemoryFileManagementRepository::new(
+        memory_actor_context(false, &[]),
+    ));
+    assert!(service.list_storages(user_id).await.is_err());
+}
+
+#[tokio::test]
 async fn only_root_can_create_file_storage() {
     let repository = MemoryFileManagementRepository::new(memory_actor_context(false, &[]));
     let service = FileStorageService::new(repository);

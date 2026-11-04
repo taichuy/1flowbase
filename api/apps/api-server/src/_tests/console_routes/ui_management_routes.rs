@@ -250,13 +250,13 @@ async fn template_creation_uses_backend_code_block_default() {
     let installation_id = Uuid::now_v7();
     sqlx::query("insert into extension_installations (id, category, organization, artifact_id, artifact_version, plugin_id, contract_version, protocol, display_name, source_kind, trust_level, verification_status, desired_state, signature_status, metadata_json, created_by) values ($1, 'capability-plugins', 'test', 'template-default', '1.0.0', 'template-default@1.0.0', '1flowbase.capability/v1', 'stdio_json', 'Template default test', 'uploaded', 'checksum_only', 'valid', 'active_requested', 'missing', '{}', $2)")
         .bind(installation_id).bind(actor_id).execute(&pool).await.unwrap();
-    sqlx::query("insert into extension_artifact_instances (node_id, installation_id, local_version, local_path, artifact_status, runtime_status, availability_status) values ($1, $2, '1.0.0', '/tmp/template-default', 'ready', 'inactive', 'available')")
+    sqlx::query("insert into extension_artifact_instances (node_id, installation_id, local_version, local_path, artifact_status, runtime_status, availability_status, is_current) values ($1, $2, '1.0.0', '/tmp/template-default', 'ready', 'inactive', 'available', true)")
         .bind(test_config().api_node_id).bind(installation_id).execute(&pool).await.unwrap();
     for (provider, contribution, title) in [
         ("other", "other-block", "AAA other block"),
         ("1flowbase", "frontstage.js-ui-block", "Code block"),
     ] {
-        sqlx::query("insert into frontend_block_catalog (id, installation_id, provider_code, plugin_id, plugin_version, contribution_code, title, runtime, entry, context_contract, permission_network, permission_storage, permission_secrets, ui_capabilities, code_template, code_template_version, code_template_language, code_modules) values ($1, $2, $3, 'template-default@1.0.0', '1.0.0', $4, $5, 'native_react', 'index.js', '{\"primitives\":[],\"input_schema\":{}}', 'none', 'none', 'none', '[]', 'export default function Demo() { return null; }', '1.0.0', 'tsx', '[]')")
+        sqlx::query("insert into frontend_block_catalog (id, installation_id, provider_code, plugin_id, plugin_version, contribution_code, title, runtime, entry, ui_registration, context_contract, permission_network, permission_storage, permission_secrets, ui_capabilities, code_template, code_template_version, code_template_language, code_modules) values ($1, $2, $3, 'template-default@1.0.0', '1.0.0', $4, $5, 'native_react', 'index.js', 'code_template', '{\"primitives\":[],\"input_schema\":{}}', 'none', 'none', 'none', '[]', 'export default function Demo() { return null; }', '1.0.0', 'tsx', '[]')")
             .bind(Uuid::now_v7()).bind(installation_id).bind(provider).bind(contribution).bind(title).execute(&pool).await.unwrap();
     }
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

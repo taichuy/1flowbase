@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { type ExtensionRow, CATEGORIES, isInstalledRow, supportsFamilyUninstall, extensionName, extensionVersion, extensionHostRequirement, extensionSource, extensionDescription, mcpTemplateWorkspaceStatusLabel, extensionKey } from './extension-center-presentation';
 import { useExtensionCenterController } from './useExtensionCenterController';
 
@@ -51,9 +52,7 @@ export function SettingsExtensionCenterSection(props: {
   if (props.category === 'ui-components') {
     return (
       <Suspense fallback={<LoadingState compact />}>
-        <UiComponentCatalogPanel
-          canManage={props.canManageUiComponents ?? false}
-        />
+        <UiComponentCatalogPanel />
       </Suspense>
     );
   }
@@ -78,6 +77,7 @@ function GenericExtensionCenterSection({
   cursor?: string;
   q?: string;
 }) {
+  const can = useConsoleOperationAccess();
   const {
     t,
     navigate,
@@ -224,11 +224,11 @@ function GenericExtensionCenterSection({
                   }}
                 />
               ) : null}
-              <Button disabled={!csrfToken} onClick={() => setUploadOpen(true)}>
+              <Button disabled={!csrfToken || !can('extension_center.install.upload')} onClick={() => setUploadOpen(true)}>
                 {t('auto.upload_plugin')}
               </Button>
               <Button
-                disabled={updateRows.length === 0}
+                disabled={updateRows.length === 0 || !can('extension_center.update_check')}
                 loading={Object.values(updateStates).some(
                   (state) => state === 'checking'
                 )}
@@ -427,6 +427,7 @@ function GenericExtensionCenterSection({
                             <Button
                               type="link"
                               disabled={
+                                !can('extension_center.installed.enable') ||
                                 installedVersion.is_current &&
                                 selected.desired_state !== 'disabled'
                               }
@@ -456,7 +457,7 @@ function GenericExtensionCenterSection({
                             <Button
                               type="link"
                               danger
-                              disabled={!installedVersion.deletable}
+                              disabled={!installedVersion.deletable || !can('extension_center.installed.delete')}
                               loading={
                                 deletingInstalledExtensionId ===
                                 installedVersion.id
@@ -498,6 +499,7 @@ function GenericExtensionCenterSection({
               {t('auto.cancel')}
             </Button>
             <Button
+              disabled={!can('extension_center.update')}
               onClick={() => {
                 if (!pendingI18nUpdate) return;
                 const operation = pendingI18nUpdate;
@@ -512,6 +514,7 @@ function GenericExtensionCenterSection({
             </Button>
             <Button
               type="primary"
+              disabled={!can('extension_center.update') || !can('i18n_catalog.update.activate')}
               onClick={() => {
                 if (!pendingI18nUpdate) return;
                 const operation = pendingI18nUpdate;

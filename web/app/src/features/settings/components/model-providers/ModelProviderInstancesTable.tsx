@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { Descriptions, Empty, Switch, Tag, Tooltip, Typography } from 'antd';
 
 import { CollapseShell } from '../../../../shared/ui/collapse-shell/CollapseShell';
@@ -65,7 +66,6 @@ function formatCatalogRefreshedAt(value: string | null) {
 export function ModelProviderInstancesTable({
   instances,
   loading,
-  canManage,
   updatingInstanceId,
   onToggleIncludedInMain,
   onEdit,
@@ -75,7 +75,7 @@ export function ModelProviderInstancesTable({
 }: {
   instances: SettingsModelProviderInstance[];
   loading?: boolean;
-  canManage: boolean;
+  canManage?: boolean;
   updatingInstanceId?: string | null;
   onToggleIncludedInMain: (
     instance: SettingsModelProviderInstance,
@@ -86,6 +86,7 @@ export function ModelProviderInstancesTable({
   onRefreshModels: (instance: SettingsModelProviderInstance) => void;
   onDelete: (instance: SettingsModelProviderInstance) => void;
 }) {
+  const can = useConsoleOperationAccess();
   if (instances.length === 0) {
     return (
       <section className="model-provider-panel__instances">
@@ -124,7 +125,7 @@ export function ModelProviderInstancesTable({
                     <Switch
                       aria-label={i18nText("settings", "auto.inject_main_instance", { value1: instance.display_name })}
                       checked={instance.included_in_main}
-                      disabled={!canManage || updatingInstanceId === instance.id}
+                      disabled={!can('model_providers.instances.update') || updatingInstanceId === instance.id}
                       onClick={(_, event) => {
                         event?.stopPropagation();
                       }}
@@ -199,7 +200,7 @@ export function ModelProviderInstancesTable({
                 ]}
               />
 
-              {canManage ? (
+              {(
                 <div className="model-provider-panel__instance-actions">
                   <Tooltip
                     title={i18nText(
@@ -211,9 +212,9 @@ export function ModelProviderInstancesTable({
                       type="button"
                       className="model-provider-panel__instance-action-btn"
                       onClick={() => onEdit(instance)}
-                      aria-label={i18nText("settings", "auto.edit_api_key", { value1: instance.display_name })}
+                      aria-label={can('model_providers.instances.update') ? i18nText("settings", "auto.edit_api_key", { value1: instance.display_name }) : `${i18nText('settings', 'auto.view')} ${instance.display_name}`}
                     >
-                      {i18nText("settings", "auto.edit")}</button>
+                      {i18nText('settings', can('model_providers.instances.update') ? 'auto.edit' : 'auto.view')}</button>
                   </Tooltip>
                   <Tooltip
                     title={i18nText(
@@ -224,6 +225,7 @@ export function ModelProviderInstancesTable({
                     <button
                       type="button"
                       className="model-provider-panel__instance-action-btn"
+                      disabled={!can('model_providers.instances.validate')}
                       onClick={() => onRefreshCandidates(instance)}
                       aria-label={i18nText("settings", "auto.refresh_candidate_model", { value1: instance.display_name })}
                     >
@@ -238,6 +240,7 @@ export function ModelProviderInstancesTable({
                     <button
                       type="button"
                       className="model-provider-panel__instance-action-btn"
+                      disabled={!can('model_providers.instances.models.refresh')}
                       onClick={() => onRefreshModels(instance)}
                       aria-label={i18nText("settings", "auto.refresh_model_alt", { value1: instance.display_name })}
                     >
@@ -252,13 +255,14 @@ export function ModelProviderInstancesTable({
                     <button
                       type="button"
                       className="model-provider-panel__instance-action-btn model-provider-panel__instance-action-btn--danger"
+                      disabled={!can('model_providers.instances.delete')}
                       onClick={() => onDelete(instance)}
                       aria-label={i18nText("settings", "auto.delete_instance_alt", { value1: instance.display_name })}
                     >
                       {i18nText("settings", "auto.delete")}</button>
                   </Tooltip>
                 </div>
-              ) : null}
+              )}
             </>
           )
         }))}

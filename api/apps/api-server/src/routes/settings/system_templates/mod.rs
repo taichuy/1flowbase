@@ -10,7 +10,7 @@ use axum::{
     http::HeaderMap,
     Json,
 };
-use catalog::{CatalogQuery, ExportQuery, TemplateRequest};
+use catalog::{CatalogQuery, CatalogRequest, ExportQuery, TemplateRequest};
 use control_plane::portable_template::PortableTemplateSelection;
 use serde_json::Value;
 use std::sync::Arc;
@@ -32,6 +32,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/settings/system-templates/export",
             console_post(export, owned("system_templates.export")),
+        )
+        .route(
+            "/settings/system-templates/download",
+            console_post(download, owned("system_templates.download")),
         )
         .route(
             "/settings/system-templates/preview",
@@ -96,6 +100,26 @@ pub async fn export(
                 .into())
             }
         },
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(output.0)))
+}
+
+/// Download and verify one template release without installing its resources.
+#[utoipa::path(post, operation_id = "download_system_template", request_body = Object, path = "/api/console/settings/system-templates/download", responses((status = 200, body = Object)))]
+pub async fn download(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<CatalogRequest>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    let snapshot = Arc::clone(&state);
+    let credential =
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers };
+    let output: interface::TemplateOutput = crate::routes::console_interface::invoke(
+        snapshot,
+        "http.console.settings.system-templates.download.v1",
+        credential,
+        interface::TemplateInput::Download(body),
     )
     .await?;
     Ok(Json(ApiSuccess::new(output.0)))

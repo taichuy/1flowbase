@@ -2,6 +2,8 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
+import { resetAuthStore } from '../../../../state/auth-store';
+import { preferenceWriteCases, setPreferenceActor } from '../../../../test/fixtures/preference-auth';
 import { ResizableDrawer } from '../ResizableDrawer';
 
 const WIDTH_STORAGE_KEY_PREFIX = 'resizable-drawer:width:';
@@ -70,12 +72,14 @@ vi.mock('antd', async () => {
 
 describe('ResizableDrawer', () => {
   beforeEach(() => {
+    setPreferenceActor({ role: 'root', permissions: [] });
     window.localStorage.clear();
     window.history.replaceState({}, '', '/settings/model-providers/providers');
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    resetAuthStore();
   });
 
   test('delegates pointer resizing to Ant Design while retaining shared width constraints', () => {
@@ -162,6 +166,44 @@ describe('ResizableDrawer', () => {
       )
     ).toHaveStyle({ width: '920px' });
     expect(container.querySelector('.ant-drawer-content-wrapper')).toBeNull();
+  });
+
+  test.each(preferenceWriteCases)(
+    'keeps resizing temporary without metadata authority: $name',
+    ({ actor, canPersist }) => {
+      setPreferenceActor(actor);
+      window.localStorage.setItem(widthStorageKey(), '600');
+      const write = vi.spyOn(Storage.prototype, 'setItem');
+      const view = () => (
+        <ResizableDrawer open title="Logs" defaultWidth={560} minWidth={480} maxWidth={1200}
+          resizeLabel="Resize logs" onClose={vi.fn()}>
+          <p>Readable logs</p>
+        </ResizableDrawer>
+      );
+      const { unmount } = render(view());
+      const handle = screen.getByRole('separator', { name: 'Resize logs' });
+      expect(handle).toHaveAttribute('aria-valuenow', '600');
+      fireEvent.click(screen.getByRole('button', { name: '模拟原生拖拽' }));
+      fireEvent.keyDown(handle, { key: 'ArrowLeft' });
+      expect(handle).toHaveAttribute('aria-valuenow', '960');
+      expect(window.localStorage.getItem(widthStorageKey())).toBe(canPersist ? '960' : '600');
+      if (canPersist) expect(write).toHaveBeenCalledWith(widthStorageKey(), '960');
+      else expect(write).not.toHaveBeenCalled();
+      unmount();
+      render(view());
+      expect(screen.getByRole('separator', { name: 'Resize logs' })).toHaveAttribute(
+        'aria-valuenow', canPersist ? '960' : '600'
+      );
+    }
+  );
+
+  test('checks current grants after the drawer was mounted', () => {
+    render(<ResizableDrawer open title="Logs" resizeLabel="Resize logs" onClose={vi.fn()}><p>Logs</p></ResizableDrawer>);
+    setPreferenceActor({ role: 'member', permissions: [] });
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    fireEvent.click(screen.getByRole('button', { name: '模拟原生拖拽' }));
+    expect(screen.getByRole('separator', { name: 'Resize logs' })).toHaveAttribute('aria-valuenow', '920');
+    expect(write).not.toHaveBeenCalled();
   });
 
   test('AC-002 clamps a stored width to the current drawer range', () => {

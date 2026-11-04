@@ -1047,3 +1047,6 @@ mod call_projection;
 mod discovery;
 #[path = "mcp_protocol_routes/result_delivery.rs"]
 mod result_delivery;
+
+#[path = "mcp_protocol_routes/role_policy.rs"]
+mod role_policy;

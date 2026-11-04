@@ -15,10 +15,54 @@ import {
   reorderItems
 } from '../../components/role-permissions/policy-order';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { useAuthStore } from '../../../../state/auth-store';
 import fs from 'node:fs';
 import path from 'node:path';
 
 describe('RolePermissionPanel', () => {
+  test('readonly can inspect policy details while switches and saving remain denied', async () => {
+    const { actor, me } = useAuthStore.getState();
+    useAuthStore.setState({
+      actor: { ...actor!, account: 'reader', effective_display_role: 'readonly.audit.20261102' },
+      me: { ...me!, account: 'reader', effective_display_role: 'readonly.audit.20261102', permissions: ['roles.console_policy_catalog.view', 'roles.list', 'roles.console_policy.view'] }
+    });
+    permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue(
+      consolePolicyCatalog([{
+        kind: 'settings_feature',
+        group_id: 'settings.applications',
+        label: '应用管理',
+        description: '管理当前空间中的应用',
+        operations: [{
+          operation_id: 'applications.publish',
+          summary: 'Publish application',
+          description: 'Publish an application version',
+          order: 1,
+          route: { method: 'POST', path: '/api/console/applications/:id/publish' },
+          full_profile: { kind: 'simple', enabled: true },
+          allowed_row_scopes: [],
+          authorization: { kind: 'simple' }
+        }]
+      }])
+    );
+    renderPanel(false);
+    const details = await screen.findByRole('button', { name: '详细配置 应用管理' });
+    expect(details).toBeEnabled();
+    expect(screen.getByRole('switch', { name: '应用管理 启用' })).toBeDisabled();
+    fireEvent.click(details);
+    const drawer = await screen.findByRole('dialog');
+    await waitFor(() => {
+      expect(within(drawer).getByText('Publish application')).toBeVisible();
+      expect(within(drawer).getByText('POST /api/console/applications/:id/publish')).toBeVisible();
+    });
+    const operation = within(drawer).getByRole('switch', { name: 'Publish application' });
+    const save = within(drawer).getByRole('button', { name: '保存权限配置' });
+    expect(operation).toBeDisabled();
+    expect(save).toBeDisabled();
+    fireEvent.click(operation);
+    fireEvent.click(save);
+    expect(rolesApi.replaceSettingsRoleConsolePolicy).not.toHaveBeenCalled();
+  });
+
   test('AC-008 stacks the role rail above policy content at 390px', async () => {
     renderPanel();
 

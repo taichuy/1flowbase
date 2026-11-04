@@ -1,7 +1,9 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useCallback, useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   App,
   Button,
   Descriptions,
@@ -81,7 +83,8 @@ function requestValue(value: FormValue): CreateSettingsUiComponentInput {
   };
 }
 
-export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
+export function ComponentRecordsTab(_props: { canManage?: boolean } = {}) {
+  const can = useConsoleOperationAccess();
   const { t } = useTranslation('settingsUiManagement');
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
@@ -186,7 +189,11 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
         key: 'origin',
         title: t('origin'),
         width: 110,
-        render: (_, record) => <Tag>{t(record.origin)}</Tag>
+        render: (_, record) => (
+          <Tag>
+            {record.origin === 'plugin' ? t('plugin') : t(record.origin)}
+          </Tag>
+        )
       },
       {
         key: 'actions',
@@ -203,11 +210,12 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
             >
               {t('view')}
             </Button>
-            {record.origin === 'custom' && canManage ? (
+            {record.origin === 'custom' ? (
               <>
                 <Button
                   type="link"
                   size="small"
+                  disabled={!can('ui_management.components.update')}
                   aria-label={`${t('edit')} ${record.name}`}
                   onClick={() => void openRecord(record, 'edit')}
                 >
@@ -217,6 +225,7 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
                   type="link"
                   size="small"
                   danger
+                  disabled={!can('ui_management.components.delete')}
                   aria-label={`${t('delete')} ${record.name}`}
                   onClick={() => setDeleteTarget(record)}
                 >
@@ -228,7 +237,7 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
         )
       }
     ],
-    [canManage, openRecord, t]
+    [can, openRecord, t]
   );
   const tableConfiguration = usePersistedDataTableConfiguration({
     columns,
@@ -251,9 +260,21 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
   }, [keyword, origin, query.data]);
   const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const readOnly = drawerMode === 'detail';
+  const loadError = query.isError ? (
+    <Alert
+      type="error"
+      showIcon
+      title={t('components_load_failed')}
+      action={
+        <Button loading={query.isFetching} onClick={() => void query.refetch()}>
+          {t('routes_retry')}
+        </Button>
+      }
+    />
+  ) : undefined;
 
   return (
-    <SettingsSectionSurface heightMode="fill">
+    <SettingsSectionSurface heightMode="fill" status={loadError}>
       <DataTableLayout
         filters={
           <DataTableFilterForm
@@ -287,45 +308,49 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
                 aria-label={t('component_filter_origin')}
                 value={originDraft}
                 onChange={setOriginDraft}
-                options={(['official', 'custom'] as const).map((value) => ({
-                  value,
-                  label: t(value)
-                }))}
+                options={(['official', 'custom', 'plugin'] as const).map(
+                  (value) => ({
+                    value,
+                    label: t(value)
+                  })
+                )}
               />
             </DataTableFilterField>
           </DataTableFilterForm>
         }
       >
-        <DataTable
-          columns={columns}
-          configuration={tableConfiguration}
-          dataSource={visible}
-          loading={query.isLoading || query.isFetching}
-          page={page}
-          pageSize={PAGE_SIZE}
-          rowKey="id"
-          total={filtered.length}
-          onPageChange={setPage}
-          toolbar={
-            <Flex justify="flex-end" gap={8} wrap>
-              <Button onClick={() => setCatalogOpen(true)}>
-                {t('remote_catalog')}
-              </Button>
-              {canManage ? (
-                <Button type="primary" onClick={create}>
-                  {t('new_component')}
+        {!query.isError || visible.length > 0 ? (
+          <DataTable
+            columns={columns}
+            configuration={tableConfiguration}
+            dataSource={visible}
+            loading={query.isLoading || query.isFetching}
+            page={page}
+            pageSize={PAGE_SIZE}
+            rowKey="id"
+            total={filtered.length}
+            onPageChange={setPage}
+            toolbar={
+              <Flex justify="flex-end" gap={8} wrap>
+                <Button onClick={() => setCatalogOpen(true)}>
+                  {t('remote_catalog')}
                 </Button>
-              ) : null}
-              <Button onClick={() => query.refetch()}>
-                {t('component_refresh')}
-              </Button>
-              <DataTableColumnSettings
-                columns={columns}
-                configuration={tableConfiguration}
-              />
-            </Flex>
-          }
-        />
+                {can('ui_management.components.create') ? (
+                  <Button type="primary" onClick={create}>
+                    {t('new_component')}
+                  </Button>
+                ) : null}
+                <Button onClick={() => query.refetch()}>
+                  {t('component_refresh')}
+                </Button>
+                <DataTableColumnSettings
+                  columns={columns}
+                  configuration={tableConfiguration}
+                />
+              </Flex>
+            }
+          />
+        ) : null}
       </DataTableLayout>
 
       <ResizableDrawer
@@ -340,6 +365,7 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
           !readOnly ? (
             <Button
               type="primary"
+              disabled={!can(drawerMode === 'edit' ? 'ui_management.components.update' : 'ui_management.components.create')}
               loading={save.isPending}
               onClick={() => form.submit()}
             >
@@ -352,9 +378,11 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
           <>
             <Typography.Paragraph strong>
               {t(
-                selected.origin === 'official'
-                  ? 'official_read_only'
-                  : 'custom_component'
+                selected.origin === 'plugin'
+                  ? 'plugin_read_only'
+                  : selected.origin === 'official'
+                    ? 'official_read_only'
+                    : 'custom_component'
               )}
             </Typography.Paragraph>
             <Descriptions
@@ -519,7 +547,7 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
         open={deleteTarget !== undefined}
         title={t('delete_component')}
         okText={t('confirm_delete')}
-        okButtonProps={{ danger: true, loading: remove.isPending }}
+        okButtonProps={{ danger: true, loading: remove.isPending, disabled: !can('ui_management.components.delete') }}
         cancelText={t('cancel')}
         onCancel={() => setDeleteTarget(undefined)}
         onOk={() => deleteTarget && remove.mutate(deleteTarget)}
@@ -529,7 +557,6 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
           : null}
       </Modal>
       <RemoteCatalogDrawer
-        canManage={canManage}
         open={catalogOpen}
         onClose={() => setCatalogOpen(false)}
       />

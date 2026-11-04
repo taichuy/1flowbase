@@ -585,7 +585,11 @@ impl SystemBackupsAdapter {
         principal: &UserPrincipal,
         recovery_job_id: Option<Uuid>,
     ) -> Result<RecoveryStatusResponse, ApiError> {
-        Self::require_root_cookie(principal)?;
+        if !principal.actor().has_permission(super::RECOVERY_STATUS) {
+            return Err(
+                ControlPlaneError::PermissionDenied("console_operation_permission_denied").into(),
+            );
+        }
         let runtime = self.runtime()?;
         let maintenance = runtime.maintenance_status();
         let active = runtime.active_recovery();

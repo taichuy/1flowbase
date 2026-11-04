@@ -1,4 +1,6 @@
 {
+  "plugin": "插件",
+  "plugin_read_only": "插件组件由已安装插件维护，不可在此修改。",
   "delete_template_title": "删除模板？",
   "delete_template_description": "将永久删除“{{name}}”及其全部修订，无法恢复。已使用此模板的区块不受影响。",
   "code_templates": "代码模板",
@@ -133,5 +135,7 @@
   "routes_status_hidden": "此节点设置为隐藏",
   "routes_show_node": "显示此节点",
   "routes_hide_node": "隐藏此节点",
-  "routes_open_page": "在新标签页打开"
+  "routes_open_page": "在新标签页打开",
+  "components_load_failed": "组件加载失败，请重试。",
+  "templates_load_failed": "代码模板加载失败，请重试。"
 }

@@ -14,11 +14,12 @@ async fn runtime_json_tool_arguments_survive_callback_privacy_and_stream_reads()
     let request = json!({
         "tool_calls": calls,
         "native_usage_baseline": baseline,
+        "native_usage_baseline_source": "usage_ledger",
         "provider_metadata": {"private": "provider\0metadata"},
         "internal_context": "must stay private"
     });
     let external = json!({"private": "external\0context"});
-    let summary = json!({"tool_calls": calls,"native_usage_baseline":baseline});
+    let summary = json!({"tool_calls": calls,"native_usage_baseline":baseline,"native_usage_baseline_source":"usage_ledger"});
     let node = store
         .create_node_run(&CreateNodeRunInput {
             flow_run_id: run,

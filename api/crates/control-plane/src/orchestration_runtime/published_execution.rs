@@ -15,10 +15,10 @@ where
         + 'static,
     H: ProviderRuntimePort + CapabilityPluginRuntimePort + Clone,
 {
-    pub async fn start_published_flow_run(
+    pub fn start_published_flow_run(
         &self,
         command: StartPublishedFlowRunCommand,
-    ) -> Result<domain::ApplicationRunDetail>
+    ) -> impl std::future::Future<Output = Result<domain::ApplicationRunDetail>> + '_
     where
         R: BillingRepository + crate::ports::FileManagementRepository,
     {
@@ -29,7 +29,6 @@ where
             command.transport_connection_scope,
             command.observation_context,
         ))
-        .await
     }
 
     pub(super) async fn start_published_flow_run_inner(

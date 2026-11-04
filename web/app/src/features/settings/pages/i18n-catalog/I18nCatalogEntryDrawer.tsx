@@ -12,6 +12,7 @@ import {
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import type { SettingsI18nCatalogEntry } from '../../api/i18n-catalog';
 
 interface TranslationFormValues {
@@ -38,6 +39,8 @@ export function I18nCatalogEntryDrawer({
   onSave: (translation: string) => void;
 }) {
   const { t } = useTranslation('settings');
+  const can = useConsoleOperationAccess();
+  const canSave = can(entry?.origin === 'custom' ? 'i18n_catalog.custom_translations.upsert' : 'i18n_catalog.overrides.upsert');
   const [form] = Form.useForm<TranslationFormValues>();
 
   useEffect(() => {
@@ -115,7 +118,7 @@ export function I18nCatalogEntryDrawer({
           <Form
             form={form}
             layout="vertical"
-            onFinish={({ translation }) => onSave(translation)}
+            onFinish={({ translation }) => { if (canSave) onSave(translation); }}
           >
             <Form.Item
               label={
@@ -126,19 +129,19 @@ export function I18nCatalogEntryDrawer({
               name="translation"
               rules={[{ required: true, whitespace: true }]}
             >
-              <Input.TextArea autoSize={{ minRows: 3, maxRows: 8 }} />
+              <Input.TextArea disabled={!canSave || saving} autoSize={{ minRows: 3, maxRows: 8 }} />
             </Form.Item>
             <Space wrap>
-              <Button type="primary" htmlType="submit" loading={saving}>
+              <Button type="primary" htmlType="submit" loading={saving} disabled={!canSave}>
                 {t('auto.translation_catalog_save')}
               </Button>
               {canRestore ? (
-                <Button onClick={onRestore} loading={saving}>
+                <Button onClick={() => { if (can('i18n_catalog.overrides.restore')) onRestore(); }} loading={saving} disabled={!can('i18n_catalog.overrides.restore')}>
                   {t('auto.translation_catalog_restore_entry')}
                 </Button>
               ) : null}
               {canDelete ? (
-                <Button danger onClick={onDelete} disabled={saving}>
+                <Button danger onClick={() => { if (can('i18n_catalog.custom_keys.delete')) onDelete(); }} disabled={saving || !can('i18n_catalog.custom_keys.delete')}>
                   {t('auto.translation_catalog_delete_custom_key')}
                 </Button>
               ) : null}

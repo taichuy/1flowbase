@@ -209,3 +209,190 @@ describe('settings page fetched native modules', () => {
     loader.dispose();
   });
 });
+
+// A fetched bundle must share the host React instance, not bundle a second one.
+describe('fetched module host factory', () => {
+  const react = { createElement: () => 'host-element', secret: 'not-declared' };
+  const hostBinding: ConsolePluginSettingsCodeModule = {
+    source: 'react',
+    version: '19.2.0',
+    exports: ['createElement'],
+    binding: 'host',
+    assets: [],
+    type_declarations: 'declare module "react" {}'
+  };
+  const hostRegistryFactory = (
+    registrations: Parameters<typeof createNativeReactModuleRegistry>[0]
+  ) =>
+    createNativeReactModuleRegistry([
+      {
+        module_source: 'react',
+        exports: ['createElement', 'secret'],
+        load: async () => ({ module: react })
+      },
+      ...registrations
+    ]);
+
+  test('passes only declared host exports to a verified factory and preserves identity', async () => {
+    const factory = vi.fn((host: Record<string, Record<string, unknown>>) => {
+      expect(Object.keys(host)).toEqual(['react']);
+      expect(host.react!.createElement).toBe(react.createElement);
+      expect(host.react).not.toHaveProperty('secret');
+      return { answer: host.react!.createElement };
+    });
+    const loader = make({
+      modules: [module, hostBinding],
+      hostRegistryFactory,
+      importModule: async () => ({ createFrontendModule: factory })
+    });
+    try {
+      expect((await loader.registry.load(module.source)).answer).toBe(
+        react.createElement
+      );
+      expect(factory).toHaveBeenCalledTimes(1);
+    } finally {
+      loader.dispose();
+    }
+  });
+
+  test('rejects a factory result that lacks a declared export', async () => {
+    const loader = make({
+      modules: [module, hostBinding],
+      hostRegistryFactory,
+      importModule: async () => ({
+        createFrontendModule: () => ({ other: true })
+      })
+    });
+    try {
+      await expect(loader.registry.load(module.source)).rejects.toThrow(
+        'declared export missing'
+      );
+    } finally {
+      loader.dispose();
+    }
+  });
+
+  test('does not invoke a host factory when executable bytes fail integrity', async () => {
+    const factory = vi.fn(() => ({ answer: 42 }));
+    const loader = make({
+      modules: [module, hostBinding],
+      hostRegistryFactory,
+      fetchAsset: async () => bytes('tampered'),
+      importModule: async () => ({ createFrontendModule: factory })
+    });
+    try {
+      await expect(loader.registry.load(module.source)).rejects.toThrow(
+        'SHA-256 mismatch'
+      );
+      expect(factory).not.toHaveBeenCalled();
+    } finally {
+      loader.dispose();
+    }
+  });
+});
+
+// The workspace catalog is a set of independently authorized owners, not a
+// single manifest. Loading one bundle must not widen its declared host exports.
+describe('per-owner factory dependencies', () => {
+  const hostBinding = (exports: string[]): ConsolePluginSettingsCodeModule => ({
+    source: 'react',
+    version: '19.2.5',
+    exports,
+    binding: 'host',
+    assets: [],
+    type_declarations: 'declare module "react" {}'
+  });
+  const other = { ...module, source: '@fixture/other' };
+  const hostRegistryFactory = (
+    registrations: Parameters<typeof createNativeReactModuleRegistry>[0]
+  ) =>
+    createNativeReactModuleRegistry([
+      {
+        module_source: 'react',
+        exports: ['useState', 'useEffect'],
+        load: async () => ({
+          module: { useState: 'state', useEffect: 'effect' }
+        })
+      },
+      ...registrations
+    ]);
+
+  test('a bundle with no dependencies receives none even when another owner declares React', async () => {
+    const received: Record<string, Record<string, unknown>>[] = [];
+    const loader = make({
+      modules: [module, other],
+      hostRegistryFactory,
+      hostBindingsByModule: new Map([
+        [module.source, []],
+        [other.source, [hostBinding(['useState'])]]
+      ]),
+      importModule: async () => ({
+        createFrontendModule: (
+          bindings: Record<string, Record<string, unknown>>
+        ) => {
+          received.push(bindings);
+          return { answer: () => 42 };
+        }
+      })
+    });
+    try {
+      await loader.registry.load(module.source);
+      await loader.registry.load(other.source);
+      expect(received[0]).toEqual({});
+      expect(received[1]).toEqual({ react: { useState: 'state' } });
+      expect(Object.isFrozen(received[0])).toBe(true);
+      expect(Object.isFrozen(received[1]!.react)).toBe(true);
+    } finally {
+      loader.dispose();
+    }
+  });
+
+  test('each bundle gets only its own compatible host-export subset', async () => {
+    const received: Record<string, unknown>[] = [];
+    const loader = make({
+      modules: [module, other],
+      hostRegistryFactory,
+      hostBindingsByModule: new Map([
+        [module.source, [hostBinding(['useState'])]],
+        [other.source, [hostBinding(['useEffect'])]]
+      ]),
+      importModule: async () => ({
+        createFrontendModule: (bindings: Record<string, unknown>) => {
+          received.push(bindings);
+          return { answer: 42 };
+        }
+      })
+    });
+    try {
+      await loader.registry.load(module.source);
+      await loader.registry.load(other.source);
+      expect(received).toEqual([
+        { react: { useState: 'state' } },
+        { react: { useEffect: 'effect' } }
+      ]);
+    } finally {
+      loader.dispose();
+    }
+  });
+
+  test('rejects dependency declarations without a fetched owner or with undeclared exports', () => {
+    expect(() =>
+      make({
+        modules: [module],
+        hostRegistryFactory,
+        hostBindingsByModule: new Map([
+          ['@fixture/missing', [hostBinding(['useState'])]]
+        ])
+      })
+    ).toThrow('dependency owner is missing');
+    expect(() =>
+      make({
+        modules: [module],
+        hostRegistryFactory,
+        hostBindingsByModule: new Map([
+          [module.source, [hostBinding(['notRegistered'])]]
+        ])
+      })
+    ).toThrow('Invalid host');
+  });
+});

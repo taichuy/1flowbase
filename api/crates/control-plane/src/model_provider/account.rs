@@ -23,14 +23,15 @@ use super::{
     },
 };
 
-struct ProviderAccountRuntimeTarget {
-    workspace_id: Uuid,
-    instance: domain::ModelProviderInstanceRecord,
-    installation: domain::LocalPluginInstallationRecord,
-    provider_config: serde_json::Value,
+pub(super) struct ProviderAccountRuntimeTarget {
+    pub(super) workspace_id: Uuid,
+    pub(super) instance: domain::ModelProviderInstanceRecord,
+    pub(super) installation: domain::LocalPluginInstallationRecord,
+    pub(super) provider_config: serde_json::Value,
+    pub(super) model_discovery_mode: plugin_framework::provider_contract::ModelDiscoveryMode,
 }
 
-async fn resolve_provider_account_runtime_target<R, H>(
+pub(super) async fn resolve_provider_account_runtime_target<R, H>(
     repository: &R,
     runtime: &H,
     provider_secret_master_key: &str,
@@ -74,6 +75,7 @@ where
         instance,
         installation,
         provider_config,
+        model_discovery_mode: package.provider.model_discovery_mode,
     })
 }
 

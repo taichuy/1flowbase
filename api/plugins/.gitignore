@@ -11,3 +11,6 @@
 !templates/**
 !fixtures/
 !fixtures/**
+
+!frontend-ui-registration.md
+!frontend-ui-registration.en.md

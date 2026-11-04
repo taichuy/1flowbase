@@ -19,6 +19,7 @@ interface WorkflowOverlayProps {
   published: boolean;
   publishDisabled: boolean;
   publishLoading: boolean;
+  revertDisabled?: boolean;
   revertLoading: boolean;
   onOpenEnvironmentVariables: () => void;
   onOpenHistory: () => void;
@@ -39,6 +40,7 @@ export function WorkflowOverlay({
   published,
   publishDisabled,
   publishLoading,
+  revertDisabled = false,
   revertLoading,
   onOpenEnvironmentVariables,
   onOpenHistory,
@@ -108,7 +110,7 @@ export function WorkflowOverlay({
                 {
                   key: 'revert_to_draft',
                   label: i18nText('applications', 'auto.revert_to_draft'),
-                  disabled: !published,
+                  disabled: revertDisabled || !published,
                   onClick: onRevertToDraft
                 }
               ]

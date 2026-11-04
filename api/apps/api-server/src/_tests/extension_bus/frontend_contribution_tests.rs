@@ -89,6 +89,7 @@ fn candidate(workspace_id: Uuid) -> (FrontendContributionCandidate, PathBuf) {
         title: "Hero".to_string(),
         runtime: "native_react".to_string(),
         entry: "blocks/hero.js".to_string(),
+        ui_registration: "code_template".into(),
         code_template: None,
         code_template_version: None,
         code_template_language: None,
@@ -118,6 +119,7 @@ fn candidate(workspace_id: Uuid) -> (FrontendContributionCandidate, PathBuf) {
     };
     (
         FrontendContributionCandidate {
+            authority: None,
             workspace_id,
             installation,
             artifact,
@@ -207,7 +209,8 @@ fn boot_point_and_valid_workspace_assignment_produce_one_scoped_typed_binding() 
         vec![FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION]
     );
     assert_eq!(binding.requested_permissions, binding.granted_permissions);
-    assert!(binding.assets.is_empty());
+    assert_eq!(binding.assets.len(), 1);
+    assert_eq!(binding.assets[0].integrity.as_str(), "verified_sha256");
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -253,17 +256,17 @@ fn invalid_runtime_facts_and_workspace_scope_fail_closed() {
 
     let mut digest_mismatch = valid.clone();
     digest_mismatch.catalog_entry.code_modules[0].assets[0].sha256 = "a".repeat(64);
-    assert!(matches!(
-        resolver.resolve(digest_mismatch),
-        FrontendContributionResolution::Active(_)
-    ));
+    assert_eq!(
+        disabled_reason(resolver.resolve(digest_mismatch)),
+        FrontendContributionDisableReason::AssetInvalid
+    );
 
     let mut invalid_media_type = valid.clone();
     invalid_media_type.catalog_entry.code_modules[0].assets[0].media_type = " ".to_string();
-    assert!(matches!(
-        resolver.resolve(invalid_media_type),
-        FrontendContributionResolution::Active(_)
-    ));
+    assert_eq!(
+        disabled_reason(resolver.resolve(invalid_media_type)),
+        FrontendContributionDisableReason::AssetInvalid
+    );
 
     let mut stale_assignment = valid.clone();
     stale_assignment.assignment.as_mut().unwrap().provider_code = "stale".to_string();
@@ -329,3 +332,6 @@ fn resolver_source_uses_typed_facts_without_manifest_json_or_shadow_dom_isolatio
     assert!(!source.contains("parse_plugin_manifest"));
     assert!(!source.contains("shadow_dom"));
 }
+
+#[path = "frontend_component_lifecycle_tests.rs"]
+mod component_lifecycle;

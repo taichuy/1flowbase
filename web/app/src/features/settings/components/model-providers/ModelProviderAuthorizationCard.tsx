@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import CheckCircleOutlined from '@ant-design/icons/es/icons/CheckCircleOutlined';
 import { Alert, Button, Input, Space, Typography } from 'antd';
 
@@ -30,6 +31,8 @@ export function ModelProviderAuthorizationCard({
   onSubmit,
   onCancel
 }: ModelProviderAuthorizationCardProps) {
+  const can = useConsoleOperationAccess();
+  const canAuthenticate = can('model_providers.instances.authenticate');
   const userAction = result?.user_action;
   const isPending = result?.status === 'pending';
   const authenticationAlert = errorMessage
@@ -76,7 +79,7 @@ export function ModelProviderAuthorizationCard({
             {catalogEntry.auth?.actions.map((action) => (
               <Button
                 key={action.code}
-                disabled={isPending || pending}
+                disabled={!canAuthenticate || isPending || pending}
                 loading={pending}
                 onClick={() => onBegin(action.code)}
               >
@@ -140,7 +143,7 @@ export function ModelProviderAuthorizationCard({
                   />
                   <Button
                     type="primary"
-                    disabled={callbackValue.trim().length === 0 || pending}
+                    disabled={!canAuthenticate || callbackValue.trim().length === 0 || pending}
                     loading={pending}
                     onClick={() => onSubmit(callbackValue.trim())}
                   >
@@ -156,7 +159,7 @@ export function ModelProviderAuthorizationCard({
           {isPending ? (
             <Button
               danger
-              disabled={pending}
+              disabled={!canAuthenticate || pending}
               loading={pending}
               onClick={onCancel}
             >

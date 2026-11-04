@@ -1,5 +1,6 @@
+import { useAuthStore } from '../../../../../state/auth-store';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { SettingsPluginFamilyEntry } from '../../../api/extensions/plugins';
 import { ModelProviderCatalogPanel } from '../ModelProviderCatalogPanel';
@@ -36,6 +37,10 @@ const installedFamily: SettingsPluginFamilyEntry = {
   has_update: false,
   installed_versions: []
 };
+
+beforeEach(() => {
+  useAuthStore.setState({ actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace' }, me: null });
+});
 
 describe('ModelProviderCatalogPanel', () => {
   test('shows only installed-provider actions', () => {
@@ -87,4 +92,30 @@ describe('ModelProviderCatalogPanel', () => {
     expect(screen.getByText('不可用')).toBeInTheDocument();
     expect(screen.queryByText('可用')).not.toBeInTheDocument();
   });
+  test.each([
+    ['readonly', [], false, false],
+    ['single create', ['model_providers.instances.create'], true, false],
+    ['root', [], true, true]
+  ] as const)('%s preserves instance inspection and isolates create from uninstall', (_name, permissions, canCreate, canDelete) => {
+    const role = _name === 'root' ? 'root' : 'readonly.audit.20261102';
+    useAuthStore.setState({
+      actor: { ...useAuthStore.getState().actor!, effective_display_role: role },
+      me: {
+        id: 'user', account: 'auditor', email: 'auditor@example.com', phone: null,
+        nickname: 'Auditor', name: 'Auditor', avatar_url: null, introduction: '',
+        effective_display_role: role, permissions: [...permissions]
+      }
+    });
+    const onViewInstances = vi.fn();
+    render(<ModelProviderCatalogPanel overviewRows={[]} entries={[installedFamily]} currentCatalogEntries={{}} onCreate={vi.fn()} onViewInstances={onViewInstances} onUpgradeLatest={vi.fn()} onSwitchVersion={vi.fn()} onUninstall={vi.fn()} />);
+    const create = screen.getByRole('button', { name: '新增' });
+    const remove = screen.getByRole('button', { name: '卸载' });
+    if (canCreate) expect(create).toBeEnabled();
+    else expect(create).toBeDisabled();
+    if (canDelete) expect(remove).toBeEnabled();
+    else expect(remove).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '管理' }));
+    expect(onViewInstances).toHaveBeenCalledWith(installedFamily);
+  });
+
 });

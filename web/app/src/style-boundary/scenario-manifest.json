@@ -882,7 +882,9 @@
       "web/app/src/shared/ui/data-table/data-table-column-settings.css",
       "web/app/src/shared/ui/data-table/data-table.css",
       "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/ReadOnlyConversationInput.tsx",
-      "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/read-only-conversation-input.css"
+      "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/read-only-conversation-input.css",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/DebugComposer.tsx",
+      "web/app/src/features/applications/components/logs/application-run-viewer-styles.ts"
     ],
     "boundaryNodes": [
       {
@@ -3032,7 +3034,8 @@
       "web/app/src/features/agent-flow/components/debug-console/AgentFlowDebugConsole.tsx",
       "web/app/src/features/applications/components/logs/ApplicationLogsFloatingWindow.tsx",
       "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/ReadOnlyConversationInput.tsx",
-      "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/read-only-conversation-input.css"
+      "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/read-only-conversation-input.css",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/DebugComposer.tsx"
     ],
     "boundaryNodes": [
       {
@@ -3092,11 +3095,25 @@
       },
       {
         "id": "read-only-input",
-        "selector": ".communication-chat .application-run-detail__model-summary",
+        "selector": ".communication-chat .application-run-detail__model-summary .ant-sender-input",
         "propertyAssertions": [
           {
-            "property": "min-height",
-            "expected": "140px"
+            "property": "resize",
+            "expected": "none"
+          }
+        ]
+      },
+      {
+        "id": "read-only-model-metadata",
+        "selector": ".communication-chat .read-only-conversation-input__metadata",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          },
+          {
+            "property": "gap",
+            "expected": "8px"
           }
         ]
       }
@@ -3151,7 +3168,8 @@
       "web/app/src/features/agent-flow/components/debug-console/AgentFlowDebugConsole.tsx",
       "web/app/src/features/applications/components/logs/ApplicationLogsFloatingWindow.tsx",
       "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/ReadOnlyConversationInput.tsx",
-      "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/read-only-conversation-input.css"
+      "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/read-only-conversation-input.css",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/DebugComposer.tsx"
     ],
     "boundaryNodes": [
       {
@@ -3211,11 +3229,25 @@
       },
       {
         "id": "read-only-input",
-        "selector": ".communication-chat .application-run-detail__model-summary",
+        "selector": ".communication-chat .application-run-detail__model-summary .ant-sender-input",
         "propertyAssertions": [
           {
-            "property": "min-height",
-            "expected": "140px"
+            "property": "resize",
+            "expected": "none"
+          }
+        ]
+      },
+      {
+        "id": "read-only-model-metadata",
+        "selector": ".communication-chat .read-only-conversation-input__metadata",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          },
+          {
+            "property": "gap",
+            "expected": "8px"
           }
         ]
       }

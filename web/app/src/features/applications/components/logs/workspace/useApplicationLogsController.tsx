@@ -88,6 +88,7 @@ import {
   saveApplicationRunExport
 } from '../../../lib/run-export-download';
 import { sha256ArrayBuffer } from '../../../lib/run-archive-hash';
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { useAuthStore } from '../../../../../state/auth-store';
 export function useApplicationLogsController({
   applicationId,
@@ -211,6 +212,11 @@ export function useApplicationLogsController({
   const restoringArchiveImportRef = useRef(false);
   const { message } = App.useApp();
   const queryClient = useQueryClient();
+  const can = useConsoleOperationAccess();
+  const canImportArchives =
+    can('create_run_archive_upload_session') &&
+    can('upload_run_archive_chunk') &&
+    can('complete_run_archive_upload_session');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const timeRangeOptions = useMemo(
     () =>
@@ -457,6 +463,7 @@ export function useApplicationLogsController({
   }
 
   async function exportSelectedRuns() {
+    if (!can('export_application_runs_zip')) return;
     const runIds = selectedRunIds.filter((runId) => visibleRunIds.has(runId));
 
     if (runIds.length === 0) {
@@ -602,6 +609,7 @@ export function useApplicationLogsController({
   ]);
 
   async function importRunArchiveFile(file: File) {
+    if (!canImportArchives) return;
     if (!csrfToken) {
       message.error(t('auto.import_run_archive_csrf_missing'));
       return;
@@ -961,7 +969,10 @@ export function useApplicationLogsController({
                 <Tooltip title={t('auto.export_selected_runs_trace_dump')}>
                   <Button
                     aria-label={t('auto.export_selected_runs_trace_dump')}
-                    disabled={selectedVisibleRunIds.length === 0}
+                    disabled={
+                      !can('export_application_runs_zip') ||
+                      selectedVisibleRunIds.length === 0
+                    }
                     icon={<UploadOutlined aria-hidden="true" />}
                     loading={exportingSelectedRuns}
                     onClick={() => {
@@ -983,6 +994,7 @@ export function useApplicationLogsController({
                 <Button
                   aria-label={t('auto.import_run_archive')}
                   disabled={
+                    !canImportArchives ||
                     archiveImportState !== null ||
                     (applicationIds !== undefined && applications.length === 0)
                   }

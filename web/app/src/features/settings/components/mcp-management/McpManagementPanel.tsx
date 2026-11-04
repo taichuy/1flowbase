@@ -19,11 +19,10 @@ import { ThirdPartyMcpTab } from './upstream/ThirdPartyMcpTab';
 import './mcp-management-panel.css';
 
 export function McpManagementPanel({
-  canManage,
   catalog,
   interfaceCapabilities
 }: {
-  canManage: boolean;
+  canManage?: boolean;
   catalog: ConsoleMcpCatalog;
   interfaceCapabilities: ConsoleMcpInterfaceCapability[];
 }) {
@@ -58,19 +57,18 @@ export function McpManagementPanel({
       ]
         .filter(Boolean)
         .join(' ')}
-      tabBarExtraContent={<McpBundleActions canManage={canManage} />}
+      tabBarExtraContent={<McpBundleActions />}
       items={[
         {
           key: 'instances',
           label: i18nText('settings', 'auto.mcp_instances'),
-          children: <McpInstancesTab canManage={canManage} catalog={catalog} />
+          children: <McpInstancesTab catalog={catalog} />
         },
         {
           key: 'tools',
           label: i18nText('settings', 'auto.mcp_tool_config'),
           children: (
             <McpToolsTab
-              canManage={canManage}
               catalog={catalog}
               interfaceCapabilities={interfaceCapabilities}
             />
@@ -81,7 +79,6 @@ export function McpManagementPanel({
           label: i18nText('settings', 'auto.mcp_third_party'),
           children: (
             <ThirdPartyMcpTab
-              canManage={canManage}
               onImported={() => updateMcpManagementTabQuery('tools')}
             />
           )

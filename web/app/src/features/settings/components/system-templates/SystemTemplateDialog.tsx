@@ -1,4 +1,5 @@
 import type {
+  ApplicationTemplateReference,
   PortableTemplatePackage,
   PortableTemplateSelection
 } from '@1flowbase/api-client';
@@ -14,9 +15,10 @@ import {
   TreeSelect,
   Typography
 } from 'antd';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useSystemTemplates } from '../../api/system-templates/useSystemTemplates';
 import { readTemplateFile, templateArchiveBlob } from './archive';
 
@@ -37,11 +39,16 @@ export function SystemTemplateDialog({
 }: {
   mode: 'export' | 'import';
   file?: File;
-  template?: { name: string; body: PortableTemplatePackage };
+  template?: { name: string; body: ApplicationTemplateReference };
   canInstall?: boolean;
   onClose: () => void;
 }) {
   const { t } = useTranslation('settingsSystemTemplates');
+  const can = useConsoleOperationAccess();
+  const canPreview = can('system_templates.preview');
+  const canDownload = can('system_templates.download');
+  const canExport = can('system_templates.export');
+  const canInstallTemplate = canInstall && can('system_templates.install');
   const effectLabel = (action: string) => {
     switch (action) {
       case 'skip':
@@ -83,33 +90,57 @@ export function SystemTemplateDialog({
   const [reading, setReading] = useState(false);
   const [fileError, setFileError] = useState(false);
   const [downloadError, setDownloadError] = useState(false);
-  const { catalog, exportMutation, previewMutation, installMutation } =
-    useSystemTemplates(exportOpen);
+  const [prepareError, setPrepareError] = useState(false);
+  const {
+    catalog,
+    exportMutation,
+    downloadMutation,
+    previewMutation,
+    installMutation
+  } = useSystemTemplates(exportOpen && can('system_templates.catalog'));
   const preview = previewMutation.data;
   const result = installMutation.data;
   const busy =
     reading || previewMutation.isPending || installMutation.isPending;
-  const { mutate: previewFile } = previewMutation;
+  const { mutate: previewFile, reset: resetPreview } = previewMutation;
+  const { reset: resetInstall } = installMutation;
+  const { mutateAsync: downloadTemplate, reset: resetDownload } =
+    downloadMutation;
+  // Reuse this dialog's in-flight download across StrictMode effect replays.
+  const pendingDownload = useRef<{
+    template: NonNullable<typeof template>;
+    promise: Promise<PortableTemplatePackage>;
+  } | null>(null);
   useEffect(() => {
+    let cancelled = false;
     setFileError(false);
+    setPrepareError(false);
     setReading(false);
     setImportFile(undefined);
-    if (template) {
-      setImportFile(template);
-      previewFile(template.body);
-      return;
-    }
-    if (!file) return;
-    let cancelled = false;
+    resetPreview();
+    resetInstall();
+    resetDownload();
+    if ((!template && !file) || !canPreview || (template && !canDownload)) return;
     setReading(true);
-    void readTemplateFile(file)
+    if (template && pendingDownload.current?.template !== template) {
+      pendingDownload.current = {
+        template,
+        promise: downloadTemplate(template.body)
+      };
+    }
+    const prepare = template
+      ? pendingDownload.current!.promise
+      : readTemplateFile(file!);
+    void prepare
       .then((body) => {
         if (cancelled) return;
-        setImportFile({ name: file.name, body });
+        setImportFile({ name: template?.name ?? file!.name, body });
         previewFile(body);
       })
       .catch(() => {
-        if (!cancelled) setFileError(true);
+        if (cancelled) return;
+        if (template) setPrepareError(true);
+        else setFileError(true);
       })
       .finally(() => {
         if (!cancelled) setReading(false);
@@ -117,8 +148,19 @@ export function SystemTemplateDialog({
     return () => {
       cancelled = true;
     };
-  }, [file, template, previewFile]);
+  }, [
+    file,
+    template,
+    canPreview,
+    canDownload,
+    downloadTemplate,
+    previewFile,
+    resetPreview,
+    resetInstall,
+    resetDownload
+  ]);
   const download = async () => {
+    if (!canExport) return;
     setDownloadError(false);
     try {
       const body = await exportMutation.mutateAsync(selection);
@@ -138,7 +180,7 @@ export function SystemTemplateDialog({
     <>
       <Modal
         open={mode === 'import'}
-        title={template ? t('preview') : t('import')}
+        title={template ? t('install') : t('import')}
         footer={null}
         width={800}
         closable={!busy}
@@ -153,7 +195,14 @@ export function SystemTemplateDialog({
         <Typography.Paragraph type="secondary">
           {t('plugin_notice')}
         </Typography.Paragraph>
-        {reading && <Typography.Text>{file?.name}</Typography.Text>}
+        {reading && (
+          <Typography.Paragraph>
+            {template ? t('downloading') : file?.name}
+          </Typography.Paragraph>
+        )}
+        {prepareError && (
+          <Alert type="error" showIcon title={t('download_failed')} />
+        )}
         {fileError && <Alert type="error" showIcon title={t('invalid_file')} />}
         {importFile && (
           <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
@@ -353,14 +402,16 @@ export function SystemTemplateDialog({
                 loading={installMutation.isPending}
                 disabled={
                   busy ||
-                  !canInstall ||
+                  !canInstallTemplate ||
                   !csrfToken ||
                   !preview?.valid ||
                   Boolean(preview.failures.length) ||
                   Boolean(result) ||
                   installMutation.isError
                 }
-                onClick={() => installMutation.mutate(importFile.body)}
+                onClick={() => {
+                  if (canInstallTemplate) installMutation.mutate(importFile.body);
+                }}
               >
                 {template ? t('confirm_install') : t('install')}
               </Button>
@@ -384,7 +435,7 @@ export function SystemTemplateDialog({
         cancelButtonProps={{ disabled: exportMutation.isPending }}
         okButtonProps={{
           disabled:
-            catalog.isLoading ||
+            !canExport || catalog.isLoading ||
             catalog.isError ||
             !Object.values(selection).some((ids) => ids.length)
         }}

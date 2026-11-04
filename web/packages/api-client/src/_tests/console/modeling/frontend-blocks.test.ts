@@ -33,6 +33,7 @@ describe('console-frontend-blocks client', () => {
       code_template_version: '1.0.0',
       code_template_language: 'tsx',
       isolated_entry_asset: null,
+      code_modules: [],
       context_contract: { primitives: ['text'], input_schema: {} },
       permissions: { network: 'none', storage: 'none', secrets: 'none' },
       ui_capabilities: ['responsive'],
@@ -55,7 +56,7 @@ describe('console-frontend-blocks client', () => {
       disable_reason: null
     } satisfies ConsoleFrontendBlockCatalogEntry;
 
-    expect(entry).not.toHaveProperty('code_modules');
+    expect(entry.code_modules).toEqual([]);
     expect(entry.isolated_entry_asset).toBeNull();
   });
 });

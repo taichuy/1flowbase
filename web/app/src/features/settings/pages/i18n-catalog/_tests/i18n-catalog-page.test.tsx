@@ -402,4 +402,46 @@ describe('I18nCatalogPage batch fixtures', () => {
       await screen.findByTestId('i18n-catalog-delete-confirmation')
     ).toBeInTheDocument();
   });
+  test('read operations retain catalog and layers while edits and activation stay disabled', async () => {
+    setOperations(['i18n_catalog.entries.list', 'i18n_catalog.entries.detail', 'i18n_catalog.state.get', 'i18n_catalog.update.check']);
+    renderPage();
+    fireEvent.click(await findLoadedDesktopEntry('系统设置'));
+    const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
+    expect(await within(drawer).findByLabelText('覆盖翻译')).toBeDisabled();
+    expect(within(drawer).getByText('设置')).toBeInTheDocument();
+    expect(within(drawer).getByRole('button', { name: '保存翻译' })).toBeDisabled();
+    expect(within(drawer).getByRole('button', { name: '恢复官方翻译' })).toBeDisabled();
+    fireEvent.click(within(drawer).getByRole('button', { name: /关闭|Close/ }));
+    expect(screen.getByRole('button', { name: /新增/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /恢复默认值/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '目录版本' }));
+    const dialog = (await screen.findByText('激活多语言目录')).closest('.ant-modal') as HTMLElement;
+    await within(dialog).findByText('2.0.1');
+    expect(within(dialog).getByRole('button', { name: /激\s*活/ })).toBeDisabled();
+    expect(catalogApi.activateSettingsI18nCatalogUpdate).not.toHaveBeenCalled();
+    expect(catalogApi.saveSettingsI18nCatalogOverride).not.toHaveBeenCalled();
+  });
+
+  test('restore-entry permission does not enable save, create or restore-all', async () => {
+    setOperations(['i18n_catalog.entries.list', 'i18n_catalog.entries.detail', 'i18n_catalog.overrides.restore']);
+    renderPage();
+    fireEvent.click(await findLoadedDesktopEntry('系统设置'));
+    const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
+    const restore = await within(drawer).findByRole('button', { name: '恢复官方翻译' });
+    expect(restore).toBeEnabled();
+    expect(within(drawer).getByRole('button', { name: '保存翻译' })).toBeDisabled();
+    fireEvent.click(restore);
+    await waitFor(() => expect(catalogApi.restoreSettingsI18nCatalogOverride).toHaveBeenCalledWith({ key: 'Settings', locale: 'zh_Hans', expected_revision: 8 }, 'csrf-123'));
+    expect(catalogApi.saveSettingsI18nCatalogOverride).not.toHaveBeenCalled();
+    expect(catalogApi.restoreAllSettingsI18nCatalogOverrides).not.toHaveBeenCalled();
+  });
+
 });
+
+function setOperations(permissions: string[]) {
+  const { actor, me } = useAuthStore.getState();
+  useAuthStore.setState({
+    actor: { ...actor!, effective_display_role: 'member' },
+    me: { ...me!, effective_display_role: 'member', permissions }
+  });
+}

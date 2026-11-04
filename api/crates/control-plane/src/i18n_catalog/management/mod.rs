@@ -104,7 +104,7 @@ where
     }
 
     pub async fn list(&self, command: ListCatalogEntriesCommand) -> Result<CatalogManagementPage> {
-        self.authorize(&command.access)?;
+        self.authorize_read(&command.access, "i18n_catalog.entries.list")?;
         if command.limit == 0 || command.limit > 200 {
             return Err(ControlPlaneError::InvalidInput("i18n_catalog_page_limit").into());
         }
@@ -125,7 +125,7 @@ where
         &self,
         command: GetCatalogEntryCommand,
     ) -> Result<crate::ports::CatalogManagementEntry> {
-        self.authorize(&command.access)?;
+        self.authorize_read(&command.access, "i18n_catalog.entries.detail")?;
         let mut page = self
             .repository
             .list_catalog_management_entries(&CatalogManagementQuery {
@@ -288,6 +288,17 @@ where
         if !access.actor.is_root {
             return Err(ControlPlaneError::PermissionDenied("i18n_catalog_root_required").into());
         }
+        self.authorize_workspace(access)
+    }
+
+    fn authorize_read(&self, access: &CatalogManagementAccess, operation: &str) -> Result<()> {
+        if !access.actor.has_permission(operation) {
+            return Err(ControlPlaneError::PermissionDenied("i18n_catalog_read_required").into());
+        }
+        self.authorize_workspace(access)
+    }
+
+    fn authorize_workspace(&self, access: &CatalogManagementAccess) -> Result<()> {
         if access.current_workspace_id != access.actor.current_workspace_id
             || access.current_workspace_id != self.bootstrap_workspace_id
         {

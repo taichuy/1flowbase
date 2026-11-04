@@ -431,3 +431,6 @@ async fn managed_settings_application_is_idempotent_and_disable_fails_closed() {
 
 #[path = "../plugin/managed_switch_repository_tests.rs"]
 mod managed_switch_repository_tests;
+
+#[path = "plugin_component_tests.rs"]
+mod plugin_components;

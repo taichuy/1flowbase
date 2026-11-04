@@ -6,7 +6,7 @@ import { RouteManagementTab } from './RouteManagementTab';
 import { CodeTemplatesTab } from './CodeTemplatesTab';
 import { ComponentRecordsTab } from './ComponentRecordsTab';
 
-export function UiManagementPanel({ canManage }: { canManage: boolean }) {
+export function UiManagementPanel(_props: { canManage?: boolean } = {}) {
   const { t } = useTranslation('settingsUiManagement');
   const navigate = useNavigate();
   const screens = Grid.useBreakpoint();
@@ -41,19 +41,19 @@ export function UiManagementPanel({ canManage }: { canManage: boolean }) {
           key: 'code-templates',
           label: t('code_templates'),
           style: fillStyle,
-          children: <CodeTemplatesTab canManage={canManage} />
+          children: <CodeTemplatesTab />
         },
         {
           key: 'components',
           label: t('components'),
           style: fillStyle,
-          children: <ComponentRecordsTab canManage={canManage} />
+          children: <ComponentRecordsTab />
         },
         {
           key: 'routes',
           label: t('routes'),
           style: fillStyle,
-          children: <RouteManagementTab canManage={canManage} />
+          children: <RouteManagementTab />
         }
       ]}
     />

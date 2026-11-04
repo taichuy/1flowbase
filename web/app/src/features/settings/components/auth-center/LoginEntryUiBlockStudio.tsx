@@ -145,6 +145,7 @@ export function LoginEntryUiBlockStudio({
   }, [loginEntryId, open]);
 
   const insertCode = (insertion: FrontstageJsxInsertion) => {
+    if (readOnly || saving) return;
     const editor = editorRef.current;
     const selection = editor?.getSelection();
     const model = editor?.getModel();
@@ -205,7 +206,9 @@ export function LoginEntryUiBlockStudio({
                     'settings',
                     'auto.auth_center_restore_default_ui_confirm'
                   )}
-                  onConfirm={() => onSave(defaultSource)}
+                  onConfirm={() => {
+                    if (!readOnly && !saving) return onSave(defaultSource);
+                  }}
                 >
                   <Button
                     disabled={readOnly || saving}
@@ -234,6 +237,7 @@ export function LoginEntryUiBlockStudio({
       owner="settings:auth-center"
       path={`file:///auth-center/${loginEntryId}/public-ui-block.tsx`}
       readOnly={readOnly}
+      canRun={!readOnly}
       saving={saving}
       sections={[
         'code',
@@ -254,6 +258,7 @@ export function LoginEntryUiBlockStudio({
       onInjectContext={injectFrontstageContextComment}
       onReset={() => setDraft(source)}
       onRun={(runSource) => {
+        if (readOnly || saving) return;
         if (diagnoseLegacyBlockModuleSource(runSource)) return;
         previewSequenceRef.current += 1;
         setPreviewRequest({
@@ -262,7 +267,8 @@ export function LoginEntryUiBlockStudio({
         });
       }}
       onSave={() => {
-        if (!legacyDiagnostic) void onSave(draft).catch(() => undefined);
+        if (!readOnly && !saving && !legacyDiagnostic)
+          void onSave(draft).catch(() => undefined);
       }}
       renderResource={(section) => (
         <JsxStudioResourcePanel
@@ -329,6 +335,7 @@ export function LoginEntryUiBlockStudio({
           }
           onInsertCode={insertCode}
           onSaveBlock={async (block) => {
+            if (readOnly || saving) return false;
             setAuthoringBlock(block);
             return true;
           }}
@@ -338,9 +345,7 @@ export function LoginEntryUiBlockStudio({
   );
 }
 
-function createAuthoringBlock(
-  loginEntryId: string
-): FrontstageBlockInstance {
+function createAuthoringBlock(loginEntryId: string): FrontstageBlockInstance {
   return {
     id: `public-auth:${loginEntryId}`,
     rendererVersion: 'v1',

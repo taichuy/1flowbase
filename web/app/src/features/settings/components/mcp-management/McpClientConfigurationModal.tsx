@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { buildCodexCommands } from './client-configuration/codex-commands';
 import {
   quotePosix,
@@ -120,6 +121,66 @@ function buildCommandMarkdown(
     .join('\n\n');
 }
 
+const renderAgentCommands = (
+  commands:
+    | {
+        install: string | null;
+        remove: string | null;
+      }
+    | undefined
+) => (
+  <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="small" style={{ width: '100%' }}>
+      <Typography.Title level={5} style={{ margin: 0 }}>
+        {i18nText('settingsMcpManagement', 'auto.install_update_commands')}
+      </Typography.Title>
+      {commands?.install ? (
+        <McpCommandMarkdownPreview
+          content={commands.install}
+          ariaLabel={i18nText(
+            'settingsMcpManagement',
+            'auto.install_update_command_preview'
+          )}
+        />
+      ) : (
+        <Typography.Text type="secondary">
+          {i18nText(
+            'settingsMcpManagement',
+            'auto.enter_api_key_to_generate_commands'
+          )}
+        </Typography.Text>
+      )}
+    </Space>
+    <Space orientation="vertical" size="small" style={{ width: '100%' }}>
+      <Typography.Title level={5} style={{ margin: 0 }}>
+        {i18nText('settingsMcpManagement', 'auto.remove_commands')}
+      </Typography.Title>
+      {commands?.remove ? (
+        <McpCommandMarkdownPreview
+          content={commands.remove}
+          ariaLabel={i18nText(
+            'settingsMcpManagement',
+            'auto.remove_command_preview'
+          )}
+        />
+      ) : (
+        <Alert
+          type="warning"
+          showIcon
+          title={i18nText(
+            'settingsMcpManagement',
+            'auto.open_code_remove_unsupported'
+          )}
+          description={i18nText(
+            'settingsMcpManagement',
+            'auto.open_code_remove_configuration_path'
+          )}
+        />
+      )}
+    </Space>
+  </Space>
+);
+
 export function McpClientConfigurationModal({
   instance,
   onClose
@@ -127,6 +188,7 @@ export function McpClientConfigurationModal({
   instance: ConsoleMcpInstance | null;
   onClose: () => void;
 }) {
+  const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const { message } = App.useApp();
   const queryClient = useQueryClient();
@@ -231,66 +293,6 @@ export function McpClientConfigurationModal({
     setApiKey('');
     onClose();
   };
-  const renderAgentCommands = (
-    commands:
-      | {
-          install: string | null;
-          remove: string | null;
-        }
-      | undefined
-  ) => (
-    <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-      <Space orientation="vertical" size="small" style={{ width: '100%' }}>
-        <Typography.Title level={5} style={{ margin: 0 }}>
-          {i18nText('settingsMcpManagement', 'auto.install_update_commands')}
-        </Typography.Title>
-        {commands?.install ? (
-          <McpCommandMarkdownPreview
-            content={commands.install}
-            ariaLabel={i18nText(
-              'settingsMcpManagement',
-              'auto.install_update_command_preview'
-            )}
-          />
-        ) : (
-          <Typography.Text type="secondary">
-            {i18nText(
-              'settingsMcpManagement',
-              'auto.enter_api_key_to_generate_commands'
-            )}
-          </Typography.Text>
-        )}
-      </Space>
-      <Space orientation="vertical" size="small" style={{ width: '100%' }}>
-        <Typography.Title level={5} style={{ margin: 0 }}>
-          {i18nText('settingsMcpManagement', 'auto.remove_commands')}
-        </Typography.Title>
-        {commands?.remove ? (
-          <McpCommandMarkdownPreview
-            content={commands.remove}
-            ariaLabel={i18nText(
-              'settingsMcpManagement',
-              'auto.remove_command_preview'
-            )}
-          />
-        ) : (
-          <Alert
-            type="warning"
-            showIcon
-            title={i18nText(
-              'settingsMcpManagement',
-              'auto.open_code_remove_unsupported'
-            )}
-            description={i18nText(
-              'settingsMcpManagement',
-              'auto.open_code_remove_configuration_path'
-            )}
-          />
-        )}
-      </Space>
-    </Space>
-  );
-
   return (
     <FixedHeightModal
       title={i18nText(
@@ -307,7 +309,7 @@ export function McpClientConfigurationModal({
           key="delete"
           danger
           icon={<DeleteOutlined />}
-          disabled={!saved}
+          disabled={!saved || !can('mcp.client_credential.delete')}
           hidden={clientTab === 'chatgpt'}
           loading={deleteMutation.isPending}
           onClick={() => deleteMutation.mutate()}
@@ -318,7 +320,7 @@ export function McpClientConfigurationModal({
           key="save"
           type="primary"
           icon={<SaveOutlined />}
-          disabled={!apiKey.trim()}
+          disabled={!apiKey.trim() || !can('mcp.client_credential.save')}
           hidden={clientTab === 'chatgpt'}
           loading={saveMutation.isPending}
           onClick={() => saveMutation.mutate()}

@@ -1,6 +1,6 @@
 {
   "packet": "D3-P4",
-  "count": 86,
+  "count": 88,
   "consumers": [
     {
       "category": "settings_feature_label",
@@ -261,6 +261,16 @@
       "category": "other_policy_group",
       "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
       "key": "Registered node contribution catalog operations"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Personal account"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Profile and preference changes; password and sign-in security remain available"
     },
     {
       "category": "other_policy_group",

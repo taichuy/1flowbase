@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../../state/auth-store';
 import FolderOutlined from '@ant-design/icons/es/icons/FolderOutlined';
@@ -44,12 +45,12 @@ import { useMcpInstanceActions } from './McpInstancesTab/use-mcp-instance-action
 import type { GroupFormValues } from './McpInstancesTab/editor-types';
 
 export function McpInstancesTab({
-  canManage,
   catalog
 }: {
-  canManage: boolean;
+  canManage?: boolean;
   catalog: ConsoleMcpCatalog;
 }) {
+  const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
   const directory = useMcpDirectoryEditor(catalog);
@@ -128,7 +129,7 @@ export function McpInstancesTab({
     copyInstanceMutation,
     handleExportInstanceBundle,
     selectedDiscoveryPolicy
-  } = useMcpInstanceActions(canManage, catalog, directory);
+  } = useMcpInstanceActions(catalog, directory);
   return (
     <Space
       orientation="vertical"
@@ -148,7 +149,6 @@ export function McpInstancesTab({
           });
           setInstanceModalOpen(true);
         }}
-        canManage={canManage}
         instances={catalog.instances}
         groupCounts={groupCounts}
         toolCounts={toolCounts}
@@ -217,8 +217,7 @@ export function McpInstancesTab({
       />
       {discoveryPolicyInstance && selectedDiscoveryPolicy ? (
         <McpInstanceDiscoveryPolicyModal
-          canManage={canManage}
-          instance={discoveryPolicyInstance}
+            instance={discoveryPolicyInstance}
           policy={selectedDiscoveryPolicy}
           open
           onClose={() => setDiscoveryPolicyInstance(null)}
@@ -291,7 +290,7 @@ export function McpInstancesTab({
                     ? i18nText('settingsMcpManagement', 'auto.save_group')
                     : i18nText('settingsMcpManagement', 'auto.save_tool_mount')
                 }
-                disabled={!canManage}
+                disabled={!(directoryEditorMode === 'group' ? can('mcp.groups.upsert') : can(editingBinding ? 'mcp.tool_bindings.update' : 'mcp.tool_bindings.create'))}
                 loading={
                   directoryEditorMode === 'group'
                     ? saveGroupMutation.isPending
@@ -403,7 +402,7 @@ export function McpInstancesTab({
                     'settingsMcpManagement',
                     'auto.create_group'
                   )}
-                  disabled={!canManage}
+                  disabled={!can('mcp.groups.upsert')}
                   onClick={() =>
                     requestDirectorySessionChange(() =>
                       startChildGroupCreation()
@@ -418,7 +417,7 @@ export function McpInstancesTab({
                     'settingsMcpManagement',
                     'auto.mount_tool'
                   )}
-                  disabled={!canManage}
+                  disabled={!can('mcp.tool_bindings.create')}
                   onClick={() =>
                     requestDirectorySessionChange(() => startToolMount())
                   }
@@ -431,8 +430,7 @@ export function McpInstancesTab({
                 key={`${directoryEditorMode}:${
                   directoryDraftActive ? directoryDraftVersion : 'stable'
                 }`}
-                canManage={canManage}
-                expandedKeys={expandedDirectoryKeys}
+                        expandedKeys={expandedDirectoryKeys}
                 selectedKey={selectedDirectoryKey}
                 treeData={treeData}
                 onExpand={(changedKey, expanded) =>
@@ -524,6 +522,7 @@ export function McpInstancesTab({
               </div>
               <div hidden={directoryEditorMode !== 'group'}>
                 <Form
+                  disabled={!can('mcp.groups.upsert')}
                   form={groupForm}
                   layout="vertical"
                   className="mcp-management__directory-form"
@@ -692,6 +691,7 @@ export function McpInstancesTab({
               </div>
               <div hidden={directoryEditorMode !== 'binding'}>
                 <Form
+                  disabled={!can(editingBinding ? 'mcp.tool_bindings.update' : 'mcp.tool_bindings.create')}
                   form={bindingForm}
                   layout="vertical"
                   className="mcp-management__directory-form"

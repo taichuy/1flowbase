@@ -15,7 +15,10 @@ import {
 } from '../../../../shared/code-block/native-react-source-preparation';
 import { resolveAppLocale } from '../../../../shared/i18n/locales';
 import { useAuthStore } from '../../../../state/auth-store';
-import { FrontstageNativeTrustedBlockPortalHost, type FrontstageNativeTrustedBlockReactComponent } from '../../../frontstage/lib/native-adapter/native-trusted-block-react-adapter';
+import {
+  FrontstageNativeTrustedBlockPortalHost,
+  type FrontstageNativeTrustedBlockReactComponent
+} from '../../../frontstage/lib/native-adapter/native-trusted-block-react-adapter';
 import { createFrontstageUnavailableBlockContext } from '../../../frontstage/lib/native-trusted-block/unavailable-context';
 import { createFrontstageNativeReactModuleRegistry } from '../../../frontstage/lib/native-modules/registry';
 import { pluginSettingsPageQueryOptions } from '../../api/ui-management';
@@ -80,11 +83,13 @@ function PublishedPluginSettingsPage({
       // source nor feature ownership can grant API operations to this context.
       ...createFrontstageUnavailableBlockContext(plan),
       currentUser: actor
-        ? {
+        ? Object.freeze({
             id: actor.id,
             displayName:
-              me?.nickname?.trim() || me?.name?.trim() || actor.account
-          }
+              me?.nickname?.trim() || me?.name?.trim() || actor.account,
+            permissions: Object.freeze([...(me?.permissions ?? [])]),
+            isRoot: actor.effective_display_role === 'root'
+          })
         : null,
       workspace: { id: actor?.current_workspace_id ?? '' },
       ui: { locale }

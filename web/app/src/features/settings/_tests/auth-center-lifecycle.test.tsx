@@ -108,7 +108,16 @@ import { loadApplicationI18nResources } from '../../../shared/i18n/app-i18n';
 import { useAuthStore } from '../../../state/auth-store';
 import { SettingsAuthCenterSection } from '../pages/settings-page/SettingsAuthCenterSection';
 
-function authenticate() {
+const managerOperations = [
+  'auth_center.overview.view',
+  'auth_center.login_entries.create',
+  'auth_center.login_entries.delete',
+  'auth_center.login_entries.enabled.update',
+  'auth_center.login_entries.order',
+  'update_auth_center_authenticator_config',
+  'update_auth_center_authenticator_public_ui_block'
+];
+function authenticate(permissions = managerOperations) {
   useAuthStore.getState().setAuthenticated({
     csrfToken: 'csrf-123',
     actor: {
@@ -127,7 +136,7 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'member',
-      permissions: ['user.view.all', 'user.manage.all']
+      permissions
     }
   });
 }
@@ -291,6 +300,104 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue(
       baseOverview
     );
+  });
+
+  test.each([
+    {
+      operation: 'auth_center.overview.view',
+      create: false,
+      enabled: false,
+      remove: false
+    },
+    {
+      operation: 'auth_center.login_entries.create',
+      create: true,
+      enabled: false,
+      remove: false
+    },
+    {
+      operation: 'auth_center.login_entries.enabled.update',
+      create: false,
+      enabled: true,
+      remove: false
+    },
+    {
+      operation: 'auth_center.login_entries.delete',
+      create: false,
+      enabled: false,
+      remove: true
+    },
+    {
+      operation: 'update_auth_center_authenticator_config',
+      create: false,
+      enabled: false,
+      remove: false
+    }
+  ])(
+    'does not expand a single auth-center grant: $operation',
+    async ({ operation, create, enabled, remove }) => {
+      authenticate(['auth_center.overview.view', operation]);
+      render(
+        <AppProviders>
+          <SettingsAuthCenterSection />
+        </AppProviders>
+      );
+      const row = (await screen.findByText('Staff Password')).closest('tr')!;
+      if (enabled) expect(within(row).getByRole('switch')).toBeEnabled();
+      else expect(within(row).getByRole('switch')).toBeDisabled();
+      const deleteButton = within(row).getByRole('button', { name: '删除' });
+      if (remove) expect(deleteButton).toBeEnabled();
+      else expect(deleteButton).toBeDisabled();
+      if (create) expect(screen.getByRole('button', { name: '新增' })).toBeEnabled();
+      else expect(screen.getByRole('button', { name: '新增' })).toBeDisabled();
+      expect(within(row).getByRole('button', { name: '编辑' })).toBeEnabled();
+      expect(within(row).getByRole('button', { name: 'UI' })).toBeEnabled();
+      if (!enabled) fireEvent.click(within(row).getByRole('switch'));
+      if (!remove) fireEvent.click(deleteButton);
+      expect(
+        authCenterApi.updateSettingsAuthCenterLoginEntryEnabled
+      ).not.toHaveBeenCalled();
+      expect(
+        authCenterApi.deleteSettingsAuthCenterLoginEntry
+      ).not.toHaveBeenCalled();
+    }
+  );
+
+  test('keeps readonly configuration and UI source available while blocking saves and preview', async () => {
+    authenticate(['auth_center.overview.view']);
+    render(
+      <AppProviders>
+        <SettingsAuthCenterSection />
+      </AppProviders>
+    );
+    const row = (await screen.findByText('Password')).closest('tr')!;
+    fireEvent.click(within(row).getByRole('button', { name: '编辑' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Password 配置' });
+    expect(
+      within(drawer).getByRole('button', { name: /保\s*存/ })
+    ).toBeDisabled();
+    fireEvent.click(within(drawer).getByRole('button', { name: /取\s*消/ }));
+    fireEvent.click(within(row).getByRole('button', { name: 'UI' }));
+    const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
+    expect(
+      await within(studio).findByRole(
+        'textbox',
+        { name: '区块源码' },
+        { timeout: 5000 }
+      )
+    ).toHaveValue('original password block');
+    expect(
+      within(studio).getByRole('button', { name: /保\s*存/ })
+    ).toBeDisabled();
+    expect(
+      within(studio).getByRole('button', { name: /运\s*行/ })
+    ).toBeDisabled();
+    expect(
+      authCenterApi.updateSettingsAuthCenterLoginEntryConfig
+    ).not.toHaveBeenCalled();
+    expect(
+      authCenterApi.updateSettingsAuthCenterLoginEntryPublicUiBlock
+    ).not.toHaveBeenCalled();
   });
 
   test('updates enabled state in both directions from the table switches', async () => {

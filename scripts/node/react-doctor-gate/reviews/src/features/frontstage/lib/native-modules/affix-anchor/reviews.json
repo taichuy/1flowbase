@@ -9,7 +9,7 @@
       "rule": "react-doctor/no-react19-deprecated-apis",
       "sourceSha256": "a7c2e8c34c1d175d5386a3209149bf098355a5a0c7c19a25b7a2e53404fffcee",
       "reason": "forwardRef/useContext remain supported React 19 APIs. The native/mock ABI explicitly consumes their ref/context behavior; this is only a migration hint. The affix native module uses forwardRef/useImperativeHandle to expose the Antd Affix imperative contract and useContext to consume its native surface. Both APIs remain supported in React 19; this migration hint does not identify a removed API or broken ref lifetime.",
-      "evidence": [{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-affix-runtime.test.tsx","sha256":"abd69a650a2e4290c5d67b2db99ac896f6a4e04a35ae5c7924d3f9eccccd7dc3"}]
+      "evidence": [{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-affix-runtime.test.tsx","sha256":"f4efa09612f9bb7e930855ce70fbedd91bfba7b2ede85ffc9a7b7925c2a69661"}]
     },
     {
       "file": "web/app/src/features/frontstage/lib/native-modules/affix-anchor/native-anchor-runtime.tsx",

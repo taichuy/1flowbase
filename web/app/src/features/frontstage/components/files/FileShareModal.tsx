@@ -14,6 +14,7 @@ import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import copy from 'copy-to-clipboard';
 import {
   createConsoleFileShareLink,
+  type ConsoleFileTable,
   type FileShareLink
 } from '@1flowbase/api-client';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -25,6 +26,7 @@ interface Props {
   recordId: string;
   filename: string;
   csrfToken: string;
+  record_permissions: ConsoleFileTable['record_permissions'];
   onClose: () => void;
 }
 
@@ -33,6 +35,7 @@ export function FileShareModal({
   recordId,
   filename,
   csrfToken,
+  record_permissions,
   onClose
 }: Props) {
   const { message } = App.useApp();
@@ -48,6 +51,7 @@ export function FileShareModal({
     : '';
 
   async function generate(input: { expires_in_seconds: number }) {
+    if (!record_permissions.can_share) return;
     pending.current?.abort();
     const controller = new AbortController();
     pending.current = controller;
@@ -85,6 +89,7 @@ export function FileShareModal({
         <Space>
           <Button
             type="primary"
+            disabled={!record_permissions.can_share}
             loading={generating}
             onClick={() => form.submit()}
           >
@@ -103,6 +108,7 @@ export function FileShareModal({
         </Typography.Paragraph>
         <Form
           form={form}
+          disabled={!record_permissions.can_share}
           layout="vertical"
           initialValues={{ expires_in_seconds: 600 }}
           onFinish={(values) => void generate(values)}

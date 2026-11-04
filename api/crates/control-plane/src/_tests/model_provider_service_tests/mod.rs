@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::Result;
 use async_trait::async_trait;
+use extension_contracts::provider_contract::ProviderBalanceResult;
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -54,6 +55,8 @@ use super::plugin_management::support::{actor_with_permissions, create_provider_
 #[derive(Clone)]
 struct MemoryModelProviderRepository {
     actor: ActorContext,
+    operation_trace: Arc<RwLock<Vec<&'static str>>>,
+    catalog_read_error: Arc<RwLock<bool>>,
     installations: Arc<RwLock<HashMap<Uuid, PluginInstallationRecord>>>,
     artifact_instances: Arc<RwLock<HashMap<(String, Uuid), PluginArtifactInstanceRecord>>>,
     catalog_projections: Arc<RwLock<HashMap<Uuid, PluginPackageCatalogProjectionRecord>>>,
@@ -78,6 +81,8 @@ impl MemoryModelProviderRepository {
     fn new(actor: ActorContext) -> Self {
         Self {
             actor,
+            operation_trace: Default::default(),
+            catalog_read_error: Default::default(),
             installations: Arc::new(RwLock::new(HashMap::new())),
             artifact_instances: Arc::new(RwLock::new(HashMap::new())),
             catalog_projections: Arc::new(RwLock::new(HashMap::new())),
@@ -463,6 +468,7 @@ impl AuthRepository for MemoryModelProviderRepository {
     }
 
     async fn append_audit_log(&self, event: &AuditLogRecord) -> Result<()> {
+        self.operation_trace.write().await.push("audit");
         self.audit_events
             .write()
             .await
@@ -767,6 +773,8 @@ impl PluginRepository for MemoryModelProviderRepository {
 
 #[derive(Clone, Default)]
 struct MemoryProviderRuntime {
+    operation_trace: Arc<RwLock<Vec<&'static str>>>,
+    ensure_loaded_error: Arc<RwLock<bool>>,
     validate_calls: Arc<RwLock<Vec<Uuid>>>,
     validate_configs: Arc<RwLock<Vec<Value>>>,
     list_model_calls: Arc<RwLock<Vec<Uuid>>>,
@@ -814,6 +822,10 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
     }
 
     async fn ensure_loaded(&self, _installation: &LocalPluginInstallationRecord) -> Result<()> {
+        self.operation_trace.write().await.push("ensure_loaded");
+        if *self.ensure_loaded_error.read().await {
+            anyhow::bail!("ensure loaded failed for test");
+        }
         Ok(())
     }
 
@@ -841,6 +853,7 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
         _provider_config: Value,
         operation: ProviderAuthOperation,
     ) -> Result<ProviderAuthResult> {
+        self.operation_trace.write().await.push("authenticate");
         self.auth_operations.write().await.push(operation);
         Ok(self
             .auth_results
@@ -860,6 +873,7 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
         installation: &LocalPluginInstallationRecord,
         _provider_config: Value,
     ) -> Result<Vec<ProviderModelDescriptor>> {
+        self.operation_trace.write().await.push("list_models");
         if let Some(message) = self.list_models_error.read().await.clone() {
             anyhow::bail!(message);
         }
@@ -875,6 +889,19 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
             max_output_tokens: Some(4096),
             provider_metadata: json!({}),
         }])
+    }
+
+    async fn get_balance(
+        &self,
+        _installation: &LocalPluginInstallationRecord,
+        provider_config: Value,
+    ) -> Result<ProviderBalanceResult> {
+        self.operation_trace.write().await.push("get_balance");
+        Ok(ProviderBalanceResult {
+            is_available: true,
+            balance_infos: Vec::new(),
+            provider_metadata: json!({"echo": provider_config}),
+        })
     }
 
     async fn get_usage_windows(

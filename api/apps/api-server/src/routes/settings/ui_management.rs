@@ -184,6 +184,9 @@ pub struct TemplateListResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ComponentRecordResponse {
+    pub owner_plugin_id: Option<String>,
+    pub owner_contribution_code: Option<String>,
+    pub owner_installation_id: Option<String>,
     pub id: String,
     pub scope_id: String,
     pub component_code: String,

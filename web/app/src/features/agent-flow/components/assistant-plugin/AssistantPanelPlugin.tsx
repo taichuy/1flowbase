@@ -28,6 +28,7 @@ export interface AssistantPanelRuntime {
   preference: Pick<ConsoleAssistantPreference, 'model' | 'reasoning_effort'>;
   onRefresh?: () => Promise<void>;
   refreshing?: boolean;
+  readOnly?: boolean;
   contextSnapshot?: {
     effective_context_window?: number | null;
     input_tokens?: number | null;
@@ -114,6 +115,7 @@ export function AssistantPanelPlugin({
           ),
           children: runtime.run_capabilities.models.map((model) => ({
             key: `model:${model.id}`,
+            disabled: runtime.readOnly,
             label: (
               <span className="assistant-panel-plugin__runtime-menu-option">
                 <span>{model.name ?? model.id}</span>
@@ -140,6 +142,7 @@ export function AssistantPanelPlugin({
                 ),
                 children: selectedModel.reasoning_efforts.map((effort) => ({
                   key: `reasoning-effort:${effort}`,
+                  disabled: runtime.readOnly,
                   label: (
                     <span className="assistant-panel-plugin__runtime-menu-option">
                       <span>{effort}</span>
@@ -155,7 +158,7 @@ export function AssistantPanelPlugin({
         { type: 'divider' },
         {
           key: 'reset-defaults',
-          disabled: runtime.refreshing,
+          disabled: runtime.refreshing || runtime.readOnly,
           label: i18nText('appShell', 'auto.assistant_reset_defaults')
         }
       ]
@@ -257,7 +260,7 @@ export function AssistantPanelPlugin({
                 menu={{
                   items: runtimePreferenceMenuItems,
                   onClick: ({ key }) => {
-                    if (runtime.refreshing) return;
+                    if (runtime.refreshing || runtime.readOnly) return;
                     const selection = String(key);
                     if (selection === 'reset-defaults') {
                       void runtime.onChangePreference({

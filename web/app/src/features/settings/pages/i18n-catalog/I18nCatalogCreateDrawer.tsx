@@ -1,5 +1,6 @@
 import { Button, Drawer, Form, Input, Select, Space } from 'antd';
 import { useTranslation } from 'react-i18next';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 
 export interface CreateCustomTranslationValues {
   key: string;
@@ -19,6 +20,8 @@ export function I18nCatalogCreateDrawer({
   onCreate: (values: CreateCustomTranslationValues) => void;
 }) {
   const { t } = useTranslation('settings');
+  const can = useConsoleOperationAccess();
+  const canCreate = can('i18n_catalog.custom_translations.upsert');
   const [form] = Form.useForm<CreateCustomTranslationValues>();
 
   return (
@@ -34,7 +37,8 @@ export function I18nCatalogCreateDrawer({
         form={form}
         initialValues={{ locale: 'zh_Hans' }}
         layout="vertical"
-        onFinish={onCreate}
+        disabled={!canCreate || saving}
+        onFinish={(values) => { if (canCreate) onCreate(values); }}
       >
         <Form.Item
           label={t('auto.key')}
@@ -66,7 +70,7 @@ export function I18nCatalogCreateDrawer({
           <Button type="primary" htmlType="submit" loading={saving}>
             {t('auto.translation_catalog_create')}
           </Button>
-          <Button onClick={onClose}>
+          <Button onClick={onClose} disabled={false}>
             {t('auto.translation_catalog_cancel')}
           </Button>
         </Space>

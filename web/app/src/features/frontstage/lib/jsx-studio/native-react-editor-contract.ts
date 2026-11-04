@@ -16,7 +16,7 @@ export const FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS: readonly BlockSourceExtr
       source: '@1flowbase/native-react-context',
       filePath: 'file:///1flowbase/native-react-context.d.ts',
       content: `interface NativeReactBlockContext {
-  currentUser: { id: string; displayName?: string } | null;
+  currentUser: { readonly id: string; readonly displayName?: string; readonly permissions?: readonly string[]; readonly isRoot?: boolean } | null;
   workspace: { id: string; name?: string };
   application: { id: string; name?: string } | null;
   page: { id: string; route: string; title?: string };

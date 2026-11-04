@@ -65,6 +65,7 @@ fn other_policy_group_displays() -> Vec<ConsoleOtherPolicyGroupDisplay> {
         "other.local-commands",
         "other.model-providers",
         "other.node-contributions",
+        "other.personal-account",
         "other.plugins",
         "other.workspace",
     ]
@@ -118,6 +119,10 @@ fn other_policy_group_keys(group_id: &str) -> (&'static str, &'static str) {
         "other.node-contributions" => (
             "Node contributions",
             "Registered node contribution catalog operations",
+        ),
+        "other.personal-account" => (
+            "Personal account",
+            "Profile and preference changes; password and sign-in security remain available",
         ),
         "other.plugins" => (
             "Plugins",

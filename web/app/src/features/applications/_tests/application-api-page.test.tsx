@@ -151,9 +151,7 @@ describe('ApplicationApiPage', () => {
     await waitFor(() =>
       expect(publicApi.fetchApplicationApiKeys).toHaveBeenCalledWith('app-1')
     );
-    await click(
-      within(statusBar).getByRole('button', { name: 'API 密钥' })
-    );
+    await click(within(statusBar).getByRole('button', { name: 'API 密钥' }));
     await waitFor(() => expect(screen.getByRole('dialog')).toBeVisible());
     expect(publicApi.fetchApplicationApiPublication).not.toHaveBeenCalled();
     expect(publicApi.fetchApplicationApiMapping).not.toHaveBeenCalled();
@@ -432,9 +430,7 @@ describe('ApplicationApiPage', () => {
       within(statusCard).queryByText('Server key')
     ).not.toBeInTheDocument();
 
-    await click(
-      within(statusCard).getByRole('button', { name: 'API 密钥' })
-    );
+    await click(within(statusCard).getByRole('button', { name: 'API 密钥' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'API Keys' });
     expect(within(dialog).getByText('Server key')).toBeInTheDocument();
@@ -465,6 +461,80 @@ describe('ApplicationApiPage', () => {
     ).not.toBeInTheDocument();
     expect(screen.getByText('docs explorer')).toBeInTheDocument();
   });
+
+  test.each([
+    {
+      permissions: ['list_application_api_keys'],
+      create: false,
+      revoke: false
+    },
+    {
+      permissions: ['list_application_api_keys', 'create_application_api_key'],
+      create: true,
+      revoke: false
+    },
+    {
+      permissions: ['list_application_api_keys', 'revoke_application_api_key'],
+      create: false,
+      revoke: true
+    }
+  ])(
+    'keeps key details visible and honors exact grants: $permissions',
+    async ({ permissions, create, revoke }) => {
+      useAuthStore.getState().setAuthenticated({
+        csrfToken: 'csrf-123',
+        actor: {
+          id: 'user-1',
+          account: 'member',
+          effective_display_role: 'member',
+          current_workspace_id: 'workspace-1'
+        },
+        me: {
+          id: 'user-1',
+          account: 'member',
+          email: 'member@example.com',
+          phone: null,
+          nickname: 'Member',
+          name: 'Member',
+          avatar_url: null,
+          introduction: '',
+          effective_display_role: 'member',
+          permissions
+        }
+      });
+      publicApi.fetchApplicationApiKeys.mockResolvedValue([
+        {
+          id: 'key-1',
+          name: 'Visible key',
+          token_prefix: 'sk-visible',
+          created_at: '2026-05-09T00:00:00Z',
+          last_used_at: null
+        }
+      ]);
+      await renderWithProviders(
+        <ApplicationApiPage application={application} />
+      );
+      await click(await screen.findByRole('button', { name: 'API 密钥' }));
+      const dialog = await screen.findByRole('dialog', { name: 'API Keys' });
+      await waitFor(() =>
+        expect(within(dialog).getByText('Visible key')).toBeVisible()
+      );
+      const createButton = within(dialog).getByRole('button', {
+        name: '创建 Key'
+      });
+      const revokeButton = within(dialog).getByRole('button', { name: '删除' });
+      if (create) expect(createButton).toBeEnabled();
+      else expect(createButton).toBeDisabled();
+      if (revoke) expect(revokeButton).toBeEnabled();
+      else expect(revokeButton).toBeDisabled();
+      expect(screen.getByRole('switch')).toBeDisabled();
+      if (!create) await click(createButton);
+      if (!revoke) await click(revokeButton);
+      expect(publicApi.createApplicationApiKey).not.toHaveBeenCalled();
+      expect(publicApi.revokeApplicationApiKey).not.toHaveBeenCalled();
+      expect(publicApi.publishApplicationApiVersion).not.toHaveBeenCalled();
+    }
+  );
 
   test('shows created token once without writing it to storage or URL', async () => {
     const storageSpy = vi.spyOn(Storage.prototype, 'setItem');

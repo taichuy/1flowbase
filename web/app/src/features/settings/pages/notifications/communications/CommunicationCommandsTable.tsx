@@ -1,5 +1,6 @@
 import { Flex, Grid, Switch, Table, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import type {
   CommunicationCommandSetting,
   CommunicationCommandView
@@ -18,6 +19,8 @@ export function CommunicationCommandsTable({
   onChange: (setting: CommunicationCommandSetting) => void;
 }) {
   const { t } = useTranslation('notifications');
+  const can = useConsoleOperationAccess();
+  const canWrite = can('communications.binding.update');
   const screens = Grid.useBreakpoint();
   // Static translation calls keep built-in copy visible to i18n hygiene.
   const descriptions = new Map([
@@ -118,9 +121,9 @@ export function CommunicationCommandsTable({
               <Switch
                 aria-label={t('command_toggle', { command: command.name })}
                 checked={command.enabled}
-                disabled={disabled || (!command.available && !command.enabled)}
+                disabled={!canWrite || disabled || (!command.available && !command.enabled)}
                 onChange={(enabled) =>
-                  onChange({ command_id: command.command_id, enabled })
+                  canWrite && onChange({ command_id: command.command_id, enabled })
                 }
               />
             </span>

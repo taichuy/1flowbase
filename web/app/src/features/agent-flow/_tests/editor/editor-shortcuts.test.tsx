@@ -1,6 +1,7 @@
+import { authenticateEditor } from '../fixtures/editor-auth';
 import type { ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
 
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 
@@ -26,7 +27,46 @@ function createInitialState(
   };
 }
 
+beforeEach(() => authenticateEditor());
+
 describe('useEditorShortcuts', () => {
+  test('does not mutate a readable draft through Delete or paste without save_draft', () => {
+    authenticateEditor(['get_orchestration'], 'member');
+    const initialState = createInitialState();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <AgentFlowEditorStoreProvider initialState={initialState}>
+        {children}
+      </AgentFlowEditorStoreProvider>
+    );
+    const { result } = renderHook(
+      () => {
+        useEditorShortcuts();
+        return {
+          document: useAgentFlowEditorStore((state) => state.workingDocument),
+          select: useAgentFlowEditorStore((state) => state.setSelection)
+        };
+      },
+      { wrapper }
+    );
+    act(() =>
+      result.current.select({
+        selectedNodeId: 'node-llm',
+        selectedNodeIds: ['node-llm'],
+        selectedEdgeId: null
+      })
+    );
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'c', ctrlKey: true })
+      );
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'v', ctrlKey: true })
+      );
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' }));
+    });
+    expect(result.current.document).toEqual(initialState.draft.document);
+  });
+
   test('removes the selected edge when pressing Delete', () => {
     const wrapper = ({ children }: { children: ReactNode }) => (
       <AgentFlowEditorStoreProvider initialState={createInitialState()}>

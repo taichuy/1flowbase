@@ -50,7 +50,10 @@ export interface FileTableViewProps {
 }
 
 /** Host owns authenticated multipart requests; Blocks only select a file table. */
-function useFileTableController({ fileTableCode, toolbarExtra }: FileTableViewProps) {
+function useFileTableController({
+  fileTableCode,
+  toolbarExtra
+}: FileTableViewProps) {
   const { message } = App.useApp();
   const { getPrefixCls } = useContext(ConfigProvider.ConfigContext);
   const uploadPrefixCls = getPrefixCls('upload');
@@ -238,8 +241,9 @@ function useFileTableController({ fileTableCode, toolbarExtra }: FileTableViewPr
             record={record}
             fileTableCode={fileTableCode}
             csrfToken={csrfToken}
+            record_permissions={table?.record_permissions}
             onShare={() =>
-              table &&
+              table?.record_permissions.can_share &&
               setShareTarget({ record, tableId: table.id, workspaceId })
             }
             onChanged={async () => {
@@ -273,7 +277,11 @@ function useFileTableController({ fileTableCode, toolbarExtra }: FileTableViewPr
     const controller = new AbortController();
     uploads.add(controller);
     async function upload() {
-      if (!table || !csrfToken || !(request.file instanceof File)) {
+      if (
+        !table?.record_permissions.can_create ||
+        !csrfToken ||
+        !(request.file instanceof File)
+      ) {
         throw new Error(i18nText('frontstage', 'files.upload_unavailable'));
       }
       const result = await uploadConsoleFile(
@@ -313,19 +321,67 @@ function useFileTableController({ fileTableCode, toolbarExtra }: FileTableViewPr
 
   const error = tables.error ?? records.error;
   return {
-    error, message, tables, table, columns, configuration, records, page, pageSize,
-    setPage, setPageSize, setSort, search, setSearch, csrfToken, setUploadOpen,
-    toolbarExtra, shareTarget, workspaceId, filename, setShareTarget, uploadOpen,
-    surface, uploading, setFileList, fileList, customRequest, uploadPrefixCls
+    error,
+    message,
+    tables,
+    table,
+    columns,
+    configuration,
+    records,
+    page,
+    pageSize,
+    setPage,
+    setPageSize,
+    setSort,
+    search,
+    setSearch,
+    csrfToken,
+    setUploadOpen,
+    toolbarExtra,
+    shareTarget,
+    workspaceId,
+    filename,
+    setShareTarget,
+    uploadOpen,
+    surface,
+    uploading,
+    setFileList,
+    fileList,
+    customRequest,
+    uploadPrefixCls
   };
 }
 
-export function FileTableView(props: Parameters<typeof useFileTableController>[0]) {
+export function FileTableView(
+  props: Parameters<typeof useFileTableController>[0]
+) {
   const {
-    error, tables, table, columns, configuration, records, page, pageSize,
-    setPage, setPageSize, setSort, search, setSearch, csrfToken, setUploadOpen,
-    toolbarExtra, shareTarget, workspaceId, setShareTarget, uploadOpen,
-    surface, uploading, setFileList, fileList, customRequest, uploadPrefixCls
+    error,
+    tables,
+    table,
+    columns,
+    configuration,
+    records,
+    page,
+    pageSize,
+    setPage,
+    setPageSize,
+    setSort,
+    search,
+    setSearch,
+    csrfToken,
+    setUploadOpen,
+    toolbarExtra,
+    shareTarget,
+    workspaceId,
+    setShareTarget,
+    uploadOpen,
+    surface,
+    uploading,
+    setFileList,
+    fileList,
+    customRequest,
+    uploadPrefixCls
   } = useFileTableController(props);
   return (
     <div className="file-table-view">
@@ -385,7 +441,9 @@ export function FileTableView(props: Parameters<typeof useFileTableController>[0
                     type="primary"
                     icon={<UploadOutlined />}
                     aria-label={i18nText('frontstage', 'files.upload')}
-                    disabled={!table || !csrfToken}
+                    disabled={
+                      !table?.record_permissions.can_create || !csrfToken
+                    }
                     onClick={() => setUploadOpen(true)}
                   >
                     {i18nText('frontstage', 'files.upload_short')}
@@ -425,6 +483,7 @@ export function FileTableView(props: Parameters<typeof useFileTableController>[0
       {shareTarget &&
       shareTarget.tableId === table?.id &&
       shareTarget.workspaceId === workspaceId &&
+      table?.record_permissions.can_share &&
       csrfToken ? (
         <FileShareModal
           key={`${shareTarget.tableId}:${shareTarget.record.id}:${workspaceId}`}
@@ -432,6 +491,7 @@ export function FileTableView(props: Parameters<typeof useFileTableController>[0
           recordId={shareTarget.record.id}
           filename={shareTarget.record.filename}
           csrfToken={csrfToken}
+          record_permissions={table.record_permissions}
           onClose={() => setShareTarget(undefined)}
         />
       ) : null}
@@ -461,6 +521,7 @@ export function FileTableView(props: Parameters<typeof useFileTableController>[0
         }
       >
         <Upload.Dragger
+          disabled={!table?.record_permissions.can_create || !csrfToken}
           multiple
           fileList={fileList}
           customRequest={customRequest}

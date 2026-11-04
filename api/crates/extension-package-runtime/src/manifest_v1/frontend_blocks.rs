@@ -13,7 +13,14 @@ const FRONTEND_BLOCK_ALLOWED_PRIMITIVES: &[&str] = &[
 ];
 const FRONTEND_BLOCK_ALLOWED_UI_CAPABILITIES: &[&str] =
     &["responsive", "configurable", "theming", "data_binding"];
-const FRONTEND_BLOCK_HOST_MODULE_SOURCES: &[&str] = &["react", "antd"];
+const FRONTEND_BLOCK_HOST_MODULE_SOURCES: &[&str] = &[
+    "react",
+    "antd",
+    "antd-style",
+    "dayjs",
+    "@ant-design/icons",
+    "clsx",
+];
 
 pub(crate) fn validate_frontend_block_contributions(
     contributions: &[FrontendBlockContributionManifest],
@@ -24,7 +31,7 @@ pub(crate) fn validate_frontend_block_contributions(
         ));
     }
 
-    let mut registered_module_identities = HashSet::new();
+    let mut registered_module_identities = BTreeMap::new();
     let mut registered_asset_media_types = BTreeMap::new();
     for contribution in contributions {
         validate_non_empty(
@@ -33,6 +40,18 @@ pub(crate) fn validate_frontend_block_contributions(
         )?;
         validate_non_empty(&contribution.title, "block_contributions[].title")?;
         validate_non_empty(&contribution.entry, "block_contributions[].entry")?;
+        validate_allowed(
+            &contribution.ui_registration,
+            "block_contributions[].ui_registration",
+            &["code_template", "component"],
+        )?;
+        if contribution.ui_registration == "component"
+            && (contribution.runtime != "native_react" || contribution.code_template.is_none())
+        {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "block_contributions[].ui_registration component requires native_react and code_template",
+            ));
+        }
         match (
             contribution.code_template.as_deref(),
             contribution.code_template_version.as_deref(),
@@ -148,16 +167,17 @@ pub(crate) fn validate_frontend_code_modules(
 ) -> FrameworkResult<()> {
     validate_frontend_code_modules_with_identities(
         modules,
-        &mut HashSet::new(),
+        &mut BTreeMap::new(),
         &mut BTreeMap::new(),
     )
 }
 
 fn validate_frontend_code_modules_with_identities<'a>(
     modules: &'a [FrontendBlockCodeModuleManifest],
-    registered_module_identities: &mut HashSet<&'a str>,
+    registered_module_identities: &mut BTreeMap<&'a str, &'a FrontendBlockCodeModuleManifest>,
     registered_asset_media_types: &mut BTreeMap<&'a String, &'a String>,
 ) -> FrameworkResult<()> {
+    let mut local_sources = HashSet::new();
     for code_module in modules {
         validate_non_empty(
             &code_module.source,
@@ -167,10 +187,22 @@ fn validate_frontend_code_modules_with_identities<'a>(
             &code_module.version,
             "block_contributions[].code_modules[].version",
         )?;
-        if !registered_module_identities.insert(code_module.source.as_str()) {
+        if !local_sources.insert(code_module.source.as_str()) {
             return Err(PluginFrameworkError::invalid_provider_package(
                 "block_contributions[].code_modules[].source must be unique",
             ));
+        }
+        // Sibling components may share a package module, but not redefine it.
+        // Each contribution retains its own complete asset/host declaration so
+        // authorizing one component does not depend on a sibling grant.
+        if let Some(previous) =
+            registered_module_identities.insert(code_module.source.as_str(), code_module)
+        {
+            if previous != code_module {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "shared frontend module declarations must be identical",
+                ));
+            }
         }
         validate_frontend_module_exports(code_module)?;
         validate_frontend_module_binding(code_module)?;

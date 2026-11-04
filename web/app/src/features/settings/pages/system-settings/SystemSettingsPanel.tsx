@@ -17,6 +17,7 @@ import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import { useTranslation } from 'react-i18next';
 import type { SystemMetadata } from '@1flowbase/api-client/auth';
 import { useAuthStore } from '../../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { systemMetadataQueryKey } from '../../../../shared/api/system-metadata';
 import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
@@ -32,6 +33,8 @@ export function SystemSettingsPanel() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
+  const can = useConsoleOperationAccess();
+  const canSave = can('system.branding.save');
   const [form] = Form.useForm<SystemMetadata>();
   const logo_url = Form.useWatch('logo_url', form);
   const query = useQuery({
@@ -83,8 +86,10 @@ export function SystemSettingsPanel() {
           labelCol={{ xs: { span: 24 }, sm: { flex: '180px' } }}
           wrapperCol={{ xs: { span: 24 }, sm: { flex: 1 } }}
           labelWrap
-          onFinish={(value) => mutation.mutate(value)}
-          disabled={mutation.isPending}
+          onFinish={(value) => {
+            if (canSave) mutation.mutate(value);
+          }}
+          disabled={!canSave || mutation.isPending}
         >
           <Form.Item name="logo_url" hidden>
             <Input />
@@ -104,7 +109,9 @@ export function SystemSettingsPanel() {
               <Upload
                 accept="image/png,image/jpeg,image/svg+xml"
                 showUploadList={false}
+                disabled={!canSave || mutation.isPending}
                 beforeUpload={(file) => {
+                  if (!canSave) return Upload.LIST_IGNORE;
                   if (
                     !['image/png', 'image/jpeg', 'image/svg+xml'].includes(
                       file.type

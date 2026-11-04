@@ -35,6 +35,12 @@ const table = {
   scope_kind: 'workspace',
   scope_id: 'workspace-1',
   model_definition_id: 'model-1',
+  record_permissions: {
+    can_create: true,
+    can_update: true,
+    can_delete: true,
+    can_share: true
+  },
   bound_storage_id: null,
   bound_storage_title: null,
   is_builtin: false,
@@ -131,6 +137,67 @@ afterEach(async () => {
 });
 
 describe('FileTableView', () => {
+  test.each([
+    {
+      can_create: false,
+      can_update: false,
+      can_delete: false,
+      can_share: false
+    },
+    {
+      can_create: true,
+      can_update: false,
+      can_delete: false,
+      can_share: false
+    },
+    {
+      can_create: false,
+      can_update: true,
+      can_delete: false,
+      can_share: false
+    },
+    {
+      can_create: false,
+      can_update: false,
+      can_delete: true,
+      can_share: false
+    },
+    { can_create: false, can_update: false, can_delete: false, can_share: true }
+  ])(
+    'uses backend file record permissions independently: %j',
+    async (record_permissions) => {
+      // Even a root-shaped actor cannot override the server projection in the widget.
+      vi.mocked(client.fetchConsoleFileTables).mockResolvedValue([
+        { ...table, record_permissions }
+      ]);
+      vi.mocked(client.fetchConsoleFileRecords).mockResolvedValue({
+        items: [record],
+        total: 1
+      });
+      await mount();
+      expect(
+        await screen.findByRole('link', { name: record.filename })
+      ).toHaveAttribute('href', record.url);
+      const actions = [
+        { name: '上传文件', allowed: record_permissions.can_create },
+        { name: '编辑', allowed: record_permissions.can_update },
+        { name: '删除', allowed: record_permissions.can_delete },
+        { name: '分享', allowed: record_permissions.can_share }
+      ];
+      for (const { name, allowed } of actions) {
+        const button = screen.getByRole('button', { name });
+        if (allowed) expect(button).toBeEnabled();
+        else expect(button).toBeDisabled();
+        if (!allowed) await click(button);
+      }
+      expect(client.uploadConsoleFile).not.toHaveBeenCalled();
+      expect(client.updateConsoleRuntimeModelRecord).not.toHaveBeenCalled();
+      expect(client.deleteConsoleRuntimeModelRecord).not.toHaveBeenCalled();
+      expect(client.createConsoleFileShareLink).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: '复制链接' })).toBeEnabled();
+    }
+  );
+
   test('searches and sorts on the server instead of filtering the current page', async () => {
     await mount();
     await change(screen.getByRole('textbox', { name: '搜索文件名…' }), {
@@ -310,7 +377,10 @@ describe('FileTableView', () => {
     expect(
       await screen.findByRole('link', { name: 'picture.png' })
     ).toHaveAttribute('href', imageRecord.url);
-    expect(screen.getByRole('link', { name: 'hello.txt' })).toHaveAttribute('href', record.url);
+    expect(screen.getByRole('link', { name: 'hello.txt' })).toHaveAttribute(
+      'href',
+      record.url
+    );
   });
   test('selects the requested file table, uploads multipart through the host and refreshes records', async () => {
     vi.mocked(client.uploadConsoleFile).mockImplementation(async () => {

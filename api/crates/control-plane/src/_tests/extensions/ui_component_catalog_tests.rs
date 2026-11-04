@@ -193,6 +193,9 @@ fn seed() -> UiComponentCatalogSeed {
 fn local_record(version: &str) -> UiComponentRecord {
     let timestamp = OffsetDateTime::UNIX_EPOCH;
     UiComponentRecord {
+        owner_plugin_id: None,
+        owner_contribution_code: None,
+        owner_installation_id: None,
         id: Uuid::now_v7(),
         scope_id: SYSTEM_SCOPE_ID,
         component_code: "taichuy.missing-package.widget".into(),

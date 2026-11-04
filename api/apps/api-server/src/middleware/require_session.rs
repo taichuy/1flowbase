@@ -126,14 +126,14 @@ pub async fn require_session(
     headers: &HeaderMap,
 ) -> Result<RequestContext, ApiError> {
     if let Ok(context) = SERVER_DELEGATED_REQUEST_CONTEXT.try_with(Clone::clone) {
-        return apply_ui_management_permission(state, context).await;
+        return apply_console_policy_permissions(state, context).await;
     }
 
     if let Some(token) = extract_bearer_token(headers) {
         let user_api_key = ApiKeyService::new(state.store.clone())
             .authenticate_user_api_key(token)
             .await?;
-        return apply_ui_management_permission(
+        return apply_console_policy_permissions(
             state,
             RequestContext {
                 credential: RequestCredential::UserApiKey {
@@ -180,7 +180,7 @@ pub async fn require_session(
         return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
     }
 
-    apply_ui_management_permission(
+    apply_console_policy_permissions(
         state,
         RequestContext {
             credential: RequestCredential::CookieSession(session),
@@ -191,17 +191,17 @@ pub async fn require_session(
     .await
 }
 
-/// Design-mode visibility and the existing frontstage service guard are projections of the
-/// current UI-management policy. A persisted legacy design grant cannot override a closed group.
-async fn apply_ui_management_permission(
+/// Navigation, design-mode visibility and the existing frontstage service guard are
+/// projections of current canonical policies, never persisted legacy feature grants.
+async fn apply_console_policy_permissions(
     state: &ApiState,
     mut context: RequestContext,
 ) -> Result<RequestContext, ApiError> {
-    apply_ui_management_permission_to_actor(state, &mut context.actor).await?;
+    apply_console_policy_permissions_to_actor(state, &mut context.actor).await?;
     Ok(context)
 }
 
-pub(crate) async fn apply_ui_management_permission_to_actor(
+pub(crate) async fn apply_console_policy_permissions_to_actor(
     state: &ApiState,
     actor: &mut ActorContext,
 ) -> Result<(), ApiError> {
@@ -212,51 +212,97 @@ pub(crate) async fn apply_ui_management_permission_to_actor(
         .console_policy_reader
         .load_role_console_policies_for_user(actor)
         .await?;
+    let inventory = state.console_operation_registry.inventory();
+    // Project the same effective operations consumed by the invocation boundary. Legacy
+    // role grants cannot retain stale operation IDs after a group or operation is revoked.
+    actor
+        .permissions
+        .retain(|permission| !permission.starts_with("settings_feature.access."));
     actor.permissions.remove("frontstage.page.design");
-    for operation in &state.console_operation_registry.inventory().operations {
-        if operation.policy_group
-            == access_control::ConsolePolicyGroup::SettingsFeature(
-                access_control::SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_ID.to_string(),
-            )
-        {
-            actor.permissions.remove(&operation.operation_id);
-        }
+    for operation in &inventory.operations {
+        actor.permissions.remove(&operation.operation_id);
     }
-    let permissions =
-        ui_management_permissions(state.console_operation_registry.inventory(), &policies);
-    if !permissions.is_empty() {
+    let permissions = console_operation_permissions(inventory, &policies);
+    if permissions.iter().any(|id| id.starts_with("frontstage.")) {
         actor
             .permissions
             .insert("frontstage.page.design".to_string());
     }
     actor.permissions.extend(permissions);
+    actor
+        .permissions
+        .extend(settings_feature_navigation_permissions(
+            inventory, &policies,
+        ));
     Ok(())
 }
 
-fn ui_management_permissions(
+/// A settings surface is discoverable if at least one active operation is granted.
+/// Row visibility is not a row-data grant: the request's resource/workspace checks still apply.
+pub(crate) fn settings_feature_navigation_permissions(
     inventory: &access_control::ConsoleOperationCompiledInventory,
     policies: &[domain::RoleConsolePolicy],
 ) -> std::collections::BTreeSet<String> {
-    let group = domain::ConsolePolicyGroup::settings_feature(
-        access_control::SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_ID,
-    )
-    .expect("static UI-management group is valid");
-    let ui_group = access_control::ConsolePolicyGroup::SettingsFeature(
-        access_control::SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_ID.to_string(),
-    );
     inventory
         .operations
         .iter()
+        .filter(|operation| operation.lifecycle == access_control::SettingsFeatureLifecycle::Active)
+        .filter_map(|operation| {
+            let access_control::ConsolePolicyGroup::SettingsFeature(feature_id) =
+                &operation.policy_group
+            else {
+                return None;
+            };
+            let group = domain::ConsolePolicyGroup::settings_feature(feature_id).ok()?;
+            let id = domain::ConsoleOperationId::try_from(operation.operation_id.as_str()).ok()?;
+            let granted = match operation.authorization {
+                access_control::ConsoleAuthorization::Simple => {
+                    domain::effective_console_simple_operation(policies, &group, &id)
+                }
+                access_control::ConsoleAuthorization::ResourceAction { .. } => {
+                    domain::effective_console_row_scope(policies, &group, &id)
+                        != domain::ConsoleOperationRowScope::Disabled
+                }
+                access_control::ConsoleAuthorization::Authenticated => false,
+            };
+            granted.then(|| format!("settings_feature.access.{feature_id}"))
+        })
+        .collect()
+}
+
+fn console_operation_permissions(
+    inventory: &access_control::ConsoleOperationCompiledInventory,
+    policies: &[domain::RoleConsolePolicy],
+) -> std::collections::BTreeSet<String> {
+    inventory
+        .operations
+        .iter()
+        .filter(|operation| operation.lifecycle == access_control::SettingsFeatureLifecycle::Active)
         .filter(|operation| {
-            operation.policy_group == ui_group
-                && operation.lifecycle == access_control::SettingsFeatureLifecycle::Active
-                && matches!(
-                    operation.authorization,
-                    access_control::ConsoleAuthorization::Simple
-                )
-                && domain::ConsoleOperationId::try_from(operation.operation_id.as_str()).is_ok_and(
-                    |id| domain::effective_console_simple_operation(policies, &group, &id),
-                )
+            let group = match &operation.policy_group {
+                access_control::ConsolePolicyGroup::SettingsFeature(id) => {
+                    domain::ConsolePolicyGroup::settings_feature(id)
+                }
+                access_control::ConsolePolicyGroup::Other(id) => {
+                    domain::ConsolePolicyGroup::other(id)
+                }
+            };
+            let (Ok(group), Ok(id)) = (
+                group,
+                domain::ConsoleOperationId::try_from(operation.operation_id.as_str()),
+            ) else {
+                return false;
+            };
+            match operation.authorization {
+                access_control::ConsoleAuthorization::Simple => {
+                    domain::effective_console_simple_operation(policies, &group, &id)
+                }
+                access_control::ConsoleAuthorization::ResourceAction { .. } => {
+                    domain::effective_console_row_scope(policies, &group, &id)
+                        != domain::ConsoleOperationRowScope::Disabled
+                }
+                access_control::ConsoleAuthorization::Authenticated => false,
+            }
         })
         .map(|operation| operation.operation_id.clone())
         .collect()

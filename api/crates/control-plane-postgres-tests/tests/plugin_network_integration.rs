@@ -800,6 +800,7 @@ fn installation_commit_input(
                 title: title.into(),
                 runtime: runtime.into(),
                 entry: "blocks/hero/index.html".into(),
+                ui_registration: "code_template".into(),
                 code_template: None,
                 code_template_version: None,
                 code_template_language: None,

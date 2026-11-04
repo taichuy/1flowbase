@@ -9,8 +9,14 @@ use control_plane_contracts::{
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+#[path = "native_tool_resume/client_ownership.rs"]
+mod client_ownership;
+#[path = "native_tool_resume/closed_history.rs"]
+mod closed_history;
 #[path = "native_tool_resume/multipart_outputs.rs"]
 mod multipart_outputs;
+#[path = "native_tool_resume/pruned_history.rs"]
+mod pruned_history;
 #[path = "native_tool_resume/reservation_lifecycle.rs"]
 mod reservation_lifecycle;
 #[path = "native_tool_resume/session_history.rs"]
@@ -343,7 +349,12 @@ async fn native_admission_configuration_refresh_requires_frozen_route_and_proven
             _ => {}
         }
         let result = correlate_native_responses_callback(&repository, &actor, &body).await;
-        if scenario == "extra_history" {
+        if matches!(scenario, "missing_history" | "tampered_history") {
+            assert!(
+                result.unwrap().is_none(),
+                "{scenario} must not grant a callback"
+            );
+        } else if scenario == "extra_history" {
             let (admitted, outputs) = result
                 .expect("a proven full history permits appended context and refreshed instructions")
                 .expect("pending callback must retain its consumption owner");
@@ -599,12 +610,9 @@ async fn native_admission_proves_full_history_even_when_configuration_is_unchang
         if mutation == "equivalent" {
             assert_eq!(result.unwrap().unwrap().0.id, callback.id);
         } else {
-            assert_eq!(
-                result.unwrap_err().downcast_ref::<ControlPlaneError>(),
-                Some(&ControlPlaneError::Conflict(
-                    "native_tool_output_history_mismatch"
-                )),
-                "{mutation}"
+            assert!(
+                result.unwrap().is_none(),
+                "{mutation} must start new sampling"
             );
         }
         assert_eq!(
@@ -758,6 +766,22 @@ async fn full_context_extension_configuration_refresh_keeps_pending_callback_own
     ]);
     body["tools"] = json!([{"type":"function","name":"fresh","parameters":{"type":"object"}}]);
     let original = body.clone();
+    assert!(is_closed_tool_history(body["input"].as_array().unwrap()));
+    let response_id = callback.request_payload["provider_metadata"]["native_response"]
+        ["response_id"]
+        .as_str()
+        .unwrap();
+    let stored = repository
+        .find_native_responses_callbacks_by_response_id(
+            actor.workspace_id,
+            actor.application_id,
+            actor.api_key_id,
+            actor.creator_user_id,
+            response_id,
+        )
+        .await
+        .unwrap();
+    assert_eq!(stored, vec![callback.clone()]);
     for mutation in 0..3 {
         let mut invalid = body.clone();
         match mutation {
@@ -768,12 +792,28 @@ async fn full_context_extension_configuration_refresh_keeps_pending_callback_own
             ),
             _ => unreachable!(),
         }
-        assert!(
-            correlate_native_responses_callback(&repository, &actor, &invalid)
+        let correlated = correlate_native_responses_callback(&repository, &actor, &invalid).await;
+        if mutation == 1 {
+            // A closed, cursorless rewrite is independent sampling, never a
+            // grant to consume the predecessor whose proof no longer matches.
+            assert!(correlated.unwrap().is_none());
+        } else {
+            assert!(correlated.is_err(), "pending refresh mutation {mutation}");
+        }
+        assert_eq!(
+            repository
+                .find_native_responses_callbacks_by_response_id(
+                    actor.workspace_id,
+                    actor.application_id,
+                    actor.api_key_id,
+                    actor.creator_user_id,
+                    response_id,
+                )
                 .await
-                .is_err(),
-            "pending refresh mutation {mutation}"
+                .unwrap(),
+            stored
         );
+        assert!(repository.callback_resume_attempts().is_empty());
     }
     let (admitted, results) = correlate_native_responses_callback(&repository, &actor, &body)
         .await

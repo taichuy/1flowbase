@@ -99,6 +99,7 @@ pub struct RoleFrontstageRouteNodeResponse {
     pub kind: String,
     pub title: Option<String>,
     pub slug: Option<String>,
+    #[schema(no_recursion)]
     pub children: Vec<RoleFrontstageRouteNodeResponse>,
 }
 
@@ -514,6 +515,8 @@ pub async fn replace_console_settings_order(
 #[utoipa::path(
     get,
     path = "/api/console/settings/roles/{id}/console-policy",
+    operation_id = "roles.console_policy.view",
+    security(("sessionCookie" = []), ("patBearer" = [])),
     params(("id" = String, Path, description = "Role code")),
     responses(
         (status = 200, body = RoleConsolePolicyResponse),
@@ -547,6 +550,8 @@ pub async fn get_role_console_policy(
 #[utoipa::path(
     put,
     path = "/api/console/settings/roles/{id}/console-policy",
+    operation_id = "roles.console_policy.replace",
+    security(("sessionCookie" = [], "csrfHeader" = []), ("patBearer" = [])),
     request_body = ReplaceRoleConsolePolicyBody,
     params(("id" = String, Path, description = "Role code")),
     responses(
@@ -896,6 +901,19 @@ pub(crate) fn build_frontstage_route_tree(
     build(None, &by_parent, &by_page)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/roles/{id}/frontstage-routes",
+    operation_id = "roles.frontstage_routes.view",
+    security(("sessionCookie" = []), ("patBearer" = [])),
+    params(("id" = String, Path, description = "Role code")),
+    responses(
+        (status = 200, body = RoleFrontstageRoutesResponse),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
 pub async fn get_role_frontstage_routes(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -921,6 +939,21 @@ pub async fn get_role_frontstage_routes(
     Ok(Json(ApiSuccess::new(routes)))
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/console/settings/roles/{id}/frontstage-routes",
+    operation_id = "roles.frontstage_routes.replace",
+    security(("sessionCookie" = [], "csrfHeader" = []), ("patBearer" = [])),
+    request_body = ReplaceRoleFrontstageRoutesBody,
+    params(("id" = String, Path, description = "Role code")),
+    responses(
+        (status = 204),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
 pub async fn replace_role_frontstage_routes(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

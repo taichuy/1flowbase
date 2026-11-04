@@ -19,6 +19,54 @@ pub fn is_standalone_function_output(item: &Value) -> bool {
         && item.get("call_id").is_none_or(Value::is_null)
 }
 
+/// Structural evidence for new sampling, never authority to claim a callback.
+/// Borrow only identities; opaque items and tool payloads remain untouched.
+pub(crate) fn is_closed_tool_history(input: &[Value]) -> bool {
+    let mut calls = BTreeMap::new();
+    let mut has_output = false;
+    for item in input {
+        let kind = item.get("type").and_then(Value::as_str);
+        match kind {
+            Some("function_call" | "custom_tool_call") => {
+                let Some(id) = item
+                    .get("call_id")
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty())
+                else {
+                    return false;
+                };
+                if calls
+                    .insert(id, (kind == Some("custom_tool_call"), false))
+                    .is_some()
+                {
+                    return false;
+                }
+            }
+            Some("function_call_output" | "custom_tool_call_output")
+                if !is_standalone_function_output(item) =>
+            {
+                let Some(id) = item
+                    .get("call_id")
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty())
+                else {
+                    return false;
+                };
+                let Some((custom, answered)) = calls.get_mut(id) else {
+                    return false;
+                };
+                if *answered || *custom != (kind == Some("custom_tool_call_output")) {
+                    return false;
+                }
+                *answered = true;
+                has_output = true;
+            }
+            _ => {}
+        }
+    }
+    has_output && calls.values().all(|(_, answered)| *answered)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResponsesInputIndexError {
     RequestKind,

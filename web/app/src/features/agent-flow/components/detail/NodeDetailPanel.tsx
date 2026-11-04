@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { Tabs } from 'antd';
 import { useMemo } from 'react';
 
@@ -53,6 +54,8 @@ export function NodeDetailPanel({
   activeTab: 'config' | 'lastRun';
   onTabChange: (tab: 'config' | 'lastRun') => void;
 }) {
+  const can = useConsoleOperationAccess();
+  const readOnly = !can('save_draft');
   const document = useAgentFlowEditorStore((state) => state.workingDocument);
   const selectedNodeId = useAgentFlowEditorStore(
     (state) => state.selectedNodeId
@@ -83,8 +86,9 @@ export function NodeDetailPanel({
       issues,
       messages,
       workflowTriggerContext,
-      setWorkingDocument,
+      setWorkingDocument: readOnly ? () => {} : setWorkingDocument,
       dispatch(actionKey, payload) {
+        if (readOnly) return;
         if (actionKey === 'openNodePicker') {
           openNodePicker(
             (payload as { nodeId?: string } | undefined)?.nodeId ??
@@ -100,6 +104,7 @@ export function NodeDetailPanel({
       adapter
     };
   }, [
+    readOnly,
     document,
     environmentVariables,
     issues,
@@ -126,6 +131,7 @@ export function NodeDetailPanel({
         data-testid="node-detail-body"
       >
         <NodeDetailHeader
+          readOnly={readOnly}
           adapter={runtime.adapter}
           debugLoading={debugLoading}
           onClose={onClose}
@@ -144,6 +150,7 @@ export function NodeDetailPanel({
               label: i18nText('agentFlow', 'auto.settings'),
               children: (
                 <NodeConfigTab
+                  readOnly={readOnly}
                   adapter={runtime.adapter}
                   schema={runtime.schema}
                 />

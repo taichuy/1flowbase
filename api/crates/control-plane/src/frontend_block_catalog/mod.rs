@@ -6,6 +6,7 @@ use std::{
 };
 use uuid::Uuid;
 
+mod authority;
 mod frontend_contribution;
 
 pub use frontend_contribution::{
@@ -22,7 +23,8 @@ pub use frontend_contribution::{
 use crate::{
     errors::ControlPlaneError,
     ports::{
-        AuthRepository, FrontendBlockCatalogRepository, PluginRepository, RoleConsolePolicyReader,
+        AuthRepository, FrontendBlockCatalogRepository, PluginContributionAuthorityRepository,
+        PluginRepository, RoleConsolePolicyReader,
     },
 };
 
@@ -46,61 +48,90 @@ pub struct FrontendModuleAssetResource {
 pub struct FrontendModuleAssetService<R> {
     repository: R,
     node_id: String,
+    resolver: FrontendContributionResolver,
 }
 
 impl<R> FrontendModuleAssetService<R> {
-    pub fn new(repository: R, node_id: impl Into<String>) -> Self {
-        Self {
+    pub fn new(
+        repository: R,
+        node_id: impl Into<String>,
+        graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
+    ) -> Result<Self> {
+        Ok(Self {
             repository,
             node_id: node_id.into(),
-        }
+            resolver: FrontendContributionResolver::compile(graph)?,
+        })
     }
 }
 
 impl<R> FrontendModuleAssetService<R>
 where
-    R: FrontendBlockCatalogRepository + PluginRepository,
+    R: FrontendBlockCatalogRepository + PluginRepository + PluginContributionAuthorityRepository,
 {
     pub async fn get_module_asset(
         &self,
         query: GetFrontendModuleAssetQuery,
     ) -> Result<Option<FrontendModuleAssetResource>> {
-        if let Some(asset) = self
+        let entries = self
             .repository
-            .get_retained_frontend_module_asset(query.workspace_id, &query.sha256)
+            .list_workspace_frontend_blocks(&self.node_id, query.workspace_id)
+            .await?;
+        let active = resolve_frontend_contributions(
+            &self.repository,
+            &self.node_id,
+            query.workspace_id,
+            &self.resolver,
+            entries,
+        )
+        .await?;
+        // Digest membership is proved by the same current workspace grant/lifecycle resolver
+        // as execution. Retained bytes alone never grant access to a removed/disabled module.
+        let registered = active.into_iter().find_map(|binding| {
+            let asset = binding
+                .assets
+                .into_iter()
+                .find(|asset| asset.digest == query.sha256)?;
+            let registered = binding
+                .catalog_entry
+                .code_modules
+                .into_iter()
+                .flat_map(|module| module.assets)
+                .find(|item| item.sha256 == asset.digest)?;
+            Some((binding.catalog_entry.installation_id, asset, registered))
+        });
+        let Some((installation_id, asset, registered)) = registered else {
+            return Ok(None);
+        };
+        // Resolver has already verified the current on-disk asset. Prefer retained immutable
+        // bytes only after authorization, and verify those bytes independently as well.
+        if let Some(retained) = self
+            .repository
+            .get_retained_frontend_module_asset(query.workspace_id, &asset.digest)
             .await?
         {
+            use sha2::{Digest, Sha256};
+            if format!(
+                "{:x}",
+                base16ct::HexDisplay(&Sha256::digest(&retained.bytes))
+            ) != asset.digest
+                || retained.media_type != asset.media_type
+            {
+                return Err(ControlPlaneError::UpstreamUnavailable(
+                    "frontend_component_module_asset",
+                )
+                .into());
+            }
             return Ok(Some(FrontendModuleAssetResource {
-                sha256: asset.sha256,
+                sha256: asset.digest,
                 media_type: asset.media_type,
-                bytes: asset.bytes,
+                bytes: retained.bytes,
             }));
         }
-        let blocks = self
-            .repository
-            .list_system_frontend_blocks(&self.node_id)
-            .await?
-            .into_iter();
-        let registered = blocks
-            .flat_map(|block| {
-                let installation_id = block.installation_id;
-                block.code_modules.into_iter().flat_map(move |module| {
-                    module
-                        .assets
-                        .into_iter()
-                        .map(move |asset| (installation_id, asset))
-                })
-            })
-            .find(|(_, asset)| asset.sha256 == query.sha256);
-        let Some((installation_id, asset)) = registered else {
-            return Ok(None);
-        };
-        let Some(installation) = self.repository.get_installation(installation_id).await? else {
-            return Ok(None);
-        };
+        // Re-read through the registered package asset loader rather than a public path.
         let Some(artifact) = self
             .repository
-            .get_artifact_instance(&self.node_id, installation.id)
+            .get_artifact_instance(&self.node_id, installation_id)
             .await?
         else {
             return Ok(None);
@@ -108,10 +139,9 @@ where
         let Some(local_path) = artifact.local_path else {
             return Ok(None);
         };
-        let root = PathBuf::from(local_path);
-        let registered = plugin_framework::FrontendModuleAssetManifest {
-            path: asset.path,
-            role: match asset.role {
+        let manifest = plugin_framework::FrontendModuleAssetManifest {
+            path: registered.path,
+            role: match registered.role {
                 domain::FrontendModuleAssetRole::BrowserModule => {
                     plugin_framework::FrontendModuleAssetRoleManifest::BrowserModule
                 }
@@ -122,17 +152,17 @@ where
                     plugin_framework::FrontendModuleAssetRoleManifest::Support
                 }
             },
-            media_type: asset.media_type.clone(),
-            sha256: asset.sha256.clone(),
+            media_type: registered.media_type,
+            sha256: registered.sha256,
         };
         let bytes = tokio::task::spawn_blocking(move || {
-            plugin_framework::load_frontend_module_asset(&root, &registered)
+            plugin_framework::load_frontend_module_asset(&PathBuf::from(local_path), &manifest)
         })
         .await
         .map_err(|_| ControlPlaneError::UpstreamUnavailable("frontend_component_module_asset"))?
         .map_err(|_| ControlPlaneError::UpstreamUnavailable("frontend_component_module_asset"))?;
         Ok(Some(FrontendModuleAssetResource {
-            sha256: asset.sha256,
+            sha256: asset.digest,
             media_type: asset.media_type,
             bytes,
         }))
@@ -152,7 +182,11 @@ pub struct FrontendBlockCatalogService<R> {
 
 impl<R> FrontendBlockCatalogService<R>
 where
-    R: AuthRepository + FrontendBlockCatalogRepository + PluginRepository + RoleConsolePolicyReader,
+    R: AuthRepository
+        + FrontendBlockCatalogRepository
+        + PluginRepository
+        + PluginContributionAuthorityRepository
+        + RoleConsolePolicyReader,
 {
     pub fn new(
         repository: R,
@@ -232,7 +266,7 @@ where
     }
 }
 
-async fn resolve_frontend_contributions<R>(
+pub(crate) async fn resolve_frontend_contributions<R>(
     repository: &R,
     node_id: &str,
     workspace_id: Uuid,
@@ -240,7 +274,7 @@ async fn resolve_frontend_contributions<R>(
     catalog_entries: Vec<domain::FrontendBlockCatalogEntry>,
 ) -> Result<Vec<FrontendContributionBinding>>
 where
-    R: FrontendBlockCatalogRepository + PluginRepository,
+    R: FrontendBlockCatalogRepository + PluginRepository + PluginContributionAuthorityRepository,
 {
     let assignments = repository.list_assignments(workspace_id).await?;
     let mut assignment_by_installation = HashMap::with_capacity(assignments.len());
@@ -252,6 +286,7 @@ where
     // Reuse the first observed identity facts only within this request. Asset and resolver
     // checks still run for each contribution after the original ordered read phase.
     let mut installation_facts = HashMap::new();
+    let mut authorities = HashMap::new();
     let mut candidates = Vec::with_capacity(catalog_entries.len());
     for catalog_entry in catalog_entries {
         let facts = match installation_facts.entry(catalog_entry.installation_id) {
@@ -274,7 +309,46 @@ where
             continue;
         };
         let assignment = assignment_by_installation.get(&installation.id).cloned();
+        let authority = if authority::requires_authority(installation) {
+            if let Entry::Vacant(entry) = authorities.entry(installation.id) {
+                let scope = domain::managed_installation_scope(installation, workspace_id);
+                let snapshot = repository
+                    .query_contribution_authority(
+                        installation.id,
+                        scope,
+                        &crate::audit::audit_log(
+                            Some(workspace_id),
+                            None,
+                            "plugin_installation",
+                            Some(installation.id),
+                            "plugin.frontend_contribution_authority.checked",
+                            serde_json::json!({}),
+                        ),
+                    )
+                    .await;
+                let snapshot = match snapshot {
+                    Ok(snapshot) => Some(snapshot),
+                    Err(error)
+                        if matches!(
+                            error.downcast_ref::<ControlPlaneError>(),
+                            Some(
+                                ControlPlaneError::PermissionDenied(_)
+                                    | ControlPlaneError::NotFound(_)
+                            )
+                        ) =>
+                    {
+                        None
+                    }
+                    Err(error) => return Err(error),
+                };
+                entry.insert(snapshot);
+            }
+            authorities.get(&installation.id).cloned().flatten()
+        } else {
+            None
+        };
         candidates.push(FrontendContributionCandidate {
+            authority,
             workspace_id,
             installation: installation.clone(),
             artifact: artifact.clone(),

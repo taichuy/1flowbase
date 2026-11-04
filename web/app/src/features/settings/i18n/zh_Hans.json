@@ -295,6 +295,7 @@
     "save_data_policy": "保存数据权限",
     "own_records": "仅自己",
     "scope_all_records": "本空间",
+    "system_all_records": "系统所有记录",
     "inherit": "继承",
     "inject_main_instance_alt": "注入主实例",
     "target_model": "目标模型",

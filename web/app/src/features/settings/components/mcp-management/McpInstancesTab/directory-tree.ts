@@ -17,13 +17,10 @@ export type McpDirectoryTreeDropInfo = Parameters<
   NonNullable<TreeProps<McpDirectoryTreeNode>['onDrop']>
 >[0];
 
-type SaveBindingValues = {
-  instance_id: string;
-  group_path: string;
-  tool_id: string;
-  visible: boolean;
-  sort_order: number;
-};
+export type MoveBindingValues = Pick<
+  ConsoleMcpToolBinding,
+  'group_path' | 'tool_id' | 'display_alias' | 'visible' | 'sort_order'
+>;
 
 type MoveGroupValues = {
   instanceId: string;
@@ -39,7 +36,7 @@ export function applyMcpDirectoryTreeDrop({
   selectedInstanceGroups,
   bindingById,
   groupByPath,
-  onSaveBinding,
+  onMoveBinding,
   onMoveGroup,
   onSelectKey
 }: {
@@ -49,8 +46,9 @@ export function applyMcpDirectoryTreeDrop({
   selectedInstanceGroups: ConsoleMcpGroup[];
   bindingById: Map<string, ConsoleMcpToolBinding>;
   groupByPath: Map<string, ConsoleMcpGroup>;
-  onSaveBinding: (
-    values: SaveBindingValues,
+  onMoveBinding: (
+    bindingId: string,
+    values: MoveBindingValues,
     options: { onSuccess: () => void }
   ) => void;
   onMoveGroup: (
@@ -87,11 +85,12 @@ export function applyMcpDirectoryTreeDrop({
       const newSortOrder =
         siblings.length > 0 ? siblings[siblings.length - 1].sort_order + 10 : 0;
 
-      onSaveBinding(
+      onMoveBinding(
+        bindingId,
         {
-          instance_id: selectedInstance.instance_id,
           group_path: groupPath,
           tool_id: draggedBinding.tool_id,
+          display_alias: draggedBinding.display_alias,
           visible: draggedBinding.visible,
           sort_order: newSortOrder
         },
@@ -145,11 +144,12 @@ export function applyMcpDirectoryTreeDrop({
         );
       }
 
-      onSaveBinding(
+      onMoveBinding(
+        bindingId,
         {
-          instance_id: selectedInstance.instance_id,
           group_path: groupPath,
           tool_id: draggedBinding.tool_id,
+          display_alias: draggedBinding.display_alias,
           visible: draggedBinding.visible,
           sort_order: newSortOrder
         },

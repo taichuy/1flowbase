@@ -269,6 +269,7 @@ impl AiNativeRecoveryLedger {
     pub const fn allows_configured_replay_at(&self, now_unix_ms: i64) -> bool {
         !self.semantic_replay_blocked()
             && self.total_attempts_charged < self.total_attempt_budget
+            && matches!(self.input_mode, RecoveryInputMode::SemanticMapped)
             && self.reproducible
             && now_unix_ms < self.absolute_deadline_unix_ms
     }
@@ -297,6 +298,14 @@ impl AiNativeRecoveryLedger {
     ) {
         self.input_mode = input_mode;
         self.reproducible = input_mode == RecoveryInputMode::SemanticMapped && reproducible;
+    }
+
+    /// The trusted invocation owner has proved the current opaque snapshot can be resent exactly.
+    /// Selection must happen first; this grants no configured retry or reconstruction capability.
+    pub fn authorize_native_exact_transport_replay(&mut self) {
+        if self.input_mode == RecoveryInputMode::NativeOpaque {
+            self.reproducible = true;
+        }
     }
 
     pub fn provider_directive(&self) -> ProviderRecoveryDirective {

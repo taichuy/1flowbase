@@ -205,6 +205,7 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
                 title: "Hero Banner".into(),
                 runtime: "native_react".into(),
                 entry: "blocks/hero/index.html".into(),
+                ui_registration: "code_template".into(),
                 code_template: Some("export default {}".into()),
                 code_template_version: Some("1.0.0".into()),
                 code_template_language: Some("tsx".into()),

@@ -7,6 +7,7 @@ import { ApiClientError } from '@1flowbase/api-client';
 import { createSettingsNetworkEgressProxy, fetchSettingsNetworkEgressProxy, updateSettingsNetworkEgressProxy, deleteSettingsNetworkEgressPoolMember, deleteSettingsNetworkEgressPoolMembers, fetchSettingsNetworkEgressPools, fetchSettingsNetworkEgressProviderTypes, settingsNetworkEgressPoolsQueryKey, testSettingsNetworkEgressPoolMember, updateSettingsNetworkEgressPoolMember, type CreateSettingsNetworkEgressProxyInput, type DeleteSettingsNetworkEgressPoolMembersInput, type SettingsNetworkEgressPoolMember } from '../../api/network-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { useAuthStore } from '../../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { i18nText } from '../../../../shared/i18n/text';
 import { ProxyModal } from './ProxyModal';
 import { DataTable, DataTableColumnSettings, type DataTableColumn } from '../../../../shared/ui/data-table/DataTable';
@@ -67,6 +68,13 @@ function memberDeleteErrorText(error: Error) {
 export function NetworkEgressPoolsPanel() {
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
+  const can = useConsoleOperationAccess();
+  const canCreate = can('network_egress_proxies.create');
+  const canUpdateProxy = can('network_egress_proxies.update');
+  const canUpdateMember = can('network_egress_pool_members.update');
+  const canDeleteMember = can('network_egress_pool_members.delete');
+  const canBatchDelete = can('network_egress_pool_members.batch_delete');
+  const canTest = can('network_egress_pool_members.test_connection');
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [filterDraft, setFilterDraft] = useState<ProxyPoolFilters>({ search: '' });
@@ -228,10 +236,10 @@ export function NetworkEgressPoolsPanel() {
       { key: 'health', title: i18nText('settings', 'auto.network_center_member_health'), dataIndex: 'health', width: 130, render: (_, member) => healthTag(member.health) },
       { key: 'latency', title: i18nText('settings', 'auto.network_center_probe_latency'), dataIndex: 'probe_latency_ms', width: 100, render: (latencyMs) => <Typography.Text>{latencyMs as number}ms</Typography.Text> },
       { key: 'probe', title: i18nText('settings', 'auto.network_center_member_test_result'), width: 280, sizing: 'fill', render: (_, member) => member.probe_status === 'not_tested' ? <Space size={4} wrap>{probeCapabilityTag('http', 'not_tested')}{probeCapabilityTag('https', 'not_tested')}</Space> : <Space orientation="vertical" size={0}><Space size={4} wrap>{probeCapabilityTag('http', member.probe_http_status)}{probeCapabilityTag('https', member.probe_https_status)}</Space>{member.probe_exit_ip ? <Typography.Text type="secondary">{member.probe_exit_ip}</Typography.Text> : null}{member.probe_error_code ? <Typography.Text type="danger">{probeErrorText(member.probe_error_code)}</Typography.Text> : null}{member.last_probed_at ? <Typography.Text type="secondary">{new Date(member.last_probed_at).toLocaleString()}</Typography.Text> : null}</Space> },
-      { key: 'enabled', title: i18nText('settings', 'auto.status'), dataIndex: 'enabled', width: 100, align: 'center', render: (enabled, member) => <Switch checked={enabled as boolean} loading={updateMember.isPending} onChange={(next) => updateMemberAction({ memberId: member.id, input: { enabled: next, sequence: member.sequence } })} /> },
-      { key: 'actions', title: i18nText('settings', 'auto.operation'), width: 180, minWidth: 180, align: 'center', render: (_, member) => <Space><Button type="link" loading={testingMemberIds.has(member.id)} onClick={() => testMemberAction(member.id)}>{i18nText('settings', 'auto.network_center_member_test')}</Button><Button type="link" onClick={() => setEditingMember(member)}>{i18nText('settings', 'auto.edit')}</Button><Popconfirm title={i18nText('settings', 'auto.network_center_member_delete_confirm')} onConfirm={() => removeMemberAction(member.id)}><Button type="link" danger loading={removeMember.isPending}>{i18nText('settings', 'auto.delete')}</Button></Popconfirm></Space> }
+      { key: 'enabled', title: i18nText('settings', 'auto.status'), dataIndex: 'enabled', width: 100, align: 'center', render: (enabled, member) => <Switch checked={enabled as boolean} disabled={!canUpdateMember} loading={updateMember.isPending} onChange={(next) => { if (canUpdateMember) updateMemberAction({ memberId: member.id, input: { enabled: next, sequence: member.sequence } }); }} /> },
+      { key: 'actions', title: i18nText('settings', 'auto.operation'), width: 180, minWidth: 180, align: 'center', render: (_, member) => <Space><Button type="link" disabled={!canTest} loading={testingMemberIds.has(member.id)} onClick={() => { if (canTest) testMemberAction(member.id); }}>{i18nText('settings', 'auto.network_center_member_test')}</Button><Button type="link" onClick={() => setEditingMember(member)}>{i18nText('settings', 'auto.edit')}</Button><Popconfirm title={i18nText('settings', 'auto.network_center_member_delete_confirm')} disabled={!canDeleteMember} onConfirm={() => { if (canDeleteMember) removeMemberAction(member.id); }}><Button type="link" danger disabled={!canDeleteMember} loading={removeMember.isPending}>{i18nText('settings', 'auto.delete')}</Button></Popconfirm></Space> }
     ],
-    [removeMember.isPending, removeMemberAction, testMemberAction, testingMemberIds, typeDisplayNameByCode, updateMember.isPending, updateMemberAction]
+    [canTest, canDeleteMember, canUpdateMember, removeMember.isPending, removeMemberAction, testMemberAction, testingMemberIds, typeDisplayNameByCode, updateMember.isPending, updateMemberAction]
   );
   const tableConfiguration = usePersistedDataTableConfiguration({ columns, storageKey: 'settings.network_egress_pools' });
 
@@ -259,7 +267,7 @@ export function NetworkEgressPoolsPanel() {
             </DataTableFilterForm>
           }
         >
-          {pools.isError ? <Alert type="error" showIcon title={i18nText('settings', 'auto.network_center_pools_load_failed')} /> : <DataTable<SettingsNetworkEgressPoolMember> columns={columns} configuration={tableConfiguration} dataSource={pagedMembers} emptyText={<Empty description={i18nText('settings', 'auto.network_center_no_pools')} />} loading={pools.isLoading || pools.isFetching} page={page} pageSize={PAGE_SIZE} rowKey="id" rowSelection={{ preserveSelectedRowKeys: true, selectedRowKeys: selectedMemberIds, onChange: (keys) => setSelectedMemberIds(keys.map(String)) }} total={members.length} onPageChange={setPage} toolbar={<Flex justify="flex-end" gap={8} wrap><Button disabled={pagedMembers.length === 0 || testCurrentPage.isPending} loading={testCurrentPage.isPending} onClick={() => testCurrentPage.mutate(pagedMembers.map((member) => member.id))}>{i18nText('settings', 'auto.network_center_member_test')}</Button><Button type="primary" onClick={() => setCreateOpen(true)}>{i18nText('settings', 'auto.network_center_member_create')}</Button><Button onClick={() => pools.refetch()}>{i18nText('settings', 'auto.refresh')}</Button><Popconfirm title={i18nText('settings', 'auto.network_center_members_delete_selected_confirm', { value1: selectedMemberIds.length })} onConfirm={() => removeMembers.mutateAsync({ selection: 'selected', member_ids: selectedMemberIds })}><Button danger disabled={selectedMemberIds.length === 0} loading={removeMembers.isPending}>{i18nText('settings', 'auto.delete')}</Button></Popconfirm><Popconfirm title={i18nText('settings', 'auto.network_center_members_delete_all_confirm', { value1: pool?.members.length ?? 0 })} onConfirm={() => removeMembers.mutateAsync({ selection: 'all' })}><Button danger disabled={!pool?.members.length} loading={removeMembers.isPending}>{i18nText('settings', 'auto.network_center_members_delete_all')}</Button></Popconfirm><DataTableColumnSettings columns={columns} configuration={tableConfiguration} /></Flex>} />}
+          {pools.isError ? <Alert type="error" showIcon title={i18nText('settings', 'auto.network_center_pools_load_failed')} /> : <DataTable<SettingsNetworkEgressPoolMember> columns={columns} configuration={tableConfiguration} dataSource={pagedMembers} emptyText={<Empty description={i18nText('settings', 'auto.network_center_no_pools')} />} loading={pools.isLoading || pools.isFetching} page={page} pageSize={PAGE_SIZE} rowKey="id" rowSelection={{ preserveSelectedRowKeys: true, selectedRowKeys: selectedMemberIds, onChange: (keys) => setSelectedMemberIds(keys.map(String)) }} total={members.length} onPageChange={setPage} toolbar={<Flex justify="flex-end" gap={8} wrap><Button disabled={!canTest || pagedMembers.length === 0 || testCurrentPage.isPending} loading={testCurrentPage.isPending} onClick={() => { if (canTest) testCurrentPage.mutate(pagedMembers.map((member) => member.id)); }}>{i18nText('settings', 'auto.network_center_member_test')}</Button><Button type="primary" disabled={!canCreate} onClick={() => { if (canCreate) setCreateOpen(true); }}>{i18nText('settings', 'auto.network_center_member_create')}</Button><Button onClick={() => pools.refetch()}>{i18nText('settings', 'auto.refresh')}</Button><Popconfirm title={i18nText('settings', 'auto.network_center_members_delete_selected_confirm', { value1: selectedMemberIds.length })} disabled={!canBatchDelete} onConfirm={() => { if (canBatchDelete) return removeMembers.mutateAsync({ selection: 'selected', member_ids: selectedMemberIds }); }}><Button danger disabled={!canBatchDelete || selectedMemberIds.length === 0} loading={removeMembers.isPending}>{i18nText('settings', 'auto.delete')}</Button></Popconfirm><Popconfirm title={i18nText('settings', 'auto.network_center_members_delete_all_confirm', { value1: pool?.members.length ?? 0 })} disabled={!canBatchDelete} onConfirm={() => { if (canBatchDelete) return removeMembers.mutateAsync({ selection: 'all' }); }}><Button danger disabled={!canBatchDelete || !pool?.members.length} loading={removeMembers.isPending}>{i18nText('settings', 'auto.network_center_members_delete_all')}</Button></Popconfirm><DataTableColumnSettings columns={columns} configuration={tableConfiguration} /></Flex>} />}
         </DataTableLayout>
       </div>
       {(createOpen || editingMember) && <ProxyModal
@@ -272,8 +280,8 @@ export function NetworkEgressPoolsPanel() {
         submitting={editingMember ? updateProxy.isPending : create.isPending}
         onClose={() => { setCreateOpen(false); setEditingMember(null); }}
         onSubmit={(input) => {
-          if (editingMember) updateProxy.mutate({ providerId: editingMember.provider_id, input });
-          else create.mutate(input);
+          if (editingMember && canUpdateProxy) updateProxy.mutate({ providerId: editingMember.provider_id, input });
+          else if (!editingMember && canCreate) create.mutate(input);
         }}
       />}
     </SettingsSectionSurface>

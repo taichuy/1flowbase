@@ -273,6 +273,9 @@ pub(super) fn expand_core_interface_registrations(
 
 pub(super) fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "patch_me" => Some("Update own profile"),
+        "patch_me_meta" => Some("Update own preferences"),
+        "assistant_update_settings" => Some("Update own assistant preferences"),
         "local_commands.execute" => Some("Execute one local shell command"),
         "communications.options.get" => Some("List communication execution options"),
         "communications.binding.get" => Some("Read communication binding"),
@@ -289,7 +292,7 @@ pub(super) fn static_english_interface_summary(interface_id: &str) -> String {
         "notifications.logs.list" => Some("List notification send logs"),
         "notifications.logs.get" => Some("Get notification send log"),
         "notifications.channels.list" => Some("List my notification channels"),
-        "notifications.channels.read_all" => Some("Read my notification channel"),
+        "notifications.channels.read_all" => Some("Mark my notification channel read"),
         "notifications.messages.unread" => Some("Mark my notification unread"),
         "notifications.types.list" => Some("List notification types"),
         "notifications.instances.list" => Some("List notification instances"),
@@ -301,8 +304,8 @@ pub(super) fn static_english_interface_summary(interface_id: &str) -> String {
         "notifications.instances.authorization" => Some("Authorize notification instance"),
         "notifications.messages.list" => Some("List my notification messages"),
         "notifications.messages.unread_count" => Some("Count my unread notifications"),
-        "notifications.messages.read" => Some("Read my notification"),
-        "notifications.messages.read_all" => Some("Read all my notifications"),
+        "notifications.messages.read" => Some("Mark my notification read"),
+        "notifications.messages.read_all" => Some("Mark all my notifications read"),
         "notifications.events.subscribe" => Some("Subscribe to notification refresh signals"),
 
         "files.access_links.create" => Some("Create a temporary public file link"),
@@ -336,6 +339,7 @@ pub(super) fn static_english_interface_summary(interface_id: &str) -> String {
         "members.departments.replace" => Some("Replace member department assignments"),
         "system_templates.catalog" => Some("List portable template resources"),
         "system_templates.export" => Some("Export selected portable definitions"),
+        "system_templates.download" => Some("Download and verify a template release for local preview and installation"),
         "system_templates.preview" => Some("Preview portable template installation"),
         "system_templates.install" => Some("Install portable template resources"),
 
@@ -481,6 +485,10 @@ pub(super) fn compile_console_interface_metadata(
             _ => static_english_interface_summary(&interface_id),
         };
         let description = match interface_id.as_str() {
+            "patch_me" => "Update the signed-in user's profile and preferred locale. Requires the independent personal profile operation; does not change passwords or sign-in methods.".to_owned(),
+            "patch_me_meta" => "Merge personal preferences into the signed-in user's metadata. Requires the independent personal preference operation.".to_owned(),
+            "assistant_update_settings" => "Update the signed-in user's assistant target and model preferences. Requires the independent assistant preference operation.".to_owned(),
+            "system_templates.download" => "Download the selected catalog release once, verify its checksum and signature, and return the complete portable package for preview and subsequent installation without another catalog download.".to_owned(),
             "local_commands.execute" => "Execute a single command string in the backend instance environment as its OS account. Requires the local command operation permission; returns complete output and termination status without a reusable session, deployment opt-in, or automatic retry.".to_owned(),
             "communications.options.get" => "Return published Agent-flow applications, visible enabled MCP instances and the selected application model and reasoning capabilities.".to_owned(),
             "communications.binding.get" => "Read the channel execution binding and plugin-owned default prompt without credentials.".to_owned(),

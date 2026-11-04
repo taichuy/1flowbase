@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { i18nText } from '../../../../../shared/i18n/text';
 
 export function DebugComposer({
+  ariaLabel,
   value,
   disabled,
   submitting,
@@ -15,6 +16,7 @@ export function DebugComposer({
   onStop,
   onSubmit
 }: {
+  ariaLabel?: string;
   value: string;
   disabled: boolean;
   submitting: boolean;
@@ -39,6 +41,7 @@ export function DebugComposer({
   return (
     <div className="agent-flow-editor__debug-composer">
       <Sender
+        aria-label={ariaLabel}
         autoSize={{ minRows: 3, maxRows: 6 }}
         disabled={disabled}
         header={header || false}

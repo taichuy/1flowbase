@@ -216,7 +216,7 @@ async fn write_installation(
                 is_system_reserved = excluded.is_system_reserved,
                 updated_by = excluded.updated_by,
                 updated_at = now()
-            where (
+            where ((
                 coalesce(extension_installations.metadata_json -> 'managed', 'null'::jsonb) = 'null'::jsonb
                 and coalesce(excluded.metadata_json -> 'managed', 'null'::jsonb) = 'null'::jsonb
             ) or (
@@ -224,7 +224,10 @@ async fn write_installation(
                 and coalesce(excluded.metadata_json -> 'managed', 'null'::jsonb) <> 'null'::jsonb
                 and extension_installations.expected_checksum is not null
                 and extension_installations.expected_checksum = excluded.expected_checksum
-            )
+            ))
+                and extension_installations.organization = excluded.organization
+                and extension_installations.artifact_id = excluded.artifact_id
+                and extension_installations.category = excluded.category
             returning id, scope_id, category, organization, artifact_id as provider_code,
                 plugin_id, artifact_version as plugin_version, contract_version, protocol,
                 display_name, source_kind, trust_level, verification_status, desired_state,
@@ -483,10 +486,10 @@ async fn write_installation(
                     id, scope_id, installation_id, provider_code, plugin_id, plugin_version,
                     contribution_code, title, runtime, entry, code_template,
                     code_template_version, code_template_language, code_modules, context_contract,
-                    permission_network, permission_storage, permission_secrets, ui_capabilities
+                    permission_network, permission_storage, permission_secrets, ui_capabilities, ui_registration
                 ) values (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                    $14, $15, $16, $17, $18, $19
+                    $14, $15, $16, $17, $18, $19, $20
                 )
                 "#,
         )
@@ -509,6 +512,7 @@ async fn write_installation(
         .bind(&entry.permissions.storage)
         .bind(&entry.permissions.secrets)
         .bind(serde_json::to_value(&entry.ui_capabilities)?)
+        .bind(&entry.ui_registration)
         .execute(&mut *connection)
         .await?;
     }
@@ -550,6 +554,14 @@ async fn write_installation(
             }
         }
     }
+
+    crate::frontend_block_catalog_repository::plugin_components::sync_plugin_components(
+        connection,
+        installation_id,
+        &input.frontend_blocks,
+        installation.actor_user_id,
+    )
+    .await?;
 
     Ok(record)
 }

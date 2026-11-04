@@ -532,10 +532,11 @@ fn write_compact_provider_fixture(root: &std::path::Path, mode: CompactFixtureMo
         "  capabilities:\n    - config.validate\n    - models.list\n    - compact.responses_compact\n    - compact.responses_compaction_v2\n    - responses.native_passthrough\n    - responses.native_output.v1\n",
     );
     if matches!(mode, CompactFixtureMode::LiveCallback) {
-        manifest = manifest.replace(
-            "    - responses.native_output.v1\n",
-            "    - responses.native_output.v1\n    - native_continuation_supported\n",
-        );
+        // This scenario needs an AgentFlow-owned callback. NativeOpaque client
+        // tools complete their invocation and deliberately create no callback.
+        manifest = manifest
+            .replace("    - responses.native_passthrough\n", "")
+            .replace("    - responses.native_output.v1\n", "");
     }
     fs::write(root.join("manifest.yaml"), manifest)
         .expect("Compact fixture manifest should declare both Compact capabilities");
@@ -611,8 +612,9 @@ switch (request.method) {
       process.exit(0);
     }
     if (input.operation !== 'compact' && input.provider_config?.test_compact_mode === 'live_callback') {
-      const preservedSummaryInput = input.native_transport?.wire_body?.input?.[0]?.content
-        === 'changed-prefix-local-summary-canary';
+      const preservedSummaryInput = (input.messages ?? []).some(message =>
+        message.role === 'user' && message.content === 'changed-prefix-local-summary-canary'
+      );
       const completionText = preservedSummaryInput
         ? 'local summary raw input preserved' : 'callback resume completed';
       const resumed = Boolean(

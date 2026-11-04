@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import { Alert, Button, Modal, Tooltip, Typography, Upload } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
@@ -27,6 +28,7 @@ export function PluginUploadInstallModal({
   onChange: (nextFiles: UploadFile[]) => void;
   onSubmit: () => void;
 }) {
+  const can = useConsoleOperationAccess();
   return (
     <Modal
       open={open}
@@ -111,6 +113,7 @@ export function PluginUploadInstallModal({
           className="model-provider-panel__upload-submit"
           type="primary"
           block
+          disabled={!can('model_provider_plugins.install.upload')}
           loading={submitting}
           onClick={onSubmit}
         >

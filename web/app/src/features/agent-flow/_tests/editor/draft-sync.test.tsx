@@ -1,3 +1,4 @@
+import { authenticateEditor } from '../fixtures/editor-auth';
 import type { ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -84,6 +85,7 @@ function createVariableAggregatorDocumentWithInvalidKeys(keys: string[]) {
 
 beforeEach(() => {
   resetAuthStore();
+  authenticateEditor();
   useAuthStore.setState({
     sessionStatus: 'authenticated',
     csrfToken: 'csrf-token'
@@ -95,6 +97,62 @@ afterEach(() => {
 });
 
 describe('useDraftSync', () => {
+  test.each([
+    { permissions: [], save: false, restore: false },
+    { permissions: ['save_draft'], save: true, restore: false },
+    {
+      permissions: ['applications.orchestration.version.restore'],
+      save: false,
+      restore: true
+    }
+  ])(
+    'does not expand draft grants: $permissions',
+    async ({ permissions, save, restore }) => {
+      vi.useFakeTimers();
+      authenticateEditor(permissions, 'member');
+      const initialState = createInitialState();
+      const saveDraftOverride = vi.fn(async () => initialState);
+      const restoreVersionOverride = vi.fn(async () => initialState);
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <AgentFlowEditorStoreProvider initialState={initialState}>
+          {children}
+        </AgentFlowEditorStoreProvider>
+      );
+      const { result } = renderHook(
+        () => ({
+          sync: useDraftSync({
+            applicationId: 'app-1',
+            saveDraftOverride,
+            restoreVersionOverride
+          }),
+          setDocument: useAgentFlowEditorStore(
+            (state) => state.setWorkingDocument
+          )
+        }),
+        { wrapper }
+      );
+      act(() =>
+        result.current.setDocument((document) => ({
+          ...document,
+          meta: { ...document.meta, name: 'Changed' }
+        }))
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(saveDraftOverride).toHaveBeenCalledTimes(save ? 1 : 0);
+      await act(async () => {
+        await result.current.sync.restoreVersion('version-1');
+      });
+      expect(restoreVersionOverride).toHaveBeenCalledTimes(restore ? 1 : 0);
+      if (!save)
+        await act(async () => {
+          expect(await result.current.sync.saveNow()).toBe(false);
+        });
+      expect(saveDraftOverride).toHaveBeenCalledTimes(save ? 1 : 0);
+    }
+  );
+
   test('stops pending autosave when undo restores equal saved content', async () => {
     vi.useFakeTimers();
     const initialState = createInitialState();

@@ -14,6 +14,10 @@ api/plugins/
   fixtures/
 ```
 
+## Frontend UI Registration
+
+See [中文](frontend-ui-registration.md) / [English](frontend-ui-registration.en.md) for explicit template vs component registration.
+
 ## Package Boundary
 
 - Source workspace location does not decide whether something is a plugin; package/install/enable-disable/load lifecycle does.

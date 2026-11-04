@@ -16,6 +16,7 @@ import type {
 import { authorizeNotificationInstance } from '../../../notifications/api/queries';
 import { NotificationDeliveryWindow } from './NotificationDeliveryWindow';
 import { useAuthStore } from '../../../../state/auth-store';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 
 export function NotificationAuthorization({
   instance_id,
@@ -36,6 +37,8 @@ export function NotificationAuthorization({
 }) {
   const { t } = useTranslation('notifications');
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
+  const can = useConsoleOperationAccess();
+  const canAuthorize = can('notifications.instances.authorization');
   const [view, setView] = useState(authorization);
   const [busy, setBusy] =
     useState<NotificationAuthorizationOperation['type']>();
@@ -45,6 +48,7 @@ export function NotificationAuthorization({
   changed.current = onChanged;
   const command = useCallback(
     async (operation: NotificationAuthorizationOperation) => {
+      if (!canAuthorize) return;
       request.current?.abort();
       const controller = new AbortController();
       request.current = controller;
@@ -66,7 +70,7 @@ export function NotificationAuthorization({
         if (!controller.signal.aborted) setBusy(undefined);
       }
     },
-    [instance_id, csrfToken]
+    [instance_id, csrfToken, canAuthorize]
   );
 
   useEffect(() => {
@@ -81,22 +85,22 @@ export function NotificationAuthorization({
   );
   const autoStarted = useRef(false);
   useEffect(() => {
-    if (beginOnMount && firstAction && !autoStarted.current) {
+    if (canAuthorize && beginOnMount && firstAction && !autoStarted.current) {
       const timer = window.setTimeout(() => {
         autoStarted.current = true;
         void command({ type: 'begin', action: firstAction.code });
       }, 0);
       return () => window.clearTimeout(timer);
     }
-  }, [beginOnMount, firstAction, command]);
+  }, [canAuthorize, beginOnMount, firstAction, command]);
   useEffect(() => {
-    if (view.status !== 'pending' || !view.user_action || failed || busy)
+    if (!canAuthorize || view.status !== 'pending' || !view.user_action || failed || busy)
       return;
     const timer = window.setTimeout(() => {
       void command({ type: 'poll' });
     }, view.user_action.poll_interval_seconds * 1000);
     return () => window.clearTimeout(timer);
-  }, [view, failed, busy, command]);
+  }, [canAuthorize, view, failed, busy, command]);
 
   const statusLabel =
     view.status === 'authorized'
@@ -140,7 +144,7 @@ export function NotificationAuthorization({
               <Button
                 shape="round"
                 icon={<ReloadOutlined />}
-                disabled={!!busy}
+                disabled={!canAuthorize || !!busy}
                 loading={busy === 'maintain'}
                 onClick={() => void command({ type: 'maintain' })}
               >
@@ -153,7 +157,7 @@ export function NotificationAuthorization({
                   type={authorized ? 'text' : 'default'}
                   shape="round"
                   icon={<QrcodeOutlined />}
-                  disabled={!!busy}
+                  disabled={!canAuthorize || !!busy}
                   loading={busy === 'begin'}
                   aria-label={
                     view.status === 'invalid' || authorized
@@ -202,13 +206,14 @@ export function NotificationAuthorization({
             </Typography.Text>
             <Space wrap>
               <Button
+                disabled={!canAuthorize}
                 loading={busy === 'cancel'}
                 onClick={() => void command({ type: 'cancel' })}
               >
                 {t('authorization_cancel')}
               </Button>
               {failed && (
-                <Button onClick={() => void command({ type: 'poll' })}>
+                <Button disabled={!canAuthorize} onClick={() => void command({ type: 'poll' })}>
                   {t('refresh')}
                 </Button>
               )}

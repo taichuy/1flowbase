@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,11 +42,8 @@ function tokenOrThrow(token: string | null): string {
   return token;
 }
 
-export function UiComponentCatalogContent({
-  canManage
-}: {
-  canManage: boolean;
-}) {
+export function UiComponentCatalogContent(_props: { canManage?: boolean } = {}) {
+  const can = useConsoleOperationAccess();
   const { t } = useTranslation('settingsUiManagement');
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
@@ -108,7 +106,7 @@ export function UiComponentCatalogContent({
         key: 'actions',
         width: 120,
         render: (_, record) =>
-          canManage ? (
+          can('ui_management.catalog.download') ? (
             <Button
               type="link"
               size="small"
@@ -123,7 +121,7 @@ export function UiComponentCatalogContent({
           ) : null
       }
     ],
-    [canManage, download, t]
+    [can, download, t]
   );
 
   return (

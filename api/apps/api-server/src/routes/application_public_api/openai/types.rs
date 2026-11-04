@@ -196,7 +196,7 @@ pub struct OpenAiResponsesObject {
     pub model: String,
     pub output: Vec<Value>,
     pub output_text: String,
-    pub usage: OpenAiResponsesUsage,
+    pub usage: Option<OpenAiResponsesUsage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub incomplete_details: Option<OpenAiResponsesIncompleteDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]

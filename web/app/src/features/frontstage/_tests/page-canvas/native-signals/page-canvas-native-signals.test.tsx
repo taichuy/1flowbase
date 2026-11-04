@@ -30,6 +30,65 @@ import type { FrontstageNativeBlockContextHost } from '../../../lib/page-canvas/
 import { createFrontstagePageContentFixture } from '../../frontstage-page-content-fixtures';
 
 describe('PageCanvas Native Signal context', () => {
+  test('propagates console operation snapshots without remounting native blocks', async () => {
+    const Block = ({ ctx }: { ctx: BlockContext }) => {
+      const [count, setCount] = useState(0);
+      const canCreate =
+        ctx.currentUser?.isRoot ||
+        ctx.currentUser?.permissions?.includes('ssh.hosts.create');
+      return (
+        <button
+          data-testid="permission-snapshot"
+          disabled={!canCreate}
+          onClick={() => setCount(count + 1)}
+        >
+          {count}:{canCreate ? 'create' : 'read'}
+        </button>
+      );
+    };
+    const preparations = createNativePreparationSource([
+      preparation('producer', 0, Block)
+    ]);
+    const runtime = (
+      permissions: readonly string[],
+      isRoot = false
+    ): FrontstagePageCanvasRuntimeContext => ({
+      currentUser: Object.freeze({
+        id: 'user-1',
+        permissions: Object.freeze([...permissions]),
+        isRoot
+      }),
+      workspace: { id: 'workspace-1' },
+      application: null,
+      theme: { mode: 'light', tokens: {} },
+      ui: { locale: 'en_US' }
+    });
+    const scene = (context: FrontstagePageCanvasRuntimeContext) => (
+      <PageCanvas
+        content={pageContent()}
+        runtimeBlocks={runtimeBlocks().slice(0, 1)}
+        runtimePreparations={preparations}
+        runtimeContext={context}
+      />
+    );
+    const view = render(scene(runtime(['ssh.hosts.list'])));
+    const root = await nativeRoot('producer');
+    const button = await within(root.shadow).findByTestId(
+      'permission-snapshot'
+    );
+    expect(button).toBeDisabled();
+    view.rerender(scene(runtime(['ssh.hosts.create'])));
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    expect(button).toHaveTextContent('1:create');
+    view.rerender(scene(runtime(['ssh.hosts.list'])));
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(button).toHaveTextContent('1:read');
+    view.rerender(scene(runtime([], true)));
+    await waitFor(() => expect(button).toBeEnabled());
+    expect(button).toHaveTextContent('1:create');
+  });
+
   test('propagates a new translation snapshot without resetting block Hook state', async () => {
     const Block = ({ ctx }: { ctx: BlockContext }) => {
       const [count, setCount] = useState(0);
@@ -105,6 +164,8 @@ describe('PageCanvas Native Signal context', () => {
     const utils = render(view('zh_Hans'));
     const slot = screen.getByTestId('block-slot-producer');
     expect(within(slot).getByText('账号')).toBeInTheDocument();
+    const root = await nativeRoot('producer');
+    await within(root.shadow).findByText('Content');
     utils.rerender(view('en_US'));
     expect(within(slot).getByText('Account')).toBeInTheDocument();
     expect(blocks[0].title).toBe('Account');

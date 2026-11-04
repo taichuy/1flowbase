@@ -42,7 +42,7 @@ fn file_owner_routes_compile_from_exact_assemblies() {
             (
                 "POST",
                 "/api/console/files/:file_table_id/records/:record_id/access-links",
-                "authenticated"
+                "files.access_links.create"
             ),
             ("POST", "/api/console/files/upload", "authenticated",),
             ("POST", "/api/console/files/import-remote", "authenticated",),
@@ -140,6 +140,7 @@ fn file_owner_routes_preserve_authenticated_data_acl_and_settings_operations() {
         FILE_TABLES_CREATE_OPERATION_ID,
         FILE_TABLES_DELETE_OPERATION_ID,
         FILE_TABLES_STORAGE_BIND_OPERATION_ID,
+        "files.access_links.create",
     ] {
         let operation = registry
             .inventory()

@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
@@ -26,7 +27,6 @@ import { i18nText } from '../../../../../shared/i18n/text';
 import { statusColor } from '../mcp-management-utils';
 
 export function McpInstanceTable({
-  canManage,
   instances,
   groupCounts,
   toolCounts,
@@ -40,7 +40,7 @@ export function McpInstanceTable({
   onRestoreDefault,
   onDelete
 }: {
-  canManage: boolean;
+  canManage?: boolean;
   instances: ConsoleMcpInstance[];
   groupCounts: Map<string, number>;
   toolCounts: Map<string, number>;
@@ -54,6 +54,7 @@ export function McpInstanceTable({
   onRestoreDefault: (instance: ConsoleMcpInstance) => void;
   onDelete: (instance: ConsoleMcpInstance) => Promise<unknown>;
 }) {
+  const can = useConsoleOperationAccess();
   const columns: ColumnsType<ConsoleMcpInstance> = [
     { title: 'instance_id', dataIndex: 'instance_id' },
     {
@@ -104,10 +105,9 @@ export function McpInstanceTable({
       render: (_, record) => (
         <Space>
           <Button
-            aria-label={i18nText('settings', 'auto.edit')}
+            aria-label={i18nText('settings', can('mcp.instances.update') ? 'auto.edit' : 'auto.view')}
             icon={<EditOutlined />}
             size="small"
-            disabled={!canManage}
             onClick={() => onEdit(record)}
           />
           <Tooltip title={i18nText('settings', 'auto.directory_editor')}>
@@ -115,7 +115,6 @@ export function McpInstanceTable({
               aria-label={i18nText('settings', 'auto.directory_editor')}
               icon={<SettingOutlined />}
               size="small"
-              disabled={!canManage}
               onClick={() => onOpenDirectory(record)}
             />
           </Tooltip>
@@ -146,7 +145,7 @@ export function McpInstanceTable({
                       'settingsMcpManagement',
                       'auto.discovery_policy'
                     ),
-                    disabled: !canManage
+                    disabled: !can('mcp.discovery_policy.view')
                   },
                   {
                     key: 'copy',
@@ -155,7 +154,7 @@ export function McpInstanceTable({
                       'settingsMcpManagement',
                       'auto.copy_instance'
                     ),
-                    disabled: !canManage
+                    disabled: !can('mcp.instances.copy')
                   },
                   {
                     key: 'export',
@@ -164,7 +163,7 @@ export function McpInstanceTable({
                       'settingsMcpManagement',
                       'auto.mcp_instance_export'
                     ),
-                    disabled: !canManage
+                    disabled: !can('mcp.instances.export')
                   },
                   ...(record.managed_by?.organization === '1flowbase' &&
                   record.managed_by.bundle_id === 'frontstage_assistant'
@@ -176,7 +175,7 @@ export function McpInstanceTable({
                             'settingsMcpManagement',
                             'auto.restore_instance_default'
                           ),
-                          disabled: !canManage
+                          disabled: !can('import_official_mcp_bundle')
                         }
                       ]
                     : []),
@@ -186,7 +185,7 @@ export function McpInstanceTable({
                     icon: <DeleteOutlined />,
                     label: i18nText('settings', 'auto.delete'),
                     danger: true,
-                    disabled: !canManage
+                    disabled: !can('mcp.instances.delete')
                   }
                 ],
                 onClick: ({ key }) => {
@@ -229,7 +228,7 @@ export function McpInstanceTable({
         <Button
           type="primary"
           icon={<PlusOutlined />}
-          disabled={!canManage}
+          disabled={!can('mcp.instances.create')}
           onClick={onCreate}
         >
           {i18nText('settings', 'auto.new')}

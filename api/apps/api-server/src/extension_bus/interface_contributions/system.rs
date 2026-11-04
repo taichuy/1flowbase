@@ -50,6 +50,7 @@ pub(super) fn contributions(
             &[
                 "system_templates.catalog",
                 "system_templates.export",
+                "system_templates.download",
                 "system_templates.preview",
                 "system_templates.install",
             ],

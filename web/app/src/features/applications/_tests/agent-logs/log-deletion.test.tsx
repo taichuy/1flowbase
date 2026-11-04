@@ -43,7 +43,9 @@ function job(overrides: Partial<AgentLogsDeleteJob> = {}): AgentLogsDeleteJob {
     ...overrides
   };
 }
-function renderButton(applicationType: 'agent_logs' | 'agent_flow' = 'agent_logs') {
+function renderButton(
+  applicationType: 'agent_logs' | 'agent_flow' = 'agent_logs'
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
   });
@@ -51,7 +53,11 @@ function renderButton(applicationType: 'agent_logs' | 'agent_flow' = 'agent_logs
   const view = render(
     <QueryClientProvider client={client}>
       <App>
-        <AgentLogsDeleteButton applicationId="app-1" applicationType={applicationType} onFinished={onFinished} />
+        <AgentLogsDeleteButton
+          applicationId="app-1"
+          applicationType={applicationType}
+          onFinished={onFinished}
+        />
       </App>
     </QueryClientProvider>
   );
@@ -86,7 +92,15 @@ beforeEach(async () => {
   for (const item of Object.values(api)) item.mockReset();
   currentJob = null;
   await appI18n.changeLanguage('zh_Hans');
-  useAuthStore.setState({ csrfToken: 'fixture-csrf' });
+  useAuthStore.setState({
+    csrfToken: 'fixture-csrf',
+    actor: {
+      id: 'root-1',
+      account: 'root',
+      effective_display_role: 'root',
+      current_workspace_id: 'workspace-1'
+    }
+  });
   api.getConsoleApplicationLogDeletionJob.mockImplementation(async () => ({
     job: currentJob
   }));
@@ -204,9 +218,9 @@ test('custom date preview includes the entire end day and requires both dates', 
     within(screen.getByRole('dialog')).getByRole('button', { name: '删除日志' })
   ).toBeDisabled();
   for (const [index, date] of ['2026-10-07', '2026-10-08'].entries()) {
-    const input = within(screen.getByRole('dialog')).getAllByRole(
-      'textbox'
-    )[index];
+    const input = within(screen.getByRole('dialog')).getAllByRole('textbox')[
+      index
+    ];
     // Commit each controlled picker before the next picker reads its paired value.
     await act(async () => input.focus());
     fireEvent.change(input, { target: { value: date } });
@@ -443,16 +457,23 @@ test('a restored task can finish and start a new deletion without reviving its s
   ).not.toBe('fixture-job');
 });
 
-
 test('Agent Flow uses the durable deletion interaction and explains active-task and financial retention', async () => {
   renderButton('agent_flow');
-  expect(screen.getByText(/费用、积分、用量流水和计费会话保留/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/费用、积分、用量流水和计费会话保留/)
+  ).toBeInTheDocument();
   expect(screen.getByText(/运行中或等待继续的任务将保留/)).toBeInTheDocument();
   await choose('全部');
   await start();
-  await waitFor(() => expect(api.createConsoleApplicationLogDeletionJob).toHaveBeenCalledOnce());
-  expect(api.createConsoleApplicationLogDeletionJob.mock.calls[0][1].scope).toEqual({ mode: 'all_time', batch_size: 100 });
+  await waitFor(() =>
+    expect(api.createConsoleApplicationLogDeletionJob).toHaveBeenCalledOnce()
+  );
+  expect(
+    api.createConsoleApplicationLogDeletionJob.mock.calls[0][1].scope
+  ).toEqual({ mode: 'all_time', batch_size: 100 });
   fireEvent.click(await screen.findByRole('button', { name: '停止后续批次' }));
-  await waitFor(() => expect(api.stopConsoleApplicationLogDeletionJob).toHaveBeenCalledOnce());
+  await waitFor(() =>
+    expect(api.stopConsoleApplicationLogDeletionJob).toHaveBeenCalledOnce()
+  );
   expect(api.deleteConsoleApplicationLogs).not.toHaveBeenCalled();
 });

@@ -560,6 +560,9 @@ fn component_response(value: UiComponentRecord) -> Result<ComponentRecordRespons
     use time::format_description::well_known::Rfc3339;
 
     Ok(ComponentRecordResponse {
+        owner_plugin_id: value.owner_plugin_id,
+        owner_contribution_code: value.owner_contribution_code,
+        owner_installation_id: value.owner_installation_id.map(|id| id.to_string()),
         id: value.id.to_string(),
         scope_id: value.scope_id.to_string(),
         component_code: value.component_code,

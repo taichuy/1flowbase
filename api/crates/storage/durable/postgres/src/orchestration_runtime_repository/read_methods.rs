@@ -1,4 +1,12 @@
 impl PgControlPlaneStore {
+    async fn read_flow_run_usage_totals(&self, flow_run_id: Uuid) -> Result<Option<Value>> {
+        sqlx::query_scalar(include_str!("read_methods/usage_totals.sql"))
+            .bind(flow_run_id)
+            .fetch_one(self.pool())
+            .await
+            .map_err(Into::into)
+    }
+
     async fn read_flow_run_node_usages(
         &self,
         flow_run_id: Uuid,

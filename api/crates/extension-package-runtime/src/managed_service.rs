@@ -456,12 +456,15 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
                 .iter()
                 .any(|p| p.as_str() == "service.execute")
             || binding.execution_mode != PluginExecutionMode::ProcessPerCall
-            || binding.runtime.protocol != extension_contracts::STDIO_JSON_MULTIPLEX_V1
+            || !(binding.runtime.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1
+                || (binding.runtime.protocol == "stdio_json"
+                    && service.worker_lifetime == ManagedServiceWorkerLifetime::PerCall
+                    && operation.stream.is_none()))
             || binding.interface_protocol.is_some()
             || binding.payload.is_some()
         {
             return Err(invalid(
-                "managed service operation requires authorized multiplex capability binding",
+                "managed service operation requires authorized unary or multiplex capability binding",
             ));
         }
         if operation.stream.is_some()

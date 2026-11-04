@@ -22,6 +22,7 @@ import type {
 
 import '../register';
 
+import { useConsoleOperationAccess } from '../../../state/console-operation-access';
 import { useAuthStore } from '../../../state/auth-store';
 import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { i18nText } from '../../../shared/i18n/text';
@@ -121,6 +122,7 @@ function useWorkflowCanvasController({
   const { message, modal } = App.useApp();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const workingDocument = useAgentFlowEditorStore(selectWorkingDocument);
   const lastSavedDocument = useAgentFlowEditorStore(selectLastSavedDocument);
@@ -223,6 +225,8 @@ function useWorkflowCanvasController({
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
+      if (!can('replace_application_environment_variables'))
+        throw new Error('permission denied');
       return replaceApplicationEnvironmentVariables(
         applicationId,
         variables,
@@ -256,6 +260,7 @@ function useWorkflowCanvasController({
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
+      if (!can('update_version')) throw new Error('permission denied');
       return updateVersion(applicationId, versionId, input, csrfToken);
     },
     onSuccess(nextState) {
@@ -286,6 +291,7 @@ function useWorkflowCanvasController({
         throw new Error('missing csrf token');
       }
 
+      if (!can('publish_application_api')) throw new Error('permission denied');
       const mapping = await fetchApplicationApiMapping(applicationId);
       return publishApplicationApiVersion(applicationId, mapping, csrfToken);
     },
@@ -304,6 +310,8 @@ function useWorkflowCanvasController({
         throw new Error('missing csrf token');
       }
 
+      if (!can('unpublish_application_api'))
+        throw new Error('permission denied');
       return unpublishApplicationApiVersion(applicationId, csrfToken);
     },
     onSuccess() {
@@ -370,31 +378,95 @@ function useWorkflowCanvasController({
     });
   }
   return {
-    applicationName, applicationId, autosaveIntervalMs, autosaveStatus, issueErrorCount,
-    isPublished, publishMutation, revertToDraftMutation, workingDocument, triggerContext,
-    navigate, setPanelState, historyOpen, setEnvironmentVariablesOpen, openHistory,
-    issuesOpen, draftSync, confirmRevertToDraft, navigation,
-    issueCountByNodeId, nodePickerOptions, viewportSnapshotRef, viewportGetterRef,
-    selectedNodeId, nodeDetailLayout, isResizingNodeDetail, boundedNodeDetailWidth,
-    handleNodeDetailResizeKeyDown, handleNodeDetailResizeStart, nodeDetailTab,
-    environmentVariables, issues, detailActions, setNodeDetailTab,
-    environmentVariablesOpen, environmentVariablesMutation, versions,
-    userProtectionLimit, isRestoringVersion, versionMetadataMutation
+    can,
+    applicationName,
+    applicationId,
+    autosaveIntervalMs,
+    autosaveStatus,
+    issueErrorCount,
+    isPublished,
+    publishMutation,
+    revertToDraftMutation,
+    workingDocument,
+    triggerContext,
+    navigate,
+    setPanelState,
+    historyOpen,
+    setEnvironmentVariablesOpen,
+    openHistory,
+    issuesOpen,
+    draftSync,
+    confirmRevertToDraft,
+    navigation,
+    issueCountByNodeId,
+    nodePickerOptions,
+    viewportSnapshotRef,
+    viewportGetterRef,
+    selectedNodeId,
+    nodeDetailLayout,
+    isResizingNodeDetail,
+    boundedNodeDetailWidth,
+    handleNodeDetailResizeKeyDown,
+    handleNodeDetailResizeStart,
+    nodeDetailTab,
+    environmentVariables,
+    issues,
+    detailActions,
+    setNodeDetailTab,
+    environmentVariablesOpen,
+    environmentVariablesMutation,
+    versions,
+    userProtectionLimit,
+    isRestoringVersion,
+    versionMetadataMutation
   };
 }
 
-export function WorkflowCanvasFrame(props: Parameters<typeof useWorkflowCanvasController>[0]) {
+export function WorkflowCanvasFrame(
+  props: Parameters<typeof useWorkflowCanvasController>[0]
+) {
   const {
-    applicationName, applicationId, autosaveIntervalMs, autosaveStatus, issueErrorCount,
-    isPublished, publishMutation, revertToDraftMutation, workingDocument, triggerContext,
-    navigate, setPanelState, historyOpen, setEnvironmentVariablesOpen, openHistory,
-    issuesOpen, draftSync, confirmRevertToDraft, navigation,
-    issueCountByNodeId, nodePickerOptions, viewportSnapshotRef, viewportGetterRef,
-    selectedNodeId, nodeDetailLayout, isResizingNodeDetail, boundedNodeDetailWidth,
-    handleNodeDetailResizeKeyDown, handleNodeDetailResizeStart, nodeDetailTab,
-    environmentVariables, issues, detailActions, setNodeDetailTab,
-    environmentVariablesOpen, environmentVariablesMutation, versions,
-    userProtectionLimit, isRestoringVersion, versionMetadataMutation
+    can,
+    applicationName,
+    applicationId,
+    autosaveIntervalMs,
+    autosaveStatus,
+    issueErrorCount,
+    isPublished,
+    publishMutation,
+    revertToDraftMutation,
+    workingDocument,
+    triggerContext,
+    navigate,
+    setPanelState,
+    historyOpen,
+    setEnvironmentVariablesOpen,
+    openHistory,
+    issuesOpen,
+    draftSync,
+    confirmRevertToDraft,
+    navigation,
+    issueCountByNodeId,
+    nodePickerOptions,
+    viewportSnapshotRef,
+    viewportGetterRef,
+    selectedNodeId,
+    nodeDetailLayout,
+    isResizingNodeDetail,
+    boundedNodeDetailWidth,
+    handleNodeDetailResizeKeyDown,
+    handleNodeDetailResizeStart,
+    nodeDetailTab,
+    environmentVariables,
+    issues,
+    detailActions,
+    setNodeDetailTab,
+    environmentVariablesOpen,
+    environmentVariablesMutation,
+    versions,
+    userProtectionLimit,
+    isRestoringVersion,
+    versionMetadataMutation
   } = useWorkflowCanvasController(props);
 
   return (
@@ -412,11 +484,16 @@ export function WorkflowCanvasFrame(props: Parameters<typeof useWorkflowCanvasCo
         )}
         autosaveStatus={autosaveStatus}
         issueErrorCount={issueErrorCount}
-        saveDisabled={autosaveStatus === 'saving'}
+        saveDisabled={!can('save_draft') || autosaveStatus === 'saving'}
         saveLoading={autosaveStatus === 'saving'}
         published={isPublished}
-        publishDisabled={publishMutation.isPending || issueErrorCount > 0}
+        publishDisabled={
+          !can('publish_application_api') ||
+          publishMutation.isPending ||
+          issueErrorCount > 0
+        }
         publishLoading={publishMutation.isPending}
+        revertDisabled={!can('unpublish_application_api')}
         revertLoading={revertToDraftMutation.isPending}
         testRunAction={
           <WorkflowTestRunPanel
@@ -480,10 +557,7 @@ export function WorkflowCanvasFrame(props: Parameters<typeof useWorkflowCanvasCo
             />
             <Suspense
               fallback={
-                <LoadingState
-                  compact
-                  className="loading-state--panel"
-                />
+                <LoadingState compact className="loading-state--panel" />
               }
             >
               <NodeDetailPanel
@@ -506,10 +580,7 @@ export function WorkflowCanvasFrame(props: Parameters<typeof useWorkflowCanvasCo
           >
             <Suspense
               fallback={
-                <LoadingState
-                  compact
-                  className="loading-state--panel"
-                />
+                <LoadingState compact className="loading-state--panel" />
               }
             >
               <ApplicationEnvironmentVariablesPanel
@@ -531,10 +602,7 @@ export function WorkflowCanvasFrame(props: Parameters<typeof useWorkflowCanvasCo
           >
             <Suspense
               fallback={
-                <LoadingState
-                  compact
-                  className="loading-state--panel"
-                />
+                <LoadingState compact className="loading-state--panel" />
               }
             >
               <VersionHistoryPanel
