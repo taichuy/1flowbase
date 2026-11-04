@@ -7,6 +7,36 @@ use serde_json::json;
 use uuid::Uuid;
 
 #[test]
+fn start_output_structure_rejects_duplicates_and_malformed_arrays_for_both_flow_families() {
+    for node_type in ["start", "workflow_start"] {
+        for outputs in [json!([{"key":"name"}]), json!(null), json!({}), json!("[]")] {
+            let document =
+                json!({"graph":{"nodes":[{"id":"entry","type":node_type,"outputs":outputs}]}});
+            let error = crate::flow::validate_flow_draft_structure(&document).unwrap_err();
+            assert_eq!(error.node_id.as_deref(), Some("entry"));
+            assert!(error.to_string().contains("outputs must be empty"));
+        }
+        assert!(crate::flow::validate_flow_draft_structure(
+            &json!({"graph":{"nodes":[{"type":node_type}]}})
+        )
+        .is_err());
+        let schema = crate::flow::flow_node_document_schema(node_type).unwrap();
+        assert_eq!(schema["properties"]["outputs"]["maxItems"], 0);
+        assert_eq!(schema["required"], json!(["outputs"]));
+    }
+}
+
+#[test]
+fn start_output_structure_preserves_incomplete_drafts_and_regular_node_outputs() {
+    let document = json!({"graph":{"nodes":[
+        {"id":"entry","type":"workflow_start","outputs":[],"config":{"input_fields":[{"key":"name"}]}},
+        {"id":"unfinished","type":"http_request","config":{},"outputs":[{"key":"body"}]}
+    ],"edges":[]}});
+    crate::flow::validate_flow_draft_structure(&document).unwrap();
+    assert!(crate::flow::flow_node_document_schema("http_request").is_none());
+}
+
+#[test]
 fn default_flow_document_uses_v2_prompt_messages_contract() {
     let document = default_flow_document(Uuid::now_v7());
 

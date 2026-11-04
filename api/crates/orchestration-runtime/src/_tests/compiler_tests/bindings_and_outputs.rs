@@ -524,6 +524,29 @@ fn compile_rejects_legacy_start_outputs() {
 }
 
 #[test]
+fn workflow_compiler_rejects_explicit_start_outputs_with_node_diagnostics() {
+    let flow_id = Uuid::now_v7();
+    let mut document = workflow_document(flow_id);
+    let start = document["graph"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["type"] == "workflow_start")
+        .unwrap();
+    let start_id = start["id"].as_str().unwrap().to_owned();
+    start["outputs"] = json!([{"key":"name","title":"Name","valueType":"string"}]);
+    let error = FlowCompiler::compile_workflow(flow_id, "draft-1", &document, &compile_context())
+        .unwrap_err();
+    let diagnostics = &error
+        .downcast_ref::<orchestration_runtime::compiler::FlowValidationError>()
+        .unwrap()
+        .diagnostics;
+    assert_eq!(diagnostics[0].node_id.as_deref(), Some(start_id.as_str()));
+    assert_eq!(diagnostics[0].field_path, "/outputs");
+    assert_eq!(diagnostics[0].expected, Some(json!([])));
+}
+
+#[test]
 fn compile_agent_flow_rejects_workflow_start_and_end_nodes() {
     let flow_id = Uuid::now_v7();
     let document = workflow_document(flow_id);

@@ -2,6 +2,14 @@ use super::*;
 
 #[async_trait]
 pub trait FlowRepository: Send + Sync {
+    /// Read exactly one version without bootstrapping editor state or writing history.
+    async fn load_flow_version_document(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        version_id: Uuid,
+    ) -> anyhow::Result<Option<serde_json::Value>>;
+
     async fn get_or_create_editor_state(
         &self,
         workspace_id: Uuid,

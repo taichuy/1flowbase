@@ -16,6 +16,7 @@ pub(super) fn compile_node(
 ) -> Result<CompiledNode> {
     let node_id = required_string(node, "id")?.to_string();
     let node_type = required_string(node, "type")?.to_string();
+    domain::flow::validate_flow_node_structure(node).map_err(FlowValidationError::from)?;
     let alias = required_string(node, "alias")?.to_string();
     let container_id = optional_string(node, "containerId")?.map(str::to_string);
     let mut config = node
@@ -83,9 +84,6 @@ pub(super) fn compile_node(
     }
     if node_type == "variable_aggregator" {
         validate_variable_aggregator_contract(&node_id, &bindings, &outputs)?;
-    }
-    if node_type == "start" && !outputs.is_empty() {
-        bail!("start node {node_id} outputs must be empty");
     }
     if node_type == "unresolved_node" {
         compile_issues.push(CompileIssue {

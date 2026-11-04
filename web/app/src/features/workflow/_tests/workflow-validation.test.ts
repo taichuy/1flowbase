@@ -3,8 +3,40 @@ import { describe, expect, test } from 'vitest';
 import { createDefaultWorkflowDocument } from '@1flowbase/flow-schema';
 
 import { validateWorkflowDocument } from '../lib/validate-document';
+import '../register';
 
 describe('validateWorkflowDocument', () => {
+  test('reports invalid start outputs without crashing the editor variable catalog', () => {
+    const document = createDefaultWorkflowDocument({ flowId: 'flow-1' });
+    document.graph.nodes[0].config.input_fields = [
+      {
+        key: 'customer_id',
+        label: 'Customer',
+        inputType: 'text',
+        valueType: 'string',
+        required: true
+      }
+    ];
+    document.graph.nodes[0].outputs = [
+      { key: 'customer_id', title: 'Customer', valueType: 'string' }
+    ];
+    document.graph.nodes[1].bindings.customer_id = {
+      kind: 'selector',
+      value: ['node-workflow-start', 'customer_id']
+    };
+    document.graph.nodes[1].outputs = [
+      { key: 'customer_id', title: 'Customer', valueType: 'string' }
+    ];
+    expect(validateWorkflowDocument(document)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          nodeId: 'node-workflow-start',
+          fieldKey: 'outputs',
+          level: 'error'
+        })
+      ])
+    );
+  });
   test('AC-005 accepts one workflow start and at least one workflow end', () => {
     const document = createDefaultWorkflowDocument({ flowId: 'flow-1' });
 

@@ -2,6 +2,12 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+mod validation;
+pub use validation::{
+    flow_node_document_schema, validate_flow_draft_structure, validate_flow_node_structure,
+    FlowDocumentValidationError,
+};
+
 pub use crate::system_defaults::flow_document::{FLOW_SCHEMA_VERSION, WORKFLOW_SYNC_TIMEOUT_MS};
 pub use crate::system_defaults::runtime_policy::FLOW_AUTOSAVE_INTERVAL_SECONDS;
 
