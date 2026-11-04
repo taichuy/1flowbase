@@ -44,8 +44,21 @@ if [[ ${RESOURCE_LIMITS_BLOCKING_PID_FILE:-} ]]; then
   printf '%s\n' "$$" >"$RESOURCE_LIMITS_BLOCKING_PID_FILE"
   exec sleep 30
 fi
+if [[ ${RESOURCE_LIMITS_EXEC_CARGO:-} == 1 ]]; then
+  while (( $# > 0 )) && [[ $1 != -- ]]; do shift; done
+  [[ ${1:-} == -- ]] || exit 2
+  shift
+  exec "$@"
+fi
 EOF
 chmod +x "$mock_bin/systemd-run"
+
+cat >"$test_root/real-cargo" <<'EOF'
+#!/usr/bin/env bash
+printf 'MALLOC_CONF_SET=%s\nMALLOC_CONF=%s\n' "${MALLOC_CONF+x}" "${MALLOC_CONF-}" \
+  >"${RESOURCE_LIMITS_CARGO_ENV_LOG:?}"
+EOF
+chmod +x "$test_root/real-cargo"
 
 common_env=(
   RESOURCE_LIMITS_SYSTEMD_USER_DIR="$systemd_dir"
@@ -84,6 +97,35 @@ test -x "$bin_dir/oneflowbase-resource-budget"
 grep -Fq 'set-property --runtime dev.slice MemoryHigh=infinity MemoryMax=infinity MemorySwapMax=infinity CPUQuota=' "$systemctl_log"
 grep -Fq "set-property --runtime dev-rust.slice MemoryHigh=$rust_high MemoryMax=$rust_max MemorySwapMax=1G CPUQuota=1000% IOWeight=10" \
   "$systemctl_log"
+
+# Inspect the environment actually received by fake Cargo, including the
+# already-budgeted direct-exec path. Explicit empty values are caller choices.
+for active_budget in 0 1; do
+  for allocator_case in unset explicit empty; do
+    allocator_env=()
+    expected_malloc_conf=dirty_decay_ms:0
+    case $allocator_case in
+      explicit)
+        expected_malloc_conf=dirty_decay_ms:1000,muzzy_decay_ms:500
+        allocator_env+=("MALLOC_CONF=$expected_malloc_conf")
+        ;;
+      empty)
+        expected_malloc_conf=
+        allocator_env+=(MALLOC_CONF=)
+        ;;
+    esac
+    cargo_env_log="$test_root/cargo-env-$active_budget-$allocator_case.log"
+    env -u MALLOC_CONF PATH="$mock_bin:$PATH" \
+      RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
+      RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$test_root/allocator-run.log" \
+      RESOURCE_LIMITS_EXEC_CARGO=1 RESOURCE_LIMITS_CARGO_ENV_LOG="$cargo_env_log" \
+      CARGO_MEMORY_BUDGET_ACTIVE="$active_budget" "${allocator_env[@]}" \
+      "$bin_dir/cargo" test
+    grep -Fxq 'MALLOC_CONF_SET=x' "$cargo_env_log"
+    grep -Fxq "MALLOC_CONF=$expected_malloc_conf" "$cargo_env_log"
+    printf 'allocator env passed: active=%s case=%s\n' "$active_budget" "$allocator_case"
+  done
+done
 
 # Ordinary Cargo/pnpm commands must not enter the optional heavy-job queue.
 cp "$bin_dir/dev-heavy-run" "$test_root/installed-heavy-run"

@@ -101,6 +101,12 @@ Docker 数据库不属于用户级开发组。
 90% 要求整机内存和 swap 比例同时超过阈值；不是 swap 硬上限。
 用 `sudo oomctl dump` 验证监控范围；这些设置不豁免内核 OOM 或 cgroup 硬上限。
 
+受限配置生成的本地 Cargo 包装器在调用者未设置 `MALLOC_CONF` 时，默认导出
+`MALLOC_CONF=dirty_decay_ms:0`，让使用相应 jemalloc 配置的编译器更早归还已释放的页；
+代价可能是增加 purge CPU 开销，实际内存效果取决于工作负载。调用者显式设置的值
+（包括空字符串）原样保留；已由上层纳入资源预算的 Cargo 调用也遵循此默认值。
+此设置仅属于本地受限包装器。
+
 Cargo 和 pnpm 不再自动进入统一排队，可以并行执行。
 `dev-heavy-run COMMAND ...` 仅保留为显式选择的串行工具，不影响普通构建入口。
 父组内存无限额时，该可选工具仅用整机 MemAvailable 至少 25% 判断内存余量。
