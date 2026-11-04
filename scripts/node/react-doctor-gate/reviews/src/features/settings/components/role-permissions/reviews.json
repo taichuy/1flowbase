@@ -1,36 +1,52 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/settings/components/role-permissions/SortablePolicyTable.tsx","sha256":"66934259b16b69e28c48c7680db2588a2f97fb278d08892613057b8a8a51ba8d"}]
+    [{"file":"web/app/src/features/settings/components/role-permissions/SortablePolicyTable.tsx","sha256":"1e0361a13fe6b806e0022b3ee5681c5459bd9a45d440cb419905849dc92769f4"}]
   ],
   "reviews": [
     {
       "file": "web/app/src/features/settings/components/role-permissions/RoleDataPolicySection.tsx",
       "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "d133189dbb8c87a1311dc5a59637dc0737f478a81e76406061b1844d8e572e93",
-      "reason": "The size diagnostic identifies RoleDataPolicyDraft, the private owner of one role data-policy edit/submission lifecycle. RoleDataPolicySection keys that owner by roleCode. Only locally edited fields and their revisions are retained; untouched fields follow the current server snapshot. Readiness requires a matching returned role_code and loaded model data, and mutation/submission gates check readiness and edit permission. Success publishes the saved snapshot and retires only submitted revisions so later edits survive. These concrete boundaries explain the cohesive owner; the previous claim that drafts lacked role/readiness guards is contradicted by current source, not a current product defect.",
-      "evidence": [{"file":"web/app/src/features/settings/_tests/role-permission-panel/role-permission-panel.fixtures.tsx","sha256":"b5e5a247a7e38e6cf9758ab0b57cff0de21592e5a7b392d05ed9520628f251af"},{"file":"web/app/src/features/settings/_tests/role-permission-panel/role-permission-panel-policy-and-data.test.tsx","sha256":"f091c0fe810cddaa2f901a2c0542a8e28f20f2811f4ab4e343741722583fa348"},{"file":"web/app/src/features/settings/_tests/role-permission-panel/role-permission-panel.test.tsx","sha256":"c7044ae570d55ff98f29dc415ef99bdd482d8e22e79d259364e45215d469b57d"},{"file":"web/app/src/features/settings/components/RolePermissionPanel.tsx","sha256":"cd4782344698cc8bf89378ad01ff8b100667e1139f908746ea211288b48f8cc9"},{"file":"web/app/src/features/settings/components/role-permissions/useRolePermissionController.tsx","sha256":"f0f3da88aef615de721b238917371bf27915ebe1e3766b8d0d1b019c1d62539a"},{"file":"web/app/src/features/settings/components/role-permissions/role-permission-tabs.ts","sha256":"b1601ca69f3a583e3b248cb882d1100bcdf5b4589b217d4c82e0c558f3332da0"},{"file":"web/app/src/features/settings/components/role-permissions/RoleDataPolicySection.tsx","sha256":"d133189dbb8c87a1311dc5a59637dc0737f478a81e76406061b1844d8e572e93"},{"file":"web/app/src/features/settings/_tests/role-permission-panel/data-policy-draft.test.tsx","sha256":"8da3e0c5e79320c4a0d29dd423ab8758bc5521c5a5614b8aa85403dd588d3721"},{"file":"web/app/src/features/settings/_tests/role-permission-panel/data-policy-save-revisions.test.tsx","sha256":"d8999659b4b13dc73c8f2d02765382a3a11e96932858bc7f027084dd7282fbdb"}]
+      "sourceSha256": "6194ac6324c4c3f1799882c7632ebe49fbb3838f526c067040301832537a4cbf",
+      "reason": "The size diagnostic identifies RoleDataPolicyDraft, the private owner of one role data-policy edit/submission lifecycle. RoleDataPolicySection keys that owner by roleCode. Only locally edited fields and their revisions are retained; untouched fields follow the current server snapshot. Readiness requires a matching returned role_code and loaded model data, and mutation/submission gates check readiness and edit permission. Success publishes the saved snapshot and retires only submitted revisions so later edits survive. These concrete boundaries explain the cohesive owner; the previous claim that drafts lacked role/readiness guards is contradicted by current source, not a current product defect. Reassessed 2026-11-03: system_all is now a view-only scope; update/delete use narrower write-scope types. Fixed option lists filter by action before label/value projection; role-keyed readiness and saved-revision draft ownership remain.",
+      "evidence": [{"file":"web/app/src/features/settings/_tests/role-permission-panel/role-permission-panel.fixtures.tsx","sha256":"b5e5a247a7e38e6cf9758ab0b57cff0de21592e5a7b392d05ed9520628f251af"},{"file":"web/app/src/features/settings/_tests/role-permission-panel/role-permission-panel-policy-and-data.test.tsx","sha256":"9dea231dd0187fff4845581702c67a121c92e0c336a32127243d99913943e000"},{"file":"web/app/src/features/settings/_tests/role-permission-panel/role-permission-panel.test.tsx","sha256":"bc34964739de3d5bc9490a07d6f2b0ae299f57e7526fe03356ec6b19e9184d4c"},{"file":"web/app/src/features/settings/components/RolePermissionPanel.tsx","sha256":"cd4782344698cc8bf89378ad01ff8b100667e1139f908746ea211288b48f8cc9"},{"file":"web/app/src/features/settings/components/role-permissions/useRolePermissionController.tsx","sha256":"14bc33664ffc724cbfb573c7ae8d28a569a444800e8371fb77af535f4840c86d"},{"file":"web/app/src/features/settings/components/role-permissions/role-permission-tabs.ts","sha256":"b1601ca69f3a583e3b248cb882d1100bcdf5b4589b217d4c82e0c558f3332da0"},{"file":"web/app/src/features/settings/components/role-permissions/RoleDataPolicySection.tsx","sha256":"6194ac6324c4c3f1799882c7632ebe49fbb3838f526c067040301832537a4cbf"},{"file":"web/app/src/features/settings/_tests/role-permission-panel/data-policy-draft.test.tsx","sha256":"43fba9bb89ddc1465f9484163c23515b07550df896613328aa822323f7d130b9"},{"file":"web/app/src/features/settings/_tests/role-permission-panel/data-policy-save-revisions.test.tsx","sha256":"d8999659b4b13dc73c8f2d02765382a3a11e96932858bc7f027084dd7282fbdb"}]
     },
     {
       "file": "web/app/src/features/settings/components/role-permissions/SortablePolicyTable.tsx",
       "rule": "react-doctor/no-multi-comp",
-      "sourceSha256": "66934259b16b69e28c48c7680db2588a2f97fb278d08892613057b8a8a51ba8d",
-      "reason": "The components are cohesive private provider/consumer or explicitly separate scene fixtures; no shared state/lifecycle defect is identified. SortablePolicyTable keeps sortable row, drag handle and table together because they share the private row-handle context and DndContext provider contract. These are cohesive cooperating components, not unrelated exports. useContext is supported in React 19.",
+      "sourceSha256": "1e0361a13fe6b806e0022b3ee5681c5459bd9a45d440cb419905849dc92769f4",
+      "reason": "The components are cohesive private provider/consumer or explicitly separate scene fixtures; no shared state/lifecycle defect is identified. SortablePolicyTable keeps sortable row, drag handle and table together because they share the private row-handle context and DndContext provider contract. These are cohesive cooperating components, not unrelated exports. useContext is supported in React 19. Reassessed 2026-11-03: A private reorder context propagates roles.console_settings_order.replace and pending/disabled state to row, handle and drag-end. Module-level context consumers remain cohesive and supported in React 19.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/role-permissions/SortablePolicyTable.tsx",
       "rule": "react-doctor/no-react19-deprecated-apis",
-      "sourceSha256": "66934259b16b69e28c48c7680db2588a2f97fb278d08892613057b8a8a51ba8d",
-      "reason": "The installed rule labels this a migration hint. The API remains supported; ref/context ABI is intentional. SortablePolicyTable keeps sortable row, drag handle and table together because they share the private row-handle context and DndContext provider contract. These are cohesive cooperating components, not unrelated exports. useContext is supported in React 19.",
+      "sourceSha256": "1e0361a13fe6b806e0022b3ee5681c5459bd9a45d440cb419905849dc92769f4",
+      "reason": "The installed rule labels this a migration hint. The API remains supported; ref/context ABI is intentional. SortablePolicyTable keeps sortable row, drag handle and table together because they share the private row-handle context and DndContext provider contract. These are cohesive cooperating components, not unrelated exports. useContext is supported in React 19. Reassessed 2026-11-03: A private reorder context propagates roles.console_settings_order.replace and pending/disabled state to row, handle and drag-end. Module-level context consumers remain cohesive and supported in React 19.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/role-permissions/console-policy-catalog-table.tsx",
       "rule": "react-doctor/js-combine-iterations",
-      "sourceSha256": "9ed3110c19d918457d675dfe7c175f5f0b5b09c5e22bcfd510fba6a94ffd2677",
-      "reason": "The displayed source uses two linear semantic stages (select valid/authorized items, then project payload/UI) with no repeated expensive effect; original ordering and identity are intentional. policyTableRows filters catalogGroups by kind and only then assigns display_key to the filtered display order. SortablePolicyTable uses this display order; combining passes with the original catalog index would change drag/reorder positions. It is a linear projection, not repeated expensive lookup.",
-      "evidence": [{"file":"web/app/src/features/settings/_tests/role-permission-panel/role-permission-panel.fixtures.tsx","sha256":"b5e5a247a7e38e6cf9758ab0b57cff0de21592e5a7b392d05ed9520628f251af"},{"file":"web/app/src/features/settings/_tests/role-permission-panel/role-permission-panel-policy-and-data.test.tsx","sha256":"f091c0fe810cddaa2f901a2c0542a8e28f20f2811f4ab4e343741722583fa348"},{"file":"web/app/src/features/settings/_tests/role-permission-panel/role-permission-panel.test.tsx","sha256":"c7044ae570d55ff98f29dc415ef99bdd482d8e22e79d259364e45215d469b57d"}]
+      "sourceSha256": "10390d53b2c0dbcf53e1c33ab9e49e0f37f18ea914b1a538286a6affab2d121a",
+      "reason": "The displayed source uses two linear semantic stages (select valid/authorized items, then project payload/UI) with no repeated expensive effect; original ordering and identity are intentional. policyTableRows filters catalogGroups by kind and only then assigns display_key to the filtered display order. SortablePolicyTable uses this display order; combining passes with the original catalog index would change drag/reorder positions. It is a linear projection, not repeated expensive lookup. Reassessed 2026-11-03: Policy inspection remains enabled for a selected role; reorder consumes canReorder/isPending from its owner. Catalog kind filtering then display-index projection still determines drag order.",
+      "evidence": [{"file":"web/app/src/features/settings/_tests/role-permission-panel/role-permission-panel.fixtures.tsx","sha256":"b5e5a247a7e38e6cf9758ab0b57cff0de21592e5a7b392d05ed9520628f251af"},{"file":"web/app/src/features/settings/_tests/role-permission-panel/role-permission-panel-policy-and-data.test.tsx","sha256":"9dea231dd0187fff4845581702c67a121c92e0c336a32127243d99913943e000"},{"file":"web/app/src/features/settings/_tests/role-permission-panel/role-permission-panel.test.tsx","sha256":"bc34964739de3d5bc9490a07d6f2b0ae299f57e7526fe03356ec6b19e9184d4c"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/role-permissions/RoleDataPolicySection.tsx",
+      "rule": "react-doctor/js-combine-iterations",
+      "sourceSha256": "6194ac6324c4c3f1799882c7632ebe49fbb3838f526c067040301832537a4cbf",
+      "reason": "defaultPolicyScopes is a fixed three-entry option catalog; filtering excludes system_all from update/delete before projecting label/value for one action Select. The view action intentionally retains system_all, matching separate read/write scope types and the analogous model-override filter. These pure bounded passes preserve option order and do no I/O or repeated per-record scanning; fusing is an allocation choice, not a demonstrated policy error. data-policy-draft tests explicitly exercise default and per-model view/update/delete, save system_all only for view and retain ordinary write scopes, including authorized non-root managers. Reassessed 2026-11-03; no runtime pass is claimed here.",
+      "evidence": [
+        {
+          "file": "web/app/src/features/settings/_tests/role-permission-panel/data-policy-draft.test.tsx",
+          "sha256": "43fba9bb89ddc1465f9484163c23515b07550df896613328aa822323f7d130b9"
+        },
+        {
+          "file": "web/app/src/features/settings/api/identity-access/roles.ts",
+          "sha256": "b1315c6f6808367beeddef04c1da21673c7742d5add9c58bfb39e59379f38116"
+        }
+      ]
     }
   ]
 }

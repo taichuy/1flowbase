@@ -414,8 +414,10 @@ describe('billing settings panels', () => {
     useAuthStore.setState({ actor: { ...state.actor!, effective_display_role: 'readonly.audit.20261102' }, me: { ...state.me!, effective_display_role: 'readonly.audit.20261102', permissions: permissions as string[] } });
     await renderWithProviders(<PricingCatalogPanel />);
     await screen.findByText('zero');
-    expect(screen.getByRole('button', { name: /安装当前页/ })).toHaveProperty('disabled', !canImport);
-    expect(screen.getByRole('button', { name: /同\s*步/ })).toHaveProperty('disabled', !canSync);
+    if (canImport) expect(screen.getByRole('button', { name: /安装当前页/ })).toBeEnabled();
+    else expect(screen.getByRole('button', { name: /安装当前页/ })).toBeDisabled();
+    if (canSync) expect(screen.getByRole('button', { name: /同\s*步/ })).toBeEnabled();
+    else expect(screen.getByRole('button', { name: /同\s*步/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /刷新远程目录/ })).toBeEnabled();
     expect(billingApi.importSettingsPricingCatalog).not.toHaveBeenCalled();
     expect(billingApi.syncSettingsPricingCatalog).not.toHaveBeenCalled();

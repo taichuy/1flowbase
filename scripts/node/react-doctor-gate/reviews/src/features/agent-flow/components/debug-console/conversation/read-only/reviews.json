@@ -4,12 +4,20 @@
     {
       "file": "web/app/src/features/agent-flow/components/debug-console/conversation/read-only/ReadOnlyConversationInput.tsx",
       "rule": "react-doctor/no-uncontrolled-input",
-      "sourceSha256": "54e3796863f62c0ad830c0b565a050c966cccd1da16b7a5a6b69ff8e6bd2616c",
-      "reason": "This textarea is deliberately disabled with an empty controlled value in the shared read-only conversation-history surface. It has no editable draft or submit path; native disabled semantics intentionally prevent typing. The warning assumes users should be able to edit the field, which conflicts with this component contract. Conversation-management tests mount the history shell with the read-only input, while this source fixes disabled/value explicitly.",
+      "sourceSha256": "2272f97b08bf437de28250224582641314480376b18ee2459a695bffb99617f4",
+      "reason": "History input now composes the shared DebugComposer with disabled=true, empty controlled value, false activity flags and module-level no-op callbacks. Model/reasoning metadata move into its footerActions slot. No editable input or send mutation is introduced. The component intentionally has no editable draft/send path. Its controlled disabled Sender contract is shared with history viewers; this is not an accidentally uncontrolled editable field. The focused read-only composer tests assert disabled input and send, ignored Enter/click, metadata in the footer and no interactive model selector.",
       "evidence": [
         {
           "file": "web/app/src/features/settings/pages/notifications/_tests/communication-management.test.tsx",
           "sha256": "51c7d7d1105d02df6ec5c8c4a83e7b2c3df0a4a35696168d55fa71c32066a1af"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/components/debug-console/conversation/DebugComposer.tsx",
+          "sha256": "b9d2e14c079484d8c4f1201f912e0ec183f14bcafe6864536632b99ed32e52cc"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/debug-console/conversation/read-only-conversation-input.test.tsx",
+          "sha256": "a20b7257c15bf46510c6845b1fcc6e0f53f7c2ad684de9e1b429ced881056790"
         }
       ]
     }

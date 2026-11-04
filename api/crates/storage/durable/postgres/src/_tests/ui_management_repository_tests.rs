@@ -444,7 +444,9 @@ async fn component_pages_preserve_search_order_bodies_and_one_snapshot_without_o
             perform pg_advisory_xact_lock_shared(9271, lock_id);
             return body;
         end $$;
-        create view ui_component_records as select id, scope_id, component_code, name,
+        create view ui_component_records as select
+            owner_plugin_id, owner_contribution_code, owner_installation_id,
+            id, scope_id, component_code, name,
             page_metadata(description, {lock_id}) as description,
             page_source(import_code, component_code) as import_code,
             page_source(source_code, component_code) as source_code,
@@ -465,7 +467,7 @@ async fn component_pages_preserve_search_order_bodies_and_one_snapshot_without_o
         .await
         .unwrap();
     let reader = PgControlPlaneStore::new(store.pool().clone());
-    let page_task = tokio::spawn(async move {
+    let mut page_task = tokio::spawn(async move {
         reader
             .list_ui_component_records_page(ListUiComponentRecordsQuery {
                 plugin_contribution_ids: None,
@@ -480,7 +482,12 @@ async fn component_pages_preserve_search_order_bodies_and_one_snapshot_without_o
             let waiting: bool = sqlx::query_scalar("select exists(select 1 from pg_locks where locktype = 'advisory' and classid = 9271 and objid = $1::int::oid and not granted)")
                 .bind(lock_id).fetch_one(&mut *writer).await.unwrap();
             if waiting { break; }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            tokio::select! {
+                result = &mut page_task => {
+                    panic!("reader completed before reaching the metadata lock: {result:?}");
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => {}
+            }
         }
     }).await.expect("reader must reach the metadata snapshot");
     sqlx::query("update component_page_fixture set name = 'ZZ changed', source_code = 'new source' where component_code = 'taichuy.paging.item-00'")

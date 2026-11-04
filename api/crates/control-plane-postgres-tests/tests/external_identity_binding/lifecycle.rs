@@ -298,6 +298,163 @@ async fn unlink_reserves_owner_blocks_signup_and_only_explicit_owner_binding_res
 }
 
 #[tokio::test]
+async fn methods_view_preserves_dto_order_and_unlink_counterexamples() {
+    const OTHER_AUTHORITY: &str = "managed:fixture/alternate:github-alternate";
+    let (store, _, _) = seed_store().await;
+    let mut a = external_entry(&store).await;
+    let mut b = a.clone();
+    b.id = Uuid::now_v7();
+    b.connection_id = Uuid::now_v7();
+    b.auth_type = "github-alternate".into();
+    store.upsert_login_entry(&b).await.unwrap();
+    let (actor, ia) = external_member(&store, &a, "view-a").await;
+    let ib = canonical(&b, "view-b", "view-b@example.com")
+        .with_authority_namespace(OTHER_AUTHORITY.into())
+        .unwrap();
+    let retired = canonical(&a, "view-retired", "view-retired@example.com");
+    let kernel = AuthKernel::new(
+        store.clone(),
+        SessionIssuer::new(
+            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            7,
+        ),
+    );
+    for identity in [ib.clone(), retired.clone()] {
+        kernel
+            .bind_external_identity(&actor, identity)
+            .await
+            .unwrap();
+    }
+    let mut ids = Vec::new();
+    for identity in [&ia, &ib, &retired] {
+        ids.push(
+            store
+                .find_external_identity_binding(identity)
+                .await
+                .unwrap()
+                .unwrap()
+                .identity_id,
+        );
+    }
+    let service = AuthenticationMethodsService::new(store.clone());
+    let all = vec![AUTHORITY.to_owned(), OTHER_AUTHORITY.to_owned()];
+    // Two subjects sharing one authority are two usable methods, not one.
+    let shared = service
+        .read(actor.user_id, &[AUTHORITY.to_owned()])
+        .await
+        .unwrap();
+    assert!(!shared.password_usable);
+    assert_eq!(shared.bindings.len(), 3);
+    assert!(shared.bindings.iter().all(|binding| binding.can_unlink));
+    service
+        .initialize_password(&actor, ids[0], PASSWORD_HASH, &all)
+        .await
+        .unwrap();
+    service.unlink(&actor, ids[2], &all).await.unwrap();
+
+    // Explicit expected p_i and can_unlink_i for [a, b, retired]. In particular,
+    // an unavailable target may be removed when another live method remains;
+    // a retained unlinked identity must never count as that alternative.
+    let cases = [
+        (
+            false,
+            true,
+            true,
+            all.clone(),
+            [true, true, true],
+            [true, true, false],
+        ),
+        (
+            false,
+            true,
+            true,
+            vec![AUTHORITY.to_owned()],
+            [true, false, true],
+            [false, true, false],
+        ),
+        (false, true, true, vec![], [false; 3], [false; 3]),
+        (
+            false,
+            true,
+            false,
+            all.clone(),
+            [true, false, true],
+            [false, true, false],
+        ),
+        (
+            false,
+            false,
+            true,
+            all.clone(),
+            [false, true, false],
+            [true, false, false],
+        ),
+        (false, false, false, all.clone(), [false; 3], [false; 3]),
+        (
+            false,
+            true,
+            true,
+            vec![AUTHORITY.to_owned(), AUTHORITY.to_owned()],
+            [true, false, true],
+            [false, true, false],
+        ),
+        (true, false, false, vec![], [false; 3], [true, true, false]),
+    ];
+    for (password, a_enabled, b_enabled, available, providers, unlinkable) in cases {
+        sqlx::query("update users set password_hash=$2 where id=$1")
+            .bind(actor.user_id)
+            .bind(if password { PASSWORD_HASH } else { "!" })
+            .execute(store.pool())
+            .await
+            .unwrap();
+        a.enabled = a_enabled;
+        b.enabled = b_enabled;
+        store.upsert_login_entry(&a).await.unwrap();
+        store.upsert_login_entry(&b).await.unwrap();
+        let snapshot = store
+            .authentication_methods_snapshot(actor.user_id)
+            .await
+            .unwrap();
+        let mut expected = Vec::new();
+        for binding in snapshot.bindings {
+            let index = ids
+                .iter()
+                .position(|id| *id == binding.identity_id)
+                .unwrap();
+            let mut dto = serde_json::to_value(&binding).unwrap();
+            let fields = dto.as_object_mut().unwrap();
+            fields.remove("user_id");
+            fields.remove("entry_enabled");
+            fields.insert(
+                "provider_available".into(),
+                serde_json::json!(providers[index]),
+            );
+            fields.insert("can_unlink".into(), serde_json::json!(unlinkable[index]));
+            let reason = if index == 2 {
+                Some("external_identity_unlinked")
+            } else if !unlinkable[index] {
+                Some("last_usable_authentication_method")
+            } else {
+                None
+            };
+            fields.insert("unlink_blocked_reason".into(), serde_json::json!(reason));
+            expected.push(dto);
+        }
+        assert_eq!(expected.len(), 3);
+        let view = service.read(actor.user_id, &available).await.unwrap();
+        assert_eq!(
+            serde_json::to_value(view).unwrap(),
+            serde_json::json!({
+                "password_configured": password,
+                "password_usable": password,
+                "bindings": expected,
+            }),
+            "password={password}, entries=({a_enabled},{b_enabled}), authorities={available:?}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn parallel_unlinks_keep_one_live_method_and_ignore_sentinel_contact_and_inactive_provider() {
     let (store, _, _) = seed_store().await;
     let a = external_entry(&store).await;
@@ -353,6 +510,14 @@ async fn parallel_unlinks_keep_one_live_method_and_ignore_sentinel_contact_and_i
         .contains("last_usable_authentication_method"));
     b.enabled = true;
     store.upsert_login_entry(&b).await.unwrap();
+    let before = service.read(actor.user_id, &available).await.unwrap();
+    assert_eq!(before.bindings.len(), 2);
+    assert!(before
+        .bindings
+        .iter()
+        .all(|binding| binding.provider_available
+            && binding.can_unlink
+            && binding.unlink_blocked_reason.is_none()));
     let (first, second) = tokio::join!(
         service.unlink(&actor, one.identity_id, &available),
         service.unlink(&actor, two.identity_id, &available)
@@ -365,6 +530,19 @@ async fn parallel_unlinks_keep_one_live_method_and_ignore_sentinel_contact_and_i
     let bound: i64 = sqlx::query_scalar("select count(*) from user_auth_identities where user_id=$1 and connection_id<>$2 and state='bound'")
         .bind(actor.user_id).bind(domain::PASSWORD_LOCAL_CONNECTION_ID).fetch_one(store.pool()).await.unwrap();
     assert_eq!(bound, 1);
+    let after = service.read(actor.user_id, &available).await.unwrap();
+    assert_eq!(after.bindings.len(), 2);
+    for binding in &after.bindings {
+        assert!(binding.provider_available && !binding.can_unlink);
+        assert_eq!(
+            binding.unlink_blocked_reason.as_deref(),
+            Some(if binding.state == "bound" {
+                "last_usable_authentication_method"
+            } else {
+                "external_identity_unlinked"
+            })
+        );
+    }
     let error = first.err().or_else(|| second.err()).unwrap();
     assert!(error
         .to_string()

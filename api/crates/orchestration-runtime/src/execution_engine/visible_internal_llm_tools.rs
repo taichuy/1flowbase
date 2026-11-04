@@ -1,4 +1,5 @@
 use super::*;
+use std::{future::Future, pin::Pin};
 
 mod branch_execution;
 mod callback_state;
@@ -84,21 +85,21 @@ fn commit_conversation_namespace(
     }
 }
 
-pub(super) async fn execute_llm_node_with_visible_internal_tools<I>(
-    plan: &CompiledPlan,
-    node: &CompiledNode,
-    resolved_inputs: &Map<String, Value>,
-    rendered_templates: &Map<String, Value>,
-    variable_pool: &mut Map<String, Value>,
-    runtime_context: &ExecutionRuntimeContext,
-    invoker: &I,
-) -> Result<LlmNodeExecution>
+pub(super) fn execute_llm_node_with_visible_internal_tools<'a, I>(
+    plan: &'a CompiledPlan,
+    node: &'a CompiledNode,
+    resolved_inputs: &'a Map<String, Value>,
+    rendered_templates: &'a Map<String, Value>,
+    variable_pool: &'a mut Map<String, Value>,
+    runtime_context: &'a ExecutionRuntimeContext,
+    invoker: &'a I,
+) -> Pin<Box<dyn Future<Output = Result<LlmNodeExecution>> + Send + 'a>>
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
     let tools = visible_internal_llm_tools(node);
     if tools.is_empty() {
-        return execute_llm_node_provider_round(
+        return Box::pin(execute_llm_node_provider_round(
             plan,
             node,
             resolved_inputs,
@@ -106,10 +107,36 @@ where
             variable_pool,
             runtime_context,
             invoker,
-        )
-        .await;
+        ));
     }
+    Box::pin(execute_visible_internal_llm_tool_rounds(
+        plan,
+        node,
+        resolved_inputs,
+        rendered_templates,
+        variable_pool,
+        runtime_context,
+        invoker,
+        tools,
+    ))
+}
 
+// Preserve explicit execution owners while keeping the tool loop off the
+// ordinary provider path's poll stack. Only the selected future is constructed.
+#[allow(clippy::too_many_arguments)]
+async fn execute_visible_internal_llm_tool_rounds<I>(
+    plan: &CompiledPlan,
+    node: &CompiledNode,
+    resolved_inputs: &Map<String, Value>,
+    rendered_templates: &Map<String, Value>,
+    variable_pool: &mut Map<String, Value>,
+    runtime_context: &ExecutionRuntimeContext,
+    invoker: &I,
+    tools: Vec<VisibleInternalLlmTool>,
+) -> Result<LlmNodeExecution>
+where
+    I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
+{
     let mut llm_variable_pool = variable_pool.clone();
     let mut visible_transcript =
         pending_llm_tool_callback_visible_internal_transcript(node, variable_pool)

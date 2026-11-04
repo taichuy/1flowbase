@@ -1,5 +1,6 @@
 import { describe, test, expect, vi } from 'vitest';
 import { domEvents } from './node-inspector.fixtures';
+import { authenticateEditor } from '../fixtures/editor-auth';
 import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
 import {
   DocumentObserver,
@@ -191,6 +192,7 @@ describe('NodeInspector core', () => {
   }, 10000);
 
   test('updates node identity through header interactions instead of mutating document inline', async () => {
+    authenticateEditor(['save_draft'], 'member');
     let latestDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
 
     await renderWithProviders(

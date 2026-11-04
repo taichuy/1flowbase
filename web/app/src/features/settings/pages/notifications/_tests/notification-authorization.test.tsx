@@ -1,6 +1,5 @@
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -142,7 +141,6 @@ beforeEach(() => {
   );
 });
 afterEach(async () => {
-  cleanup();
   await act(async () => {
     await appI18n.changeLanguage('zh_Hans');
     resetAuthStore();
@@ -623,15 +621,22 @@ test.each([
     const path = new URL(input, 'http://localhost').pathname;
     return respond(path.endsWith('/types') ? [type] : [{ ...instance, status: 'enabled', available: true }]);
   }));
+  let view: ReturnType<typeof render> | undefined;
   try {
-    await renderSettled(<QueryClientProvider client={client}><NotificationsPage /></QueryClientProvider>);
+    view = await renderSettled(<QueryClientProvider client={client}><NotificationsPage /></QueryClientProvider>);
     await screen.findByRole('button', { name: '我的渠道' });
-    expect(screen.getByRole('button', { name: /新\s*增/ }).hasAttribute('disabled')).toBe(!createEnabled);
-    expect(screen.getByRole('switch', { name: '我的渠道: 状态' }).hasAttribute('disabled')).toBe(!updateEnabled);
-    expect(screen.getByRole('button', { name: /删\s*除/ }).hasAttribute('disabled')).toBe(!deleteEnabled);
+    const createButton = screen.getByRole('button', { name: /新\s*增/ });
+    if (createEnabled) expect(createButton).toBeEnabled();
+    else expect(createButton).toBeDisabled();
+    const updateSwitch = screen.getByRole('switch', { name: '我的渠道: 状态' });
+    if (updateEnabled) expect(updateSwitch).toBeEnabled();
+    else expect(updateSwitch).toBeDisabled();
+    const deleteButton = screen.getByRole('button', { name: /删\s*除/ });
+    if (deleteEnabled) expect(deleteButton).toBeEnabled();
+    else expect(deleteButton).toBeDisabled();
     expect(screen.getByRole('button', { name: '我的渠道' })).toBeEnabled();
   } finally {
-    cleanup();
+    view?.unmount();
     await client.cancelQueries();
     client.clear();
     window.history.replaceState({}, '', '/');

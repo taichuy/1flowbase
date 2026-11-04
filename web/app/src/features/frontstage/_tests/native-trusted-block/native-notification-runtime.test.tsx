@@ -74,9 +74,12 @@ describe('native block notification effect scope', () => {
         ctx={createContext()}
       />
     );
-    const shadowRoot = await waitFor(() => root.shadowRoot as ShadowRoot);
+    const shadowRoot = await waitFor(() => {
+      expect(root.shadowRoot).not.toBeNull();
+      return root.shadowRoot as ShadowRoot;
+    });
     fireEvent.click(
-      within(shadowRoot as unknown as HTMLElement).getByRole('button', {
+      await within(shadowRoot as unknown as HTMLElement).findByRole('button', {
         name: 'Open notification'
       })
     );
@@ -148,9 +151,12 @@ describe('native block notification effect scope', () => {
         ctx={createContext()}
       />
     );
-    const shadowRoot = await waitFor(() => root.shadowRoot as ShadowRoot);
+    const shadowRoot = await waitFor(() => {
+      expect(root.shadowRoot).not.toBeNull();
+      return root.shadowRoot as ShadowRoot;
+    });
     fireEvent.click(
-      within(shadowRoot as unknown as HTMLElement).getByRole('button', {
+      await within(shadowRoot as unknown as HTMLElement).findByRole('button', {
         name: 'Open Hook notification'
       })
     );

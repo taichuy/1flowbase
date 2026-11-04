@@ -145,7 +145,7 @@ vi.mock(
 
 import * as runtimeApi from '../../features/agent-flow/api/runtime';
 
-function authenticate() {
+function authenticate(permissions = ['application.view.all']) {
   useAuthStore.getState().setAuthenticated({
     csrfToken: 'csrf-123',
     actor: {
@@ -164,7 +164,7 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'member',
-      permissions: ['application.view.all']
+      permissions
     }
   });
 }
@@ -496,6 +496,7 @@ describe('application shell routing', () => {
   test(
     'keeps orchestration draft save enabled when application api capability is planned',
     async () => {
+      authenticate(['application.view.all', 'save_draft']);
       const desktopBreakpoints = vi
         .spyOn(Grid, 'useBreakpoint')
         .mockReturnValue({ lg: true } as never);

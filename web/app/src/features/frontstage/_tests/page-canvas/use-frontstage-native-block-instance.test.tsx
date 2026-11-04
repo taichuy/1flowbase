@@ -632,11 +632,11 @@ describe('PageCanvas declarative Native block lifecycle', () => {
           ])}
         />
       );
-      const firstPublish = contexts.at(-1)!.outputs.publish;
       const retry = await screen.findByRole('button', {
         name: (name) =>
           name.replace(/\s/gu, '') === i18nText('frontstage', 'auto.retry')
       });
+      const firstPublish = contexts.at(-1)!.outputs.publish;
       shouldThrow = false;
       fireEvent.click(retry);
 

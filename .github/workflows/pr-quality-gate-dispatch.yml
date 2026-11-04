@@ -1,0 +1,44 @@
+name: opt-in PR complete quality gate
+
+on:
+  pull_request:
+    types: [labeled, synchronize]
+
+# No full runner budget is spent until a maintainer labels an in-repo PR.
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: opt-in-pr-quality-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dispatch:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (
+        (github.event.action == 'labeled' && github.event.label.name == 'quality-gate') ||
+        (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'quality-gate'))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch complete quality gate for the exact PR candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_REF: ${{ github.event.pull_request.head.ref }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          TARGET_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(gh api "repos/$TARGET_REPO/git/ref/heads/$CANDIDATE_REF" --jq '.object.sha')"
+          if [[ "$actual_sha" != "$CANDIDATE_SHA" ]]; then
+            echo "Candidate ref changed before full quality dispatch" >&2
+            exit 1
+          fi
+          gh workflow run quality-gate.yml --repo "$TARGET_REPO" --ref "$CANDIDATE_REF" \
+            -f target_branch="$CANDIDATE_REF" -f candidate_sha="$CANDIDATE_SHA" \
+            -f scope=ci -f batch_mode=full -f react_doctor_base="$BASE_SHA"

@@ -77,7 +77,7 @@ fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_prior
         .await;
         let mut initial = responses_body(false);
         initial["tools"] = json!([{
-            "type": "function", "name": "lookup_inventory", "strict": true,
+            "type": "function", "name": "lookup_inventory", "strict": false,
             "parameters": {
                 "type": "object",
                 "properties": {"sku": {"type": "string"}},
@@ -106,7 +106,7 @@ fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_prior
         .expect("published API key should resolve its actor");
         let callbacks = state
             .store
-            .find_native_responses_callbacks_by_response_id(
+            .find_semantic_responses_callbacks_by_response_id(
                 actor.workspace_id,
                 actor.application_id,
                 actor.api_key_id,
@@ -122,6 +122,10 @@ fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_prior
         );
         let callback_task_id = callbacks[0].id;
         assert_eq!(callbacks[0].status, domain::CallbackTaskStatus::Pending);
+        assert_eq!(
+            callbacks[0].request_payload["responses_round"]["response_id"],
+            created["id"]
+        );
         let before = flow_run_count(state.as_ref()).await;
         let response = post_openai_responses(
             &app,
@@ -192,7 +196,7 @@ fn local_summary_with_pending_native_callback_starts_new_run_and_supersedes_pred
         });
         let mut initial = responses_body(false);
         initial["tools"] = json!([{
-            "type": "function", "name": "lookup_inventory", "strict": true,
+            "type": "function", "name": "lookup_inventory", "strict": false,
             "parameters": {
                 "type": "object", "properties": {"sku": {"type": "string"}},
                 "required": ["sku"], "additionalProperties": false
@@ -229,7 +233,7 @@ fn local_summary_with_pending_native_callback_starts_new_run_and_supersedes_pred
         .unwrap();
         let callbacks = state
             .store
-            .find_native_responses_callbacks_by_response_id(
+            .find_semantic_responses_callbacks_by_response_id(
                 actor.workspace_id,
                 actor.application_id,
                 actor.api_key_id,
@@ -241,6 +245,10 @@ fn local_summary_with_pending_native_callback_starts_new_run_and_supersedes_pred
         assert_eq!(callbacks.len(), 1);
         let predecessor = &callbacks[0];
         assert_eq!(predecessor.status, domain::CallbackTaskStatus::Pending);
+        assert_eq!(
+            predecessor.request_payload["responses_round"]["response_id"],
+            created["id"]
+        );
         let before = flow_run_count(state.as_ref()).await;
 
         let summary_metadata = json!({

@@ -523,8 +523,10 @@ describe('ApplicationApiPage', () => {
         name: '创建 Key'
       });
       const revokeButton = within(dialog).getByRole('button', { name: '删除' });
-      expect(createButton).toHaveProperty('disabled', !create);
-      expect(revokeButton).toHaveProperty('disabled', !revoke);
+      if (create) expect(createButton).toBeEnabled();
+      else expect(createButton).toBeDisabled();
+      if (revoke) expect(revokeButton).toBeEnabled();
+      else expect(revokeButton).toBeDisabled();
       expect(screen.getByRole('switch')).toBeDisabled();
       if (!create) await click(createButton);
       if (!revoke) await click(revokeButton);

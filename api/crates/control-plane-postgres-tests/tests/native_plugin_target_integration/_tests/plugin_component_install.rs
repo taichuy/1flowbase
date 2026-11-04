@@ -53,6 +53,7 @@ pub(super) fn package(
         manifest.push_str(&format!(
             r#"  - contribution_code: view-{index}
     title: View {index}
+    ui_registration: component
     runtime: native_react
     entry: View{index}
     code_template: |

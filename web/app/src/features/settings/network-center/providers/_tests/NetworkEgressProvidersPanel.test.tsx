@@ -208,7 +208,9 @@ describe('NetworkEgressProvidersPanel', () => {
     networkCenterApi.fetchSettingsNetworkEgressOfficialPluginCatalog.mockResolvedValue({ entries: [{ plugin_id: 'test', provider_code: 'test', display_name: 'Test plugin', latest_version: '2', has_update: true, install_status: 'not_installed', help_url: 'https://example.com/docs' }] });
     renderPanel();
     await screen.findByRole('button', { name: /Test proxy.*更新|Test proxy.*update/i });
-    expect(screen.getByRole('button', { name: /Test proxy.*更新|Test proxy.*update/i }).hasAttribute('disabled')).toBe(!installGranted);
+    const updateButton = screen.getByRole('button', { name: /Test proxy.*更新|Test proxy.*update/i });
+    if (installGranted) expect(updateButton).toBeEnabled();
+    else expect(updateButton).toBeDisabled();
     expect(screen.getByRole('button', { name: /上传插件|Upload plugin/i })).toBeDisabled();
     expect(screen.getByRole('combobox', { name: /Test proxy.*版本|Test proxy.*version/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Test proxy.*卸载|Test proxy.*uninstall/i })).toBeDisabled();

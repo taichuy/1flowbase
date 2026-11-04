@@ -56,7 +56,7 @@ describe('console-frontend-blocks client', () => {
       disable_reason: null
     } satisfies ConsoleFrontendBlockCatalogEntry;
 
-    expect(entry).not.toHaveProperty('code_modules');
+    expect(entry.code_modules).toEqual([]);
     expect(entry.isolated_entry_asset).toBeNull();
   });
 });

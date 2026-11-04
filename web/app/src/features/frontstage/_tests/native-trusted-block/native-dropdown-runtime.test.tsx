@@ -68,9 +68,11 @@ describe('native block Dropdown runtime adapter', () => {
       return root.shadowRoot as ShadowRoot;
     });
 
-    await domEvents.click(within(shadowRoot as unknown as HTMLElement).getByRole('button', {
-        name: 'Open menu'
-      }));
+    const trigger = await within(shadowRoot as unknown as HTMLElement).findByRole(
+      'button',
+      { name: 'Open menu' }
+    );
+    await domEvents.click(trigger);
 
     const layer = await waitFor(() => {
       const node = shadowRoot.querySelector<HTMLElement>(

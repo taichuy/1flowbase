@@ -7,16 +7,16 @@
     {
       "file": "web/app/src/features/settings/pages/notifications/communications/CommunicationBindingForm.tsx",
       "rule": "react-doctor/no-chain-state-updates",
-      "sourceSha256": "35c8898ad38157238bbc55a872e421a86fd7535d6e1368771bd30bb4effd3529",
-      "reason": "The one binding effect initializes an editable draft from async backend binding/default/plugin-tool data only while dirty is false. User edits set dirty and the draft together; once dirty, refreshed catalogue/binding data cannot overwrite unsaved settings. There is no chain of effects depending on each other setters. Binding tests cover reopened persisted values, application changes retaining toggles, missing declarations and rejected save draft retention.",
-      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx","sha256":"75c01544b924244a0e37cc4ebcb956061e200a35345d51d445b77638f86fa789"}]
+      "sourceSha256": "5dcda5aad20b1cbf353c40bf22b124ea8a91ef3658614be3831559735111d023",
+      "reason": "The one binding effect initializes an editable draft from async backend binding/default/plugin-tool data only while dirty is false. User edits set dirty and the draft together; once dirty, refreshed catalogue/binding data cannot overwrite unsaved settings. There is no chain of effects depending on each other setters. Binding tests cover reopened persisted values, application changes retaining toggles, missing declarations and rejected save draft retention. Reassessed 2026-11-03: communications.binding.update gates edits and imperative save. Async binding/default hydration still runs only before dirty edits; read-only saved configuration remains visible.",
+      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx","sha256":"d4f557acfa0ea4880dc5605fb18348a1d5af858f823eede8c9a9989c249c0da7"}]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/communications/CommunicationBindingForm.tsx",
       "rule": "react-doctor/no-react19-deprecated-apis",
-      "sourceSha256": "35c8898ad38157238bbc55a872e421a86fd7535d6e1368771bd30bb4effd3529",
-      "reason": "React 19 still supports forwardRef; this typed form exposes validate/save via useImperativeHandle to the parent channel drawer, which persists the instance before saving its binding. Replacing forwardRef with a ref prop is an optional representation change, not a repair to the imperative protocol. The parent validates and awaits the same handle, and binding tests cover its canonical saved fields.",
-      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx","sha256":"75c01544b924244a0e37cc4ebcb956061e200a35345d51d445b77638f86fa789"},{"file":"web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx","sha256":"4223c595138d26face4414db0c792452fb7e4b16deb08268d896c89bc59d222a"}]
+      "sourceSha256": "5dcda5aad20b1cbf353c40bf22b124ea8a91ef3658614be3831559735111d023",
+      "reason": "React 19 still supports forwardRef; this typed form exposes validate/save via useImperativeHandle to the parent channel drawer, which persists the instance before saving its binding. Replacing forwardRef with a ref prop is an optional representation change, not a repair to the imperative protocol. The parent validates and awaits the same handle, and binding tests cover its canonical saved fields. Reassessed 2026-11-03: communications.binding.update gates edits and imperative save. Async binding/default hydration still runs only before dirty edits; read-only saved configuration remains visible.",
+      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx","sha256":"d4f557acfa0ea4880dc5605fb18348a1d5af858f823eede8c9a9989c249c0da7"},{"file":"web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx","sha256":"937ddd8341f43e2bde2a11ae64e8b24105d7b4c6ff42e009d2a5a3408fc68d92"}]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/communications/CommunicationHistory.tsx",

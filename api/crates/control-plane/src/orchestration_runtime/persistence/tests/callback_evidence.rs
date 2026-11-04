@@ -37,35 +37,8 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
         .await
         .unwrap();
     for index in 0..3 {
-        service
-            .repository
-            .append_usage_ledger(&crate::ports::AppendUsageLedgerInput {
-                flow_run_id: run.id,
-                node_run_id: Some(node.id),
-                span_id: None,
-                failover_attempt_id: None,
-                provider_instance_id: None,
-                gateway_route_id: None,
-                model_id: None,
-                upstream_model_id: None,
-                upstream_request_id: None,
-                input_tokens: Some((index + 1) * 11),
-                output_tokens: Some((index + 1) * 3),
-                total_tokens: Some((index + 1) * 14),
-                cached_input_tokens: None,
-                reasoning_output_tokens: None,
-                input_cache_hit_tokens: Some(index * 2),
-                input_cache_miss_tokens: None,
-                cache_read_tokens: None,
-                cache_write_tokens: None,
-                price_snapshot: None,
-                cost_snapshot: None,
-                usage_status: domain::UsageLedgerStatus::Recorded,
-                raw_usage: json!({}),
-                normalized_usage: json!({}),
-            })
-            .await
-            .unwrap();
+        // The trace writer owns this invocation’s usage ledger entry. Adding an
+        // unrelated manual ledger entry here would count the same usage twice.
         let payload =
             json!({"tool_calls":[{"id":format!("call-{index}"),"name":"read","arguments":{}}]});
         let mut node_trace = trace(&node.node_id, payload.clone(), None);

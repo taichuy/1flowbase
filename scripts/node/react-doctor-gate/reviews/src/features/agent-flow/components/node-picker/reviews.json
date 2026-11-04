@@ -17,11 +17,11 @@
         },
         {
           "file": "web/app/src/features/agent-flow/_tests/editor/editor-shortcuts.test.tsx",
-          "sha256": "8d088e4428217fdbb5a0f009be9b1918b8e7ff5f99b0f791175b132d0f8482ce"
+          "sha256": "8d6c245718e43ef9531cd7bbca42ea290009d5b6e60ac37c84949fa594cc98a1"
         },
         {
           "file": "web/app/src/features/agent-flow/hooks/interactions/use-editor-shortcuts.ts",
-          "sha256": "7709d506d810a87fe1c9c78412a487aef2168d7da074a55ed27230f2ed17f5d9"
+          "sha256": "2484310cbb043d4d3da1fcc65f4e21125d6992952656fffa6982df82ebe12607"
         }
       ]
     }

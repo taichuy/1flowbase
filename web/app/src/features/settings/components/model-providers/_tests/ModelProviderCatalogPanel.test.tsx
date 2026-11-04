@@ -110,8 +110,10 @@ describe('ModelProviderCatalogPanel', () => {
     render(<ModelProviderCatalogPanel overviewRows={[]} entries={[installedFamily]} currentCatalogEntries={{}} onCreate={vi.fn()} onViewInstances={onViewInstances} onUpgradeLatest={vi.fn()} onSwitchVersion={vi.fn()} onUninstall={vi.fn()} />);
     const create = screen.getByRole('button', { name: '新增' });
     const remove = screen.getByRole('button', { name: '卸载' });
-    expect(create).toHaveProperty('disabled', !canCreate);
-    expect(remove).toHaveProperty('disabled', !canDelete);
+    if (canCreate) expect(create).toBeEnabled();
+    else expect(create).toBeDisabled();
+    if (canDelete) expect(remove).toBeEnabled();
+    else expect(remove).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '管理' }));
     expect(onViewInstances).toHaveBeenCalledWith(installedFamily);
   });

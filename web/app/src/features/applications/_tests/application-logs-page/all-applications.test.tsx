@@ -2,6 +2,7 @@ import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import { preferenceWriteCases, setPreferenceActor } from '../../../../test/fixtures/preference-auth';
 import { App } from 'antd';
 import {
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -100,7 +101,11 @@ beforeEach(async () => {
   });
 });
 
-afterEach(() => { resetAuthStore(); vi.restoreAllMocks(); });
+afterEach(() => {
+  cleanup();
+  resetAuthStore();
+  vi.restoreAllMocks();
+});
 
 test('opens each row with its own application and retains its owner when the row leaves the page', async () => {
   mount();

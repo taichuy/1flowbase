@@ -343,16 +343,13 @@ describe('SettingsAuthCenterSection lifecycle', () => {
         </AppProviders>
       );
       const row = (await screen.findByText('Staff Password')).closest('tr')!;
-      expect(within(row).getByRole('switch')).toHaveProperty(
-        'disabled',
-        !enabled
-      );
+      if (enabled) expect(within(row).getByRole('switch')).toBeEnabled();
+      else expect(within(row).getByRole('switch')).toBeDisabled();
       const deleteButton = within(row).getByRole('button', { name: '删除' });
-      expect(deleteButton).toHaveProperty('disabled', !remove);
-      expect(screen.getByRole('button', { name: '新增' })).toHaveProperty(
-        'disabled',
-        !create
-      );
+      if (remove) expect(deleteButton).toBeEnabled();
+      else expect(deleteButton).toBeDisabled();
+      if (create) expect(screen.getByRole('button', { name: '新增' })).toBeEnabled();
+      else expect(screen.getByRole('button', { name: '新增' })).toBeDisabled();
       expect(within(row).getByRole('button', { name: '编辑' })).toBeEnabled();
       expect(within(row).getByRole('button', { name: 'UI' })).toBeEnabled();
       if (!enabled) fireEvent.click(within(row).getByRole('switch'));
