@@ -117,7 +117,11 @@ test('backend package, target and filter selections reach Cargo with configured 
 test('backend rejects unsupported or incomplete selections before starting any runner', async () => {
   const invalid = [
     [['domain'], /Unsupported backend test argument/u],
-    [['--workspace'], /Unsupported backend test argument/u],
+    [['--workspace', '-p', 'domain'], /mutually exclusive/u],
+    [['--package', 'domain', '--workspace'], /mutually exclusive/u],
+    [['--workspace', '--lib', '--test', 'api_config'], /Only one backend test target/u],
+    [['--workspace', '--exact'], /--exact requires --filter/u],
+    [['--workspace', '--test'], /Missing value/u],
     [['--package'], /Missing value/u],
     [['--package', '--lib'], /Missing value/u],
     [['--package', ''], /Missing value/u],
@@ -181,5 +185,28 @@ test('backend help documents selection without running the gate', async () => {
   assert.equal(ran, false);
   assert.match(output, /Usage: node scripts\/node\/test-backend\.js/u);
   assert.match(output, /--package/u);
+  assert.match(output, /--workspace/u);
   assert.match(output, /--filter/u);
+});
+
+
+test('explicit workspace selections preserve native targets, filters and resource policy', async (t) => {
+  for (const targetArgs of [[], ['--lib'], ['--test', 'api_config'], ['--bin', 'api-server']]) {
+    const argv = ['--workspace', ...targetArgs, '--filter', 'config_tests::selected', '--exact'];
+    const result = await runFixture(t, argv);
+    assert.equal(result.status, 0);
+    const call = cargoCall(result);
+    assert.deepEqual(call.args, ['test', '--workspace', ...targetArgs, '--jobs', '5',
+      'config_tests::selected', '--', '--test-threads=2', '--exact']);
+    assert.equal(call.env.CARGO_BUILD_JOBS, '5');
+    assert.equal(call.env.CARGO_INCREMENTAL, '1');
+    assert.equal(result.calls.length, 2);
+    assert.equal(result.managedOptions.lockMode, 'heavy');
+  }
+  const workspace = await runFixture(t, ['--workspace']);
+  assert.deepEqual(cargoCall(workspace).args, ['test', '--workspace', '--jobs', '5', '--', '--test-threads=2']);
+  const empty = await runFixture(t, ['--workspace', '--test', 'api_config'], {
+    ...passingResult, stdout: 'test result: ok. 0 passed; 0 failed; 0 ignored;',
+  });
+  assert.equal(empty.status, 1);
 });

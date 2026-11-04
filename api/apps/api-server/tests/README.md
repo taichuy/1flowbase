@@ -18,8 +18,8 @@ supports `--test`; no additional test runner is required.
 From the repository root / 在仓库根目录执行：
 
 ```bash
-node scripts/node/test-backend.js --package api-server --test api_config
-node scripts/node/test-backend.js --package api-server --test api_config --filter parse_bind_addr
+node scripts/node/test-backend.js --workspace --test api_config
+node scripts/node/test-backend.js --workspace --test api_config --filter parse_bind_addr
 ```
 
 Each entry mounts the original test leaf under `src/_tests` and links the ordinary
@@ -46,3 +46,19 @@ Run the test CLI for behavioral evidence; a zero-test success is not accepted.
 
 `reset-rust-cache/cli.js --warmup-only` 保留缓存和服务，预编译所选 workspace 的全部测试目标；
 它不执行测试。行为验证使用测试 CLI，并继续拒绝零用例成功。
+
+For these extracted targets, prefer explicit `--workspace --test <target>` to reuse the
+workspace warmup feature graph while selecting only the named test target. Root's
+unit-graph inspection at `130ff3b97fb9f39f8977529e55b23b220daa66c2` found one test root
+and 570 units for `--workspace --test api_config`, all a subset of the workspace
+`--all-targets` graph. Package-only `-p api-server --test api_config` lacked Tokio's
+`test-util` feature and could rebuild dependencies. This is repository-specific evidence,
+not a guarantee across Cargo versions, target names or future dependency changes.
+`--workspace` and `--package`/`-p` are mutually exclusive; package selection remains available.
+
+这些独立目标优先用显式 `--workspace --test <target>`，在只选择指定测试目标的同时复用
+workspace 全量预热的 feature 图。Root 在上述冻结提交的 unit-graph 取证中确认：
+`--workspace --test api_config` 只有 1 个测试 root、570 个 units，全部为 workspace
+`--all-targets` 图的子集；仅 `-p api-server --test api_config` 缺少 Tokio `test-util`，
+可能导致依赖重编。此结论只绑定当前仓库取证，不泛化到其他 Cargo 版本、目标或后续依赖变化。
+`--workspace` 与 `--package`/`-p` 互斥；原 package 选择继续可用。
