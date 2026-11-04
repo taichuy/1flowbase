@@ -10,17 +10,25 @@ function fixture({ code = 0, failure, pressure, hold = false } = {}) {
   const proc = new EventEmitter();
   proc.pid = 123; proc.execPath = '/usr/bin/node';
   const calls = [];
+  const writes = [];
+  let nowMs = 0;
   let ticks;
   let closed = false;
   const child = new EventEmitter();
   child.kill = (signal) => { calls.push(['launcher-kill', signal]); if (!closed) { closed = true; child.emit('close', null, signal); } };
   const runtime = {
     process: proc, nonce: () => 'aaaaaaaaaaaaaaaaaaaaaaaa',
+    now: () => nowMs,
     os: { cpus: () => Array(16).fill({}), availableParallelism: () => 12, totalmem: () => 16 * 2 ** 30 },
     read: (file) => {
       if (file === '/proc/self/cgroup') return '0::' + parent;
       if (file === '/proc/meminfo') return 'MemTotal: 1000 kB\nMemAvailable: ' + (pressure === 'low' ? 90 : 500) + ' kB';
-      if (file.endsWith('memory.pressure') || file === '/proc/pressure/memory') return 'some avg10=0.00 avg60=0.00\nfull avg10=' + (pressure === 'psi' ? '30.0' : '0.0') + ' avg60=0.0';
+      if (file.endsWith('memory.pressure') || file === '/proc/pressure/memory') {
+        const host = file === '/proc/pressure/memory';
+        const high = pressure === (host ? 'psi' : 'scope-psi');
+        const total = pressure === (host ? 'total-host' : 'total-scope') ? nowMs * 200 : 0;
+        return 'some avg10=0.00 avg60=0.00 total=0\nfull avg10=' + (high ? '30.0' : '0.0') + ' avg60=0.0 total=' + total;
+      }
       if (failure === 'controller' && file.endsWith('memory.swap.max')) throw new Error('missing swap controller');
       if (file.endsWith('cpu.max')) return 'max 100000';
       if (file.endsWith('memory.max') || file.endsWith('memory.swap.max')) return 'max';
@@ -39,8 +47,10 @@ function fixture({ code = 0, failure, pressure, hold = false } = {}) {
         if (failure === 'spawn') child.emit('error', new Error('systemd-run missing'));
         else if (!hold && !pressure) { closed = true; child.emit('close', code, null); }
         else {
-          const count = pressure === 'psi' ? 4 : 3;
-          for (let i = 0; i < count; i++) ticks();
+          const count = pressure === 'low' || !pressure ? 3 : 4;
+          for (let i = 0; i < count; i++) { nowMs += 1000; ticks(); }
+          // Low availability no longer closes the child through an abort.
+          if (pressure === 'low' && !closed) { closed = true; child.emit('close', code, null); }
         }
       });
       return child;
@@ -48,11 +58,11 @@ function fixture({ code = 0, failure, pressure, hold = false } = {}) {
     setInterval: (fn) => { ticks = fn; return 4; },
     clearInterval: (id) => { calls.push(['clear', id]); },
   };
-  return { runtime, calls, child, proc };
+  return { runtime, calls, writes, child, proc };
 }
 function run(f, extra = {}) {
   return runInResourceScope({
-    argv: [], env: {}, platform: 'linux', write: () => {},
+    argv: [], env: {}, platform: 'linux', write: (text) => f.writes.push(text),
     run: () => assert.fail('parent must reexec before cleanup'), runtime: f.runtime, ...extra,
   });
 }
@@ -126,8 +136,16 @@ test('scope reexec preserves argv and lower cap, removes unverified public flag,
   }
 });
 
-test('sustained host memory or PSI pressure cancels only owned scope and returns failure', async () => {
-  for (const pressure of ['low', 'psi']) {
+test('low headroom warns and preserves natural status while host/scope PSI still abort only owned scope', async () => {
+  // Retire only the former low-only kill expectation; kernel caps and severe PSI remain enforced.
+  for (const code of [0, 17]) {
+    const f = fixture({ pressure: 'low', code });
+    assert.equal(await run(f), code);
+    assert.equal(f.calls.some(([name]) => name === 'launcher-kill'), false);
+    assert.equal(f.writes.filter((line) => /warning:.*below 10%/.test(line)).length, 1);
+    assert.ok(f.calls.filter(([name]) => name === 'kill' || name === 'stop').every((args) => args.at(-1) === unit));
+  }
+  for (const pressure of ['psi', 'scope-psi', 'total-host', 'total-scope']) {
     const f = fixture({ pressure });
     assert.equal(await run(f), 1);
     assert.ok(f.calls.some(([name]) => name === 'launcher-kill'));
@@ -158,17 +176,188 @@ test('non-Linux and CI retain normal behavior without creating user scope', asyn
   }
 });
 
-test('pressure requires consecutive samples and refuses unsupported monitoring', () => {
-  let available = 500;
-  const read = (file) => file === '/proc/meminfo'
-    ? 'MemTotal: 1000 kB\nMemAvailable: ' + available + ' kB'
-    : 'full avg10=0.0 avg60=0.0';
-  const sample = pressureMonitor(read);
-  available = 90; assert.equal(sample(), null); assert.equal(sample(), null);
-  available = 500; assert.equal(sample(), null);
-  available = 90; assert.equal(sample(), null); assert.equal(sample(), null);
-  assert.match(sample(), /3 consecutive/);
+test('low availability warns once on entry and recovery without aborting or log flooding', () => {
+  const f = pressureFixture();
+  f.data.available = 90;
+  for (let i = 0; i < 10; i++) { f.data.time = i * 1000; assert.equal(f.sample(), null); }
+  assert.equal(f.warnings.length, 1);
+  assert.match(f.warnings[0], /below 10%/);
+  f.data.available = 500; f.data.time = 10000; assert.equal(f.sample(), null);
+  f.data.time = 11000; assert.equal(f.sample(), null);
+  assert.equal(f.warnings.length, 2); assert.match(f.warnings[1], /recover/i);
+  f.data.available = 90; f.data.time = 12000; assert.equal(f.sample(), null);
+  assert.equal(f.warnings.length, 3);
   assert.throws(() => pressureMonitor(() => '')(), /availability/);
+});
+
+function pressureFixture() {
+  const data = { time: 0, available: 500, host: { avg10: 0, total: 10 ** 12 }, scope: { avg10: 0, total: 10 ** 12 } };
+  const warnings = [];
+  const read = (file) => {
+    if (file === '/proc/meminfo') {
+      if (data.memError) throw data.memError;
+      return data.memText ?? 'MemTotal: 1000 kB\nMemAvailable: ' + data.available + ' kB';
+    }
+    const host = file === '/proc/pressure/memory';
+    if (data[host ? 'hostError' : 'scopeError']) throw data[host ? 'hostError' : 'scopeError'];
+    const value = data[host ? 'host' : 'scope'];
+    return value.raw ?? 'full avg10=' + value.avg10 + ' avg60=0.00 avg300=0.00 total=' + value.total;
+  };
+  return { data, warnings, sample: pressureMonitor(read, parent + '/' + unit, {
+    now: () => data.time, warn: (message) => warnings.push(message),
+  }) };
+}
+
+test('avg10 retains the original shared host/scope maximum and four consecutive samples', () => {
+  for (const source of ['host', 'scope']) {
+    const f = pressureFixture();
+    f.data[source].avg10 = 19.99; assert.equal(f.sample(), null);
+    f.data[source].avg10 = 20;
+    for (let i = 1; i <= 3; i++) { f.data.time = i * 100; assert.equal(f.sample(), null); }
+    f.data[source].avg10 = 19.99; f.data.time = 400; assert.equal(f.sample(), null);
+    f.data[source].avg10 = 20;
+    for (let i = 5; i <= 7; i++) { f.data.time = i * 100; assert.equal(f.sample(), null); }
+    f.data.time = 800; assert.match(f.sample(), /PSI/);
+  }
+  const alternating = pressureFixture();
+  for (let i = 0; i < 4; i++) {
+    alternating.data.time = i * 100;
+    alternating.data.host.avg10 = i % 2 ? 0 : 20;
+    alternating.data.scope.avg10 = i % 2 ? 20 : 0;
+    if (i < 3) assert.equal(alternating.sample(), null);
+    else assert.match(alternating.sample(), /PSI/);
+  }
+});
+
+test('low avg10 total pressure uses actual complete window duration and the unchanged severe threshold', () => {
+  for (const source of ['host', 'scope']) {
+    const f = pressureFixture(); assert.equal(f.sample(), null);
+    // 249999us / 1.25s is below 20%; dividing by a fixed one second would falsely abort.
+    for (let i = 1; i <= 5; i++) {
+      f.data.time += 1250; f.data[source].total += 249999; assert.equal(f.sample(), null);
+    }
+    for (let i = 1; i <= 3; i++) {
+      f.data.time += 1250; f.data[source].total += 250000; assert.equal(f.sample(), null);
+    }
+    f.data.time += 1250; f.data[source].total += 250000; assert.match(f.sample(), /PSI/);
+  }
+});
+
+test('999ms observations accumulate into 1998ms windows without clearing severe window counts', () => {
+  const f = pressureFixture(); assert.equal(f.sample(), null);
+  for (let i = 1; i <= 7; i++) {
+    f.data.time = i * 999; f.data.host.total += 300000; assert.equal(f.sample(), null);
+  }
+  f.data.time = 8 * 999; f.data.host.total += 300000; assert.match(f.sample(), /PSI/);
+});
+
+test('late scope pressure windows survive host low windows and short observations', () => {
+  const f = pressureFixture();
+  f.data.scopeError = Object.assign(new Error('prestart'), { code: 'ENOENT' });
+  assert.equal(f.sample(), null);
+  delete f.data.scopeError; f.data.time = 999; assert.equal(f.sample(), null);
+  for (let i = 1; i <= 4; i++) {
+    f.data.time = 999 + i * 1000; f.data.scope.total = 10 ** 12 + i * 300000;
+    if (i === 4) assert.match(f.sample(), /PSI/);
+    else {
+      assert.equal(f.sample(), null);
+      f.data.time = 1000 + i * 1000; f.data.scope.total += 300; assert.equal(f.sample(), null);
+    }
+  }
+});
+
+test('a normal complete window resets its source count and avg10 recovery is independent', () => {
+  const f = pressureFixture(); assert.equal(f.sample(), null);
+  for (let i = 1; i <= 3; i++) {
+    f.data.time += 1000; f.data.host.total += 200000; assert.equal(f.sample(), null);
+  }
+  f.data.time += 1000; assert.equal(f.sample(), null);
+  for (let i = 1; i <= 3; i++) {
+    f.data.time += 1000; f.data.host.total += 200000; assert.equal(f.sample(), null);
+  }
+  f.data.time += 1000; f.data.host.total += 200000; assert.match(f.sample(), /PSI/);
+  const mixed = pressureFixture();
+  mixed.data.host.avg10 = 20; assert.equal(mixed.sample(), null);
+  mixed.data.time = 1000; mixed.data.host.total += 200000; assert.equal(mixed.sample(), null);
+  mixed.data.host.avg10 = 0; // avg10 recovers after two samples; total windows have their own count.
+  for (let i = 2; i <= 3; i++) {
+    mixed.data.time = i * 1000; mixed.data.host.total += 200000; assert.equal(mixed.sample(), null);
+  }
+  mixed.data.time = 4000; mixed.data.host.total += 200000; assert.match(mixed.sample(), /PSI/);
+});
+
+test('malformed memory and host/scope PSI data fail closed instead of becoming zero or NaN', () => {
+  for (const raw of ['', 'some avg10=0 total=0', 'full avg10=... total=0', 'full avg10=NaN total=0',
+    'full avg10=Infinity total=0', 'full avg10=-1 total=0', 'full avg10=100.01 total=0',
+    'full avg10=0', 'full avg10=0 total=-1', 'full avg10=0 total=1.5',
+    'full avg10=0 total=NaN', 'full avg10=0 total=9007199254740992', 'full avg10=0 avg10=1 total=0']) {
+    for (const source of ['host', 'scope']) {
+      const f = pressureFixture(); f.data[source].raw = raw; assert.throws(f.sample, /PSI/);
+    }
+  }
+  for (const raw of ['', 'MemTotal: 0 kB\nMemAvailable: 10 kB', 'MemTotal: 1000 kB\nMemAvailable: -1 kB',
+    'MemTotal: Infinity kB\nMemAvailable: 10 kB', 'MemTotal: 1000 kB\nMemAvailable: 10garbage kB',
+    'MemTotal: 1000 kB\nMemAvailable: 10 kB\nMemAvailable: 20 kB',
+    'MemTotal: 9007199254740992 kB\nMemAvailable: 10 kB']) {
+    const f = pressureFixture(); f.data.memText = raw; assert.throws(f.sample, /availability/);
+  }
+});
+
+test('clock invalidity or regression and any source total regression including a short window fail closed', () => {
+  for (const time of [NaN, Infinity, -1, '1000']) {
+    const f = pressureFixture(); f.data.time = time; assert.throws(f.sample, /clock/);
+  }
+  for (const time of [0, -1]) {
+    const f = pressureFixture(); f.sample(); f.data.time = time; assert.throws(f.sample, /clock/);
+  }
+  const backwards = pressureFixture(); backwards.data.time = 1000; backwards.sample();
+  backwards.data.time = 999; assert.throws(backwards.sample, /clock/);
+  for (const source of ['host', 'scope']) {
+    const f = pressureFixture(); f.sample();
+    f.data.time = 999; f.data[source].total += 500; assert.equal(f.sample(), null);
+    f.data.time = 1000; f.data[source].total -= 100; assert.throws(f.sample, /total.*regress/i);
+  }
+});
+
+test('only scope ENOENT and ENODEV races remain optional and never hide host monitoring errors', () => {
+  for (const code of ['ENOENT', 'ENODEV']) {
+    const f = pressureFixture(); f.sample();
+    f.data.time = 1000; f.data.scopeError = Object.assign(new Error('scope race'), { code });
+    assert.equal(f.sample(), null);
+    f.data.time = 2000; delete f.data.scopeError; assert.equal(f.sample(), null);
+    f.data.time = 3000; f.data.hostError = Object.assign(new Error('host failed'), { code });
+    assert.throws(f.sample, /host failed/);
+    const reappeared = pressureFixture(); reappeared.sample();
+    reappeared.data.time = 999; reappeared.data.scope.total += 500; reappeared.sample();
+    reappeared.data.time = 1000; reappeared.data.scopeError = Object.assign(new Error('scope race'), { code });
+    assert.equal(reappeared.sample(), null);
+    reappeared.data.time = 1999; delete reappeared.data.scopeError; reappeared.data.scope.total -= 100;
+    assert.throws(reappeared.sample, /total.*regress/i);
+  }
+  const f = pressureFixture(); f.data.scopeError = Object.assign(new Error('scope denied'), { code: 'EACCES' });
+  assert.throws(f.sample, /scope denied/);
+});
+
+test('monitor read failure prevents launch in preflight and drains only owned scope after launch', async () => {
+  const before = fixture(); const read = before.runtime.read;
+  before.runtime.read = (file) => file === '/proc/pressure/memory' ? 'full avg10=NaN total=0' : read(file);
+  await assert.rejects(run(before), /PSI/);
+  assert.equal(before.calls.some(([name]) => name === 'spawn'), false);
+  const after = fixture({ hold: true }); const valid = after.runtime.read; let reads = 0;
+  after.runtime.read = (file) => {
+    if (file === '/proc/pressure/memory' && ++reads > 1) throw new Error('host failed');
+    return valid(file);
+  };
+  assert.equal(await run(after), 1);
+  assert.ok(after.writes.some((line) => /resource monitor failed/.test(line)));
+  assert.ok(after.calls.filter(([name]) => name === 'kill' || name === 'stop').every((args) => args.at(-1) === unit));
+});
+
+test('natural terminal close does not perform an extra pressure decision', async () => {
+  const f = fixture(); let decisions = 0;
+  f.runtime.now = () => { decisions += 1; return decisions * 1000; };
+  assert.equal(await run(f), 0);
+  assert.equal(decisions, 1); // Preflight only: no terminal sample enters the monitor.
 });
 
 test('drain rejects unrelated scopes before issuing any signal', () => {

@@ -625,6 +625,11 @@ node scripts/node/reset-rust-cache/cli.js --warmup-only
 例如 20 个逻辑 CPU 的本地测试阶段为 `jobs=1`、CPU 预算 10，对应 `CPUQuota=1000%`，
 覆盖编译器与链接器内部线程，同时保留原有内存 scope。此额度不是 CPU 绑核，也不保证实际使用多个核心。
 多个 worktree 的聚合限制仍由原有 `dev-rust.slice` 承担；普通 Cargo 调用行为不变。
+Linux 清理/预热入口为本次任务建立独立 owned scope，核验半机 CPU/RAM、继承的更低上限和 swap=0，设置 MemoryHigh=90%，结束时只回收该 scope。
+主机 MemAvailable 低于 10% 时仅在进入与恢复时各告警一次，不凭低余量本身终止编译。
+异常内存压力仍独立中断：host/scope 的 full PSI avg10 最大值连续 4 次达到 20%，或任一来源的 full.total 在连续 4 个完整观测窗达到 20%。
+完整窗按单调时钟的实际间隔计算，至少 1 秒；不足 1 秒的采样累计到后续完整窗，host/scope 分别保留窗口与计数，终端取证不进入判定。
+主机监控读取或数据/时钟异常仍失败关闭；scope 正常创建/退出期间的 ENOENT/ENODEV 保持兼容。
 更新过该包装器源码的 Linux 环境需重新应用资源配置，才能识别这个单次预算；旧包装器会继续压回原上限。
 Linux 预热入口会优先使用 `~/.local/bin/cargo` 中由本项目生成的资源包装器，避免终端 PATH 顺序绕过配额；
 不存在本项目包装器时使用 PATH 中的 Cargo。Windows/macOS 保持原生 Cargo 调用，CPU 硬配额由对应平台管理。

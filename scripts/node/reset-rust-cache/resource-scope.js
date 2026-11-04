@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { performance } = require('node:perf_hooks');
 const { spawn, execFileSync } = require('node:child_process');
 const { isCiEnvironment } = require('../testing/verify-runtime.js');
 
@@ -15,6 +16,7 @@ const defaults = {
   }).trim(),
   spawn, process, os, setInterval, clearInterval, setTimeout, clearTimeout,
   nonce: () => crypto.randomBytes(12).toString('hex'),
+  now: () => performance.now(),
 };
 
 function cgroupPath(relative) {
@@ -82,29 +84,81 @@ function verifyScope(marker, env, runtime) {
   return { ...owner, cpu: actual.cpu, memory: actual.memory };
 }
 
-function pressureMonitor(read, scope) {
-  let low = 0;
-  let severe = 0;
-  return () => {
-    const info = Object.fromEntries(read('/proc/meminfo').split('\n').map((line) => {
-      const [key, value] = line.split(':'); return [key, Number.parseInt(value, 10)];
-    }));
-    if (!(info.MemTotal > 0) || !Number.isFinite(info.MemAvailable)) throw new Error('Cannot monitor host memory availability');
-    low = info.MemAvailable < info.MemTotal * 0.1 ? low + 1 : 0;
-    const full = (file) => {
-      const match = read(file).match(/^full\s+.*?\bavg10=([\d.]+)/m);
-      if (!match) throw new Error('Cannot monitor memory PSI');
-      return Number(match[1]);
+function pressureMonitor(read, scope, { now = () => performance.now(), warn = () => {} } = {}) {
+  let low = false;
+  let lastTime;
+  let avgHits = 0;
+  const sources = {};
+  const full = (file) => {
+    const lines = read(file).split('\n').filter((line) => /^full(?:\s|$)/.test(line));
+    if (lines.length !== 1) throw new Error('Cannot monitor memory PSI full data');
+    const fields = lines[0].trim().split(/\s+/).slice(1);
+    const number = (key, pattern) => {
+      const values = fields.filter((field) => field.startsWith(key + '='));
+      const value = values[0]?.slice(key.length + 1);
+      if (values.length !== 1 || !pattern.test(value)) throw new Error('Cannot monitor memory PSI ' + key);
+      return Number(value);
     };
+    const avg10 = number('avg10', /^\d+(?:\.\d+)?$/);
+    const total = number('total', /^\d+$/);
+    if (!Number.isFinite(avg10) || avg10 < 0 || avg10 > 100 || !Number.isSafeInteger(total)) {
+      throw new Error('Cannot monitor memory PSI avg10/total values');
+    }
+    return { avg10, total };
+  };
+  const observe = (name, value, time) => {
+    if (!sources[name]) {
+      sources[name] = { lastObservedTotal: value.total, anchorTime: time, anchorTotal: value.total, windowHits: 0 };
+      return;
+    }
+    const source = sources[name];
+    if (value.total < source.lastObservedTotal) throw new Error('Memory PSI ' + name + ' total regressed');
+    source.lastObservedTotal = value.total;
+    const dt = time - source.anchorTime;
+    // Keep both the anchor and count through short observations, including timer jitter.
+    if (dt >= 1000) {
+      const percent = (value.total - source.anchorTotal) / (dt * 1000) * 100;
+      if (!Number.isFinite(percent)) throw new Error('Cannot monitor memory PSI window');
+      source.windowHits = percent >= 20 ? source.windowHits + 1 : 0;
+      source.anchorTime = time;
+      source.anchorTotal = value.total;
+    }
+  };
+  return () => {
+    const time = now();
+    if (!Number.isFinite(time) || time < 0 || (lastTime !== undefined && time <= lastTime)) {
+      throw new Error('Invalid or non-increasing resource monitor clock');
+    }
+    const memory = read('/proc/meminfo').split('\n');
+    const amount = (key) => {
+      const lines = memory.filter((line) => line.startsWith(key + ':'));
+      const match = lines.length === 1 && lines[0].match(new RegExp('^' + key + ':\\s*(\\d+)[ \\t]+kB[ \\t]*$'));
+      const value = match && Number(match[1]);
+      if (!match || !Number.isSafeInteger(value)) throw new Error('Cannot monitor host memory availability');
+      return value;
+    };
+    const total = amount('MemTotal');
+    const available = amount('MemAvailable');
+    if (total <= 0) throw new Error('Cannot monitor host memory availability');
     const hostFull = full('/proc/pressure/memory');
-    let scopeFull = 0;
+    let scopeFull;
     if (scope) {
       try { scopeFull = full(path.join(cgroupPath(scope), 'memory.pressure')); }
       catch (error) { if (error.code !== 'ENOENT' && error.code !== 'ENODEV') throw error; }
     }
-    severe = Math.max(hostFull, scopeFull) >= 20 ? severe + 1 : 0;
-    if (low >= 3) return 'host MemAvailable below 10% for 3 consecutive samples';
-    if (severe >= 4) return 'memory full PSI avg10 >=20% for 4 consecutive samples';
+    observe('host', hostFull, time);
+    if (scopeFull) observe('scope', scopeFull, time);
+    avgHits = Math.max(hostFull.avg10, scopeFull?.avg10 ?? 0) >= 20 ? avgHits + 1 : 0;
+    const nextLow = available < total * 0.1;
+    if (nextLow !== low) warn(nextLow
+      ? 'host MemAvailable below 10%; continuing with memory PSI monitoring'
+      : 'host MemAvailable recovered to at least 10%');
+    low = nextLow;
+    lastTime = time;
+    if (avgHits >= 4) return 'memory full PSI avg10 >=20% for 4 consecutive samples';
+    if (Math.max(sources.host.windowHits, sources.scope?.windowHits ?? 0) >= 4) {
+      return 'memory full PSI total >=20% for 4 consecutive complete windows';
+    }
     return null;
   };
 }
@@ -154,7 +208,9 @@ async function runInResourceScope({
   const unit = 'rust-cache-reset-' + runtime.process.pid + '-' + runtime.nonce() + '.scope';
   const relative = parent + '/' + unit;
   const owner = { unit, parent, ...cap };
-  const monitor = pressureMonitor(runtime.read, relative);
+  const monitor = pressureMonitor(runtime.read, relative, {
+    now: runtime.now, warn: (message) => write('[1flowbase-reset-rust-cache] warning: ' + message + '\n'),
+  });
   // Check monitoring support before starting a scope or touching cache/services.
   monitor();
   write('[1flowbase-reset-rust-cache] creating ' + unit +
