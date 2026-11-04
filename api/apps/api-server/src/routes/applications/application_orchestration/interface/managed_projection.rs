@@ -5,6 +5,15 @@ impl InterfaceContract for ApplicationOrchestrationInput {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
             mp::object_schema([
+                ("variant", mp::tag_schema("AnalyzeDraft")),
+                ("application_id", mp::text_schema()),
+                ("document", mp::json_summary_schema()),
+                (
+                    "node_id",
+                    serde_json::json!({"anyOf":[mp::text_schema(), {"type":"null"}]}),
+                ),
+            ]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("Get")),
                 ("application_id", mp::text_schema()),
             ]),
@@ -102,6 +111,21 @@ impl InterfaceContract for ApplicationOrchestrationInput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
+            Self::AnalyzeDraft {
+                application_id,
+                body,
+            } => mp::object_value([
+                ("variant", serde_json::json!("AnalyzeDraft")),
+                ("application_id", mp::text(&application_id.to_string())?),
+                ("document", mp::json_summary(&body.document)),
+                (
+                    "node_id",
+                    match body.node_id.as_deref() {
+                        Some(node_id) => mp::text(node_id)?,
+                        None => serde_json::Value::Null,
+                    },
+                ),
+            ]),
             Self::Get {
                 application_id: _field_application_id,
                 ..
@@ -321,13 +345,19 @@ impl InterfaceContract for ApplicationOrchestrationInput {
     }
 
     const CONTRACT_ID: &'static str = "console-application-orchestration-input";
-    const CONTRACT_VERSION: &'static str = "2";
+    const CONTRACT_VERSION: &'static str = "3";
 }
 
 impl InterfaceContract for ApplicationOrchestrationOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
+            mp::object_schema([
+                ("variant", mp::tag_schema("Analysis")),
+                ("diagnostic_count", mp::count_schema()),
+                ("node_output_count", mp::count_schema()),
+                ("variable_catalog_count", mp::count_schema()),
+            ]),
             mp::object_schema([
                 ("variant", mp::tag_schema("State")),
                 (
@@ -564,6 +594,21 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
+            Self::Analysis(analysis) => mp::object_value([
+                ("variant", serde_json::json!("Analysis")),
+                (
+                    "diagnostic_count",
+                    serde_json::json!(analysis.diagnostics.len()),
+                ),
+                (
+                    "node_output_count",
+                    serde_json::json!(analysis.node_outputs.len()),
+                ),
+                (
+                    "variable_catalog_count",
+                    serde_json::json!(analysis.variable_catalogs.len()),
+                ),
+            ]),
             Self::State(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("State".to_owned())),
                 (
@@ -1106,5 +1151,5 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
     }
 
     const CONTRACT_ID: &'static str = "console-application-orchestration-output";
-    const CONTRACT_VERSION: &'static str = "2";
+    const CONTRACT_VERSION: &'static str = "3";
 }

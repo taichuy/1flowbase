@@ -25,6 +25,11 @@ fn chain_plan(count: usize, root_references: bool) -> CompiledPlan {
             selector: vec!["text".into()],
             json_schema: None,
         });
+        if i == 0 {
+            node.outputs.clear();
+            node.config =
+                json!({"input_fields":[{"key":"text","label":"Text","valueType":"string"}]});
+        }
         if i > 0 {
             let source = node_id(if root_references { 0 } else { i - 1 });
             let end = i + 1 == count;

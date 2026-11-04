@@ -1,4 +1,8 @@
 {
+  "analysis": {
+    "pending": "正在分析变量与输出…",
+    "unavailable": "暂时无法分析变量与输出。修改草稿后将重新分析。"
+  },
   "trajectory": {
     "range_start": "范围起点",
     "range_end": "范围终点",

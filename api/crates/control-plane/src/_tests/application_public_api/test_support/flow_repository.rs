@@ -1,7 +1,100 @@
 use super::*;
 
+fn bootstrap_editor_state(
+    inner: &mut ApplicationPublicApiTestRepositoryInner,
+    application: &domain::ApplicationRecord,
+    actor_user_id: Uuid,
+) -> domain::FlowEditorState {
+    inner.next_flow_ordinal += 1;
+    inner.next_flow_version_sequence += 1;
+    let flow_id =
+        deterministic_test_id(0x11111111111111110000000000000000, inner.next_flow_ordinal);
+    let draft_id =
+        deterministic_test_id(0x22222222222222220000000000000000, inner.next_flow_ordinal);
+    let version_id =
+        deterministic_test_id(0x33333333333333330000000000000000, inner.next_flow_ordinal);
+    let now = OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(inner.next_flow_ordinal as i64);
+    let document =
+        domain::default_flow_document_for_application(application.application_type, flow_id);
+    domain::FlowEditorState {
+        flow: domain::FlowRecord {
+            id: flow_id,
+            application_id: application.id,
+            created_by: actor_user_id,
+            updated_at: now,
+        },
+        draft: domain::FlowDraftRecord {
+            id: draft_id,
+            flow_id,
+            schema_version: domain::FLOW_SCHEMA_VERSION.to_string(),
+            document: document.clone(),
+            updated_at: now,
+        },
+        versions: vec![domain::FlowVersionRecord {
+            id: version_id,
+            flow_id,
+            sequence: inner.next_flow_version_sequence,
+            trigger: domain::FlowVersionTrigger::Autosave,
+            change_kind: domain::FlowChangeKind::Logical,
+            summary: "初始化默认草稿".to_string(),
+            summary_is_custom: false,
+            is_user_protected: false,
+            is_current_publication: false,
+            document,
+            created_at: now,
+        }],
+        autosave_interval_seconds: domain::FLOW_AUTOSAVE_INTERVAL_SECONDS,
+    }
+}
+
+impl ApplicationPublicApiTestRepository {
+    /// Publication tests start from a real configured draft, not a different
+    /// document synthesized by the read-only repository port.
+    pub(super) fn seed_publishable_agent_flow(&self, application: &domain::ApplicationRecord) {
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        let mut state = bootstrap_editor_state(&mut inner, application, application.created_by);
+        let llm = state.draft.document["graph"]["nodes"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|node| node["type"] == "llm")
+            .expect("default AgentFlow contains an LLM");
+        llm["config"]["model_provider"] = serde_json::json!({
+            "provider_code": "published_provider_fixture",
+            "model_id": "published-model-fixture"
+        });
+        state.versions[0].document = state.draft.document.clone();
+        inner.editor_states.insert(application.id, state);
+    }
+}
+
 #[async_trait]
 impl FlowRepository for ApplicationPublicApiTestRepository {
+    async fn load_flow_draft_document(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
+        let inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        if !inner
+            .applications
+            .get(&application_id)
+            .is_some_and(|app| app.workspace_id == workspace_id)
+        {
+            return Ok(None);
+        }
+        Ok(inner
+            .editor_states
+            .get(&application_id)
+            .map(|state| state.draft.document.clone()))
+    }
+
     async fn load_flow_version_document(
         &self,
         workspace_id: Uuid,
@@ -60,47 +153,7 @@ impl FlowRepository for ApplicationPublicApiTestRepository {
             return Ok(state);
         }
 
-        inner.next_flow_ordinal += 1;
-        inner.next_flow_version_sequence += 1;
-        let flow_id =
-            deterministic_test_id(0x11111111111111110000000000000000, inner.next_flow_ordinal);
-        let draft_id =
-            deterministic_test_id(0x22222222222222220000000000000000, inner.next_flow_ordinal);
-        let version_id =
-            deterministic_test_id(0x33333333333333330000000000000000, inner.next_flow_ordinal);
-        let now =
-            OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(inner.next_flow_ordinal as i64);
-        let document =
-            domain::default_flow_document_for_application(application.application_type, flow_id);
-        let state = domain::FlowEditorState {
-            flow: domain::FlowRecord {
-                id: flow_id,
-                application_id: application.id,
-                created_by: actor_user_id,
-                updated_at: now,
-            },
-            draft: domain::FlowDraftRecord {
-                id: draft_id,
-                flow_id,
-                schema_version: domain::FLOW_SCHEMA_VERSION.to_string(),
-                document: document.clone(),
-                updated_at: now,
-            },
-            versions: vec![domain::FlowVersionRecord {
-                id: version_id,
-                flow_id,
-                sequence: inner.next_flow_version_sequence,
-                trigger: domain::FlowVersionTrigger::Autosave,
-                change_kind: domain::FlowChangeKind::Logical,
-                summary: "初始化默认草稿".to_string(),
-                summary_is_custom: false,
-                is_user_protected: false,
-                is_current_publication: false,
-                document,
-                created_at: now,
-            }],
-            autosave_interval_seconds: domain::FLOW_AUTOSAVE_INTERVAL_SECONDS,
-        };
+        let state = bootstrap_editor_state(&mut inner, &application, actor_user_id);
         inner.editor_states.insert(application_id, state.clone());
         Ok(state)
     }

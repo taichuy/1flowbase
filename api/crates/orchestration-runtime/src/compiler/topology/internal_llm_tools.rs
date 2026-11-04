@@ -462,7 +462,7 @@ pub(super) fn visible_internal_llm_tool_connector_ids(node: &CompiledNode) -> BT
         .unwrap_or_default()
 }
 
-pub(super) fn visible_internal_llm_tools_enabled(node: &CompiledNode) -> bool {
+pub(in crate::compiler) fn visible_internal_llm_tools_enabled(node: &CompiledNode) -> bool {
     node.config
         .get("visible_internal_llm_tools_enabled")
         .or_else(|| node.config.get("visibleInternalLlmToolsEnabled"))

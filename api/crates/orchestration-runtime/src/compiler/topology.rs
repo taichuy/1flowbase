@@ -393,6 +393,7 @@ pub(super) fn build_nodes_and_topology(
     compile_issues.extend(validate_variable_scope_contracts(&nodes));
     compile_issues.extend(validate_llm_context_policies(&nodes));
     compile_issues.extend(validate_executable_node_types(&nodes));
+    compile_issues.extend(validate_code_sources(&nodes));
 
     Ok((nodes, compiled_edges, topological_order, compile_issues))
 }
@@ -586,13 +587,9 @@ fn validate_variable_selector(
             return;
         }
     }
-    if matches!(source.node_type.as_str(), "start" | "workflow_start") {
-        return;
-    }
-    if source
-        .outputs
-        .iter()
-        .any(|output| output.key == *output_key || output.selector.first() == Some(output_key))
+    let _ = output_key;
+    if super::output_contract::selector_contract(source, &selector[1..])
+        != super::output_contract::PathContract::Missing
     {
         return;
     }
@@ -739,7 +736,7 @@ fn validate_edge_source_handle(
     Ok(())
 }
 
-fn visible_internal_llm_tool_connector_id_from_source_handle(
+pub(super) fn visible_internal_llm_tool_connector_id_from_source_handle(
     source_handle: Option<&str>,
 ) -> Option<&str> {
     source_handle?.strip_prefix(VISIBLE_INTERNAL_LLM_TOOL_SOURCE_HANDLE_PREFIX)
@@ -892,4 +889,5 @@ pub(super) use output_selectors::output_for_selector;
 #[path = "topology/internal_llm_tools.rs"]
 mod internal_llm_tools;
 
+pub(super) use internal_llm_tools::visible_internal_llm_tools_enabled;
 use internal_llm_tools::*;

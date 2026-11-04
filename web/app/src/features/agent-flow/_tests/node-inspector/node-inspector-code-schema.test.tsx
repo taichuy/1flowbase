@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, test } from 'vitest';
 
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
-import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
+import { AgentFlowEditorStoreProvider } from './fixtures/analysis-provider';
 import {
   DocumentObserver,
   SelectionSeed,
@@ -175,6 +175,7 @@ describe('NodeInspector code schema', () => {
             updated_at: '2026-04-16T10:00:00Z',
             document: latestDocument
           },
+          analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
           autosave_interval_seconds: 30,
           user_protection_limit: 10,
           versions: []
@@ -261,6 +262,7 @@ describe('NodeInspector code schema', () => {
             updated_at: '2026-04-16T10:00:00Z',
             document: latestDocument
           },
+          analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
           autosave_interval_seconds: 30,
           user_protection_limit: 10,
           versions: []

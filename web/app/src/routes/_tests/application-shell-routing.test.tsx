@@ -345,6 +345,7 @@ describe('application shell routing', () => {
         }
       },
       versions: [],
+      analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
       autosave_interval_seconds: 30,
       user_protection_limit: 10
     });
@@ -383,6 +384,7 @@ describe('application shell routing', () => {
         }
       },
       versions: [],
+      analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
       autosave_interval_seconds: 30,
       user_protection_limit: 10
     });

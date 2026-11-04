@@ -16,6 +16,7 @@ describe('agent flow editor store', () => {
         updated_at: '2026-04-16T10:00:00Z',
         document: initialDocument
       },
+      analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
       autosave_interval_seconds: 30,
       user_protection_limit: 10,
       versions: []
@@ -46,6 +47,7 @@ describe('agent flow editor store', () => {
         updated_at: '2026-04-16T10:00:00Z',
         document: initialDocument
       },
+      analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
       autosave_interval_seconds: 30,
       user_protection_limit: 10,
       versions: []
@@ -76,6 +78,7 @@ describe('agent flow editor store', () => {
         updated_at: '2026-04-16T10:05:00Z',
         document: restoredDocument
       },
+      analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
       autosave_interval_seconds: 30,
       user_protection_limit: 10,
       versions: []
@@ -111,6 +114,7 @@ describe('agent flow editor store', () => {
         updated_at: '2026-04-16T10:00:00Z',
         document: initialDocument
       },
+      analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
       autosave_interval_seconds: 30,
       user_protection_limit: 10,
       versions: []
@@ -140,6 +144,7 @@ describe('agent flow editor store', () => {
         updated_at: '2026-04-16T10:05:00Z',
         document: savedDocument
       },
+      analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
       autosave_interval_seconds: 45,
       user_protection_limit: 10,
       versions: []
@@ -172,6 +177,7 @@ describe('agent flow editor store', () => {
         updated_at: '2026-04-16T10:00:00Z',
         document: createDefaultAgentFlowDocument({ flowId: 'flow-1' })
       },
+      analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
       autosave_interval_seconds: 30,
       user_protection_limit: 10,
       versions: []
@@ -195,6 +201,7 @@ describe('agent flow editor store', () => {
         updated_at: '2026-04-16T10:00:00Z',
         document: initialDocument
       },
+      analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
       autosave_interval_seconds: 30,
       user_protection_limit: 10,
       versions: []
@@ -213,6 +220,7 @@ describe('agent flow editor store', () => {
           meta: { ...initialDocument.meta, name: 'Server synced' }
         }
       },
+      analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
       autosave_interval_seconds: 30,
       user_protection_limit: 10,
       versions: []

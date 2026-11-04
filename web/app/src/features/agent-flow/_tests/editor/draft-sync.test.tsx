@@ -23,6 +23,7 @@ function createInitialState(
       updated_at: '2026-04-16T10:00:00Z',
       document
     },
+    analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
     autosave_interval_seconds: 30,
     user_protection_limit: 10,
     versions: []
@@ -276,7 +277,7 @@ describe('useDraftSync', () => {
     }
   );
 
-  test('AC-011 blocks manual save for an incompatible Variable Aggregator candidate', async () => {
+  test('saves an incompatible Variable Aggregator candidate as an editable draft', async () => {
     const currentDocument = createVariableAggregatorDocument('number');
     const saveDraftOverride = vi.fn(async (input) =>
       createInitialState(input.document)
@@ -297,13 +298,13 @@ describe('useDraftSync', () => {
     );
 
     await act(async () => {
-      expect(await result.current.saveNow()).toBe(false);
+      expect(await result.current.saveNow()).toBe(true);
     });
 
-    expect(saveDraftOverride).not.toHaveBeenCalled();
+    expect(saveDraftOverride).toHaveBeenCalledOnce();
   });
 
-  test('AC-011 blocks autosave for an incompatible Variable Aggregator candidate', async () => {
+  test('autosaves an incompatible Variable Aggregator candidate as an editable draft', async () => {
     vi.useFakeTimers();
     const currentDocument = createVariableAggregatorDocument('number');
     const saveDraftOverride = vi.fn(async (input) =>
@@ -334,7 +335,7 @@ describe('useDraftSync', () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
 
-    expect(saveDraftOverride).not.toHaveBeenCalled();
+    expect(saveDraftOverride).toHaveBeenCalledOnce();
   });
 
   test('AC-011 keeps a compatible Variable Aggregator group saveable', async () => {
@@ -368,7 +369,7 @@ describe('useDraftSync', () => {
     expect(saveDraftOverride).toHaveBeenCalledOnce();
   });
 
-  test('AC-017 blocks manual save while a Variable Aggregator key is invalid', async () => {
+  test('saves invalid Variable Aggregator keys as an editable draft', async () => {
     const currentDocument = createVariableAggregatorDocumentWithInvalidKeys([
       'bad-key'
     ]);
@@ -391,12 +392,12 @@ describe('useDraftSync', () => {
     );
 
     await act(async () => {
-      expect(await result.current.saveNow()).toBe(false);
+      expect(await result.current.saveNow()).toBe(true);
     });
-    expect(saveDraftOverride).not.toHaveBeenCalled();
+    expect(saveDraftOverride).toHaveBeenCalledOnce();
   });
 
-  test('AC-017 blocks autosave while Variable Aggregator keys are duplicated', async () => {
+  test('autosaves duplicate Variable Aggregator keys as an editable draft', async () => {
     vi.useFakeTimers();
     const currentDocument = createVariableAggregatorDocumentWithInvalidKeys([
       'group1',
@@ -430,7 +431,7 @@ describe('useDraftSync', () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
 
-    expect(saveDraftOverride).not.toHaveBeenCalled();
+    expect(saveDraftOverride).toHaveBeenCalledOnce();
   });
 
   test('restores server draft and clears transient editor state', async () => {

@@ -14,7 +14,7 @@ import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
 import { createNodeDocument } from '../../lib/document/node-factory';
 import { createEdgeDocument } from '../../lib/document/edge-factory';
 import { listVisibleSelectorOptions } from '../../lib/selector-options';
-import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
+import { AgentFlowEditorStoreProvider } from './fixtures/analysis-provider';
 import {
   DocumentObserver,
   SelectionSeed,

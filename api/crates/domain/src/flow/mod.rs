@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+mod analysis;
 mod validation;
+pub use analysis::*;
 pub use validation::{
     flow_node_document_schema, validate_flow_draft_structure, validate_flow_node_structure,
     FlowDocumentValidationError,

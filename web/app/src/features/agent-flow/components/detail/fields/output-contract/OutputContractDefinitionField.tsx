@@ -100,7 +100,7 @@ export function OutputContractDefinitionField({
       nextValue.map((output) => ({
         ...output,
         title: syncTitleWithKey ? output.key : output.title,
-        selector: selectorForKey ? selectorForKey(output.key) : output.selector
+        selector: output.selector ?? selectorForKey?.(output.key)
       }))
     );
   }

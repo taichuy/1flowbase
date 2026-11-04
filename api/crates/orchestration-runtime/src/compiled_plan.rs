@@ -387,6 +387,7 @@ pub enum CompileIssueCode {
     JsDependencyImportNotEnabled,
     InvalidJsDependencyImport,
     InvalidCodeIsolationProfile,
+    MissingCodeSource,
     InvalidLlmContextSelector,
     IncompatibleLlmContextSchema,
     InvalidVisibleInternalLlmTool,

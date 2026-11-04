@@ -1,6 +1,6 @@
 use super::*;
 
-pub(in super::super) fn ensure_compiled_plan_runnable(
+pub(crate) fn ensure_compiled_plan_runnable(
     compiled_plan: &orchestration_runtime::compiled_plan::CompiledPlan,
 ) -> Result<()> {
     if let Some(issue) = compiled_plan.compile_issues.first() {
@@ -125,6 +125,7 @@ pub(super) fn compile_issue_field(
         orchestration_runtime::compiled_plan::CompileIssueCode::InvalidCodeIsolationProfile => {
             "isolation"
         }
+        orchestration_runtime::compiled_plan::CompileIssueCode::MissingCodeSource => "source",
         orchestration_runtime::compiled_plan::CompileIssueCode::DuplicateAnswerPresentationReference
         | orchestration_runtime::compiled_plan::CompileIssueCode::InvalidAnswerPresentationOrder => {
             "answer_template"

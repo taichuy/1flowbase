@@ -10,6 +10,6 @@ export function normalizeCodeOutput(
   return {
     ...output,
     title: output.key,
-    selector: codeOutputSelector(output.key)
+    selector: output.selector ?? codeOutputSelector(output.key)
   };
 }

@@ -10,8 +10,7 @@ use uuid::Uuid;
 fn start_output_structure_rejects_duplicates_and_malformed_arrays_for_both_flow_families() {
     for node_type in ["start", "workflow_start"] {
         for outputs in [json!([{"key":"name"}]), json!(null), json!({}), json!("[]")] {
-            let document =
-                json!({"graph":{"nodes":[{"id":"entry","type":node_type,"outputs":outputs}]}});
+            let document = json!({"schemaVersion":FLOW_SCHEMA_VERSION,"graph":{"edges":[],"nodes":[{"id":"entry","type":node_type,"config":{},"bindings":{},"outputs":outputs}]}});
             let error = crate::flow::validate_flow_draft_structure(&document).unwrap_err();
             assert_eq!(error.node_id.as_deref(), Some("entry"));
             assert!(error.to_string().contains("outputs must be empty"));
@@ -28,12 +27,30 @@ fn start_output_structure_rejects_duplicates_and_malformed_arrays_for_both_flow_
 
 #[test]
 fn start_output_structure_preserves_incomplete_drafts_and_regular_node_outputs() {
-    let document = json!({"graph":{"nodes":[
-        {"id":"entry","type":"workflow_start","outputs":[],"config":{"input_fields":[{"key":"name"}]}},
-        {"id":"unfinished","type":"http_request","config":{},"outputs":[{"key":"body"}]}
+    let document = json!({"schemaVersion":FLOW_SCHEMA_VERSION,"graph":{"nodes":[
+        {"id":"entry","type":"workflow_start","outputs":[],"bindings":{},"config":{"input_fields":[{"key":"name"}]}},
+        {"id":"unfinished","type":"http_request","config":{},"bindings":{},"outputs":[{"key":"body","title":"Body","valueType":"json"}]}
     ],"edges":[]}});
     crate::flow::validate_flow_draft_structure(&document).unwrap();
     assert!(crate::flow::flow_node_document_schema("http_request").is_none());
+}
+
+#[test]
+fn document_structure_rejects_invalid_selectors_and_duplicate_keys() {
+    let mut document =
+        default_flow_document_for_application(ApplicationType::Workflow, Uuid::now_v7());
+    document["graph"]["nodes"][1]["outputs"] =
+        json!([{"key":"report","title":"Report","valueType":"object","selector":["result",7]}]);
+    let error = crate::flow::validate_flow_draft_structure(&document).unwrap_err();
+    assert_eq!(error.field_path, "/outputs/0/selector");
+    document["graph"]["nodes"][1]["outputs"] = json!([{"key":"report","title":"Report","valueType":"object"},{"key":"report","title":"Duplicate","valueType":"object"}]);
+    assert_eq!(
+        crate::flow::validate_flow_draft_structure(&document)
+            .unwrap_err()
+            .field_path,
+        "/outputs/1/key"
+    );
+    assert!(crate::flow::validate_flow_draft_structure(&json!({})).is_err());
 }
 
 #[test]

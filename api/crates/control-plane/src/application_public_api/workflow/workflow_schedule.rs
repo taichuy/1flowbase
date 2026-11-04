@@ -20,7 +20,8 @@ use crate::{
     },
     errors::ControlPlaneError,
     ports::{
-        ApplicationCompiledPlanRepository, ApplicationPublicationRepository, ApplicationRepository,
+        ApplicationCompileContextRepository, ApplicationCompiledPlanRepository,
+        ApplicationPublicationRepository, ApplicationRepository, FlowRepository,
         PublishedPlanCache, ReplaceWorkflowScheduleTriggerInput, TaskQueue,
         WorkflowScheduleTriggerRepository,
     },
@@ -112,7 +113,13 @@ where
     pub async fn replace_trigger(
         &self,
         command: ReplaceWorkflowScheduleTriggerCommand,
-    ) -> Result<WorkflowScheduleTriggerRecord> {
+    ) -> Result<WorkflowScheduleTriggerRecord>
+    where
+        R: ApplicationCompileContextRepository
+            + ApplicationPublicationRepository
+            + ApplicationCompiledPlanRepository
+            + FlowRepository,
+    {
         validate_schedule_cron(&command.cron)?;
         validate_schedule_timezone(&command.timezone)?;
         let actor = self
@@ -127,6 +134,56 @@ where
         ensure_application_edit_permission(&self.repository, &actor, &application).await?;
         if application.application_type != domain::ApplicationType::Workflow {
             return Err(ControlPlaneError::InvalidInput("application_type").into());
+        }
+
+        if command.enabled {
+            let document = self
+                .repository
+                .load_flow_draft_document(application.workspace_id, application.id)
+                .await?
+                .unwrap_or_else(|| {
+                    domain::default_flow_document_for_application(
+                        application.application_type,
+                        Uuid::nil(),
+                    )
+                });
+            crate::flow::validate_flow_draft_document(&document)?;
+            let context = self
+                .repository
+                .build_application_compile_context(application.workspace_id, application.id)
+                .await?;
+            orchestration_runtime::compiler::ensure_flow_analysis_valid(
+                &orchestration_runtime::compiler::analyze_flow_document_for_application(
+                    &document,
+                    &context,
+                    application.application_type,
+                ),
+            )?;
+            // Schedules execute the immutable active publication, which may differ
+            // from the editable draft. Check both its source and the actual plan.
+            if let Some(publication) = self
+                .repository
+                .load_active_application_publication(application.id)
+                .await?
+            {
+                crate::flow::validate_flow_draft_document(&publication.document_snapshot)?;
+                orchestration_runtime::compiler::ensure_flow_analysis_valid(
+                    &orchestration_runtime::compiler::analyze_flow_document_for_application(
+                        &publication.document_snapshot,
+                        &context,
+                        application.application_type,
+                    ),
+                )?;
+                let record = self
+                    .repository
+                    .get_application_compiled_plan(publication.compiled_plan_id)
+                    .await?
+                    .ok_or(ControlPlaneError::NotFound("compiled_plan"))?;
+                let plan = serde_json::from_value(record.plan)?;
+                crate::orchestration_runtime::compile_context::ensure_compiled_plan_runnable(
+                    &plan,
+                )?;
+            }
         }
 
         self.repository

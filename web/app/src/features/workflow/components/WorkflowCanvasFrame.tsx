@@ -1,3 +1,5 @@
+import { useDocumentAnalysis } from '../../agent-flow/api/analysis/use-document-analysis';
+import { analysisIssues } from '../../agent-flow/api/analysis/presentation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { App, Typography } from 'antd';
@@ -68,7 +70,6 @@ import {
 } from '../../agent-flow/components/editor/canvas-frame/document';
 import { buildNodePickerOptions } from '../../flow-editor/authoring/plugin-node-picker';
 import type { WorkflowTriggerContext } from '../lib/trigger-context';
-import { validateWorkflowDocument } from '../lib/validate-document';
 import { WorkflowOverlay } from './WorkflowOverlay';
 import { WorkflowTestRunPanel } from './WorkflowTestRunPanel';
 
@@ -188,9 +189,16 @@ function useWorkflowCanvasController({
       ),
     getLastSavedDocument: () => lastSavedDocumentRef.current
   });
+  const documentAnalysis = useDocumentAnalysis(
+    applicationId,
+    workingDocument,
+    selectedNodeId,
+    environmentVariables,
+    triggerContext
+  );
   const issues = useMemo(
-    () => validateWorkflowDocument(workingDocument, triggerContext),
-    [triggerContext, workingDocument]
+    () => analysisIssues(documentAnalysis.analysis, workingDocument),
+    [documentAnalysis.analysis, workingDocument]
   );
   const issueCountByNodeId = useMemo(
     () => countIssuesByNodeId(issues),
@@ -384,6 +392,7 @@ function useWorkflowCanvasController({
     autosaveIntervalMs,
     autosaveStatus,
     issueErrorCount,
+    documentAnalysis,
     isPublished,
     publishMutation,
     revertToDraftMutation,
@@ -432,6 +441,7 @@ export function WorkflowCanvasFrame(
     autosaveIntervalMs,
     autosaveStatus,
     issueErrorCount,
+    documentAnalysis,
     isPublished,
     publishMutation,
     revertToDraftMutation,
@@ -562,6 +572,7 @@ export function WorkflowCanvasFrame(
               }
             >
               <NodeDetailPanel
+                documentAnalysis={documentAnalysis}
                 activeTab={nodeDetailTab}
                 applicationId={applicationId}
                 environmentVariables={environmentVariables}

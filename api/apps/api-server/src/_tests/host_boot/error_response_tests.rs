@@ -13,7 +13,8 @@ use uuid::Uuid;
 #[tokio::test]
 async fn invalid_workflow_start_outputs_return_actionable_validation_details() {
     let error = domain::flow::validate_flow_draft_structure(&serde_json::json!({
-        "graph": {"nodes": [{"id":"node-workflow-start","type":"workflow_start","outputs":[{"key":"name"}]}]}
+        "schemaVersion": domain::flow::FLOW_SCHEMA_VERSION,
+        "graph": {"nodes": [{"id":"node-workflow-start","type":"workflow_start","outputs":[{"key":"name"}]}], "edges": []}
     })).unwrap_err();
     let response =
         ApiError(orchestration_runtime::compiler::FlowValidationError::from(error).into())

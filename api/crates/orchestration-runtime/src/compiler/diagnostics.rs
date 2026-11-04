@@ -38,9 +38,9 @@ impl From<domain::flow::FlowDocumentValidationError> for FlowValidationError {
             diagnostics: vec![NodeDiagnostic {
                 node_id: error.node_id,
                 code: "invalid_node_configuration".to_owned(),
-                field_path: "/outputs".to_owned(),
+                field_path: error.field_path,
                 message,
-                expected: Some(serde_json::json!([])),
+                expected: error.expected,
             }],
         }
     }

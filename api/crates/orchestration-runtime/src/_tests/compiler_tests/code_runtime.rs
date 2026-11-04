@@ -109,6 +109,10 @@ fn code_runtime_metadata_compiles_language_entrypoint_source_and_import_snapshot
 fn code_runtime_metadata_defaults_entrypoint_and_preserves_source_ref() {
     let flow_id = Uuid::now_v7();
     let mut document = code_js_dependency_document(flow_id, "code", None);
+    document["graph"]["nodes"][1]["config"]
+        .as_object_mut()
+        .unwrap()
+        .remove("source");
     document["graph"]["nodes"][1]["config"]["sourceRef"] = json!("artifact://code/node-code");
     let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
 

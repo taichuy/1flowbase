@@ -1,4 +1,8 @@
 {
+  "analysis": {
+    "pending": "Analyzing variables and outputs…",
+    "unavailable": "Variable and output analysis is unavailable. Editing the draft will retry."
+  },
   "trajectory": {
     "range_start": "Range start",
     "range_end": "Range end",

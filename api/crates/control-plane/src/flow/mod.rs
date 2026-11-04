@@ -24,6 +24,7 @@ use crate::{
 };
 
 mod agentflow_template;
+mod analysis;
 
 pub use agentflow_template::{
     build_agent_flow_template_package, import_application_template_document,
@@ -405,6 +406,7 @@ where
 pub(crate) fn validate_flow_draft_document(document: &Value) -> Result<()> {
     domain::flow::validate_flow_draft_structure(document)
         .map_err(orchestration_runtime::compiler::FlowValidationError::from)?;
+    orchestration_runtime::compiler::validate_flow_output_contracts(document)?;
     let Some(nodes) = document
         .get("graph")
         .and_then(|graph| graph.get("nodes"))
@@ -680,6 +682,27 @@ impl ApplicationRepository for InMemoryFlowRepository {
 
 #[async_trait]
 impl FlowRepository for InMemoryFlowRepository {
+    async fn load_flow_draft_document(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+    ) -> Result<Option<Value>> {
+        if ApplicationRepository::get_application(&self.applications, workspace_id, application_id)
+            .await?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        let inner = self
+            .inner
+            .lock()
+            .expect("in-memory flow repo mutex poisoned");
+        Ok(inner
+            .editor_state_by_application_id
+            .get(&application_id)
+            .map(|state| state.draft.document.clone()))
+    }
+
     async fn load_flow_version_document(
         &self,
         workspace_id: Uuid,

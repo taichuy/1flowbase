@@ -55,6 +55,13 @@ use crate::{
 pub(crate) mod interface;
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct AnalyzeDraftBody {
+    pub document: serde_json::Value,
+    /// Return variable catalogs only for this node; omit for diagnostics and outputs only.
+    pub node_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct SaveDraftBody {
     pub document: serde_json::Value,
     pub change_kind: String,
@@ -112,6 +119,7 @@ pub struct ReferencedI18nMessageResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OrchestrationStateResponse {
+    pub analysis: domain::flow::FlowDocumentAnalysis,
     pub flow_id: String,
     pub draft: FlowDraftResponse,
     pub messages: Vec<ReferencedI18nMessageResponse>,
@@ -248,6 +256,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 get_orchestration,
                 ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
             ),
+        )
+        .route(
+            "/applications/:id/orchestration/analysis",
+            console_post(analyze_draft, Authenticated),
         )
         .route(
             "/applications/:id/orchestration/draft",
@@ -839,12 +851,17 @@ async fn to_response_with(
     bootstrap_workspace_id: Uuid,
     locale: &domain::CatalogLocale,
     state: domain::FlowEditorState,
+    actor_user_id: Uuid,
 ) -> Result<OrchestrationStateResponse, ApiError> {
+    let analysis = control_plane::flow::FlowService::new(store.clone())
+        .analyze_editor_state(actor_user_id, &state)
+        .await?;
     let messages =
         referenced_messages_with(store, bootstrap_workspace_id, locale, &state.draft.document)
             .await?;
 
     Ok(OrchestrationStateResponse {
+        analysis,
         flow_id: state.flow.id.to_string(),
         draft: to_flow_draft_response(state.draft)?,
         messages,
@@ -987,6 +1004,7 @@ async fn to_import_response_with(
             bootstrap_workspace_id,
             locale,
             imported.orchestration,
+            imported.application.created_by,
         )
         .await?,
         preview: to_template_preview_response(imported.preview),
@@ -1036,6 +1054,41 @@ pub async fn get_orchestration(
         )
         .await?;
     Ok(Json(ApiSuccess::new(output.into_state()?)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/applications/{id}/orchestration/analysis",
+    summary = "Analyze an application flow draft",
+    description = "Read variable catalogs and configuration diagnostics for a client draft without saving or executing it.",
+    request_body = AnalyzeDraftBody,
+    params(("id" = String, Path, description = "Application id")),
+    responses(
+        (status = 200, body = domain::flow::FlowDocumentAnalysis),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn analyze_draft(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(body): Json<AnalyzeDraftBody>,
+) -> Result<Json<ApiSuccess<domain::flow::FlowDocumentAnalysis>>, ApiError> {
+    let output: interface::ApplicationOrchestrationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.orchestration.analysis.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            interface::ApplicationOrchestrationInput::AnalyzeDraft {
+                application_id: id,
+                body,
+            },
+        )
+        .await?;
+    Ok(Json(ApiSuccess::new(output.into_analysis()?)))
 }
 
 #[utoipa::path(

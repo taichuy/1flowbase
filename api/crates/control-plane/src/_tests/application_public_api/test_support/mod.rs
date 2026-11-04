@@ -222,6 +222,9 @@ impl ApplicationPublicApiTestRepository {
             .expect("application public api test repo mutex poisoned")
             .applications
             .insert(application.id, application.clone());
+        if application.application_type == domain::ApplicationType::AgentFlow {
+            self.seed_publishable_agent_flow(&application);
+        }
         application
     }
 

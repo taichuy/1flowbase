@@ -49,7 +49,6 @@ import { getNamedBindingExpression } from '../lib/named-binding-expressions';
 import {
   encodeSelectorValue,
   decodeSelectorValue,
-  listLlmProtocolContextSelectorOptions,
   toCascaderSelectorOptions,
   type FlowSelectorOption
 } from '../lib/selector-options';
@@ -345,14 +344,9 @@ function renderLlmProtocolContextField({
   const reference = getLlmProtocolContextReference({
     protocol_context: adapter.getValue(block.path)
   });
-  const document = adapter.getDerived('document') as
-    | FlowAuthoringDocument
-    | undefined;
-  const node = adapter.getDerived('node') as FlowNodeDocument | undefined;
-  const options =
-    document && node
-      ? listLlmProtocolContextSelectorOptions(document, node.id)
-      : [];
+  const options = getSelectorOptions(adapter, block.path).filter(
+    (option) => option.valueType === 'protocol_context'
+  );
 
   return (
     <div
@@ -360,6 +354,7 @@ function renderLlmProtocolContextField({
       data-testid="agent-flow-llm-protocol-context"
     >
       <Cascader
+        changeOnSelect
         allowClear={false}
         aria-label={`${block.label}变量`}
         className="agent-flow-node-detail__context-select"
@@ -371,7 +366,15 @@ function renderLlmProtocolContextField({
             ? nextValue.map(String)
             : [];
 
-          if (selector.length >= 2) {
+          if (
+            options.some(
+              (option) =>
+                option.value.length === selector.length &&
+                option.value.every(
+                  (segment, index) => segment === selector[index]
+                )
+            )
+          ) {
             adapter.setValue(block.path, {
               kind: 'selector',
               value: selector

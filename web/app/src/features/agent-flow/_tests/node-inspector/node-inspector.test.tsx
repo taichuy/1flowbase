@@ -1,7 +1,7 @@
 import { describe, test, expect, vi } from 'vitest';
 import { domEvents } from './node-inspector.fixtures';
 import { authenticateEditor } from '../fixtures/editor-auth';
-import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
+import { AgentFlowEditorStoreProvider } from './fixtures/analysis-provider';
 import {
   DocumentObserver,
   FocusIssueSeed,

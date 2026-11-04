@@ -10,7 +10,7 @@ use uuid::Uuid;
 use super::{
     build_application_archive_zip, installed_application_archive_entry_with, parse_change_kind,
     safe_archive_name, to_import_response_with, to_response_with, to_template_preview_response,
-    ApplicationArchiveImportEntryResponse, ApplicationArchiveImportResponse,
+    AnalyzeDraftBody, ApplicationArchiveImportEntryResponse, ApplicationArchiveImportResponse,
     ApplicationArchiveImportSelection, ApplicationArchivePackage,
     ApplicationArchivePreviewEntryResponse, ApplicationArchivePreviewResponse,
     ExportApplicationArchiveBody, ImportAgentFlowTemplateResponse,
@@ -26,6 +26,10 @@ use crate::{
 };
 
 pub(crate) enum ApplicationOrchestrationInput {
+    AnalyzeDraft {
+        application_id: Uuid,
+        body: AnalyzeDraftBody,
+    },
     Get {
         application_id: Uuid,
         locale: ConsoleLocaleHints,
@@ -66,6 +70,7 @@ pub(crate) enum ApplicationOrchestrationInput {
     reason = "the typed orchestration output is short-lived and projected at the route boundary"
 )]
 pub(crate) enum ApplicationOrchestrationOutput {
+    Analysis(domain::flow::FlowDocumentAnalysis),
     State(OrchestrationStateResponse),
     ArchivePreview(ApplicationArchivePreviewResponse),
     ArchiveImport(ImportAgentFlowTemplateResponse),
@@ -75,6 +80,16 @@ pub(crate) enum ApplicationOrchestrationOutput {
 }
 
 impl ApplicationOrchestrationOutput {
+    pub(super) fn into_analysis(self) -> Result<domain::flow::FlowDocumentAnalysis, ApiError> {
+        match self {
+            Self::Analysis(analysis) => Ok(analysis),
+            _ => Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                "application_orchestration_output",
+            )
+            .into()),
+        }
+    }
+
     pub(super) fn into_state(self) -> Result<OrchestrationStateResponse, ApiError> {
         match self {
             Self::State(state) => Ok(state),
@@ -191,6 +206,21 @@ impl ApplicationOrchestrationAdapter {
         let user_id = actor.user_id;
         let service = FlowService::new(self.store.for_actor(actor.clone()));
         let input = match input {
+            ApplicationOrchestrationInput::AnalyzeDraft {
+                application_id,
+                body,
+            } => {
+                return Ok(ApplicationOrchestrationOutput::Analysis(
+                    service
+                        .analyze_document_for_node(
+                            user_id,
+                            application_id,
+                            &body.document,
+                            body.node_id.as_deref(),
+                        )
+                        .await?,
+                ));
+            }
             ApplicationOrchestrationInput::PreviewUploadedArchive(package) => {
                 let resources = service.load_agent_flow_template_resources(user_id).await?;
                 let previews = control_plane::application::ApplicationArchiveService::new(
@@ -471,7 +501,8 @@ impl ApplicationOrchestrationAdapter {
                     .await?,
                 locale,
             ),
-            ApplicationOrchestrationInput::PreviewUploadedArchive(_)
+            ApplicationOrchestrationInput::AnalyzeDraft { .. }
+            | ApplicationOrchestrationInput::PreviewUploadedArchive(_)
             | ApplicationOrchestrationInput::ImportUploadedArchive { .. }
             | ApplicationOrchestrationInput::ExportArchive(_)
             | ApplicationOrchestrationInput::PreviewInstalledArchive(_)
@@ -481,7 +512,14 @@ impl ApplicationOrchestrationAdapter {
         };
         let locale = locale.resolve(self.preferred_locale(principal).await?);
         Ok(ApplicationOrchestrationOutput::State(
-            to_response_with(&self.store, self.bootstrap_workspace_id, &locale, state).await?,
+            to_response_with(
+                &self.store,
+                self.bootstrap_workspace_id,
+                &locale,
+                state,
+                user_id,
+            )
+            .await?,
         ))
     }
 }
@@ -503,6 +541,13 @@ impl ConsoleInterfacePort<ApplicationOrchestrationInput, ApplicationOrchestratio
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.orchestration.analysis",
+        binding_id: "http.console.applications.orchestration.analysis.v1",
+        method: "POST",
+        path: "/api/console/applications/:id/orchestration/analysis",
+        mutating: false,
+    },
     ConsoleInterfaceDeclaration {
         interface_id: "applications.archive.export",
         binding_id: "http.console.applications.archive.export.v1",

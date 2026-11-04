@@ -774,6 +774,7 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-application-orchestration",
             &[
+                "applications.orchestration.analysis",
                 "applications.orchestration.get",
                 "applications.orchestration.draft.save",
                 "applications.orchestration.version.restore",

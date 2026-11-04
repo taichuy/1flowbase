@@ -92,8 +92,30 @@ impl ApplicationCompileContextRepository for ApplicationPublicApiTestRepository 
             .collect::<BTreeMap<_, _>>();
         Ok(orchestration_runtime::compiler::FlowCompileContext {
             workspace_id: Some(workspace_id),
-            provider_families: Default::default(),
-            provider_instances: Default::default(),
+            provider_families: BTreeMap::from([(
+                "published_provider_fixture".into(),
+                orchestration_runtime::compiler::FlowCompileProviderFamily {
+                    provider_code: "published_provider_fixture".into(),
+                    protocol: "published_protocol_fixture".into(),
+                    is_ready: true,
+                    available_models: BTreeSet::from(["published-model-fixture".into()]),
+                    allow_custom_models: false,
+                },
+            )]),
+            provider_instances: BTreeMap::from([(
+                "55555555-5555-5555-5555-555555555555".into(),
+                orchestration_runtime::compiler::FlowCompileProviderInstance {
+                    provider_instance_id: "55555555-5555-5555-5555-555555555555".into(),
+                    display_name: "Published Provider Fixture".into(),
+                    provider_code: "published_provider_fixture".into(),
+                    protocol: "published_protocol_fixture".into(),
+                    is_ready: true,
+                    is_runnable: true,
+                    included_in_main: true,
+                    available_models: BTreeSet::from(["published-model-fixture".into()]),
+                    allow_custom_models: false,
+                },
+            )]),
             model_routing_policies: Default::default(),
             node_contributions: Default::default(),
             js_dependencies,

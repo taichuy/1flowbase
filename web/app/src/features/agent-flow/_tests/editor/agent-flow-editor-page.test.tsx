@@ -1,3 +1,4 @@
+import { historicalAnalysisFixture } from '../fixtures/analysis-fixture';
 import {
   fireEvent,
   render,
@@ -96,6 +97,7 @@ function createInitialState(
       document
     },
     versions: [],
+    analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
     autosave_interval_seconds: 30,
     user_protection_limit: 10
   };
@@ -178,6 +180,7 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(orchestrationApi, 'analyzeDocument').mockImplementation(async (_applicationId, document) => historicalAnalysisFixture(document));
   schemaRuntimeSpies.resolveAgentFlowNodeSchema.mockClear();
   resetAuthStore();
   useAuthStore.getState().setAuthenticated({
@@ -456,7 +459,7 @@ describe('AgentFlowEditorShell', () => {
       name: '发布'
     });
 
-    expect(publishButton).toBeDisabled();
+    await waitFor(() => expect(publishButton).toBeDisabled());
     expect(within(toolbar).getByText('1')).toBeInTheDocument();
 
     fireEvent.click(within(toolbar).getByRole('button', { name: 'Issues' }));
@@ -691,7 +694,7 @@ describe('AgentFlowEditorShell', () => {
     });
   }, 20_000);
 
-  test('AC-011 disables manual save for an incompatible Variable Aggregator candidate', () => {
+  test('saves a semantically incomplete Variable Aggregator draft through the editor toolbar', async () => {
     const document = createIncompatibleVariableAggregatorDocument();
     const saveDraftOverride = vi.fn(async (input) =>
       createInitialState(input.document)
@@ -706,12 +709,11 @@ describe('AgentFlowEditorShell', () => {
       />
     );
 
-    expect(
-      screen.getByRole('button', {
-        name: i18nText('agentFlow', 'auto.save')
-      })
-    ).toBeDisabled();
-    expect(saveDraftOverride).not.toHaveBeenCalled();
+    const saveButton = screen.getByRole('button', { name: i18nText('agentFlow', 'auto.save') });
+    expect(saveButton).toBeEnabled();
+    fireEvent.click(saveButton);
+    await waitFor(() => expect(saveDraftOverride).toHaveBeenCalledWith(expect.objectContaining({ document })));
+
   });
 
   test('opens the selected issue target and focuses the node field', async () => {
@@ -773,6 +775,7 @@ describe('AgentFlowEditorShell', () => {
         document: createDefaultAgentFlowDocument({ flowId: 'flow-1' })
       },
       versions,
+      analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
       autosave_interval_seconds: 30,
       user_protection_limit: 10
     });

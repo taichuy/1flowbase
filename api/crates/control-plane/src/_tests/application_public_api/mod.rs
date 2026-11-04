@@ -45,6 +45,8 @@ mod anthropic_compat;
 #[path = "protocols/client_protocol_envelope.rs"]
 mod client_protocol_envelope;
 mod conversations;
+#[path = "publications/flow_analysis.rs"]
+mod flow_analysis;
 #[path = "protocols/inference_recovery.rs"]
 mod inference_recovery;
 mod native_run;
@@ -149,7 +151,11 @@ fn application_public_api_code_js_dependency_document(flow_id: Uuid) -> serde_js
                     "containerId": null,
                     "position": { "x": 240, "y": 0 },
                     "configVersion": 1,
-                    "config": { "imports": ["zod"] },
+                    "config": {
+                        "imports": ["zod"],
+                        "language": "javascript", "entrypoint": "main",
+                        "source": "function main(){return {result:{}}}"
+                    },
                     "bindings": {},
                     "outputs": [{ "key": "result", "title": "Result", "valueType": "json" }]
                 }
@@ -171,37 +177,16 @@ fn application_public_api_code_js_dependency_document(flow_id: Uuid) -> serde_js
 }
 
 fn workflow_schedule_start_contract_document() -> serde_json::Value {
-    serde_json::json!({
-        "schemaVersion": "1flowbase.flow/v2",
-        "graph": {
-            "nodes": [{
-                "id": "node-workflow-start",
-                "type": "workflow_start",
-                "config": {
-                    "input_fields": [
-                        {
-                            "key": "customer_id",
-                            "valueType": "string",
-                            "required": true,
-                            "source": "path"
-                        },
-                        {
-                            "key": "attempts",
-                            "valueType": "number",
-                            "defaultValue": 3,
-                            "source": "query"
-                        },
-                        {
-                            "key": "enabled",
-                            "valueType": "boolean",
-                            "source": "body"
-                        }
-                    ]
-                }
-            }],
-            "edges": []
-        }
-    })
+    let mut document = domain::default_flow_document_for_application(
+        domain::ApplicationType::Workflow,
+        Uuid::nil(),
+    );
+    document["graph"]["nodes"][0]["config"]["input_fields"] = serde_json::json!([
+        {"key":"customer_id", "valueType":"string", "required":true, "source":"path"},
+        {"key":"attempts", "valueType":"number", "defaultValue":3, "source":"query"},
+        {"key":"enabled", "valueType":"boolean", "source":"body"}
+    ]);
+    document
 }
 
 #[derive(Default)]

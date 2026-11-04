@@ -1,3 +1,5 @@
+import { useDocumentAnalysis } from '../../api/analysis/use-document-analysis';
+import { analysisIssues } from '../../api/analysis/presentation';
 import { useCanvasDockLayout } from './canvas-frame/use-canvas-dock-layout';
 import { useCanvasNodePreview } from './canvas-frame/use-canvas-node-preview';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,15 +43,6 @@ import {
   replaceConversationVariables
 } from '../../lib/variables/conversation-variables';
 
-import {
-  fetchModelProviderOptions,
-  modelProviderOptionsQueryKey
-} from '../../api/model-provider-options';
-
-import {
-  isVariableAggregatorCandidateTypeMismatchIssue,
-  validateDocument
-} from '../../lib/validate-document';
 import { buildNodePickerOptions } from '../../lib/plugin-node-definitions';
 import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -207,10 +200,6 @@ export function AgentFlowCanvasFrame({
     },
     []
   );
-  const modelProviderOptionsQuery = useQuery({
-    queryKey: modelProviderOptionsQueryKey,
-    queryFn: fetchModelProviderOptions
-  });
   const environmentVariablesMutation = useMutation({
     mutationFn: (variables: AgentFlowEnvironmentVariable[]) => {
       if (!can('replace_application_environment_variables'))
@@ -431,24 +420,15 @@ export function AgentFlowCanvasFrame({
     setPanelState,
     conversationLogMessage
   });
-  const issues = useMemo(
-    () =>
-      validateDocument(
-        workingDocument,
-        modelProviderOptionsQuery.isSuccess
-          ? modelProviderOptionsQuery.data
-          : null,
-        environmentVariables
-      ),
-    [
-      environmentVariables,
-      workingDocument,
-      modelProviderOptionsQuery.data,
-      modelProviderOptionsQuery.isSuccess
-    ]
+  const documentAnalysis = useDocumentAnalysis(
+    applicationId,
+    workingDocument,
+    selectedNodeId,
+    environmentVariables
   );
-  const variableAggregatorSaveBlocked = issues.some(
-    isVariableAggregatorCandidateTypeMismatchIssue
+  const issues = useMemo(
+    () => analysisIssues(documentAnalysis.analysis, workingDocument),
+    [documentAnalysis.analysis, workingDocument]
   );
   const detailActions = useNodeDetailActions();
   const issueCountByNodeId = useMemo(
@@ -575,11 +555,7 @@ export function AgentFlowCanvasFrame({
         onSaveDraft={() => {
           void draftSync.saveNow();
         }}
-        saveDisabled={
-          !can('save_draft') ||
-          autosaveStatus === 'saving' ||
-          variableAggregatorSaveBlocked
-        }
+        saveDisabled={!can('save_draft') || autosaveStatus === 'saving'}
         saveLoading={autosaveStatus === 'saving'}
         previewDisabled={
           !can('start_flow_debug_run_stream') && !can('start_flow_debug_run')
@@ -708,6 +684,7 @@ export function AgentFlowCanvasFrame({
               }
             >
               <NodeDetailPanel
+                documentAnalysis={documentAnalysis}
                 activeTab={nodeDetailTab}
                 onTabChange={setNodeDetailTab}
                 activeRunId={debugSession.activeRunId}

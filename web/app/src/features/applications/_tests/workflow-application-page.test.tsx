@@ -78,6 +78,7 @@ vi.mock('../../workflow/pages/WorkflowEditorPage', async () => {
         document: createDefaultWorkflowDocument({ flowId: 'flow-1' })
       },
       versions: [],
+      analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
       autosave_interval_seconds: 30,
       user_protection_limit: 10,
     };

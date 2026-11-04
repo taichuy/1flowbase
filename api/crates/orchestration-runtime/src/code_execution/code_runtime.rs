@@ -600,9 +600,9 @@ fn validate_code_output_contract(
         } else {
             output.selector.clone()
         };
-        if let Some(value) = read_output_selector(&envelope, &selector) {
-            validate_output_value(output, value)?;
-        }
+        let value = read_output_selector(&envelope, &selector)
+            .ok_or_else(|| anyhow!("declared output `{}` is missing", selector.join(".")))?;
+        validate_output_value(output, value)?;
     }
 
     Ok(())

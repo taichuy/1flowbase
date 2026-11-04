@@ -1,3 +1,5 @@
+import type { FlowDocumentAnalysis } from './application-analysis';
+export * from './application-analysis';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 
 import { apiFetch, apiFetchBlob, type ApiBlobResponse } from '../transport';
@@ -32,6 +34,7 @@ export interface ConsoleReferencedI18nMessage {
 }
 
 export interface ConsoleApplicationOrchestrationState {
+  analysis: FlowDocumentAnalysis;
   flow_id: string;
   draft: ConsoleFlowDraftPayload;
   messages: ConsoleReferencedI18nMessage[];

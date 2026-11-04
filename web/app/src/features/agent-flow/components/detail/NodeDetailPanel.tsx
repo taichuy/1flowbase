@@ -1,3 +1,5 @@
+import type { DocumentAnalysisState } from '../../api/analysis/use-document-analysis';
+import { useCurrentDocumentAnalysis } from '../../api/analysis/context';
 import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { Tabs } from 'antd';
 import { useMemo } from 'react';
@@ -25,6 +27,7 @@ const EMPTY_ISSUES: AgentFlowIssue[] = [];
 
 export function NodeDetailPanel({
   onClose,
+  documentAnalysis,
   onDebugNode,
   onRunNode,
   applicationId,
@@ -40,6 +43,7 @@ export function NodeDetailPanel({
   onTabChange
 }: {
   onClose: () => void;
+  documentAnalysis?: DocumentAnalysisState;
   onDebugNode?: (() => void) | undefined;
   onRunNode?: (() => void) | undefined;
   applicationId?: string;
@@ -54,6 +58,9 @@ export function NodeDetailPanel({
   activeTab: 'config' | 'lastRun';
   onTabChange: (tab: 'config' | 'lastRun') => void;
 }) {
+  const contextAnalysis = useCurrentDocumentAnalysis();
+  const { analysis, status: analysisStatus } =
+    documentAnalysis ?? contextAnalysis;
   const can = useConsoleOperationAccess();
   const readOnly = !can('save_draft');
   const document = useAgentFlowEditorStore((state) => state.workingDocument);
@@ -81,6 +88,7 @@ export function NodeDetailPanel({
     const schema = resolveAgentFlowNodeSchema(selectedNode.type);
     const adapter = createAgentFlowNodeSchemaAdapter({
       document,
+      analysis,
       nodeId: selectedNodeId,
       environmentVariables,
       issues,
@@ -104,6 +112,7 @@ export function NodeDetailPanel({
       adapter
     };
   }, [
+    analysis,
     readOnly,
     document,
     environmentVariables,
@@ -141,6 +150,13 @@ export function NodeDetailPanel({
           runLoading={runLoading}
           schema={runtime.schema}
         />
+        {analysisStatus !== 'ready' ? (
+          <div role="status" aria-live="polite">
+            {analysisStatus === 'pending'
+              ? i18nText('agentFlow', 'analysis.pending')
+              : i18nText('agentFlow', 'analysis.unavailable')}
+          </div>
+        ) : null}
         <Tabs
           activeKey={activeTab}
           onChange={(key) => onTabChange(key as 'config' | 'lastRun')}

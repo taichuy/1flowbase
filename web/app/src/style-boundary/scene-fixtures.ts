@@ -93,6 +93,7 @@ export function createStyleBoundaryOrchestrationState() {
       document: createStyleBoundaryAgentFlowDocument()
     },
     versions: [],
+    analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
     autosave_interval_seconds: 30,
     user_protection_limit: 10
   };
@@ -334,6 +335,7 @@ export function seedStyleBoundaryApplicationFetch() {
               document: currentDraftDocument
             },
             versions: [],
+            analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
             autosave_interval_seconds: 30,
             user_protection_limit: 10
           },
@@ -359,6 +361,7 @@ export function seedStyleBoundaryApplicationFetch() {
               document: currentDraftDocument
             },
             versions: [],
+            analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
             autosave_interval_seconds: 30,
             user_protection_limit: 10
           },

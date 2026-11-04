@@ -68,20 +68,14 @@ pub(super) fn compile_node(
     let bindings = compile_bindings(&node_id, &active_bindings)
         .with_context(|| format!("failed to compile bindings for node {node_id}"))
         .map_err(|error| FlowValidationError::at_node(&node_id, "/bindings", error))?;
-    let mut outputs = compile_outputs(
+    let outputs = super::output_contract::resolve_outputs(
+        &node_type,
         node.get("outputs")
             .and_then(Value::as_array)
             .ok_or_else(|| anyhow!("node {node_id} missing outputs"))?,
     )
     .with_context(|| format!("failed to compile outputs for node {node_id}"))
     .map_err(|error| FlowValidationError::at_node(&node_id, "/outputs", error))?;
-    if node_type == "code" {
-        for output in &mut outputs {
-            if output.selector.len() == 1 && output.selector[0] == output.key {
-                output.selector = vec!["result".to_string(), output.key.clone()];
-            }
-        }
-    }
     if node_type == "variable_aggregator" {
         validate_variable_aggregator_contract(&node_id, &bindings, &outputs)?;
     }
@@ -862,7 +856,7 @@ pub fn js_dependency_lookup_key(target: &str, alias: &str) -> String {
     format!("{target}::{alias}")
 }
 
-fn compile_bindings(
+pub(super) fn compile_bindings(
     node_id: &str,
     binding_values: &BTreeMap<String, Value>,
 ) -> Result<BTreeMap<String, CompiledBinding>> {
@@ -968,7 +962,7 @@ fn validate_i18n_english_key(key: &str) -> Result<()> {
     Ok(())
 }
 
-fn active_binding_values(
+pub(super) fn active_binding_values(
     node_type: &str,
     binding_values: &serde_json::Map<String, Value>,
 ) -> BTreeMap<String, Value> {
@@ -1014,40 +1008,7 @@ fn active_data_model_binding_keys(node_type: &str) -> Option<&'static [&'static 
 }
 
 fn compile_outputs(output_values: &[Value]) -> Result<Vec<CompiledOutput>> {
-    let outputs: Vec<CompiledOutput> = output_values
-        .iter()
-        .map(|output| {
-            let key = required_string(output, "key")?.to_string();
-            Ok(CompiledOutput {
-                selector: read_output_selector(output).unwrap_or_else(|| vec![key.clone()]),
-                key,
-                title: required_string(output, "title")?.to_string(),
-                value_type: required_string(output, "valueType")?.to_string(),
-                json_schema: output
-                    .get("jsonSchema")
-                    .filter(|value| value.is_object())
-                    .cloned(),
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-
-    PublicOutputContract::from_compiled_outputs(&outputs)?;
-
-    Ok(outputs)
-}
-
-fn read_output_selector(output: &Value) -> Option<Vec<String>> {
-    let selector = output.get("selector")?.as_array()?;
-    let segments = selector
-        .iter()
-        .filter_map(|segment| segment.as_str().map(str::to_string))
-        .collect::<Vec<_>>();
-
-    if segments.is_empty() {
-        None
-    } else {
-        Some(segments)
-    }
+    super::output_contract::resolve_outputs("", output_values)
 }
 
 fn required_string<'a>(value: &'a Value, key: &str) -> Result<&'a str> {

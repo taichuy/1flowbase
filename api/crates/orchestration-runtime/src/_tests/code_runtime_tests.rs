@@ -928,7 +928,7 @@ async fn code_runtime_invoker_error_yields_stable_failed_stop_reason_and_trace_p
 }
 
 #[tokio::test]
-async fn code_runtime_missing_declared_output_projects_empty_variable_payload() {
+async fn code_runtime_missing_declared_output_fails_at_its_source_before_downstream_execution() {
     let outcome = start_flow_debug_run(
         &code_runtime_plan(),
         &json!({ "node-start": { "query": "hello" } }),
@@ -942,18 +942,20 @@ async fn code_runtime_missing_declared_output_projects_empty_variable_payload() 
 
     match outcome.stop_reason {
         ExecutionStopReason::Failed(failure) => {
-            assert_eq!(failure.node_id, "node-answer");
-            assert!(failure.error_payload["message"]
+            assert_eq!(failure.node_id, "node-code");
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("code_output_contract_error")
+            );
+            assert!(failure.error_payload["runtime_message"]
                 .as_str()
                 .unwrap()
-                .contains("selector path not found: node-code.result"));
+                .contains("declared output `result.result` is missing"));
         }
-        other => panic!("expected downstream binding failure, got {other:?}"),
+        other => panic!("expected source output contract failure, got {other:?}"),
     }
-    assert_eq!(
-        outcome.node_traces[1].output_payload,
-        json!({ "result": { "unexpected": true }, "error": null })
-    );
+    assert_eq!(outcome.node_traces.len(), 2);
+    assert_eq!(outcome.node_traces[1].output_payload["result"], Value::Null);
 }
 
 #[tokio::test]
@@ -1007,6 +1009,49 @@ async fn code_runtime_rejects_declared_output_schema_mismatch() {
             );
         }
         other => panic!("expected code output contract failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn code_runtime_whole_object_schema_distinguishes_required_optional_and_null() {
+    for payload in [json!({"present":null}), json!({"present":"ok"}), json!({})] {
+        let mut plan = code_runtime_plan();
+        plan.nodes.get_mut("node-code").unwrap().outputs = vec![CompiledOutput {
+            key: "result".into(),
+            title: "Result".into(),
+            value_type: "object".into(),
+            selector: vec!["result".into()],
+            json_schema: Some(
+                json!({"type":"object","required":["present"],"properties":{"present":{"type":["string","null"]},"optional":{"type":"string"}}}),
+            ),
+        }];
+        let answer = plan.nodes.get_mut("node-answer").unwrap();
+        answer.bindings.clear();
+        let outcome = start_flow_debug_run(
+            &plan,
+            &json!({"node-start":{"query":"hello"}}),
+            &CodeFixtureInvoker {
+                output_payload: payload.clone(),
+                fail_message: None,
+            },
+        )
+        .await
+        .unwrap();
+        if payload.get("present").is_some() {
+            assert_eq!(outcome.stop_reason, ExecutionStopReason::Completed);
+            assert_eq!(outcome.variable_pool["node-code"]["result"], payload);
+        } else {
+            match outcome.stop_reason {
+                ExecutionStopReason::Failed(failure) => {
+                    assert_eq!(failure.node_id, "node-code");
+                    assert_eq!(
+                        failure.error_payload["error_code"],
+                        "code_output_contract_error"
+                    );
+                }
+                other => panic!("expected required field failure, got {other:?}"),
+            }
+        }
     }
 }
 

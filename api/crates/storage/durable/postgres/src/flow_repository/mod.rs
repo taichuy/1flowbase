@@ -13,6 +13,23 @@ use crate::{
 
 #[async_trait]
 impl FlowRepository for PgControlPlaneStore {
+    async fn load_flow_draft_document(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
+        Ok(sqlx::query_scalar(
+            "select draft.document from flow_drafts draft \
+             join flows flow on flow.id = draft.flow_id \
+             join applications application on application.id = flow.application_id \
+             where application.workspace_id = $1 and application.id = $2",
+        )
+        .bind(workspace_id)
+        .bind(application_id)
+        .fetch_optional(self.pool())
+        .await?)
+    }
+
     async fn load_flow_version_document(
         &self,
         workspace_id: Uuid,

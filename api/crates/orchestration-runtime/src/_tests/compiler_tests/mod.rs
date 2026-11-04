@@ -379,7 +379,7 @@ fn code_js_dependency_document(
     node_type: &str,
     imports: Option<Value>,
 ) -> serde_json::Value {
-    let mut config = json!({});
+    let mut config = json!({"source":"function main(){return {result:'ok'}}"});
     if let Some(imports) = imports {
         config["imports"] = imports;
     }
@@ -453,3 +453,4 @@ mod provider_and_plugin;
 
 mod diagnostics;
 mod notifications;
+mod output_analysis;

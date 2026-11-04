@@ -1,3 +1,4 @@
+import { useCurrentDocumentAnalysis } from '../../api/analysis/context';
 import { useMemo } from 'react';
 
 import { createAgentFlowNodeSchemaAdapter } from '../../schema/node-schema-adapter';
@@ -9,6 +10,7 @@ import {
 } from '../../store/editor/selectors';
 
 export function useNodeSchemaRuntime(enabled = true) {
+  const { analysis } = useCurrentDocumentAnalysis();
   const document = useAgentFlowEditorStore(selectWorkingDocument);
   const selectedNodeId = useAgentFlowEditorStore(selectSelectedNodeId);
   const setWorkingDocument = useAgentFlowEditorStore(
@@ -30,13 +32,14 @@ export function useNodeSchemaRuntime(enabled = true) {
       enabled && selectedNodeId
         ? createAgentFlowNodeSchemaAdapter({
             document,
+            analysis,
             nodeId: selectedNodeId,
             setWorkingDocument,
             messages,
             dispatch: () => undefined
           })
         : null,
-    [document, enabled, messages, selectedNodeId, setWorkingDocument]
+    [analysis, document, enabled, messages, selectedNodeId, setWorkingDocument]
   );
 
   return {
