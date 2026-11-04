@@ -70,6 +70,32 @@ async function command(label, args, env) {
   return log;
 }
 
+function buildApiTestCommands(cargoTestThreads) {
+  const api = ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'api-server', '--features', 'tikv-jemallocator/stats', ...profile];
+  // Entire named modules, plus directly affected native ingress/archive/registration routes.
+  const selectors = [
+    ['codec', 'agent_logs_protocol::'],
+    ['public-contract', 'routes::application_public_api::agent_logs::otlp::'],
+    ['public-route', 'application_api_routes::otlp_logs::', 'api_application'],
+    ['console-contract', 'application_runtime::log_exchange::'],
+    ['unified-exchange', 'application_log_exchange::'],
+    ['exchange-host-api', 'exchange_host_services'],
+    ['exchange-host-graph', 'exchange_host_services', 'extension_graph_contract'],
+    ['exchange-session', 'read_and_import_session_currentness'],
+    ['console-route', 'logs_routes::exchange::', 'api_application'],
+    ['openapi', 'canonical_otlp_trace_ingest_advertises_application_bearer_and_standard_wire_formats', 'api_documentation'],
+    ['native-reception', 'application_api_routes::log_reception::', 'api_application'],
+    ['native-export', 'application_runtime_routes_logs_export_json_trace_dump_preserves_detail_and_error_payload', 'api_application'],
+    ['native-archive', 'application_runtime_routes_logs_archive_returns_v1_manifest_and_restore_facts', 'api_application'],
+    ['operation-registry', 'console_route_assembly'],
+    ['operation-migration', 'console_policy_migration']
+  ];
+  return selectors.map(([label, selector, target]) => ({
+    label,
+    args: [...api, ...(target ? ['--test', target] : ['--lib']), selector, '--', '--test-threads', String(cargoTestThreads)],
+  }));
+}
+
 async function main() {
   assert.equal(process.env.GITHUB_ACTIONS, 'true', 'CI verifier must run on its dedicated GitHub runner');
   fs.mkdirSync(out, { recursive: true });
@@ -100,24 +126,6 @@ async function main() {
   await command('notification-workers', ['build', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'runtime-extension-sdk', '--example', 'notification_worker', '--example', 'notification_authorization_worker', ...profile], env);
   env.NOTIFICATION_WORKER_FIXTURE = path.join(root, 'api/target/debug/examples/notification_worker');
   env.NOTIFICATION_AUTHORIZATION_WORKER_FIXTURE = path.join(root, 'api/target/debug/examples/notification_authorization_worker');
-  const api = ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'api-server', '--lib', '--features', 'tikv-jemallocator/stats', ...profile];
-  // Entire named modules, plus directly affected native ingress/archive/registration routes.
-  const selectors = [
-    ['codec', 'agent_logs_protocol::'],
-    ['public-contract', 'routes::application_public_api::agent_logs::otlp::'],
-    ['public-route', 'application_api_routes::otlp_logs::'],
-    ['console-contract', 'application_runtime::log_exchange::'],
-    ['unified-exchange', 'application_log_exchange::'],
-    ['exchange-host-api', 'exchange_host_services'],
-    ['exchange-session', 'read_and_import_session_currentness'],
-    ['console-route', 'logs_routes::exchange::'],
-    ['openapi', 'canonical_otlp_trace_ingest_advertises_application_bearer_and_standard_wire_formats'],
-    ['native-reception', 'application_api_routes::log_reception::'],
-    ['native-export', 'application_runtime_routes_logs_export_json_trace_dump_preserves_detail_and_error_payload'],
-    ['native-archive', 'application_runtime_routes_logs_archive_returns_v1_manifest_and_restore_facts'],
-    ['operation-registry', 'console_route_assembly'],
-    ['operation-migration', 'console_policy_migration']
-  ];
   const testFailures = [];
   async function testCommand(label, args) {
     let log;
@@ -144,8 +152,8 @@ async function main() {
     checkpoint();
     process.stdout.write(JSON.stringify({ label, ...counts }) + '\n');
   }
-  for (const [label, selector] of selectors) {
-    await testCommand(label, [...api, selector, '--', '--test-threads', String(budget.cargoTestThreads)]);
+  for (const { label, args } of buildApiTestCommands(budget.cargoTestThreads)) {
+    await testCommand(label, args);
   }
   for (const [label, cargoArgs] of [
     ['exchange-contracts', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'extension-contracts', '--lib', 'exchange_host_services']],
@@ -174,9 +182,11 @@ async function main() {
   process.stdout.write(JSON.stringify({ result: receipt.result, source_sha: sha, tests: receipt.tests, binary: receipt.binary }) + '\n');
 }
 
-main().catch(error => {
+if (require.main === module) main().catch(error => {
   receipt.result = 'fail';
   if (fs.existsSync(out)) checkpoint();
   process.stderr.write(`${error.message}\n`);
   process.exitCode = 1;
 });
+
+module.exports = { buildApiTestCommands };

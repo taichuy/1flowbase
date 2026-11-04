@@ -33,3 +33,30 @@ test('neighboring packages, ignored tests, missing launches and missing suites c
     { stdout: passing, stderr: '   Doc-tests control_plane\n' },
   ]) assert.throws(() => requireCargoTestTargets(result, [target]), /refusing protected target reuse/u);
 });
+
+
+test('API consistency evidence follows native binaries and retains the file HTTP/documentation split', () => {
+  const { BACKEND_CONSISTENCY_TARGETS } = require('../backend-targets.js');
+  const protectedApi = BACKEND_CONSISTENCY_TARGETS.filter(({ group }) => group === 'api');
+  const fixtures = [
+    ['api_application', ['model_definition_routes::create', 'runtime_model_routes::read']],
+    ['api_identity', ['workspace_routes::authorize']],
+    ['api_system_settings', ['file_management_routes::download']],
+    ['api_documentation', ['file_management_routes::download_openapi']],
+  ];
+  const transcript = (entries) => ({
+    stderr: entries.map(([binary]) => `     Running tests/${binary}.rs (target/debug/deps/${binary}-abc123)\n`).join(''),
+    stdout: entries.map(([, names]) => `running ${names.length} tests\n${names.map((name) => `test ${name} ... ok\n`).join('')}test result: ok. ${names.length} passed; 0 failed; 0 ignored;\n`).join(''),
+  });
+  requireCargoTestTargets(transcript(fixtures), protectedApi);
+  // A neighboring suite cannot stand in for either half of the original file contract.
+  for (const absent of ['api_system_settings', 'api_documentation']) {
+    assert.throws(() => requireCargoTestTargets(
+      transcript(fixtures.filter(([binary]) => binary !== absent)), protectedApi,
+    ), /consistency-api-file-management.*refusing protected target reuse/u);
+  }
+  // Matching test names in the former lib binary are no longer valid native evidence.
+  assert.throws(() => requireCargoTestTargets(
+    transcript(fixtures.map(([, names]) => ['api_server', names])), protectedApi,
+  ), /refusing protected target reuse/u);
+});
