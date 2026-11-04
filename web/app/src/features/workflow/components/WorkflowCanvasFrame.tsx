@@ -527,6 +527,7 @@ export function WorkflowCanvasFrame(
       >
         <AgentFlowCanvas
           issueCountByNodeId={issueCountByNodeId}
+          workflowTriggerContext={triggerContext}
           nodePickerOptions={nodePickerOptions}
           onViewportSnapshotChange={(viewport) => {
             viewportSnapshotRef.current = viewport;

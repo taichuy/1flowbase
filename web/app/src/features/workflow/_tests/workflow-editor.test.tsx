@@ -65,6 +65,39 @@ const workflowNodeCatalog = createApplicationNodeCatalog([
 beforeEach(() => authenticateEditor(['save_draft'], 'member'));
 
 describe('WorkflowEditor assembly', () => {
+  test('shows the configured disabled schedule on the Start card', async () => {
+    await renderWorkflowScene(
+      <WorkflowEditorAssembly
+        applicationId="app-1"
+        applicationName="Scheduled Workflow"
+        workflowTriggerContext={{
+          ...workflowTriggerContext,
+          schedule: {
+            id: 'schedule-1',
+            workspace_id: 'workspace-1',
+            application_id: 'app-1',
+            enabled: false,
+            cron: '0 3 * * *',
+            timezone: 'Asia/Shanghai',
+            input_payload: {},
+            created_by: 'user-1',
+            updated_by: 'user-1',
+            created_at: '2026-04-15T09:00:00Z',
+            updated_at: '2026-04-15T09:00:00Z'
+          }
+        }}
+        initialState={createWorkflowInitialState()}
+        nodeCatalog={workflowNodeCatalog}
+      />
+    );
+
+    const start = screen
+      .getByText('Workflow Start', { selector: '.agent-flow-node-card__title' })
+      .closest('.react-flow__node');
+    expect(start).toHaveTextContent('已停用 · 0 3 * * * · Asia/Shanghai');
+    expect(start).not.toHaveTextContent('触发器未配置');
+  });
+
   test('AC-001/002 renders workflow entry and terminal nodes with directional connectors', async () => {
     await renderWorkflowScene(
       <WorkflowEditorAssembly
