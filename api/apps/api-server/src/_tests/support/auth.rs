@@ -38,7 +38,7 @@ impl RuntimeHostSystemPort for StubRuntimeHostSystemClient {
     }
 }
 
-pub(crate) fn default_test_config() -> ApiConfig {
+pub fn default_test_config() -> ApiConfig {
     let database_url = std::env::var("API_DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into());
     let root_account = std::env::var("BOOTSTRAP_ROOT_ACCOUNT").unwrap_or_else(|_| "root".into());
@@ -71,7 +71,7 @@ pub(crate) fn default_test_config() -> ApiConfig {
     ApiConfig::from_env_map(&refs).unwrap()
 }
 
-pub(crate) fn test_config() -> ApiConfig {
+pub fn test_config() -> ApiConfig {
     default_test_config()
 }
 
@@ -231,8 +231,25 @@ async fn test_state_with_runtime_profile_state(
         .ensure_builtin_user_and_role_models(bootstrap.root_user_id)
         .await
         .unwrap();
-    let provider_runtime =
-        Arc::new(ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests());
+    let test_resources = Arc::new(crate::test_support::TestResources::new(
+        database,
+        vec![
+            std::path::PathBuf::from(&config.business_file_local_root),
+            std::path::PathBuf::from(&config.provider_install_root),
+            std::path::PathBuf::from(&config.mcp_template_library_root),
+            std::path::PathBuf::from(&config.system_backup_repository_root),
+            postgres_toolchain_root,
+        ],
+    ));
+    #[cfg(test)]
+    let services = ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests();
+    #[cfg(not(test))]
+    let services = ApiRuntimeServices::for_test_support(
+        store.clone(),
+        &config.api_node_id,
+        &config.provider_install_root,
+    );
+    let provider_runtime = Arc::new(services.with_fixture_resources(Arc::clone(&test_resources)));
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
     let data_model_template_catalog = provider_runtime.data_model_template_catalog();
     let runtime_registry = runtime_core::runtime_model_registry::RuntimeModelRegistry::default();
@@ -328,16 +345,8 @@ async fn test_state_with_runtime_profile_state(
     );
     notification_service.bootstrap().await.unwrap();
     let state = Arc::new(ApiState {
-        test_resources: Some(Arc::new(crate::app_state::TestResources::new(
-            database,
-            vec![
-                std::path::PathBuf::from(&config.business_file_local_root),
-                std::path::PathBuf::from(&config.provider_install_root),
-                std::path::PathBuf::from(&config.mcp_template_library_root),
-                std::path::PathBuf::from(&config.system_backup_repository_root),
-                postgres_toolchain_root,
-            ],
-        ))),
+        #[cfg(test)]
+        test_resources: Some(test_resources),
         store: store.clone(),
         console_policy_reader: Arc::new(store.clone()),
         system_backup,
@@ -429,7 +438,7 @@ pub async fn test_app() -> Router {
     test_app_with_database_url().await.0
 }
 
-pub(crate) async fn test_app_with_model_pricing_catalog_url(catalog_index_url: String) -> Router {
+pub async fn test_app_with_model_pricing_catalog_url(catalog_index_url: String) -> Router {
     let (mut state, _) = test_api_state_with_database_url().await;
     Arc::get_mut(&mut state)
         .expect("test API state should be uniquely owned before router construction")
@@ -437,7 +446,7 @@ pub(crate) async fn test_app_with_model_pricing_catalog_url(catalog_index_url: S
     crate::app_with_state_and_config(state, &default_test_config())
 }
 
-pub(crate) async fn test_app_with_official_extension_source(
+pub async fn test_app_with_official_extension_source(
     source: Arc<dyn crate::official_extension_catalog::OfficialExtensionCatalogSourcePort>,
 ) -> Router {
     let (mut state, _) = test_api_state_with_database_url().await;
@@ -447,7 +456,7 @@ pub(crate) async fn test_app_with_official_extension_source(
     crate::app_with_state_and_config(state, &default_test_config())
 }
 
-pub(crate) async fn test_api_state_with_database_url() -> (Arc<ApiState>, String) {
+pub async fn test_api_state_with_database_url() -> (Arc<ApiState>, String) {
     test_state_with_runtime_profile_state(
         OffsetDateTime::now_utc(),
         Arc::new(HostApiRuntimeProfileCollector::new(OffsetDateTime::now_utc()).unwrap()),
@@ -458,11 +467,11 @@ pub(crate) async fn test_api_state_with_database_url() -> (Arc<ApiState>, String
     .await
 }
 
-pub(crate) async fn seed_session(state: &ApiState, session: domain::SessionRecord) {
+pub async fn seed_session(state: &ApiState, session: domain::SessionRecord) {
     state.session_store.put(session).await.unwrap();
 }
 
-pub(crate) async fn read_first_sse_frame(response: Response) -> String {
+pub async fn read_first_sse_frame(response: Response) -> String {
     let mut stream = response.into_body().into_data_stream();
     let mut buffer = Vec::new();
 

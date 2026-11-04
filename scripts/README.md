@@ -101,6 +101,12 @@ Docker 数据库不属于用户级开发组。
 90% 要求整机内存和 swap 比例同时超过阈值；不是 swap 硬上限。
 用 `sudo oomctl dump` 验证监控范围；这些设置不豁免内核 OOM 或 cgroup 硬上限。
 
+受限配置生成的本地 Cargo 包装器在调用者未设置 `MALLOC_CONF` 时，默认导出
+`MALLOC_CONF=dirty_decay_ms:0`，让使用相应 jemalloc 配置的编译器更早归还已释放的页；
+代价可能是增加 purge CPU 开销，实际内存效果取决于工作负载。调用者显式设置的值
+（包括空字符串）原样保留；已由上层纳入资源预算的 Cargo 调用也遵循此默认值。
+此设置仅属于本地受限包装器。
+
 Cargo 和 pnpm 不再自动进入统一排队，可以并行执行。
 `dev-heavy-run COMMAND ...` 仅保留为显式选择的串行工具，不影响普通构建入口。
 父组内存无限额时，该可选工具仅用整机 MemAvailable 至少 25% 判断内存余量。
@@ -609,11 +615,16 @@ node scripts/node/reset-rust-cache/cli.js --warmup-only
 “启动目标编译完成”只表示启动构建成功，脚本会自动继续测试预热；请等待最后的全量预热完成提示。
 每阶段输出完成耗时，各编译阶段通过 `--timings` 在 `api/target/cargo-timings/` 保存 Cargo 构建报告。
 
-阶段之间串行执行，阶段内部通常使用半数可用 CPU，目标至少 4，不超过实际可用数量。
-例如 20 个逻辑 CPU 使用 `jobs=10`；增量编译仍读取 `.1flowbase.verify.local.json` 的 `backend.incremental`。
-这不是 CPU 绑核或多个 worktree 合计的全局额度，也不保证所有编译阶段都能使用多个核心。
-预热通过 `ONEFLOWBASE_CARGO_JOB_LIMIT` 将预算传给项目 Cargo 包装器；Linux 包装器为该调用设置对应的 CPU 配额
-（例如 10 jobs 对应 `CPUQuota=1000%`，覆盖链接器等内部线程），同时保留原有内存 scope。普通调用不新增 CPU 配额。
+阶段之间串行执行。本地 CPU 预算为半数可用逻辑 CPU，目标至少 4，不超过实际可用数量；CI 默认使用 runner 全部可用 CPU。
+普通阶段 jobs 取 `backend.cargoJobs`、调用者显式 `CARGO_BUILD_JOBS` 与 CPU 预算的较小值。
+本地两个测试阶段固定 `jobs=1`，降低大型测试目标重叠的内存需求；CI 保留普通阶段 jobs。
+调用者显式正整数 `ONEFLOWBASE_CARGO_JOB_LIMIT` 可以进一步降低 CPU 预算；缺省、空值和 `auto` 使用自动预算，
+其他非法非空格式会在清理前报错。`CARGO_BUILD_JOBS` 沿用已有包装器语义：仅保留合法正整数的更小上限，
+缺省、空值、`default`、负数和其他非正整数格式回到既有预算。增量编译仍读取 `backend.incremental`。
+预热通过 `ONEFLOWBASE_CARGO_JOB_LIMIT` 将 CPU 预算传给项目 Cargo 包装器，同时独立设置 `CARGO_BUILD_JOBS`。
+例如 20 个逻辑 CPU 的本地测试阶段为 `jobs=1`、CPU 预算 10，对应 `CPUQuota=1000%`，
+覆盖编译器与链接器内部线程，同时保留原有内存 scope。此额度不是 CPU 绑核，也不保证实际使用多个核心。
+多个 worktree 的聚合限制仍由原有 `dev-rust.slice` 承担；普通 Cargo 调用行为不变。
 更新过该包装器源码的 Linux 环境需重新应用资源配置，才能识别这个单次预算；旧包装器会继续压回原上限。
 Linux 预热入口会优先使用 `~/.local/bin/cargo` 中由本项目生成的资源包装器，避免终端 PATH 顺序绕过配额；
 不存在本项目包装器时使用 PATH 中的 Cargo。Windows/macOS 保持原生 Cargo 调用，CPU 硬配额由对应平台管理。

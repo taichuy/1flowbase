@@ -3,7 +3,7 @@ import type { SettingsConsolePolicyCatalog } from '../../api/identity-access/per
 import type { SettingsRole } from '../../api/identity-access/roles';
 import { i18nText } from '../../../../shared/i18n/text';
 import { PolicyDragHandle, SortablePolicyRow, SortablePolicyTable } from './SortablePolicyTable';
-import { replaceConsolePolicyGroup, type ConsolePolicyCatalogGroup, type ConsolePolicyGroup } from './console-policy-draft';
+import { isConsoleSettingsCatalogGroup, replaceConsolePolicyGroup, type ConsolePolicyCatalogGroup, type ConsolePolicyGroup } from './console-policy-draft';
 
 type ConsolePolicyCatalogTableContext = {
   catalogGroups: SettingsConsolePolicyCatalog['groups'];
@@ -29,7 +29,9 @@ export function renderConsolePolicyCatalogTable(
 ) {
   const policyTableRows = (kind: ConsolePolicyCatalogGroup['kind']) =>
     catalogGroups
-      .filter((catalogGroup) => catalogGroup.kind === kind)
+      .filter((catalogGroup) => kind === 'settings_feature'
+        ? isConsoleSettingsCatalogGroup(catalogGroup)
+        : catalogGroup.kind === kind)
       .map((catalogGroup, displayKey) => ({
         display_key: displayKey,
         catalogGroup,
@@ -51,7 +53,9 @@ export function renderConsolePolicyCatalogTable(
       }
       columns={[
         {
-          title: i18nText('settings', 'auto.backend_setting'),
+          title: kind === 'plugin'
+            ? i18nText('settings', 'auto.plugin_permissions')
+            : i18nText('settings', 'auto.backend_setting'),
           key: 'backend-setting',
           render: (
             _: unknown,

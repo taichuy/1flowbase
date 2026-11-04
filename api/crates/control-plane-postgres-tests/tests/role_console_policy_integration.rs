@@ -1135,3 +1135,6 @@ async fn ac_010_application_namespace_inventory_exposes_unknown_and_ignores_unre
     .unwrap_err();
     assert!(error.to_string().contains("unknown legacy grant"));
 }
+
+#[path = "role_console_policy/plugin_policy_migration.rs"]
+mod plugin_policy_migration;

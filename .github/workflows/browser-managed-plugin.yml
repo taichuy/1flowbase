@@ -101,6 +101,7 @@ jobs:
               run_test initial-assignment -p storage-durable-postgres --lib managed_initial_assignment_
             fi
             run_test extension-install-http -p api-server --lib _tests::plugin_routes::extension_center
+            run_test extension-install-http-catalog -p api-server --test api_extension_catalog _tests::plugin_routes::extension_center
           else
             if [ "$TEST_SCOPE" = full ]; then
               run_test contract -p extension-contracts managed_service_contract_tests

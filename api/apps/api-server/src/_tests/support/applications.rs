@@ -103,7 +103,7 @@ pub(super) fn sample_runtime_profile(service: &str, host_fingerprint: &str) -> R
     }
 }
 
-pub(crate) async fn create_member(
+pub async fn create_member(
     app: &Router,
     cookie: &str,
     csrf: &str,
@@ -145,7 +145,7 @@ pub(crate) async fn create_member(
     payload["data"]["id"].as_str().unwrap().to_string()
 }
 
-pub(crate) async fn create_role(app: &Router, cookie: &str, csrf: &str, code: &str) {
+pub async fn create_role(app: &Router, cookie: &str, csrf: &str, code: &str) {
     let response = app
         .clone()
         .oneshot(
@@ -171,7 +171,7 @@ pub(crate) async fn create_role(app: &Router, cookie: &str, csrf: &str, code: &s
     assert_eq!(response.status(), StatusCode::CREATED);
 }
 
-pub(crate) async fn replace_role_permissions(
+pub async fn replace_role_permissions(
     app: &Router,
     cookie: &str,
     csrf: &str,
@@ -183,7 +183,7 @@ pub(crate) async fn replace_role_permissions(
         .await;
 }
 
-pub(crate) async fn replace_role_legacy_permissions_only(
+pub async fn replace_role_legacy_permissions_only(
     app: &Router,
     cookie: &str,
     csrf: &str,
@@ -215,7 +215,7 @@ pub(crate) async fn replace_role_legacy_permissions_only(
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 }
 
-pub(crate) async fn project_legacy_permissions_to_console_policy(
+pub async fn project_legacy_permissions_to_console_policy(
     app: &Router,
     cookie: &str,
     csrf: &str,
@@ -281,7 +281,7 @@ pub(crate) async fn project_legacy_permissions_to_console_policy(
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 }
 
-pub(crate) async fn replace_member_roles(
+pub async fn replace_member_roles(
     app: &Router,
     cookie: &str,
     csrf: &str,

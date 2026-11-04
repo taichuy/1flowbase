@@ -90,6 +90,7 @@ impl TryFrom<String> for ConsoleOperationId {
 #[serde(rename_all = "snake_case")]
 pub enum ConsolePolicyGroupKind {
     SettingsFeature,
+    Plugin,
     Other,
 }
 
@@ -97,6 +98,7 @@ impl ConsolePolicyGroupKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::SettingsFeature => "settings_feature",
+            Self::Plugin => "plugin",
             Self::Other => "other",
         }
     }
@@ -104,6 +106,7 @@ impl ConsolePolicyGroupKind {
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "settings_feature" => Some(Self::SettingsFeature),
+            "plugin" => Some(Self::Plugin),
             "other" => Some(Self::Other),
             _ => None,
         }
@@ -119,6 +122,10 @@ pub struct ConsolePolicyGroup {
 impl ConsolePolicyGroup {
     pub fn settings_feature(group_id: &str) -> Result<Self, ConsolePolicyIdentifierError> {
         Self::new(ConsolePolicyGroupKind::SettingsFeature, group_id)
+    }
+
+    pub fn plugin(plugin_code: &str) -> Result<Self, ConsolePolicyIdentifierError> {
+        Self::new(ConsolePolicyGroupKind::Plugin, plugin_code)
     }
 
     pub fn other(group_id: &str) -> Result<Self, ConsolePolicyIdentifierError> {

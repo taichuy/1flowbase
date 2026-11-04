@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use axum::http::{header::ACCEPT_LANGUAGE, HeaderMap};
+use axum::http::{HeaderMap, header::ACCEPT_LANGUAGE};
 use control_plane::i18n_catalog::CatalogResolver;
 use control_plane::ports::{
     OfficialPluginSourcePort, RoleConsolePolicyReader, RuntimeEventStream, SessionStore,
@@ -69,7 +69,7 @@ use crate::{
     host_extensions::console::ResolvedHostExtensionConsoleContribution,
     host_infrastructure::HostInfrastructureRegistry,
     routes::console_route_assembly::{
-        compile_complete_migrated_console_operation_registry, ConsoleRouteAssembly,
+        ConsoleRouteAssembly, compile_complete_migrated_console_operation_registry,
     },
 };
 use crate::{
@@ -204,8 +204,8 @@ pub struct CoreConsoleOperationInventorySnapshot {
     pub locales: BTreeMap<&'static str, BTreeMap<String, String>>,
 }
 
-pub fn compile_core_console_operation_inventory_snapshot(
-) -> anyhow::Result<CoreConsoleOperationInventorySnapshot> {
+pub fn compile_core_console_operation_inventory_snapshot()
+-> anyhow::Result<CoreConsoleOperationInventorySnapshot> {
     let settings_features = compile_core_settings_feature_registry()?;
     let contract_bindings =
         crate::routes::console_route_assembly::migrated_core_console_contract_bindings();
@@ -312,7 +312,11 @@ pub(crate) fn compile_console_boot_plan_with_managed_services(
                     .iter()
                     .flat_map(|c| c.settings_features.iter().cloned()),
             )
-            .chain(managed_services.iter().map(|service| service.feature())),
+            .chain(
+                managed_services
+                    .iter()
+                    .filter_map(|service| service.feature()),
+            ),
     )?);
     let mut route_assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations_and_plugin_upload_max_bytes(
         interface_registry,
@@ -462,39 +466,7 @@ impl ApiState {
 }
 
 #[cfg(test)]
-pub(crate) struct TestResources {
-    _database: postgres_test_support::PostgresTestSchema,
-    filesystem_roots: Vec<std::path::PathBuf>,
-}
-
-#[cfg(test)]
-impl TestResources {
-    pub(crate) fn new(
-        database: postgres_test_support::PostgresTestSchema,
-        filesystem_roots: Vec<std::path::PathBuf>,
-    ) -> Self {
-        Self {
-            _database: database,
-            filesystem_roots,
-        }
-    }
-}
-
-#[cfg(test)]
-impl Drop for TestResources {
-    fn drop(&mut self) {
-        for root in &self.filesystem_roots {
-            if let Err(error) = std::fs::remove_dir_all(root) {
-                if error.kind() != std::io::ErrorKind::NotFound {
-                    eprintln!(
-                        "failed to clean API test filesystem root {}: {error}",
-                        root.display()
-                    );
-                }
-            }
-        }
-    }
-}
+pub(crate) use crate::test_support::TestResources;
 
 /// Composition-root alias; protocol routes do not depend on the PostgreSQL adapter.
 pub(crate) type ApiMcpOAuthService = control_plane::mcp_oauth::McpOAuthService<MainDurableStore>;

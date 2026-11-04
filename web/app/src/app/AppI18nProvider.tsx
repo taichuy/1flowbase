@@ -1,6 +1,7 @@
 import ConfigProvider from 'antd/es/config-provider';
 import enUS from 'antd/locale/en_US';
 import zhCN from 'antd/locale/zh_CN';
+import 'dayjs/locale/zh-cn';
 import type { PropsWithChildren } from 'react';
 import { useEffect, useState } from 'react';
 import { I18nextProvider } from 'react-i18next';

@@ -419,13 +419,23 @@ describe('section shell routing', () => {
         {
           kind: 'settings_feature',
           group_id: 'settings.applications',
+          settings_feature_id: null,
           label: '应用管理',
           description: null,
           operations: []
         },
         {
+          kind: 'plugin',
+          group_id: 'calendar',
+          settings_feature_id: 'settings.calendar',
+          label: '日历插件',
+          description: '',
+          operations: []
+        },
+        {
           kind: 'other',
           group_id: 'other.general',
+          settings_feature_id: null,
           label: '其他设置',
           description: null,
           operations: []
@@ -831,7 +841,9 @@ describe('section shell routing', () => {
       );
       authenticateWithPermissions(['role_permission.manage.all']);
 
-      renderApp('/settings/roles/table-general-policy');
+      renderApp('/settings/roles/plugin-policy');
+      expect(await screen.findByRole('tab', { name: '插件', selected: true }, SECTION_REDIRECT_WAIT_OPTIONS)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('tab', { name: '表-通用配置' }));
 
       expect(
         await screen.findByRole(
@@ -851,6 +863,7 @@ describe('section shell routing', () => {
         ['动态路由', 'dynamic-routes'],
         ['表-单独配置', 'table-single-policy'],
         ['后台设置', 'console-policy'],
+        ['插件', 'plugin-policy'],
         ['其他', 'other-policy']
       ] as const;
 
@@ -869,9 +882,9 @@ describe('section shell routing', () => {
     SECTION_REDIRECT_TEST_TIMEOUT
   );
 
-  test(
-    'AC-003 replaces an unavailable role permission tab with the first available URL',
-    async () => {
+  test.each(['other-policy', 'plugin-policy'])(
+    'AC-003 replaces unavailable %s with the first available URL',
+    async (tab) => {
       consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
         settingsConsoleNavigation(['roles'])
       );
@@ -884,7 +897,7 @@ describe('section shell routing', () => {
       });
       authenticateWithPermissions(['role_permission.manage.all']);
 
-      renderApp('/settings/roles/other-policy');
+      renderApp(`/settings/roles/${tab}`);
 
       await waitFor(() => {
         expect(window.location.pathname).toBe('/settings/roles/dynamic-routes');

@@ -731,6 +731,7 @@ fn mcp_role_permission_navigation_simple_full_custom_none_and_inactive_invariant
                 uuid::Uuid::nil(),
                 vec![policy.clone()],
             )],
+            &[],
         );
         assert_eq!(
             permissions.contains("settings_feature.access.system.roles"),
@@ -739,16 +740,16 @@ fn mcp_role_permission_navigation_simple_full_custom_none_and_inactive_invariant
         );
         assert_eq!(permissions.len(), usize::from(expected));
     }
-    assert!(settings_feature_navigation_permissions(&inventory, &[]).is_empty());
+    assert!(settings_feature_navigation_permissions(&inventory, &[], &[]).is_empty());
     let policies = [RoleConsolePolicy::new(
         uuid::Uuid::nil(),
         vec![RoleConsoleGroupPolicy::full(group)],
     )];
     inventory.operations[0].lifecycle = access_control::SettingsFeatureLifecycle::Inactive;
-    assert!(settings_feature_navigation_permissions(&inventory, &policies).is_empty());
+    assert!(settings_feature_navigation_permissions(&inventory, &policies, &[]).is_empty());
     inventory.operations[0].lifecycle = access_control::SettingsFeatureLifecycle::Active;
     inventory.operations[0].authorization = access_control::ConsoleAuthorization::Authenticated;
-    assert!(settings_feature_navigation_permissions(&inventory, &policies).is_empty());
+    assert!(settings_feature_navigation_permissions(&inventory, &policies, &[]).is_empty());
     inventory.operations[0].authorization = access_control::ConsoleAuthorization::Simple;
     inventory.operations[0].policy_group =
         access_control::ConsolePolicyGroup::Other("other.test".into());
@@ -758,7 +759,7 @@ fn mcp_role_permission_navigation_simple_full_custom_none_and_inactive_invariant
             ConsolePolicyGroup::other("other.test").unwrap(),
         )],
     )];
-    assert!(settings_feature_navigation_permissions(&inventory, &policies).is_empty());
+    assert!(settings_feature_navigation_permissions(&inventory, &policies, &[]).is_empty());
 }
 
 #[test]
@@ -789,6 +790,7 @@ fn mcp_role_permission_navigation_row_full_custom_none_and_inactive_invariants()
         let permissions = settings_feature_navigation_permissions(
             &inventory,
             &[RoleConsolePolicy::new(uuid::Uuid::nil(), vec![policy])],
+            &[],
         );
         assert_eq!(permissions.contains(&permission), expected, "{scope:?}");
         assert_eq!(permissions.len(), usize::from(expected));
@@ -814,7 +816,8 @@ fn mcp_role_permission_navigation_row_full_custom_none_and_inactive_invariants()
                 &[RoleConsolePolicy::new(
                     uuid::Uuid::nil(),
                     vec![policy.clone()]
-                ),]
+                ),],
+                &[]
             )
             .contains(&permission),
             expected,
@@ -826,7 +829,7 @@ fn mcp_role_permission_navigation_row_full_custom_none_and_inactive_invariants()
         vec![RoleConsoleGroupPolicy::full(group)],
     )];
     inventory.operations[0].lifecycle = access_control::SettingsFeatureLifecycle::Inactive;
-    assert!(settings_feature_navigation_permissions(&inventory, &policies).is_empty());
+    assert!(settings_feature_navigation_permissions(&inventory, &policies, &[]).is_empty());
     inventory.operations.clear();
-    assert!(settings_feature_navigation_permissions(&inventory, &policies).is_empty());
+    assert!(settings_feature_navigation_permissions(&inventory, &policies, &[]).is_empty());
 }

@@ -11,6 +11,7 @@ import {
   type SettingsConsolePolicyCatalogLocale
 } from '../../api/identity-access/permissions';
 import { reorderItems } from './policy-order';
+import { consoleSettingsFeatureId, isConsoleSettingsCatalogGroup } from './console-policy-draft';
 
 export function useConsoleSettingsOrder({
   csrfToken,
@@ -61,7 +62,7 @@ export function useConsoleSettingsOrder({
   const reorder = (oldIndex: number, newIndex: number) => {
     if (!canReorder || mutation.isPending || !catalog) return;
     const settingsGroups = catalog.groups.filter(
-      (group) => group.kind === 'settings_feature'
+      isConsoleSettingsCatalogGroup
     );
     const reordered = reorderItems(settingsGroups, oldIndex, newIndex);
     queryClient.setQueryData<SettingsConsolePolicyCatalog>(
@@ -70,11 +71,11 @@ export function useConsoleSettingsOrder({
         ...catalog,
         groups: [
           ...reordered,
-          ...catalog.groups.filter((group) => group.kind !== 'settings_feature')
+          ...catalog.groups.filter((group) => !isConsoleSettingsCatalogGroup(group))
         ]
       }
     );
-    mutation.mutate(reordered.map((group) => group.group_id));
+    mutation.mutate(reordered.map((group) => consoleSettingsFeatureId(group)!));
   };
 
   return { reorder, canReorder, isPending: mutation.isPending };

@@ -263,19 +263,31 @@ test('consistency gates reject zero, ignored-only, absent, and contradictory exe
   }
 });
 
-test('migrated runtime consistency suites use their real Cargo integration targets', () => {
+test('migrated storage and API consistency suites use their real Cargo integration targets', () => {
   const targets = BACKEND_CONSISTENCY_TARGETS.filter((row) => row.testTarget);
   assert.deepEqual(targets.map((row) => [row.packageName, row.testTarget]), [
     ['control-plane-postgres-tests', 'runtime_record_integration'],
     ['control-plane-postgres-tests', 'orchestration_runtime_integration'],
+    ['api-server', 'api_application'],
+    ['api-server', 'api_application'],
+    ['api-server', 'api_identity'],
+    ['api-server', 'api_system_settings'],
+    ['api-server', 'api_documentation'],
   ]);
   const repoRoot = path.resolve(__dirname, '../../../..');
   const manifest = fs.readFileSync(path.join(repoRoot,
     'api/crates/control-plane-postgres-tests/Cargo.toml'), 'utf8');
-  for (const target of targets) {
+  for (const target of targets.filter((row) => row.packageName === 'control-plane-postgres-tests')) {
     assert.ok(manifest.includes(`name = "${target.testTarget}"`));
     const source = fs.readFileSync(path.join(repoRoot,
       `api/crates/control-plane-postgres-tests/tests/${target.testTarget}/mod.rs`), 'utf8');
     assert.match(source, /mod (?:crud|runtime_events);/u);
+  }
+  const apiManifest = fs.readFileSync(path.join(repoRoot, 'api/apps/api-server/Cargo.toml'), 'utf8');
+  for (const nativeTarget of ['api_application', 'api_identity', 'api_system_settings', 'api_documentation']) {
+    assert.ok(apiManifest.includes(`name = "${nativeTarget}"\npath = "tests/http/${nativeTarget}.rs"`));
+    const source = fs.readFileSync(path.join(repoRoot,
+      `api/apps/api-server/tests/http/${nativeTarget}.rs`), 'utf8');
+    assert.ok(source.includes(`src/_tests/targets/${nativeTarget}.rs`));
   }
 });

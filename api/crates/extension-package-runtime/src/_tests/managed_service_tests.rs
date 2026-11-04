@@ -456,3 +456,28 @@ fn unary_managed_service_uses_existing_per_call_carrier_only() {
         "stream transport still requires multiplex"
     );
 }
+
+#[test]
+fn backend_service_can_register_without_a_settings_feature_or_page() {
+    let mut value = fixture();
+    value["managed_service"]
+        .as_object_mut()
+        .unwrap()
+        .remove("feature");
+    value.as_object_mut().unwrap().remove("settings_pages");
+    let parsed = parse(&value).unwrap();
+    let service = parsed.managed_service.unwrap();
+    assert!(service.feature.is_none());
+    assert_eq!(service.operations[0].interface_id, "managed_fixture.list");
+    assert!(parsed.settings_pages.is_empty());
+}
+
+#[test]
+fn settings_page_cannot_register_without_its_feature() {
+    let mut value = fixture();
+    value["managed_service"]
+        .as_object_mut()
+        .unwrap()
+        .remove("feature");
+    assert!(parse(&value).is_err());
+}

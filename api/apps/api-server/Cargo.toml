@@ -6,8 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 
 [features]
+test-support = ["dep:postgres-test-support", "dep:ed25519-dalek"]
 # Builds only the Root #1805 consumer authenticity fixture. The normal lib-test target keeps
-# the complete API-server suite; this narrow target prevents a fresh QA run from compiling every
+# the internal unit suite; ordinary package tests also discover the independent contract targets.
+# This narrow lib target prevents a fresh QA run from compiling every
 # unrelated API test module before it can exercise the persisted egress path.
 root-1805-consumer-fixture = []
 
@@ -19,6 +21,8 @@ path = "src/bin/responses_history_migrate/main.rs"
 required-features = ["responses-history-migration"]
 
 [dependencies]
+postgres-test-support = { path = "../../crates/postgres-test-support", optional = true }
+ed25519-dalek = { version = "3.0.0", features = ["pem"], optional = true }
 rand.workspace = true
 base16ct.workspace = true
 opentelemetry-proto.workspace = true
@@ -92,7 +96,37 @@ libc = "0.2.190"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_System_Environment", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_SystemInformation", "Win32_System_Threading"] }
 
 [dev-dependencies]
+api-server = { path = ".", features = ["test-support"] }
 tokio-tungstenite = "0.30.0"
 serde_yaml = "0.9.34"
 ed25519-dalek = { version = "3.0.0", features = ["pem"] }
 postgres-test-support = { path = "../../crates/postgres-test-support" }
+
+[[test]]
+name = "api_application"
+path = "tests/http/api_application.rs"
+
+[[test]]
+name = "api_identity"
+path = "tests/http/api_identity.rs"
+
+[[test]]
+name = "api_console"
+path = "tests/http/api_console.rs"
+
+[[test]]
+name = "api_system_settings"
+path = "tests/http/api_system_settings.rs"
+
+[[test]]
+name = "api_mcp_management"
+path = "tests/http/api_mcp_management.rs"
+
+
+[[test]]
+name = "api_documentation"
+path = "tests/http/api_documentation.rs"
+
+[[test]]
+name = "api_extension_catalog"
+path = "tests/http/api_extension_catalog.rs"

@@ -1,4 +1,3 @@
 mod catalog_schemas;
-mod docs_routes;
-mod openapi_alignment;
+#[path = "openapi_docs_private.rs"]
 mod openapi_docs_tests;

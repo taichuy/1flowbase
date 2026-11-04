@@ -180,8 +180,7 @@ impl ApiFileImportPort {
             .await
             .map_err(|_| denied())?;
         let group =
-            domain::ConsolePolicyGroup::settings_feature(&service.declaration.feature.feature_id)
-                .map_err(|_| denied())?;
+            domain::ConsolePolicyGroup::plugin(&service.plugin_code).map_err(|_| denied())?;
         let operation_id = domain::ConsoleOperationId::try_from(operation.interface_id.as_str())
             .map_err(|_| denied())?;
         if !actor.is_root

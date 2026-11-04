@@ -69,7 +69,7 @@ function buildBackendCargoCommand({
   const normalizedShard = normalizeBackendShard(shard);
   const labelSuffix = testSelection ? '-selected' : normalizedShard ? `-${normalizedShard.key}` : '';
   const packageArgs = testSelection
-    ? testSelection.packages.flatMap((packageName) => ['--package', packageName])
+    ? testSelection.workspace ? ['--workspace'] : testSelection.packages.flatMap((packageName) => ['--package', packageName])
     : buildBackendPackageArgs(normalizedShard);
 
   if (target === 'clippy') {

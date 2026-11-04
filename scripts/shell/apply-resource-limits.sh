@@ -220,6 +220,12 @@ while (( \$# > 0 )); do
 done
 set -- "\${capped_cargo_args[@]}"
 
+# Let the compiler return freed pages sooner; purging may cost more CPU.
+# Preserve any caller setting, including an explicitly empty value.
+if [[ ! \${MALLOC_CONF+x} ]]; then
+  export MALLOC_CONF=dirty_decay_ms:0
+fi
+
 if [[ \${CARGO_MEMORY_BUDGET_ACTIVE:-} == 1 ]]; then
   exec "\$real_cargo" "\$@"
 fi

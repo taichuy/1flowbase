@@ -19,6 +19,7 @@ use control_plane::{
     },
 };
 use plugin_framework::{
+    ForwardProxyLease,
     data_source_contract::{
         DataSourceConfigInput, DataSourceCreateRecordInput, DataSourceCreateRecordOutput,
         DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput, DataSourceDescribeResourceInput,
@@ -35,7 +36,6 @@ use plugin_framework::{
         ProviderResetCreditResult, ProviderRuntimeError, ProviderRuntimeErrorKind,
         ProviderStreamEvent, ProviderUsageWindowsResult,
     },
-    ForwardProxyLease,
 };
 #[cfg(test)]
 use runtime_core::runtime_backend::RuntimeBackendSlot;
@@ -50,7 +50,7 @@ use runtime_core::{
 };
 #[cfg(test)]
 use runtime_extension_host::RuntimeExtensionHost;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -60,8 +60,8 @@ use uuid::Uuid;
 
 use crate::network_egress_client::NetworkEgressHttpClientResolver;
 use crate::runtime_activity::{
-    current_application_id, ApplicationActivityFinish, ApplicationActivityGuard,
-    ApplicationActivityKind, ApplicationRuntimeActivityTracker,
+    ApplicationActivityFinish, ApplicationActivityGuard, ApplicationActivityKind,
+    ApplicationRuntimeActivityTracker, current_application_id,
 };
 
 mod capability_port;
@@ -107,6 +107,9 @@ pub struct ApiRuntimeServices {
         Option<Arc<orchestration_runtime::provider_input_pipeline::ProviderInputPipeline>>,
     provider_distribution_snapshot: Arc<tokio::sync::RwLock<EffectiveProviderDistributionSnapshot>>,
     transport_sessions: Arc<transport_session_lifecycle::TransportSessionCoordinator>,
+    // Declared last: runtime/backend/session fields are dropped before fixture cleanup.
+    #[cfg(feature = "test-support")]
+    fixture_resources: Option<Arc<crate::test_support::TestResources>>,
 }
 
 #[derive(Clone)]
@@ -251,6 +254,8 @@ impl ApiRuntimeServices {
             )?,
         );
         Ok(Self {
+            #[cfg(feature = "test-support")]
+            fixture_resources: None,
             managed_composition: None,
             runtime_backend,
             orchestration_backend,
@@ -297,6 +302,8 @@ impl ApiRuntimeServices {
             .expect("test transport registry must initialize"),
         );
         Self {
+            #[cfg(feature = "test-support")]
+            fixture_resources: None,
             managed_composition: None,
             runtime_backend,
             orchestration_backend,
@@ -310,6 +317,81 @@ impl ApiRuntimeServices {
             )),
             transport_sessions,
         }
+    }
+
+    /// Explicit fixture factory: the ordinary library keeps production UUID artifact references.
+    #[cfg(all(feature = "test-support", not(test)))]
+    pub(crate) fn for_test_support(
+        store: MainDurableStore,
+        api_node_id: &str,
+        provider_install_root: &str,
+    ) -> Self {
+        let runtime_host = Arc::new(
+            runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver(
+                time::OffsetDateTime::now_utc(),
+                Arc::new(ApiRuntimeArtifactResolver::new(
+                    store,
+                    api_node_id,
+                    provider_install_root,
+                )),
+            )
+            .expect("fixture runtime host must initialize"),
+        );
+        runtime_host
+            .mark_ready()
+            .expect("fixture runtime host must become ready");
+        let mut slot = runtime_core::runtime_backend::RuntimeBackendSlot::default();
+        slot.bind(runtime_host)
+            .expect("fixture runtime backend must bind exactly once");
+        let runtime_backend = slot.backend().expect("fixture runtime backend must exist");
+        let runtime_execution: Arc<dyn RuntimeExecutionPort> = runtime_backend.clone();
+        let orchestration_backend =
+            orchestration_runtime::runtime_backend::OrchestrationRuntimeBackend::new(
+                runtime_execution,
+            );
+        let transport_sessions = Arc::new(
+            transport_session_lifecycle::TransportSessionCoordinator::new(
+                runtime_backend.clone(),
+                orchestration_runtime::transport_session::TransportRegistryConfig::default(),
+            )
+            .expect("test transport registry must initialize"),
+        );
+        Self {
+            #[cfg(feature = "test-support")]
+            fixture_resources: None,
+            managed_composition: None,
+            runtime_backend,
+            orchestration_backend,
+            data_model_template_catalog:
+                runtime_core::data_model_template_registry::DataModelTemplateCatalog::core(),
+            model_provider_slot_resolver: None,
+            provider_input_pipeline: None,
+            provider_distribution_snapshot: Arc::new(tokio::sync::RwLock::new(
+                EffectiveProviderDistributionSnapshot::builtins()
+                    .expect("builtin distribution registry must compile"),
+            )),
+            transport_sessions,
+        }
+    }
+
+    #[cfg(feature = "test-support")]
+    pub(crate) fn with_fixture_resources(
+        mut self,
+        owner: Arc<crate::test_support::TestResources>,
+    ) -> Self {
+        self.fixture_resources = Some(owner);
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixture_resource_owner(
+        &self,
+    ) -> std::sync::Weak<crate::test_support::TestResources> {
+        Arc::downgrade(
+            self.fixture_resources
+                .as_ref()
+                .expect("fixture resources must be attached"),
+        )
     }
 
     pub(crate) fn start_transport_session_scheduler(&self) {

@@ -67,6 +67,7 @@ version = "0.6.3"
 dependencies = [
  "access-control",
  "anyhow",
+ "api-server",
  "argon2",
  "async-trait",
  "axum",

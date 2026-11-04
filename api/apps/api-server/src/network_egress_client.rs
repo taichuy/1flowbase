@@ -70,7 +70,7 @@ pub struct NetworkEgressHttpClientResolver {
 #[derive(Clone)]
 enum NetworkEgressResolverBackend {
     Configured(Box<ConfiguredNetworkEgressResolverBackend>),
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     Direct,
 }
 
@@ -109,7 +109,7 @@ impl NetworkEgressHttpClientResolver {
                 &backend.provider_secret_master_key,
                 &backend.node_id,
             )),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             NetworkEgressResolverBackend::Direct => None,
         }
     }
@@ -132,8 +132,9 @@ impl NetworkEgressHttpClientResolver {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn direct_for_tests() -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn direct_for_tests() -> Self {
         Self {
             backend: NetworkEgressResolverBackend::Direct,
         }

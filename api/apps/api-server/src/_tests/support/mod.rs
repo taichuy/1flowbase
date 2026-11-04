@@ -5,12 +5,12 @@ mod plugins;
 
 use std::{fs, io::Write, path::Path, sync::Arc};
 
-use argon2::{password_hash::PasswordHasher, Argon2};
+use argon2::{Argon2, password_hash::PasswordHasher};
 use async_trait::async_trait;
 use axum::{
-    body::{to_bytes, Body},
-    http::{Request, StatusCode},
     Router,
+    body::{Body, to_bytes},
+    http::{Request, StatusCode},
 };
 use control_plane::bootstrap::{BootstrapConfig, BootstrapService};
 use control_plane::ports::{
@@ -19,8 +19,8 @@ use control_plane::ports::{
     OfficialPluginSourcePort,
 };
 use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
-use ed25519_dalek::{pkcs8::EncodePublicKey, SigningKey};
-use flate2::{write::GzEncoder, Compression};
+use ed25519_dalek::{SigningKey, pkcs8::EncodePublicKey};
+use flate2::{Compression, write::GzEncoder};
 use runtime_profile::{
     RuntimeCpu, RuntimeCpuMetrics, RuntimeDiskIoMetrics, RuntimeMemory, RuntimeMemoryMetrics,
     RuntimeMetricAvailability, RuntimeMetricScopeKind, RuntimeMetricsSnapshot,
@@ -56,7 +56,7 @@ use crate::{
     },
 };
 
-pub(crate) use applications::*;
-pub(crate) use auth::*;
-pub(crate) use packages::*;
-pub(crate) use plugins::InMemoryOfficialExtensionCatalogSource;
+pub use applications::*;
+pub use auth::*;
+pub use packages::*;
+pub use plugins::InMemoryOfficialExtensionCatalogSource;

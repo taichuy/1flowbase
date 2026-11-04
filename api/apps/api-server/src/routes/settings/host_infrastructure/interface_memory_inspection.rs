@@ -474,6 +474,7 @@ fn has_registered_simple_operations(
             ConsolePolicyGroup::SettingsFeature(feature_id) => {
                 domain::ConsolePolicyGroup::settings_feature(feature_id)
             }
+            ConsolePolicyGroup::Plugin(group_id) => domain::ConsolePolicyGroup::plugin(group_id),
             ConsolePolicyGroup::Other(group_id) => domain::ConsolePolicyGroup::other(group_id),
         };
         let (Ok(group), Ok(operation_id)) = (

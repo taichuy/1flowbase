@@ -7,8 +7,10 @@ function usage(writeStdout = (text) => process.stdout.write(text)) {
 
 停止当前 worktree 的 api-server，删除 api/target，获取 Cargo.lock 中的依赖，
 编译 dev-up 使用的 api-server binary，再准备测试配置下的普通库和 binary 测试目标，
-最后预热 workspace 全部测试目标（不运行测试）。阶段串行，内部默认使用半数可用逻辑 CPU，
-目标最少 2，不超过实际可用数量；不修改共享的开发并发配置。
+最后预热 workspace 全部测试目标（不运行测试）。阶段串行，本地两个测试阶段 jobs=1；
+CPU 预算默认半数可用逻辑 CPU，目标至少 4，不超过实际可用数量。
+普通阶段遵循共享 jobs 配置，各阶段保留调用者更小的并发和 CPU 预算；CI 默认全机。
+不修改共享的开发并发配置。
 --warmup-only：首次开发初始化或补齐缓存时使用，保留 api/target 和运行中的服务。
 `);
 }

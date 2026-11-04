@@ -42,6 +42,7 @@ pub(crate) fn core_console_locale_catalog_contribution() -> ConsoleLocaleCatalog
         .collect();
 
     ConsoleLocaleCatalogContribution {
+        plugin_groups: Vec::new(),
         owner: ConsoleOperationOwner {
             kind: SettingsFeatureOwnerKind::Core,
             owner_id: "boot-core".to_string(),

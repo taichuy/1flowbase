@@ -151,7 +151,14 @@ impl ConsoleSurfaceRegistry {
             )?;
         }
         for service in &services {
-            let feature = &service.declaration.feature;
+            if service.feature().is_none() {
+                continue;
+            }
+            let feature = service
+                .declaration
+                .feature
+                .as_ref()
+                .expect("registered settings feature");
             let navigation = ConsoleNavigation {
                 route_definitions: vec![ConsoleRouteDefinition {
                     route_id: feature.route_id.clone(),

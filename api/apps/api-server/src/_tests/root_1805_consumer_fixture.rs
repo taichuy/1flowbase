@@ -8,7 +8,7 @@
 //! unit modules from making the Root QA evidence un-runnable on a constrained fresh build.
 
 mod network_egress_fixture;
-#[path = "support/mod.rs"]
+#[path = "support/root_1805_bridge.rs"]
 pub(crate) mod support;
 
 use std::{

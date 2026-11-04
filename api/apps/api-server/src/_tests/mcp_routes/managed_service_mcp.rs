@@ -2,6 +2,7 @@ use super::*;
 use domain::{RoleConsoleGroupPolicy, RoleConsolePolicy};
 fn registration() -> ManagedServiceRegistration {
     ManagedServiceRegistration {
+        display_name: "Fixture plugin".into(), description: "Fixture plugin operations".into(),
         installation_id: Uuid::from_u128(99), plugin_code:"ssh".into(),plugin_version:"1.0.0".into(),pages:vec![],
         declaration:serde_json::from_value(json!({
             "scope":"system", "feature":{"feature_id":"ssh.settings","label":"SSH","description":"Manage connections","route_id":"ssh","path":"/settings/ssh"},
@@ -191,7 +192,7 @@ fn managed_mcp_requires_selected_enabled_host_instance_and_role_operation() {
     let mut actor = domain::ActorContext::root(Uuid::nil(), Uuid::nil(), "root");
     actor.is_root = false;
     assert!(!operation_accessible(&actor, &[], &service, operation).unwrap());
-    let group = domain::ConsolePolicyGroup::settings_feature("ssh.settings").unwrap();
+    let group = domain::ConsolePolicyGroup::plugin("ssh").unwrap();
     let policies = vec![RoleConsolePolicy::new(
         Uuid::nil(),
         vec![RoleConsoleGroupPolicy::full(group.clone())],
@@ -526,7 +527,7 @@ fn persisted_managed_wrappers_keep_edits_but_follow_current_activation_and_role(
     .unwrap();
     assert!(denied.tools.is_empty());
     assert!(denied.bindings.is_empty());
-    let group = domain::ConsolePolicyGroup::settings_feature("ssh.settings").unwrap();
+    let group = domain::ConsolePolicyGroup::plugin("ssh").unwrap();
     let policies = vec![RoleConsolePolicy::new(
         Uuid::nil(),
         vec![RoleConsoleGroupPolicy::full(group)],

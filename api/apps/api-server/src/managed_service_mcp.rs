@@ -182,8 +182,7 @@ fn operation_accessible(
     service: &ManagedServiceRegistration,
     operation: &plugin_framework::ManagedServiceOperation,
 ) -> Result<bool> {
-    let group =
-        domain::ConsolePolicyGroup::settings_feature(&service.declaration.feature.feature_id)?;
+    let group = domain::ConsolePolicyGroup::plugin(&service.plugin_code)?;
     let operation_id = domain::ConsoleOperationId::try_from(operation.interface_id.as_str())?;
     Ok(
         actor.is_root
@@ -259,8 +258,8 @@ pub(crate) fn append_service(
         id: identity("group", &instance.id.to_string(), &path),
         instance_record_id: instance.id,
         path: path.clone(),
-        display_name: service.declaration.feature.label.clone(),
-        description_short: Some(service.declaration.feature.description.clone()),
+        display_name: service.display_name.clone(),
+        description_short: Some(service.description.clone()),
         enabled: true,
         sort_order: 0,
         created_by: actor,

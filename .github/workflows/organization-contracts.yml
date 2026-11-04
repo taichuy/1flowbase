@@ -108,12 +108,13 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test organization_integration 2>&1 | tee tmp/test-governance/organization/integration.log || verification_status=1
           cargo test --locked --manifest-path api/Cargo.toml -p runtime-core --lib data_model_template_registry_tests 2>&1 | tee tmp/test-governance/organization/template.log || verification_status=1
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib ordered_tree 2>&1 | tee tmp/test-governance/organization/runtime-http.log || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_application ordered_tree 2>&1 | tee tmp/test-governance/organization/runtime-http-application.log || verification_status=1
           fi
           # Each selected command must execute passing tests; adjacent logs cannot fill gaps.
           if [ "$VERIFY_SCOPE" = "organization" ]; then
             suites="integration"
           else
-            suites="contracts tree block-tree members domain metadata permissions integration template runtime-http"
+            suites="contracts tree block-tree members domain metadata permissions integration template runtime-http runtime-http-application"
           fi
           for suite in $suites; do
             node scripts/node/verify/cargo-test-results.js "tmp/test-governance/organization/$suite.log" || verification_status=1

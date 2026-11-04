@@ -128,6 +128,7 @@ pub struct RoleDataModelOptionResponse {
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ConsolePolicyGroupKindBody {
+    Plugin,
     SettingsFeature,
     Other,
 }
@@ -135,6 +136,7 @@ pub enum ConsolePolicyGroupKindBody {
 impl ConsolePolicyGroupKindBody {
     fn as_str(self) -> &'static str {
         match self {
+            Self::Plugin => "plugin",
             Self::SettingsFeature => "settings_feature",
             Self::Other => "other",
         }
@@ -227,6 +229,7 @@ pub struct ConsolePolicyCatalogOptionResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ConsolePolicyCatalogGroupResponse {
+    pub settings_feature_id: Option<String>,
     pub kind: ConsolePolicyGroupKindBody,
     pub group_id: String,
     pub label: String,

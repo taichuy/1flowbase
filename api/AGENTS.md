@@ -22,6 +22,8 @@
 - `plugins` 是插件源码工作区和包工作区；`host-extensions`、`sets`、`templates`、`packages`、`installed` 的生命周期以 `api/plugins/README.md` 为准。
 - `target` 是构建产物目录，不手工修改。
 - 模块级与单元测试放到对应 `src/_tests`；应用宿主级健康检查、启动冒烟、跨 crate 集成验证放到 `tests/`。
+- `api-server` 的公开接口契约测试优先用原生 Cargo integration target；入口可挂载 `src/_tests` 的既有 leaf，迁出时移除旧 lib-test 挂载，保留断言和测试属性。
+- 定向验证先选 `--test <target>` 再选 `--filter`；测试名过滤不减少 lib-test 编译范围。目标与例子见 [API 测试目标](apps/api-server/tests/README.md)。白盒私有状态测试保留在所属模块；全量入口必须仍发现所有目标。
 - 同一目录文件接近 `15` 个时收纳子目录；单文件接近 `1500` 行时拆职责。
 
 ## Interface Lifecycle Boundary

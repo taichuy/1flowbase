@@ -120,3 +120,13 @@ export function replaceConsolePolicyGroup(
   );
 }
 
+
+/** Settings ordering identifies registered pages; policy identity remains kind + group_id. */
+export function consoleSettingsFeatureId(group: ConsolePolicyCatalogGroup): string | null {
+  if (group.kind === 'settings_feature') return group.group_id;
+  return group.kind === 'plugin' ? group.settings_feature_id : null;
+}
+
+export function isConsoleSettingsCatalogGroup(group: ConsolePolicyCatalogGroup) {
+  return consoleSettingsFeatureId(group) !== null;
+}

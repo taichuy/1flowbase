@@ -10,6 +10,8 @@ pub(crate) struct ManagedServiceRegistration {
     pub installation_id: uuid::Uuid,
     pub plugin_code: String,
     pub plugin_version: String,
+    pub display_name: String,
+    pub description: String,
     pub declaration: ManagedServiceManifest,
     pub pages: Vec<PluginSettingsPageManifest>,
 }
@@ -21,9 +23,12 @@ impl ManagedServiceRegistration {
             version: self.plugin_version.clone(),
         }
     }
-    pub fn feature(&self) -> SettingsFeatureRegistration {
-        let f = &self.declaration.feature;
-        SettingsFeatureRegistration {
+    pub fn feature(&self) -> Option<SettingsFeatureRegistration> {
+        if self.pages.is_empty() {
+            return None;
+        }
+        let f = self.declaration.feature.as_ref()?;
+        Some(SettingsFeatureRegistration {
             feature_id: f.feature_id.clone(),
             owner: self.owner(),
             lifecycle: SettingsFeatureLifecycle::Active,
@@ -44,27 +49,54 @@ impl ManagedServiceRegistration {
                     path: op.path.clone(),
                 })
                 .collect(),
-        }
+        })
     }
     pub fn locale_catalog(&self) -> ConsoleLocaleCatalogContribution {
-        let texts = [
-            &self.declaration.feature.label,
-            &self.declaration.feature.description,
-        ]
-        .into_iter()
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .map(|text| ConsoleLocaleText {
-            reference: text.clone(),
-            en_us: text.clone(),
-            zh_hans: text.clone(),
-        })
-        .collect();
+        if let Some(feature) = self.feature() {
+            // Settings surfaces may have different captions; their permissions still belong to
+            // the one plugin group.
+            let mut contribution = self.plugin_locale_catalog();
+            for text in [
+                feature.console_surface.label_key,
+                feature.console_surface.description_key,
+            ] {
+                if !contribution
+                    .texts
+                    .iter()
+                    .any(|existing| existing.reference == text)
+                {
+                    contribution.texts.push(ConsoleLocaleText {
+                        reference: text.clone(),
+                        en_us: text.clone(),
+                        zh_hans: text,
+                    });
+                }
+            }
+            return contribution;
+        }
+        self.plugin_locale_catalog()
+    }
+    fn plugin_locale_catalog(&self) -> ConsoleLocaleCatalogContribution {
+        let texts = [&self.display_name, &self.description]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .map(|text| ConsoleLocaleText {
+                reference: text.clone(),
+                en_us: text.clone(),
+                zh_hans: text.clone(),
+            })
+            .collect();
         ConsoleLocaleCatalogContribution {
             owner: self.owner(),
             lifecycle: SettingsFeatureLifecycle::Active,
             texts,
             policy_groups: Vec::new(),
+            plugin_groups: vec![ConsoleOtherPolicyGroupDisplay {
+                group_id: self.plugin_code.clone(),
+                label_ref: self.display_name.clone(),
+                description_ref: self.description.clone(),
+            }],
         }
     }
     pub fn operations(&self) -> Vec<ConsoleOperationRegistration> {
@@ -77,9 +109,7 @@ impl ManagedServiceRegistration {
                 authorization_profile_id: Some(op.interface_id.clone()),
                 owner: self.owner(),
                 lifecycle: SettingsFeatureLifecycle::Active,
-                policy_group: ConsolePolicyGroup::SettingsFeature(
-                    self.declaration.feature.feature_id.clone(),
-                ),
+                policy_group: ConsolePolicyGroup::Plugin(self.plugin_code.clone()),
                 order: index as i32,
                 routes: vec![ConsoleRouteBinding {
                     method: op.method.clone(),
@@ -184,6 +214,8 @@ pub(crate) async fn load_installations(
             installation_id: installation.id,
             plugin_code: code,
             plugin_version: manifest.version,
+            display_name: manifest.display_name,
+            description: manifest.description,
             declaration: manifest
                 .managed_service
                 .context("system service declaration missing")?,
@@ -224,7 +256,7 @@ pub(crate) fn append_openapi(
             }
             // Host catalog response contracts describe ApiSuccess.data, as static DTO docs do.
             // The shared dispatcher unwraps the HTTP envelope before validating this schema.
-            let mut operation = json!({"operationId":op.interface_id,"summary":op.summary,"description":op.description,"tags":[service.declaration.feature.label],"parameters":parameters,
+            let mut operation = json!({"operationId":op.interface_id,"summary":op.summary,"description":op.description,"tags":[service.display_name],"parameters":parameters,
             "responses":{"200":{"description":"Successful operation","content":{"application/json":{"schema":op.output_schema}}}}});
             if op.method != "GET" && op.method != "DELETE" {
                 operation["requestBody"] = json!({"required":true,"content":{"application/json":{"schema":op.input_schema.pointer("/properties/body").cloned().unwrap_or(json!({"type":"object"}))}}});
