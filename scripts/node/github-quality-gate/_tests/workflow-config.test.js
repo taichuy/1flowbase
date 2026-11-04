@@ -1277,7 +1277,10 @@ test('organization gate validates the exact selected batch without treating comp
   const selections = [...testStep.matchAll(/suites="([a-z -]+)"/gu)].map((match) => match[1].split(' '));
   assert.deepEqual(selections[0], ['integration']);
   assert.deepEqual(selections[1].sort(), logs.sort());
-  assert.equal(logs.length, 10);
+  assert.deepEqual(logs, [
+    'contracts', 'tree', 'block-tree', 'members', 'domain', 'metadata', 'permissions',
+    'integration', 'template', 'runtime-http', 'runtime-http-application',
+  ].sort());
   assert.match(testStep, /for suite in \$suites; do/u);
   assert.match(testStep, /node scripts\/node\/verify\/cargo-test-results\.js "tmp\/test-governance\/organization\/\$suite\.log" \|\| verification_status=1/u);
   const compileStep = workflow.slice(workflow.indexOf('- name: Compile API consumers'));
