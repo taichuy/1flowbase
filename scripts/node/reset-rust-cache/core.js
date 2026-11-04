@@ -17,10 +17,10 @@ function getRepoRoot() {
   return path.resolve(__dirname, '..', '..', '..');
 }
 
-function buildCargoEnv({ cargoJobs, incremental, testProfile = false }) {
+function buildCargoEnv({ cargoJobs, cpuBudget, incremental, testProfile = false }) {
   const env = {
     CARGO_BUILD_JOBS: String(cargoJobs),
-    ONEFLOWBASE_CARGO_JOB_LIMIT: String(cargoJobs),
+    ONEFLOWBASE_CARGO_JOB_LIMIT: String(cpuBudget),
     CARGO_INCREMENTAL: incremental ? '1' : '0',
   };
 
@@ -31,10 +31,42 @@ function buildCargoEnv({ cargoJobs, incremental, testProfile = false }) {
   return env;
 }
 
-function buildRustWarmupPlan({ incremental, availableParallelism = getAvailableParallelism(), env = process.env }) {
-  const cargoJobs = isCiEnvironment(env) ? availableParallelism : getLocalCpuBudget(availableParallelism);
-  const devEnv = buildCargoEnv({ cargoJobs, incremental });
-  const testEnv = buildCargoEnv({ cargoJobs, incremental, testProfile: true });
+function readExplicitCpuCap(env) {
+  const value = env.ONEFLOWBASE_CARGO_JOB_LIMIT;
+  if (value === undefined || value === '' || value === 'auto') return Infinity;
+  if (typeof value !== 'string' || !/^[1-9][0-9]*$/.test(value)) {
+    throw new Error('ONEFLOWBASE_CARGO_JOB_LIMIT must be a positive integer or auto');
+  }
+  return Number(value);
+}
+
+function readExplicitBuildJobs(env) {
+  const value = env.CARGO_BUILD_JOBS;
+  // Match the installed wrapper: unsupported job syntax falls back to its budget.
+  return typeof value === 'string' && /^[1-9][0-9]*$/.test(value) ? Number(value) : Infinity;
+}
+
+function buildRustWarmupPlan({
+  incremental,
+  availableParallelism = getAvailableParallelism(),
+  cargoJobs,
+  env = process.env,
+}) {
+  const localCpuBudget = getLocalCpuBudget(availableParallelism);
+  const ci = isCiEnvironment(env);
+  const cpuBudget = Math.min(
+    ci ? availableParallelism : localCpuBudget,
+    readExplicitCpuCap(env),
+  );
+  const configuredJobs = cargoJobs ?? (ci ? availableParallelism : localCpuBudget);
+  if (!Number.isSafeInteger(configuredJobs) || configuredJobs < 1 || configuredJobs > availableParallelism) {
+    throw new Error('backend.cargoJobs must be a positive safe integer not exceeding availableParallelism');
+  }
+  const ordinaryJobs = Math.min(configuredJobs, readExplicitBuildJobs(env), cpuBudget);
+  const devEnv = buildCargoEnv({ cargoJobs: ordinaryJobs, cpuBudget, incremental });
+  // Serial compiler jobs reduce overlapping large test targets while preserving
+  // the independent cgroup CPU upper bound; it does not guarantee parallel CPU use.
+  const testEnv = buildCargoEnv({ cargoJobs: ci ? ordinaryJobs : 1, cpuBudget, incremental, testProfile: true });
 
   return [
     {
@@ -152,8 +184,8 @@ async function runRustCacheReset({
   writeStdout = (text) => process.stdout.write(text),
 } = {}) {
   const runtimeConfig = loadRuntimeConfigImpl({ repoRoot, env, availableParallelism });
-  const { incremental } = runtimeConfig.backend;
-  const plan = buildRustWarmupPlan({ incremental, availableParallelism, env });
+  const { incremental, cargoJobs } = runtimeConfig.backend;
+  const plan = buildRustWarmupPlan({ incremental, cargoJobs, availableParallelism, env });
 
   if (warmupOnly) {
     writeStdout('[1flowbase-reset-rust-cache] 保留已有缓存与运行中的服务，仅预热 Rust 构建和测试目标。\n');
@@ -169,7 +201,7 @@ async function runRustCacheReset({
     const startedAt = Date.now();
     writeStdout(
       `[1flowbase-reset-rust-cache] 预热 ${stage.label} `
-      + `(jobs=${stage.env.CARGO_BUILD_JOBS}, incremental=${stage.env.CARGO_INCREMENTAL})。\n`,
+      + `(jobs=${stage.env.CARGO_BUILD_JOBS}, cpu-cap=${stage.env.ONEFLOWBASE_CARGO_JOB_LIMIT}, incremental=${stage.env.CARGO_INCREMENTAL})。\n`,
     );
     const status = await runCargoImpl({ repoRoot, ...stage });
     if (status !== 0) {

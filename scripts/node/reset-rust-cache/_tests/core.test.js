@@ -26,7 +26,7 @@ test('warmup selects the installed project resource wrapper without replacing un
   }
 });
 
-test('buildRustWarmupPlan fetches locked dependencies before staged compilation with half the available CPUs', () => {
+test('buildRustWarmupPlan fetches locked dependencies before staged compilation with independent CPU and compiler budgets', () => {
   assert.deepEqual(buildRustWarmupPlan({ env: {}, availableParallelism: 20, incremental: true }), [
     {
       label: 'locked dependencies',
@@ -47,7 +47,7 @@ test('buildRustWarmupPlan fetches locked dependencies before staged compilation 
         'test', '--manifest-path', 'api/Cargo.toml', '--workspace', '--bins', '--no-run', '--locked', '--timings',
       ],
       env: {
-        CARGO_BUILD_JOBS: '10',
+        CARGO_BUILD_JOBS: '1',
         ONEFLOWBASE_CARGO_JOB_LIMIT: '10',
         CARGO_INCREMENTAL: '1',
         CARGO_PROFILE_TEST_DEBUG: '0',
@@ -59,7 +59,7 @@ test('buildRustWarmupPlan fetches locked dependencies before staged compilation 
         'test', '--manifest-path', 'api/Cargo.toml', '--workspace', '--all-targets', '--no-run', '--locked', '--timings',
       ],
       env: {
-        CARGO_BUILD_JOBS: '10',
+        CARGO_BUILD_JOBS: '1',
         ONEFLOWBASE_CARGO_JOB_LIMIT: '10',
         CARGO_INCREMENTAL: '1',
         CARGO_PROFILE_TEST_DEBUG: '0',
@@ -68,7 +68,7 @@ test('buildRustWarmupPlan fetches locked dependencies before staged compilation 
   ]);
   for (const [availableParallelism, expected] of [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [6, '4']]) {
     assert.ok(buildRustWarmupPlan({ env: {}, availableParallelism, incremental: true })
-      .every((stage) => stage.env.CARGO_BUILD_JOBS === expected));
+      .every((stage, index) => stage.env.CARGO_BUILD_JOBS === (index >= 2 ? '1' : expected) && stage.env.ONEFLOWBASE_CARGO_JOB_LIMIT === expected));
   }
 });
 
@@ -78,7 +78,7 @@ test('CI warmup uses the entire runner instead of the local half-machine budget'
       .every((stage) => stage.env.CARGO_BUILD_JOBS === '20'));
     const status = await runRustCacheReset({
       repoRoot: '/repo', warmupOnly: true, availableParallelism: 20, env,
-      loadRuntimeConfigImpl: () => ({ backend: { incremental: false } }),
+      loadRuntimeConfigImpl: () => ({ backend: { cargoJobs: 20, incremental: false } }),
       async runCargoImpl({ env: cargoEnv }) {
         assert.equal(cargoEnv.CARGO_BUILD_JOBS, '20');
         return 0;
@@ -94,10 +94,10 @@ test('warmup-only preserves existing cache and completes dependency/test stages 
   const status = await runRustCacheReset({
     env: {},
     repoRoot: '/repo', warmupOnly: true, availableParallelism: 2,
-    loadRuntimeConfigImpl: () => ({ backend: { incremental: true } }),
+    loadRuntimeConfigImpl: () => ({ backend: { cargoJobs: 2, incremental: true } }),
     cleanupBackendCacheImpl: () => assert.fail('warmup-only must not stop services or delete caches'),
     runCargoImpl: async ({ label, env }) => {
-      assert.equal(env.CARGO_BUILD_JOBS, '2');
+      assert.equal(env.CARGO_BUILD_JOBS, label.startsWith('workspace') ? '1' : '2');
       events.push(`start:${label}`);
       await new Promise((resolve) => setImmediate(resolve));
       events.push(`end:${label}`);
@@ -114,7 +114,7 @@ test('warmup-only preserves existing cache and completes dependency/test stages 
   ]);
 });
 
-test('runRustCacheReset uses its own CPU budget while preserving shared development settings', async () => {
+test('runRustCacheReset honors shared jobs while preserving a separate CPU budget', async () => {
   const events = [];
   const status = await runRustCacheReset({
     env: {},
@@ -135,10 +135,10 @@ test('runRustCacheReset uses its own CPU budget while preserving shared developm
   assert.equal(status, 0);
   assert.deepEqual(events, [
     'clean',
-    'locked dependencies:10:0',
-    'api-server dev-up target:10:0',
-    'workspace test-profile libraries and binary tests:10:0',
-    'workspace test targets:10:0',
+    'locked dependencies:2:0',
+    'api-server dev-up target:2:0',
+    'workspace test-profile libraries and binary tests:1:0',
+    'workspace test targets:1:0',
   ]);
 });
 
@@ -214,4 +214,222 @@ test('all-target warmup waits for both the runtime build and test-profile prepar
   assert.deepEqual(events, [
     'locked dependencies', 'api-server dev-up target', 'workspace test-profile libraries and binary tests', 'workspace test targets',
   ]);
+});
+
+test('finite resource policy matches the budget oracle and is monotone in explicit caps', (t) => {
+  let cases = 0;
+  for (const availableParallelism of [1, 2, 3, 4, 6, 8, 20]) {
+    for (const ci of [false, true]) {
+      const budget = ci ? availableParallelism
+        : Math.min(availableParallelism, Math.max(4, Math.floor(availableParallelism / 2)));
+      const values = [...new Set([1, Math.min(2, availableParallelism), availableParallelism])];
+      const caps = [...values, undefined];
+      for (const cargoJobs of values) {
+        for (const jobLimit of caps) {
+          let previous;
+          for (const buildJobs of caps) {
+            const env = { CI: ci ? 'true' : 'false' };
+            if (buildJobs !== undefined) env.CARGO_BUILD_JOBS = String(buildJobs);
+            if (jobLimit !== undefined) env.ONEFLOWBASE_CARGO_JOB_LIMIT = String(jobLimit);
+            const plan = buildRustWarmupPlan({ availableParallelism, cargoJobs, incremental: true, env });
+            const quota = Math.min(budget, jobLimit ?? Infinity);
+            const ordinaryJobs = Math.min(cargoJobs, buildJobs ?? Infinity, quota);
+            plan.forEach((stage, index) => {
+              const jobs = Number(stage.env.CARGO_BUILD_JOBS);
+              assert.equal(jobs, index >= 2 && !ci ? 1 : ordinaryJobs);
+              assert.equal(Number(stage.env.ONEFLOWBASE_CARGO_JOB_LIMIT), quota);
+              assert.ok(1 <= jobs && jobs <= quota && quota <= budget);
+              assert.equal(stage.env.CARGO_INCREMENTAL, '1');
+            });
+            const jobs = Number(plan[1].env.CARGO_BUILD_JOBS);
+            if (previous !== undefined) assert.ok(previous <= jobs);
+            previous = jobs;
+            cases++;
+          }
+        }
+        let previous;
+        for (const limit of caps) {
+          const env = { CI: ci ? 'true' : 'false' };
+          if (limit !== undefined) env.ONEFLOWBASE_CARGO_JOB_LIMIT = String(limit);
+          const plan = buildRustWarmupPlan({ availableParallelism, cargoJobs, incremental: false, env });
+          const current = [Number(plan[1].env.CARGO_BUILD_JOBS), Number(plan[1].env.ONEFLOWBASE_CARGO_JOB_LIMIT)];
+          if (previous) current.forEach((value, i) => assert.ok(previous[i] <= value));
+          previous = current;
+        }
+      }
+    }
+  }
+  t.diagnostic(`finite policy oracle cases=${cases}; both explicit-cap monotonicity checks passed`);
+});
+
+test('selected regression assertions reject the controlled original implementation', (t) => {
+  const cases = [
+    { name: 'runtime cargoJobs', cargoJobs: 2, env: {}, jobs: 2, quota: 10, index: 1 },
+    { name: 'caller CARGO_BUILD_JOBS', cargoJobs: 10, env: { CARGO_BUILD_JOBS: '1' }, jobs: 1, quota: 10, index: 1 },
+    { name: 'caller CPU cap', cargoJobs: 10, env: { ONEFLOWBASE_CARGO_JOB_LIMIT: '2' }, jobs: 2, quota: 2, index: 1 },
+    { name: 'local test serialization', cargoJobs: 10, env: {}, jobs: 1, quota: 10, index: 2 },
+  ];
+  function check(build, item) {
+    const stage = build({ availableParallelism: 20, incremental: false, cargoJobs: item.cargoJobs, env: item.env })[item.index];
+    assert.equal(Number(stage.env.CARGO_BUILD_JOBS), item.jobs, item.name);
+    assert.equal(Number(stage.env.ONEFLOWBASE_CARGO_JOB_LIMIT), item.quota, item.name);
+  }
+  for (const item of cases) check(buildRustWarmupPlan, item);
+  if (process.env.ONEFLOWBASE_POLICY_ORIGINAL_SOURCE) {
+    const Module = require('node:module');
+    const filename = require.resolve('../core.js');
+    const original = new Module(filename, module);
+    original.filename = filename;
+    original.paths = module.paths;
+    original._compile(fs.readFileSync(process.env.ONEFLOWBASE_POLICY_ORIGINAL_SOURCE, 'utf8'), filename);
+    let detected = 0;
+    for (const item of cases) {
+      assert.throws(() => check(original.exports.buildRustWarmupPlan, item), assert.AssertionError);
+      detected++;
+    }
+    t.diagnostic(`controlled original regressions detected=${detected}/${cases.length}`);
+  }
+});
+
+test('invalid explicit CPU caps fail before cleanup or Cargo', async () => {
+  for (const value of ['0', '-1', 'default', '1.5', 'NaN', ' 1', '01']) {
+    await assert.rejects(runRustCacheReset({
+      repoRoot: '/repo', availableParallelism: 20, env: { ONEFLOWBASE_CARGO_JOB_LIMIT: value },
+      loadRuntimeConfigImpl: () => ({ backend: { cargoJobs: 10, incremental: false } }),
+      cleanupBackendCacheImpl: () => assert.fail('invalid input must not clean'),
+      runCargoImpl: () => assert.fail('invalid input must not spawn'),
+      writeStdout() {},
+    }), /ONEFLOWBASE_CARGO_JOB_LIMIT/);
+  }
+});
+
+test('every failed stage truncates the remaining plan', async () => {
+  for (const failedStage of [0, 1, 2, 3]) {
+    const events = [];
+    assert.equal(await runRustCacheReset({
+      repoRoot: '/repo', warmupOnly: true, availableParallelism: 20, env: {},
+      loadRuntimeConfigImpl: () => ({ backend: { cargoJobs: 10, incremental: false } }),
+      cleanupBackendCacheImpl: () => assert.fail('must preserve services and cache'),
+      runCargoImpl: async ({ label }) => { events.push(label); return events.length - 1 === failedStage ? 7 : 0; },
+      writeStdout() {},
+    }), 7);
+    assert.equal(events.length, failedStage + 1);
+  }
+});
+
+test('thrown stage errors also prevent every subsequent stage', async () => {
+  for (const failedStage of [0, 1, 2, 3]) {
+    let started = 0;
+    await assert.rejects(runRustCacheReset({
+      repoRoot: '/repo', warmupOnly: true, availableParallelism: 20, env: {},
+      loadRuntimeConfigImpl: () => ({ backend: { cargoJobs: 10, incremental: false } }),
+      cleanupBackendCacheImpl: () => assert.fail('must preserve cache'),
+      runCargoImpl: async () => { if (started++ === failedStage) throw new Error('injected stage failure'); return 0; },
+      writeStdout() {},
+    }), /injected stage failure/);
+    assert.equal(started, failedStage + 1);
+  }
+});
+
+test('wrapper-compatible environment defaults preserve automatic budgets', () => {
+  let cases = 0;
+  for (const cpuCap of [undefined, '', 'auto']) {
+    for (const buildJobs of [undefined, '', '0', '-1', 'default', 'auto', '1.5', 'NaN', ' 1', '01', '9007199254740992']) {
+      const env = {};
+      if (cpuCap !== undefined) env.ONEFLOWBASE_CARGO_JOB_LIMIT = cpuCap;
+      if (buildJobs !== undefined) env.CARGO_BUILD_JOBS = buildJobs;
+      const plan = buildRustWarmupPlan({ env, availableParallelism: 20, cargoJobs: 2, incremental: false });
+      plan.forEach((stage, index) => {
+        assert.equal(stage.env.CARGO_BUILD_JOBS, index < 2 ? '2' : '1');
+        assert.equal(stage.env.ONEFLOWBASE_CARGO_JOB_LIMIT, '10');
+      });
+      cases++;
+    }
+  }
+  assert.equal(cases, 33);
+});
+
+test('real loader and spawn use only isolated fake Cargo across local, CI and failure cases', (t) => {
+  const { spawnSync } = require('node:child_process');
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'rust-warmup-spawn-'));
+  const homeDir = path.join(fixture, 'home');
+  const fakeBin = path.join(homeDir, '.local', 'bin');
+  const fakeCargo = path.join(fakeBin, 'cargo');
+  const corePath = require.resolve('../core.js');
+  fs.mkdirSync(fakeBin, { recursive: true });
+  const fakeSource = `#!${process.execPath}
+// # Generated by scripts/shell/apply-resource-limits.sh.
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+fs.appendFileSync(process.env.POLICY_FAKE_LOG, JSON.stringify({
+  args, cwd: process.cwd(),
+  jobs: process.env.CARGO_BUILD_JOBS,
+  cap: process.env.ONEFLOWBASE_CARGO_JOB_LIMIT,
+  incremental: process.env.CARGO_INCREMENTAL,
+  testDebug: process.env.CARGO_PROFILE_TEST_DEBUG,
+}) + '\\n');
+process.exit(process.env.POLICY_FAIL_BINS === '1' && args.includes('--bins') ? 7 : 0);
+`;
+  fs.writeFileSync(fakeCargo, fakeSource, { mode: 0o755 });
+  const runner = `
+require(${JSON.stringify(corePath)}).runRustCacheReset({
+  repoRoot: process.argv[1],
+  warmupOnly: true,
+  availableParallelism: 20,
+}).then((status) => { process.exitCode = status; }).catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+`;
+  const scenarios = [
+    { name: 'local-config', ci: false, buildJobs: 'default', cpuCap: 'auto', jobs: [2, 2, 1, 1], cap: '10', status: 0 },
+    { name: 'local-env', ci: false, buildJobs: '1', cpuCap: '', jobs: [1, 1, 1, 1], cap: '10', status: 0 },
+    { name: 'ci', ci: true, buildJobs: '', cpuCap: 'auto', jobs: [20, 20, 20, 20], cap: '20', status: 0 },
+    { name: 'fail-bins', ci: false, buildJobs: 'default', cpuCap: 'auto', jobs: [2, 2, 1], cap: '10', status: 7 },
+  ];
+  try {
+    for (const scenario of scenarios) {
+      const repoRoot = path.join(fixture, scenario.name);
+      const logPath = path.join(repoRoot, 'fake-cargo.jsonl');
+      fs.mkdirSync(repoRoot);
+      fs.writeFileSync(path.join(repoRoot, '.1flowbase.verify.local.json'), JSON.stringify({
+        backend: { cargoJobs: 2, incremental: true },
+      }));
+      const child = spawnSync(process.execPath, ['-e', runner, repoRoot], {
+        env: {
+          ...process.env,
+          HOME: homeDir,
+          // Both the recognized wrapper and PATH fallback can only select this fake.
+          PATH: fakeBin,
+          CI: scenario.ci ? 'true' : 'false',
+          GITHUB_ACTIONS: 'false',
+          CARGO_BUILD_JOBS: scenario.buildJobs,
+          ONEFLOWBASE_CARGO_JOB_LIMIT: scenario.cpuCap,
+          POLICY_FAKE_LOG: logPath,
+          POLICY_FAIL_BINS: scenario.status === 7 ? '1' : '0',
+        },
+        encoding: 'utf8',
+        timeout: 10000,
+        maxBuffer: 1024 * 1024,
+      });
+      assert.ifError(child.error);
+      assert.equal(child.status, scenario.status, child.stderr);
+      const records = fs.readFileSync(logPath, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+      assert.deepEqual(records.map((entry) => Number(entry.jobs)), scenario.jobs, scenario.name);
+      records.forEach((entry, index) => {
+        assert.equal(entry.cwd, repoRoot);
+        assert.equal(entry.cap, scenario.cap);
+        assert.equal(entry.incremental, scenario.ci ? '0' : '1');
+        assert.equal(entry.args[0], index === 0 ? 'fetch' : index === 1 ? 'build' : 'test');
+        assert.ok(entry.args.includes('--locked'));
+        if (index >= 2) assert.equal(entry.testDebug, '0');
+      });
+      assert.ok(records[1].args.includes('tikv-jemallocator/stats'));
+      if (records.length === 4) assert.ok(records[3].args.includes('--all-targets'));
+      assert.ok(!fs.existsSync(path.join(repoRoot, 'api', 'target')));
+    }
+    t.diagnostic('real-loader/real-spawn fake-Cargo scenarios=4; only isolated fake executables launched');
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
 });
