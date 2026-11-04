@@ -79,7 +79,6 @@ Private implementation cases remain in the library harness, including private co
 | `api_mcp_management` | MCP management, bundles, OAuth and upstreams |
 | `api_documentation` | Public OpenAPI and documentation contracts |
 | `api_extension_catalog` | Model providers, plugin HTTP behavior and network center |
-| `api_catalog_sources` | Catalog icons, i18n and UI component source contracts |
 
 Run `node scripts/node/test-backend.js --workspace --test api_application` from
 the repository root, with an optional `--filter`. Full workspace/package tests

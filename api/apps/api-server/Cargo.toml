@@ -122,9 +122,6 @@ path = "tests/http/api_system_settings.rs"
 name = "api_mcp_management"
 path = "tests/http/api_mcp_management.rs"
 
-[[test]]
-name = "api_catalog_sources"
-path = "tests/http/api_catalog_sources.rs"
 
 [[test]]
 name = "api_documentation"

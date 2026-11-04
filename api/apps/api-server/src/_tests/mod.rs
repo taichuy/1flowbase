@@ -59,6 +59,8 @@ mod system_backups_routes;
 mod system_maintenance;
 #[path = "system_settings/system_templates_routes.rs"]
 mod system_templates_routes;
+#[path = "console_routes/ui_component_catalog_source.rs"]
+mod ui_component_catalog_source;
 #[path = "console_routes/ui_management_routes.rs"]
 mod ui_management_routes;
 mod webmcp_routes;
@@ -81,3 +83,5 @@ mod runtime_event_stream;
 
 #[path = "catalog_sources/official_extension_catalog_source.rs"]
 mod official_extension_catalog_source;
+#[path = "catalog_sources/official_i18n_catalog_source.rs"]
+mod official_i18n_catalog_source;

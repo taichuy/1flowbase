@@ -7,3 +7,5 @@ mod model_provider_routes;
 mod network_center_routes;
 #[path = "../plugin_routes/integration_mod.rs"]
 mod plugin_routes;
+#[path = "../catalog_sources/model_provider_icon_routes.rs"]
+mod model_provider_icon_routes;
