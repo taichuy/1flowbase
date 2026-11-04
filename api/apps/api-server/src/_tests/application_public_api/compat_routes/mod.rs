@@ -48,11 +48,15 @@ where
         .name("application-public-compat-route".to_owned())
         .stack_size(COMPAT_ROUTE_TEST_STACK_BYTES)
         .spawn(move || {
-            tokio::runtime::Builder::new_current_thread()
+            let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
-                .expect("compat route test runtime should build")
-                .block_on(test());
+                .expect("compat route test runtime should build");
+            // Keep ownership inside block_on so completion and panic drop the
+            // future while the runtime is entered. One erased type also shares
+            // Tokio's executor code across the different route test futures.
+            let body: std::pin::Pin<Box<dyn Future<Output = ()> + '_>> = Box::pin(test());
+            runtime.block_on(body);
         })
         .expect("compat route test thread should start")
         .join()
@@ -838,3 +842,5 @@ mod auth;
 mod compact;
 mod openai;
 mod streaming;
+
+mod runtime_helper_tests;
