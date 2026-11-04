@@ -48,19 +48,21 @@ Run the test CLI for behavioral evidence; a zero-test success is not accepted.
 它不执行测试。行为验证使用测试 CLI，并继续拒绝零用例成功。
 
 For these extracted targets, prefer explicit `--workspace --test <target>` to reuse the
-workspace warmup feature graph while selecting only the named test target. Root's
-unit-graph inspection at `130ff3b97fb9f39f8977529e55b23b220daa66c2` found one test root
-and 570 units for `--workspace --test api_config`, all a subset of the workspace
-`--all-targets` graph. Package-only `-p api-server --test api_config` lacked Tokio's
-`test-util` feature and could rebuild dependencies. This is repository-specific evidence,
-not a guarantee across Cargo versions, target names or future dependency changes.
+workspace warmup feature graph while selecting only the named test target. The
+[2026-11-04 verification](../../../../docs/operations/rust-test-resource-verification-20261104.md)
+compared the ordinary `--workspace --test api_config` graph, with no test-debug
+environment override, against workspace `--all-targets`: all 570 recursive units
+were present in the 650-unit warmup graph with matching effective profiles and
+dependency edges. Package-only selection previously produced a different feature
+graph and rebuilt dependencies. This evidence is specific to the measured source,
+Cargo version and `api_config` target; recheck after relevant dependency changes.
 `--workspace` and `--package`/`-p` are mutually exclusive; package selection remains available.
 
 这些独立目标优先用显式 `--workspace --test <target>`，在只选择指定测试目标的同时复用
-workspace 全量预热的 feature 图。Root 在上述冻结提交的 unit-graph 取证中确认：
-`--workspace --test api_config` 只有 1 个测试 root、570 个 units，全部为 workspace
-`--all-targets` 图的子集；仅 `-p api-server --test api_config` 缺少 Tokio `test-util`，
-可能导致依赖重编。此结论只绑定当前仓库取证，不泛化到其他 Cargo 版本、目标或后续依赖变化。
+workspace 全量预热的 feature 图。上述验收清除额外 test-debug 环境覆盖后确认：
+普通 `--workspace --test api_config` 的 570 个递归 units 全部包含在预热的 650-unit
+图中，有效 profile 与依赖边差异为 0。旧单包选择曾产生不同 feature 图并重编依赖。
+此结论绑定报告所列源码、Cargo 版本及 `api_config` 目标；相关依赖变化后应重新检查。
 `--workspace` 与 `--package`/`-p` 互斥；原 package 选择继续可用。
 
 ## HTTP behavior partitions
@@ -93,3 +95,40 @@ fixtures retain their existing path resolver. `ApiState` gains no feature field.
 The workspace test profile defaults to `debug = 0`, matching cache warmup.
 Ordinary target selection therefore reuses the same dependency profile without an extra environment override.
 The existing API package override still retains line-table debug information.
+
+## Fixture prerequisites / Fixture 前提
+
+`api_config` is a pure configuration target and needs no test database. HTTP targets
+use `API_DATABASE_URL` or the repository's existing local test database on port
+35432. Their `PostgresTestSchema` fixture creates isolated temporary databases;
+the configured test role needs the existing database, schema and extension privileges,
+plus access to the `postgres` maintenance database for owner-triggered cleanup.
+Use the configured test database account.
+
+`api_config` 是纯配置目标，无需测试数据库。HTTP 目标沿用 `API_DATABASE_URL` 或仓库
+现有的本机 35432 测试数据库。`PostgresTestSchema` 创建独占临时数据库；测试角色需要
+既有建库、schema 和扩展权限，并能连接维护库 `postgres` 进行 owner 析构清理。
+清理失败会记录错误；使用测试数据库账号。
+
+The remaining full library suite also uses the existing trusted-origin and SDK-worker
+fixtures. Keep the CI fixture value `API_AUTH_PUBLIC_ORIGIN=https://auth-fixture.example`
+and prepare the required worker artifacts before the cases that consume them. The
+repository's `scripts/node/plugin-composition-test-batch/runner.js` owns the existing
+plugin-composition worker preparation; the verification report records the four worker
+examples used for the full library run. Let Cargo set `CARGO_MANIFEST_DIR` for each
+package instead of exporting one application path globally.
+
+完整剩余库回归还依赖既有 trusted-origin 与 SDK worker fixture。沿用上述 CI origin，
+在相应用例执行前准备 worker 产物；既有插件组合 runner 管理其 worker 准备，完整库
+验收使用的四个 example 见报告。普通 Cargo 命令由 Cargo 为各包设置
+`CARGO_MANIFEST_DIR`，不要把某个应用包目录全局导出给所有依赖。
+
+`--warmup-only` runs the same four warmup phases as the default reset entry: locked
+fetch, dev API binary build, workspace binary-test compilation, then workspace
+all-target compilation. It skips the default service-stop and cache-deletion steps.
+Cold dependencies and the ordinary API library can still require substantial memory;
+selecting a small test target does not remove those prerequisites.
+
+`--warmup-only` 与默认 reset 入口共用 fetch、dev API binary、workspace binary tests、
+workspace all-targets 四个预热阶段，跳过默认停服和删缓存步骤。冷依赖与普通 API 库
+仍可能占用较多内存；选择较小测试目标不会免除这些前置编译。
