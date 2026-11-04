@@ -11,6 +11,8 @@ mod compatibility_interface_tests;
 mod console_navigation_routes;
 #[path = "console_routes/console_operation_compilation_tests.rs"]
 mod console_operation_compilation_tests;
+#[path = "console_routes/console_policy_migration_tests.rs"]
+mod console_policy_migration_tests;
 #[path = "interface_contracts/dynamic_backend_consumer_inventory.rs"]
 mod dynamic_backend_consumer_inventory;
 pub(crate) mod extension_bus;
