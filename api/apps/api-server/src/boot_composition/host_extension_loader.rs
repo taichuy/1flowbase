@@ -253,9 +253,11 @@ pub(crate) async fn inspect_selected_host_extensions(
 
 #[cfg(test)]
 static FAIL_AFTER_APPLY: std::sync::Mutex<Option<uuid::Uuid>> = std::sync::Mutex::new(None);
+api_nonroute_tests! {
 #[cfg(test)]
 pub(crate) fn fail_after_template_apply_for(installation_id: uuid::Uuid) {
     *FAIL_AFTER_APPLY.lock().expect("native startup failpoint") = Some(installation_id);
+}
 }
 
 pub(crate) async fn activate_prepared_host_extensions(

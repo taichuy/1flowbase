@@ -2,11 +2,13 @@
 // evolve them without putting the compatible bridge back in charge of text.
 use super::*;
 use crate::routes::application_public_api::llm_tool_visibility::external_llm_tool_call_values;
+api_route_tests! {
 #[cfg(test)]
 use crate::routes::application_public_api::stream_terminal_fallback::{
     terminal_answer_deltas_from_payload, terminal_answer_text_from_payload, TerminalAnswerDelta,
     TerminalAnswerDeltaKind,
 };
+}
 
 mod openai_responses;
 use openai_responses::OpenAiResponseOutputItemKind;
@@ -24,6 +26,7 @@ fn openai_response_output_item_payload(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 fn terminal_answer_text(run: &NativeRunResult, payload: &Value) -> Option<String> {
     terminal_answer_text_from_payload(payload).or_else(|| {
@@ -33,7 +36,9 @@ fn terminal_answer_text(run: &NativeRunResult, payload: &Value) -> Option<String
             .cloned()
     })
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 pub(super) fn terminal_answer_deltas_from_run_or_payload(
     run: &NativeRunResult,
@@ -57,6 +62,7 @@ pub(super) fn terminal_answer_deltas_from_run_or_payload(
     terminal_answer_text(run, payload)
         .map(|answer| terminal_answer_deltas_from_payload(&json!({ "answer": answer })))
         .unwrap_or_default()
+}
 }
 
 fn openai_response_runtime_event_to_sse(
@@ -425,6 +431,7 @@ pub(super) fn anthropic_tool_use_blocks_from_waiting_payload(
     (!blocks.is_empty()).then_some(blocks)
 }
 
+api_route_tests! {
 #[cfg(test)]
 pub(super) fn anthropic_completed_run_to_sse(
     run: &NativeRunResult,
@@ -451,7 +458,9 @@ pub(super) fn anthropic_completed_run_to_sse(
     events.extend(mapper.anthropic_stop_events(run.usage.as_ref()));
     events
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 fn terminal_answer_delta_to_runtime_event(
     run: &NativeRunResult,
@@ -478,7 +487,9 @@ fn terminal_answer_delta_to_runtime_event(
     };
     RuntimeEventEnvelope::new(run.id, sequence, payload)
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 fn waiting_payload_from_run(run: &NativeRunResult) -> Option<Value> {
     let action = run.required_action.as_ref()?;
@@ -487,6 +498,7 @@ fn waiting_payload_from_run(run: &NativeRunResult) -> Option<Value> {
         "callback_task_id": action.payload.get("callback_task_id").cloned().unwrap_or(Value::Null),
         "tool_calls": run.tool_calls.clone().unwrap_or(Value::Null),
     }))
+}
 }
 
 fn llm_tool_callback_task_id(payload: &Value) -> Option<uuid::Uuid> {
@@ -568,14 +580,18 @@ fn required_action_not_supported_anthropic_sse() -> Vec<Result<Event, Infallible
 mod anthropic_stream;
 mod openai_chat;
 
+api_route_tests! {
 #[cfg(test)]
 pub(super) use anthropic_stream::anthropic_delta_payload;
+}
 pub(super) use anthropic_stream::AnthropicStreamMapper;
 pub(super) use openai_chat::OpenAiChatStreamMapper;
+api_route_tests! {
 #[cfg(test)]
 pub(super) use openai_chat::{
     openai_delta_chunk_payload, openai_finish_chunk_payload, openai_tool_call_chunk_payload,
 };
+}
 
 pub(super) fn canonical_runtime_error_message(run: &NativeRunResult) -> &str {
     run.error

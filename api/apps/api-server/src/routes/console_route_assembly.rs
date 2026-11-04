@@ -218,18 +218,20 @@ where
         &self.bindings
     }
 
-    #[cfg(test)]
-    pub(crate) fn external_endpoint_contributions(
-        &self,
-    ) -> impl Iterator<Item = crate::external_endpoint_catalog::ExternalEndpointContribution> + '_
-    {
-        self.bindings.iter().map(|binding| {
-            crate::external_endpoint_catalog::ExternalEndpointContribution::unclassified_http(
-                "console-route-assembly",
-                &binding.route.method,
-                &binding.route.path,
-            )
-        })
+    api_nonroute_tests! {
+        #[cfg(test)]
+        pub(crate) fn external_endpoint_contributions(
+            &self,
+        ) -> impl Iterator<Item = crate::external_endpoint_catalog::ExternalEndpointContribution> + '_
+        {
+            self.bindings.iter().map(|binding| {
+                crate::external_endpoint_catalog::ExternalEndpointContribution::unclassified_http(
+                    "console-route-assembly",
+                    &binding.route.method,
+                    &binding.route.path,
+                )
+            })
+        }
     }
 
     pub fn maintenance_control_routes(&self) -> &[ConsoleRouteBinding] {
@@ -762,6 +764,7 @@ pub fn validate_migrated_core_console_route_coverage(
     Ok(())
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -882,6 +885,7 @@ mod tests {
         assert!(message.contains("extra=[operation.extra]"));
         assert!(message.contains("duplicate=[operation.extra]"));
     }
+}
 }
 
 #[path = "console_route_assembly/interface_metadata.rs"]

@@ -6,6 +6,7 @@ const path = require('node:path');
 const {
   runBuildCacheCleanup,
 } = require('../clean-build-cache/core.js');
+const { buildCargoCommandEnv } = require('../testing/warning-capture.js');
 const {
   getAvailableParallelism,
   getLocalCpuBudget,
@@ -19,9 +20,8 @@ function getRepoRoot() {
 
 function buildCargoEnv({ cargoJobs, cpuBudget, incremental, testProfile = false }) {
   const env = {
-    CARGO_BUILD_JOBS: String(cargoJobs),
+    ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile }),
     ONEFLOWBASE_CARGO_JOB_LIMIT: String(cpuBudget),
-    CARGO_INCREMENTAL: incremental ? '1' : '0',
   };
 
   if (testProfile) {
@@ -201,7 +201,7 @@ async function runRustCacheReset({
     const startedAt = Date.now();
     writeStdout(
       `[1flowbase-reset-rust-cache] 预热 ${stage.label} `
-      + `(jobs=${stage.env.CARGO_BUILD_JOBS}, cpu-cap=${stage.env.ONEFLOWBASE_CARGO_JOB_LIMIT}, incremental=${stage.env.CARGO_INCREMENTAL})。\n`,
+      + `(jobs=${stage.env.CARGO_BUILD_JOBS}, cpu-cap=${stage.env.ONEFLOWBASE_CARGO_JOB_LIMIT}, incremental=${stage.env.CARGO_INCREMENTAL ?? 'profile'})。\n`,
     );
     const status = await runCargoImpl({ repoRoot, ...stage });
     if (status !== 0) {

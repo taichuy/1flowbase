@@ -21,8 +21,10 @@ use std::{
     sync::Arc,
 };
 
+api_route_tests! {
 #[cfg(test)]
 use crate::openapi_docs::DocsCatalogOperation;
+}
 use axum::{
     body::Body,
     extract::{Path, Query, State},
@@ -39,8 +41,10 @@ use control_plane::mcp_management::{
 };
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
 use serde::{Deserialize, Serialize};
+api_route_tests! {
 #[cfg(test)]
 use serde_json::Value;
+}
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -1050,5 +1054,7 @@ fn to_update_tool_command(
     })
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod tests;
+}

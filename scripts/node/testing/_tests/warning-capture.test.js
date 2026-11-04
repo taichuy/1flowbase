@@ -6,6 +6,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const {
+  buildCargoCommandEnv,
   runCommandSequence,
   runManagedCommandSequence,
 } = require('../warning-capture.js');
@@ -330,4 +331,29 @@ test('spawn errors retain available output and failure diagnostics before being 
       fs.rmSync(repoRoot, { recursive: true, force: true });
     }
   }
+});
+
+test('real runner removes inherited global incremental override only for configured test profiles', () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cargo-profile-child-env-'));
+  try {
+    for (const [incremental, testProfile, expected] of [
+      [true, true, { testIncremental: 'true', jobs: '2' }],
+      [true, false, { incremental: '1', jobs: '2' }],
+      [false, true, { incremental: '0', jobs: '2' }],
+    ]) {
+      let output = '';
+      const status = runCommandSequence({
+        repoRoot, scope: 'profile-incremental',
+        env: { ...process.env, CARGO_INCREMENTAL: '1', CARGO_PROFILE_TEST_INCREMENTAL: undefined },
+        commands: [{
+          label: 'inspect-child-env', command: process.execPath,
+          args: ['-e', 'process.stdout.write(JSON.stringify({incremental:process.env.CARGO_INCREMENTAL,testIncremental:process.env.CARGO_PROFILE_TEST_INCREMENTAL,jobs:process.env.CARGO_BUILD_JOBS}))'],
+          env: buildCargoCommandEnv({ cargoParallelism: 2, incremental, testProfile }),
+        }],
+        writeStdout(text) { output += text; }, writeStderr() {},
+      });
+      assert.equal(status, 0);
+      assert.deepEqual(JSON.parse(output), expected);
+    }
+  } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
 });

@@ -5,6 +5,13 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[lib]
+path = "src/lib_root.rs"
+
+[[test]]
+name = "api_private_routes"
+path = "src/private_routes_test.rs"
+
 [features]
 test-support = ["dep:postgres-test-support", "dep:ed25519-dalek"]
 # Builds only the Root #1805 consumer authenticity fixture. The normal lib-test target keeps

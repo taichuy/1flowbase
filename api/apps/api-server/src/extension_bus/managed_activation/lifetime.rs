@@ -178,6 +178,8 @@ impl ManagedExtensionComposition {
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "_tests/lifetime.rs"]
 mod tests;
+}

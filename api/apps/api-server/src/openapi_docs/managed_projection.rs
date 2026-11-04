@@ -207,6 +207,8 @@ impl DocsOutputProjection<'_> {
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "_tests/managed_projection.rs"]
 mod tests;
+}

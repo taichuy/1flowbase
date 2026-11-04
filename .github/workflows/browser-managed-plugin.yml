@@ -110,9 +110,9 @@ jobs:
               run_test worker -p runtime-extension-host managed_capability_multiplex
               run_test postgres -p control-plane-postgres-tests --test mcp_management_integration
             fi
-            run_test mcp-http -p api-server --lib managed_service_mcp
-            run_test mcp-media -p api-server --lib result_delivery::media::tests
-            run_test mcp-errors -p api-server --lib target_error_diagnostics
+            run_test mcp-http -p api-server --lib --test api_private_routes managed_service_mcp
+            run_test mcp-media -p api-server --test api_private_routes result_delivery::media::tests
+            run_test mcp-errors -p api-server --test api_private_routes target_error_diagnostics
             run_test lifecycle -p api-server --lib managed_services::
           fi
           test "$failures" -eq 0

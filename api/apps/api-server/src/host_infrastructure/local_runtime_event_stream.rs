@@ -262,12 +262,14 @@ impl LocalRuntimeEventStream {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn contains_run_without_purge_for_tests(&self, run_id: Uuid) -> bool {
-        self.runs
-            .lock()
-            .expect("runtime event stream runs lock poisoned")
-            .contains_key(&run_id)
+    api_nonroute_tests! {
+        #[cfg(test)]
+        pub(crate) fn contains_run_without_purge_for_tests(&self, run_id: Uuid) -> bool {
+            self.runs
+                .lock()
+                .expect("runtime event stream runs lock poisoned")
+                .contains_key(&run_id)
+        }
     }
 
     #[cfg(test)]
@@ -367,15 +369,17 @@ impl LocalRuntimeEventStream {
         runs.values().map(|run| run.retention_deadline()).min()
     }
 
-    #[cfg(test)]
-    pub(crate) fn has_live_broadcast_for_tests(&self, run_id: Uuid) -> Result<bool> {
-        let run = self.run(run_id)?;
-        let has_broadcast = run
-            .broadcaster
-            .lock()
-            .expect("runtime event broadcaster lock poisoned")
-            .is_some();
-        Ok(has_broadcast)
+    api_nonroute_tests! {
+        #[cfg(test)]
+        pub(crate) fn has_live_broadcast_for_tests(&self, run_id: Uuid) -> Result<bool> {
+            let run = self.run(run_id)?;
+            let has_broadcast = run
+                .broadcaster
+                .lock()
+                .expect("runtime event broadcaster lock poisoned")
+                .is_some();
+            Ok(has_broadcast)
+        }
     }
 
     fn run(&self, run_id: Uuid) -> Result<Arc<LocalRunEventStream>> {
@@ -397,44 +401,50 @@ impl LocalRuntimeEventStream {
         Self::purge_and_next_deadline(&self.runs, self.recoverable_byte_budget);
     }
 
-    #[cfg(test)]
-    pub(crate) fn set_run_timestamps_for_tests(
-        &self,
-        run_id: Uuid,
-        last_event_at: OffsetDateTime,
-        closed_at: Option<OffsetDateTime>,
-    ) -> Result<()> {
-        let run = self.run(run_id)?;
-        *run.last_event_at
-            .lock()
-            .expect("runtime event last event lock poisoned") = last_event_at;
-        *run.closed_at
-            .lock()
-            .expect("runtime event closed_at lock poisoned") = closed_at;
-        self.schedule_updates.send_replace(());
-        Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn set_confirmation_timestamp_for_tests(
-        &self,
-        run_id: Uuid,
-        confirmed_at: OffsetDateTime,
-    ) -> Result<()> {
-        let run = self.run(run_id)?;
-        let mut ring = run.ring.lock().expect("runtime event ring lock poisoned");
-        if ring.confirmed_at.is_none() {
-            return Err(anyhow!("generation is not confirmed"));
+    api_nonroute_tests! {
+        #[cfg(test)]
+        pub(crate) fn set_run_timestamps_for_tests(
+            &self,
+            run_id: Uuid,
+            last_event_at: OffsetDateTime,
+            closed_at: Option<OffsetDateTime>,
+        ) -> Result<()> {
+            let run = self.run(run_id)?;
+            *run.last_event_at
+                .lock()
+                .expect("runtime event last event lock poisoned") = last_event_at;
+            *run.closed_at
+                .lock()
+                .expect("runtime event closed_at lock poisoned") = closed_at;
+            self.schedule_updates.send_replace(());
+            Ok(())
         }
-        ring.confirmed_at = Some(confirmed_at);
-        drop(ring);
-        self.schedule_updates.send_replace(());
-        Ok(())
     }
 
-    #[cfg(test)]
-    pub(crate) fn retention_deadline_for_tests(&self, run_id: Uuid) -> Result<OffsetDateTime> {
-        Ok(self.run(run_id)?.retention_deadline())
+    api_nonroute_tests! {
+        #[cfg(test)]
+        pub(crate) fn set_confirmation_timestamp_for_tests(
+            &self,
+            run_id: Uuid,
+            confirmed_at: OffsetDateTime,
+        ) -> Result<()> {
+            let run = self.run(run_id)?;
+            let mut ring = run.ring.lock().expect("runtime event ring lock poisoned");
+            if ring.confirmed_at.is_none() {
+                return Err(anyhow!("generation is not confirmed"));
+            }
+            ring.confirmed_at = Some(confirmed_at);
+            drop(ring);
+            self.schedule_updates.send_replace(());
+            Ok(())
+        }
+    }
+
+    api_nonroute_tests! {
+        #[cfg(test)]
+        pub(crate) fn retention_deadline_for_tests(&self, run_id: Uuid) -> Result<OffsetDateTime> {
+            Ok(self.run(run_id)?.retention_deadline())
+        }
     }
 
     fn entry_key(run_id: Uuid, sequence: i64) -> String {

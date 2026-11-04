@@ -166,6 +166,8 @@ fn collect<R: Read + Send, E: Read + Send>(
     })
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;
+}

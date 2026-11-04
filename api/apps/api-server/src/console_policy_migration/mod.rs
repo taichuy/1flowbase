@@ -14,8 +14,10 @@ pub use crosswalk::{
     CompiledCoreConsolePolicyMigration, ConsolePolicyMigrationOperationDisposition,
     ConsolePolicyMigrationOperationDispositionKind,
 };
+api_nonroute_tests! {
 #[cfg(test)]
 pub(crate) use live::preview_live_migration;
+}
 pub use report::{
     write_evidence_report, ConsolePolicyMigrationEvidencePaths,
     ConsolePolicyMigrationEvidenceReport, ConsolePolicyMigrationUnknownGrant,

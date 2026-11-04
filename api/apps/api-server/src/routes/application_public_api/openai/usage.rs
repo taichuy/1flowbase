@@ -131,6 +131,8 @@ pub(super) fn to_chat_response_for_round(
     Ok(response)
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/usage_boundary.rs"]
 mod tests;
+}

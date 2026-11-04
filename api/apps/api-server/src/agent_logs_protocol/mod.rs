@@ -12,5 +12,7 @@ pub use export::batches_to_traces;
 pub use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 pub use traces::traces_to_batches;
 
+api_nonroute_tests! {
 #[cfg(test)]
 mod _tests;
+}

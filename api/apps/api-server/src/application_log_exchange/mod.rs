@@ -251,5 +251,7 @@ fn date_filter(from: Option<String>, to: Option<String>) -> Result<Filter, ApiEr
             .collect(),
     ))
 }
+api_nonroute_tests! {
 #[cfg(test)]
 mod _tests;
+}

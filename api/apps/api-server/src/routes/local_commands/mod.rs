@@ -158,6 +158,8 @@ pub async fn execute_local_command(
     Ok(response::response(output.0)?)
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;
+}

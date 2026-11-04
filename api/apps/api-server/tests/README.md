@@ -25,11 +25,13 @@ node scripts/node/test-backend.js --workspace --test api_config --filter parse_b
 Each entry mounts the original test leaf under `src/_tests` and links the ordinary
 `api_server` library. The source files stay in place so relative fixture/include paths
 keep their meaning. Those leaves are no longer mounted by the library test harness.
-Private implementation tests remain in their owning modules.
+Private implementation tests remain beside their owning modules; select the library
+harness for non-route modules and the native `api_private_routes` target for `src/routes/**`.
 
 每个入口仅挂载 `src/_tests` 中的原测试文件，并链接普通 `api_server` 库。
 原文件不移动，保留相对 fixture/include 路径；原库测试入口不再重复挂载这些文件。
-需要访问私有实现的白盒测试仍留在所属模块。
+需要访问私有实现的白盒测试仍留在所属模块；非 routes 模块选择库测试，
+`src/routes/**` 选择原生 `api_private_routes` 目标。
 
 Full package/workspace test selection still discovers these targets and the remaining
 library tests. Keep the existing feature-specific and documentation-test gates;
@@ -70,7 +72,9 @@ workspace 全量预热的 feature 图。上述验收清除额外 test-debug 环�
 The `test-support` feature is enabled by the package's dev self-dependency. It adds
 explicit fixture factories; ordinary production constructors keep their behavior.
 Each target below mounts original test leaves and shares one fixture library.
-Private implementation cases remain in the library harness, including private contract checks extracted from otherwise public test leaves.
+Private implementation cases retain their original source and private bindings. Non-route
+cases remain in the library harness; route module cases use the native
+`api_private_routes` harness, including their original `routes::` test-name prefixes.
 
 | Target | Scope |
 | --- | --- |
@@ -95,6 +99,33 @@ fixtures retain their existing path resolver. `ApiState` gains no feature field.
 The workspace test profile defaults to `debug = 0`, matching cache warmup.
 Ordinary target selection therefore reuses the same dependency profile without an extra environment override.
 The existing API package override still retains line-table debug information.
+
+## Private route tests / 私有路由测试
+
+`src/routes/**` 的白盒测试仍在原生产模块旁，编译目标为 `api_private_routes`；
+其余私有模块测试继续使用 `--lib`。原测试名、过滤器、测试属性与私有绑定保留。
+`src/lib.rs` 仍是唯一生产 root；`src/lib_root.rs` 库入口与路由测试入口共享该 root，
+选择不同测试挂载。Cargo 自动选择入口，普通开发命令无需额外 feature 或环境参数。
+
+```bash
+node scripts/node/test-backend.js --workspace --test api_private_routes
+node scripts/node/test-backend.js --workspace --test api_private_routes --filter routes::application_public_api::compat_sse
+node scripts/node/test-backend.js --package api-server --lib --filter provider_runtime::transport_session_lifecycle
+```
+
+A filter can match both library and private-route tests. Preserve both targets for
+that selection; selecting only one would silently omit the other matches. Native
+Cargo accepts their union:
+
+```bash
+cargo test --manifest-path api/Cargo.toml -p api-server --lib --test api_private_routes runtime_event_stream
+```
+
+同一过滤器可能同时命中库与路由目标；这时原生 Cargo 用 `--lib --test api_private_routes`
+保留原库测试全集内的命中并集。测试 CLI 每次只接受一个目标，可分别执行两次；
+只有确认过滤器在两个目标都非零匹配时才拆成两条。不要用 package 全目标替换这一并集，
+因为其他既有 integration target 可能有额外同名命中。保留现有零匹配检查。
+完整 package/workspace 测试、nextest 分片与 all-targets 预热继续发现两个目标。
 
 ## Fixture prerequisites / Fixture 前提
 

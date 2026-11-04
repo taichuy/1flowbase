@@ -90,6 +90,8 @@ pub(super) fn capture(mut reader: impl Read, mut spool: Spool) -> io::Result<Spo
     Ok(spool)
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "_tests/spool.rs"]
 mod tests;
+}

@@ -377,9 +377,12 @@ pub(crate) fn compile_registry(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 struct UnavailableFrontstageCallableCatalogPort;
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl ConsoleInterfacePort<FrontstageCallableCatalogInput, FrontstageCallableCatalogOutput>
     for UnavailableFrontstageCallableCatalogPort
@@ -396,7 +399,9 @@ impl ConsoleInterfacePort<FrontstageCallableCatalogInput, FrontstageCallableCata
         })
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -415,4 +420,5 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
+}
 }

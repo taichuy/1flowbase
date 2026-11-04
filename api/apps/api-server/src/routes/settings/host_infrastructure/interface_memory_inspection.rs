@@ -487,6 +487,7 @@ fn has_registered_simple_operations(
     })
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -536,4 +537,5 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
+}
 }

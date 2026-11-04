@@ -236,6 +236,7 @@ fn native_error_response() -> Value {
     })
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 mod workflow_operation_tests {
     use super::*;
@@ -449,4 +450,5 @@ mod workflow_operation_tests {
             json!("boolean")
         );
     }
+}
 }

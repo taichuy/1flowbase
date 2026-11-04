@@ -64,8 +64,10 @@ mod response_dispatch;
 pub(crate) mod usage;
 use response_dispatch::dispatch_response_for_endpoint;
 mod session_context;
+api_route_tests! {
 #[cfg(test)]
 mod tests;
+}
 mod types;
 
 use model_list::{
@@ -1009,6 +1011,8 @@ mod response_projection;
 pub(super) use response_projection::native_response_id;
 pub(super) use response_projection::openai_responses_usage;
 pub(super) use response_projection::openai_usage;
+api_route_tests! {
 #[cfg(test)]
 pub(super) use response_projection::to_openai_responses_response;
+}
 use response_projection::*;

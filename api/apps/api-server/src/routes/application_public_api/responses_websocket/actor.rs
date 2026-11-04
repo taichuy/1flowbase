@@ -96,9 +96,11 @@ impl ResponsesConnectionActor {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn state(&self) -> ConnectionState {
-        self.state
+    api_route_tests! {
+        #[cfg(test)]
+        pub(crate) fn state(&self) -> ConnectionState {
+            self.state
+        }
     }
 
     pub(crate) fn accept_response(
@@ -202,6 +204,7 @@ pub(crate) async fn run_connection(
         .await;
 }
 
+api_route_tests! {
 #[cfg(test)]
 pub(super) async fn run_connection_loop<F, Fut>(socket: impl Into<Socket>, execute: F)
 where
@@ -212,7 +215,9 @@ where
 {
     run_connection_loop_with_terminations(socket, execute, None).await;
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
     socket: impl Into<Socket>,
@@ -234,6 +239,7 @@ pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
         None,
     )
     .await;
+}
 }
 
 pub(super) async fn run_observed_connection_loop<F, Fut>(

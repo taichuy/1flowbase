@@ -357,6 +357,8 @@ pub(crate) async fn issue_password_proof(
     .await
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/api.rs"]
 mod tests;
+}

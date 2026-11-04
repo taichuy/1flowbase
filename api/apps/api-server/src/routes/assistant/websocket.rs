@@ -773,6 +773,7 @@ fn command_error(request_id: Option<&str>, code: &str, message: impl Into<String
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::super::websocket_ticket_interface::store_ticket;
@@ -921,4 +922,5 @@ mod tests {
         .await
         .is_err());
     }
+}
 }

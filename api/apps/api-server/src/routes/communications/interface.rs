@@ -447,6 +447,8 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/management_scope.rs"]
 mod management_scope_tests;
+}

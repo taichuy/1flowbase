@@ -91,6 +91,7 @@ where
     }
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,4 +101,5 @@ mod tests {
         assert_eq!(summary_page_cache_ttl(1), Duration::minutes(5));
         assert_eq!(summary_page_cache_ttl(2), Duration::minutes(15));
     }
+}
 }

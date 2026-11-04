@@ -100,6 +100,7 @@ impl BackupKeyProvider for EnvironmentBackupKeyProvider {
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 mod tests {
     use super::EnvironmentBackupKeyProvider;
@@ -246,4 +247,5 @@ mod tests {
         plaintext_reader.read_to_end(&mut recovered).await.unwrap();
         assert_eq!(recovered, plaintext);
     }
+}
 }

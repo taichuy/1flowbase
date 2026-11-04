@@ -412,6 +412,7 @@ pub async fn restore_all_catalog_overrides(
     Ok(Json(ApiSuccess::new(response)))
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::identity;
@@ -425,4 +426,5 @@ mod tests {
             assert!(identity(key.to_owned()).is_ok(), "{key:?}");
         }
     }
+}
 }

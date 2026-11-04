@@ -23,16 +23,18 @@ pub(crate) struct OpenAiResponseStreamMapper {
 }
 
 impl OpenAiResponseStreamMapper {
-    #[cfg(test)]
-    pub(in crate::routes::application_public_api::compat_sse) fn new(
-        model: String,
-        previous_response_id: Option<String>,
-    ) -> Self {
-        Self::with_mode(
-            model,
-            previous_response_id,
-            ResponsesProjectionMode::SemanticNativeResponses,
-        )
+    api_route_tests! {
+        #[cfg(test)]
+        pub(in crate::routes::application_public_api::compat_sse) fn new(
+            model: String,
+            previous_response_id: Option<String>,
+        ) -> Self {
+            Self::with_mode(
+                model,
+                previous_response_id,
+                ResponsesProjectionMode::SemanticNativeResponses,
+            )
+        }
     }
 
     pub(in crate::routes::application_public_api) fn with_mode(

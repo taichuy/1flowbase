@@ -1033,6 +1033,8 @@ fn set_if_some(target: &mut Option<String>, value: Option<String>) {
     }
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[cfg(test)]
 mod tests;
+}

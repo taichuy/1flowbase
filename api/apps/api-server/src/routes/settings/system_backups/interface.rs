@@ -909,9 +909,12 @@ pub(crate) fn compile_registry(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 struct UnavailableSystemBackupsPort;
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl ConsoleInterfacePort<SystemBackupsInput, SystemBackupsOutput>
     for UnavailableSystemBackupsPort
@@ -928,7 +931,9 @@ impl ConsoleInterfacePort<SystemBackupsInput, SystemBackupsOutput>
         })
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -957,6 +962,7 @@ mod tests {
                 .any(|declaration| declaration.interface_id == operation));
         }
     }
+}
 }
 
 #[path = "interface/input_projection.rs"]

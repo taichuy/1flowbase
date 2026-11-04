@@ -988,9 +988,12 @@ pub(crate) fn compile_registry(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 struct UnavailableAuthCenterPort;
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl ConsoleInterfacePort<AuthCenterInput, AuthCenterOutput> for UnavailableAuthCenterPort {
     fn execute<'a>(
@@ -1005,7 +1008,9 @@ impl ConsoleInterfacePort<AuthCenterInput, AuthCenterOutput> for UnavailableAuth
         })
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;
@@ -1022,4 +1027,5 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
+}
 }

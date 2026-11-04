@@ -38,6 +38,8 @@ impl ManagedServiceFailure {
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;
+}

@@ -5,12 +5,12 @@ mod plugins;
 
 use std::{fs, io::Write, path::Path, sync::Arc};
 
-use argon2::{Argon2, password_hash::PasswordHasher};
+use argon2::{password_hash::PasswordHasher, Argon2};
 use async_trait::async_trait;
 use axum::{
-    Router,
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
+    Router,
 };
 use control_plane::bootstrap::{BootstrapConfig, BootstrapService};
 use control_plane::ports::{
@@ -19,8 +19,8 @@ use control_plane::ports::{
     OfficialPluginSourcePort,
 };
 use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
-use ed25519_dalek::{SigningKey, pkcs8::EncodePublicKey};
-use flate2::{Compression, write::GzEncoder};
+use ed25519_dalek::{pkcs8::EncodePublicKey, SigningKey};
+use flate2::{write::GzEncoder, Compression};
 use runtime_profile::{
     RuntimeCpu, RuntimeCpuMetrics, RuntimeDiskIoMetrics, RuntimeMemory, RuntimeMemoryMetrics,
     RuntimeMetricAvailability, RuntimeMetricScopeKind, RuntimeMetricsSnapshot,

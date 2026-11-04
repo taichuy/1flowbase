@@ -137,6 +137,8 @@ pub(super) fn binding_matches(
         && session.expires_at_unix > now_unix
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/transaction_tests.rs"]
 mod tests;
+}

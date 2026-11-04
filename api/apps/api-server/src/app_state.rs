@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use axum::http::{HeaderMap, header::ACCEPT_LANGUAGE};
+use axum::http::{header::ACCEPT_LANGUAGE, HeaderMap};
 use control_plane::i18n_catalog::CatalogResolver;
 use control_plane::ports::{
     OfficialPluginSourcePort, RoleConsolePolicyReader, RuntimeEventStream, SessionStore,
@@ -69,7 +69,7 @@ use crate::{
     host_extensions::console::ResolvedHostExtensionConsoleContribution,
     host_infrastructure::HostInfrastructureRegistry,
     routes::console_route_assembly::{
-        ConsoleRouteAssembly, compile_complete_migrated_console_operation_registry,
+        compile_complete_migrated_console_operation_registry, ConsoleRouteAssembly,
     },
 };
 use crate::{
@@ -204,8 +204,8 @@ pub struct CoreConsoleOperationInventorySnapshot {
     pub locales: BTreeMap<&'static str, BTreeMap<String, String>>,
 }
 
-pub fn compile_core_console_operation_inventory_snapshot()
--> anyhow::Result<CoreConsoleOperationInventorySnapshot> {
+pub fn compile_core_console_operation_inventory_snapshot(
+) -> anyhow::Result<CoreConsoleOperationInventorySnapshot> {
     let settings_features = compile_core_settings_feature_registry()?;
     let contract_bindings =
         crate::routes::console_route_assembly::migrated_core_console_contract_bindings();

@@ -836,6 +836,7 @@ fn mutation_response(id: BackupSetId) -> BackupMutationResponse {
     }
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -846,4 +847,5 @@ mod tests {
         assert!(validate_exact_name(id, &id.as_uuid().to_string()).is_ok());
         assert!(validate_exact_name(id, "daily backup").is_err());
     }
+}
 }

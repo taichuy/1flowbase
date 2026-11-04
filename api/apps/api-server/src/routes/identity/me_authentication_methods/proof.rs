@@ -86,6 +86,8 @@ pub(super) async fn claim(
     // Keep the consumed record until TTL: a concurrent new verification must not be deleted.
     Ok(proof)
 }
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/proof.rs"]
 mod tests;
+}

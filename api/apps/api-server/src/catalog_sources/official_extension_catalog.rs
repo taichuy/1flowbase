@@ -432,28 +432,30 @@ impl ApiOfficialExtensionCatalogSource {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn new_with_request_timeouts(
-        sources: BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>,
-        catalog_request_timeout: Duration,
-        artifact_download_timeout: Duration,
-    ) -> Self {
-        Self {
-            sources: Arc::new(sources),
-            catalog_client: extension_source_client(
-                DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
+    api_nonroute_tests! {
+        #[cfg(test)]
+        pub(crate) fn new_with_request_timeouts(
+            sources: BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>,
+            catalog_request_timeout: Duration,
+            artifact_download_timeout: Duration,
+        ) -> Self {
+            Self {
+                sources: Arc::new(sources),
+                catalog_client: extension_source_client(
+                    DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
+                    catalog_request_timeout,
+                ),
+                artifact_client: extension_source_client(
+                    DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
+                    artifact_download_timeout,
+                ),
+                source_connect_timeout: DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
                 catalog_request_timeout,
-            ),
-            artifact_client: extension_source_client(
-                DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
                 artifact_download_timeout,
-            ),
-            source_connect_timeout: DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
-            catalog_request_timeout,
-            artifact_download_timeout,
-            network_egress: None,
-            last_success: Arc::new(Mutex::new(HashMap::new())),
-            search_snapshots: Arc::new(Mutex::new(HashMap::new())),
+                network_egress: None,
+                last_success: Arc::new(Mutex::new(HashMap::new())),
+                search_snapshots: Arc::new(Mutex::new(HashMap::new())),
+            }
         }
     }
 

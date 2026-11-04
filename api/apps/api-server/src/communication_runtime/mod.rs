@@ -47,12 +47,14 @@ impl CommunicationWorker {
             task: tokio::sync::Mutex::new(Some(tokio::spawn(supervise(state, owner, signal)))),
         }
     }
-    #[cfg(test)]
-    pub(crate) fn inactive() -> Self {
-        let (stop, _) = watch::channel(false);
-        Self {
-            stop,
-            task: tokio::sync::Mutex::new(None),
+    api_nonroute_tests! {
+        #[cfg(test)]
+        pub(crate) fn inactive() -> Self {
+            let (stop, _) = watch::channel(false);
+            Self {
+                stop,
+                task: tokio::sync::Mutex::new(None),
+            }
         }
     }
     pub(crate) async fn stop(&self) {
@@ -268,10 +270,14 @@ impl ProviderContext {
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "_tests/request.rs"]
 mod request_tests;
+}
 
+api_nonroute_tests! {
 #[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
 #[path = "_tests/acceptance.rs"]
 mod acceptance_tests;
+}

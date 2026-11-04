@@ -508,9 +508,12 @@ pub(crate) fn compile_registry(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 struct UnavailableBillingPort;
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl ConsoleInterfacePort<BillingInput, BillingOutput> for UnavailableBillingPort {
     fn execute<'a>(
@@ -525,7 +528,9 @@ impl ConsoleInterfacePort<BillingInput, BillingOutput> for UnavailableBillingPor
         })
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -543,4 +548,5 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
+}
 }

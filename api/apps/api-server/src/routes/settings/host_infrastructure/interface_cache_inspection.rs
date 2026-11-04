@@ -765,6 +765,7 @@ pub(crate) fn compile_registry(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -805,4 +806,5 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
+}
 }

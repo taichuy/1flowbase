@@ -928,9 +928,12 @@ pub(crate) fn compile_registry(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 struct UnavailableMembershipPort;
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl ConsoleInterfacePort<MembershipInput, MembershipOutput> for UnavailableMembershipPort {
     fn execute<'a>(
@@ -945,7 +948,9 @@ impl ConsoleInterfacePort<MembershipInput, MembershipOutput> for UnavailableMemb
         })
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;
@@ -965,4 +970,5 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
+}
 }

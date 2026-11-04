@@ -372,9 +372,12 @@ pub(crate) fn compile_registry(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 struct UnavailableDocsPort;
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl ConsoleInterfacePort<DocsInput, DocsOutput> for UnavailableDocsPort {
     fn execute<'a>(
@@ -389,7 +392,9 @@ impl ConsoleInterfacePort<DocsInput, DocsOutput> for UnavailableDocsPort {
         })
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -407,4 +412,5 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
+}
 }

@@ -124,12 +124,12 @@ jobs:
       - name: Verify callback factory, browser transactions, revocation and safe projections
         run: |
           set -euo pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --features tikv-jemallocator/stats external_auth 2>&1 | tee tmp/test-governance/github-authentication/ci/api-auth.log
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --test api_private_routes --features tikv-jemallocator/stats external_auth 2>&1 | tee tmp/test-governance/github-authentication/ci/api-auth.log
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/github-authentication/ci/api-auth.log
       - name: Verify personal methods and password verification boundaries
         run: |
           set -euo pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --features tikv-jemallocator/stats me_authentication_methods 2>&1 | tee tmp/test-governance/github-authentication/ci/api-methods.log
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_routes --features tikv-jemallocator/stats me_authentication_methods 2>&1 | tee tmp/test-governance/github-authentication/ci/api-methods.log
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/github-authentication/ci/api-methods.log
       - name: Preserve candidate-bound evidence
         if: always()

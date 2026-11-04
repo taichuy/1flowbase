@@ -105,6 +105,12 @@ opt-level = 3
 [profile.test]
 debug = 0
 
+# Avoid the composition root test harness incremental cache and inherited dev DWARF.
+# Other crates retain the configured incremental policy; development keeps line tables.
+[profile.test.package.api-server]
+incremental = false
+debug = 0
+
 # Managed hook admission hashes installed worker bytes inside the invocation's
 # 1 s observer finalization budget. Keep that SHA-256 path representative of
 # optimized production hashing even when the rest of the test binary is debug.

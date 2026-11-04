@@ -100,7 +100,7 @@ function buildBackendCargoCommand({
         ],
         cwd: 'api',
         env: {
-          ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
+          ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
           CARGO_PROFILE_TEST_DEBUG: '0',
           ...(normalizedShard.key.startsWith('api-server-')
             ? { RUST_MIN_STACK: String(8 * 1024 * 1024) }
@@ -122,7 +122,7 @@ function buildBackendCargoCommand({
       ],
       cwd: 'api',
       env: {
-        ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
+        ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
         // Keep the monolithic API test harness inside the CI budget without changing test behavior.
         ...(normalizedShard?.key === 'api-server'
           ? { CARGO_PROFILE_TEST_DEBUG: '0' }
@@ -159,7 +159,7 @@ function buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads, incremen
       `--test-threads=${cargoTestThreads}`,
     ],
     cwd: 'api',
-    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
+    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
   }));
 }
 
@@ -192,15 +192,15 @@ function buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, increm
       `--test-threads=${cargoTestThreads}`,
     ],
     cwd: 'api',
-    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
+    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
   }));
 }
 
-function buildBackendFmtCommand({ cargoJobs }) {
+function buildBackendFmtCommand({ cargoJobs, repoRoot }) {
   return {
     label: 'cargo-fmt',
-    command: 'cargo',
-    args: ['fmt', '--all', '--check'],
+    command: process.execPath,
+    args: [path.join(__dirname, '../testing/rustfmt-api.js'), repoRoot],
     cwd: 'api',
     env: buildCargoCommandEnv({ cargoParallelism: cargoJobs }),
   };
@@ -220,7 +220,7 @@ function buildBackendCommands({
   }
 
   if (target === 'fmt') {
-    return [buildBackendFmtCommand({ cargoJobs })];
+    return [buildBackendFmtCommand({ cargoJobs, repoRoot })];
   }
 
   if (target === 'clippy' || target === 'test' || target === 'check') {
@@ -258,7 +258,7 @@ function buildBackendCommands({
 
   return [
     buildRustBackendStaticGateCommand({ repoRoot, env }),
-    buildBackendFmtCommand({ cargoJobs }),
+    buildBackendFmtCommand({ cargoJobs, repoRoot }),
     buildBackendCargoCommand({ target: 'clippy', cargoJobs, cargoTestThreads, incremental }),
     ...buildHistoryMaintenanceCommands({ cargoJobs, cargoTestThreads, incremental }),
     {

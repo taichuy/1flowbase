@@ -47,13 +47,15 @@ pub(crate) struct ResponsesWebSocketProjector {
 }
 
 impl ResponsesWebSocketProjector {
-    #[cfg(test)]
-    pub(crate) fn new(model: String, previous_response_id: Option<String>) -> Self {
-        Self::with_mode(
-            model,
-            previous_response_id,
-            ResponsesProjectionMode::SemanticNativeResponses,
-        )
+    api_route_tests! {
+        #[cfg(test)]
+        pub(crate) fn new(model: String, previous_response_id: Option<String>) -> Self {
+            Self::with_mode(
+                model,
+                previous_response_id,
+                ResponsesProjectionMode::SemanticNativeResponses,
+            )
+        }
     }
 
     pub(crate) fn with_mode(

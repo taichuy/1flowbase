@@ -85,22 +85,24 @@ impl VirtualMcpScope {
     pub(crate) fn instance_ids(&self) -> &[String] {
         &self.instance_ids
     }
-    #[cfg(test)]
-    pub(crate) fn selected(
-        catalog: &domain::McpCatalogSnapshot,
-        selected_instance_ids: &[String],
-    ) -> Self {
-        Self {
-            instance_ids: selected_instance_ids
-                .iter()
-                .filter_map(|selected_id| {
-                    catalog.instances.iter().find(|instance| {
-                        instance.status == McpInstanceStatus::Enabled
-                            && instance.instance_id == *selected_id
+    api_route_tests! {
+        #[cfg(test)]
+        pub(crate) fn selected(
+            catalog: &domain::McpCatalogSnapshot,
+            selected_instance_ids: &[String],
+        ) -> Self {
+            Self {
+                instance_ids: selected_instance_ids
+                    .iter()
+                    .filter_map(|selected_id| {
+                        catalog.instances.iter().find(|instance| {
+                            instance.status == McpInstanceStatus::Enabled
+                                && instance.instance_id == *selected_id
+                        })
                     })
-                })
-                .map(|instance| instance.instance_id.clone())
-                .collect(),
+                    .map(|instance| instance.instance_id.clone())
+                    .collect(),
+            }
         }
     }
 
@@ -651,6 +653,7 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
     tools
 }
 
+api_route_tests! {
 #[cfg(test)]
 pub(crate) fn provider_tools(
     catalog: &domain::McpCatalogSnapshot,
@@ -674,6 +677,7 @@ pub(crate) fn provider_tools(
             registration.provider_tool
         })
         .collect()
+}
 }
 
 pub(crate) fn apply_catalog_registration_capabilities(
@@ -1083,13 +1087,17 @@ pub(crate) fn interface_error(error: &anyhow::Error) -> VirtualToolOutcome {
     }
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/virtual_ui.rs"]
 mod tests;
+}
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/target_error_diagnostics.rs"]
 mod target_error_diagnostics;
+}
 
 fn media_mapping_error(reason: &str) -> VirtualToolOutcome {
     VirtualToolOutcome::Error {

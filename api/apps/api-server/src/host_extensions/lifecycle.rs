@@ -235,6 +235,7 @@ impl control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryPort
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -573,4 +574,5 @@ mod tests {
             .unwrap();
         assembly
     }
+}
 }

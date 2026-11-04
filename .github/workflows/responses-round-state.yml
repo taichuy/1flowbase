@@ -79,7 +79,7 @@ jobs:
       - name: API consumers and previous response regression
         run: |
           out=tmp/test-governance/responses-round-state/ci
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib previous_response > "$out/api.log" 2>&1 || { tail -c 6000 "$out/api.log"; exit 1; }
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --test api_private_routes previous_response > "$out/api.log" 2>&1 || { tail -c 6000 "$out/api.log"; exit 1; }
           node scripts/node/verify/cargo-test-results.js "$out/api.log"
       - name: Build exact candidate for authorized local development verification
         run: |
@@ -155,7 +155,7 @@ jobs:
           out=tmp/test-governance/responses-client-history/ci
           for suite in application_public_api::openai:: application_public_api::responses_websocket:: application_public_api::compat_sse::tests::forwarding; do
             log="$out/api-${suite//:/_}.log"
-            cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib "$suite" > "$log" 2>&1 || { tail -c 8000 "$log"; exit 1; }
+            cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_routes "$suite" > "$log" 2>&1 || { tail -c 8000 "$log"; exit 1; }
             node scripts/node/verify/cargo-test-results.js "$log"
           done
       - name: Build exact API candidate for local acceptance

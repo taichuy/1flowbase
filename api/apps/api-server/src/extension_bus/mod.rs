@@ -8,8 +8,10 @@ pub(crate) use authentication_invocation::AuthenticatedInvocation;
 mod boot_snapshot;
 mod input_assembly;
 mod managed_activation;
+api_nonroute_tests! {
 #[cfg(test)]
 pub(crate) use managed_activation::validate_interface_protocol;
+}
 pub(crate) use managed_activation::{
     ManagedCommunicationCommandProvider, ManagedExecutionInput, ManagedExtensionComposition,
     ManagedWorkspacePublicationSource, ManagedWorkspaceSnapshot,
@@ -17,8 +19,10 @@ pub(crate) use managed_activation::{
 mod interface_contributions;
 pub(crate) use interface_contributions::InterfaceRegistryContribution;
 
+api_nonroute_tests! {
 #[cfg(test)]
 pub(crate) use authentication_activation::HostExtensionAuthenticationFactoryCatalog;
+}
 pub(crate) use authentication_activation::{
     production_host_extension_authentication_factories, ApplicationApiKeyAuthenticationCredential,
     AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,

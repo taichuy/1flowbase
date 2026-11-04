@@ -117,6 +117,7 @@ fn is_read_only_method(method: &Method) -> bool {
     )
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 mod tests {
     use super::{
@@ -169,4 +170,5 @@ mod tests {
             assert_eq!(classifier.classify(&method, path), None);
         }
     }
+}
 }

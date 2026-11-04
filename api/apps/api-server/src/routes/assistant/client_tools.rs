@@ -322,6 +322,7 @@ impl RuntimeInternalToolInvoker for AssistantClientToolBridge {
     }
 }
 
+api_route_tests! {
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {
@@ -479,6 +480,7 @@ mod tests {
             .await;
         assert!(session.has_frontstage_capability_bundle().await);
     }
+}
 }
 
 pub(super) struct AssistantRuntimeToolInvoker {

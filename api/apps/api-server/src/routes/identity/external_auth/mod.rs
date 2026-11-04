@@ -701,14 +701,20 @@ pub async fn callback(
     response
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/protocol_tests.rs"]
 mod tests;
+}
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/authentication_tests.rs"]
 mod authentication_tests;
+}
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/authority_tests.rs"]
 pub(crate) mod authority_tests;
+}

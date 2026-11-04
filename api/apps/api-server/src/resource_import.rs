@@ -269,6 +269,7 @@ impl FileImportPort for ApiFileImportPort {
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,6 +306,7 @@ mod tests {
         .await;
         assert!(selected_mcp_scope().is_none());
     }
+}
 }
 
 impl runtime_core::runtime_backend::FileReadPort for ApiFileImportPort {
@@ -403,6 +405,7 @@ fn session_matches_caller(
         && session.expires_at_unix > now
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 mod file_read_identity_tests {
     use super::*;
@@ -446,4 +449,5 @@ mod file_read_identity_tests {
             );
         }
     }
+}
 }

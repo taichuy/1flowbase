@@ -230,6 +230,8 @@ pub(crate) fn compile_registry(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/registry.rs"]
 mod tests;
+}

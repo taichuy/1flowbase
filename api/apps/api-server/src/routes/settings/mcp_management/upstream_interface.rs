@@ -723,9 +723,12 @@ pub(crate) fn compile_registry(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 struct UnavailableMcpUpstreamPort;
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl ConsoleInterfacePort<McpUpstreamInput, McpUpstreamOutput> for UnavailableMcpUpstreamPort {
     fn execute<'a>(
@@ -740,7 +743,9 @@ impl ConsoleInterfacePort<McpUpstreamInput, McpUpstreamOutput> for UnavailableMc
         })
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -758,4 +763,5 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
+}
 }

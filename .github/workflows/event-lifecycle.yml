@@ -102,8 +102,8 @@ jobs:
           run_tests dispatcher -p control-plane --lib lifecycle_outbox_dispatcher
           run_tests effects -p control-plane-postgres-tests --test durable_event_bus
           run_tests activation -p api-server --lib host_infrastructure::event_bus_activation
-          run_tests responses-ws -p api-server --lib routes::application_public_api::responses_websocket
-          run_tests responses-sse -p api-server --lib routes::application_public_api::compat_sse::tests::protocol_projection
+          run_tests responses-ws -p api-server --test api_private_routes routes::application_public_api::responses_websocket
+          run_tests responses-sse -p api-server --test api_private_routes routes::application_public_api::compat_sse::tests::protocol_projection
           test "$failed" = 0
       - name: Supplemental dependency boundary evidence
         if: inputs.scope == 'memory-governance-supplement'

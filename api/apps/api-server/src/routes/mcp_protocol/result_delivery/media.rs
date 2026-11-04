@@ -277,6 +277,8 @@ pub(crate) fn retain_content(delivered: Value, original: &Value) -> Value {
     retain_native_content(delivered, &Value::Array(nontext))
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/media.rs"]
 mod tests;
+}

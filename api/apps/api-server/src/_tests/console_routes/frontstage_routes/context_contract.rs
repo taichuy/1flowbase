@@ -149,8 +149,6 @@ async fn ac_001_002_block_context_contract_is_authenticated_and_complete() {
     assert_eq!(interface["bindable"], json!(true));
 }
 
-
-
 #[test]
 fn ac_004_backend_contract_keys_match_the_frontend_protocol_source() {
     let protocol_source = include_str!(concat!(

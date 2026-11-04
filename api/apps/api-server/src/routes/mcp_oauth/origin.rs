@@ -31,9 +31,11 @@ pub(crate) fn request_origin(headers: &HeaderMap) -> Result<String, OAuthError> 
     validate_origin(&format!("{scheme}://{host}"), false).map_err(|_| OAuthError::invalid())
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/origin.rs"]
 mod tests;
+}
 
 /// The explicit origin is request-scoped, never a global deployment setting.
 #[derive(Clone, Debug)]

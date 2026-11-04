@@ -195,7 +195,7 @@ jobs:
           test_batch_status=0
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib notification_plugin_uses_unified_instances_and_managed_sdk_dispatch 2>&1 | tee tmp/test-governance/communications/ci/plugin-log-http.log || test_batch_status=$?
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib notification_authorization_http_encrypts_fences_late_polls_and_preserves_delivery_outcomes -- --nocapture 2>&1 | tee tmp/test-governance/communications/ci/http-postgres.log || test_batch_status=$?
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib subscription -- --nocapture 2>&1 | tee tmp/test-governance/communications/ci/error-response.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --test api_private_routes subscription -- --nocapture 2>&1 | tee tmp/test-governance/communications/ci/error-response.log || test_batch_status=$?
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/communications/ci/error-response.log || test_batch_status=$?
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --test http_error_contract subscription -- --nocapture 2>&1 | tee tmp/test-governance/communications/ci/error-response-contract.log || test_batch_status=$?
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/communications/ci/error-response-contract.log || test_batch_status=$?
@@ -208,7 +208,7 @@ jobs:
         run: |
           set -o pipefail
           test_batch_status=0
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib communication 2>&1 | tee tmp/test-governance/communications/ci/communication-host.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --test api_private_routes communication 2>&1 | tee tmp/test-governance/communications/ci/communication-host.log || test_batch_status=$?
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/communications/ci/communication-host.log || test_batch_status=$?
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --test extension_graph_contract communication 2>&1 | tee tmp/test-governance/communications/ci/communication-graph.log || test_batch_status=$?
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/communications/ci/communication-graph.log || test_batch_status=$?
@@ -216,7 +216,7 @@ jobs:
             cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib http_body_drop_detaches_unpolled_silent_and_partial_deliveries_without_cancelling_execution 2>&1 | tee tmp/test-governance/communications/ci/native-drop-lifetime.log || test_batch_status=$?
           fi
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib notification_http_crud_send_inbox_and_operations_are_authorized 2>&1 | tee tmp/test-governance/communications/ci/inbox-http.log || test_batch_status=$?
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib console_route_assembly 2>&1 | tee tmp/test-governance/communications/ci/route-ownership.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_routes console_route_assembly 2>&1 | tee tmp/test-governance/communications/ci/route-ownership.log || test_batch_status=$?
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib console_policy_migration_tests 2>&1 | tee tmp/test-governance/communications/ci/management-registration.log || test_batch_status=$?
           exit "$test_batch_status"
       - name: Capture stack frames if the composed callback aborts

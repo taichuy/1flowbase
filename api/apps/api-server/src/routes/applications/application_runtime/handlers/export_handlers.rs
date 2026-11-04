@@ -55,10 +55,7 @@ pub async fn export_application_runs_zip(
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
         "http.console.applications.runtime.trace-export.selected-runs.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
-            state,
-            headers,
-        },
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
         interface_trace_exports::ApplicationRuntimeTraceExportsInput::ExportSelectedRuns {
             application_id: id,
             run_ids: body.run_ids,

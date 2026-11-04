@@ -144,12 +144,14 @@ impl CompatibilityTypedStreamInvocation {
 }
 
 impl CompatibilityStreamEvent {
-    #[cfg(test)]
-    pub(crate) fn new(run: NativeRunResult, envelope: RuntimeEventEnvelope) -> Self {
-        Self {
-            run: Arc::new(run),
-            envelope,
-            delivery: None,
+    api_route_tests! {
+        #[cfg(test)]
+        pub(crate) fn new(run: NativeRunResult, envelope: RuntimeEventEnvelope) -> Self {
+            Self {
+                run: Arc::new(run),
+                envelope,
+                delivery: None,
+            }
         }
     }
 
@@ -549,6 +551,7 @@ pub(crate) fn compile_registry(
     compiler.compile()
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 pub(crate) fn compile_registry_for_test(
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
@@ -557,10 +560,14 @@ pub(crate) fn compile_registry_for_test(
         models::unavailable_port(),
     )
 }
+}
 
+api_nonroute_tests! {
 #[cfg(test)]
 struct UnavailableCompatibilityBlockingPort;
+}
 
+api_nonroute_tests! {
 #[cfg(test)]
 impl CompatibilityBlockingPort for UnavailableCompatibilityBlockingPort {
     fn execute<'a>(
@@ -606,6 +613,7 @@ impl CompatibilityBlockingPort for UnavailableCompatibilityBlockingPort {
             )))
         })
     }
+}
 }
 
 /// HTTP retains the authentication attempt; established WebSocket turns get fresh invocation IDs.
@@ -851,6 +859,7 @@ fn project_stream_invocation(
     )
 }
 
+api_route_tests! {
 /// The protocol terminal ends delivery; the independent Kernel owner still
 /// settles the invocation even when the client has stopped reading.
 #[cfg(test)]
@@ -865,6 +874,7 @@ pub(super) fn project_compatibility_stream(
     owner: Arc<crate::generation_dispatch::GenerationDispatch>,
 ) -> impl std::future::Future<Output = ()> + Send + 'static {
     project_observed_compatibility_stream(events, completion, projection, sender, None, owner)
+}
 }
 
 fn project_observed_compatibility_stream(

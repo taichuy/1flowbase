@@ -61,9 +61,11 @@ impl ApiOfficialI18nCatalogSource {
         (asset_url.clone(), format!("{asset_url}.sha256"))
     }
 
-    #[cfg(test)]
-    pub(crate) fn latest_url(&self) -> &str {
-        &self.latest_url
+    api_nonroute_tests! {
+        #[cfg(test)]
+        pub(crate) fn latest_url(&self) -> &str {
+            &self.latest_url
+        }
     }
 }
 

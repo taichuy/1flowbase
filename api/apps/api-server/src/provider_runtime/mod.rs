@@ -19,7 +19,6 @@ use control_plane::{
     },
 };
 use plugin_framework::{
-    ForwardProxyLease,
     data_source_contract::{
         DataSourceConfigInput, DataSourceCreateRecordInput, DataSourceCreateRecordOutput,
         DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput, DataSourceDescribeResourceInput,
@@ -36,6 +35,7 @@ use plugin_framework::{
         ProviderResetCreditResult, ProviderRuntimeError, ProviderRuntimeErrorKind,
         ProviderStreamEvent, ProviderUsageWindowsResult,
     },
+    ForwardProxyLease,
 };
 #[cfg(test)]
 use runtime_core::runtime_backend::RuntimeBackendSlot;
@@ -50,7 +50,7 @@ use runtime_core::{
 };
 #[cfg(test)]
 use runtime_extension_host::RuntimeExtensionHost;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -60,8 +60,8 @@ use uuid::Uuid;
 
 use crate::network_egress_client::NetworkEgressHttpClientResolver;
 use crate::runtime_activity::{
-    ApplicationActivityFinish, ApplicationActivityGuard, ApplicationActivityKind,
-    ApplicationRuntimeActivityTracker, current_application_id,
+    current_application_id, ApplicationActivityFinish, ApplicationActivityGuard,
+    ApplicationActivityKind, ApplicationRuntimeActivityTracker,
 };
 
 mod capability_port;
@@ -383,15 +383,17 @@ impl ApiRuntimeServices {
         self
     }
 
-    #[cfg(test)]
-    pub(crate) fn fixture_resource_owner(
-        &self,
-    ) -> std::sync::Weak<crate::test_support::TestResources> {
-        Arc::downgrade(
-            self.fixture_resources
-                .as_ref()
-                .expect("fixture resources must be attached"),
-        )
+    api_nonroute_tests! {
+        #[cfg(test)]
+        pub(crate) fn fixture_resource_owner(
+            &self,
+        ) -> std::sync::Weak<crate::test_support::TestResources> {
+            Arc::downgrade(
+                self.fixture_resources
+                    .as_ref()
+                    .expect("fixture resources must be attached"),
+            )
+        }
     }
 
     pub(crate) fn start_transport_session_scheduler(&self) {
@@ -1117,9 +1119,11 @@ fn preserve_provider_invocation_outcome(
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "_tests/invocation_outcome.rs"]
 mod invocation_outcome_tests;
+}
 
 fn map_runtime_backend_error(error: RuntimeBackendError) -> anyhow::Error {
     match error {

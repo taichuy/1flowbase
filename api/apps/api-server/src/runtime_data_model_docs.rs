@@ -579,6 +579,7 @@ fn descriptor_operation_definition(
     Value::Object(definition)
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -997,6 +998,7 @@ mod tests {
             availability_status: domain::MetadataAvailabilityStatus::Available,
         }
     }
+}
 }
 
 #[path = "runtime_data_model_docs/record_schemas.rs"]

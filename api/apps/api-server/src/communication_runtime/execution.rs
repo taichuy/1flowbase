@@ -554,6 +554,8 @@ pub(super) fn send_failure(error: &anyhow::Error) -> CommunicationProgress {
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "_tests/execution.rs"]
 mod tests;
+}

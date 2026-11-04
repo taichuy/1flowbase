@@ -70,6 +70,8 @@ fn status_error_type(status: StatusCode) -> &'static str {
     }
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/error_projection.rs"]
 mod tests;
+}

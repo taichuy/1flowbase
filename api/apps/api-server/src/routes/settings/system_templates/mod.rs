@@ -163,10 +163,14 @@ pub async fn install(
     Ok(Json(ApiSuccess::new(output.0)))
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/releases.rs"]
 mod release_tests;
+}
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/archive.rs"]
 mod archive_tests;
+}

@@ -406,9 +406,12 @@ pub(crate) fn compile_registry(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 struct UnavailableConsoleNavigationPort;
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl ConsoleInterfacePort<ConsoleNavigationInput, ConsoleNavigationOutput>
     for UnavailableConsoleNavigationPort
@@ -425,7 +428,9 @@ impl ConsoleInterfacePort<ConsoleNavigationInput, ConsoleNavigationOutput>
         })
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -443,4 +448,5 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
+}
 }

@@ -32,9 +32,11 @@ impl NativeConnectionActor {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn state(&self) -> NativeConnectionState {
-        self.state
+    api_route_tests! {
+        #[cfg(test)]
+        pub(crate) fn state(&self) -> NativeConnectionState {
+            self.state
+        }
     }
 
     pub(crate) fn start_turn(&mut self) -> Result<u64, &'static str> {

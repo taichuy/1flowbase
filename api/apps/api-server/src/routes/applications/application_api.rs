@@ -1116,6 +1116,8 @@ pub async fn get_application_api_docs_operation_openapi(
     Ok(Json(output.into_openapi()?))
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "application_api/_tests/time_response.rs"]
 mod time_response_tests;
+}

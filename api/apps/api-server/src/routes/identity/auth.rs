@@ -544,6 +544,8 @@ where
     Ok(outcome.into_value())
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "../../_tests/identity_routes/entry_action.rs"]
 mod entry_action_tests;
+}

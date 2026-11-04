@@ -598,9 +598,11 @@ impl TargetArguments {
     }
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "debug_execute/_tests/empty_body.rs"]
 mod empty_body_tests;
+}
 
 fn get_path_value<'a>(source: &'a Value, path: &str) -> Option<&'a Value> {
     let mut cursor = source;
@@ -634,6 +636,7 @@ fn set_path_value(target: &mut Map<String, Value>, path: &str, value: Value) {
     cursor.insert(segments[segments.len() - 1].to_string(), value);
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod server_binding_tests {
     use super::*;
@@ -767,7 +770,10 @@ mod server_binding_tests {
         );
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/input_defaults.rs"]
 mod input_defaults_tests;
+}

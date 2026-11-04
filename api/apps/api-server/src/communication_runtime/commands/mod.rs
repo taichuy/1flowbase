@@ -29,6 +29,8 @@ async fn wait(stop: &mut watch::Receiver<bool>) -> bool {
     }
 }
 
+api_nonroute_tests! {
 #[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
 #[path = "_tests/mod.rs"]
 mod tests;
+}

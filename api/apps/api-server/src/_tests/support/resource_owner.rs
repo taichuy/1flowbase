@@ -2,8 +2,8 @@ use crate::_tests::support::test_api_state_with_database_url;
 use std::{
     path::PathBuf,
     sync::{
-        Arc,
         atomic::{AtomicU8, Ordering},
+        Arc,
     },
 };
 

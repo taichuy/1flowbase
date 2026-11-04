@@ -124,6 +124,8 @@ impl ManagedExtensionComposition {
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "_tests/reclamation.rs"]
 mod tests;
+}

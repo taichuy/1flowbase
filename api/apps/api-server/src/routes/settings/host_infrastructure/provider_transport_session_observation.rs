@@ -227,6 +227,7 @@ fn eviction_priority(state: TransportSessionState) -> Option<u8> {
     }
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,4 +332,5 @@ mod tests {
         assert_eq!(entries[0].metadata["handoff"]["close_acknowledged"], true);
         assert!(entries[0].metadata["invocation"].get("sequence").is_none());
     }
+}
 }

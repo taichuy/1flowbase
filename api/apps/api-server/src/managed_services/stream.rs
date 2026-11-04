@@ -663,6 +663,8 @@ fn parse_client_frame(text: &str, input: &jsonschema::Validator) -> Result<Clien
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "_tests/stream_lifecycle.rs"]
 mod lifecycle_tests;
+}

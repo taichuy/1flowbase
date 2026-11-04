@@ -17,10 +17,16 @@ const APPLICATION_RUN_ARCHIVE_SEMANTICS: &str = "application_run_archive_v1";
 
 #[cfg(not(test))]
 use codec::parse_run_archive_v1;
+api_route_tests! {
 #[cfg(test)]
 pub(in crate::routes::applications_group::application_runtime) use codec::{
     build_archive_from_trace_exports, parse_run_archive_v1,
 };
+}
+api_nonroute_tests! {
+#[cfg(test)]
+use codec::parse_run_archive_v1;
+}
 use codec::{
     ensure_sha256_value, finalize_run_archive_v1_entries,
     normalize_run_archive_trace_tree_projection_status, normalize_sha256,

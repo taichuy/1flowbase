@@ -805,9 +805,12 @@ pub(crate) fn compile_registry(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 struct UnavailableUiManagementPort;
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl ConsoleInterfacePort<UiManagementInput, UiManagementOutput> for UnavailableUiManagementPort {
     fn execute<'a>(
@@ -822,7 +825,9 @@ impl ConsoleInterfacePort<UiManagementInput, UiManagementOutput> for Unavailable
         })
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -842,7 +847,10 @@ mod tests {
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
+}
 
+api_route_tests! {
 #[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
 #[path = "ui_management_interface/_tests/settings_module_assets.rs"]
 mod settings_module_asset_tests;
+}

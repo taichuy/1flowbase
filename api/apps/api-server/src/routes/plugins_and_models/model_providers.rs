@@ -802,6 +802,7 @@ pub async fn list_options(
     Ok(Json(ApiSuccess::new(response)))
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod request_log_response_tests {
     use super::*;
@@ -866,10 +867,13 @@ mod request_log_response_tests {
         assert_eq!(response.currency_code.as_deref(), Some("USD"));
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "model_providers/_tests/time_response.rs"]
 mod time_response_tests;
+}
 
 #[path = "model_providers/response_mapping.rs"]
 mod response_mapping;

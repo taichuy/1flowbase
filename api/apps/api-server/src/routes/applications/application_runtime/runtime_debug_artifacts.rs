@@ -22,8 +22,10 @@ type RuntimeDebugArtifactOffloadFuture<'a> =
     Pin<Box<dyn Future<Output = Result<(Value, bool), ApiError>> + Send + 'a>>;
 mod llm_tool_callbacks;
 mod payloads;
+api_route_tests! {
 #[cfg(test)]
 mod tests;
+}
 mod visible_internal_enrichment;
 mod visible_internal_llm_route_traces;
 
@@ -70,10 +72,12 @@ use llm_tool_callbacks::{
     is_llm_rounds_field_path, is_tool_calls_field_path, with_array_item_count,
     with_llm_tool_callback_runtime_facts, LlmToolCallbackRuntimeFacts,
 };
+api_route_tests! {
 #[cfg(test)]
 use llm_tool_callbacks::{
     execution_status_from_callback_payload, execution_status_from_callback_payload_and_route_trace,
 };
+}
 
 pub(super) fn count_llm_tool_callback_trace_items<'a>(
     debug_payloads: impl IntoIterator<Item = &'a Value>,

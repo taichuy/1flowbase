@@ -297,5 +297,7 @@ impl RuntimeProfileSnapshotCache {
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 mod _tests;
+}

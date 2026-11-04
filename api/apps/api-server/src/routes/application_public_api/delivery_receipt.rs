@@ -50,9 +50,11 @@ impl RuntimeEventDeliveryReceipt {
         self.settle(RuntimeEventDeliveryVerdict::Projected);
     }
 
-    #[cfg(test)]
-    pub(crate) fn event_id(&self) -> Option<uuid::Uuid> {
-        self.claim.as_ref().map(|claim| claim.event.id)
+    api_route_tests! {
+        #[cfg(test)]
+        pub(crate) fn event_id(&self) -> Option<uuid::Uuid> {
+            self.claim.as_ref().map(|claim| claim.event.id)
+        }
     }
 
     fn settle(&mut self, verdict: RuntimeEventDeliveryVerdict) {
@@ -63,33 +65,39 @@ impl RuntimeEventDeliveryReceipt {
         }
     }
 
-    /// A receipt whose verdict is observed by the test instead of the store.
-    #[cfg(test)]
-    pub(crate) fn probe(
-        claim: RuntimeEventDeliveryClaim,
-    ) -> (Self, RuntimeEventDeliveryVerdictProbe) {
-        let (sender, receiver) = mpsc::unbounded_channel();
-        (
-            Self {
-                claim: Some(claim),
-                write_started: false,
-                settler: sender,
-            },
-            RuntimeEventDeliveryVerdictProbe { receiver },
-        )
+    api_route_tests! {
+        /// A receipt whose verdict is observed by the test instead of the store.
+        #[cfg(test)]
+        pub(crate) fn probe(
+            claim: RuntimeEventDeliveryClaim,
+        ) -> (Self, RuntimeEventDeliveryVerdictProbe) {
+            let (sender, receiver) = mpsc::unbounded_channel();
+            (
+                Self {
+                    claim: Some(claim),
+                    write_started: false,
+                    settler: sender,
+                },
+                RuntimeEventDeliveryVerdictProbe { receiver },
+            )
+        }
     }
 }
 
+api_route_tests! {
 #[cfg(test)]
 pub(crate) struct RuntimeEventDeliveryVerdictProbe {
     receiver: mpsc::UnboundedReceiver<RuntimeEventDeliveryOutcome>,
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl RuntimeEventDeliveryVerdictProbe {
     pub(crate) async fn verdict(mut self) -> Option<RuntimeEventDeliveryVerdict> {
         self.receiver.recv().await.map(|outcome| outcome.verdict)
     }
+}
 }
 
 impl Drop for RuntimeEventDeliveryReceipt {

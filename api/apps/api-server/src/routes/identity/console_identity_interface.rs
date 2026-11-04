@@ -916,9 +916,12 @@ fn contract<T: InterfaceContract>() -> ContractIdentity {
         .expect("static console identity contract is valid")
 }
 
+api_route_tests! {
 #[cfg(test)]
 struct UnavailableConsoleIdentityPort;
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl ConsoleIdentityPort for UnavailableConsoleIdentityPort {
     fn execute<'a>(
@@ -933,7 +936,9 @@ impl ConsoleIdentityPort for UnavailableConsoleIdentityPort {
         })
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -954,6 +959,7 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
+}
 }
 
 #[path = "console_identity_interface/output_projection.rs"]

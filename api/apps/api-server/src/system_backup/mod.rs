@@ -18,5 +18,7 @@ pub use toolchain::{
     PG_RESTORE_PATH_ENV,
 };
 
+api_nonroute_tests! {
 #[cfg(test)]
 mod _tests;
+}

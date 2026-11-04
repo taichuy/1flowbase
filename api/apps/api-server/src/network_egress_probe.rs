@@ -286,6 +286,7 @@ fn classify_acquire_error(error: &anyhow::Error) -> &'static str {
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -378,4 +379,5 @@ mod tests {
         let error = anyhow!("internal path /tmp/private-config must not become an API code");
         assert_eq!(classify_acquire_error(&error), "proxy_unavailable");
     }
+}
 }

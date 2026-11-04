@@ -199,6 +199,7 @@ pub(super) fn interface_operation(entry: &domain::McpInterfaceCatalogEntry) -> S
     format!("{} {}", entry.method, entry.path)
 }
 
+api_route_tests! {
 #[cfg(test)]
 pub(super) fn mcp_interface_entry_from_operation(
     operation: &crate::openapi_docs::DocsCatalogOperation,
@@ -215,6 +216,7 @@ pub(super) fn mcp_interface_entry_from_operation(
             activated_operation: None,
         },
     ))
+}
 }
 
 pub(super) fn mcp_risk_level(risk_level: &str) -> domain::McpRiskLevel {

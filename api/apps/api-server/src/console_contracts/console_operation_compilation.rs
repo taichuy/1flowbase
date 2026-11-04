@@ -78,12 +78,14 @@ pub(crate) struct CompiledConsoleOperationSnapshot {
 }
 
 impl CompiledConsoleOperationSnapshot {
-    #[cfg(test)]
-    pub(crate) fn operation(&self, operation_id: &str) -> Option<&CompiledConsoleOperationRecord> {
-        self.operations
-            .binary_search_by(|operation| operation.operation_id.as_str().cmp(operation_id))
-            .ok()
-            .and_then(|index| self.operations.get(index))
+    api_nonroute_tests! {
+        #[cfg(test)]
+        pub(crate) fn operation(&self, operation_id: &str) -> Option<&CompiledConsoleOperationRecord> {
+            self.operations
+                .binary_search_by(|operation| operation.operation_id.as_str().cmp(operation_id))
+                .ok()
+                .and_then(|index| self.operations.get(index))
+        }
     }
 }
 

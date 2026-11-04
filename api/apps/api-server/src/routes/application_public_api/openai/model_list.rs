@@ -1,8 +1,10 @@
 use super::*;
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/model_list.rs"]
 mod tests;
+}
 
 pub(super) fn to_openai_model_list_response(
     models: Vec<OpenAiCompatibleModel>,

@@ -769,9 +769,12 @@ fn compile_registry_with_port(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 struct UnavailableAssistantWebSocketCommandPort;
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl ConsoleInterfacePort<AssistantWebSocketCommandInput, AssistantWebSocketCommandOutput>
     for UnavailableAssistantWebSocketCommandPort
@@ -788,7 +791,9 @@ impl ConsoleInterfacePort<AssistantWebSocketCommandInput, AssistantWebSocketComm
         })
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;
@@ -806,4 +811,5 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
+}
 }

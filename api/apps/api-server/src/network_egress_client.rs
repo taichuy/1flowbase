@@ -479,9 +479,11 @@ impl Drop for NetworkEgressExecutionScope {
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "_tests/exchange_network_egress.rs"]
 mod exchange_network_egress;
+}
 
 /// Host-owned maintenance client: available before the application/database runtime starts.
 /// Its only consumer is native release metadata and archive download from GitHub.
@@ -512,6 +514,8 @@ pub fn native_release_client() -> Result<Client> {
         .context("Cannot construct native release download client")
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "_tests/network_proxy/mod.rs"]
 mod network_proxy;
+}

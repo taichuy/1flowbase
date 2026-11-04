@@ -103,16 +103,18 @@ struct TransportConnectionBindings {
 }
 
 impl TransportConnectionScope {
-    #[cfg(test)]
-    pub(crate) fn for_test(lease: InvocationLease) -> Arc<Self> {
-        Arc::new(Self {
-            id: uuid::Uuid::now_v7().to_string(),
-            carrier: ProviderClientTransport::Websocket,
-            state: StdMutex::new(TransportConnectionBindings {
-                closed: false,
-                leases: BTreeMap::from([(lease.fence.session_id.as_str().into(), lease)]),
-            }),
-        })
+    api_route_tests! {
+        #[cfg(test)]
+        pub(crate) fn for_test(lease: InvocationLease) -> Arc<Self> {
+            Arc::new(Self {
+                id: uuid::Uuid::now_v7().to_string(),
+                carrier: ProviderClientTransport::Websocket,
+                state: StdMutex::new(TransportConnectionBindings {
+                    closed: false,
+                    leases: BTreeMap::from([(lease.fence.session_id.as_str().into(), lease)]),
+                }),
+            })
+        }
     }
 
     pub(crate) fn id(&self) -> &str {
@@ -984,9 +986,11 @@ fn _assert_runtime_error_is_send(error: RuntimeBackendError) -> RuntimeBackendEr
     error
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "_tests/transport_session_lifecycle.rs"]
 mod tests;
+}
 
 #[path = "transport_session_lifecycle/termination_dispatch.rs"]
 mod termination_dispatch;

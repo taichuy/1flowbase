@@ -213,5 +213,7 @@ fn validated_batches(
     Ok((batches, counts))
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod _tests;
+}

@@ -419,9 +419,12 @@ fn contract<T: InterfaceContract>() -> ContractIdentity {
         .expect("static compatibility models contract is valid")
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 struct UnavailableCompatibilityModelsPort;
+}
 
+api_nonroute_tests! {
 #[cfg(test)]
 impl CompatibilityModelsPort for UnavailableCompatibilityModelsPort {
     fn list<'a>(
@@ -438,8 +441,11 @@ impl CompatibilityModelsPort for UnavailableCompatibilityModelsPort {
         })
     }
 }
+}
 
+api_nonroute_tests! {
 #[cfg(test)]
 pub(super) fn unavailable_port() -> Arc<dyn CompatibilityModelsPort> {
     Arc::new(UnavailableCompatibilityModelsPort)
+}
 }

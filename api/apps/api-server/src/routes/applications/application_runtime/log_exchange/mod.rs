@@ -147,5 +147,7 @@ impl ConsoleInterfacePort<ExchangeInput, ExchangeOutput> for ExchangeAdapter {
         })
     }
 }
+api_route_tests! {
 #[cfg(test)]
 mod _tests;
+}

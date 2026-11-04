@@ -193,9 +193,12 @@ pub(crate) fn compile_registry(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 struct UnavailableMcpDebugPort;
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl ConsoleInterfacePort<McpDebugInput, McpDebugOutput> for UnavailableMcpDebugPort {
     fn execute<'a>(
@@ -210,7 +213,9 @@ impl ConsoleInterfacePort<McpDebugInput, McpDebugOutput> for UnavailableMcpDebug
         })
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,4 +231,5 @@ mod tests {
         assert_eq!(route.method(), declaration.method);
         assert_eq!(route.path(), declaration.path);
     }
+}
 }

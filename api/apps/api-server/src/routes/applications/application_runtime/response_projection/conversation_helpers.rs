@@ -1,3 +1,4 @@
+api_route_tests! {
 #[cfg(test)]
 mod converged_task_tests {
     use super::*;
@@ -58,7 +59,9 @@ mod converged_task_tests {
         assert_eq!(open.items[1].output_source.as_deref(), Some("none"));
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 async fn to_application_conversation_message_response<F, Fut>(
     run: domain::FlowRunRecord,
@@ -98,6 +101,7 @@ where
         sequence: None,
     }
 }
+}
 
 fn to_application_conversation_message_summary_response(
     run: domain::ApplicationConversationRunSummary,
@@ -125,6 +129,7 @@ fn to_application_conversation_message_summary_response(
     }
 }
 
+api_route_tests! {
 #[cfg(test)]
 async fn application_conversation_answer_text<F, Fut>(
     payload: &serde_json::Value,
@@ -166,7 +171,9 @@ where
 
     inline_application_conversation_error_text(payload)
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 async fn load_referenced_runtime_debug_artifact<F, Fut>(
     value: &serde_json::Value,
@@ -179,7 +186,9 @@ where
     let artifact_id = runtime_debug_artifact_id(value)?;
     load_debug_artifact(artifact_id).await
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 fn inline_application_conversation_answer_text(payload: &serde_json::Value) -> Option<String> {
     ["answer", "text", "content", "message"]
@@ -187,7 +196,9 @@ fn inline_application_conversation_answer_text(payload: &serde_json::Value) -> O
         .filter_map(|key| payload.get(key))
         .find_map(inline_conversation_value_text)
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 fn inline_application_conversation_error_text(payload: &serde_json::Value) -> Option<String> {
     payload
@@ -195,7 +206,9 @@ fn inline_application_conversation_error_text(payload: &serde_json::Value) -> Op
         .and_then(|value| value.get("message"))
         .and_then(inline_conversation_value_text)
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 fn inline_conversation_value_text(value: &serde_json::Value) -> Option<String> {
     if runtime_debug_artifact_id(value).is_some() {
@@ -224,6 +237,7 @@ fn inline_conversation_value_text(value: &serde_json::Value) -> Option<String> {
         .into_iter()
         .filter_map(|key| object.get(key))
         .find_map(inline_conversation_value_text)
+}
 }
 
 fn parse_optional_uuid_cursor(value: Option<&str>) -> Option<Uuid> {
@@ -315,6 +329,7 @@ fn application_run_conversation_output_state_response(
     }
 }
 
+api_route_tests! {
 /// The task anchor's detail: one user turn and the model's final answer. The
 /// answer item points at the member run that produced it so the console can
 /// still open that run; an unobserved answer stays an open, non-terminal item.
@@ -411,7 +426,9 @@ fn converged_task_conversation_messages(
         },
     }
 }
+}
 
+api_route_tests! {
 /// A converged task states where its answer came from instead of letting the
 /// console report a missing answer for a task that already observed one.
 #[cfg(test)]
@@ -426,6 +443,7 @@ fn converged_task_output_source<'a>(
         .as_ref()
         .map(|state| state.output_source.as_str())
         .unwrap_or("none")
+}
 }
 
 fn conversation_messages_from_current_item(
@@ -480,6 +498,7 @@ fn application_run_conversation_message_item_response(
     }
 }
 
+api_route_tests! {
 #[cfg(test)]
 async fn conversation_messages_from_single_run<F, Fut>(
     run: &domain::FlowRunRecord,
@@ -493,7 +512,9 @@ where
     let items = imported_context_messages_from_run(run, load_debug_artifact).await;
     conversation_messages_from_context_items(run, items, query, load_debug_artifact).await
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 async fn conversation_messages_from_run_detail<F, Fut>(
     detail: &domain::ApplicationRunDetail,
@@ -520,7 +541,9 @@ where
     conversation_messages_from_context_items(&detail.flow_run, items, query, load_debug_artifact)
         .await
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 async fn conversation_messages_from_context_items<F, Fut>(
     run: &domain::FlowRunRecord,
@@ -562,7 +585,9 @@ where
         },
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 fn renumber_imported_context_items(
     run_id: Uuid,
@@ -572,7 +597,9 @@ fn renumber_imported_context_items(
         item.run_id = imported_context_cursor(run_id, index);
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 async fn imported_context_messages_from_run<F, Fut>(
     run: &domain::FlowRunRecord,
@@ -636,7 +663,9 @@ where
 
     items
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 fn is_hidden_conversation_history_message(message: &serde_json::Value) -> bool {
     message
@@ -645,7 +674,9 @@ fn is_hidden_conversation_history_message(message: &serde_json::Value) -> bool {
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false)
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 async fn llm_system_content_from_node_runs<F, Fut>(
     detail: &domain::ApplicationRunDetail,
@@ -674,7 +705,9 @@ where
 
     None
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 async fn llm_prompt_messages_system_content<F, Fut>(
     payload: &serde_json::Value,
@@ -699,7 +732,9 @@ where
 
     (!system.trim().is_empty()).then_some(system)
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 async fn llm_effective_system_content<F, Fut>(
     payload: &serde_json::Value,
@@ -720,7 +755,9 @@ where
         .and_then(conversation_prompt_text)
         .or_else(|| conversation_prompt_text(effective_system))
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 async fn resolve_runtime_debug_artifact_value<F, Fut>(
     value: &serde_json::Value,
@@ -736,7 +773,9 @@ where
         .await
         .or_else(|| decode_runtime_debug_artifact_preview(value))
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 fn runtime_debug_artifact_id(value: &serde_json::Value) -> Option<Uuid> {
     if !value
@@ -752,7 +791,9 @@ fn runtime_debug_artifact_id(value: &serde_json::Value) -> Option<Uuid> {
         .and_then(serde_json::Value::as_str)
         .and_then(|value| Uuid::parse_str(value).ok())
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 fn imported_context_window(
     run_id: Uuid,
@@ -784,6 +825,7 @@ fn imported_context_window(
 
     (total.saturating_sub(limit), total)
 }
+}
 
 fn imported_context_cursor(run_id: Uuid, index: usize) -> String {
     format!("{run_id}:context:{index}")
@@ -798,6 +840,7 @@ fn parse_imported_context_cursor(run_id: Uuid, cursor: &str) -> Option<usize> {
     index.parse().ok()
 }
 
+api_route_tests! {
 #[cfg(test)]
 fn imported_context_item(
     run: &domain::FlowRunRecord,
@@ -824,7 +867,9 @@ fn imported_context_item(
         sequence: None,
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 async fn run_level_system_content<F, Fut>(
     payload: &serde_json::Value,
@@ -846,7 +891,9 @@ where
         .and_then(conversation_prompt_text)
         .or_else(|| conversation_prompt_text(system_value))
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 fn conversation_prompt_text(value: &serde_json::Value) -> Option<String> {
     if let Some(text) = value
@@ -868,7 +915,9 @@ fn conversation_prompt_text(value: &serde_json::Value) -> Option<String> {
 
     conversation_content_part_text(value).or_else(|| conversation_preview_text(value))
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 fn conversation_preview_text(value: &serde_json::Value) -> Option<String> {
     let preview = value
@@ -883,7 +932,9 @@ fn conversation_preview_text(value: &serde_json::Value) -> Option<String> {
         .and_then(conversation_prompt_text)
         .or_else(|| Some(preview.to_string()))
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 fn conversation_message_content(message: &serde_json::Value) -> Option<String> {
     let content = message.get("content")?;
@@ -906,7 +957,9 @@ fn conversation_message_content(message: &serde_json::Value) -> Option<String> {
 
     conversation_content_part_text(content)
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 fn conversation_content_part_text(part: &serde_json::Value) -> Option<String> {
     if let Some(text) = part
@@ -923,4 +976,5 @@ fn conversation_content_part_text(part: &serde_json::Value) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+}
 }

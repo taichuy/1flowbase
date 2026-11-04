@@ -282,9 +282,13 @@ pub(super) fn serialized(value: &Value) -> String {
     serde_json::to_string(value).expect("serde_json::Value serialization must be infallible")
 }
 
+api_route_tests! {
 #[cfg(test)]
 use super::ResultSelection;
+}
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/paging.rs"]
 mod tests;
+}

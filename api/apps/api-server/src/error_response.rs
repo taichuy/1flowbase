@@ -286,6 +286,8 @@ fn sanitize_error_message(message: &str) -> String {
     sanitized
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 #[path = "error_response/_tests/node_diagnostics.rs"]
 mod node_diagnostics_tests;
+}

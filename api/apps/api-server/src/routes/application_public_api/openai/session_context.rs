@@ -80,6 +80,7 @@ fn client_session_parts(headers: &HeaderMap) -> Result<(String, String), OpenAiR
     Ok((session_id, thread_id))
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,4 +165,5 @@ mod tests {
             client_session_parts(&empty).unwrap()
         );
     }
+}
 }

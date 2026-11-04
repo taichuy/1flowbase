@@ -666,6 +666,7 @@ fn invalid(field: &'static str) -> anyhow::Error {
     control_plane::errors::ControlPlaneError::InvalidInput(field).into()
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -751,4 +752,5 @@ mod tests {
         assert!(encoded.contains("Content-Type: text/plain"));
         assert!(encoded.contains("\r\n\r\nhello\r\n"));
     }
+}
 }

@@ -28,6 +28,7 @@ pub(in super::super) async fn append_compatible_resume_terminal_event(
         .await;
 }
 
+api_route_tests! {
 #[cfg(test)]
 pub(super) struct CompatibleTerminalFallback<'a, F> {
     pub(super) state: &'a ApiState,
@@ -39,7 +40,9 @@ pub(super) struct CompatibleTerminalFallback<'a, F> {
     pub(super) warn_if_not_terminal: bool,
     pub(super) ignored_waiting_callback_task_id: Option<uuid::Uuid>,
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 pub(super) enum CompatibleTerminalFallbackOutcome {
     NotTerminal,
@@ -47,7 +50,9 @@ pub(super) enum CompatibleTerminalFallbackOutcome {
     ClientDisconnected { event_type: Option<String> },
     IgnoredWaitingCallback,
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 pub(super) async fn emit_compatible_terminal_fallback<F>(
     fallback: CompatibleTerminalFallback<'_, F>,
@@ -155,6 +160,7 @@ where
     }
     stats.record_sent_runtime_event(&latest_run, &terminal_event, emitted_public_event);
     CompatibleTerminalFallbackOutcome::Sent { event_type }
+}
 }
 
 pub(super) fn is_ignored_waiting_callback(

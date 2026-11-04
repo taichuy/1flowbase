@@ -1,6 +1,3 @@
-#![recursion_limit = "256"]
-
-extern crate self as api_server;
 #[path = "boot_composition/generation_dispatch.rs"]
 mod generation_dispatch;
 #[path = "boot_composition/managed_publication.rs"]
@@ -75,9 +72,9 @@ pub mod workers;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use anyhow::{Result, anyhow};
-use argon2::{Argon2, password_hash::PasswordHasher};
-use axum::{Json, Router, middleware as axum_middleware, routing::get};
+use anyhow::{anyhow, Result};
+use argon2::{password_hash::PasswordHasher, Argon2};
+use axum::{middleware as axum_middleware, routing::get, Json, Router};
 use control_plane::{
     bootstrap::{BootstrapConfig, BootstrapService},
     plugin_management::ready_current_node_plugin_installation,
@@ -89,12 +86,12 @@ use tower_http::{
     cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer},
     trace::TraceLayer,
 };
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::{Config as SwaggerUiConfig, SwaggerUi};
 
 use crate::{
-    app_state::{ApiState, build_official_i18n_catalog_update_service},
+    app_state::{build_official_i18n_catalog_update_service, ApiState},
     config::{ApiConfig, ApiEnvironment},
     host_extension_loader::{
         activate_prepared_host_extensions, prepare_host_extensions_at_startup,
@@ -270,6 +267,7 @@ fn base_router(include_docs_ui: bool, static_openapi: bool) -> Router {
     }
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 pub(crate) fn root_external_endpoint_contributions(
     include_docs: bool,
@@ -296,6 +294,7 @@ pub(crate) fn root_external_endpoint_contributions(
         );
     }
     contributions
+}
 }
 
 fn publish_external_endpoint_catalog(
@@ -377,6 +376,7 @@ pub fn app_with_state(state: Arc<ApiState>) -> Router {
         .layer(TraceLayer::new_for_http().make_span_with(safe_http_trace_span))
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
     let interface_snapshot = state
@@ -385,6 +385,7 @@ fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
         .and_then(|snapshot| snapshot.interface_registry())
         .map(|registry| registry.snapshot());
     console_router_for_registry(state, include_openapi, interface_snapshot.as_deref())
+}
 }
 
 fn console_router_for_registry(
@@ -583,6 +584,7 @@ pub fn init_tracing() {
         .try_init();
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 mod tests {
     use super::{
@@ -630,13 +632,18 @@ mod tests {
         assert!(result.is_none());
     }
 }
+}
 
+api_nonroute_tests! {
 #[cfg(all(test, feature = "root-1805-consumer-fixture"))]
 #[path = "_tests/root_1805_consumer_fixture.rs"]
 mod _tests;
+}
 
+api_nonroute_tests! {
 #[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
 mod _tests;
+}
 
 /// Actual server shutdown owner. A timeout preserves closed admission and all unfinished owners.
 pub struct ApiRuntimeShutdown {
@@ -679,3 +686,7 @@ impl ApiRuntimeShutdown {
 mod startup_assembly;
 
 use startup_assembly::*;
+
+#[cfg(test)]
+#[path = "_tests/support/native_settings_fixture.rs"]
+mod native_settings_fixture;

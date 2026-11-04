@@ -1012,9 +1012,12 @@ pub(crate) fn compile_registry(
     )
 }
 
+api_route_tests! {
 #[cfg(test)]
 struct UnavailableApplicationRuntimeReadsPort;
+}
 
+api_route_tests! {
 #[cfg(test)]
 impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsOutput>
     for UnavailableApplicationRuntimeReadsPort
@@ -1031,7 +1034,9 @@ impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsO
         })
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;
@@ -1054,6 +1059,7 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
+}
 }
 
 #[path = "interface_runtime_reads/run_read_queries.rs"]

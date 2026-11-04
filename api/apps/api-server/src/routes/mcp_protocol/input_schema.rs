@@ -308,6 +308,7 @@ fn add_required_property(schema: &mut Value, property: &str) {
     }
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -346,7 +347,10 @@ mod tests {
         assert_eq!(schema["required"], json!(["page_id"]));
     }
 }
+}
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/input_defaults.rs"]
 mod input_defaults_tests;
+}

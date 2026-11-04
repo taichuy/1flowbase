@@ -745,6 +745,7 @@ fn terminal_answer_delta_sse_events(
         .collect()
 }
 
+api_route_tests! {
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1001,4 +1002,5 @@ mod tests {
             json!("lookup_weather")
         );
     }
+}
 }

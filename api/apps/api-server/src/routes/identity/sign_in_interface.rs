@@ -326,15 +326,20 @@ pub(crate) fn public_sign_in_port(
     })
 }
 
+api_nonroute_tests! {
 #[cfg(test)]
 pub(crate) fn compile_registry_for_test(
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     compile_registry(Arc::new(UnavailablePublicSignInPort))
 }
+}
 
+api_nonroute_tests! {
 #[cfg(test)]
 struct UnavailablePublicSignInPort;
+}
 
+api_nonroute_tests! {
 #[cfg(test)]
 impl PublicSignInPort for UnavailablePublicSignInPort {
     fn sign_in(&self, _input: PublicSignInInput) -> PublicSignInFuture<'_> {
@@ -344,6 +349,7 @@ impl PublicSignInPort for UnavailablePublicSignInPort {
             ))
         })
     }
+}
 }
 
 fn contract<T: InterfaceContract>() -> ContractIdentity {

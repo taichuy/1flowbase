@@ -384,6 +384,8 @@ pub(in crate::routes::application_public_api::compat_sse) fn anthropic_delta_pay
     ))
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/anthropic_errors.rs"]
 mod error_tests;
+}

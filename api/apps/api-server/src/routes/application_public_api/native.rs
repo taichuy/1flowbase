@@ -76,12 +76,16 @@ mod response_projection;
 
 pub(crate) use response_projection::{blocking_run_projection_error, native_error, service_error};
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "native/_tests/authentication_failures.rs"]
 mod authentication_failure_tests;
+}
+api_route_tests! {
 #[cfg(test)]
 #[path = "native/_tests/catalog_admission.rs"]
 mod catalog_admission_tests;
+}
 
 pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
     ApiProviderRuntime::new_with_activity(
@@ -473,12 +477,15 @@ pub struct NativeApiError {
     pub(crate) message: String,
 }
 
+api_test_fixture! {
+nonroutes;
 #[derive(Debug)]
 pub(crate) struct NativeRunRequestParseError {
     pub(crate) code: &'static str,
     pub(crate) message: String,
     #[cfg(test)]
     pub(crate) report: TranslationReport,
+}
 }
 
 impl NativeApiError {
@@ -1119,8 +1126,10 @@ mod runtime_invoker;
 #[path = "native/native_streams.rs"]
 mod native_streams;
 
+api_route_tests! {
 #[cfg(test)]
 use runtime_invoker::compiled_plan_has_mcp_bindings;
+}
 pub(crate) use runtime_invoker::native_runtime_invoker_factory;
 pub(crate) use runtime_invoker::public_mcp_runtime_invoker_for_actor;
 pub(crate) use runtime_invoker::runtime_internal_tool_invoker_for_run;

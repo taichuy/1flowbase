@@ -54,10 +54,21 @@ pub async fn start_flow_debug_run(
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
         "http.console.applications.runtime.debug-runs.create.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers: headers.clone() },
-        interface_debug_commands::ApplicationRuntimeDebugCommandsInput::Start { application_id: id, body, headers },
-    ).await?;
-    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Run(response) = output else { unreachable!("debug run binding returned a different output") };
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state,
+            headers: headers.clone(),
+        },
+        interface_debug_commands::ApplicationRuntimeDebugCommandsInput::Start {
+            application_id: id,
+            body,
+            headers,
+        },
+    )
+    .await?;
+    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Run(response) = output
+    else {
+        unreachable!("debug run binding returned a different output")
+    };
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 
@@ -143,7 +154,12 @@ pub async fn subscribe_flow_debug_run_stream(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Query(stream_query): Query<DebugRunStreamQuery>,
-) -> Result<Sse<impl tokio_stream::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>>, ApiError> {
+) -> Result<
+    Sse<
+        impl tokio_stream::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>,
+    >,
+    ApiError,
+> {
     let from_sequence = debug_run_stream_from_sequence(run_id, &stream_query, &headers);
     let stream = crate::routes::console_interface::invoke_server_stream::<
         interface_debug_commands::ApplicationRuntimeDebugStreamInput,
@@ -236,11 +252,19 @@ pub async fn cancel_flow_run(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
     let output = crate::routes::console_interface::invoke(
-        Arc::clone(&state), "http.console.applications.runtime.runs.cancel.v1",
+        Arc::clone(&state),
+        "http.console.applications.runtime.runs.cancel.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
-        interface_debug_commands::ApplicationRuntimeDebugCommandsInput::Cancel { application_id: id, run_id },
-    ).await?;
-    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Run(response) = output else { unreachable!("debug cancel binding returned a different output") };
+        interface_debug_commands::ApplicationRuntimeDebugCommandsInput::Cancel {
+            application_id: id,
+            run_id,
+        },
+    )
+    .await?;
+    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Run(response) = output
+    else {
+        unreachable!("debug cancel binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -266,8 +290,25 @@ pub async fn resume_flow_run(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Json(body): Json<ResumeFlowRunBody>,
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.runs.resume.v1", crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers: headers.clone() }, interface_debug_commands::ApplicationRuntimeDebugCommandsInput::Resume { application_id: id, run_id, body, headers }).await?;
-    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Run(response) = output else { unreachable!("debug resume binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.runs.resume.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state,
+            headers: headers.clone(),
+        },
+        interface_debug_commands::ApplicationRuntimeDebugCommandsInput::Resume {
+            application_id: id,
+            run_id,
+            body,
+            headers,
+        },
+    )
+    .await?;
+    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Run(response) = output
+    else {
+        unreachable!("debug resume binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -293,8 +334,25 @@ pub async fn complete_callback_task(
     Path((id, callback_task_id)): Path<(Uuid, Uuid)>,
     Json(body): Json<CompleteCallbackTaskBody>,
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.callback-tasks.complete.v1", crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers: headers.clone() }, interface_debug_commands::ApplicationRuntimeDebugCommandsInput::CompleteCallback { application_id: id, callback_task_id, body, headers }).await?;
-    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Run(response) = output else { unreachable!("callback completion binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.callback-tasks.complete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state,
+            headers: headers.clone(),
+        },
+        interface_debug_commands::ApplicationRuntimeDebugCommandsInput::CompleteCallback {
+            application_id: id,
+            callback_task_id,
+            body,
+            headers,
+        },
+    )
+    .await?;
+    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Run(response) = output
+    else {
+        unreachable!("callback completion binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -320,8 +378,25 @@ pub async fn start_node_debug_preview(
     Path((id, node_id)): Path<(Uuid, String)>,
     Json(body): Json<StartNodeDebugPreviewBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<NodeLastRunResponse>>), ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.nodes.debug-runs.create.v1", crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers: headers.clone() }, interface_debug_commands::ApplicationRuntimeDebugCommandsInput::StartNode { application_id: id, node_id, body, headers }).await?;
-    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Node(response) = output else { unreachable!("node debug binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.nodes.debug-runs.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state,
+            headers: headers.clone(),
+        },
+        interface_debug_commands::ApplicationRuntimeDebugCommandsInput::StartNode {
+            application_id: id,
+            node_id,
+            body,
+            headers,
+        },
+    )
+    .await?;
+    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Node(response) = output
+    else {
+        unreachable!("node debug binding returned a different output")
+    };
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 
@@ -354,7 +429,8 @@ pub async fn get_runtime_debug_artifact(
         },
     )
     .await?;
-    let interface_debug_artifacts::ApplicationRuntimeDebugArtifactsOutput::Content(content) = output
+    let interface_debug_artifacts::ApplicationRuntimeDebugArtifactsOutput::Content(content) =
+        output
     else {
         unreachable!("runtime debug artifact binding returned a different output")
     };

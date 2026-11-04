@@ -38,9 +38,11 @@ contract!(Input, "application-agent-logs-input");
 contract!(Output, "application-agent-logs-output");
 contract!(TargetError, "application-agent-logs-error");
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "agent_logs/_tests/managed_projection.rs"]
 mod managed_projection_tests;
+}
 
 struct Handler<R>(R);
 impl<R> InterfaceHandler<Input, Output, TargetError, ApplicationPrincipal> for Handler<R>

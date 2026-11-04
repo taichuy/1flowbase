@@ -81,6 +81,8 @@ pub(crate) fn current_client_context() -> McpClientContext {
     CLIENT_CONTEXT.try_with(Clone::clone).unwrap_or_default()
 }
 
+api_route_tests! {
 #[cfg(test)]
 #[path = "_tests/client_context.rs"]
 mod tests;
+}
