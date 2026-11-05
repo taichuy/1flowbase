@@ -165,6 +165,13 @@ fn field_code_to_static(model_code: &'static str, field_code: &str) -> Option<&'
 }
 
 fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKind {
+    if matches!(model_code, "event_definitions" | "workflow_event_triggers") {
+        match field_code {
+            "payload_schema" | "input_mapping" => return crate::ModelFieldKind::Json,
+            "description" => return crate::ModelFieldKind::Text,
+            _ => {}
+        }
+    }
     if model_code == "notification_send_logs" && field_code == "extra" {
         return crate::ModelFieldKind::Json;
     }
@@ -242,6 +249,7 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
 
 fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
     match model_code {
+        "event_definitions" | "workflow_event_triggers" => true,
         "notification_instances" => field_code != "installation_id",
         "system_notifications" => field_code != "read_at",
         "notification_send_logs" => !matches!(
@@ -961,6 +969,54 @@ pub fn builtin_data_model_contract(code: &str) -> Option<BuiltinDataModelContrac
     let core_capabilities = DataModelCapabilities::core_builtin();
     let runtime_read_capabilities = DataModelCapabilities::runtime_read_builtin();
     Some(match code {
+        // Dedicated configuration services are the only record write owner.
+        "event_definitions" => BuiltinDataModelContract {
+            code: "event_definitions",
+            physical_table_name: "event_definitions",
+            kind: BuiltinDataModelKind::Core,
+            system_field_codes: &[
+                "id",
+                "workspace_id",
+                "contract_id",
+                "contract_version",
+                "name",
+                "description",
+                "payload_schema",
+                "enabled",
+                "created_by",
+                "created_at",
+                "updated_at",
+            ],
+            capabilities: DataModelCapabilities {
+                can_delete: false,
+                can_add_user_field: false,
+                can_update_lifecycle_status: false,
+                record: DataModelRecordCapabilities::read_only(),
+            },
+        },
+        "workflow_event_triggers" => BuiltinDataModelContract {
+            code: "workflow_event_triggers",
+            physical_table_name: "workflow_event_triggers",
+            kind: BuiltinDataModelKind::Core,
+            system_field_codes: &[
+                "id",
+                "workspace_id",
+                "application_id",
+                "enabled",
+                "contract_id",
+                "contract_version",
+                "trigger_phase",
+                "input_mapping",
+                "updated_by",
+                "updated_at",
+            ],
+            capabilities: DataModelCapabilities {
+                can_delete: false,
+                can_add_user_field: false,
+                can_update_lifecycle_status: false,
+                record: DataModelRecordCapabilities::read_only(),
+            },
+        },
         "notification_instances" => crate::notifications::notification_instance_model_contract(),
         "system_notifications" => crate::notifications::system_notification_model_contract(),
         "notification_send_logs" => crate::notifications::notification_send_log_model_contract(),

@@ -1,3 +1,4 @@
+mod event_configuration;
 mod branding;
 mod communications;
 mod container_state;

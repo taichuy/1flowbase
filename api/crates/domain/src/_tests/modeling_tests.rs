@@ -395,3 +395,43 @@ fn application_log_task_source_id_is_nullable_system_owned_string() {
     assert!(migration
         .contains("'source_id','Source ID','source_id','string',true,false,false,false,false"));
 }
+
+#[test]
+fn event_configuration_models_protect_physical_contract_and_dedicated_service_writes() {
+    for code in ["event_definitions", "workflow_event_triggers"] {
+        let contract = crate::builtin_data_model_contract(code).unwrap();
+        assert_eq!(contract.kind, crate::BuiltinDataModelKind::Core);
+        assert_eq!(contract.physical_table_name, code);
+        assert!(!contract.capabilities.can_delete);
+        assert!(!contract.capabilities.can_add_user_field);
+        assert!(!contract.capabilities.can_update_lifecycle_status);
+        assert_eq!(
+            contract.capabilities.record,
+            crate::DataModelRecordCapabilities::read_only()
+        );
+        assert!(contract.owns_field_code("workspace_id"));
+        assert!(!contract.owns_field_code("scope_id"));
+        for field in contract.system_field_codes {
+            let field_contract = contract.field_contract(field).unwrap();
+            assert!(field_contract.is_required);
+            assert_eq!(field_contract.physical_column_name, *field);
+            assert_eq!(field_contract.is_unique, *field == "id");
+        }
+    }
+    assert_eq!(
+        crate::builtin_data_model_contract("event_definitions")
+            .unwrap()
+            .field_contract("payload_schema")
+            .unwrap()
+            .field_kind,
+        crate::ModelFieldKind::Json
+    );
+    assert_eq!(
+        crate::builtin_data_model_contract("workflow_event_triggers")
+            .unwrap()
+            .field_contract("input_mapping")
+            .unwrap()
+            .field_kind,
+        crate::ModelFieldKind::Json
+    );
+}
