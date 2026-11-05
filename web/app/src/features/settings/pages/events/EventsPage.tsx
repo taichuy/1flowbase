@@ -77,9 +77,10 @@ export function EventsPage() {
       key: 'name',
       title: t('name'),
       width: 220,
+      ellipsis: true,
       mobileRole: 'title',
       render: (_, row) => (
-        <Button type="link" onClick={() => open(row)}>
+        <Button type="link" title={row.name} onClick={() => open(row)}>
           {row.name}
         </Button>
       )
@@ -156,6 +157,7 @@ export function EventsPage() {
   ];
   return (
     <SettingsSectionSurface
+      heightMode="fill"
       toolbar={
         <Typography.Title level={4}>
           {i18nText('settings', 'events.title')}
