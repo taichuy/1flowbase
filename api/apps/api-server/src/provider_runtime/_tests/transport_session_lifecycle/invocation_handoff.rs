@@ -732,3 +732,38 @@ async fn successful_handoff_returns_lease_before_unrelated_close_is_dispatched()
         .invocation_inflight(&next.lease.fence)
         .unwrap());
 }
+
+#[tokio::test]
+async fn independent_native_request_admits_before_predecessor_completes() {
+    let (coordinator, runtime, old_scope, first) = bound_execution([]).await;
+    let old = first.lease.clone();
+    let scope = coordinator.open_connection_scope();
+    let mut input = scope_input(&scope, "model-a");
+    input.native_transport = Some(
+        plugin_framework::provider_contract::ProviderNativeTransport {
+            protocol: "openai_responses".into(),
+            wire_body: serde_json::json!({"model":"model-a","input":[]}),
+            digest: "fixture".into(),
+            size_bytes: 0,
+        },
+    );
+    // Timeout is only a deadlock fence: no predecessor finish or clock advance
+    // occurs until the production admission path has returned a distinct lease.
+    let next = tokio::time::timeout(
+        Duration::from_secs(1),
+        coordinator.prepare_dispatched("runtime-a", &mut input, &context(2_100_000)),
+    )
+    .await
+    .expect("an independent native request must not wait for the predecessor")
+    .unwrap()
+    .unwrap();
+    assert_ne!(next.lease.fence.session_id, old.fence.session_id);
+    assert!(coordinator.registry.lock().await.invocation_inflight(&old.fence).unwrap());
+    assert!(runtime.commands().is_empty(), "delivery replacement never cancels execution");
+    coordinator.close_connection_scope(&old_scope).await;
+    coordinator.finish(first, &successful_output(old.fence.generation.get())).await.unwrap();
+    assert!(coordinator.registry.lock().await.invocation_inflight(&next.lease.fence).unwrap());
+    let generation = next.lease.fence.generation.get();
+    coordinator.finish(next, &successful_output(generation)).await.unwrap();
+    assert!(runtime.commands().is_empty());
+}
