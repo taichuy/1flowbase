@@ -1,3 +1,4 @@
+import type { EventCatalogEntry, EventRuntimeSnapshot } from '../types';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createEventDefinition,
@@ -9,9 +10,15 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 describe('event center wire contract', () => {
   test('unwraps the actual success envelope without field aliases', async () => {
-    const data = [
+    const data: EventCatalogEntry[] = [
       {
         id: null,
+        enabled: true,
+        owner_id: 'core',
+        contract_version: '1',
+        name: 'Core ready',
+        description: '',
+        payload_schema: null,
         contract_id: 'core.ready',
         supported_phases: [],
         origin: 'core'
@@ -71,8 +78,15 @@ describe('event center wire contract', () => {
     expect(fetch.mock.calls[1][1].headers['x-csrf-token']).toBe('csrf');
   });
   test('runtime observation uses a read-only request', async () => {
-    const data = {
+    const data: EventRuntimeSnapshot = {
       instance_id: 'instance',
+      workspace_id: 'workspace',
+      admission_rejected: 0,
+      observation_bytes: 0,
+      observation_max_bytes: 0,
+      observation_ttl_ms: 0,
+      workflow_subscriptions: [],
+      workflow_refresh_error: null,
       queues: [],
       activity: [],
       configured: false

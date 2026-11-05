@@ -72,6 +72,8 @@ const snapshot: EventRuntimeSnapshot = {
   observation_bytes: 300,
   observation_max_bytes: 2000,
   observation_ttl_ms: 60000,
+  workflow_subscriptions: [],
+  workflow_refresh_error: null,
   queues: [
     {
       subscription_id: 'subscription',
@@ -248,6 +250,116 @@ describe('event center configuration and observations', () => {
     expect(
       await screen.findByRole('button', { name: 'Create event' })
     ).toBeEnabled();
+  });
+  test('reports inactive workflow subscriptions without interpreting consumer execution as consumption', async () => {
+    api.getEventRuntime.mockResolvedValue({
+      ...snapshot,
+      workflow_refresh_error: 'configuration_refresh_failed',
+      workflow_subscriptions: [
+        {
+          workspace_id: 'workspace',
+          application_id: 'needs-attention-app',
+          subscription_id: 'inactive-subscription',
+          activation: 'unavailable',
+          reason: 'activation_failed',
+          last_signal_id: 'hidden-signal',
+          last_run_id: 'hidden-run',
+          last_delivery: 'hidden-execution-result',
+          last_delivery_reason: 'hidden-execution-reason'
+        },
+        {
+          workspace_id: 'workspace',
+          application_id: 'unknown-reason-app',
+          subscription_id: 'unknown-reason-subscription',
+          activation: 'stopping',
+          reason: 'future_activation_reason',
+          last_signal_id: null,
+          last_run_id: null,
+          last_delivery: null,
+          last_delivery_reason: null
+        },
+        {
+          workspace_id: 'workspace',
+          application_id: 'active-app',
+          subscription_id: 'active-subscription',
+          activation: 'active',
+          reason: null,
+          last_signal_id: null,
+          last_run_id: null,
+          last_delivery: null,
+          last_delivery_reason: null
+        }
+      ]
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole('tab', { name: 'Current queues' }));
+    expect(
+      await screen.findByText('inactive-subscription')
+    ).toBeInTheDocument();
+    expect(screen.getByText('needs-attention-app')).toBeInTheDocument();
+    expect(screen.getByText('Unavailable')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Workflow subscriptions could not be refreshed. Retry with Refresh.'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Subscription activation failed.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('activation_failed')).not.toBeInTheDocument();
+    expect(screen.queryByText('active-app')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The subscription cannot currently accept new events. Check its application configuration and permissions.'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('future_activation_reason')
+    ).not.toBeInTheDocument();
+    for (const value of [
+      'hidden-signal',
+      'hidden-run',
+      'hidden-execution-result',
+      'hidden-execution-reason'
+    ])
+      expect(screen.queryByText(value)).not.toBeInTheDocument();
+    expect(screen.getByText('Dequeued deliveries')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /consume/i })
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
+    expect(screen.queryByText('inactive-subscription')).not.toBeInTheDocument();
+  });
+  test('keeps a source with an undeclared schema read-only without inventing an accept-all schema', async () => {
+    api.listEventCatalog.mockResolvedValue([
+      {
+        ...custom,
+        id: null,
+        origin: 'core',
+        name: 'Source without schema',
+        payload_schema: null,
+        supported_phases: []
+      }
+    ]);
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Source without schema' })
+    );
+    const drawer = screen.getByRole('dialog');
+    expect(
+      within(drawer).getByText('This source has not declared a payload schema.')
+    ).toBeInTheDocument();
+    expect(
+      within(drawer).queryByRole('button', { name: 'Save' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(drawer).queryByRole('button', { name: 'Add schema field' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(drawer).queryByText(/accepts every payload/)
+    ).not.toBeInTheDocument();
+    expect(api.createEventDefinition).not.toHaveBeenCalled();
+    expect(api.updateEventDefinition).not.toHaveBeenCalled();
   });
   test('a catalog-only observer receives no create/edit or runtime actions', async () => {
     access.operations = new Set(['events.catalog.list']);

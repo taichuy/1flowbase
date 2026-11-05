@@ -33,9 +33,9 @@ export function EventDefinitionDrawer({
   onSave: (values: CreateEventDefinitionInput) => void;
 }) {
   const { t } = useTranslation('settingsEvents');
-  const [schema, setSchema] = useState<Record<string, unknown> | boolean>(
-    entry?.payload_schema ?? { type: 'object', properties: {} }
-  );
+  const [schema, setSchema] = useState<
+    Record<string, unknown> | boolean | null
+  >(entry ? entry.payload_schema : { type: 'object', properties: {} });
   const [valid, setValid] = useState(true);
   return (
     <Drawer
@@ -46,7 +46,7 @@ export function EventDefinitionDrawer({
       onClose={onClose}
     >
       {error && <Alert type="error" showIcon title={t('save_error')} />}
-      {editable ? (
+      {editable && schema !== null ? (
         <Form<CreateEventDefinitionInput>
           layout="vertical"
           disabled={saving}
@@ -54,7 +54,8 @@ export function EventDefinitionDrawer({
             entry ?? { contract_version: '1', enabled: true, description: '' }
           }
           onFinish={(values) => {
-            if (valid) onSave({ ...values, payload_schema: schema });
+            if (valid && schema !== null)
+              onSave({ ...values, payload_schema: schema });
           }}
         >
           <Form.Item
@@ -152,6 +153,9 @@ export function EventDefinitionDrawer({
               ]}
             />
             <Typography.Text>{t('payload_schema')}</Typography.Text>
+            {entry.payload_schema === null && (
+              <Alert type="info" title={t('schema_undeclared')} />
+            )}
             {typeof entry.payload_schema === 'boolean' && (
               <Alert
                 type="info"
@@ -160,26 +164,27 @@ export function EventDefinitionDrawer({
                 }
               />
             )}
-            <Descriptions
-              column={1}
-              items={Object.entries(
-                (typeof entry.payload_schema === 'boolean'
-                  ? {}
-                  : (entry.payload_schema.properties ?? {})) as Record<
-                  string,
-                  Record<string, unknown>
-                >
-              ).map(([name, field]) => ({
-                key: name,
-                label: name,
-                children:
-                  typeof field === 'object' &&
-                  field !== null &&
-                  typeof field.type === 'string'
-                    ? field.type
-                    : t('structured_field')
-              }))}
-            />
+            {entry.payload_schema !== null &&
+              typeof entry.payload_schema !== 'boolean' && (
+                <Descriptions
+                  column={1}
+                  items={Object.entries(
+                    (entry.payload_schema.properties ?? {}) as Record<
+                      string,
+                      Record<string, unknown>
+                    >
+                  ).map(([name, field]) => ({
+                    key: name,
+                    label: name,
+                    children:
+                      typeof field === 'object' &&
+                      field !== null &&
+                      typeof field.type === 'string'
+                        ? field.type
+                        : t('structured_field')
+                  }))}
+                />
+              )}
           </Space>
         )
       )}

@@ -8,7 +8,7 @@ export interface EventCatalogEntry {
   contract_version: string;
   name: string;
   description: string;
-  payload_schema: Record<string, unknown> | boolean;
+  payload_schema: Record<string, unknown> | boolean | null;
   origin: EventDefinitionOrigin;
   supported_phases: EventTriggerPhase[];
 }
@@ -64,12 +64,25 @@ export interface EventRuntimeActivity {
   admission: EventTargetAdmissionStatus | null;
   observed_at_unix_ms: number;
 }
+export interface EventWorkflowStatus {
+  workspace_id: string;
+  application_id: string;
+  subscription_id: string;
+  activation: 'active' | 'unavailable' | 'draining' | 'stopping' | 'stopped';
+  reason: string | null;
+  last_signal_id: string | null;
+  last_run_id: string | null;
+  last_delivery: string | null;
+  last_delivery_reason: string | null;
+}
 export interface EventRuntimeSnapshot {
   instance_id: string;
   configured: boolean;
   workspace_id: string;
   queues: EventRuntimeQueueSnapshot[];
   activity: EventRuntimeActivity[];
+  workflow_subscriptions: EventWorkflowStatus[];
+  workflow_refresh_error: string | null;
   admission_rejected: number;
   observation_bytes: number;
   observation_max_bytes: number;

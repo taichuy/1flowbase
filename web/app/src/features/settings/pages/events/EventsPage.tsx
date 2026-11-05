@@ -39,6 +39,7 @@ export function EventsPage() {
   const editable = drawer?.entry
     ? drawer.entry.origin === 'custom' &&
       drawer.entry.id !== null &&
+      drawer.entry.payload_schema !== null &&
       can('events.definitions.update')
     : can('events.definitions.create');
   const save = useMutation({
@@ -142,6 +143,7 @@ export function EventsPage() {
           onMoreAction={() => open(row)}
         >
           {row.origin === 'custom' &&
+            row.payload_schema !== null &&
             row.id &&
             can('events.definitions.update') && (
               <Button type="link" size="small" onClick={() => open(row)}>

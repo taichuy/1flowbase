@@ -65,7 +65,9 @@ export function CommunicationEventCommandsEditor({
       item.contract_version === contract_version
   );
   const schema =
-    typeof target?.payload_schema === 'object'
+    target &&
+    target.payload_schema !== null &&
+    typeof target.payload_schema === 'object'
       ? target.payload_schema
       : undefined;
   const properties =

@@ -10,6 +10,7 @@ import { Alert, Button, Descriptions, Space, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type { DataTableColumn } from '../../../../shared/ui/data-table/DataTable';
 import { EventsTable } from './EventsTable';
+import { EventWorkflowSubscriptions } from './EventWorkflowSubscriptions';
 
 export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
   const { t } = useTranslation('settingsEvents');
@@ -188,6 +189,13 @@ export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
       )}
       {snapshot && (
         <>
+          {snapshot.workflow_refresh_error !== null && (
+            <Alert
+              type="warning"
+              showIcon
+              title={t('workflow_refresh_error')}
+            />
+          )}
           {!snapshot.configured && (
             <Alert type="warning" showIcon title={t('unconfigured')} />
           )}
@@ -231,6 +239,11 @@ export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
       )}
       {tab === 'queues' ? (
         <>
+          {snapshot && (
+            <EventWorkflowSubscriptions
+              subscriptions={snapshot.workflow_subscriptions}
+            />
+          )}
           <Alert type="info" title={t('queue_counters_help')} />
           <EventsTable
             tableKey="queues"
