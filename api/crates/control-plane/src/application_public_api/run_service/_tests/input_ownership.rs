@@ -291,7 +291,7 @@ fn event_freeze_owns_trigger_metadata_and_discards_caller_sys() {
         &variables(),
         WorkflowRunTriggerContext::Event {
             signal_id: signal, event_id: Some(signal), subscription_id: subscription,
-            trigger_phase: domain::event_center::EventTriggerPhase::Consumed, context: &context,
+            trigger_phase: domain::event_center::EventTriggerPhase::Consumed,
         },
     ).unwrap();
     assert!(frozen.get("sys").is_none());

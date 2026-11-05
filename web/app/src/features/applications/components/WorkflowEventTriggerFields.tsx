@@ -26,15 +26,50 @@ export function WorkflowEventTriggerFields({
   });
   const contract_id = Form.useWatch(['event', 'contract_id'], form);
   const contract_version = Form.useWatch(['event', 'contract_version'], form);
+  const enabled = Form.useWatch(['event', 'enabled'], form);
+  const trigger_phase = Form.useWatch(['event', 'trigger_phase'], form);
   const available =
     catalog.data?.filter(
       (entry) => entry.origin === 'custom' && entry.enabled
     ) ?? [];
-  const selected = available.find(
+  const selected = catalog.data?.find(
     (entry) =>
       entry.contract_id === contract_id &&
       entry.contract_version === contract_version
   );
+  const sourceAvailable = selected?.origin === 'custom' && selected.enabled;
+  const sourceOptions = available.map((entry) => ({
+    value: JSON.stringify([entry.contract_id, entry.contract_version]),
+    label: `${entry.name} · ${entry.contract_version}`,
+    disabled: false
+  }));
+  if (contract_id && !sourceAvailable) {
+    sourceOptions.push({
+      value: JSON.stringify([contract_id, contract_version]),
+      label: `${selected?.name ?? contract_id} · ${contract_version} · ${t('event.source_unavailable')}`,
+      disabled: true
+    });
+  }
+  const phaseLabels = {
+    subscribed: t('event.subscribed'),
+    published: t('event.published'),
+    consumed: t('event.consumed')
+  };
+  const phaseOptions = (selected?.supported_phases ?? []).map((value) => ({
+    value,
+    label: phaseLabels[value],
+    disabled: !sourceAvailable
+  }));
+  if (
+    trigger_phase &&
+    !phaseOptions.some(({ value }) => value === trigger_phase)
+  ) {
+    phaseOptions.push({
+      value: trigger_phase,
+      label: phaseLabels[trigger_phase as keyof typeof phaseLabels],
+      disabled: true
+    });
+  }
   return (
     <>
       <Alert type="info" showIcon title={t('event.lifecycle_hint')} />
@@ -52,10 +87,12 @@ export function WorkflowEventTriggerFields({
         label={t('event.source')}
         required
         validateStatus={
-          contract_id && !selected && !catalog.isPending ? 'error' : undefined
+          enabled && contract_id && !sourceAvailable && !catalog.isPending
+            ? 'error'
+            : undefined
         }
         help={
-          contract_id && !selected && !catalog.isPending
+          contract_id && !sourceAvailable && !catalog.isPending
             ? t('event.source_unavailable')
             : undefined
         }
@@ -68,10 +105,7 @@ export function WorkflowEventTriggerFields({
               ? JSON.stringify([contract_id, contract_version])
               : undefined
           }
-          options={available.map((entry) => ({
-            value: JSON.stringify([entry.contract_id, entry.contract_version]),
-            label: `${entry.name} · ${entry.contract_version}`
-          }))}
+          options={sourceOptions}
           onChange={(value) => {
             const [contract_id, contract_version] = JSON.parse(
               value
@@ -86,11 +120,12 @@ export function WorkflowEventTriggerFields({
       <Form.Item
         name={['event', 'contract_id']}
         hidden
+        dependencies={[['event', 'enabled']]}
         rules={[
           { required: true },
           {
             validator: () =>
-              selected
+              !form.getFieldValue(['event', 'enabled']) || sourceAvailable
                 ? Promise.resolve()
                 : Promise.reject(new Error(t('event.source_unavailable')))
           }
@@ -108,26 +143,23 @@ export function WorkflowEventTriggerFields({
       <Form.Item
         label={t('event.phase')}
         name={['event', 'trigger_phase']}
+        dependencies={[
+          ['event', 'enabled'],
+          ['event', 'contract_id'],
+          ['event', 'contract_version']
+        ]}
         rules={[
           { required: true },
           {
             validator: (_, value) =>
-              selected?.supported_phases.includes(value)
+              !form.getFieldValue(['event', 'enabled']) ||
+              (sourceAvailable && selected?.supported_phases.includes(value))
                 ? Promise.resolve()
                 : Promise.reject(new Error(t('event.source_unavailable')))
           }
         ]}
       >
-        <Select
-          options={selected?.supported_phases.map((value) => ({
-            value,
-            label: {
-              subscribed: t('event.subscribed'),
-              published: t('event.published'),
-              consumed: t('event.consumed')
-            }[value]
-          }))}
-        />
+        <Select options={phaseOptions} />
       </Form.Item>
       {fields
         .filter((field) =>
@@ -139,7 +171,10 @@ export function WorkflowEventTriggerFields({
             label={`${field.label} · ${field.valueType}`}
             name={['event', 'input_mapping', field.key]}
             rules={[
-              { required: field.required && field.defaultValue === undefined },
+              {
+                required:
+                  enabled && field.required && field.defaultValue === undefined
+              },
               {
                 pattern: /^(?:\/(?:[^~]|~[01])*)*$/,
                 message: t('event.pointer_invalid')

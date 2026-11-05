@@ -430,7 +430,9 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
     })
   );
   fireEvent.mouseDown(
-    within(dialog).getByRole('combobox', { name: 'Payload field: invoice' })
+    await within(dialog).findByRole('combobox', {
+      name: 'Payload field: invoice'
+    })
   );
   fireEvent.click(
     await screen.findByText('/arguments', {

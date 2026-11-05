@@ -262,19 +262,25 @@ describe('ApplicationFormModal create intent', () => {
       </AppProviders>
     );
     await selectApplicationType('Workflow');
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '触发方式' }));
+    fireEvent.mouseDown(
+      await screen.findByRole('combobox', { name: '触发方式' })
+    );
     fireEvent.click(
       await screen.findByText('事件触发', {
         selector: '.ant-select-item-option-content'
       })
     );
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '自定义事件源' }));
+    fireEvent.mouseDown(
+      await screen.findByRole('combobox', { name: '自定义事件源' })
+    );
     fireEvent.click(
       await screen.findByText('Invoice · 1', {
         selector: '.ant-select-item-option-content'
       })
     );
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '触发阶段' }));
+    fireEvent.mouseDown(
+      await screen.findByRole('combobox', { name: '触发阶段' })
+    );
     fireEvent.click(
       await screen.findByText('消费时（出队）', {
         selector: '.ant-select-item-option-content'
