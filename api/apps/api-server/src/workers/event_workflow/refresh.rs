@@ -41,6 +41,7 @@ impl<I: Send + 'static, O: Send + 'static> ConsoleInterfacePort<I, O>
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 #[path = "_tests/refresh.rs"]
 mod tests;

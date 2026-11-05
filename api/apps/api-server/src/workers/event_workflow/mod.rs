@@ -446,10 +446,12 @@ async fn consume(
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 #[path = "_tests/reconciliation.rs"]
 mod tests;
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(all(test, feature = "test-support"))]
 #[path = "_tests/host_execution.rs"]
 mod host_execution_tests;
