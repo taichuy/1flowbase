@@ -13,7 +13,7 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement]
 
 permissions:
   contents: read
@@ -30,7 +30,7 @@ env:
 
 jobs:
   acceptance:
-    if: inputs.scope != 'event-center'
+    if: inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -157,7 +157,7 @@ jobs:
           path: tmp/test-governance/event-lifecycle/ci
 
   event-center-acceptance:
-    if: inputs.scope == 'event-center'
+    if: inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -181,7 +181,8 @@ jobs:
         with:
           node-version-file: web/.nvmrc
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
+        id: event-center-cache
         with:
           path: |
             ~/.cargo/registry
@@ -201,6 +202,8 @@ jobs:
           echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
       - name: Event Center host and affected route acceptance
         shell: bash
+        env:
+          EVIDENCE_SCOPE: ${{ inputs.scope }}
         run: |
           set -euo pipefail
           evidence=tmp/test-governance/event-center/ci
@@ -215,12 +218,24 @@ jobs:
               failed=1
             fi
           }
-          run_tests host-lifecycle --test api_private_contracts workers::event_workflow
-          run_tests event-authority --test api_private_contracts event_center_operations_compile_as_new_authority_without_legacy_grants
-          run_tests command-workflow --lib communication_runtime::commands
-          run_tests applications --test api_application workflow
-          run_tests communications --test api_system_settings communication
+          if [ "$EVIDENCE_SCOPE" = event-center-supplement ]; then
+            run_tests activation-restoration --test api_private_contracts activation_decision_controls_real_subscribed_signal_and_restoration_does_not_replay
+          else
+            run_tests host-lifecycle --test api_private_contracts workers::event_workflow
+            run_tests event-authority --test api_private_contracts event_center_operations_compile_as_new_authority_without_legacy_grants
+            run_tests command-workflow --lib communication_runtime::commands
+            run_tests applications --test api_application workflow
+          fi
+          run_tests communications --test api_private_routes routes::communications
           test "$failed" = 0
+      - uses: actions/cache/save@v5
+        if: ${{ always() && !cancelled() && steps.event-center-cache.outputs.cache-hit != 'true' }}
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            api/target
+          key: ${{ steps.event-center-cache.outputs.cache-primary-key }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:

@@ -122,37 +122,64 @@ async fn activation_decision_controls_real_subscribed_signal_and_restoration_doe
         trigger_phase: EventTriggerPhase::Subscribed,
         consumer_id: id,
     };
+    let observer_id = Uuid::now_v7();
+    let observer = runtime
+        .subscribe(
+            EventRuntimeSubscription {
+                subscription_id: observer_id,
+                consumer_id: Uuid::now_v7(),
+                ..spec.clone()
+            },
+            false,
+        )
+        .unwrap();
+    assert!(!logical[&id].emit_on_activation);
     let restored = runtime
         .subscribe(spec.clone(), logical[&id].emit_on_activation)
         .unwrap();
-    assert!(
-        tokio::time::timeout(Duration::from_millis(5), restored.recv())
-            .await
-            .is_err()
-    );
+    assert!(restored.try_recv().unwrap().is_none());
+    assert!(observer.try_recv().unwrap().is_none());
     drop(restored);
     update_logical(&mut logical, &BTreeMap::new(), false);
     update_logical(&mut logical, &configured, false);
+    assert!(logical[&id].emit_on_activation);
     let activated = runtime
         .subscribe(spec, logical[&id].emit_on_activation)
         .unwrap();
-    let delivery = tokio::time::timeout(Duration::from_secs(1), activated.recv())
+    // Activation is visible to existing observers, never to the observer joining now.
+    assert!(activated.try_recv().unwrap().is_none());
+    let delivery = tokio::time::timeout(Duration::from_secs(1), observer.recv())
         .await
         .unwrap()
         .unwrap()
         .unwrap();
-    assert!(matches!(
-        &delivery.signal().body,
-        EventCenterSignalBody::Subscribed { .. }
-    ));
     assert_eq!(
-        runtime.snapshot(trigger.workspace_id).queues[0].in_flight,
+        delivery.signal().body,
+        EventCenterSignalBody::Subscribed {
+            subscription_id: trigger.id,
+            consumer_id: id,
+        }
+    );
+    assert_eq!(
+        runtime
+            .snapshot(trigger.workspace_id)
+            .queues
+            .iter()
+            .find(|queue| queue.subscription_id == observer_id)
+            .unwrap()
+            .in_flight,
         1
     );
     // Failure or success does not change the already-observed dequeue; only release changes charge.
     delivery.complete();
     assert_eq!(
-        runtime.snapshot(trigger.workspace_id).queues[0].in_flight,
+        runtime
+            .snapshot(trigger.workspace_id)
+            .queues
+            .iter()
+            .find(|queue| queue.subscription_id == observer_id)
+            .unwrap()
+            .in_flight,
         0
     );
 }
