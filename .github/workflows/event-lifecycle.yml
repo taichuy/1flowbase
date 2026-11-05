@@ -13,7 +13,7 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement]
+        options: [full, managed-resume, memory-governance-supplement, event-center]
 
 permissions:
   contents: read
@@ -30,6 +30,7 @@ env:
 
 jobs:
   acceptance:
+    if: inputs.scope != 'event-center'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -154,3 +155,75 @@ jobs:
           name: event-lifecycle-${{ github.sha }}
           if-no-files-found: error
           path: tmp/test-governance/event-lifecycle/ci
+
+  event-center-acceptance:
+    if: inputs.scope == 'event-center'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: event-center-fixture-only
+          POSTGRES_DB: event_center_fixture
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d event_center_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:event-center-fixture-only@127.0.0.1:5432/event_center_fixture
+      API_DATABASE_URL: postgres://postgres:event-center-fixture-only@127.0.0.1:5432/event_center_fixture
+      RUST_TEST_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: web/.nvmrc
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            api/target
+          key: event-center-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
+          restore-keys: |
+            event-lifecycle-nodebug-${{ runner.os }}-
+            notification-subscription-nodebug-${{ runner.os }}-
+      - name: Freeze candidate and record runner resources
+        run: |
+          mkdir -p tmp/test-governance/event-center/ci
+          git rev-parse HEAD > tmp/test-governance/event-center/ci/source-sha.txt
+          free -b > tmp/test-governance/event-center/ci/memory.txt
+          nproc > tmp/test-governance/event-center/ci/cpus.txt
+          jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
+          echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
+      - name: Event Center host and affected route acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=tmp/test-governance/event-center/ci
+          failed=0
+          run_tests() {
+            label="$1"
+            shift
+            if cargo test --locked --manifest-path api/Cargo.toml -p api-server --features test-support "$@" -- --test-threads=1 > "$evidence/$label.log" 2>&1; then
+              node scripts/node/verify/cargo-test-results.js "$evidence/$label.log" || failed=1
+            else
+              tail -c 7000 "$evidence/$label.log"
+              failed=1
+            fi
+          }
+          run_tests host-lifecycle --test api_private_contracts workers::event_workflow
+          run_tests event-authority --test api_private_contracts event_center_operations_compile_as_new_authority_without_legacy_grants
+          run_tests command-workflow --lib communication_runtime::commands
+          run_tests applications --test api_application workflow
+          run_tests communications --test api_system_settings communication
+          test "$failed" = 0
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: event-center-${{ github.sha }}
+          if-no-files-found: error
+          path: tmp/test-governance/event-center/ci
