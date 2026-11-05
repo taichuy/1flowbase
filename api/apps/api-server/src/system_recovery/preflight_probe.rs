@@ -123,5 +123,6 @@ fn owner_id(owner: SystemWriteOwner) -> &'static str {
         SystemWriteOwner::WorkflowScheduleExecution => "workflow_schedule_execution",
         SystemWriteOwner::CommunicationReceive => "communication_receive",
         SystemWriteOwner::CommunicationExecution => "communication_execution",
+        SystemWriteOwner::EventWorkflowExecution => "event_workflow_execution",
     }
 }

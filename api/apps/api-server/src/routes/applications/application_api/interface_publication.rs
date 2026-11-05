@@ -421,13 +421,19 @@ impl InterfaceContract for ApplicationPublicationOutput {
 struct ApplicationPublicationAdapter {
     store: MainDurableStore,
     cache_store: Arc<dyn CacheStore>,
+    changes: Arc<tokio::sync::Notify>,
 }
 
 pub(crate) fn port(
     store: MainDurableStore,
     cache_store: Arc<dyn CacheStore>,
+    changes: Arc<tokio::sync::Notify>,
 ) -> Arc<dyn ConsoleInterfacePort<ApplicationPublicationInput, ApplicationPublicationOutput>> {
-    Arc::new(ApplicationPublicationAdapter { store, cache_store })
+    Arc::new(ApplicationPublicationAdapter {
+        store,
+        cache_store,
+        changes,
+    })
 }
 
 impl ConsoleInterfacePort<ApplicationPublicationInput, ApplicationPublicationOutput>
@@ -492,6 +498,7 @@ impl ConsoleInterfacePort<ApplicationPublicationInput, ApplicationPublicationOut
                                 api_enabled: body.api_enabled,
                             })
                             .await?;
+                        self.changes.notify_one();
                         ApplicationPublicationOutput::Publication(to_publication_response(
                             publication,
                         )?)
@@ -504,6 +511,7 @@ impl ConsoleInterfacePort<ApplicationPublicationInput, ApplicationPublicationOut
                             })
                             .await
                             .map_err(map_publication_not_found)?;
+                        self.changes.notify_one();
                         ApplicationPublicationOutput::NoContent
                     }
                     ApplicationPublicationInput::SetEnabled {

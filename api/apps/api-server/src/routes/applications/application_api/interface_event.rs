@@ -81,11 +81,19 @@ impl InterfaceContract for WorkflowEventOutput {
 }
 struct WorkflowEventAdapter {
     store: MainDurableStore,
+    changes: Arc<tokio::sync::Notify>,
+    statuses: crate::workers::event_workflow::EventWorkflowStatuses,
 }
 pub(crate) fn port(
     store: MainDurableStore,
+    changes: Arc<tokio::sync::Notify>,
+    statuses: crate::workers::event_workflow::EventWorkflowStatuses,
 ) -> Arc<dyn ConsoleInterfacePort<WorkflowEventInput, WorkflowEventOutput>> {
-    Arc::new(WorkflowEventAdapter { store })
+    Arc::new(WorkflowEventAdapter {
+        store,
+        changes,
+        statuses,
+    })
 }
 impl ConsoleInterfacePort<WorkflowEventInput, WorkflowEventOutput> for WorkflowEventAdapter {
     fn execute<'a>(
@@ -108,11 +116,19 @@ impl ConsoleInterfacePort<WorkflowEventInput, WorkflowEventOutput> for WorkflowE
                     WorkflowEventInput::Replace {
                         application_id,
                         body,
-                    } => WorkflowEventOutput::Required(to_workflow_event_trigger_response(
-                        service
+                    } => {
+                        let previous = control_plane_contracts::ports::EventCenterRepository::get_workflow_event_trigger(
+                            &self.store.for_actor(actor.clone()), actor.current_workspace_id, application_id,
+                        ).await?;
+                        let record = service
                             .replace_trigger(actor.user_id, application_id, body.into_domain())
-                            .await?,
-                    )?),
+                            .await?;
+                        if record.configuration.enabled && previous.is_none_or(|previous| !previous.configuration.enabled) {
+                            self.statuses.request_activation(&record);
+                        }
+                        self.changes.notify_one();
+                        WorkflowEventOutput::Required(to_workflow_event_trigger_response(record)?)
+                    }
                 })
             }
             .await;

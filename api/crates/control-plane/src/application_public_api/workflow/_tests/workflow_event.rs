@@ -85,7 +85,7 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
         .load_actor_context_for_user(user_id)
         .await
         .unwrap();
-    EventCenterConfigurationService::new(repository.clone())
+    let definition = EventCenterConfigurationService::new(repository.clone())
         .create_definition(
             &actor,
             domain::event_center::CreateEventDefinitionInput {
@@ -101,10 +101,19 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
         .unwrap();
     let service = WorkflowEventTriggerService::new(repository.clone());
     // Unpublished configuration is persisted without starting or manufacturing a run.
-    service
+    let draft_trigger = service
         .replace_trigger(user_id, app.id, configuration())
         .await
         .unwrap();
+    assert!(service.prepare_subscription(&draft_trigger).await.is_err());
+    let unchanged = service
+        .replace_trigger(user_id, app.id, configuration())
+        .await
+        .unwrap();
+    assert_eq!(
+        unchanged, draft_trigger,
+        "no-op save must preserve the activation snapshot"
+    );
     ApplicationPublicationService::new(repository.clone())
         .publish_active_version(PublishApplicationCommand {
             actor_user_id: user_id,
@@ -116,11 +125,7 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
         .unwrap();
     repository.set_active_publication_document_snapshot(app.id, document());
     let trigger = service.get_trigger(user_id, app.id).await.unwrap().unwrap();
-    let publication = repository
-        .load_active_application_publication(app.id)
-        .await
-        .unwrap()
-        .unwrap();
+    let publication = service.prepare_subscription(&trigger).await.unwrap();
     let signal_id = Uuid::now_v7();
     let command = InvokeWorkflowEventCommand {
         trigger,
@@ -160,6 +165,27 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
     };
     assert!(!second.created);
     assert_eq!(first.flow_run.id, second.flow_run.id);
+    let definitions = EventCenterConfigurationService::new(repository.clone());
+    let mut definition_update = domain::event_center::UpdateEventDefinitionInput {
+        name: definition.name.clone(),
+        description: definition.description.clone(),
+        payload_schema: definition.payload_schema.clone(),
+        enabled: false,
+    };
+    definitions
+        .update_definition(&actor, definition.id, definition_update.clone())
+        .await
+        .unwrap();
+    assert!(service
+        .prepare_subscription(&command.trigger)
+        .await
+        .is_err());
+    assert!(service.invoke_event(command.clone()).await.is_err());
+    definition_update.enabled = true;
+    definitions
+        .update_definition(&actor, definition.id, definition_update)
+        .await
+        .unwrap();
     let mut invalid_workspace = command.clone();
     invalid_workspace.context["workspace_id"] = json!(Uuid::now_v7());
     assert!(service.invoke_event(invalid_workspace).await.is_err());

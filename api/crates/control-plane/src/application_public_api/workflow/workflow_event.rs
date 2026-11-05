@@ -110,13 +110,80 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
                 )?;
             }
         }
-        EventCenterConfigurationService::with_registered_events(
+        let configuration_owner = EventCenterConfigurationService::with_registered_events(
             self.repository.clone(),
             actor.current_workspace_id,
             self.registered_events.clone(),
+        );
+        if let Some(previous) = self
+            .repository
+            .get_workflow_event_trigger(actor.current_workspace_id, application_id)
+            .await?
+        {
+            if previous.configuration == configuration && previous.updated_by == actor_user_id {
+                configuration_owner
+                    .validate_workflow_trigger(&actor, &configuration)
+                    .await?;
+                return Ok(previous);
+            }
+        }
+        configuration_owner
+            .save_workflow_trigger(&actor, application_id, configuration)
+            .await
+    }
+
+    /// Host activation gate. A receiver captures this publication and its trigger configuration
+    /// once; runtime refresh must retire the receiver before replacing either snapshot.
+    pub async fn prepare_subscription(
+        &self,
+        trigger: &WorkflowEventTriggerRecord,
+    ) -> Result<super::publications::ApplicationPublicationVersionRecord>
+    where
+        R: ApplicationPublicationRepository + ApplicationCompiledPlanRepository,
+    {
+        let actor = self
+            .repository
+            .load_actor_context_for_user(trigger.updated_by)
+            .await?;
+        if actor.current_workspace_id != trigger.workspace_id {
+            return Err(ControlPlaneError::PermissionDenied("workspace_changed").into());
+        }
+        let application = self
+            .repository
+            .get_application(trigger.workspace_id, trigger.application_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("application"))?;
+        ensure_event_workflow(&application)?;
+        ensure_application_edit_permission(&self.repository, &actor, &application).await?;
+        if !trigger.configuration.enabled {
+            return Err(ControlPlaneError::InvalidInput("trigger_disabled").into());
+        }
+        EventCenterConfigurationService::with_registered_events(
+            self.repository.clone(),
+            trigger.workspace_id,
+            self.registered_events.clone(),
         )
-        .save_workflow_trigger(&actor, application_id, configuration)
-        .await
+        .validate_workflow_trigger(&actor, &trigger.configuration)
+        .await?;
+        let publication = self
+            .repository
+            .load_active_application_publication(trigger.application_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("application_publication"))?;
+        if publication.workspace_id != trigger.workspace_id {
+            return Err(ControlPlaneError::InvalidInput("workspace_id").into());
+        }
+        let contract = parse_workflow_start_event_inputs(&publication.document_snapshot)?;
+        validate_event_input_mapping(&contract, &trigger.configuration)?;
+        let record = self
+            .repository
+            .get_application_compiled_plan(publication.compiled_plan_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("compiled_plan"))?;
+        crate::orchestration_runtime::compile_context::ensure_compiled_plan_runnable(
+            &serde_json::from_value(record.plan)?,
+        )?;
+        Ok(publication)
     }
 
     /// Host integration captures immutable publication + trigger at activation time. Revalidation
@@ -165,6 +232,13 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
             });
         }
         ensure_application_edit_permission(&self.repository, &actor, &application).await?;
+        EventCenterConfigurationService::with_registered_events(
+            self.repository.clone(),
+            snapshot.workspace_id,
+            self.registered_events.clone(),
+        )
+        .validate_workflow_trigger(&actor, &snapshot.configuration)
+        .await?;
         let Some(active) = self
             .repository
             .load_active_application_publication(application.id)

@@ -82,3 +82,31 @@ async fn backup_maintenance_uses_a_backup_job_identity_without_faking_recovery()
     drop(lease);
     assert_eq!(maintenance.snapshot().phase, SystemMaintenancePhase::Online);
 }
+
+#[tokio::test]
+async fn event_workflow_execution_is_an_independent_maintenance_drain_owner() {
+    let maintenance = Arc::new(SystemMaintenance::default());
+    let write = maintenance
+        .try_enter_write(SystemWriteOwner::EventWorkflowExecution)
+        .unwrap();
+    let lease = maintenance
+        .begin(RecoveryJobId::new(), OffsetDateTime::now_utc())
+        .unwrap();
+    assert_eq!(maintenance.snapshot().active_write_count(), 1);
+    assert!(maintenance
+        .try_enter_write(SystemWriteOwner::EventWorkflowExecution)
+        .is_err());
+    assert_eq!(
+        lease.wait_for_drain(Duration::from_millis(1)).await,
+        Err(SystemMaintenanceDrainError::Timeout)
+    );
+    drop(write);
+    assert_eq!(
+        lease
+            .wait_for_drain(Duration::from_secs(1))
+            .await
+            .unwrap()
+            .active_write_count(),
+        0
+    );
+}
