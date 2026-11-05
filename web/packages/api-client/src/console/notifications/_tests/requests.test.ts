@@ -214,6 +214,7 @@ test('communication binding and cursor history preserve canonical DTO fields and
     file_table_id: null,
     mcp_instance_ids: ['plugin', 'extra'],
     system_prompt: 'Edited prompt',
+    event_commands: [],
     command_settings: [
       { command_id: 'host/help', enabled: false },
       { command_id: 'acme/tools/status', enabled: true }
@@ -251,4 +252,43 @@ test('communication binding and cursor history preserve canonical DTO fields and
     expect.stringContaining('/messages/message%2F1/retry'),
     expect.objectContaining({ method: 'POST' })
   );
+});
+
+test('E8 serializes custom event commands independently from builtin settings', async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify({ data: {}, meta: null })));
+  vi.stubGlobal('fetch', fetch);
+  const { putCommunicationBinding } = await import('../communications');
+  const event_commands = [
+    {
+      command_id: 'user/invoice',
+      name: 'invoice',
+      description: 'Invoice',
+      enabled: true,
+      contract_id: 'custom.invoice',
+      contract_version: '1',
+      input_mapping: { invoice: '/arguments', channel: '/instance_id' }
+    }
+  ];
+  await putCommunicationBinding(
+    'channel',
+    {
+      application_id: 'agent-app',
+      model: null,
+      reasoning_effort: null,
+      file_table_id: null,
+      mcp_instance_ids: [],
+      system_prompt: '',
+      command_settings: [{ command_id: 'host/help', enabled: true }],
+      event_commands
+    },
+    'csrf'
+  );
+  const request = fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(JSON.parse(String(request[1].body))).toMatchObject({
+    application_id: 'agent-app',
+    event_commands,
+    command_settings: [{ command_id: 'host/help', enabled: true }]
+  });
 });

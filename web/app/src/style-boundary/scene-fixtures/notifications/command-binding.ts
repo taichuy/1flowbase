@@ -92,6 +92,7 @@ export function createStyleBoundaryCommandBindingResponse() {
     file_table_id: null,
     mcp_instance_ids: ['style-chat-tools'],
     system_prompt: '协助处理团队工作与聊天消息。',
+    event_commands: [],
     command_settings: declarations.map(({ command_id, enabled }) => ({
       command_id,
       enabled

@@ -33,9 +33,7 @@ function setup(...args: Parameters<typeof setupCommunicationBinding>) {
 }
 const commandSwitch = (name: string) =>
   screen.getByRole('switch', { name: `Enable ${name}` });
-const settle = (
-  state: 'ready' | 'options-error' | 'binding-error' = 'ready'
-) =>
+const settle = (state: 'ready' | 'options-error' | 'binding-error' = 'ready') =>
   waitFor(() => {
     // Query completion precedes the observer's React render. Wait for the
     // command catalogue (or its load error) to reach the form as well.
@@ -82,6 +80,7 @@ test('new binding requires an application and saves backend command defaults wit
       file_table_id: null,
       mcp_instance_ids: ['extra', 'dedicated'],
       system_prompt: 'Edited instructions',
+      event_commands: [],
       command_settings: [
         { command_id: 'host/new', enabled: true },
         { command_id: 'host/model', enabled: true },
@@ -148,6 +147,7 @@ test('editing switches saves canonical fields and reopening reads the persisted 
     file_table_id: null,
     mcp_instance_ids: ['dedicated', 'extra'],
     system_prompt: 'Saved command instructions',
+    event_commands: [],
     command_settings: expect.arrayContaining([
       { command_id: 'host/new', enabled: true },
       { command_id: 'host/model', enabled: true },
@@ -244,6 +244,7 @@ test('changing the application keeps unsaved toggles and requests the saved-chan
     application_id: 'app-2',
     model: null,
     reasoning_effort: null,
+    event_commands: [],
     command_settings: expect.arrayContaining([
       { command_id: 'host/new', enabled: false },
       { command_id: 'host/model', enabled: false },
@@ -335,6 +336,7 @@ test('failed save rejects without losing command, MCP, prompt or model drafts', 
     reasoning_effort: 'high',
     system_prompt: 'Custom prompt',
     file_table_id: null,
+    event_commands: [],
     command_settings: expect.arrayContaining([
       { command_id: 'host/help', enabled: true }
     ])
@@ -364,24 +366,166 @@ test.each(['options', 'binding'] as const)(
   }
 );
 
-
 test('read binding grants preserve saved configuration but cannot change or persist commands', async () => {
-  const { ref, writes } = setup({ existing: true, permissions: ['communications.binding.get', 'communications.options.get'] });
+  const { ref, writes } = setup({
+    existing: true,
+    permissions: ['communications.binding.get', 'communications.options.get']
+  });
   await screen.findByDisplayValue('Custom prompt');
   expect(screen.getByRole('textbox', { name: 'System prompt' })).toBeDisabled();
   await waitFor(() => {
     expect(commandSwitch('help')).toBeDisabled();
     expect(commandSwitch('summary')).toBeDisabled();
   });
-  await expect(ref.current?.save('channel-1')).rejects.toThrow('operation not permitted');
+  await expect(ref.current?.save('channel-1')).rejects.toThrow(
+    'operation not permitted'
+  );
   expect(writes).toEqual([]);
 });
 
 test('the binding update operation enables saving without instance update permission', async () => {
-  const { ref, writes } = setup({ existing: true, permissions: ['communications.binding.get', 'communications.options.get', 'communications.binding.update'] });
+  const { ref, writes } = setup({
+    existing: true,
+    permissions: [
+      'communications.binding.get',
+      'communications.options.get',
+      'communications.binding.update'
+    ]
+  });
   await settle();
-  fireEvent.change(screen.getByRole('textbox', { name: 'System prompt' }), { target: { value: 'Custom binding only' } });
-  await act(async () => { await ref.current?.save('channel-1'); });
+  fireEvent.change(screen.getByRole('textbox', { name: 'System prompt' }), {
+    target: { value: 'Custom binding only' }
+  });
+  await act(async () => {
+    await ref.current?.save('channel-1');
+  });
   expect(writes).toHaveLength(1);
   expect(writes[0]?.system_prompt).toBe('Custom binding only');
+});
+
+test('E8 adds, persists, reopens, edits and removes a custom event slash command', async () => {
+  const { ref, writes, view, mount } = setup({ existing: true });
+  await screen.findByDisplayValue('Custom prompt');
+  await settle();
+  fireEvent.click(screen.getByRole('button', { name: 'Add event command' }));
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: 'Command identity' }),
+    { target: { value: 'user/invoice' } }
+  );
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: 'Slash command name' }),
+    { target: { value: 'invoice' } }
+  );
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: 'Description' }),
+    { target: { value: 'Request invoice processing' } }
+  );
+  fireEvent.mouseDown(
+    within(dialog).getByRole('combobox', { name: 'Target custom event' })
+  );
+  fireEvent.click(
+    await screen.findByText('Invoice requested · 1', {
+      selector: '.ant-select-item-option-content'
+    })
+  );
+  fireEvent.mouseDown(
+    within(dialog).getByRole('combobox', { name: 'Payload field: invoice' })
+  );
+  fireEvent.click(
+    await screen.findByText('/arguments', {
+      selector: '.ant-select-item-option-content'
+    })
+  );
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Submit' }));
+  await waitFor(() =>
+    expect(screen.getByRole('switch', { name: 'Enable invoice' })).toBeChecked()
+  );
+  await act(async () => {
+    expect(ref.current?.validate()).toBe(true);
+    await ref.current?.save('channel-1');
+  });
+  expect(writes[0].event_commands).toEqual([
+    {
+      command_id: 'user/invoice',
+      name: 'invoice',
+      description: 'Request invoice processing',
+      enabled: true,
+      contract_id: 'custom.invoice',
+      contract_version: '1',
+      input_mapping: { invoice: '/arguments' }
+    }
+  ]);
+  expect(
+    writes[0].command_settings.every(
+      (setting) => !setting.command_id.startsWith('user/')
+    )
+  ).toBe(true);
+  view.unmount();
+  client.clear();
+  mount('channel-1');
+  await screen.findByRole('switch', { name: 'Enable invoice' });
+  const row = screen.getByRole('row', { name: /\/invoice/ });
+  fireEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+  const edit = await screen.findByRole('dialog');
+  expect(
+    within(edit).getByRole('textbox', { name: 'Command identity' })
+  ).toBeDisabled();
+  fireEvent.change(within(edit).getByRole('textbox', { name: 'Description' }), {
+    target: { value: 'Updated invoice processing' }
+  });
+  fireEvent.click(within(edit).getByRole('button', { name: 'Submit' }));
+  await waitFor(() =>
+    expect(screen.getByText('Updated invoice processing')).toBeInTheDocument()
+  );
+  fireEvent.click(screen.getByRole('switch', { name: 'Enable invoice' }));
+  await act(async () => {
+    await ref.current?.save('channel-1');
+  });
+  expect(writes[1].event_commands[0]).toMatchObject({
+    description: 'Updated invoice processing',
+    enabled: false
+  });
+  fireEvent.click(
+    within(screen.getByRole('row', { name: /\/invoice/ })).getByRole('button', {
+      name: 'Delete'
+    })
+  );
+  await act(async () => {
+    await ref.current?.save('channel-1');
+  });
+  expect(writes[2].event_commands).toEqual([]);
+});
+
+test('E8 cannot edit event commands with read-only permission', async () => {
+  setup({
+    permissions: ['communications.binding.get', 'communications.options.get']
+  });
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  expect(
+    screen.getByRole('button', { name: 'Add event command' })
+  ).toBeDisabled();
+});
+
+test('E8 validates reserved slash names before adding a command draft', async () => {
+  setup({ existing: true });
+  await screen.findByDisplayValue('Custom prompt');
+  await settle();
+  fireEvent.click(screen.getByRole('button', { name: 'Add event command' }));
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: 'Command identity' }),
+    { target: { value: 'user/custom-help' } }
+  );
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: 'Slash command name' }),
+    { target: { value: 'help' } }
+  );
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Submit' }));
+  expect(
+    await within(dialog).findByText(
+      'This command identity or name is already in use or reserved.'
+    )
+  ).toBeInTheDocument();
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
 });

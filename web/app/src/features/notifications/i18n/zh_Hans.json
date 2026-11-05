@@ -177,5 +177,27 @@
   "all_channels": "全部渠道",
   "chat_close": "关闭聊天",
   "chat": "聊天",
-  "load_earlier_messages": "加载更早消息"
+  "load_earlier_messages": "加载更早消息",
+  "event_commands": {
+    "title": "自定义事件命令",
+    "add": "添加事件命令",
+    "help": "斜杠命令发布自定义事件；Agent Flow 绑定与内置命令分别配置。保存渠道后应用这些更改。",
+    "empty": "暂无自定义事件命令",
+    "identity": "命令标识",
+    "identity_hint": "稳定标识，例如 user/invoice。",
+    "identity_invalid": "使用 user/ 加 1–64 位小写字母、数字、下划线或连字符。",
+    "name": "斜杠命令名称",
+    "name_hint": "输入不含 / 的命令词，须以小写字母开头。",
+    "name_invalid": "请输入最多 64 位的有效小写命令词。",
+    "duplicate": "命令标识或名称已存在或被系统保留。",
+    "target": "目标自定义事件",
+    "target_unavailable": "已保存的事件命令不可用，请检查目标事件与命令声明。",
+    "catalog_failed": "事件目录加载失败。",
+    "mapping": "负载字段：{{field}}",
+    "mapping_required": "请映射此必填负载字段。",
+    "mapping_invalid": "请选择支持的消息上下文字段。",
+    "source_user": "用户",
+    "payload_field": "负载字段名",
+    "add_mapping": "添加字段映射"
+  }
 }

@@ -109,6 +109,7 @@ export function setupCommunicationBinding({
         file_table_id: null,
         mcp_instance_ids: ['dedicated', 'extra'],
         system_prompt: 'Custom prompt',
+        event_commands: [],
         command_settings: [
           { command_id: 'host/help', enabled: false },
           { command_id: 'acme/reports/summary', enabled: true },
@@ -132,6 +133,15 @@ export function setupCommunicationBinding({
     const settings = instance_id ? saved?.command_settings : undefined;
     const entries = [
       ...commands,
+      ...(instance_id ? (saved?.event_commands ?? []) : []).map((item) => ({
+        ...item,
+        usage: `/${item.name} [arguments]`,
+        source_kind: 'user' as const,
+        source_name: 'user',
+        installation_id: null,
+        available: true,
+        unavailable_reason: null
+      })),
       ...(settings?.some(
         (setting) => setting.command_id === retiredCommand.command_id
       ) && !omitRetiredFromCatalog
@@ -179,6 +189,26 @@ export function setupCommunicationBinding({
         saved = writes.at(-1)!;
         return respond(record());
       }
+      if (url.pathname === '/api/console/events')
+        return respond([
+          {
+            id: 'event-1',
+            enabled: true,
+            origin: 'custom',
+            contract_id: 'custom.invoice',
+            contract_version: '1',
+            name: 'Invoice requested',
+            description: 'Invoice request',
+            owner_id: 'user-1',
+            payload_schema: {
+              type: 'object',
+              properties: { invoice: { type: 'string' } },
+              required: ['invoice'],
+              additionalProperties: false
+            },
+            supported_phases: ['subscribed', 'published', 'consumed']
+          }
+        ]);
       if (url.pathname.endsWith('/options')) {
         optionRequests.push(url);
         if (failOptions) return failure();
@@ -227,8 +257,24 @@ export function setupCommunicationBinding({
   );
   useAuthStore.setState({
     csrfToken: 'csrf',
-    actor: { id: 'user-1', account: 'test', effective_display_role: permissions ? 'member' : 'root', current_workspace_id: 'workspace-1' },
-    me: { id: 'user-1', account: 'test', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: permissions ? 'member' : 'root', permissions: permissions ?? [] }
+    actor: {
+      id: 'user-1',
+      account: 'test',
+      effective_display_role: permissions ? 'member' : 'root',
+      current_workspace_id: 'workspace-1'
+    },
+    me: {
+      id: 'user-1',
+      account: 'test',
+      email: '',
+      phone: null,
+      nickname: '',
+      name: '',
+      avatar_url: null,
+      introduction: '',
+      effective_display_role: permissions ? 'member' : 'root',
+      permissions: permissions ?? []
+    }
   });
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } }

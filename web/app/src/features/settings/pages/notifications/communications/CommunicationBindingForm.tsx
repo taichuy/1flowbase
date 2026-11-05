@@ -16,6 +16,7 @@ import {
 import { useAuthStore } from '../../../../../state/auth-store';
 import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { selectNavigationQueryScope } from '../../../../../state/navigation-query-scope';
+import { CommunicationEventCommandsEditor } from './CommunicationEventCommandsEditor';
 import { CommunicationCommandsTable } from './CommunicationCommandsTable';
 export interface CommunicationBindingHandle {
   validate: () => boolean;
@@ -37,9 +38,11 @@ export const CommunicationBindingForm = forwardRef<
     file_table_id: null,
     mcp_instance_ids: [],
     system_prompt: receive.default_system_prompt,
+    event_commands: [],
     command_settings: []
   });
   const [dirty, setDirty] = useState(false);
+  const [saveFailure, setSaveFailure] = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
   const binding = useQuery(communicationBindingOptions(scope, instance_id));
   const options = useQuery(
@@ -57,6 +60,7 @@ export const CommunicationBindingForm = forwardRef<
         file_table_id: value.file_table_id,
         mcp_instance_ids: value.mcp_instance_ids,
         system_prompt: value.system_prompt,
+        event_commands: value.event_commands,
         command_settings: value.command_settings
       });
     else
@@ -81,7 +85,10 @@ export const CommunicationBindingForm = forwardRef<
   );
   const commands = options.data ? options.data.commands : [];
   for (const command of commands) {
-    if (!command_settings.has(command.command_id))
+    if (
+      command.source_kind !== 'user' &&
+      !command_settings.has(command.command_id)
+    )
       command_settings.set(command.command_id, {
         command_id: command.command_id,
         enabled: command.enabled
@@ -117,7 +124,15 @@ export const CommunicationBindingForm = forwardRef<
           };
       }
       setDraft(value);
-      await putCommunicationBinding(id, value, csrfToken);
+      setSaveFailure(null);
+      try {
+        await putCommunicationBinding(id, value, csrfToken);
+      } catch (error) {
+        setSaveFailure(
+          error instanceof Error ? error.message : t('binding_save_failed')
+        );
+        throw error;
+      }
     }
   }));
   const capabilities = options.data?.run_capabilities;
@@ -136,6 +151,13 @@ export const CommunicationBindingForm = forwardRef<
       component={false}
       disabled={!canWrite || (!!instance_id && !binding.isSuccess)}
     >
+      {saveFailure && (
+        <Alert
+          type="error"
+          title={t('binding_save_failed')}
+          description={saveFailure}
+        />
+      )}
       {(options.isError || binding.isError || tables.isError) && (
         <Alert type="error" title={t('binding_load_failed')} />
       )}
@@ -180,7 +202,9 @@ export const CommunicationBindingForm = forwardRef<
           allowClear
           aria-label={t('reasoning_effort')}
           value={draft.reasoning_effort ?? undefined}
-          disabled={!canWrite || !capabilities?.reasoning_effort_enabled || !model}
+          disabled={
+            !canWrite || !capabilities?.reasoning_effort_enabled || !model
+          }
           options={model?.reasoning_efforts.map((value) => ({
             value,
             label: value
@@ -223,16 +247,30 @@ export const CommunicationBindingForm = forwardRef<
           onChange={(e) => change({ system_prompt: e.target.value })}
         />
       </Form.Item>
+      <CommunicationEventCommandsEditor
+        value={draft.event_commands}
+        commands={commands}
+        disabled={
+          !canWrite ||
+          options.isPending ||
+          (!!instance_id && !binding.isSuccess)
+        }
+        onChange={(event_commands) => change({ event_commands })}
+      />
       <Form.Item label={t('commands')}>
         {!options.isError && (
           <CommunicationCommandsTable
-            commands={commands.map((command) => ({
-              ...command,
-              enabled: command_settings.get(command.command_id)!.enabled
-            }))}
+            commands={commands
+              .filter((command) => command.source_kind !== 'user')
+              .map((command) => ({
+                ...command,
+                enabled: command_settings.get(command.command_id)!.enabled
+              }))}
             loading={options.isPending}
             disabled={
-              !canWrite || options.isPending || (!!instance_id && !binding.isSuccess)
+              !canWrite ||
+              options.isPending ||
+              (!!instance_id && !binding.isSuccess)
             }
             onChange={(setting) => {
               command_settings.set(setting.command_id, setting);

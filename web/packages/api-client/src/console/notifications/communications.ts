@@ -9,12 +9,21 @@ export interface CommunicationCommandView {
   name: string;
   description: string;
   usage: string;
-  source_kind: 'builtin' | 'plugin';
+  source_kind: 'builtin' | 'plugin' | 'user';
   source_name: string;
   installation_id: string | null;
   enabled: boolean;
   available: boolean;
   unavailable_reason: string | null;
+}
+export interface CommunicationEventCommandBinding {
+  command_id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  contract_id: string;
+  contract_version: string;
+  input_mapping: Record<string, string>;
 }
 export interface CommunicationBindingInput {
   application_id: string;
@@ -24,6 +33,7 @@ export interface CommunicationBindingInput {
   mcp_instance_ids: string[];
   system_prompt: string;
   command_settings: CommunicationCommandSetting[];
+  event_commands: CommunicationEventCommandBinding[];
 }
 export interface CommunicationBindingRecord extends CommunicationBindingInput {
   workspace_id: string;

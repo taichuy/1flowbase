@@ -177,5 +177,27 @@
   "all_channels": "All channels",
   "chat_close": "Close chat",
   "chat": "Chat",
-  "load_earlier_messages": "Load earlier messages"
+  "load_earlier_messages": "Load earlier messages",
+  "event_commands": {
+    "title": "Custom event commands",
+    "add": "Add event command",
+    "help": "Slash commands publish a custom event. Agent Flow binding and built-in commands remain configured separately. Save the channel to publish these changes.",
+    "empty": "No custom event commands",
+    "identity": "Command identity",
+    "identity_hint": "Stable identity, for example user/invoice.",
+    "identity_invalid": "Use user/ followed by 1–64 lowercase letters, digits, underscores or hyphens.",
+    "name": "Slash command name",
+    "name_hint": "Enter the token without /. It must start with a lowercase letter.",
+    "name_invalid": "Enter a valid lowercase command token, up to 64 characters.",
+    "duplicate": "This command identity or name is already in use or reserved.",
+    "target": "Target custom event",
+    "target_unavailable": "The saved event command is unavailable. Check the event target and command declarations.",
+    "catalog_failed": "Could not load the event catalog.",
+    "mapping": "Payload field: {{field}}",
+    "mapping_required": "Map this required payload field.",
+    "mapping_invalid": "Select one of the supported message context fields.",
+    "source_user": "User",
+    "payload_field": "Payload field name",
+    "add_mapping": "Add field mapping"
+  }
 }
