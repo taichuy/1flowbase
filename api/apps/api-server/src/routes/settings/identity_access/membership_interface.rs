@@ -616,14 +616,36 @@ impl InterfaceContract for MembershipOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+fn affects_event_subscriptions(input: &MembershipInput) -> bool {
+    match input {
+        MembershipInput::DisableMember { .. }
+        | MembershipInput::EnableMember { .. }
+        | MembershipInput::DeleteMember { .. }
+        | MembershipInput::ReplaceMemberRoles { .. } => true,
+        MembershipInput::ListMemberRoleOptions
+        | MembershipInput::ListMembers { .. }
+        | MembershipInput::CreateMember(_)
+        | MembershipInput::UpdateMember { .. }
+        | MembershipInput::ResetMember { .. }
+        | MembershipInput::GetWorkspace
+        | MembershipInput::PatchWorkspace(_)
+        | MembershipInput::ListWorkspaces => false,
+    }
+}
+
 struct MembershipAdapter {
     store: MainDurableStore,
 }
 
 pub(crate) fn membership_port(
     store: MainDurableStore,
+    changes: Arc<tokio::sync::Notify>,
 ) -> Arc<dyn ConsoleInterfacePort<MembershipInput, MembershipOutput>> {
-    Arc::new(MembershipAdapter { store })
+    crate::workers::event_workflow::refresh::after_success(
+        Arc::new(MembershipAdapter { store }),
+        changes,
+        affects_event_subscriptions,
+    )
 }
 
 impl MembershipAdapter {

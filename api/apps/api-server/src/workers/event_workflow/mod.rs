@@ -1,5 +1,6 @@
 //! Generation-owned, ephemeral subscription receivers. One serial execution owner per queue.
 mod execution;
+pub(crate) mod refresh;
 mod status;
 use crate::{app_state::ApiState, generation_dispatch::GenerationDispatch};
 use control_plane::{
@@ -133,7 +134,11 @@ async fn reconcile(
                 if let Some(receiver) = running.get_mut(id) {
                     receiver.stop();
                 }
-                statuses.activation(trigger, "unavailable", Some(error.to_string()));
+                statuses.activation(
+                    trigger,
+                    "unavailable",
+                    Some(status::public_error_code(&error, "activation_failed")),
+                );
                 continue;
             }
         };
@@ -158,11 +163,7 @@ async fn reconcile(
                 receiver.stop();
             }
             if receiver.draining {
-                statuses.activation(
-                    trigger,
-                    "draining",
-                    Some("subscription_snapshot_changed".into()),
-                );
+                statuses.activation(trigger, "draining", Some("subscription_snapshot_changed"));
             }
             continue;
         }
@@ -183,7 +184,11 @@ async fn reconcile(
         ) {
             Ok(subscription) => Arc::new(subscription),
             Err(error) => {
-                statuses.activation(trigger, "unavailable", Some(error.to_string()));
+                statuses.activation(
+                    trigger,
+                    "unavailable",
+                    Some(status::public_error_code(&error, "activation_failed")),
+                );
                 continue;
             }
         };
@@ -283,7 +288,12 @@ async fn run(
         )
         .await;
         let refresh_failed = refresh.is_err();
-        statuses.refreshed(refresh.as_ref().err().map(|error| error.to_string()));
+        statuses.refreshed(
+            refresh
+                .as_ref()
+                .err()
+                .map(|error| status::public_error_code(error, "refresh_unavailable")),
+        );
         if refresh.is_ok() {
             restoring = false;
         } else {
@@ -292,7 +302,7 @@ async fn run(
                 statuses.activation(
                     &receiver.snapshot.trigger,
                     "unavailable",
-                    Some("configuration_refresh_failed".into()),
+                    Some("configuration_refresh_failed"),
                 );
             }
             tracing::warn!(error = ?refresh.as_ref().err(), "event workflow configuration refresh failed");
@@ -310,7 +320,7 @@ async fn run(
                         if let Some(id) = running.iter().find(|(_, receiver)| receiver.task_id == error.id()).map(|(id, _)| *id) {
                             if let Some(mut receiver) = running.remove(&id) {
                                 receiver.stop();
-                                statuses.activation(&receiver.snapshot.trigger, "unavailable", Some("receiver_task_failed".into()));
+                                statuses.activation(&receiver.snapshot.trigger, "unavailable", Some("receiver_task_failed"));
                             }
                         }
                     }
@@ -329,11 +339,7 @@ async fn run(
     }
     while tasks.join_next().await.is_some() {}
     for receiver in running.values() {
-        statuses.activation(
-            &receiver.snapshot.trigger,
-            "stopped",
-            Some("owner_stopped".into()),
-        );
+        statuses.activation(&receiver.snapshot.trigger, "stopped", Some("owner_stopped"));
     }
     running.clear();
 }
@@ -345,6 +351,17 @@ async fn authorized_actor(
     trigger: &WorkflowEventTriggerRecord,
 ) -> anyhow::Result<domain::ActorContext> {
     use control_plane::ports::{AuthRepository, WorkspaceRepository};
+    let user = AuthRepository::find_user_by_id(&state.store, trigger.updated_by)
+        .await?
+        .ok_or(control_plane::errors::ControlPlaneError::PermissionDenied(
+            "subscription_author_unavailable",
+        ))?;
+    if user.status != domain::UserStatus::Active {
+        return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+            "subscription_author_disabled",
+        )
+        .into());
+    }
     let workspace = WorkspaceRepository::get_accessible_workspace(
         &state.store,
         trigger.updated_by,
@@ -384,7 +401,11 @@ async fn consume(
             Ok(Some(delivery)) => delivery,
             Ok(None) => return,
             Err(error) => {
-                statuses.activation(&snapshot.trigger, "unavailable", Some(error.to_string()));
+                statuses.activation(
+                    &snapshot.trigger,
+                    "unavailable",
+                    Some(status::public_error_code(&error, "receiver_failed")),
+                );
                 state.event_workflow_changes.notify_one();
                 return;
             }
@@ -411,7 +432,7 @@ async fn consume(
                 delivery.signal().event_id,
                 None,
                 "consumer_failed",
-                Some(error.to_string()),
+                Some(status::public_error_code(error, "consumer_failed")),
             );
             tracing::warn!(application_id = %snapshot.trigger.application_id, %error, "event workflow consumer failed after handoff");
             state.event_workflow_changes.notify_one();

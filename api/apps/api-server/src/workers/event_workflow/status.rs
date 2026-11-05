@@ -75,9 +75,8 @@ impl EventWorkflowStatuses {
             .unwrap_or_else(|error| error.into_inner())
             .clone()
     }
-    pub(super) fn refreshed(&self, error: Option<String>) {
-        *self.1.lock().unwrap_or_else(|error| error.into_inner()) =
-            error.map(|value| value.chars().take(160).collect());
+    pub(super) fn refreshed(&self, error: Option<&'static str>) {
+        *self.1.lock().unwrap_or_else(|error| error.into_inner()) = error.map(str::to_owned);
     }
 
     pub fn snapshot(&self, workspace_id: Uuid) -> Vec<EventWorkflowStatus> {
@@ -93,7 +92,7 @@ impl EventWorkflowStatuses {
         &self,
         trigger: &domain::event_center::WorkflowEventTriggerRecord,
         state: &'static str,
-        reason: Option<String>,
+        reason: Option<&'static str>,
     ) {
         let mut statuses = self.0.lock().unwrap_or_else(|error| error.into_inner());
         let row = statuses
@@ -112,7 +111,7 @@ impl EventWorkflowStatuses {
         row.workspace_id = trigger.workspace_id;
         row.subscription_id = trigger.id;
         row.activation = state;
-        row.reason = reason.map(|value| value.chars().take(160).collect());
+        row.reason = reason.map(str::to_owned);
     }
     pub(super) fn delivery(
         &self,
@@ -120,7 +119,7 @@ impl EventWorkflowStatuses {
         signal: Uuid,
         run: Option<Uuid>,
         outcome: &'static str,
-        reason: Option<String>,
+        reason: Option<&'static str>,
     ) {
         if let Some(row) = self
             .0
@@ -133,7 +132,7 @@ impl EventWorkflowStatuses {
             }
             row.last_signal_id = Some(signal);
             row.last_delivery = Some(outcome);
-            row.last_delivery_reason = reason.map(|reason| reason.chars().take(160).collect());
+            row.last_delivery_reason = reason.map(str::to_owned);
         }
     }
     pub(super) fn retain(&self, configured: &std::collections::BTreeSet<Uuid>) {
@@ -142,4 +141,34 @@ impl EventWorkflowStatuses {
             .unwrap_or_else(|error| error.into_inner())
             .retain(|id, _| configured.contains(id));
     }
+}
+
+/// Public observation stores stable classifications only. Detailed owner errors stay in their
+/// existing logs; provider/SQL errors and dynamic fields are never copied into this read model.
+pub(super) fn public_error_code(error: &anyhow::Error, fallback: &'static str) -> &'static str {
+    use control_plane_contracts::{ports::EventBusError, ControlPlaneContractError as Error};
+    match error.downcast_ref::<Error>() {
+        Some(Error::NotAuthenticated) => return "not_authenticated",
+        Some(
+            Error::PermissionDenied(code)
+            | Error::NotFound(code)
+            | Error::Conflict(code)
+            | Error::InvalidInput(code)
+            | Error::UpstreamUnavailable(code),
+        ) => return *code,
+        Some(Error::PluginUnavailable) => return "plugin_unavailable",
+        Some(Error::InvalidComponentModuleExport { .. }) => return "invalid_component_export",
+        Some(Error::InvalidStateTransition { .. }) => return "invalid_state_transition",
+        None => {}
+    }
+    if let Some(error) = error.downcast_ref::<EventBusError>() {
+        return match error {
+            EventBusError::Unconfigured => "event_runtime_unconfigured",
+            EventBusError::Closed => "event_subscription_closed",
+            EventBusError::ResourceExhausted(_) => "event_runtime_resource_exhausted",
+            EventBusError::NoConsumer => "event_consumer_unavailable",
+            _ => "event_runtime_unavailable",
+        };
+    }
+    fallback
 }

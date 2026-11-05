@@ -70,7 +70,7 @@ fn latest_consumer_failure_preserves_run_identity_and_keeps_activation_separate(
         signal,
         None,
         "consumer_failed",
-        Some("execution rejected".into()),
+        Some("consumer_failed"),
     );
     let snapshot = statuses.snapshot(trigger.workspace_id);
     assert_eq!(snapshot.len(), 1);
@@ -79,7 +79,7 @@ fn latest_consumer_failure_preserves_run_identity_and_keeps_activation_separate(
     assert_eq!(snapshot[0].last_delivery, Some("consumer_failed"));
     assert_eq!(
         snapshot[0].last_delivery_reason.as_deref(),
-        Some("execution rejected")
+        Some("consumer_failed")
     );
     assert!(statuses.snapshot(Uuid::now_v7()).is_empty());
     statuses.retain(&BTreeSet::new());
@@ -177,4 +177,45 @@ fn pending_activation_is_coalesced_and_old_completion_cannot_erase_a_later_toggl
     statuses.request_activation(&trigger);
     statuses.retain_activations(&BTreeSet::new());
     assert!(statuses.pending_activation(trigger.id).is_none());
+}
+
+#[test]
+fn public_status_reasons_do_not_copy_dynamic_error_contents() {
+    let trigger = trigger();
+    let statuses = EventWorkflowStatuses::default();
+    let error = anyhow::anyhow!("SQL/provider failure containing secret payload invoice A-001");
+    statuses.activation(
+        &trigger,
+        "unavailable",
+        Some(status::public_error_code(&error, "activation_failed")),
+    );
+    statuses.delivery(
+        trigger.application_id,
+        Uuid::now_v7(),
+        None,
+        "consumer_failed",
+        Some(status::public_error_code(&error, "consumer_failed")),
+    );
+    statuses.refreshed(Some(status::public_error_code(
+        &error,
+        "refresh_unavailable",
+    )));
+    let snapshot = statuses.snapshot(trigger.workspace_id);
+    assert_eq!(snapshot[0].reason.as_deref(), Some("activation_failed"));
+    assert_eq!(
+        snapshot[0].last_delivery_reason.as_deref(),
+        Some("consumer_failed")
+    );
+    assert_eq!(
+        statuses.refresh_error().as_deref(),
+        Some("refresh_unavailable")
+    );
+    assert!(!serde_json::to_string(&snapshot).unwrap().contains("A-001"));
+    let denied = anyhow::Error::from(control_plane::errors::ControlPlaneError::PermissionDenied(
+        "permission_denied",
+    ));
+    assert_eq!(
+        status::public_error_code(&denied, "activation_failed"),
+        "permission_denied"
+    );
 }

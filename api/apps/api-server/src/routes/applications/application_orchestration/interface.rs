@@ -163,6 +163,22 @@ pub(crate) struct ExportedApplicationArchive {
     pub(super) document: Vec<u8>,
 }
 
+fn affects_event_subscriptions(input: &ApplicationOrchestrationInput) -> bool {
+    match input {
+        ApplicationOrchestrationInput::ImportUploadedArchive { .. }
+        | ApplicationOrchestrationInput::ImportInstalledArchive { .. } => true,
+        // Draft/version editor actions do not change the active immutable publication.
+        ApplicationOrchestrationInput::AnalyzeDraft { .. }
+        | ApplicationOrchestrationInput::Get { .. }
+        | ApplicationOrchestrationInput::SaveDraft { .. }
+        | ApplicationOrchestrationInput::RestoreVersion { .. }
+        | ApplicationOrchestrationInput::UpdateVersion { .. }
+        | ApplicationOrchestrationInput::PreviewUploadedArchive(_)
+        | ApplicationOrchestrationInput::ExportArchive(_)
+        | ApplicationOrchestrationInput::PreviewInstalledArchive(_) => false,
+    }
+}
+
 struct ApplicationOrchestrationAdapter {
     store: MainDurableStore,
     bootstrap_workspace_id: Uuid,
@@ -175,13 +191,18 @@ pub(crate) fn port(
     bootstrap_workspace_id: Uuid,
     api_node_id: String,
     provider_install_root: String,
+    changes: Arc<tokio::sync::Notify>,
 ) -> Arc<dyn ConsoleInterfacePort<ApplicationOrchestrationInput, ApplicationOrchestrationOutput>> {
-    Arc::new(ApplicationOrchestrationAdapter {
-        store,
-        bootstrap_workspace_id,
-        api_node_id,
-        provider_install_root,
-    })
+    crate::workers::event_workflow::refresh::after_success(
+        Arc::new(ApplicationOrchestrationAdapter {
+            store,
+            bootstrap_workspace_id,
+            api_node_id,
+            provider_install_root,
+        }),
+        changes,
+        affects_event_subscriptions,
+    )
 }
 
 impl ApplicationOrchestrationAdapter {

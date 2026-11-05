@@ -55,6 +55,20 @@ impl InterfaceContract for TemplateOutput {
         Some(json!({"completed":true}))
     }
 }
+
+fn affects_event_subscriptions(input: &TemplateInput) -> bool {
+    match input {
+        TemplateInput::Install(_) | TemplateInput::ResolveInstall(_) => true,
+        TemplateInput::Catalog
+        | TemplateInput::Download(_)
+        | TemplateInput::Library(_)
+        | TemplateInput::ExportArchive(_)
+        | TemplateInput::ResolvePreview(_)
+        | TemplateInput::Export(_)
+        | TemplateInput::Preview(_) => false,
+    }
+}
+
 pub(crate) struct TemplateAdapter(pub TemplateDependencies);
 impl TemplateAdapter {
     pub(crate) async fn execute_inner(
@@ -400,6 +414,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
 ];
 pub(crate) fn compile_registry(
     dependencies: TemplateDependencies,
+    changes: Arc<tokio::sync::Notify>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
@@ -408,6 +423,10 @@ pub(crate) fn compile_registry(
         "api-server.console-system-templates",
         "graph:console-system-templates-v1",
         DECLARATIONS,
-        Arc::new(TemplateAdapter(dependencies)),
+        crate::workers::event_workflow::refresh::after_success(
+            Arc::new(TemplateAdapter(dependencies)),
+            changes,
+            affects_event_subscriptions,
+        ),
     )
 }

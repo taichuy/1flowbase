@@ -57,7 +57,7 @@ pub(super) async fn execute_delivery(
                 signal.event_id,
                 None,
                 "skipped",
-                Some(reason.into()),
+                Some(reason),
             );
             state.event_workflow_changes.notify_one();
             return Ok(DeliveryOutcome::Retire);
@@ -148,7 +148,7 @@ pub(super) async fn execute_delivery(
                 signal.event_id,
                 Some(run_id),
                 "execution_failed",
-                Some(error.to_string()),
+                Some(super::status::public_error_code(&error, "consumer_failed")),
             );
             Err(error)
         }

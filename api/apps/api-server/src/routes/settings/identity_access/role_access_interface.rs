@@ -86,6 +86,28 @@ pub(crate) enum RoleAccessOutput {
     NoContent,
 }
 
+fn affects_event_subscriptions(input: &RoleAccessInput) -> bool {
+    match input {
+        RoleAccessInput::DeleteRole { .. }
+        | RoleAccessInput::ReplaceRolePermissions { .. }
+        | RoleAccessInput::ReplaceRoleConsolePolicy { .. }
+        | RoleAccessInput::ReplaceRoleDataPolicy { .. } => true,
+        // A default role change affects principals without an explicit role binding.
+        RoleAccessInput::CreateRole(body) => body.is_default_member_role.is_some(),
+        RoleAccessInput::UpdateRole { body, .. } => body.is_default_member_role.is_some(),
+        RoleAccessInput::ListDataModelOptions
+        | RoleAccessInput::GetConsolePolicyCatalog { .. }
+        | RoleAccessInput::ReplaceConsoleSettingsOrder { .. }
+        | RoleAccessInput::GetRoleConsolePolicy { .. }
+        | RoleAccessInput::ListRoles
+        | RoleAccessInput::GetRolePermissions { .. }
+        | RoleAccessInput::GetRoleFrontstageRoutes { .. }
+        | RoleAccessInput::ReplaceRoleFrontstageRoutes { .. }
+        | RoleAccessInput::GetRoleDataPolicy { .. }
+        | RoleAccessInput::ListPermissionOptions => false,
+    }
+}
+
 struct RoleAccessAdapter {
     navigation_cache: control_plane::navigation_cache::NavigationCache,
     store: MainDurableStore,
@@ -100,14 +122,19 @@ pub(crate) fn role_access_port(
     console_inventory: access_control::ConsoleOperationCompiledInventory,
     settings_features: Vec<access_control::SettingsFeatureInventoryEntry>,
     bootstrap_workspace_id: uuid::Uuid,
+    changes: Arc<tokio::sync::Notify>,
 ) -> Arc<dyn ConsoleInterfacePort<RoleAccessInput, RoleAccessOutput>> {
-    Arc::new(RoleAccessAdapter {
-        navigation_cache,
-        store,
-        console_inventory,
-        settings_features,
-        bootstrap_workspace_id,
-    })
+    crate::workers::event_workflow::refresh::after_success(
+        Arc::new(RoleAccessAdapter {
+            navigation_cache,
+            store,
+            console_inventory,
+            settings_features,
+            bootstrap_workspace_id,
+        }),
+        changes,
+        affects_event_subscriptions,
+    )
 }
 
 impl RoleAccessAdapter {

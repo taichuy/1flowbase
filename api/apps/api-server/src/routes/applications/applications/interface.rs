@@ -546,6 +546,22 @@ impl InterfaceContract for ApplicationsOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+fn affects_event_subscriptions(input: &ApplicationsInput) -> bool {
+    match input {
+        ApplicationsInput::Create(_) | ApplicationsInput::Delete { .. } => true,
+        // PatchApplicationBody edits metadata only; trigger type has no mutation field here.
+        ApplicationsInput::List
+        | ApplicationsInput::Catalog { .. }
+        | ApplicationsInput::CreateTag(_)
+        | ApplicationsInput::Get { .. }
+        | ApplicationsInput::Patch { .. }
+        | ApplicationsInput::ListEnvironmentVariables { .. }
+        | ApplicationsInput::ReplaceEnvironmentVariables { .. }
+        | ApplicationsInput::ListJsDependencies { .. }
+        | ApplicationsInput::ReplaceJsDependency { .. } => false,
+    }
+}
+
 struct ApplicationsAdapter {
     collector: super::collectors::CollectorCatalogDependencies,
     store: MainDurableStore,
@@ -556,12 +572,17 @@ pub(crate) fn applications_port(
     store: MainDurableStore,
     bootstrap_workspace_id: Uuid,
     collector: super::collectors::CollectorCatalogDependencies,
+    changes: Arc<tokio::sync::Notify>,
 ) -> Arc<dyn ConsoleInterfacePort<ApplicationsInput, ApplicationsOutput>> {
-    Arc::new(ApplicationsAdapter {
-        collector,
-        store,
-        bootstrap_workspace_id,
-    })
+    crate::workers::event_workflow::refresh::after_success(
+        Arc::new(ApplicationsAdapter {
+            collector,
+            store,
+            bootstrap_workspace_id,
+        }),
+        changes,
+        affects_event_subscriptions,
+    )
 }
 
 impl ApplicationsAdapter {
