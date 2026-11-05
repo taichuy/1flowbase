@@ -641,3 +641,89 @@ async fn current_wait_and_backlog_ages_are_observable_and_reset_after_release() 
     );
     assert_eq!(snapshot.admission_rejected, 0);
 }
+
+#[tokio::test]
+async fn immediate_admission_never_allocates_waiters_and_holds_charge_until_guard_release() {
+    let bus = MemoryEventBus::new();
+    assert!(matches!(
+        bus.try_reserve("a", 4),
+        Err(EventBusError::Unconfigured)
+    ));
+    bus.configure_budget(EventBusLimits {
+        max_items: 1,
+        ..limits()
+    })
+    .unwrap();
+    assert!(matches!(
+        bus.try_reserve("a", 4),
+        Err(EventBusError::NoConsumer)
+    ));
+    let consumer = bus.open_consumer("a").unwrap();
+    assert!(matches!(
+        bus.try_reserve("a", 129),
+        Err(EventBusError::ResourceExhausted(_))
+    ));
+    let permit = bus.try_reserve("a", 4).unwrap();
+    assert_eq!(bus.event_bus_snapshot().reserved, 1);
+    assert!(matches!(
+        bus.try_reserve("a", 4),
+        Err(EventBusError::ResourceExhausted(_))
+    ));
+    assert_eq!(bus.event_bus_snapshot().waiters, 0);
+    permit.send(json!(null)).unwrap();
+    let delivery = consumer.recv().await.unwrap().unwrap();
+    assert!(matches!(
+        bus.try_reserve("a", 4),
+        Err(EventBusError::ResourceExhausted(_))
+    ));
+    assert_eq!(bus.event_bus_snapshot().in_flight, 1);
+    drop(delivery);
+    let permit = bus.try_reserve("a", 4).unwrap();
+    consumer.close();
+    assert!(matches!(
+        bus.try_reserve("a", 4),
+        Err(EventBusError::Closed)
+    ));
+    assert!(matches!(
+        permit.send(json!(null)),
+        Err(EventBusError::Closed)
+    ));
+    drop(consumer);
+    assert!(matches!(
+        bus.try_reserve("a", 4),
+        Err(EventBusError::NoConsumer)
+    ));
+    let snapshot = bus.event_bus_snapshot();
+    assert_eq!(
+        (
+            snapshot.waiters,
+            snapshot.reserved,
+            snapshot.buffered,
+            snapshot.in_flight
+        ),
+        (0, 0, 0, 0)
+    );
+    assert_eq!(
+        (snapshot.charged_json_bytes, snapshot.topic_name_bytes),
+        (0, 0)
+    );
+}
+
+#[test]
+fn immediate_admission_byte_budget_is_shared_with_other_topics_and_permit_drop() {
+    let bus = configured(EventBusLimits {
+        max_json_bytes: 4,
+        ..limits()
+    });
+    let _first = bus.open_consumer("a").unwrap();
+    let _second = bus.open_consumer("b").unwrap();
+    let permit = bus.try_reserve("a", 4).unwrap();
+    assert!(matches!(
+        bus.try_reserve("b", 1),
+        Err(EventBusError::ResourceExhausted(_))
+    ));
+    drop(permit);
+    assert!(bus.try_reserve("b", 4).is_ok());
+    assert_eq!(bus.event_bus_snapshot().waiters, 0);
+    assert_eq!(bus.event_bus_snapshot().charged_json_bytes, 0);
+}

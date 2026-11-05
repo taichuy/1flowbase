@@ -42,6 +42,10 @@
 | `postgres-test-support` | PostgreSQL 隔离 schema、migration 与数据库 fixture | 仅测试使用 |
 | `control-plane-postgres-tests` | 真实 Control Plane + PostgreSQL 跨层验收 | 仅测试使用，不承载生产实现；`runtime-core`、`orchestration-runtime` 仅作 dev-dependency 装配真实执行 consumer |
 
+## Test-only Dependencies
+
+- `control-plane` tests may use `storage-ephemeral` as a dev-dependency to exercise Event Center against the real MemoryEventBus. Production dependency rules above remain unchanged.
+
 ## Placement Rules
 
 - 业务决策、权限结果、状态流转、事务意图放 `control-plane`；纯领域不变量放 `domain`。

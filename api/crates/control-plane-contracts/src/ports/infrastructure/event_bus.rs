@@ -48,7 +48,7 @@ pub struct EventBusSnapshot {
     /// Upper bounds stay charged through reservation, buffering and processing.
     pub charged_json_bytes: u64,
     pub abnormal_terminations: u64,
-    /// reserve/send calls returning Err; excludes cancellation and configuration/registration.
+    /// reserve/try_reserve/send calls returning Err; excludes cancellation and configuration/registration.
     /// Cumulative counters saturate at u64::MAX.
     pub admission_rejected: u64,
     /// Bodies successfully enqueued, dequeued, and no longer held by a processing guard.
@@ -110,6 +110,14 @@ pub trait EventBus: Send + Sync {
     fn configure_budget(&self, limits: EventBusLimits) -> Result<(), EventBusError>;
     fn open_consumer(&self, topic: &str) -> Result<Box<dyn EventConsumer>, EventBusError>;
     fn event_bus_snapshot(&self) -> EventBusSnapshot;
+
+    /// Immediate admission without allocating a waiter or suspending the caller.
+    /// Full item/byte budgets return ResourceExhausted; the permit retains the charge.
+    fn try_reserve(
+        &self,
+        topic: &str,
+        json_bytes_upper_bound: u64,
+    ) -> Result<Box<dyn EventPermit>, EventBusError>;
 
     /// Admission happens before constructing a body. Dropping this future cancels waiting.
     /// A deadline applies to admission; an issued permit remains valid until close/drop.

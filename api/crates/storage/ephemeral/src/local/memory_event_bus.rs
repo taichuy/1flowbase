@@ -633,6 +633,42 @@ impl EventBus for MemoryEventBus {
         self.inner.lock().snapshot()
     }
 
+    fn try_reserve(&self, topic: &str, upper: u64) -> Result<Box<dyn EventPermit>, EventBusError> {
+        let mut state = self.inner.lock();
+        let result = (|| {
+            let limits = state.limits.ok_or(EventBusError::Unconfigured)?;
+            let generation = state.generation(topic)?;
+            if state.entries.len() >= limits.max_items
+                || upper
+                    > limits
+                        .max_json_bytes
+                        .saturating_sub(state.charged_json_bytes)
+            {
+                return Err(EventBusError::ResourceExhausted("event admission"));
+            }
+            let id = state.next_id()?;
+            state.entries.insert(
+                id,
+                Entry {
+                    generation,
+                    bytes: upper,
+                    body: None,
+                    phase: Phase::Reserved,
+                    phase_started: Instant::now(),
+                },
+            );
+            state.charged_json_bytes += upper;
+            Ok(Box::new(Permit {
+                inner: self.inner.clone(),
+                id,
+            }) as Box<dyn EventPermit>)
+        })();
+        if result.is_err() {
+            state.admission_rejected = state.admission_rejected.saturating_add(1);
+        }
+        result
+    }
+
     async fn reserve(
         &self,
         topic: &str,

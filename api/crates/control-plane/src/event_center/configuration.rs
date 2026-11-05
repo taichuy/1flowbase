@@ -185,7 +185,7 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
     }
 }
 
-fn validate_identity(contract_id: &str, contract_version: &str) -> anyhow::Result<()> {
+pub(super) fn validate_identity(contract_id: &str, contract_version: &str) -> anyhow::Result<()> {
     let slug = contract_id.strip_prefix("custom.").unwrap_or("");
     if slug.is_empty()
         || !slug.bytes().all(|ch| {
@@ -204,11 +204,15 @@ fn validate_fields(name: &str, schema: &Value) -> anyhow::Result<()> {
     if name.trim().is_empty() {
         return Err(Error::InvalidInput("event_name_required").into());
     }
-    // Configuration cannot trigger network or filesystem resolution. Local references work.
+    payload_validator(schema).map(|_| ())
+}
+
+pub(super) fn payload_validator(schema: &Value) -> anyhow::Result<jsonschema::Validator> {
+    // Configuration and publication cannot trigger external schema resolution.
     fn local_references(value: &Value) -> bool {
         match value {
             Value::Object(object) => object.iter().all(|(key, value)| {
-                (!matches!(key.as_str(), "$ref" | "$dynamicRef")
+                (!matches!(key.as_str(), "$ref" | "$dynamicRef" | "$recursiveRef")
                     || value
                         .as_str()
                         .is_some_and(|reference| reference.starts_with('#')))
@@ -218,10 +222,13 @@ fn validate_fields(name: &str, schema: &Value) -> anyhow::Result<()> {
             _ => true,
         }
     }
-    if !local_references(schema) || jsonschema::validator_for(schema).is_err() {
+    if !local_references(schema) {
         return Err(Error::InvalidInput("invalid_event_payload_schema").into());
     }
-    Ok(())
+    jsonschema::options()
+        .offline()
+        .build(schema)
+        .map_err(|_| Error::InvalidInput("invalid_event_payload_schema").into())
 }
 
 #[cfg(test)]
