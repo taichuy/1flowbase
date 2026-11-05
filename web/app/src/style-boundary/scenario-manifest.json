@@ -1202,6 +1202,194 @@
     ]
   },
   {
+    "id": "page.settings-events.desktop",
+    "kind": "page",
+    "title": "Settings Events Desktop Page",
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/pages/events/EventsPage.tsx",
+      "web/app/src/features/settings/pages/events/EventsTable.tsx",
+      "web/app/src/style-boundary/scene-fixtures/settings/events.ts"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "events-surface",
+        "selector": ".settings-section-surface--fill",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          },
+          {
+            "property": "flex-direction",
+            "expected": "column"
+          }
+        ]
+      },
+      {
+        "id": "events-table-scroll",
+        "selector": ".settings-section-surface .data-table__scroll-area",
+        "propertyAssertions": [
+          {
+            "property": "overflow-x",
+            "expected": "auto"
+          }
+        ]
+      },
+      {
+        "id": "events-name-button",
+        "selector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]",
+        "propertyAssertions": [
+          {
+            "property": "max-width",
+            "expected": "100%"
+          }
+        ]
+      },
+      {
+        "id": "events-name-text-slot",
+        "selector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"] > span",
+        "propertyAssertions": [
+          {
+            "property": "min-width",
+            "expected": "0px"
+          },
+          {
+            "property": "overflow",
+            "expected": "hidden"
+          },
+          {
+            "property": "text-overflow",
+            "expected": "ellipsis"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "events-name-button-within-name-cell",
+        "type": "within_container",
+        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]",
+        "containerSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] td:nth-child(1)"
+      },
+      {
+        "id": "events-name-text-within-button",
+        "type": "within_container",
+        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"] > span",
+        "containerSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]"
+      },
+      {
+        "id": "events-name-no-overlap-contract-cell",
+        "type": "no_overlap",
+        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]",
+        "referenceSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] td:nth-child(2)"
+      },
+      {
+        "id": "events-toolbar-no-overlap-body",
+        "type": "no_overlap",
+        "subjectSelector": ".settings-section-surface__toolbar",
+        "referenceSelector": ".settings-section-surface__body"
+      }
+    ]
+  },
+  {
+    "id": "page.settings-events.mobile",
+    "kind": "page",
+    "title": "Settings Events Mobile Page",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/pages/events/EventsPage.tsx",
+      "web/app/src/features/settings/pages/events/EventsTable.tsx",
+      "web/app/src/style-boundary/scene-fixtures/settings/events.ts"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "events-surface",
+        "selector": ".settings-section-surface--fill",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          },
+          {
+            "property": "flex-direction",
+            "expected": "column"
+          }
+        ]
+      },
+      {
+        "id": "events-table-scroll",
+        "selector": ".settings-section-surface .data-table__scroll-area",
+        "propertyAssertions": [
+          {
+            "property": "overflow-x",
+            "expected": "auto"
+          }
+        ]
+      },
+      {
+        "id": "events-name-button",
+        "selector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]",
+        "propertyAssertions": [
+          {
+            "property": "max-width",
+            "expected": "100%"
+          }
+        ]
+      },
+      {
+        "id": "events-name-text-slot",
+        "selector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"] > span",
+        "propertyAssertions": [
+          {
+            "property": "min-width",
+            "expected": "0px"
+          },
+          {
+            "property": "overflow",
+            "expected": "hidden"
+          },
+          {
+            "property": "text-overflow",
+            "expected": "ellipsis"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "events-name-button-within-name-cell",
+        "type": "within_container",
+        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]",
+        "containerSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] td:nth-child(1)"
+      },
+      {
+        "id": "events-name-text-within-button",
+        "type": "within_container",
+        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"] > span",
+        "containerSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]"
+      },
+      {
+        "id": "events-name-no-overlap-contract-cell",
+        "type": "no_overlap",
+        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]",
+        "referenceSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] td:nth-child(2)"
+      },
+      {
+        "id": "events-toolbar-no-overlap-body",
+        "type": "no_overlap",
+        "subjectSelector": ".settings-section-surface__toolbar",
+        "referenceSelector": ".settings-section-surface__body"
+      }
+    ]
+  },
+  {
     "id": "page.settings-i18n.desktop",
     "kind": "page",
     "title": "Settings Languages Desktop Page",

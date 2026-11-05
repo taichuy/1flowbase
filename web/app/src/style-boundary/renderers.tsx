@@ -13,6 +13,7 @@ import {
 } from './scene-fixtures/notifications/data';
 import { SettingsOrganizationStyleBoundaryScene } from './SettingsOrganizationStyleBoundaryScene';
 import { seedStyleBoundaryOrganizationFetch } from './scene-fixtures/settings/organization';
+import { seedStyleBoundaryEventsFetch } from './scene-fixtures/settings/events';
 import type { ReactNode } from 'react';
 import { AssistantPreviewScene } from './scene-fixtures/AssistantPreviewScene';
 import { Menu } from 'antd';
@@ -130,6 +131,13 @@ function renderRouteManagementScene() {
     }
     return fallbackFetch(input, init);
   };
+  return scene;
+}
+
+function renderEventsScene() {
+  seedStyleBoundarySettingsFetch();
+  const scene = renderRouterScene('/settings/events');
+  seedStyleBoundaryEventsFetch();
   return scene;
 }
 
@@ -461,6 +469,8 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     seedStyleBoundarySettingsFetch();
     return renderRouterScene('/settings/model-providers');
   },
+  'page.settings-events.desktop': renderEventsScene,
+  'page.settings-events.mobile': renderEventsScene,
   'page.settings-i18n.desktop': () => {
     seedStyleBoundarySettingsFetch();
     return renderRouterScene('/settings/i18n');
