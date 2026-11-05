@@ -39,9 +39,15 @@ use crate::{
 };
 
 pub(crate) mod interface_docs;
+pub(crate) mod interface_event;
 pub(crate) mod interface_keys;
 pub(crate) mod interface_publication;
 pub(crate) mod interface_schedule;
+
+#[path = "application_api/event_trigger.rs"]
+mod event_trigger;
+use event_trigger::to_workflow_event_trigger_response;
+pub use event_trigger::*;
 
 const PUBLIC_RUNS_PATH: &str = "/api/agent/v1/runs";
 
@@ -326,6 +332,17 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_patch(
                 patch_application_api_status,
                 ConsoleOperation(APPLICATIONS_API_SET_ENABLED_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/:application_id/workflow-event-trigger",
+            console_get(
+                get_workflow_event_trigger,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            )
+            .put(
+                replace_workflow_event_trigger,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
             ),
         )
         .route(

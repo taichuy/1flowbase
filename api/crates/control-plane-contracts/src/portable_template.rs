@@ -97,6 +97,8 @@ pub struct PortableApplication {
     pub mapping: Option<ApplicationApiMappingConfig>,
     pub published: Option<PortablePublication>,
     pub schedule: Option<PortableSchedule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_trigger: Option<domain::event_center::WorkflowEventTriggerInput>,
     #[serde(default)]
     pub dependency_issues: Vec<String>,
 }

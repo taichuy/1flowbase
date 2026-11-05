@@ -22,6 +22,13 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum WorkflowInvocationTrigger {
+    Event {
+        signal_id: Uuid,
+        event_id: Option<Uuid>,
+        subscription_id: Uuid,
+        trigger_phase: domain::event_center::EventTriggerPhase,
+        idempotency_key: String,
+    },
     Http {
         api_key_id: Option<Uuid>,
         interface_id: String,
@@ -190,6 +197,18 @@ where
 impl WorkflowInvocationTrigger {
     fn run_context(&self) -> WorkflowRunTriggerContext<'_> {
         match self {
+            Self::Event {
+                signal_id,
+                event_id,
+                subscription_id,
+                trigger_phase,
+                ..
+            } => WorkflowRunTriggerContext::Event {
+                signal_id: *signal_id,
+                event_id: *event_id,
+                subscription_id: *subscription_id,
+                trigger_phase: *trigger_phase,
+            },
             Self::Http { .. } => WorkflowRunTriggerContext::Extension,
             Self::Schedule {
                 scheduled_at,
@@ -204,6 +223,7 @@ impl WorkflowInvocationTrigger {
 
     fn run_mode(&self) -> domain::FlowRunMode {
         match self {
+            Self::Event { .. } => domain::FlowRunMode::WorkflowEventRun,
             Self::Http { .. } => domain::FlowRunMode::WorkflowHttpRun,
             Self::Schedule { .. } => domain::FlowRunMode::WorkflowScheduleRun,
         }
@@ -212,19 +232,20 @@ impl WorkflowInvocationTrigger {
     fn api_key_id(&self) -> Option<Uuid> {
         match self {
             Self::Http { api_key_id, .. } => *api_key_id,
-            Self::Schedule { .. } => None,
+            Self::Schedule { .. } | Self::Event { .. } => None,
         }
     }
 
     fn started_at(&self) -> OffsetDateTime {
         match self {
-            Self::Http { .. } => OffsetDateTime::now_utc(),
+            Self::Http { .. } | Self::Event { .. } => OffsetDateTime::now_utc(),
             Self::Schedule { scheduled_at, .. } => *scheduled_at,
         }
     }
 
     fn title(&self) -> String {
         match self {
+            Self::Event { .. } => "Event workflow".to_string(),
             Self::Http { route_template, .. } => format!("Workflow HTTP {route_template}"),
             Self::Schedule { .. } => "Scheduled workflow".to_string(),
         }
@@ -232,6 +253,7 @@ impl WorkflowInvocationTrigger {
 
     fn external_trace_id(&self) -> String {
         match self {
+            Self::Event { signal_id, .. } => format!("workflow-event:{signal_id}"),
             Self::Http { interface_id, .. } => format!("workflow-http:{interface_id}"),
             Self::Schedule { trigger_id, .. } => format!("workflow-schedule:{trigger_id}"),
         }
@@ -239,6 +261,9 @@ impl WorkflowInvocationTrigger {
 
     fn idempotency_key(&self) -> Option<&str> {
         match self {
+            Self::Event {
+                idempotency_key, ..
+            } => Some(idempotency_key),
             Self::Http { .. } => None,
             Self::Schedule {
                 idempotency_key, ..
@@ -248,6 +273,7 @@ impl WorkflowInvocationTrigger {
 
     fn event_type(&self) -> &'static str {
         match self {
+            Self::Event { .. } => "workflow_event_run_enqueued",
             Self::Http { .. } => "workflow_extension_run_started",
             Self::Schedule { .. } => "workflow_schedule_run_enqueued",
         }
@@ -255,6 +281,17 @@ impl WorkflowInvocationTrigger {
 
     fn event_payload(&self, publication_version_id: Uuid, application_id: Uuid) -> Value {
         match self {
+            Self::Event {
+                signal_id,
+                event_id,
+                subscription_id,
+                trigger_phase,
+                ..
+            } => json!({
+                "trigger_source": "workflow_event", "signal_id": signal_id, "event_id": event_id,
+                "subscription_id": subscription_id, "trigger_phase": trigger_phase,
+                "application_id": application_id, "publication_version_id": publication_version_id,
+            }),
             Self::Http {
                 api_key_id,
                 interface_id,

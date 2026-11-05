@@ -104,6 +104,9 @@ where
         if application.application_type != domain::ApplicationType::Workflow {
             return Err(ControlPlaneError::InvalidInput("application_type").into());
         }
+        if application.workflow_trigger_type == Some(domain::WorkflowTriggerType::Event) {
+            return Err(ControlPlaneError::InvalidInput("workflow_trigger_type").into());
+        }
 
         self.repository
             .get_workflow_schedule_trigger(application.id)
@@ -134,6 +137,9 @@ where
         ensure_application_edit_permission(&self.repository, &actor, &application).await?;
         if application.application_type != domain::ApplicationType::Workflow {
             return Err(ControlPlaneError::InvalidInput("application_type").into());
+        }
+        if application.workflow_trigger_type == Some(domain::WorkflowTriggerType::Event) {
+            return Err(ControlPlaneError::InvalidInput("workflow_trigger_type").into());
         }
 
         if command.enabled {

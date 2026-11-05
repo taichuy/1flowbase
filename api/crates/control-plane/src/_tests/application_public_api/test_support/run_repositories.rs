@@ -163,6 +163,9 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
                                     && run.api_key_id == record.api_key_id
                                     && run.run_mode == domain::FlowRunMode::PublishedApiRun
                             }
+                            domain::FlowRunMode::WorkflowEventRun => {
+                                run.run_mode == domain::FlowRunMode::WorkflowEventRun
+                            }
                             domain::FlowRunMode::WorkflowScheduleRun => {
                                 run.run_mode == domain::FlowRunMode::WorkflowScheduleRun
                             }
@@ -329,6 +332,7 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
                         run.run_mode,
                         domain::FlowRunMode::PublishedApiRun
                             | domain::FlowRunMode::WorkflowScheduleRun
+                            | domain::FlowRunMode::WorkflowEventRun
                     )
             })
             .cloned())

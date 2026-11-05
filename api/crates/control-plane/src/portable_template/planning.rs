@@ -181,6 +181,27 @@ pub fn validate_portable_template(package: &PortableTemplatePackage) -> Vec<Stri
         {
             failures.push(format!("portable_template_missing_schedule:{}", app.id));
         }
+        if let Some(configuration) = &app.event_trigger {
+            if app.workflow_trigger_type != Some(domain::WorkflowTriggerType::Event)
+                || configuration.contract_id.trim().is_empty()
+                || configuration.contract_version.trim().is_empty()
+                || configuration
+                    .input_mapping
+                    .values()
+                    .any(|pointer| !domain::event_center::is_json_pointer(pointer))
+            {
+                failures.push(format!(
+                    "portable_template_invalid_event_trigger:{}",
+                    app.id
+                ));
+            }
+            match crate::application_public_api::workflow_start_http_inputs::parse_workflow_start_event_inputs(&app.flow_document) {
+                Ok(contract) => if crate::application_public_api::workflow_event::validate_event_input_mapping(&contract, configuration).is_err() {
+                    failures.push(format!("portable_template_invalid_event_mapping:{}", app.id));
+                },
+                Err(_) => failures.push(format!("portable_template_invalid_event_inputs:{}", app.id)),
+            }
+        }
         let own_slugs: BTreeSet<&str> = app
             .mapping
             .as_ref()

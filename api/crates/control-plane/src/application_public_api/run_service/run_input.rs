@@ -51,6 +51,12 @@ pub(crate) fn freeze_run_input_environment(
 }
 
 pub(crate) enum WorkflowRunTriggerContext<'a> {
+    Event {
+        signal_id: Uuid,
+        event_id: Option<Uuid>,
+        subscription_id: Uuid,
+        trigger_phase: domain::event_center::EventTriggerPhase,
+    },
     Extension,
     Schedule {
         scheduled_at: OffsetDateTime,
@@ -74,6 +80,15 @@ pub(crate) fn freeze_workflow_run_input_environment(
         Value::Object(application_environment_variable_payload(variables)),
     );
     let trigger = match trigger_context {
+        WorkflowRunTriggerContext::Event {
+            signal_id,
+            event_id,
+            subscription_id,
+            trigger_phase,
+        } => json!({
+            "type": "event", "signal_id": signal_id, "event_id": event_id,
+            "subscription_id": subscription_id, "trigger_phase": trigger_phase,
+        }),
         WorkflowRunTriggerContext::Extension => json!({ "type": "extension" }),
         WorkflowRunTriggerContext::Schedule {
             scheduled_at,

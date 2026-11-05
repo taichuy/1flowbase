@@ -53,6 +53,7 @@ where
                 | domain::FlowRunMode::AssistantExecution
                 | domain::FlowRunMode::WorkflowHttpRun
                 | domain::FlowRunMode::WorkflowScheduleRun
+                | domain::FlowRunMode::WorkflowEventRun
         ) {
             return Err(ControlPlaneError::InvalidInput("run_mode").into());
         }

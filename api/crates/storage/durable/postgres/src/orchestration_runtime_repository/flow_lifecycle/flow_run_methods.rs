@@ -201,6 +201,9 @@ impl PgControlPlaneStore {
         supersede_callback_predecessors: bool,
     ) -> Result<CreatePublishedFlowRunResult> {
         let conflict_target = match input.run_mode {
+            domain::FlowRunMode::WorkflowEventRun => {
+                "(application_id, idempotency_key) where run_mode = 'workflow_event_run' and idempotency_key is not null"
+            }
             domain::FlowRunMode::WorkflowScheduleRun => {
                 "(application_id, idempotency_key)\n                where run_mode = 'workflow_schedule_run'\n                  and idempotency_key is not null"
             }
@@ -319,7 +322,8 @@ impl PgControlPlaneStore {
         } else {
             tx.commit().await?;
             let conflict_api_key = match input.run_mode {
-                domain::FlowRunMode::WorkflowScheduleRun => None,
+                domain::FlowRunMode::WorkflowScheduleRun
+                | domain::FlowRunMode::WorkflowEventRun => None,
                 _ => input.api_key_id,
             };
             let flow_run = self
@@ -637,7 +641,7 @@ impl PgControlPlaneStore {
             where application_id = $1
               and api_key_id is not distinct from $2
               and idempotency_key = $3
-              and run_mode in ('published_api_run', 'workflow_schedule_run')
+              and run_mode in ('published_api_run', 'workflow_schedule_run', 'workflow_event_run')
             order by created_at asc, id asc
             limit 1
             "#,

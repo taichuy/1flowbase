@@ -61,6 +61,8 @@ pub enum WorkflowTriggerTypeDto {
     Extension,
     /// Cron schedule controlled by the Workflow schedule GET/PUT resource.
     Schedule,
+    /// Lifecycle event subscription controlled by the event trigger resource.
+    Event,
 }
 
 impl From<domain::WorkflowTriggerType> for WorkflowTriggerTypeDto {
@@ -68,6 +70,7 @@ impl From<domain::WorkflowTriggerType> for WorkflowTriggerTypeDto {
         match value {
             domain::WorkflowTriggerType::Extension => Self::Extension,
             domain::WorkflowTriggerType::Schedule => Self::Schedule,
+            domain::WorkflowTriggerType::Event => Self::Event,
         }
     }
 }
@@ -77,6 +80,7 @@ impl WorkflowTriggerTypeDto {
         match self {
             Self::Extension => domain::WorkflowTriggerType::Extension,
             Self::Schedule => domain::WorkflowTriggerType::Schedule,
+            Self::Event => domain::WorkflowTriggerType::Event,
         }
     }
 }

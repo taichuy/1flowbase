@@ -298,6 +298,7 @@ async fn published_workflow_is_compiled_and_draft_remains_independent() {
                 api_enabled: true,
             }),
             schedule: None,
+            event_trigger: None,
             dependency_issues: vec![],
         }],
     };

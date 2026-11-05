@@ -18,6 +18,7 @@ pub enum FlowRunMode {
     AssistantExecution,
     WorkflowHttpRun,
     WorkflowScheduleRun,
+    WorkflowEventRun,
 }
 
 impl FlowRunMode {
@@ -29,6 +30,7 @@ impl FlowRunMode {
             Self::AssistantExecution => "assistant_execution",
             Self::WorkflowHttpRun => "workflow_http_run",
             Self::WorkflowScheduleRun => "workflow_schedule_run",
+            Self::WorkflowEventRun => "workflow_event_run",
         }
     }
 
@@ -60,6 +62,15 @@ impl FlowRunMode {
                     principal,
                 )
             }
+            Self::WorkflowEventRun => (
+                FlowRunExecutionStage::Published,
+                FlowRunInvocationSource::WorkflowEvent,
+                FlowRunPrincipal {
+                    kind: FlowRunPrincipalKind::EventConsumer,
+                    id: None,
+                    display_name: None,
+                },
+            ),
             Self::WorkflowScheduleRun => (
                 FlowRunExecutionStage::Published,
                 FlowRunInvocationSource::WorkflowSchedule,
@@ -103,6 +114,7 @@ pub enum FlowRunInvocationSource {
     Assistant,
     WorkflowHttp,
     WorkflowSchedule,
+    WorkflowEvent,
     Debug,
 }
 
@@ -113,6 +125,7 @@ impl FlowRunInvocationSource {
             Self::Assistant => "assistant",
             Self::WorkflowHttp => "workflow_http",
             Self::WorkflowSchedule => "workflow_schedule",
+            Self::WorkflowEvent => "workflow_event",
             Self::Debug => "debug",
         }
     }
@@ -125,6 +138,7 @@ pub enum FlowRunPrincipalKind {
     ApplicationApiKey,
     UserApiKey,
     Scheduler,
+    EventConsumer,
 }
 
 impl FlowRunPrincipalKind {
@@ -134,6 +148,7 @@ impl FlowRunPrincipalKind {
             Self::ApplicationApiKey => "application_api_key",
             Self::UserApiKey => "user_api_key",
             Self::Scheduler => "scheduler",
+            Self::EventConsumer => "event_consumer",
         }
     }
 }
@@ -1022,6 +1037,13 @@ mod invocation_context_tests {
                 FlowRunPrincipalKind::Scheduler,
             ),
             (
+                FlowRunMode::WorkflowEventRun,
+                None,
+                FlowRunExecutionStage::Published,
+                FlowRunInvocationSource::WorkflowEvent,
+                FlowRunPrincipalKind::EventConsumer,
+            ),
+            (
                 FlowRunMode::DebugFlowRun,
                 None,
                 FlowRunExecutionStage::Debug,
@@ -1039,7 +1061,10 @@ mod invocation_context_tests {
             assert_eq!(context.execution_stage, stage);
             assert_eq!(context.invocation_source, source);
             assert_eq!(context.principal.kind, principal_kind);
-            if matches!(principal_kind, FlowRunPrincipalKind::Scheduler) {
+            if matches!(
+                principal_kind,
+                FlowRunPrincipalKind::Scheduler | FlowRunPrincipalKind::EventConsumer
+            ) {
                 assert_eq!(context.principal.id, None);
                 assert_eq!(context.principal.display_name, None);
             }

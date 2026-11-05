@@ -101,8 +101,38 @@ pub fn parse_workflow_start_schedule_inputs(
     parse_workflow_start_inputs(document_snapshot, WorkflowStartInputUsage::Schedule)
 }
 
+/// Events map lifecycle context by RFC6901; transport source has no meaning here.
+pub fn parse_workflow_start_event_inputs(
+    document: &Value,
+) -> Result<WorkflowStartHttpInputs, WorkflowStartHttpInputError> {
+    parse_workflow_start_inputs(document, WorkflowStartInputUsage::Event)
+}
+
+pub fn build_workflow_start_event_input_payload(
+    contract: &WorkflowStartHttpInputs,
+    input_mapping: &std::collections::BTreeMap<String, String>,
+    context: &Value,
+) -> Result<Value, WorkflowStartHttpInputError> {
+    let mut values = Map::new();
+    for (name, pointer) in input_mapping {
+        if !domain::event_center::is_json_pointer(pointer)
+            || !contract.fields.iter().any(|field| field.key == *name)
+        {
+            return Err(WorkflowStartHttpInputError::TargetSelectorNotAllowed(
+                name.clone(),
+            ));
+        }
+        let value = context
+            .pointer(pointer)
+            .ok_or_else(|| WorkflowStartHttpInputError::RequiredValueMissing(name.clone()))?;
+        values.insert(name.clone(), value.clone());
+    }
+    build_workflow_start_default_input_payload(contract, &Value::Object(values))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WorkflowStartInputUsage {
+    Event,
     Http,
     Schedule,
 }
@@ -172,7 +202,7 @@ fn parse_workflow_start_inputs(
                 }
             }
         } else {
-            // Schedule defaults are keyed by the Workflow Start contract;
+            // Non-HTTP inputs are keyed by the Workflow Start contract;
             // HTTP transport source is deliberately irrelevant here.
             WorkflowStartHttpInputSource::Body
         };
@@ -215,6 +245,13 @@ fn parse_workflow_start_inputs(
 }
 
 pub fn build_workflow_start_schedule_input_payload(
+    contract: &WorkflowStartHttpInputs,
+    configured_defaults: &Value,
+) -> Result<Value, WorkflowStartHttpInputError> {
+    build_workflow_start_default_input_payload(contract, configured_defaults)
+}
+
+fn build_workflow_start_default_input_payload(
     contract: &WorkflowStartHttpInputs,
     configured_defaults: &Value,
 ) -> Result<Value, WorkflowStartHttpInputError> {

@@ -95,6 +95,9 @@ pub struct ApplicationArchiveApplication {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkflowTriggerTemplateConfig {
+    Event {
+        configuration: domain::event_center::WorkflowEventTriggerInput,
+    },
     Schedule {
         cron: String,
         timezone: String,
@@ -115,6 +118,7 @@ where
         + FlowRepository
         + ApplicationApiMappingRepository
         + WorkflowScheduleTriggerRepository
+        + control_plane_contracts::ports::EventCenterRepository
         + Clone,
 {
     pub fn new(repository: R) -> Self {
@@ -181,6 +185,13 @@ where
             let template =
                 build_agent_flow_template_package(&application, &flow_state.draft.document);
             let workflow_trigger_config = match application.workflow_trigger_type {
+                Some(domain::WorkflowTriggerType::Event) => self
+                    .repository
+                    .get_workflow_event_trigger(application.workspace_id, application.id)
+                    .await?
+                    .map(|trigger| WorkflowTriggerTemplateConfig::Event {
+                        configuration: trigger.configuration,
+                    }),
                 Some(domain::WorkflowTriggerType::Schedule) => self
                     .repository
                     .get_workflow_schedule_trigger(application.id)
@@ -297,6 +308,7 @@ where
         + FlowRepository
         + ApplicationApiMappingRepository
         + WorkflowScheduleTriggerRepository
+        + control_plane_contracts::ports::EventCenterRepository
         + Clone,
 {
     pub async fn preview_archive(
@@ -509,8 +521,26 @@ fn archive_workflow_trigger_config(
                 Some(mapping),
             ))
         }
+        (Some("event"), Some(WorkflowTriggerTemplateConfig::Event { mut configuration })) => {
+            configuration.enabled = false;
+            let contract = crate::application_public_api::workflow_start_http_inputs::parse_workflow_start_event_inputs(&entry.flow_document)?;
+            crate::application_public_api::workflow_event::validate_event_input_mapping(
+                &contract,
+                &configuration,
+            )?;
+            Ok((
+                Some(domain::WorkflowTriggerType::Event),
+                Some(CreateWorkflowTriggerConfig::Event { configuration }),
+                None,
+            ))
+        }
+        (Some("event"), None) => Ok((Some(domain::WorkflowTriggerType::Event), None, None)),
         (Some("schedule"), None) => Ok((Some(domain::WorkflowTriggerType::Schedule), None, None)),
         (Some("extension"), None) => Ok((Some(domain::WorkflowTriggerType::Extension), None, None)),
         _ => Err(ControlPlaneError::InvalidInput("workflow_trigger_config").into()),
     }
 }
+
+#[cfg(test)]
+#[path = "archive/_tests/event_trigger.rs"]
+mod event_tests;

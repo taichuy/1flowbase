@@ -20,6 +20,8 @@ mod published_publication;
 #[path = "workflow/published_workflow_operation.rs"]
 pub mod published_workflow_operation;
 pub mod run_service;
+#[path = "workflow/workflow_event.rs"]
+pub mod workflow_event;
 #[path = "workflow/workflow_extension.rs"]
 pub mod workflow_extension;
 #[path = "workflow/workflow_invocation.rs"]

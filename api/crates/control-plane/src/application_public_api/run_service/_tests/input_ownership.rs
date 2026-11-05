@@ -281,3 +281,26 @@ fn workflow_freeze_preserves_schedule_context_and_format_error() {
     ));
     assert_eq!(error.to_string(), expected.to_string());
 }
+
+#[test]
+fn event_freeze_owns_trigger_metadata_and_discards_caller_sys() {
+    let signal = Uuid::now_v7();
+    let subscription = Uuid::now_v7();
+    let frozen = freeze_workflow_run_input_environment(
+        json!({"event-start":{"invoice":"A"},"trigger":{"type":"extension"},"sys":{"native_inference_recovery":"forged"}}),
+        &variables(),
+        WorkflowRunTriggerContext::Event {
+            signal_id: signal, event_id: Some(signal), subscription_id: subscription,
+            trigger_phase: domain::event_center::EventTriggerPhase::Consumed, context: &context,
+        },
+    ).unwrap();
+    assert!(frozen.get("sys").is_none());
+    assert_eq!(frozen["trigger"]["type"], "event");
+    assert!(frozen["trigger"].get("context").is_none());
+    assert_eq!(
+        frozen["trigger"]["subscription_id"],
+        subscription.to_string()
+    );
+    assert_eq!(frozen["event-start"]["invoice"], "A");
+    assert_eq!(frozen["env"]["sample"], variables()[0].value);
+}

@@ -337,7 +337,10 @@ pub(super) fn product_api_section(
                 credentials_status: "not_required".to_string(),
             }
         }
-        (domain::ApplicationType::Workflow, _) => domain::ApplicationApiSection {
+        (
+            domain::ApplicationType::Workflow,
+            Some(domain::WorkflowTriggerType::Schedule | domain::WorkflowTriggerType::Event) | None,
+        ) => domain::ApplicationApiSection {
             status: "unavailable".to_string(),
             credential_kind: "not_applicable".to_string(),
             invoke_routing_mode: "not_available".to_string(),
@@ -346,4 +349,34 @@ pub(super) fn product_api_section(
             credentials_status: "not_applicable".to_string(),
         },
     }
+}
+
+pub(super) fn validate_create_workflow_trigger_config(
+    application_type: domain::ApplicationType,
+    trigger_type: Option<domain::WorkflowTriggerType>,
+    configuration: Option<&CreateWorkflowTriggerConfig>,
+) -> Result<(), ControlPlaneError> {
+    let Some(configuration) = configuration else {
+        return Ok(());
+    };
+    let effective = create_application_workflow_trigger_type(application_type, trigger_type);
+    let expected = match configuration {
+        CreateWorkflowTriggerConfig::Schedule { .. } => domain::WorkflowTriggerType::Schedule,
+        CreateWorkflowTriggerConfig::Extension { .. } => domain::WorkflowTriggerType::Extension,
+        CreateWorkflowTriggerConfig::Event { configuration } => {
+            if configuration.contract_id.trim().is_empty()
+                || configuration.contract_version.trim().is_empty()
+                || configuration.input_mapping.iter().any(|(name, pointer)| {
+                    name.trim().is_empty() || !domain::event_center::is_json_pointer(pointer)
+                })
+            {
+                return Err(ControlPlaneError::InvalidInput("workflow_trigger_config"));
+            }
+            domain::WorkflowTriggerType::Event
+        }
+    };
+    if effective != Some(expected) {
+        return Err(ControlPlaneError::InvalidInput("workflow_trigger_config"));
+    }
+    Ok(())
 }

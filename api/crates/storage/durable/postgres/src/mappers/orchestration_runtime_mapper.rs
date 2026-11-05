@@ -804,6 +804,7 @@ pub fn parse_flow_run_mode(value: &str) -> Result<domain::FlowRunMode> {
         "assistant_execution" => Ok(domain::FlowRunMode::AssistantExecution),
         "workflow_http_run" => Ok(domain::FlowRunMode::WorkflowHttpRun),
         "workflow_schedule_run" => Ok(domain::FlowRunMode::WorkflowScheduleRun),
+        "workflow_event_run" => Ok(domain::FlowRunMode::WorkflowEventRun),
         _ => Err(anyhow!("unknown flow run mode: {value}")),
     }
 }

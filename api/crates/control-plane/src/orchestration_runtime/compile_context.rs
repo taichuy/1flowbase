@@ -224,6 +224,11 @@ fn application_run_level_variables(
     if application_type == domain::ApplicationType::Workflow {
         if let Some(trigger_type) = workflow_trigger_type {
             declarations.push(run_level_variable("trigger", "type", "string"));
+            if trigger_type == domain::WorkflowTriggerType::Event {
+                for name in ["signal_id", "event_id", "subscription_id", "trigger_phase"] {
+                    declarations.push(run_level_variable("trigger", name, "string"));
+                }
+            }
             if trigger_type == domain::WorkflowTriggerType::Schedule {
                 declarations.push(run_level_variable("trigger", "scheduled_at", "string"));
                 declarations.push(run_level_variable("trigger", "timezone", "string"));

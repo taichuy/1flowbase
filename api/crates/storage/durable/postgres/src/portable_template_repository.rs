@@ -208,6 +208,7 @@ impl PortableTemplateReadRepository for PgControlPlaneStore {
                 mapping,
                 published,
                 schedule,
+                event_trigger: control_plane_contracts::ports::EventCenterRepository::get_workflow_event_trigger(self, workspace_id, app.id).await?.map(|trigger| trigger.configuration),
                 dependency_issues,
             });
         }

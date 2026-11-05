@@ -68,6 +68,7 @@ fn package_over_former_capacity_limits() -> PortableTemplatePackage {
             mapping: None,
             published: None,
             schedule: None,
+            event_trigger: None,
             dependency_issues: vec![],
         })
         .collect();
@@ -119,6 +120,7 @@ fn mcp_wrappers_pull_portable_definitions_and_remap_their_target_ids() {
         mapping: None,
         published: None,
         schedule: None,
+        event_trigger: None,
         dependency_issues: vec![],
     });
     let mut bundle: domain::McpBundlePackage = serde_json::from_value(json!({
@@ -463,6 +465,7 @@ fn shared_draft_and_publication_flow_identity_has_one_owner() {
         flow_document: flow.clone(),
         mapping: None,
         schedule: None,
+        event_trigger: None,
         dependency_issues: vec![],
         published: Some(PortablePublication {
             flow_document: flow,
