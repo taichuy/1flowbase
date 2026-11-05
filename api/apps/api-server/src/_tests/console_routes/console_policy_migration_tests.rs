@@ -863,6 +863,34 @@ fn communication_operations_preserve_authenticated_access_without_legacy_managem
 }
 
 #[test]
+fn event_center_operations_compile_as_new_authority_without_legacy_grants() {
+    let settings = compile_core_settings_feature_registry().unwrap();
+    let registry = compile_core_console_operation_registry(&settings).unwrap();
+    let migration = compile_core_console_policy_migration_plan(registry.inventory())
+        .expect("all active event operations must have a migration disposition");
+    let operation_ids = [
+        "events.catalog.list",
+        "events.definitions.create",
+        "events.definitions.update",
+        "events.runtime.get",
+    ];
+    for operation_id in operation_ids {
+        let disposition = migration.disposition(operation_id).unwrap();
+        assert_eq!(disposition.policy_group_id, "system.events");
+        assert!(disposition.is_default_disabled_new_operation());
+    }
+    for mapping in migration.legacy_mappings() {
+        if let ConsolePolicyMigrationLegacyGrantProjection::Operations(operations) =
+            &mapping.projection
+        {
+            assert!(operations.iter().all(|operation| {
+                !operation_ids.contains(&operation.operation_id().as_str())
+            }));
+        }
+    }
+}
+
+#[test]
 fn ac_010_group_or_operation_mapping_drift_hard_stops() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let registry = compile_core_console_operation_registry(&settings).unwrap();

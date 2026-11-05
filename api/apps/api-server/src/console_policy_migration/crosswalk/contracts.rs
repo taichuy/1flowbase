@@ -7,6 +7,15 @@ use super::{
 // registry operation must be added here with its historic proof or default-disabled reason.
 pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_simple_settings(
+        "system.events",
+        &[
+            "events.catalog.list",
+            "events.definitions.create",
+            "events.definitions.update",
+            "events.runtime.get",
+        ],
+    ),
+    core_simple_settings(
         "system.branding",
         &["system.branding.get", "system.branding.save"],
     ),
@@ -500,6 +509,11 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // Event Center introduces independent authority; no historical feature grant covers it.
+    "events.catalog.list",
+    "events.definitions.create",
+    "events.definitions.update",
+    "events.runtime.get",
     // Bulk and unread changes are configurable; reading an owned message is self-service.
     "notifications.channels.read_all",
     "notifications.messages.unread",

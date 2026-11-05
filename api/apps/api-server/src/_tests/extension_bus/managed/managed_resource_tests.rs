@@ -186,6 +186,7 @@ async fn root_2007_ac_010_lane_budgets_owned_transactions_shutdown() {
         operations: operations.clone(),
         lifecycle_worker: worker,
         communication_worker: crate::communication_runtime::CommunicationWorker::inactive(),
+        event_workflow_worker: tokio::sync::Mutex::new(None),
     });
     let stopping = {
         let shutdown = shutdown.clone();
