@@ -732,3 +732,373 @@ async fn successful_handoff_returns_lease_before_unrelated_close_is_dispatched()
         .invocation_inflight(&next.lease.fence)
         .unwrap());
 }
+
+#[tokio::test]
+async fn independent_native_request_admits_before_predecessor_completes() {
+    let (coordinator, runtime, old_scope, first) = bound_execution([]).await;
+    let old = first.lease.clone();
+    let scope = coordinator.open_connection_scope();
+    let mut input = scope_input(&scope, "model-a");
+    input.native_transport = Some(
+        plugin_framework::provider_contract::ProviderNativeTransport {
+            protocol: "openai_responses".into(),
+            wire_body: serde_json::json!({"model":"model-a","input":[]}),
+            digest: "fixture".into(),
+            size_bytes: 0,
+        },
+    );
+    // Timeout is only a deadlock fence: no predecessor finish or clock advance
+    // occurs until the production admission path has returned a distinct lease.
+    let next = tokio::time::timeout(
+        Duration::from_secs(1),
+        coordinator.prepare_dispatched("runtime-a", &mut input, &context(2_100_000)),
+    )
+    .await
+    .expect("an independent native request must not wait for the predecessor")
+    .unwrap()
+    .unwrap();
+    assert_ne!(next.lease.fence.session_id, old.fence.session_id);
+    assert!(coordinator
+        .registry
+        .lock()
+        .await
+        .invocation_inflight(&old.fence)
+        .unwrap());
+    assert!(
+        runtime.commands().is_empty(),
+        "delivery replacement never cancels execution"
+    );
+    coordinator.close_connection_scope(&old_scope).await;
+    coordinator
+        .finish(first, &successful_output(old.fence.generation.get()))
+        .await
+        .unwrap();
+    assert!(coordinator
+        .registry
+        .lock()
+        .await
+        .invocation_inflight(&next.lease.fence)
+        .unwrap());
+    let generation = next.lease.fence.generation.get();
+    coordinator
+        .finish(next, &successful_output(generation))
+        .await
+        .unwrap();
+    assert!(runtime.commands().is_empty());
+}
+
+fn full_native_input(scope: &TransportConnectionScope) -> ProviderInvocationInput {
+    let mut input = scope_input(scope, "model-a");
+    input.native_transport = Some(
+        plugin_framework::provider_contract::ProviderNativeTransport {
+            protocol: "openai_responses".into(),
+            wire_body: serde_json::json!({"model":"model-a", "input":[]}),
+            digest: "fixture".into(),
+            size_bytes: 0,
+        },
+    );
+    input
+}
+
+async fn finish_with_cursor(
+    coordinator: &Coordinator,
+    prepared: PreparedTransportInvocation,
+    cursor: &str,
+) {
+    let mut output = successful_output(prepared.lease.fence.generation.get()).unwrap();
+    output.result.response_id = Some(cursor.into());
+    coordinator.finish(prepared, &Ok(output)).await.unwrap();
+}
+
+async fn admit_full(
+    coordinator: &Coordinator,
+    scope: &TransportConnectionScope,
+) -> PreparedTransportInvocation {
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        coordinator.prepare_dispatched(
+            "runtime-a",
+            &mut full_native_input(scope),
+            &context(2_100_000),
+        ),
+    )
+    .await
+    .expect("independent admission must not wait")
+    .unwrap()
+    .unwrap()
+}
+
+#[tokio::test]
+async fn independent_scope_affinity_survives_finish_and_rejects_concurrent_full_requests() {
+    let (coordinator, runtime, _old_scope, first) = bound_execution([]).await;
+    let scope = coordinator.open_connection_scope();
+    let branch = admit_full(&coordinator, &scope).await;
+    let fence = branch.lease.fence.clone();
+    let error = coordinator
+        .prepare_dispatched(
+            "runtime-a",
+            &mut full_native_input(&scope),
+            &context(2_100_000),
+        )
+        .await
+        .err()
+        .unwrap();
+    assert!(reason(error).contains("transport_session_busy"));
+    finish_with_cursor(&coordinator, branch, "branch-first").await;
+    assert!(scope.state.lock().unwrap().leases.is_empty());
+    let next = admit_full(&coordinator, &scope).await;
+    assert_eq!(
+        next.lease.fence, fence,
+        "scope affinity outlives each invocation attachment"
+    );
+    finish_with_cursor(&coordinator, next, "branch-second").await;
+    assert!(coordinator
+        .registry
+        .lock()
+        .await
+        .invocation_inflight(&first.lease.fence)
+        .unwrap());
+    assert!(runtime.commands().is_empty());
+}
+
+#[tokio::test]
+async fn branch_response_cursor_continues_on_same_and_reconnected_scopes() {
+    for semantic in [false, true] {
+        let (coordinator, runtime, _old_scope, first) = bound_execution([]).await;
+        let scope = coordinator.open_connection_scope();
+        let branch = admit_full(&coordinator, &scope).await;
+        let fence = branch.lease.fence.clone();
+        finish_with_cursor(&coordinator, branch, "branch-cursor").await;
+        for reconnect in [false, true] {
+            let delivery = if reconnect {
+                coordinator.close_connection_scope(&scope).await;
+                assert!(scope.state.lock().unwrap().affinity.is_empty());
+                coordinator.open_connection_scope()
+            } else {
+                scope.clone()
+            };
+            let mut input = full_native_input(&delivery);
+            if semantic {
+                input.native_transport = None;
+                input.previous_response_id = Some("branch-cursor".into());
+            } else {
+                input.native_transport.as_mut().unwrap().wire_body["previous_response_id"] =
+                    serde_json::json!("branch-cursor");
+            }
+            let next = tokio::time::timeout(
+                Duration::from_secs(1),
+                coordinator.prepare_dispatched("runtime-a", &mut input, &context(2_100_000)),
+            )
+            .await
+            .expect("known branch cursor must not wait for base")
+            .unwrap()
+            .unwrap();
+            assert_eq!(next.lease.fence, fence);
+            finish_with_cursor(&coordinator, next, "branch-cursor").await;
+        }
+        assert!(coordinator
+            .registry
+            .lock()
+            .await
+            .invocation_inflight(&first.lease.fence)
+            .unwrap());
+        assert!(runtime.commands().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn bound_cursor_waits_for_actual_owner_instead_of_scope_branch() {
+    let (coordinator, runtime, old_scope, first) = bound_execution([]).await;
+    let scope = coordinator.open_connection_scope();
+    let branch = admit_full(&coordinator, &scope).await;
+    let branch_fence = branch.lease.fence.clone();
+    finish_with_cursor(&coordinator, branch, "branch-cursor").await;
+    let base_fence = first.lease.fence.clone();
+    finish_with_cursor(&coordinator, first, "base-cursor").await;
+    let base = coordinator
+        .prepare_dispatched(
+            "runtime-a",
+            &mut scope_input(&old_scope, "model-a"),
+            &context(2_100_000),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let branch = admit_full(&coordinator, &scope).await;
+    let mut input = full_native_input(&scope);
+    input.native_transport.as_mut().unwrap().wire_body["previous_response_id"] =
+        serde_json::json!("base-cursor");
+    let ctx = context(2_100_000);
+    let mut waiting = Box::pin(coordinator.prepare_dispatched("runtime-a", &mut input, &ctx));
+    assert_pending(waiting.as_mut()).await;
+    finish_with_cursor(&coordinator, base, "base-next").await;
+    let next = tokio::time::timeout(Duration::from_secs(1), waiting)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(next.lease.fence, base_fence);
+    assert!(coordinator
+        .registry
+        .lock()
+        .await
+        .invocation_inflight(&branch_fence)
+        .unwrap());
+    finish_with_cursor(&coordinator, next, "base-final").await;
+    finish_with_cursor(&coordinator, branch, "branch-final").await;
+    let branch_again = admit_full(&coordinator, &scope).await;
+    assert_eq!(branch_again.lease.fence, branch_fence);
+    finish_with_cursor(&coordinator, branch_again, "branch-after-owner-override").await;
+    assert!(runtime.commands().is_empty());
+}
+
+#[tokio::test]
+async fn unknown_and_conflicting_cursors_preserve_base_handoff() {
+    for (cursor, semantic) in [
+        (serde_json::json!("unknown"), None),
+        (serde_json::json!(17), None),
+        (
+            serde_json::json!("known-branch"),
+            Some("conflicting-semantic"),
+        ),
+    ] {
+        let (coordinator, runtime, _old_scope, first) = bound_execution([]).await;
+        let scope = coordinator.open_connection_scope();
+        let branch = admit_full(&coordinator, &scope).await;
+        let branch_fence = branch.lease.fence.clone();
+        finish_with_cursor(&coordinator, branch, "known-branch").await;
+        let mut input = full_native_input(&scope);
+        input.native_transport.as_mut().unwrap().wire_body["previous_response_id"] = cursor;
+        input.previous_response_id = semantic.map(str::to_string);
+        let ctx = context(2_100_000);
+        let mut waiting = Box::pin(coordinator.prepare_dispatched("runtime-a", &mut input, &ctx));
+        assert_pending(waiting.as_mut()).await;
+        let base_fence = first.lease.fence.clone();
+        finish_with_cursor(&coordinator, first, "base-response").await;
+        let next = tokio::time::timeout(Duration::from_secs(1), waiting)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(next.lease.fence, base_fence);
+        assert_ne!(next.lease.fence, branch_fence);
+        finish_with_cursor(&coordinator, next, "base-next").await;
+        assert!(runtime.commands().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn cursor_bindings_are_isolated_by_actor_workspace_provider_and_model() {
+    let (coordinator, _, _old_scope, _first) = bound_execution([]).await;
+    let scope = coordinator.open_connection_scope();
+    let branch = admit_full(&coordinator, &scope).await;
+    let branch_fence = branch.lease.fence.clone();
+    finish_with_cursor(&coordinator, branch, "same-cursor").await;
+    for dimension in 0..4 {
+        let delivery = coordinator.open_connection_scope();
+        let mut input = full_native_input(&delivery);
+        input.native_transport.as_mut().unwrap().wire_body["previous_response_id"] =
+            serde_json::json!("same-cursor");
+        let mut ctx = context(2_100_000);
+        match dimension {
+            0 => ctx.actor_id = Some(uuid::Uuid::now_v7()),
+            1 => ctx.workspace_id = uuid::Uuid::now_v7(),
+            2 => input.provider_instance_id = "different-provider".into(),
+            _ => input.model = "different-model".into(),
+        }
+        let next = tokio::time::timeout(
+            Duration::from_secs(1),
+            coordinator.prepare_dispatched("runtime-a", &mut input, &ctx),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        assert_ne!(next.lease.fence.session_id, branch_fence.session_id);
+        let expected = hash_identity(&[
+            "shared-thread",
+            &ctx.workspace_id.to_string(),
+            &ctx.actor_id
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "anonymous".into()),
+            &input.provider_instance_id,
+            &input.protocol,
+            &input.model,
+        ]);
+        assert_eq!(next.lease.fence.session_id.as_str(), expected);
+        finish_with_cursor(&coordinator, next, "same-cursor").await;
+    }
+}
+
+#[tokio::test]
+async fn native_branch_cannot_bypass_target_change_or_incomplete_payload() {
+    let (coordinator, _, old_scope, first) = bound_execution([]).await;
+    let scope = coordinator.open_connection_scope();
+    let error = coordinator
+        .prepare_dispatched(
+            "runtime-b",
+            &mut full_native_input(&scope),
+            &context(2_100_000),
+        )
+        .await
+        .err()
+        .unwrap();
+    assert!(reason(error).contains("transport_session_busy"));
+    let error = coordinator
+        .prepare_dispatched(
+            "runtime-a",
+            &mut full_native_input(&old_scope),
+            &context(2_100_000),
+        )
+        .await
+        .err()
+        .unwrap();
+    assert!(reason(error).contains("transport_session_busy"));
+    let mut input = full_native_input(&scope);
+    input.native_transport.as_mut().unwrap().wire_body = serde_json::json!({"model":"model-a"});
+    let ctx = context(2_100_000);
+    let mut waiting = Box::pin(coordinator.prepare_dispatched("runtime-a", &mut input, &ctx));
+    assert_pending(waiting.as_mut()).await;
+    let base_fence = first.lease.fence.clone();
+    finish_with_cursor(&coordinator, first, "base").await;
+    let next = tokio::time::timeout(Duration::from_secs(1), waiting)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(next.lease.fence, base_fence);
+    finish_with_cursor(&coordinator, next, "base-next").await;
+}
+
+#[tokio::test]
+async fn cursor_bindings_follow_registry_sessions_and_tombstones() {
+    let runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(true)]));
+    let clock = FakeClock::new(2_000_000);
+    let coordinator =
+        Coordinator::new_with_clock(runtime, transport_config(), clock.clone()).unwrap();
+    let scope = coordinator.open_connection_scope();
+    let first = admit_full(&coordinator, &scope).await;
+    let fence = first.lease.fence.clone();
+    finish_with_cursor(&coordinator, first, "retained-cursor").await;
+    assert_eq!(coordinator.affinity.lock().unwrap().cursors.len(), 1);
+    coordinator
+        .registry
+        .lock()
+        .await
+        .terminate(&fence, TerminationKind::OwnerClosed)
+        .unwrap();
+    coordinator.dispatch_pending_events().await;
+    assert_eq!(
+        coordinator.affinity.lock().unwrap().cursors.len(),
+        1,
+        "live tombstone retains cursor owner"
+    );
+    clock.advance(transport_config().tombstone_ttl + Duration::from_secs(1));
+    coordinator.maintain_and_dispatch().await;
+    let snapshot = coordinator.safe_snapshot().await;
+    assert!(snapshot.sessions.is_empty());
+    assert!(snapshot.tombstones.is_empty());
+    assert!(coordinator.affinity.lock().unwrap().cursors.is_empty());
+    assert!(coordinator.affinity.lock().unwrap().bases.is_empty());
+    assert!(scope.state.lock().unwrap().affinity.is_empty());
+}

@@ -35,6 +35,8 @@ use super::ProviderRuntimeExecutionContext;
 
 #[path = "transport_session_lifecycle/admission.rs"]
 mod admission;
+#[path = "transport_session_lifecycle/affinity.rs"]
+mod affinity;
 
 const CONTROL_DEADLINE: Duration = Duration::from_secs(5);
 const CONTROL_OVERALL_DEADLINE: Duration = Duration::from_secs(30);
@@ -100,6 +102,7 @@ impl Drop for TransportConnectionScopeGuard {
 struct TransportConnectionBindings {
     closed: bool,
     leases: BTreeMap<String, InvocationLease>,
+    affinity: BTreeMap<String, TransportSessionId>,
 }
 
 impl TransportConnectionScope {
@@ -112,6 +115,7 @@ impl TransportConnectionScope {
             state: StdMutex::new(TransportConnectionBindings {
                 closed: false,
                 leases: BTreeMap::from([(lease.fence.session_id.as_str().into(), lease)]),
+                affinity: BTreeMap::new(),
             }),
         })
     }
@@ -246,6 +250,7 @@ pub(crate) struct TransportSessionCoordinator<C = SystemTransportClock> {
     dispatcher: Mutex<()>,
     pending_commands: StdMutex<VecDeque<LifecycleCommand>>,
     connection_scopes: StdMutex<BTreeMap<String, Weak<TransportConnectionScope>>>,
+    affinity: StdMutex<affinity::TransportAffinity>,
 }
 
 impl TransportSessionCoordinator<SystemTransportClock> {
@@ -280,6 +285,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             dispatcher: Mutex::new(()),
             pending_commands: StdMutex::new(VecDeque::new()),
             connection_scopes: StdMutex::new(BTreeMap::new()),
+            affinity: StdMutex::new(affinity::TransportAffinity::default()),
         })
     }
 
@@ -343,6 +349,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         let leases = {
             let mut state = scope.state.lock().expect("transport connection bindings");
             state.closed = true;
+            state.affinity.clear();
             std::mem::take(&mut state.leases)
         };
         self.connection_scopes
@@ -538,6 +545,21 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         registry
             .finish_invocation(&prepared.lease, completion)
             .map_err(map_registry_use_error)?;
+        // Cursor ownership must become visible under the same registry lock as
+        // completion. Admission cannot observe an idle slot without its cursor.
+        if let Ok(output) = result {
+            if let Some(cursor) = output
+                .result
+                .response_id
+                .as_deref()
+                .filter(|id| !id.is_empty())
+            {
+                self.affinity
+                    .lock()
+                    .expect("transport affinity")
+                    .bind_cursor(&prepared.lease.fence.session_id, cursor);
+            }
+        }
         // A logical lifetime may have elapsed while this call was in flight.
         // Close its generation only after the invocation has settled.
         registry.maintain();
