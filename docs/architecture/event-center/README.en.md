@@ -37,10 +37,16 @@ Publication reports admission per subscription. Zero targets is valid but does n
 | `bus_limits.max_waiters` | Waiting operations |
 | `bus_limits.max_topics` / `max_consumers` | Queue generations and consumer owners |
 | `bus_limits.max_topic_name_bytes` | Bytes retained by queue directory names |
-| `observation_max_bytes` | Recent observation metadata bytes |
+| `observation_max_bytes` | Shared charge for recent activity and workspace accounting metadata |
 | `observation_ttl_ms` | Observation window in milliseconds |
 
-Set values for the deployment's resources. Small fixture budgets exercise boundary conditions and are not product limits. Snapshots identify the host instance; a local value is not a multi-host total. Observations retain metadata without copying event payloads.
+Set values for the deployment's resources. Small fixture budgets exercise boundary conditions and are not product limits. Snapshots identify the host instance; a local value is not a multi-host total. Observations retain metadata without copying event payloads. `observation_bytes` reports this workspace's currently visible activity charge (serialized JSON plus entry metadata) and available accounting ledger charge. The shared host budget also bounds accounting metadata; these charges are not process RSS.
+
+`observation_loss` exposes workspace-only `expired`, `evicted` and `oversize_dropped` counts. `expired` means an activity reached its TTL; `evicted` means it was removed to make room before TTL; `oversize_dropped` means an incoming activity could not fit alongside its own accounting ledger. These count observation records, not unique events or business delivery losses. Counts saturate at the unsigned 64-bit maximum.
+
+Accounting covers a finite window starting at `window_started_at_unix_ms`, with `window_duration_ms` equal to twice the configured activity TTL (saturating at the unsigned 64-bit millisecond maximum). The extra TTL lets an otherwise quiet workspace see expiration at the exact activity TTL boundary. Snapshot reads project expiration without changing storage or consuming deliveries; a subsequent write materializes the same expiration once. Activity may originate before the current accounting window; its loss is counted if the loss occurs within that window.
+
+At the accounting window's end, coverage becomes unavailable until the next record starts a new window. Budget pressure can also evict a workspace's accounting ledger. In either case `accounting_available` is false, the start is null, and zero counters mean missing coverage, not proof of no loss. A new window never inherits prior counts. A zero TTL or a budget smaller than one ledger cannot offer accounting coverage. Stale storage is reclaimed on the next write; retained storage remains bounded even without writes. Ledgers are never an unbounded lifetime workspace map, and another workspace's losses are never added to the caller's counters. Restart can lose both activity and counters.
 
 ## Ownership and authorization
 

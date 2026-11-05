@@ -114,6 +114,17 @@ pub struct EventRuntimeQueueSnapshot {
     pub consumed: u64,
     pub admission_rejected: u64,
 }
+/// Workspace-only, finite observation accounting. Missing coverage is not a true zero.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventObservationLossSnapshot {
+    pub accounting_available: bool,
+    pub window_started_at_unix_ms: Option<i64>,
+    /// Twice the configured activity TTL; no counters are lifetime totals.
+    pub window_duration_ms: u64,
+    pub expired: u64,
+    pub evicted: u64,
+    pub oversize_dropped: u64,
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventRuntimeSnapshot {
     pub instance_id: Uuid,
@@ -123,7 +134,9 @@ pub struct EventRuntimeSnapshot {
     pub activity: Vec<EventRuntimeActivity>,
     /// Rejections retained within this workspace's bounded observation window.
     pub admission_rejected: u64,
+    /// Workspace activity and accounting metadata charge; not process RSS.
     pub observation_bytes: u64,
+    pub observation_loss: EventObservationLossSnapshot,
     pub observation_max_bytes: u64,
     pub observation_ttl_ms: u64,
 }

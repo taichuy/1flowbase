@@ -37,10 +37,16 @@
 | `bus_limits.max_waiters` | 等待者预算 |
 | `bus_limits.max_topics` / `max_consumers` | 活动队列与消费 owner 预算 |
 | `bus_limits.max_topic_name_bytes` | 队列目录名称的字节预算 |
-| `observation_max_bytes` | 近期动态元数据的字节预算 |
+| `observation_max_bytes` | 近期动态与 workspace 计数账本元数据共用的字节预算 |
 | `observation_ttl_ms` | 动态保留窗口，毫秒 |
 
-根据部署资源明确填写这些值。测试 fixture 中的小预算只用于制造边界，不是产品容量限制。当前视图包含宿主实例身份；不能把一个节点的值称为多节点总量。动态只保留元数据，不复制事件正文。
+根据部署资源明确填写这些值。测试 fixture 中的小预算只用于制造边界，不是产品容量限制。当前视图包含宿主实例身份；不能把一个节点的值称为多节点总量。动态只保留元数据，不复制事件正文。`observation_bytes` 是本 workspace 当前可见动态的费用（序列化 JSON 加条目元数据）与可用计数账本的费用之和；共享宿主预算也约束计数元数据，这些费用不等同于进程 RSS。
+
+`observation_loss` 按 workspace 提供 `expired`（动态达到 TTL）、`evicted`（未到 TTL 因预算被移出）与 `oversize_dropped`（新动态连同其自身计数账本无法放入预算）数量。计数对象是观察记录，不是去重事件数或业务投递丢失数；达到无符号 64 位上限后饱和。
+
+计数覆盖从 `window_started_at_unix_ms` 开始的有限窗口，`window_duration_ms` 为动态 TTL 的两倍（毫秒值在无符号 64 位上限饱和）。多出的一个 TTL 让没有新动态的 workspace 仍能在动态刚过期时看到过期数。快照只读投影过期，不修改存储或取走投递；后续写入把同一过期落实一次，不重复计数。动态可以早于当前计数窗口，只要丢失发生在当前窗口内就纳入计数。
+
+计数窗口结束后，直到下一条记录开启新窗口前统计不可用；预算压力也可能移出 workspace 的计数账本。两种情况下 `accounting_available` 为 false，窗口开始值为 null，零计数表示覆盖缺失，不能解释为没有丢失。新窗口不继承旧计数。TTL 为零或预算小于一个计数账本时无法提供统计覆盖。后续写入回收过期存储，没有新写入时保留存储也仍有界。计数账本不是无界的 workspace 生命周期映射，其他 workspace 的丢失数不会计入当前调用者；重启允许动态与计数一起丢失。
 
 ## 所有权与权限
 
