@@ -80,7 +80,19 @@ export function EventsPage() {
       ellipsis: true,
       mobileRole: 'title',
       render: (_, row) => (
-        <Button type="link" title={row.name} onClick={() => open(row)}>
+        <Button
+          type="link"
+          title={row.name}
+          styles={{
+            root: { maxWidth: '100%' },
+            content: {
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }
+          }}
+          onClick={() => open(row)}
+        >
           {row.name}
         </Button>
       )
