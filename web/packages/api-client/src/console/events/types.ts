@@ -75,6 +75,14 @@ export interface EventWorkflowStatus {
   last_delivery: string | null;
   last_delivery_reason: string | null;
 }
+export interface EventObservationLossSnapshot {
+  accounting_available: boolean;
+  window_started_at_unix_ms: number | null;
+  window_duration_ms: number;
+  expired: number;
+  evicted: number;
+  oversize_dropped: number;
+}
 export interface EventRuntimeSnapshot {
   instance_id: string;
   configured: boolean;
@@ -87,4 +95,5 @@ export interface EventRuntimeSnapshot {
   observation_bytes: number;
   observation_max_bytes: number;
   observation_ttl_ms: number;
+  observation_loss: EventObservationLossSnapshot;
 }

@@ -85,6 +85,14 @@ describe('event center wire contract', () => {
       observation_bytes: 0,
       observation_max_bytes: 0,
       observation_ttl_ms: 0,
+      observation_loss: {
+        accounting_available: false,
+        window_started_at_unix_ms: null,
+        window_duration_ms: 0,
+        expired: 0,
+        evicted: 0,
+        oversize_dropped: 0
+      },
       workflow_subscriptions: [],
       workflow_refresh_error: null,
       queues: [],

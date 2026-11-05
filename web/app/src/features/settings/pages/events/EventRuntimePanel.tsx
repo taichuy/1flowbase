@@ -232,8 +232,54 @@ export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
                 key: 'observation_bytes',
                 label: t('observation_bytes'),
                 children: `${snapshot.observation_bytes} / ${snapshot.observation_max_bytes}`
-              }
+              },
+              ...(snapshot.observation_loss.accounting_available
+                ? [
+                    {
+                      key: 'window_started_at_unix_ms',
+                      label: t('loss_window_start'),
+                      children:
+                        snapshot.observation_loss.window_started_at_unix_ms ===
+                        null
+                          ? '—'
+                          : new Date(
+                              snapshot.observation_loss
+                                .window_started_at_unix_ms
+                            ).toLocaleString()
+                    },
+                    {
+                      key: 'window_duration_ms',
+                      label: t('loss_window_duration'),
+                      children: t('window_ms', {
+                        count: snapshot.observation_loss.window_duration_ms
+                      })
+                    },
+                    {
+                      key: 'expired',
+                      label: t('loss_expired'),
+                      children: snapshot.observation_loss.expired
+                    },
+                    {
+                      key: 'evicted',
+                      label: t('loss_evicted'),
+                      children: snapshot.observation_loss.evicted
+                    },
+                    {
+                      key: 'oversize_dropped',
+                      label: t('loss_oversize_dropped'),
+                      children: snapshot.observation_loss.oversize_dropped
+                    }
+                  ]
+                : [])
             ]}
+          />
+          <Alert
+            type="info"
+            title={
+              snapshot.observation_loss.accounting_available
+                ? t('loss_window_help')
+                : t('loss_unavailable')
+            }
           />
         </>
       )}

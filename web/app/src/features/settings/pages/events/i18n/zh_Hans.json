@@ -104,5 +104,12 @@
   "reason_not_authenticated": "激活订阅需要身份认证。",
   "reason_plugin_unavailable": "所需插件不可用。",
   "reason_component_export": "所需组件导出无效。",
-  "reason_state_transition": "当前状态不允许激活订阅。"
+  "reason_state_transition": "当前状态不允许激活订阅。",
+  "loss_window_start": "损失计数起点",
+  "loss_window_duration": "损失计数窗口",
+  "loss_expired": "窗口内过期记录",
+  "loss_evicted": "窗口内预算淘汰记录",
+  "loss_oversize_dropped": "窗口内超大记录丢弃",
+  "loss_window_help": "仅统计本工作区当前计数窗口内的观察记录损失，不代表事件消费失败；窗口结束或计数记录被淘汰后重新计数。",
+  "loss_unavailable": "当前没有可用的观察损失计数窗口，不能据此认定没有记录丢失。"
 }

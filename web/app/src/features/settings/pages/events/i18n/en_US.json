@@ -104,5 +104,12 @@
   "reason_not_authenticated": "Authentication is required to activate the subscription.",
   "reason_plugin_unavailable": "A required plugin is unavailable.",
   "reason_component_export": "A required component export is invalid.",
-  "reason_state_transition": "The current state prevents subscription activation."
+  "reason_state_transition": "The current state prevents subscription activation.",
+  "loss_window_start": "Loss accounting started",
+  "loss_window_duration": "Loss accounting window",
+  "loss_expired": "Records expired in window",
+  "loss_evicted": "Records evicted in window",
+  "loss_oversize_dropped": "Oversized records dropped in window",
+  "loss_window_help": "Counts cover observation records lost in this workspace during the current accounting window, not failed event consumption. They restart when the window ends or its accounting record is evicted.",
+  "loss_unavailable": "No observation loss accounting window is available. This does not establish that no records were lost."
 }

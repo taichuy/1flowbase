@@ -1,7 +1,7 @@
 use super::{observation::Observation, runtime_types::*, subscription::EventCenterSubscription};
 use control_plane_contracts::{
-    ports::{EventBus, EventBusError},
     ControlPlaneContractError as Error,
+    ports::{EventBus, EventBusError},
 };
 use domain::event_center::{EventDefinitionRecord, EventTriggerPhase};
 use serde_json::Value;
@@ -259,7 +259,8 @@ impl EventCenterRuntime {
 
     pub fn snapshot(&self, workspace_id: Uuid) -> EventRuntimeSnapshot {
         let state = self.inner.lock();
-        let (activity, observation_bytes) = state.observation.snapshot(workspace_id);
+        let (activity, observation_bytes, observation_loss) =
+            state.observation.snapshot(workspace_id);
         let queues = state
             .memberships
             .values()
@@ -294,6 +295,7 @@ impl EventCenterRuntime {
                 .count() as u64,
             activity,
             observation_bytes,
+            observation_loss,
             observation_max_bytes: self
                 .inner
                 .policy

@@ -72,6 +72,14 @@ const snapshot: EventRuntimeSnapshot = {
   observation_bytes: 300,
   observation_max_bytes: 2000,
   observation_ttl_ms: 60000,
+  observation_loss: {
+    accounting_available: true,
+    window_started_at_unix_ms: 1793894400000,
+    window_duration_ms: 120000,
+    expired: 11,
+    evicted: 8,
+    oversize_dropped: 6
+  },
   workflow_subscriptions: [],
   workflow_refresh_error: null,
   queues: [
@@ -250,6 +258,55 @@ describe('event center configuration and observations', () => {
     expect(
       await screen.findByRole('button', { name: 'Create event' })
     ).toBeEnabled();
+  });
+  test('shows scoped observation loss counts with their coverage window', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
+    expect(
+      await screen.findByText('Records expired in window')
+    ).toBeInTheDocument();
+    const descriptions = screen
+      .getByText('Records expired in window')
+      .closest('tr');
+    expect(descriptions).not.toBeNull();
+    expect(
+      within(descriptions as HTMLElement).getByText('11')
+    ).toBeInTheDocument();
+    expect(screen.getByText('Records evicted in window')).toBeInTheDocument();
+    expect(
+      screen.getByText('Oversized records dropped in window')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Counts cover observation records lost in this workspace/
+      )
+    ).toBeInTheDocument();
+  });
+  test('unavailable accounting is shown explicitly instead of zero loss', async () => {
+    api.getEventRuntime.mockResolvedValue({
+      ...snapshot,
+      observation_loss: {
+        ...snapshot.observation_loss,
+        accounting_available: false,
+        window_started_at_unix_ms: null,
+        expired: 0,
+        evicted: 0,
+        oversize_dropped: 0
+      }
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
+    expect(
+      await screen.findByText(
+        /No observation loss accounting window is available/
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Records expired in window')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Loss accounting started')
+    ).not.toBeInTheDocument();
   });
   test('reports inactive workflow subscriptions without interpreting consumer execution as consumption', async () => {
     api.getEventRuntime.mockResolvedValue({
