@@ -1,4 +1,5 @@
 {
+  "events": { "title": "事件中心" },
   "auto": {
     "ui_management": "UI 管理",
     "translation_catalog_title": "多语言",

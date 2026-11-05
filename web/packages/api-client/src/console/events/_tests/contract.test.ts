@@ -1,0 +1,94 @@
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  createEventDefinition,
+  getEventRuntime,
+  listEventCatalog,
+  updateEventDefinition
+} from '../index';
+
+afterEach(() => vi.unstubAllGlobals());
+describe('event center wire contract', () => {
+  test('unwraps the actual success envelope without field aliases', async () => {
+    const data = [
+      {
+        id: null,
+        contract_id: 'core.ready',
+        supported_phases: [],
+        origin: 'core'
+      }
+    ];
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ data, meta: null }), { status: 200 })
+      );
+    vi.stubGlobal('fetch', fetch);
+    await expect(listEventCatalog('https://example.test')).resolves.toEqual(
+      data
+    );
+    expect(fetch.mock.calls[0][0]).toBe(
+      'https://example.test/api/console/events'
+    );
+  });
+  test('posts a persistent definition and sends only mutable fields to its update route', async () => {
+    const fetch = vi
+      .fn()
+      .mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({ data: { id: 'definition' }, meta: null }),
+            { status: 200 }
+          )
+      );
+    vi.stubGlobal('fetch', fetch);
+    const input = {
+      contract_id: 'custom.order',
+      contract_version: '1',
+      name: 'Order',
+      description: '',
+      enabled: false,
+      payload_schema: {
+        type: 'object',
+        properties: { amount: { type: 'number', minimum: 1 } },
+        required: ['amount']
+      }
+    };
+    await createEventDefinition(input, 'csrf', 'https://example.test');
+    const { contract_id: _id, contract_version: _version, ...mutable } = input;
+    await updateEventDefinition(
+      'definition/a',
+      mutable,
+      'csrf',
+      'https://example.test'
+    );
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual(input);
+    expect(fetch.mock.calls[0][1].method).toBe('POST');
+    expect(fetch.mock.calls[1][0]).toBe(
+      'https://example.test/api/console/events/definition%2Fa'
+    );
+    expect(fetch.mock.calls[1][1].method).toBe('PUT');
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual(mutable);
+    expect(fetch.mock.calls[1][1].headers['x-csrf-token']).toBe('csrf');
+  });
+  test('runtime observation uses a read-only request', async () => {
+    const data = {
+      instance_id: 'instance',
+      queues: [],
+      activity: [],
+      configured: false
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ data, meta: null }), { status: 200 })
+      );
+    vi.stubGlobal('fetch', fetch);
+    await expect(getEventRuntime('https://example.test')).resolves.toEqual(
+      data
+    );
+    expect(fetch.mock.calls[0][0]).toBe(
+      'https://example.test/api/console/events/runtime'
+    );
+    expect(fetch.mock.calls[0][1].method).toBe('GET');
+  });
+});

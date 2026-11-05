@@ -1,4 +1,5 @@
 {
+  "events": { "title": "Event center" },
   "auto": {
     "ui_management": "UI management",
     "translation_catalog_title": "Languages",

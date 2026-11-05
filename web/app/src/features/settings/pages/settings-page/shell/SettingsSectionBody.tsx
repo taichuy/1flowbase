@@ -15,6 +15,12 @@ const SystemSettingsPanel = lazy(() =>
   }))
 );
 
+const EventsPage = lazy(() =>
+  import('../../events/EventsPage').then((module) => ({
+    default: module.EventsPage
+  }))
+);
+
 const NotificationsPage = lazy(() =>
   import('../../notifications/NotificationsPage').then((module) => ({
     default: module.NotificationsPage
@@ -159,6 +165,12 @@ export function SettingsSectionBody({
       return (
         <SettingsSectionBoundary>
           <SystemSettingsPanel />
+        </SettingsSectionBoundary>
+      );
+    case 'events':
+      return (
+        <SettingsSectionBoundary>
+          <EventsPage />
         </SettingsSectionBoundary>
       );
     case 'communications':

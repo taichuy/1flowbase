@@ -1,6 +1,7 @@
 import type { SectionNavItem } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 
 export type SettingsSectionKey =
+  | 'events'
   | 'communications'
   | 'docs'
   | 'api-key-authentication'
@@ -56,6 +57,7 @@ interface ConsoleNavigationLike {
 }
 
 const settingsSectionKeys = new Set<SettingsSectionKey>([
+  'events',
   'communications',
   'docs',
   'api-key-authentication',
@@ -217,5 +219,6 @@ export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
     key: 'roles',
     label_key: 'auto.permission_management',
     to: '/settings/roles'
-  }
+  },
+  { key: 'events', label_key: 'events.title', to: '/settings/events' }
 ];

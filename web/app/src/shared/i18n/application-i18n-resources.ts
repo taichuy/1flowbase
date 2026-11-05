@@ -1,3 +1,5 @@
+import settingsEventsZhHans from '../../features/settings/pages/events/i18n/zh_Hans.json';
+import settingsEventsEnUS from '../../features/settings/pages/events/i18n/en_US.json';
 import notificationsZhHans from '../../features/notifications/i18n/zh_Hans.json';
 import notificationsEnUS from '../../features/notifications/i18n/en_US.json';
 import settingsSystemTemplatesZhHans from '../../features/settings/components/system-templates/i18n/zh_Hans.json';
@@ -54,6 +56,7 @@ export const applicationTranslationResources = {
     settingsMcpManagement: settingsMcpManagementZhHans,
     settingsUiManagement: settingsUiManagementZhHans,
     settingsBilling: settingsBillingZhHans,
+    settingsEvents: settingsEventsZhHans,
     settings: settingsZhHans,
     shared: sharedZhHans,
     sharedUi: sharedUiZhHans,
@@ -75,6 +78,7 @@ export const applicationTranslationResources = {
     settingsMcpManagement: settingsMcpManagementEnUS,
     settingsUiManagement: settingsUiManagementEnUS,
     settingsBilling: settingsBillingEnUS,
+    settingsEvents: settingsEventsEnUS,
     settings: settingsEnUS,
     shared: sharedEnUS,
     sharedUi: sharedUiEnUS,

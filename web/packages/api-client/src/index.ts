@@ -52,3 +52,5 @@ export * from './console/managed-services';
 export * from './console/managed-service-stream';
 
 export * from './console/notifications';
+
+export * from './console/events';
