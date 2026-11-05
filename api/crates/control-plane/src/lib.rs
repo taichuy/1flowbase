@@ -98,3 +98,5 @@ pub mod notifications;
 /// Offline Responses history verification and replacement proofs.
 #[cfg(feature = "responses-history-migration")]
 pub use application_public_api::compat::openai::history::migration as responses_history_migration;
+
+pub mod event_center;

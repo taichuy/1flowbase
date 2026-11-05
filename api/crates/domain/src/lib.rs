@@ -245,3 +245,6 @@ pub use client_collector::*;
 
 pub mod notifications;
 pub use notifications::*;
+
+pub mod event_center;
+pub use event_center::*;

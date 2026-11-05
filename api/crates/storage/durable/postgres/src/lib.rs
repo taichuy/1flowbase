@@ -122,3 +122,5 @@ mod notification_publication;
 
 #[path = "integration_repositories/communications/mod.rs"]
 mod communications;
+
+pub mod event_center_repository;

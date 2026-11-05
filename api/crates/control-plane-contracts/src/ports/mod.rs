@@ -111,3 +111,7 @@ pub use communications::*;
 #[path = "integration_ports/communication_commands.rs"]
 pub mod communication_commands;
 pub use communication_commands::*;
+
+#[path = "resource_ports/event_center.rs"]
+pub mod event_center;
+pub use event_center::*;

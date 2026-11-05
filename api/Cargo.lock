@@ -976,6 +976,7 @@ dependencies = [
  "extension-contracts",
  "flate2",
  "hmac",
+ "jsonschema",
  "observability",
  "orchestration-runtime",
  "plugin-framework",
