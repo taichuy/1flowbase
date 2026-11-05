@@ -727,3 +727,35 @@ fn immediate_admission_byte_budget_is_shared_with_other_topics_and_permit_drop()
     assert_eq!(bus.event_bus_snapshot().waiters, 0);
     assert_eq!(bus.event_bus_snapshot().charged_json_bytes, 0);
 }
+
+#[tokio::test]
+async fn readiness_is_cancel_safe_non_consuming_and_advisory_for_competing_consumers() {
+    let bus = configured(limits());
+    let first = bus.open_consumer("ready").unwrap();
+    let second = bus.open_consumer("ready").unwrap();
+    let mut waiting = Box::pin(first.ready());
+    tokio::select! { biased; _ = &mut waiting => panic!("empty queue must wait"), _ = tokio::task::yield_now() => {} }
+    assert_eq!(bus.event_bus_snapshot().waiters, 1);
+    drop(waiting);
+    assert_eq!(bus.event_bus_snapshot().waiters, 0);
+    send(&bus, "ready", json!(null)).await;
+    assert!(first.ready().await.unwrap());
+    assert!(second.ready().await.unwrap());
+    let before = bus.event_bus_snapshot();
+    assert_eq!(
+        (before.buffered, before.in_flight, before.received),
+        (1, 0, 0)
+    );
+    let (one, two) = tokio::join!(async { first.try_recv().unwrap() }, async {
+        second.try_recv().unwrap()
+    });
+    assert_eq!(usize::from(one.is_some()) + usize::from(two.is_some()), 1);
+    assert_eq!(bus.event_bus_snapshot().received, 1);
+    drop((one, two));
+    let mut waiting = Box::pin(second.ready());
+    tokio::select! { biased; _ = &mut waiting => panic!("race loser must wait"), _ = tokio::task::yield_now() => {} }
+    first.close();
+    assert!(!waiting.await.unwrap());
+    assert_eq!(bus.event_bus_snapshot().waiters, 0);
+    assert!(first.try_recv().unwrap().is_none());
+}

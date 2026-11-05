@@ -29,8 +29,29 @@ impl EventCenterSubscription {
 
     /// Successful queue dequeue is the handoff fact. No business result can undo it.
     pub async fn recv(&self) -> anyhow::Result<Option<EventCenterDelivery>> {
+        while self.ready().await? {
+            if let Some(delivery) = self.try_recv()? {
+                return Ok(Some(delivery));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Advisory, non-consuming readiness; current authorization may be checked after this wait.
+    pub async fn ready(&self) -> anyhow::Result<bool> {
+        Ok(self
+            .consumer
+            .as_ref()
+            .ok_or(EventBusError::Closed)?
+            .ready()
+            .await?)
+    }
+
+    /// Atomic handoff without a suspension point. A competing consumer can win readiness;
+    /// an empty result requires another readiness wait and a fresh validity check.
+    pub fn try_recv(&self) -> anyhow::Result<Option<EventCenterDelivery>> {
         let consumer = self.consumer.as_ref().ok_or(EventBusError::Closed)?;
-        let Some(delivery) = consumer.recv().await? else {
+        let Some(delivery) = consumer.try_recv()? else {
             return Ok(None);
         };
         let signal: EventCenterSignal = serde_json::from_value(delivery.body().clone())

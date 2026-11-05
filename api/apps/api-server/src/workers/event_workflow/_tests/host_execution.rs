@@ -17,11 +17,19 @@ use domain::event_center::{
 use serde_json::json;
 use storage_ephemeral::MemoryEventBus;
 
-#[tokio::test]
-async fn event_worker_executes_published_workflow_and_shutdown_retires_all_memberships() {
+struct Fixture {
+    state: Arc<ApiState>,
+    actor: domain::ActorContext,
+    snapshot: Snapshot,
+    definition: domain::event_center::EventDefinitionRecord,
+    bus: Arc<MemoryEventBus>,
+}
+
+async fn fixture() -> Fixture {
     let (mut state, _) = test_api_state_with_database_url().await;
+    let bus = Arc::new(MemoryEventBus::new());
     Arc::get_mut(&mut state).unwrap().event_center = EventCenterRuntime::new(
-        Arc::new(MemoryEventBus::new()),
+        bus.clone(),
         Some(EventCenterRuntimePolicy {
             bus_limits: EventBusLimits {
                 max_items: 16,
@@ -36,8 +44,6 @@ async fn event_worker_executes_published_workflow_and_shutdown_retires_all_membe
         }),
     )
     .unwrap();
-    // The real serving router holds the dispatch generation used by the runtime MCP factory.
-    let _router = crate::app_with_state_and_config(state.clone(), &test_config());
     let user_id: Uuid = sqlx::query_scalar("select id from users where account='root'")
         .fetch_one(state.store.pool())
         .await
@@ -97,7 +103,7 @@ async fn event_worker_executes_published_workflow_and_shutdown_retires_all_membe
         contract_id: "custom.worker.invoice".into(), contract_version: "1".into(), name: "Invoice".into(), description: String::new(), enabled: true,
         payload_schema: json!({"type":"object","properties":{"invoice":{"type":"string"}},"required":["invoice"]}),
     }).await.unwrap();
-    WorkflowEventTriggerService::new(store)
+    let trigger = WorkflowEventTriggerService::new(store)
         .replace_trigger(
             user_id,
             application.id,
@@ -111,6 +117,31 @@ async fn event_worker_executes_published_workflow_and_shutdown_retires_all_membe
         )
         .await
         .unwrap();
+    Fixture {
+        state,
+        actor,
+        snapshot: Snapshot {
+            trigger,
+            publication,
+        },
+        definition,
+        bus,
+    }
+}
+
+#[tokio::test]
+async fn event_worker_executes_published_workflow_and_shutdown_retires_all_memberships() {
+    let Fixture {
+        state,
+        actor,
+        snapshot,
+        definition,
+        ..
+    } = fixture().await;
+    let application_id = snapshot.trigger.application_id;
+    let publication = snapshot.publication;
+    // The real serving router holds the dispatch generation used by the runtime MCP factory.
+    let _router = crate::app_with_state_and_config(state.clone(), &test_config());
     let statuses = EventWorkflowStatuses::default();
     let (stop, receiver) = watch::channel(false);
     let task = tokio::spawn(run(state.clone(), statuses.clone(), receiver));
@@ -119,7 +150,7 @@ async fn event_worker_executes_published_workflow_and_shutdown_retires_all_membe
             if statuses
                 .snapshot(actor.current_workspace_id)
                 .iter()
-                .any(|row| row.application_id == application.id && row.activation == "active")
+                .any(|row| row.application_id == application_id && row.activation == "active")
             {
                 break;
             }
@@ -138,7 +169,7 @@ async fn event_worker_executes_published_workflow_and_shutdown_retires_all_membe
                 .snapshot(actor.current_workspace_id)
                 .into_iter()
                 .find(|row| {
-                    row.application_id == application.id && row.last_delivery == Some("succeeded")
+                    row.application_id == application_id && row.last_delivery == Some("succeeded")
                 })
             {
                 break row;
@@ -171,4 +202,214 @@ async fn event_worker_executes_published_workflow_and_shutdown_retires_all_membe
         .snapshot(actor.current_workspace_id)
         .queues
         .is_empty());
+}
+
+#[derive(Clone, Copy)]
+enum Invalidation {
+    AuthorDisabled,
+    TriggerChanged,
+    PublicationChanged,
+}
+
+async fn invalidate(fixture: &Fixture, invalidation: Invalidation) {
+    match invalidation {
+        Invalidation::AuthorDisabled => {
+            sqlx::query("update users set status='disabled' where id=$1")
+                .bind(fixture.snapshot.trigger.updated_by)
+                .execute(fixture.state.store.pool())
+                .await
+                .unwrap();
+        }
+        Invalidation::TriggerChanged => {
+            // Keep enabled and the same event identity; even an input-mapping revision
+            // must retire the old receiver rather than reinterpret its queued deliveries.
+            sqlx::query("update workflow_event_triggers set input_mapping='{}'::jsonb where id=$1")
+                .bind(fixture.snapshot.trigger.id)
+                .execute(fixture.state.store.pool())
+                .await
+                .unwrap();
+        }
+        Invalidation::PublicationChanged => {
+            let mut document = fixture.snapshot.publication.document_snapshot.clone();
+            document["graph"]["nodes"][0]["config"]["input_fields"][0]["label"] =
+                json!("Republished invoice");
+            FlowService::new(fixture.state.store.for_actor(fixture.actor.clone()))
+                .save_draft(SaveFlowDraftCommand {
+                    actor_user_id: fixture.actor.user_id,
+                    application_id: fixture.snapshot.trigger.application_id,
+                    document,
+                    change_kind: domain::FlowChangeKind::Logical,
+                    summary: "Change active event publication after queue admission".into(),
+                })
+                .await
+                .unwrap();
+            let current = ApplicationPublicationService::new(
+                fixture.state.store.for_actor(fixture.actor.clone()),
+            )
+            .publish_active_version(PublishApplicationCommand {
+                actor_user_id: fixture.actor.user_id,
+                application_id: fixture.snapshot.trigger.application_id,
+                mapping: ApplicationApiMappingConfig::default_native(),
+                api_enabled: false,
+            })
+            .await
+            .unwrap();
+            // PostgreSQL replaces the active publication row in place. Equality of IDs
+            // alone cannot detect that the current published snapshot has changed.
+            assert_ne!(
+                current.document_snapshot,
+                fixture.snapshot.publication.document_snapshot
+            );
+            assert_ne!(current, fixture.snapshot.publication);
+        }
+    }
+}
+
+async fn rejects_before_handoff(invalidation: Invalidation, idle: bool) {
+    let fixture = fixture().await;
+    let trigger = &fixture.snapshot.trigger;
+    let subscription = Arc::new(
+        fixture
+            .state
+            .event_center
+            .subscribe(
+                EventRuntimeSubscription {
+                    subscription_id: trigger.id,
+                    workspace_id: trigger.workspace_id,
+                    contract_id: trigger.configuration.contract_id.clone(),
+                    contract_version: trigger.configuration.contract_version.clone(),
+                    trigger_phase: trigger.configuration.trigger_phase,
+                    consumer_id: trigger.application_id,
+                },
+                false,
+            )
+            .unwrap(),
+    );
+    // A real consumed observer makes an accidental dequeue visible as both a fact and a
+    // queued observer signal, even when execution refuses to create a workflow run.
+    let observer = fixture
+        .state
+        .event_center
+        .subscribe(
+            EventRuntimeSubscription {
+                subscription_id: Uuid::now_v7(),
+                trigger_phase: EventTriggerPhase::Consumed,
+                consumer_id: Uuid::now_v7(),
+                ..subscription.spec().clone()
+            },
+            false,
+        )
+        .unwrap();
+    let statuses = EventWorkflowStatuses::default();
+    statuses.activation(&fixture.snapshot.trigger, "active", None);
+    let (_stop, receiver) = watch::channel(false);
+    if !idle {
+        fixture
+            .state
+            .event_center
+            .publish(&fixture.definition, json!({"invoice":"queued"}))
+            .unwrap();
+    }
+    if !idle {
+        invalidate(&fixture, invalidation).await;
+    }
+    let task = tokio::spawn(consume(
+        fixture.state.clone(),
+        fixture.snapshot.clone(),
+        subscription.clone(),
+        statuses.clone(),
+        receiver,
+    ));
+    if idle {
+        // Wait until the actual adapter owns a readiness waiter, not a time-based guess.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if control_plane_contracts::ports::EventBus::event_bus_snapshot(
+                    fixture.bus.as_ref(),
+                )
+                .waiters
+                    > 0
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    if idle {
+        invalidate(&fixture, invalidation).await;
+        fixture
+            .state
+            .event_center
+            .publish(&fixture.definition, json!({"invoice":"after-revocation"}))
+            .unwrap();
+    }
+    tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .unwrap()
+        .unwrap();
+    let status = statuses
+        .snapshot(fixture.actor.current_workspace_id)
+        .into_iter()
+        .find(|row| row.application_id == fixture.snapshot.trigger.application_id)
+        .unwrap();
+    assert_eq!(status.activation, "unavailable");
+    let expected = match invalidation {
+        Invalidation::AuthorDisabled => "subscription_author_disabled",
+        Invalidation::TriggerChanged => "trigger_changed",
+        Invalidation::PublicationChanged => "publication_changed",
+    };
+    assert_eq!(status.reason.as_deref(), Some(expected));
+    assert!(status.last_run_id.is_none());
+    let snapshot = fixture
+        .state
+        .event_center
+        .snapshot(fixture.actor.current_workspace_id);
+    let original = snapshot
+        .queues
+        .iter()
+        .find(|queue| queue.subscription_id == subscription.spec().subscription_id)
+        .unwrap();
+    assert_eq!(
+        (original.buffered, original.consumed, original.in_flight),
+        (1, 0, 0)
+    );
+    assert!(!snapshot
+        .activity
+        .iter()
+        .any(|row| row.phase == EventTriggerPhase::Consumed));
+    let observed = snapshot
+        .queues
+        .iter()
+        .find(|queue| queue.subscription_id == observer.spec().subscription_id)
+        .unwrap();
+    assert_eq!((observed.accepted, observed.buffered), (0, 0));
+    let runs: i64 = sqlx::query_scalar("select count(*) from flow_runs where application_id=$1")
+        .bind(fixture.snapshot.trigger.application_id)
+        .fetch_one(fixture.state.store.pool())
+        .await
+        .unwrap();
+    assert_eq!(runs, 0);
+}
+
+#[tokio::test]
+async fn queued_revoked_author_cannot_create_a_consumed_fact_or_observer_signal() {
+    rejects_before_handoff(Invalidation::AuthorDisabled, false).await;
+}
+
+#[tokio::test]
+async fn idle_receiver_rechecks_revoked_author_when_work_arrives() {
+    rejects_before_handoff(Invalidation::AuthorDisabled, true).await;
+}
+
+#[tokio::test]
+async fn current_trigger_revision_must_match_before_handoff() {
+    rejects_before_handoff(Invalidation::TriggerChanged, false).await;
+}
+
+#[tokio::test]
+async fn current_publication_must_match_before_handoff() {
+    rejects_before_handoff(Invalidation::PublicationChanged, false).await;
 }

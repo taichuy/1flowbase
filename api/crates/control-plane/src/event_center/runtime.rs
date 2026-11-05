@@ -185,6 +185,20 @@ impl EventCenterRuntime {
             )
         };
         let consumer = self.inner.bus.open_consumer(&topic)?;
+        // Dispatch against the existing observer set, under the membership lock, before
+        // adding this member. A subscribed observer must never receive its own join.
+        if first && emit_subscribed {
+            let signal = self.inner.signal(
+                &spec,
+                EventCenterSignalBody::Subscribed {
+                    subscription_id: spec.subscription_id,
+                    consumer_id: spec.consumer_id,
+                },
+            );
+            state.observation.record(activity(&signal, None));
+            // A rejected observer must never undo logical registration.
+            let _ = self.inner.dispatch(&mut state, &signal);
+        }
         let membership = state.memberships.entry(key).or_insert_with(|| Membership {
             generation: Uuid::now_v7(),
             spec: spec.clone(),
@@ -198,18 +212,6 @@ impl EventCenterRuntime {
             admission_rejected: 0,
         });
         membership.consumers.insert(spec.consumer_id);
-        if first && emit_subscribed {
-            let signal = self.inner.signal(
-                &spec,
-                EventCenterSignalBody::Subscribed {
-                    subscription_id: spec.subscription_id,
-                    consumer_id: spec.consumer_id,
-                },
-            );
-            state.observation.record(activity(&signal, None));
-            // A rejected observer must never undo logical registration.
-            let _ = self.inner.dispatch(&mut state, &signal);
-        }
         drop(state);
         Ok(EventCenterSubscription::new(
             self.inner.clone(),

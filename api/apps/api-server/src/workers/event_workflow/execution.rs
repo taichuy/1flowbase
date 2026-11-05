@@ -22,6 +22,34 @@ pub(super) enum DeliveryOutcome {
     Retire,
 }
 
+/// Read current authority and target only after non-consuming queue readiness. The worker
+/// follows this with synchronous try_recv, so an idle wait cannot freeze this decision.
+/// invoke_event still validates again before durable writes after ownership has transferred.
+pub(super) async fn validate_handoff(state: &ApiState, snapshot: &Snapshot) -> anyhow::Result<()> {
+    use control_plane_contracts::{
+        ports::EventCenterRepository, ControlPlaneContractError as Error,
+    };
+    let actor = authorized_actor(state, &snapshot.trigger).await?;
+    let store = state.store.for_actor(actor);
+    let current = store
+        .get_workflow_event_trigger(
+            snapshot.trigger.workspace_id,
+            snapshot.trigger.application_id,
+        )
+        .await?
+        .ok_or(Error::Conflict("trigger_removed"))?;
+    if current != snapshot.trigger {
+        return Err(Error::Conflict("trigger_changed").into());
+    }
+    let publication = WorkflowEventTriggerService::new(store)
+        .prepare_subscription(&current)
+        .await?;
+    if publication != snapshot.publication {
+        return Err(Error::Conflict("publication_changed").into());
+    }
+    Ok(())
+}
+
 /// The caller retains the EventCenterDelivery until this future returns, including projection,
 /// invocation and synchronous execution. Ordinary run callbacks retain their existing run owner.
 pub(super) async fn execute_delivery(

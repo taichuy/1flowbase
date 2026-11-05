@@ -74,6 +74,13 @@ pub trait EventConsumer: Send + Sync {
     /// Competing FIFO dequeue (not broadcast). None means closed and drained.
     /// Pending receives also consume the shared waiter budget and are cancel-safe.
     async fn recv(&self) -> Result<Option<EventDelivery>, EventBusError>;
+    /// Wait for buffered work without taking ownership. False means closed and drained.
+    /// Cancel-safe and charged to the shared waiter budget. Readiness is advisory: another
+    /// competing consumer may win before try_recv, so callers must revalidate on each retry.
+    async fn ready(&self) -> Result<bool, EventBusError>;
+    /// Synchronous atomic FIFO ownership transfer. None means no buffered work right now.
+    /// Does not wait, reserve a delivery, or increment received on an empty queue.
+    fn try_recv(&self) -> Result<Option<EventDelivery>, EventBusError>;
     /// Stop admission for every consumer of this generation; all may continue draining.
     /// Existing permits become invalid but retain their charge until send/Drop.
     fn close(&self);

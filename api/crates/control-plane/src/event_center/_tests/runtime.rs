@@ -424,3 +424,66 @@ async fn retired_delivery_release_does_not_decrement_reopened_subscription_gener
         0
     );
 }
+
+#[tokio::test]
+async fn new_subscribed_observer_only_observes_later_joins() {
+    let (runtime, _) = runtime(8);
+    let definition = definition();
+    let first = runtime
+        .subscribe(spec(&definition, EventTriggerPhase::Subscribed), true)
+        .unwrap();
+    empty(&first).await;
+    let second_spec = spec(&definition, EventTriggerPhase::Subscribed);
+    let second = runtime.subscribe(second_spec.clone(), true).unwrap();
+    let joined = receive(&first).await;
+    assert!(
+        matches!(&joined.signal().body, EventCenterSignalBody::Subscribed { subscription_id, .. } if *subscription_id == second_spec.subscription_id)
+    );
+    empty(&second).await;
+    let business_spec = spec(&definition, EventTriggerPhase::Published);
+    let _business = runtime.subscribe(business_spec.clone(), true).unwrap();
+    for observer in [&first, &second] {
+        let joined = receive(observer).await;
+        assert!(
+            matches!(&joined.signal().body, EventCenterSignalBody::Subscribed { subscription_id, .. } if *subscription_id == business_spec.subscription_id)
+        );
+    }
+}
+
+#[tokio::test]
+async fn readiness_does_not_create_consumption_and_competing_try_dequeue_has_one_winner() {
+    let (runtime, bus) = runtime(8);
+    let definition = definition();
+    let first_spec = spec(&definition, EventTriggerPhase::Published);
+    let first = runtime.subscribe(first_spec.clone(), false).unwrap();
+    let second = runtime
+        .subscribe(
+            EventRuntimeSubscription {
+                consumer_id: Uuid::now_v7(),
+                ..first_spec
+            },
+            false,
+        )
+        .unwrap();
+    runtime.publish(&definition, payload()).unwrap();
+    assert!(first.ready().await.unwrap());
+    assert!(second.ready().await.unwrap());
+    assert_eq!(bus.event_bus_snapshot().received, 0);
+    assert_eq!(
+        runtime.snapshot(definition.workspace_id).queues[0].consumed,
+        0
+    );
+    let delivery = first.try_recv().unwrap().unwrap();
+    assert!(second.try_recv().unwrap().is_none());
+    assert_eq!(
+        runtime.snapshot(definition.workspace_id).queues[0].consumed,
+        1
+    );
+    assert_eq!(bus.event_bus_snapshot().received, 1);
+    drop(delivery);
+    let mut waiting = Box::pin(second.ready());
+    tokio::select! { biased; _ = &mut waiting => panic!("competitor must wait for new work"), _ = tokio::task::yield_now() => {} }
+    assert_eq!(bus.event_bus_snapshot().waiters, 1);
+    drop(waiting);
+    assert_eq!(bus.event_bus_snapshot().waiters, 0);
+}

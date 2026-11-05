@@ -392,14 +392,14 @@ async fn consume(
         if *stop.borrow() {
             return;
         }
-        let received = tokio::select! {
+        let readiness = tokio::select! {
             biased;
             _ = stop.changed() => return,
-            delivery = subscription.recv() => delivery,
+            ready = subscription.ready() => ready,
         };
-        let delivery = match received {
-            Ok(Some(delivery)) => delivery,
-            Ok(None) => return,
+        match readiness {
+            Ok(true) => {}
+            Ok(false) => return,
             Err(error) => {
                 statuses.activation(
                     &snapshot.trigger,
@@ -409,9 +409,9 @@ async fn consume(
                 state.event_workflow_changes.notify_one();
                 return;
             }
-        };
-        // No maintenance lease is held during an idle recv. A dequeued guard remains charged
-        // while maintenance fences durable writes, and cancellation releases it without replay.
+        }
+        // Readiness owns no delivery and holds no maintenance lease while idle. Maintenance
+        // may wait here; current authorization must therefore be checked after acquiring it.
         let permit = loop {
             match state
                 .system_maintenance
@@ -423,6 +423,38 @@ async fn consume(
                     _ = stop.changed() => return,
                     _ = state.system_maintenance.wait_until_online() => {},
                 },
+            }
+        };
+        let validity = tokio::select! {
+            biased;
+            _ = stop.changed() => return,
+            validity = execution::validate_handoff(&state, &snapshot) => validity,
+        };
+        if let Err(error) = validity {
+            statuses.activation(
+                &snapshot.trigger,
+                "unavailable",
+                Some(status::public_error_code(&error, "handoff_rejected")),
+            );
+            subscription.close();
+            state.event_workflow_changes.notify_one();
+            return;
+        }
+        if *stop.borrow() {
+            return;
+        }
+        // No await between the fresh validity decision and the atomic ownership transfer.
+        let delivery = match subscription.try_recv() {
+            Ok(Some(delivery)) => delivery,
+            Ok(None) => continue, // A competitor won: release the permit and revalidate next time.
+            Err(error) => {
+                statuses.activation(
+                    &snapshot.trigger,
+                    "unavailable",
+                    Some(status::public_error_code(&error, "receiver_failed")),
+                );
+                state.event_workflow_changes.notify_one();
+                return;
             }
         };
         let outcome = execution::execute_delivery(&state, &snapshot, &delivery, &statuses).await;
