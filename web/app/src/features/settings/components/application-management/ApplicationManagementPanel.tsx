@@ -78,6 +78,8 @@ const PAGE_SIZE = 20;
 function triggerTypeLabel(
   triggerType: SettingsApplicationManagementItem['workflow_trigger_type']
 ) {
+  if (triggerType === 'event')
+    return i18nText('settings', 'auto.workflow_trigger_event');
   if (triggerType === 'schedule') {
     return i18nText('settings', 'auto.workflow_trigger_schedule');
   }

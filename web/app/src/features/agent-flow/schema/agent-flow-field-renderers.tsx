@@ -969,9 +969,11 @@ function renderStartInputFieldsField({
   );
   const contractKind: StartInputContractKind =
     node?.type === 'workflow_start'
-      ? triggerType === 'schedule'
-        ? 'workflow_schedule'
-        : 'workflow_http'
+      ? triggerType === 'event'
+        ? 'workflow_event'
+        : triggerType === 'schedule'
+          ? 'workflow_schedule'
+          : 'workflow_http'
       : 'agent';
   const sourceOptions =
     contractKind === 'workflow_http'

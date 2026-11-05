@@ -36,5 +36,14 @@
     "workflow_test_run_status_failed": "Failed",
     "workflow_test_run_status_cancelled": "Cancelled",
     "workflow_test_run_form": "Workflow test run form"
+  },
+  "event": {
+    "enabled": "Subscription enabled",
+    "disabled": "Subscription disabled",
+    "subscribed": "Subscribed",
+    "published": "Published",
+    "consumed": "Consumed (dequeued)",
+    "debug_delivery": "Event workflow debug run",
+    "debug_hint": "Test scalar Start inputs directly. This debug run does not publish an event or exercise delivery."
   }
 }

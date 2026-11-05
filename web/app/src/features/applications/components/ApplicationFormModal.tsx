@@ -10,10 +10,12 @@ import {
   Switch,
   Typography
 } from 'antd';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { WorkflowEventTriggerFields } from './WorkflowEventTriggerFields';
 import type {
+  ReplaceConsoleWorkflowEventTriggerInput,
   ConsoleApplicationType,
   ConsoleWorkflowExtensionHttpMethod,
   ConsoleWorkflowExtensionResponseMode,
@@ -26,6 +28,9 @@ import {
 } from '../../agent-flow/api/orchestration';
 import { getStartInputFields } from '../../agent-flow/lib/variables/start-node-variables';
 import {
+  fetchWorkflowEventTrigger,
+  saveWorkflowEventTrigger,
+  workflowEventTriggerQueryKey,
   applicationCatalogQueryKey,
   applicationDetailQueryKey,
   applicationsQueryKey,
@@ -66,6 +71,7 @@ interface ApplicationFormValues {
   schedule_cron: string;
   schedule_timezone: string;
   schedule_input_payload?: object;
+  event: ReplaceConsoleWorkflowEventTriggerInput;
   name: string;
   description: string;
   tag_ids: string[];
@@ -88,6 +94,9 @@ export function ApplicationFormModal({
   const { t: workflowT } = useTranslation('workflow');
   const queryClient = useQueryClient();
   const [form] = Form.useForm<ApplicationFormValues>();
+  const pendingCreated = useRef<Awaited<
+    ReturnType<typeof createApplication>
+  > | null>(null);
   const isEdit = intent.kind === 'edit';
   const applicationId = isEdit ? intent.applicationId : '';
   const detailQuery = useQuery({
@@ -110,6 +119,20 @@ export function ApplicationFormModal({
     isEdit && application?.workflow_trigger_type === 'extension';
   const isSchedule =
     isEdit && application?.workflow_trigger_type === 'schedule';
+  const isEvent = isEdit && application?.workflow_trigger_type === 'event';
+  const eventQuery = useQuery({
+    queryKey: workflowEventTriggerQueryKey(applicationId),
+    queryFn: () => fetchWorkflowEventTrigger(applicationId),
+    enabled: open && isEvent,
+    retry: false
+  });
+  useEffect(() => {
+    if (eventQuery.isSuccess)
+      form.setFieldValue(
+        'event',
+        eventQuery.data ?? { enabled: false, input_mapping: {} }
+      );
+  }, [form, eventQuery.data, eventQuery.isSuccess]);
   const mappingQuery = useQuery({
     queryKey: applicationApiMappingQueryKey(applicationId),
     queryFn: () => fetchApplicationApiMapping(applicationId),
@@ -125,13 +148,14 @@ export function ApplicationFormModal({
   const orchestrationQuery = useQuery({
     queryKey: orchestrationQueryKey(applicationId),
     queryFn: () => fetchOrchestrationState(applicationId),
-    enabled: open && (isExtension || isSchedule),
+    enabled: open && (isExtension || isSchedule || isEvent),
     retry: false
   });
 
   useEffect(() => {
     if (!open) {
       form.resetFields();
+      pendingCreated.current = null;
       return;
     }
     if (!isEdit) {
@@ -145,6 +169,13 @@ export function ApplicationFormModal({
         extension_subpath: '',
         extension_http_method: 'POST',
         extension_response_mode: 'sync',
+        event: {
+          enabled: false,
+          contract_id: '',
+          contract_version: '',
+          trigger_phase: 'published',
+          input_mapping: {}
+        },
         schedule_enabled: false,
         schedule_cron: '',
         schedule_timezone: 'Asia/Shanghai',
@@ -231,31 +262,38 @@ export function ApplicationFormModal({
     mutationFn: async (values: ApplicationFormValues) => {
       if (intent.kind === 'create') {
         const workflow = values.application_type === 'workflow';
-        const created = await createApplication(
-          {
-            application_type: values.application_type,
-            workflow_trigger_type: workflow ? values.trigger_type : null,
-            workflow_trigger_config: workflow
-              ? values.trigger_type === 'schedule'
-                ? {
-                    cron: values.schedule_cron,
-                    timezone: values.schedule_timezone,
-                    input_payload: {}
-                  }
-                : {
-                    subpath: values.extension_subpath,
-                    http_method: values.extension_http_method,
-                    response_mode: values.extension_response_mode
-                  }
-              : null,
-            name: values.name,
-            description: values.description,
-            icon: null,
-            icon_type: null,
-            icon_background: null
-          },
-          csrfToken
-        );
+        const created =
+          pendingCreated.current ??
+          (await createApplication(
+            {
+              application_type: values.application_type,
+              workflow_trigger_type: workflow ? values.trigger_type : null,
+              workflow_trigger_config: workflow
+                ? values.trigger_type === 'schedule'
+                  ? {
+                      cron: values.schedule_cron,
+                      timezone: values.schedule_timezone,
+                      input_payload: {}
+                    }
+                  : values.trigger_type === 'extension'
+                    ? {
+                        subpath: values.extension_subpath,
+                        http_method: values.extension_http_method,
+                        response_mode: values.extension_response_mode
+                      }
+                    : null
+                : null,
+              name: values.name,
+              description: values.description,
+              icon: null,
+              icon_type: null,
+              icon_background: null
+            },
+            csrfToken
+          ));
+        pendingCreated.current = created;
+        if (workflow && values.trigger_type === 'event')
+          await saveWorkflowEventTrigger(created.id, values.event, csrfToken);
         if (values.tag_ids.length > 0) {
           await updateApplication(
             created.id,
@@ -279,6 +317,12 @@ export function ApplicationFormModal({
         },
         csrfToken
       );
+      if (application?.workflow_trigger_type === 'event')
+        await saveWorkflowEventTrigger(
+          intent.applicationId,
+          values.event,
+          csrfToken
+        );
       if (application?.workflow_trigger_type === 'schedule') {
         await saveWorkflowScheduleTrigger(
           intent.applicationId,
@@ -298,6 +342,9 @@ export function ApplicationFormModal({
         queryClient.invalidateQueries({ queryKey: applicationsQueryKey }),
         queryClient.invalidateQueries({
           queryKey: applicationDetailQueryKey(savedApplicationId)
+        }),
+        queryClient.invalidateQueries({
+          queryKey: workflowEventTriggerQueryKey(savedApplicationId)
         })
       ]);
       form.resetFields();
@@ -312,6 +359,7 @@ export function ApplicationFormModal({
     catalogQuery.isError ||
     mappingQuery.isError ||
     scheduleQuery.isError ||
+    eventQuery.isError ||
     orchestrationQuery.isError;
 
   return (
@@ -329,7 +377,7 @@ export function ApplicationFormModal({
             type="primary"
             htmlType="submit"
             form={APPLICATION_FORM_ID}
-            disabled={catalogQuery.isError}
+            disabled={triggerLoadFailed || (isEvent && eventQuery.isPending)}
             loading={mutation.isPending}
           >
             {isEdit ? t('auto.save_changes') : t('auto.create_application')}
@@ -618,6 +666,13 @@ export function ApplicationFormModal({
                   </Form.Item>
                 ))}
             </>
+          ) : null}
+
+          {showWorkflow && triggerType === 'event' ? (
+            <WorkflowEventTriggerFields
+              form={form}
+              fields={extensionContract.requestFields}
+            />
           ) : null}
 
           {triggerLoadFailed ? (

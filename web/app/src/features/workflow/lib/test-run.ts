@@ -28,6 +28,10 @@ interface ExtensionWorkflowTestRunInput extends WorkflowTestRunBaseInput {
 }
 
 export type WorkflowTestRunInput =
+  | (WorkflowTestRunBaseInput & {
+      triggerType: 'event';
+      eventInputs: Record<string, unknown>;
+    })
   | ScheduleWorkflowTestRunInput
   | ExtensionWorkflowTestRunInput;
 
@@ -129,8 +133,14 @@ export function buildWorkflowTestRunInput(input: WorkflowTestRunInput) {
   let values: WorkflowInputValues;
 
   switch (input.triggerType) {
+    case 'event':
+      values = selectWorkflowInputs(input.eventInputs, allowedKeys);
+      break;
     case 'schedule':
-      values = selectWorkflowInputs(asRecord(input.schedulePayload), allowedKeys);
+      values = selectWorkflowInputs(
+        asRecord(input.schedulePayload),
+        allowedKeys
+      );
       break;
     case 'extension':
       values = extensionWorkflowInputs(inputFields, input.extensionInputs);

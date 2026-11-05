@@ -12,6 +12,8 @@ import { i18nText } from '../../../shared/i18n/text';
 import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
 import {
+  fetchWorkflowEventTrigger,
+  workflowEventTriggerQueryKey,
   applicationEnvironmentVariablesQueryKey,
   fetchApplicationEnvironmentVariables
 } from '../../applications/api/applications';
@@ -62,11 +64,18 @@ export function WorkflowEditorPage({
     queryFn: () => fetchWorkflowScheduleTrigger(applicationId),
     retry: false
   });
+  const eventQuery = useQuery({
+    queryKey: workflowEventTriggerQueryKey(applicationId),
+    queryFn: () => fetchWorkflowEventTrigger(applicationId),
+    enabled: workflowTriggerType === 'event',
+    retry: false
+  });
   const workflowTriggerContext = useMemo<WorkflowTriggerContext>(
     () => ({
       applicationId,
       triggerType: workflowTriggerType,
       mapping: mappingQuery.data,
+      event: eventQuery.data,
       schedule: scheduleQuery.data ?? null,
       workflowStartFieldContract: nodeCatalogQuery.data?.nodes.find(
         (node) => node.node_type === 'workflow_start'
@@ -74,6 +83,7 @@ export function WorkflowEditorPage({
     }),
     [
       applicationId,
+      eventQuery.data,
       mappingQuery.data,
       nodeCatalogQuery.data?.nodes,
       scheduleQuery.data,

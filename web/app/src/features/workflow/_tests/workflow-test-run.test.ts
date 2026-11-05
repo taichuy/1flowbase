@@ -2,10 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import { createDefaultWorkflowDocument } from '@1flowbase/flow-schema';
 
-import {
-  buildWorkflowTestRunInput,
-  readWorkflowResult
-} from '../lib/test-run';
+import { buildWorkflowTestRunInput, readWorkflowResult } from '../lib/test-run';
 
 function createWorkflowDocument() {
   const document = createDefaultWorkflowDocument({ flowId: 'flow-1' });
@@ -76,11 +73,13 @@ describe('Workflow test-run contract', () => {
     if (!startNode || !Array.isArray(startNode.config.input_fields)) {
       throw new Error('workflow_start input fields are missing');
     }
-    startNode.config.input_fields = startNode.config.input_fields.map((field) => {
-      const scheduleField = { ...field };
-      delete scheduleField.source;
-      return scheduleField;
-    });
+    startNode.config.input_fields = startNode.config.input_fields.map(
+      (field) => {
+        const scheduleField = { ...field };
+        delete scheduleField.source;
+        return scheduleField;
+      }
+    );
 
     expect(
       buildWorkflowTestRunInput({
@@ -173,5 +172,21 @@ describe('Workflow test-run contract', () => {
         }
       })
     ).toEqual({ ticket_id: 'ticket-C-42' });
+  });
+});
+
+test('E7 Event debug input uses Start names without HTTP source routing', () => {
+  const document = createWorkflowDocument();
+  const start = document.graph.nodes.find(
+    (node) => node.type === 'workflow_start'
+  )!;
+  const result = buildWorkflowTestRunInput({
+    document,
+    triggerType: 'event',
+    eventInputs: { customer_id: 'C-1', force: false, unrelated: 'discard' }
+  });
+  expect(result.input_payload[start.id]).toEqual({
+    customer_id: 'C-1',
+    force: false
   });
 });

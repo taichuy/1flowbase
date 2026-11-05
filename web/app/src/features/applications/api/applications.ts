@@ -1,4 +1,10 @@
 import {
+  getConsoleWorkflowEventTrigger,
+  replaceConsoleWorkflowEventTrigger,
+  listEventCatalog,
+  type ReplaceConsoleWorkflowEventTriggerInput
+} from '@1flowbase/api-client';
+import {
   createConsoleApplication,
   createConsoleApplicationTag,
   deleteConsoleApplication,
@@ -263,3 +269,29 @@ export function installApplicationCollector(
     getApplicationsApiBaseUrl()
   );
 }
+
+export const workflowEventTriggerQueryKey = (applicationId: string) =>
+  ['applications', applicationId, 'workflow', 'event-trigger'] as const;
+export const workflowEventCatalogQueryKey = ['events', 'catalog'] as const;
+export const fetchWorkflowEventCatalog = () =>
+  listEventCatalog(getApplicationsApiBaseUrl());
+export const fetchWorkflowEventTrigger = (applicationId: string) =>
+  getConsoleWorkflowEventTrigger(applicationId, getApplicationsApiBaseUrl());
+export const saveWorkflowEventTrigger = (
+  applicationId: string,
+  input: ReplaceConsoleWorkflowEventTriggerInput,
+  csrfToken: string
+) =>
+  replaceConsoleWorkflowEventTrigger(
+    applicationId,
+    {
+      ...input,
+      input_mapping: Object.fromEntries(
+        Object.entries(input.input_mapping ?? {}).filter(
+          ([, pointer]) => pointer !== ''
+        )
+      )
+    },
+    csrfToken,
+    getApplicationsApiBaseUrl()
+  );

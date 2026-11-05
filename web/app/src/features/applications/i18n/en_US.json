@@ -458,5 +458,17 @@
     "access_failed": "This account cannot query or operate this deletion. Check permissions or sign in again.",
     "start_rejected": "The deletion task did not start. Check permissions, dates, or whether another deletion is active.",
     "fixed_range": "{{started_at_from}} to {{started_at_to}} (end excluded)"
+  },
+  "event": {
+    "lifecycle_hint": "Consumed means dequeued, not business success. Consumer failures are independent.",
+    "subscription_enabled": "Subscription enabled",
+    "source": "Custom event source",
+    "source_unavailable": "Select an enabled custom event and a supported phase.",
+    "phase": "Trigger stage",
+    "subscribed": "Subscribed",
+    "published": "Published",
+    "consumed": "Consumed (dequeued)",
+    "pointer_invalid": "Enter a valid RFC6901 pointer.",
+    "pointer_hint": "Map a scalar Start input to a lifecycle signal field, for example /payload/order_id."
   }
 }

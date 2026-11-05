@@ -1,3 +1,4 @@
+import { getStartInputFields } from '../../agent-flow/lib/variables/start-node-variables';
 import { useMemo, useState } from 'react';
 import {
   Alert,
@@ -7,6 +8,8 @@ import {
   Drawer,
   Form,
   Input,
+  InputNumber,
+  Select,
   Space,
   Tag,
   Typography
@@ -44,6 +47,7 @@ const EXTENSION_SOURCE_LABEL_KEYS: Record<FlowStartInputSource, string> = {
 };
 
 type WorkflowTestRunFormValues = {
+  eventInputs?: Record<string, unknown>;
   schedulePayload?: string;
   extensionInputs?: Record<string, Record<string, unknown>>;
 };
@@ -111,6 +115,8 @@ function workflowRunStatusColor(status: string) {
 }
 
 function triggerDeliveryLabel(triggerContext: WorkflowTriggerContext) {
+  if (triggerContext.triggerType === 'event')
+    return i18nText('workflow', 'event.debug_delivery');
   if (triggerContext.triggerType === 'schedule') {
     return i18nText('workflow', 'auto.workflow_trigger_delivery_schedule');
   }
@@ -189,22 +195,28 @@ export function WorkflowTestRunPanel({
     try {
       const triggerType = triggerContext.triggerType;
       const runInput =
-        triggerType === 'schedule'
+        triggerType === 'event'
           ? buildWorkflowTestRunInput({
               document,
               triggerType,
-              schedulePayload: JSON.parse(values.schedulePayload ?? '{}')
+              eventInputs: values.eventInputs ?? {}
             })
-          : buildWorkflowTestRunInput({
-              document,
-              triggerType,
-              extensionInputs: {
-                path: values.extensionInputs?.path ?? {},
-                query: values.extensionInputs?.query ?? {},
-                form: values.extensionInputs?.form ?? {},
-                body: values.extensionInputs?.body ?? {}
-              }
-            });
+          : triggerType === 'schedule'
+            ? buildWorkflowTestRunInput({
+                document,
+                triggerType,
+                schedulePayload: JSON.parse(values.schedulePayload ?? '{}')
+              })
+            : buildWorkflowTestRunInput({
+                document,
+                triggerType,
+                extensionInputs: {
+                  path: values.extensionInputs?.path ?? {},
+                  query: values.extensionInputs?.query ?? {},
+                  form: values.extensionInputs?.form ?? {},
+                  body: values.extensionInputs?.body ?? {}
+                }
+              });
       const nextDetail = await startRun(
         applicationId,
         { ...runInput, document },
@@ -237,6 +249,47 @@ export function WorkflowTestRunPanel({
           initialValues={initialValues}
           onFinish={runWorkflow}
         >
+          {triggerContext.triggerType === 'event' ? (
+            <>
+              <Alert
+                type="info"
+                title={i18nText('workflow', 'event.debug_hint')}
+              />
+              {document.graph.nodes
+                .filter((node) => node.type === 'workflow_start')
+                .flatMap((node) => getStartInputFields(node))
+                .filter((field) =>
+                  ['string', 'number', 'boolean'].includes(field.valueType)
+                )
+                .map((field) => (
+                  <Form.Item
+                    key={field.key}
+                    name={['eventInputs', field.key]}
+                    label={field.label}
+                    initialValue={field.defaultValue}
+                    rules={[
+                      {
+                        required:
+                          field.required && field.defaultValue === undefined
+                      }
+                    ]}
+                  >
+                    {field.valueType === 'number' ? (
+                      <InputNumber />
+                    ) : field.valueType === 'boolean' ? (
+                      <Select
+                        options={[
+                          { value: true, label: 'true' },
+                          { value: false, label: 'false' }
+                        ]}
+                      />
+                    ) : (
+                      <Input />
+                    )}
+                  </Form.Item>
+                ))}
+            </>
+          ) : null}
           {triggerContext.triggerType === 'schedule' ? (
             <Form.Item
               name="schedulePayload"

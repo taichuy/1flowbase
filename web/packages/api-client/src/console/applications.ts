@@ -5,7 +5,7 @@ import type {
 import { apiFetch, apiFetchVoid } from '../transport';
 
 export type ConsoleApplicationType = 'agent_flow' | 'workflow' | 'agent_logs';
-export type ConsoleWorkflowTriggerType = 'extension' | 'schedule';
+export type ConsoleWorkflowTriggerType = 'extension' | 'schedule' | 'event';
 export type CreateConsoleWorkflowTriggerConfig =
   | {
       cron: string;
@@ -336,6 +336,44 @@ export function createConsoleApplicationTag(
     path: '/api/console/applications/tags',
     method: 'POST',
     body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export interface ReplaceConsoleWorkflowEventTriggerInput {
+  enabled: boolean;
+  contract_id: string;
+  contract_version: string;
+  trigger_phase: import('./events').EventTriggerPhase;
+  input_mapping: Record<string, string>;
+}
+export interface ConsoleWorkflowEventTrigger extends ReplaceConsoleWorkflowEventTriggerInput {
+  id: string;
+  workspace_id: string;
+  application_id: string;
+  updated_by: string;
+  updated_at: string;
+}
+export function getConsoleWorkflowEventTrigger(
+  applicationId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleWorkflowEventTrigger | null>({
+    path: `/api/console/applications/${encodeURIComponent(applicationId)}/workflow-event-trigger`,
+    baseUrl
+  });
+}
+export function replaceConsoleWorkflowEventTrigger(
+  applicationId: string,
+  body: ReplaceConsoleWorkflowEventTriggerInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleWorkflowEventTrigger>({
+    path: `/api/console/applications/${encodeURIComponent(applicationId)}/workflow-event-trigger`,
+    method: 'PUT',
+    body,
     csrfToken,
     baseUrl
   });

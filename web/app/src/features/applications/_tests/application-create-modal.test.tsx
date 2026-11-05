@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const applicationsApi = vi.hoisted(() => ({
   applicationsQueryKey: ['applications'],
   applicationCatalogQueryKey: ['applications', 'catalog'],
+  saveWorkflowEventTrigger: vi.fn(),
+  fetchWorkflowEventCatalog: vi.fn(),
   createApplication: vi.fn(),
   fetchApplicationCatalog: vi.fn()
 }));
@@ -38,6 +40,17 @@ async function selectApplicationType(label: string) {
 describe('ApplicationFormModal create intent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    applicationsApi.saveWorkflowEventTrigger.mockResolvedValue({});
+    applicationsApi.fetchWorkflowEventCatalog.mockResolvedValue([
+      {
+        contract_id: 'custom.invoice',
+        contract_version: '1',
+        name: 'Invoice',
+        enabled: true,
+        origin: 'custom',
+        supported_phases: ['published', 'consumed']
+      }
+    ]);
     applicationsApi.createApplication.mockResolvedValue({ id: 'app-workflow' });
     applicationsApi.fetchApplicationCatalog.mockResolvedValue({
       types: [
@@ -59,7 +72,8 @@ describe('ApplicationFormModal create intent', () => {
         {
           value: 'schedule',
           label: '定时调度'
-        }
+        },
+        { value: 'event', label: '事件触发' }
       ],
       tags: []
     });
@@ -233,5 +247,57 @@ describe('ApplicationFormModal create intent', () => {
         'csrf-123'
       );
     });
+  });
+
+  test('E7 creates event workflow then saves subscription without extension config', async () => {
+    const onCreated = vi.fn();
+    render(
+      <AppProviders>
+        <ApplicationFormModal
+          open
+          csrfToken="csrf-123"
+          onClose={vi.fn()}
+          intent={{ kind: 'create', onCreated }}
+        />
+      </AppProviders>
+    );
+    await selectApplicationType('Workflow');
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '自定义事件源' }));
+    fireEvent.click(
+      await screen.findByText('Invoice · 1', {
+        selector: '.ant-select-item-option-content'
+      })
+    );
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '触发阶段' }));
+    fireEvent.click(
+      await screen.findByText('消费时（出队）', {
+        selector: '.ant-select-item-option-content'
+      })
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
+      target: { value: 'Invoice handler' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '创建应用' }));
+    await waitFor(() =>
+      expect(applicationsApi.saveWorkflowEventTrigger).toHaveBeenCalledWith(
+        'app-workflow',
+        expect.objectContaining({
+          enabled: false,
+          contract_id: 'custom.invoice',
+          contract_version: '1',
+          trigger_phase: 'consumed',
+          input_mapping: {}
+        }),
+        'csrf-123'
+      )
+    );
+    expect(applicationsApi.createApplication).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflow_trigger_type: 'event',
+        workflow_trigger_config: null
+      }),
+      'csrf-123'
+    );
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('app-workflow'));
   });
 });

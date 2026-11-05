@@ -1,6 +1,8 @@
 import { describe, expect, test, vi } from 'vitest';
 
 import {
+  getConsoleWorkflowEventTrigger,
+  replaceConsoleWorkflowEventTrigger,
   getConsoleApplicationCatalog,
   listConsoleApplicationManagement,
   type ConsoleApplicationCatalog
@@ -138,5 +140,29 @@ describe('console application management client', () => {
     ).resolves.toMatchObject({
       path: '/api/console/node-contributions?application_id=application-1'
     });
+  });
+});
+
+test('E7 event configuration uses dedicated flat contract and csrf', async () => {
+  const body = {
+    enabled: true,
+    contract_id: 'custom.invoice',
+    contract_version: '1',
+    trigger_phase: 'consumed' as const,
+    input_mapping: { invoice: '/payload/invoice~1id' }
+  };
+  await expect(
+    getConsoleWorkflowEventTrigger('app-event', 'https://api.example.com')
+  ).resolves.toMatchObject({
+    path: '/api/console/applications/app-event/workflow-event-trigger',
+    baseUrl: 'https://api.example.com'
+  });
+  await expect(
+    replaceConsoleWorkflowEventTrigger('app-event', body, 'csrf')
+  ).resolves.toMatchObject({
+    path: '/api/console/applications/app-event/workflow-event-trigger',
+    method: 'PUT',
+    body,
+    csrfToken: 'csrf'
   });
 });

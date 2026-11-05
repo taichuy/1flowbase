@@ -1,5 +1,7 @@
 {
-  "events": { "title": "事件中心" },
+  "events": {
+    "title": "事件中心"
+  },
   "auto": {
     "ui_management": "UI 管理",
     "translation_catalog_title": "多语言",
@@ -1075,7 +1077,8 @@
     "extension_upload_clear": "清空列表",
     "extension_upload_ready": "待上传",
     "extension_upload_remove": "移除",
-    "authentication_secret_kept": "已配置，留空保留原密钥"
+    "authentication_secret_kept": "已配置，留空保留原密钥",
+    "workflow_trigger_event": "事件触发"
   },
   "organization": {
     "title": "组织",
