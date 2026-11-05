@@ -198,6 +198,13 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
         })
         .await
         .unwrap();
+    let republished = repository
+        .load_active_application_publication(app.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(republished.id, command.publication.id);
+    assert_ne!(republished.document_snapshot, command.publication.document_snapshot);
     assert!(matches!(
         service.invoke_event(command.clone()).await.unwrap(),
         WorkflowEventInvocationOutcome::Skipped {

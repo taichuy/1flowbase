@@ -3,7 +3,7 @@ use control_plane_contracts::{
     ControlPlaneContractError as Error,
     ports::{EventBus, EventBusError},
 };
-use domain::event_center::{EventDefinitionRecord, EventTriggerPhase};
+use domain::event_center::EventDefinitionRecord;
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},

@@ -468,7 +468,9 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
   mount('channel-1');
   await screen.findByRole('switch', { name: 'Enable invoice' });
   const row = screen.getByRole('row', { name: /\/invoice/ });
-  fireEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+  const editButton = within(row).getByRole('button', { name: 'Edit' });
+  await waitFor(() => expect(editButton).toBeEnabled());
+  fireEvent.click(editButton);
   const edit = await screen.findByRole('dialog');
   expect(
     within(edit).getByRole('textbox', { name: 'Command identity' })

@@ -48,7 +48,7 @@ fn project_graph(
                     .payload_schema
                     .clone()
                     .unwrap_or(serde_json::Value::Null),
-                origin: if point.provenance().module_kind() == ModuleKind::Core {
+                origin: if point.provenance().module_kind() == ModuleKind::BootCore {
                     EventDefinitionOrigin::Core
                 } else {
                     EventDefinitionOrigin::Plugin

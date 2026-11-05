@@ -260,6 +260,12 @@ export function ApplicationFormModal({
 
   const mutation = useMutation({
     mutationFn: async (values: ApplicationFormValues) => {
+      // Ant Form collects registered fields only. With no Start inputs there are no
+      // mapping controls, but the event request still owns an explicit empty mapping.
+      const event = {
+        ...values.event,
+        input_mapping: values.event?.input_mapping ?? {}
+      };
       if (intent.kind === 'create') {
         const workflow = values.application_type === 'workflow';
         const created =
@@ -293,7 +299,7 @@ export function ApplicationFormModal({
           ));
         pendingCreated.current = created;
         if (workflow && values.trigger_type === 'event')
-          await saveWorkflowEventTrigger(created.id, values.event, csrfToken);
+          await saveWorkflowEventTrigger(created.id, event, csrfToken);
         if (values.tag_ids.length > 0) {
           await updateApplication(
             created.id,
@@ -318,11 +324,7 @@ export function ApplicationFormModal({
         csrfToken
       );
       if (application?.workflow_trigger_type === 'event')
-        await saveWorkflowEventTrigger(
-          intent.applicationId,
-          values.event,
-          csrfToken
-        );
+        await saveWorkflowEventTrigger(intent.applicationId, event, csrfToken);
       if (application?.workflow_trigger_type === 'schedule') {
         await saveWorkflowScheduleTrigger(
           intent.applicationId,

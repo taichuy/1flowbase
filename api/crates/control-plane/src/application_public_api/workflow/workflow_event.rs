@@ -248,7 +248,9 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
                 reason: "application_unpublished",
             });
         };
-        if active.id != command.publication.id
+        // The active publication is replaced in place and keeps its database ID.
+        // Compare the frozen contents as well, including changes after host handoff validation.
+        if active != command.publication
             || command.publication.workspace_id != snapshot.workspace_id
             || command.publication.application_id != snapshot.application_id
         {
