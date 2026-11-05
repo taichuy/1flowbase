@@ -26,6 +26,10 @@ struct Fixture {
 }
 
 async fn fixture() -> Fixture {
+    fixture_for_phase(EventTriggerPhase::Published, "/payload/invoice").await
+}
+
+async fn fixture_for_phase(phase: EventTriggerPhase, pointer: &str) -> Fixture {
     let (mut state, _) = test_api_state_with_database_url().await;
     let bus = Arc::new(MemoryEventBus::new());
     Arc::get_mut(&mut state).unwrap().event_center = EventCenterRuntime::new(
@@ -51,6 +55,29 @@ async fn fixture() -> Fixture {
     let actor = AuthRepository::load_actor_context_for_user(&state.store, user_id)
         .await
         .unwrap();
+    let definition = EventCenterConfigurationService::new(state.store.for_actor(actor.clone())).create_definition(&actor, CreateEventDefinitionInput {
+        contract_id: "custom.worker.invoice".into(), contract_version: "1".into(), name: "Invoice".into(), description: String::new(), enabled: true,
+        payload_schema: json!({"type":"object","properties":{"invoice":{"type":"string"}},"required":["invoice"]}),
+    }).await.unwrap();
+    let snapshot = workflow_snapshot(&state, &actor, &definition, phase, pointer).await;
+    Fixture {
+        state,
+        actor,
+        snapshot,
+        definition,
+        bus,
+    }
+}
+
+/// Shared real publication fixture for every lifecycle phase; no worker behavior is mirrored.
+async fn workflow_snapshot(
+    state: &Arc<ApiState>,
+    actor: &domain::ActorContext,
+    definition: &domain::event_center::EventDefinitionRecord,
+    phase: EventTriggerPhase,
+    pointer: &str,
+) -> Snapshot {
+    let user_id = actor.user_id;
     let store = state.store.for_actor(actor.clone());
     let application = ApplicationService::new(store.clone())
         .create_application(CreateApplicationCommand {
@@ -99,10 +126,6 @@ async fn fixture() -> Fixture {
         })
         .await
         .unwrap();
-    let definition = EventCenterConfigurationService::new(store.clone()).create_definition(&actor, CreateEventDefinitionInput {
-        contract_id: "custom.worker.invoice".into(), contract_version: "1".into(), name: "Invoice".into(), description: String::new(), enabled: true,
-        payload_schema: json!({"type":"object","properties":{"invoice":{"type":"string"}},"required":["invoice"]}),
-    }).await.unwrap();
     let trigger = WorkflowEventTriggerService::new(store)
         .replace_trigger(
             user_id,
@@ -111,21 +134,15 @@ async fn fixture() -> Fixture {
                 enabled: true,
                 contract_id: definition.contract_id.clone(),
                 contract_version: "1".into(),
-                trigger_phase: EventTriggerPhase::Published,
-                input_mapping: BTreeMap::from([("invoice".into(), "/payload/invoice".into())]),
+                trigger_phase: phase,
+                input_mapping: BTreeMap::from([("invoice".into(), pointer.into())]),
             },
         )
         .await
         .unwrap();
-    Fixture {
-        state,
-        actor,
-        snapshot: Snapshot {
-            trigger,
-            publication,
-        },
-        definition,
-        bus,
+    Snapshot {
+        trigger,
+        publication,
     }
 }
 
@@ -413,3 +430,6 @@ async fn current_trigger_revision_must_match_before_handoff() {
 async fn current_publication_must_match_before_handoff() {
     rejects_before_handoff(Invalidation::PublicationChanged, false).await;
 }
+
+#[path = "host_lifecycle.rs"]
+mod lifecycle;
