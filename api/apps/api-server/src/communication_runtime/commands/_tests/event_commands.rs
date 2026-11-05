@@ -349,3 +349,7 @@ async fn saving_event_commands_rejects_bad_mapping_namespace_names_and_unavailab
     );
     assert_eq!(saved.config.event_commands, binding.config.event_commands);
 }
+
+#[cfg(feature = "test-support")]
+#[path = "event_commands_workflow.rs"]
+mod workflow;
