@@ -481,9 +481,11 @@ fn injected_path_parameters(
         .collect()
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableFrontstageCallableDispatchPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<FrontstageCallableDispatchInput, FrontstageCallableDispatchOutput>
     for UnavailableFrontstageCallableDispatchPort
@@ -501,6 +503,7 @@ impl ConsoleInterfacePort<FrontstageCallableDispatchInput, FrontstageCallableDis
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

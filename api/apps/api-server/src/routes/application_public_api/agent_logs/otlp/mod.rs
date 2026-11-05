@@ -213,5 +213,6 @@ fn validated_batches(
     Ok((batches, counts))
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod _tests;

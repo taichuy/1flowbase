@@ -1,6 +1,3 @@
-#![recursion_limit = "256"]
-
-extern crate self as api_server;
 #[path = "boot_composition/generation_dispatch.rs"]
 mod generation_dispatch;
 #[path = "boot_composition/managed_publication.rs"]
@@ -75,9 +72,9 @@ pub mod workers;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use anyhow::{Result, anyhow};
-use argon2::{Argon2, password_hash::PasswordHasher};
-use axum::{Json, Router, middleware as axum_middleware, routing::get};
+use anyhow::{anyhow, Result};
+use argon2::{password_hash::PasswordHasher, Argon2};
+use axum::{middleware as axum_middleware, routing::get, Json, Router};
 use control_plane::{
     bootstrap::{BootstrapConfig, BootstrapService},
     plugin_management::ready_current_node_plugin_installation,
@@ -89,12 +86,12 @@ use tower_http::{
     cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer},
     trace::TraceLayer,
 };
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::{Config as SwaggerUiConfig, SwaggerUi};
 
 use crate::{
-    app_state::{ApiState, build_official_i18n_catalog_update_service},
+    app_state::{build_official_i18n_catalog_update_service, ApiState},
     config::{ApiConfig, ApiEnvironment},
     host_extension_loader::{
         activate_prepared_host_extensions, prepare_host_extensions_at_startup,
@@ -270,6 +267,7 @@ fn base_router(include_docs_ui: bool, static_openapi: bool) -> Router {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn root_external_endpoint_contributions(
     include_docs: bool,
@@ -377,6 +375,7 @@ pub fn app_with_state(state: Arc<ApiState>) -> Router {
         .layer(TraceLayer::new_for_http().make_span_with(safe_http_trace_span))
 }
 
+#[cfg_attr(test, api_test_selection::group(core, contracts))]
 #[cfg(test)]
 fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
     let interface_snapshot = state
@@ -583,10 +582,11 @@ pub fn init_tracing() {
         .try_init();
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_API_SERVER_ADDR, api_workspace_root, parse_bind_addr, resolve_system_backup_startup,
+        api_workspace_root, parse_bind_addr, resolve_system_backup_startup, DEFAULT_API_SERVER_ADDR,
     };
 
     #[test]
@@ -631,10 +631,12 @@ mod tests {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(all(test, feature = "root-1805-consumer-fixture"))]
 #[path = "_tests/root_1805_consumer_fixture.rs"]
 mod _tests;
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
 mod _tests;
 
@@ -679,3 +681,18 @@ impl ApiRuntimeShutdown {
 mod startup_assembly;
 
 use startup_assembly::*;
+
+#[cfg_attr(test, api_test_selection::group(contracts, routes))]
+#[cfg(test)]
+#[path = "_tests/support/native_settings_fixture.rs"]
+mod native_settings_fixture;
+
+#[cfg_attr(test, api_test_selection::group(core))]
+#[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
+#[path = "_tests/private_root_support.rs"]
+mod _tests;
+
+#[cfg_attr(test, api_test_selection::group(contracts))]
+#[cfg(all(test, feature = "root-1805-consumer-fixture"))]
+#[path = "_tests/private_root_support.rs"]
+mod _tests;

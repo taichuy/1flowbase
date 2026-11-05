@@ -45,13 +45,17 @@ function buildCargoCommandEnv({
   cargoParallelism,
   disableIncremental = false,
   incremental,
+  testProfile = false,
 }) {
   const env = {
     CARGO_BUILD_JOBS: String(cargoParallelism),
   };
 
   if (incremental === true) {
-    env.CARGO_INCREMENTAL = '1';
+    // A global override also overrides package-specific incremental=false.
+    // Explicit undefined removes an inherited override when Node spawns Cargo.
+    env.CARGO_INCREMENTAL = testProfile ? undefined : '1';
+    if (testProfile) env.CARGO_PROFILE_TEST_INCREMENTAL = 'true';
   } else if (incremental === false || disableIncremental) {
     env.CARGO_INCREMENTAL = '0';
   }

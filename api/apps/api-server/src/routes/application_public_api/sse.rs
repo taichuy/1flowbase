@@ -745,6 +745,7 @@ fn terminal_answer_delta_sse_events(
         .collect()
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests {
     use super::*;

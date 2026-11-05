@@ -479,6 +479,7 @@ impl Drop for NetworkEgressExecutionScope {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/exchange_network_egress.rs"]
 mod exchange_network_egress;
@@ -512,6 +513,7 @@ pub fn native_release_client() -> Result<Client> {
         .context("Cannot construct native release download client")
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/network_proxy/mod.rs"]
 mod network_proxy;

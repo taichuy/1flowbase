@@ -23,6 +23,7 @@ pub(crate) struct OpenAiResponseStreamMapper {
 }
 
 impl OpenAiResponseStreamMapper {
+    #[cfg_attr(test, api_test_selection::group(public_api))]
     #[cfg(test)]
     pub(in crate::routes::application_public_api::compat_sse) fn new(
         model: String,

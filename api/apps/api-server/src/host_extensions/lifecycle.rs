@@ -235,6 +235,7 @@ impl control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryPort
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;

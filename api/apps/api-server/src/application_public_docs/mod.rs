@@ -1023,6 +1023,7 @@ static PUBLIC_OPERATION_REGISTRY: &[PublicOperation] = &[
     },
 ];
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;

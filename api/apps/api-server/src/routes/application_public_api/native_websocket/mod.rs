@@ -15,11 +15,17 @@ use axum::{
 
 mod actor;
 mod projector;
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(crate) use projector::NativeWebSocketProjector;
+
 pub(crate) mod schema;
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests;
+
 mod turn_bridge;
 
 const NATIVE_WEBSOCKET_PROTOCOL: &str = "1flowbase.native.v1";

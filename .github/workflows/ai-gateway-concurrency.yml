@@ -176,7 +176,7 @@ jobs:
 
       - name: Upload bounded protocol evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: test-governance-ai-gateway-protocol-conformance-${{ steps.candidate_source.outputs.sha }}
           path: |

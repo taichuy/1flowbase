@@ -118,6 +118,7 @@ pub(crate) fn compile_runtime_model_interface_registry(
     interface::compile_registry(port)
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn compile_runtime_model_interface_registry_for_test() -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -1022,6 +1023,7 @@ async fn delete_record(
     Ok(result)
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests;
 

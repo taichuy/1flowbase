@@ -214,8 +214,6 @@ async fn agent_logs_unified_query_console_auth_readonly_discovery_and_validation
     }
 }
 
-
-
 #[tokio::test]
 async fn agent_logs_unified_query_console_ingested_record_locator_wrong_application_and_legacy_readers(
 ) {

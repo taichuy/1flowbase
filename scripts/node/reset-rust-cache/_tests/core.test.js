@@ -49,7 +49,8 @@ test('buildRustWarmupPlan fetches locked dependencies before staged compilation 
       env: {
         CARGO_BUILD_JOBS: '1',
         ONEFLOWBASE_CARGO_JOB_LIMIT: '10',
-        CARGO_INCREMENTAL: '1',
+        CARGO_INCREMENTAL: undefined,
+        CARGO_PROFILE_TEST_INCREMENTAL: 'true',
         CARGO_PROFILE_TEST_DEBUG: '0',
       },
     },
@@ -61,7 +62,8 @@ test('buildRustWarmupPlan fetches locked dependencies before staged compilation 
       env: {
         CARGO_BUILD_JOBS: '1',
         ONEFLOWBASE_CARGO_JOB_LIMIT: '10',
-        CARGO_INCREMENTAL: '1',
+        CARGO_INCREMENTAL: undefined,
+        CARGO_PROFILE_TEST_INCREMENTAL: 'true',
         CARGO_PROFILE_TEST_DEBUG: '0',
       },
     },
@@ -239,7 +241,8 @@ test('finite resource policy matches the budget oracle and is monotone in explic
               assert.equal(jobs, index >= 2 && !ci ? 1 : ordinaryJobs);
               assert.equal(Number(stage.env.ONEFLOWBASE_CARGO_JOB_LIMIT), quota);
               assert.ok(1 <= jobs && jobs <= quota && quota <= budget);
-              assert.equal(stage.env.CARGO_INCREMENTAL, '1');
+              assert.equal(stage.env.CARGO_INCREMENTAL, index >= 2 ? undefined : '1');
+              if (index >= 2) assert.equal(stage.env.CARGO_PROFILE_TEST_INCREMENTAL, 'true');
             });
             const jobs = Number(plan[1].env.CARGO_BUILD_JOBS);
             if (previous !== undefined) assert.ok(previous <= jobs);
@@ -367,6 +370,7 @@ fs.appendFileSync(process.env.POLICY_FAKE_LOG, JSON.stringify({
   cap: process.env.ONEFLOWBASE_CARGO_JOB_LIMIT,
   incremental: process.env.CARGO_INCREMENTAL,
   testDebug: process.env.CARGO_PROFILE_TEST_DEBUG,
+  testIncremental: process.env.CARGO_PROFILE_TEST_INCREMENTAL,
 }) + '\\n');
 process.exit(process.env.POLICY_FAIL_BINS === '1' && args.includes('--bins') ? 7 : 0);
 `;
@@ -401,6 +405,8 @@ require(${JSON.stringify(corePath)}).runRustCacheReset({
           HOME: homeDir,
           // Both the recognized wrapper and PATH fallback can only select this fake.
           PATH: fakeBin,
+          CARGO_INCREMENTAL: '1',
+          CARGO_PROFILE_TEST_INCREMENTAL: undefined,
           CI: scenario.ci ? 'true' : 'false',
           GITHUB_ACTIONS: 'false',
           CARGO_BUILD_JOBS: scenario.buildJobs,
@@ -419,7 +425,8 @@ require(${JSON.stringify(corePath)}).runRustCacheReset({
       records.forEach((entry, index) => {
         assert.equal(entry.cwd, repoRoot);
         assert.equal(entry.cap, scenario.cap);
-        assert.equal(entry.incremental, scenario.ci ? '0' : '1');
+        assert.equal(entry.incremental, scenario.ci ? '0' : index >= 2 ? undefined : '1');
+        assert.equal(entry.testIncremental, !scenario.ci && index >= 2 ? 'true' : undefined);
         assert.equal(entry.args[0], index === 0 ? 'fetch' : index === 1 ? 'build' : 'test');
         assert.ok(entry.args.includes('--locked'));
         if (index >= 2) assert.equal(entry.testDebug, '0');
@@ -432,4 +439,14 @@ require(${JSON.stringify(corePath)}).runRustCacheReset({
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true });
   }
+});
+
+test('API test profile overrides inherited dev metadata without changing development or assertions', () => {
+  const manifest = fs.readFileSync(path.resolve(__dirname, '../../../../api/Cargo.toml'), 'utf8');
+  const section = (name) => manifest.split('[' + name + ']')[1]?.split(/\n\[/u)[0];
+  assert.match(section('profile.dev.package.api-server'), /debug = "line-tables-only"/u);
+  const apiTest = section('profile.test.package.api-server');
+  assert.match(apiTest, /incremental = false/u);
+  assert.match(apiTest, /debug = 0/u);
+  assert.doesNotMatch(apiTest, /codegen-units|debug-assertions|overflow-checks|panic|opt-level/u);
 });

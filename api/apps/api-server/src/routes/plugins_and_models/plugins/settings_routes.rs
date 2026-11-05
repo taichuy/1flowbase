@@ -165,6 +165,7 @@ pub(super) fn model_provider_catalog_install_status(
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod catalog_identity_tests {
     use super::{

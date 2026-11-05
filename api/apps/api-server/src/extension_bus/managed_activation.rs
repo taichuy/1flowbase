@@ -322,6 +322,7 @@ impl ManagedExtensionComposition {
         Ok(lease)
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) async fn execute(
         &self,

@@ -508,9 +508,11 @@ pub(crate) fn compile_registry(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableBillingPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<BillingInput, BillingOutput> for UnavailableBillingPort {
     fn execute<'a>(
@@ -526,6 +528,7 @@ impl ConsoleInterfacePort<BillingInput, BillingOutput> for UnavailableBillingPor
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

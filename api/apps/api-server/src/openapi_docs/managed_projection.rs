@@ -207,6 +207,7 @@ impl DocsOutputProjection<'_> {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/managed_projection.rs"]
 mod tests;

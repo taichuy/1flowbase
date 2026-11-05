@@ -432,6 +432,7 @@ impl ApiOfficialExtensionCatalogSource {
         }
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn new_with_request_timeouts(
         sources: BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>,

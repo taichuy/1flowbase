@@ -70,6 +70,7 @@ fn status_error_type(status: StatusCode) -> &'static str {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "_tests/error_projection.rs"]
 mod tests;

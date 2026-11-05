@@ -61,6 +61,7 @@ impl ApiOfficialI18nCatalogSource {
         (asset_url.clone(), format!("{asset_url}.sha256"))
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn latest_url(&self) -> &str {
         &self.latest_url

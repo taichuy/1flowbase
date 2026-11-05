@@ -901,6 +901,7 @@ fn bundle_file_path(directory: &str, stable_id: &str) -> String {
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::parse_bundle_archive;

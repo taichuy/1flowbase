@@ -78,6 +78,7 @@ pub(crate) struct CompiledConsoleOperationSnapshot {
 }
 
 impl CompiledConsoleOperationSnapshot {
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn operation(&self, operation_id: &str) -> Option<&CompiledConsoleOperationRecord> {
         self.operations

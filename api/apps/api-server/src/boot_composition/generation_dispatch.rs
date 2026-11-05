@@ -98,6 +98,7 @@ impl GenerationDispatch {
             .map_err(|_| unavailable())
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn compile(state: &Arc<ApiState>) -> Result<Arc<Self>, ApiError> {
         let boot = state
@@ -114,6 +115,7 @@ impl GenerationDispatch {
     }
 
     #[cfg(test)]
+    #[cfg_attr(test, api_test_selection::group(core, contracts, public_api))]
     pub(crate) fn retirement_notification(&self) -> Arc<tokio::sync::Notify> {
         self.retired.clone()
     }

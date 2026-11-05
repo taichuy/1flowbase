@@ -255,6 +255,7 @@ impl LocalRuntimeEventStream {
     }
 
     #[cfg(test)]
+    #[cfg_attr(test, api_test_selection::group(contracts, public_api))]
     pub(crate) fn with_broadcast_capacity_for_tests(broadcast_capacity: usize) -> Self {
         Self {
             broadcast_capacity: broadcast_capacity.max(1),
@@ -262,6 +263,7 @@ impl LocalRuntimeEventStream {
         }
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn contains_run_without_purge_for_tests(&self, run_id: Uuid) -> bool {
         self.runs
@@ -271,6 +273,7 @@ impl LocalRuntimeEventStream {
     }
 
     #[cfg(test)]
+    #[cfg_attr(test, api_test_selection::group(contracts, public_api))]
     pub(crate) fn run_probe_for_tests(
         &self,
         run_id: Uuid,
@@ -367,6 +370,7 @@ impl LocalRuntimeEventStream {
         runs.values().map(|run| run.retention_deadline()).min()
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn has_live_broadcast_for_tests(&self, run_id: Uuid) -> Result<bool> {
         let run = self.run(run_id)?;
@@ -397,6 +401,7 @@ impl LocalRuntimeEventStream {
         Self::purge_and_next_deadline(&self.runs, self.recoverable_byte_budget);
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn set_run_timestamps_for_tests(
         &self,
@@ -415,6 +420,7 @@ impl LocalRuntimeEventStream {
         Ok(())
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn set_confirmation_timestamp_for_tests(
         &self,
@@ -432,6 +438,7 @@ impl LocalRuntimeEventStream {
         Ok(())
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn retention_deadline_for_tests(&self, run_id: Uuid) -> Result<OffsetDateTime> {
         Ok(self.run(run_id)?.retention_deadline())

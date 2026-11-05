@@ -20,19 +20,25 @@ pub(crate) use selection::ResultSelection;
 
 #[path = "result_delivery/paging.rs"]
 mod paging;
+
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use paging::page_leaves;
+
 use paging::{bounded_page, json_leaves, serialized, JsonLeaf};
 pub(crate) use paging::{inline_limit, ContinuationCursor, DEFAULT_INLINE_CHARS};
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "result_delivery/_tests/cache.rs"]
 mod cache_tests;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "result_delivery/_tests/chunked_cache.rs"]
 mod chunked_cache_tests;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "result_delivery/_tests/protocol.rs"]
 mod protocol_tests;
@@ -55,6 +61,7 @@ impl McpResultDeliveryDependencies {
 }
 
 #[cfg(test)]
+#[cfg_attr(test, api_test_selection::group(contracts, routes))]
 pub(crate) const MAX_INLINE_CHARS: usize = 16_000;
 pub(crate) const DETAIL_TTL_SECONDS: i64 = 10 * 60;
 
@@ -208,6 +215,7 @@ async fn save_selection(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) async fn deliver_oversized_result(
     dependencies: &McpResultDeliveryDependencies,
@@ -476,6 +484,7 @@ pub(crate) fn tool_result(value: Value) -> Value {
     })
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) async fn read_continuation(
     dependencies: &McpResultDeliveryDependencies,
@@ -742,6 +751,7 @@ fn contains_base64_like(value: &Value, field_name: Option<&str>) -> bool {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod assistant_mcp_tests {
     use super::*;

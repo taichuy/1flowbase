@@ -38,6 +38,7 @@ impl ManagedServiceFailure {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;

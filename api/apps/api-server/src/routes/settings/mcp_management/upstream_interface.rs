@@ -723,9 +723,11 @@ pub(crate) fn compile_registry(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableMcpUpstreamPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<McpUpstreamInput, McpUpstreamOutput> for UnavailableMcpUpstreamPort {
     fn execute<'a>(
@@ -741,6 +743,7 @@ impl ConsoleInterfacePort<McpUpstreamInput, McpUpstreamOutput> for UnavailableMc
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

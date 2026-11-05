@@ -36,6 +36,7 @@ impl OptionalNotificationPublicationPort for HostOptionalNotificationPublication
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;

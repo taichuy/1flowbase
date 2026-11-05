@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "apps/api-server",
+  "crates/api-test-selection",
   "crates/domain",
   "crates/control-plane-contracts",
   "crates/control-plane",
@@ -103,6 +104,12 @@ opt-level = 3
 
 # Match cache warmup and ordinary test commands so dependency artifacts are reusable.
 [profile.test]
+debug = 0
+
+# Avoid the composition root test harness incremental cache and inherited dev DWARF.
+# Other crates retain the configured incremental policy; development keeps line tables.
+[profile.test.package.api-server]
+incremental = false
 debug = 0
 
 # Managed hook admission hashes installed worker bytes inside the invocation's

@@ -131,6 +131,7 @@ pub(super) fn to_chat_response_for_round(
     Ok(response)
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "_tests/usage_boundary.rs"]
 mod tests;

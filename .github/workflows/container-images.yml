@@ -5,6 +5,7 @@ on:
     branches:
       - latest
     paths:
+      - ".github/actions/setup-trivy/**"
       - ".github/workflows/container-images.yml"
       - ".github/workflows/native-build.yml"
       - ".github/workflows/web-build.yml"
@@ -313,6 +314,8 @@ jobs:
       - name: Prepare Trivy report directory
         run: mkdir -p tmp/test-governance
 
+      - name: Install verified Trivy from GitHub Release
+        uses: ./.github/actions/setup-trivy
       - name: Generate HIGH Trivy warning report
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         env:
@@ -320,7 +323,7 @@ jobs:
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ${{ steps.image_refs.outputs.scan_image_ref }}
-          version: v0.70.0
+          skip-setup-trivy: true
           scanners: vuln
           severity: HIGH
           format: json
@@ -334,7 +337,7 @@ jobs:
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ${{ steps.image_refs.outputs.scan_image_ref }}
-          version: v0.70.0
+          skip-setup-trivy: true
           scanners: vuln
           severity: CRITICAL
           format: json
@@ -343,7 +346,7 @@ jobs:
 
       - name: Upload Trivy reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: test-governance-trivy-web
           path: tmp/test-governance/trivy-web-*.json
@@ -493,7 +496,7 @@ jobs:
 
       - name: Upload api-server build timings
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: rust-release-timings-${{ matrix.arch }}
           path: tmp/test-governance/rust-release/${{ matrix.arch }}
@@ -501,7 +504,7 @@ jobs:
           retention-days: 7
 
       - name: Upload api-server binary artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: api-server-binary-${{ matrix.arch }}
           path: tmp/container-artifacts/api-server/${{ matrix.arch }}
@@ -661,6 +664,8 @@ jobs:
       - name: Prepare Trivy report directory
         run: mkdir -p tmp/test-governance
 
+      - name: Install verified Trivy from GitHub Release
+        uses: ./.github/actions/setup-trivy
       - name: Generate HIGH Trivy warning report
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         env:
@@ -668,7 +673,7 @@ jobs:
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ${{ steps.image_refs.outputs.scan_image_ref }}
-          version: v0.70.0
+          skip-setup-trivy: true
           scanners: vuln
           severity: HIGH
           format: json
@@ -682,7 +687,7 @@ jobs:
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ${{ steps.image_refs.outputs.scan_image_ref }}
-          version: v0.70.0
+          skip-setup-trivy: true
           scanners: vuln
           severity: CRITICAL
           format: json
@@ -691,7 +696,7 @@ jobs:
 
       - name: Upload Trivy reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: test-governance-trivy-api-server
           path: tmp/test-governance/trivy-api-server-*.json
@@ -726,7 +731,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '24.22.1'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: 1flowbase-*
           merge-multiple: true
@@ -781,7 +786,7 @@ jobs:
           publish_issue: "false"
           start_postgres: "false"
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always() && steps.trivy_reports.outputs.has_reports == 'true'
         with:
           name: test-governance-container-images

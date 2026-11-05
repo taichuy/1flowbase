@@ -398,8 +398,10 @@ include!("application_runtime/handlers/log_handlers.rs");
 
 include!("application_runtime/handlers/export_handlers.rs");
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use archive::{build_archive_from_trace_exports, parse_run_archive_v1};
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests;

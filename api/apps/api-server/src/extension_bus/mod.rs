@@ -2,14 +2,18 @@ mod authentication_activation;
 mod authentication_invocation;
 mod managed_interface;
 #[cfg(test)]
+#[cfg_attr(test, api_test_selection::group(contracts, routes))]
 pub(crate) use managed_interface::FrozenManagedProjection;
 pub(crate) mod managed_projection;
 pub(crate) use authentication_invocation::AuthenticatedInvocation;
 mod boot_snapshot;
 mod input_assembly;
 mod managed_activation;
+
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) use managed_activation::validate_interface_protocol;
+
 pub(crate) use managed_activation::{
     ManagedCommunicationCommandProvider, ManagedExecutionInput, ManagedExtensionComposition,
     ManagedWorkspacePublicationSource, ManagedWorkspaceSnapshot,
@@ -17,8 +21,10 @@ pub(crate) use managed_activation::{
 mod interface_contributions;
 pub(crate) use interface_contributions::InterfaceRegistryContribution;
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) use authentication_activation::HostExtensionAuthenticationFactoryCatalog;
+
 pub(crate) use authentication_activation::{
     production_host_extension_authentication_factories, ApplicationApiKeyAuthenticationCredential,
     AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,

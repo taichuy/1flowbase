@@ -103,6 +103,7 @@ struct TransportConnectionBindings {
 }
 
 impl TransportConnectionScope {
+    #[cfg_attr(test, api_test_selection::group(public_api))]
     #[cfg(test)]
     pub(crate) fn for_test(lease: InvocationLease) -> Arc<Self> {
         Arc::new(Self {
@@ -984,6 +985,7 @@ fn _assert_runtime_error_is_send(error: RuntimeBackendError) -> RuntimeBackendEr
     error
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/transport_session_lifecycle.rs"]
 mod tests;

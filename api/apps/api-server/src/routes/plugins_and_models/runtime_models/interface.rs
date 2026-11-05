@@ -420,9 +420,11 @@ fn contract<T: InterfaceContract>() -> ContractIdentity {
         .expect("static runtime model contract is valid")
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 struct UnavailableRuntimeModelOperationPort;
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 impl RuntimeModelOperationPort for UnavailableRuntimeModelOperationPort {
     fn execute<'a>(
@@ -440,6 +442,7 @@ impl RuntimeModelOperationPort for UnavailableRuntimeModelOperationPort {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(super) fn compile_registry_for_test(
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {

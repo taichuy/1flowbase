@@ -117,6 +117,7 @@ fn is_read_only_method(method: &Method) -> bool {
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::{

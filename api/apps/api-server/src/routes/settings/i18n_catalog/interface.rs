@@ -598,9 +598,11 @@ pub(crate) fn compile_registry(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableI18nCatalogPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<I18nCatalogInput, I18nCatalogOutput> for UnavailableI18nCatalogPort {
     fn execute<'a>(
@@ -616,6 +618,7 @@ impl ConsoleInterfacePort<I18nCatalogInput, I18nCatalogOutput> for UnavailableI1
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

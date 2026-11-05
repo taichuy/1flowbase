@@ -137,11 +137,13 @@ fn other_policy_group_keys(group_id: &str) -> (&'static str, &'static str) {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn core_console_display_inventory() -> Vec<&'static str> {
     catalog::TEXTS.iter().map(|text| text.key).collect()
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn core_console_static_reference_inventory() -> Vec<&'static str> {
     catalog::TEXTS
@@ -171,6 +173,7 @@ pub(crate) async fn resolve_core_console_display_with(
         .await
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::dynamic_display_key;

@@ -5,6 +5,7 @@ const BACKEND_SHARDS = [
       'domain', 'access-control', 'observability', 'runtime-profile', 'plugin-framework',
       'extension-contracts', 'extension-package-runtime', 'interface-runtime',
       'control-plane-contracts', 'control-plane-test-support', 'postgres-test-support',
+      'api-test-selection',
     ],
   },
   {

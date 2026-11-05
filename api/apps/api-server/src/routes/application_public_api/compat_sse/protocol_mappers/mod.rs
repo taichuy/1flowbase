@@ -2,6 +2,8 @@
 // evolve them without putting the compatible bridge back in charge of text.
 use super::*;
 use crate::routes::application_public_api::llm_tool_visibility::external_llm_tool_call_values;
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 use crate::routes::application_public_api::stream_terminal_fallback::{
     terminal_answer_deltas_from_payload, terminal_answer_text_from_payload, TerminalAnswerDelta,
@@ -24,6 +26,7 @@ fn openai_response_output_item_payload(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 fn terminal_answer_text(run: &NativeRunResult, payload: &Value) -> Option<String> {
     terminal_answer_text_from_payload(payload).or_else(|| {
@@ -34,6 +37,7 @@ fn terminal_answer_text(run: &NativeRunResult, payload: &Value) -> Option<String
     })
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(super) fn terminal_answer_deltas_from_run_or_payload(
     run: &NativeRunResult,
@@ -425,6 +429,7 @@ pub(super) fn anthropic_tool_use_blocks_from_waiting_payload(
     (!blocks.is_empty()).then_some(blocks)
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(super) fn anthropic_completed_run_to_sse(
     run: &NativeRunResult,
@@ -452,6 +457,7 @@ pub(super) fn anthropic_completed_run_to_sse(
     events
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 fn terminal_answer_delta_to_runtime_event(
     run: &NativeRunResult,
@@ -479,6 +485,7 @@ fn terminal_answer_delta_to_runtime_event(
     RuntimeEventEnvelope::new(run.id, sequence, payload)
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 fn waiting_payload_from_run(run: &NativeRunResult) -> Option<Value> {
     let action = run.required_action.as_ref()?;
@@ -568,10 +575,14 @@ fn required_action_not_supported_anthropic_sse() -> Vec<Result<Event, Infallible
 mod anthropic_stream;
 mod openai_chat;
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(super) use anthropic_stream::anthropic_delta_payload;
+
 pub(super) use anthropic_stream::AnthropicStreamMapper;
 pub(super) use openai_chat::OpenAiChatStreamMapper;
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(super) use openai_chat::{
     openai_delta_chunk_payload, openai_finish_chunk_payload, openai_tool_call_chunk_payload,

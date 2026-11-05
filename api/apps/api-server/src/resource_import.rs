@@ -269,6 +269,7 @@ impl FileImportPort for ApiFileImportPort {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,6 +404,7 @@ fn session_matches_caller(
         && session.expires_at_unix > now
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod file_read_identity_tests {
     use super::*;

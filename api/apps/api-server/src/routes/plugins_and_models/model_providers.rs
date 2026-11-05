@@ -802,6 +802,7 @@ pub async fn list_options(
     Ok(Json(ApiSuccess::new(response)))
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod request_log_response_tests {
     use super::*;
@@ -867,6 +868,7 @@ mod request_log_response_tests {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "model_providers/_tests/time_response.rs"]
 mod time_response_tests;

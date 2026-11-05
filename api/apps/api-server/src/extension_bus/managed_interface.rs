@@ -26,6 +26,7 @@ pub(crate) struct FrozenManagedProjection {
 }
 impl FrozenManagedProjection {
     #[cfg(test)]
+    #[cfg_attr(test, api_test_selection::group(contracts, routes))]
     pub(crate) fn compile(contract: ManagedProjectionContract) -> anyhow::Result<Self> {
         let compiled = contract.compile_for_registration()?;
         Ok(Self {

@@ -982,6 +982,7 @@ pub async fn delete_application(
 
 pub(crate) mod collectors;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "applications/_tests/time_response.rs"]
 mod time_response_tests;

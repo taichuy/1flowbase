@@ -551,6 +551,7 @@ pub(super) async fn mark_referenced_versions_not_uninstallable(
     Ok(())
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/plugins.rs"]
 mod tests;

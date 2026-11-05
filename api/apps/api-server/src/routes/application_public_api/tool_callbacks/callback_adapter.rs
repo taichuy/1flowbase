@@ -459,6 +459,7 @@ fn anthropic_tool_result_content(block: &Value) -> Value {
     content.clone()
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "callback_adapter/tests.rs"]
 mod tests;

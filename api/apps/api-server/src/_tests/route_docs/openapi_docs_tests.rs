@@ -489,8 +489,6 @@ fn scope_plans_preserve_legacy_scheme_name_insertion_and_empty_security() {
     assert_eq!(empty["paths"]["/empty"]["get"]["security"], json!([]));
 }
 
-
-
 #[test]
 fn operation_documents_are_independent_across_requests_and_registry_snapshots() {
     let canonical = json!({"openapi":"3.1.0","info":{"title":"T","version":"1"},"paths":{"/demo":{"get":{"operationId":"read"}}}});

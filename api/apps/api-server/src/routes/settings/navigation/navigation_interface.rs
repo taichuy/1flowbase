@@ -406,9 +406,11 @@ pub(crate) fn compile_registry(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableConsoleNavigationPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<ConsoleNavigationInput, ConsoleNavigationOutput>
     for UnavailableConsoleNavigationPort
@@ -426,6 +428,7 @@ impl ConsoleInterfacePort<ConsoleNavigationInput, ConsoleNavigationOutput>
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

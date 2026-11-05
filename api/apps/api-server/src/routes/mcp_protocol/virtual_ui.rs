@@ -85,6 +85,8 @@ impl VirtualMcpScope {
     pub(crate) fn instance_ids(&self) -> &[String] {
         &self.instance_ids
     }
+
+    #[cfg_attr(test, api_test_selection::group(routes))]
     #[cfg(test)]
     pub(crate) fn selected(
         catalog: &domain::McpCatalogSnapshot,
@@ -651,6 +653,7 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
     tools
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 pub(crate) fn provider_tools(
     catalog: &domain::McpCatalogSnapshot,
@@ -1083,10 +1086,12 @@ pub(crate) fn interface_error(error: &anyhow::Error) -> VirtualToolOutcome {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/virtual_ui.rs"]
 mod tests;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/target_error_diagnostics.rs"]
 mod target_error_diagnostics;

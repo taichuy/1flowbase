@@ -988,9 +988,11 @@ pub(crate) fn compile_registry(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableAuthCenterPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<AuthCenterInput, AuthCenterOutput> for UnavailableAuthCenterPort {
     fn execute<'a>(
@@ -1006,6 +1008,7 @@ impl ConsoleInterfacePort<AuthCenterInput, AuthCenterOutput> for UnavailableAuth
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;

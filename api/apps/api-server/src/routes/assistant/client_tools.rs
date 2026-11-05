@@ -322,6 +322,7 @@ impl RuntimeInternalToolInvoker for AssistantClientToolBridge {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {

@@ -80,6 +80,7 @@ fn client_session_parts(headers: &HeaderMap) -> Result<(String, String), OpenAiR
     Ok((session_id, thread_id))
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests {
     use super::*;

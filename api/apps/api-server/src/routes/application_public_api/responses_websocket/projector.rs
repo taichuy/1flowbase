@@ -47,6 +47,7 @@ pub(crate) struct ResponsesWebSocketProjector {
 }
 
 impl ResponsesWebSocketProjector {
+    #[cfg_attr(test, api_test_selection::group(public_api))]
     #[cfg(test)]
     pub(crate) fn new(model: String, previous_response_id: Option<String>) -> Self {
         Self::with_mode(

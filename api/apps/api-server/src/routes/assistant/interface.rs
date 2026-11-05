@@ -724,12 +724,15 @@ pub(crate) fn compile_run_stream_registry(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableAssistantSettingsPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableAssistantConversationsPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<AssistantSettingsInput, AssistantSettingsOutput>
     for UnavailableAssistantSettingsPort
@@ -747,6 +750,7 @@ impl ConsoleInterfacePort<AssistantSettingsInput, AssistantSettingsOutput>
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<AssistantConversationsInput, AssistantConversationsOutput>
     for UnavailableAssistantConversationsPort
@@ -764,6 +768,7 @@ impl ConsoleInterfacePort<AssistantConversationsInput, AssistantConversationsOut
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;

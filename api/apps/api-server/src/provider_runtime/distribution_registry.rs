@@ -153,6 +153,7 @@ fn stable_runtime_plugin_id(plugin_id: &str) -> &str {
         .unwrap_or(plugin_id)
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;

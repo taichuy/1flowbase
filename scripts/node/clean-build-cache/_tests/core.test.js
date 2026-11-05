@@ -109,3 +109,26 @@ test('runBuildCacheCleanup stops backend services before removing selected cache
   assert.equal(fs.existsSync(path.join(repoRoot, 'api', 'target')), false);
   assert.equal(fs.existsSync(frontendFile), true);
 });
+
+test('ownership stop failure preserves every selected cache', async () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-owner-boundary-'));
+  const backendFile = path.join(repoRoot, 'api', 'target', 'debug', 'api-server');
+  const frontendFile = path.join(repoRoot, 'web', 'app', 'dist', 'bundle.js');
+  writeFixtureFile(backendFile);
+  writeFixtureFile(frontendFile);
+  const removed = [];
+  try {
+    await assert.rejects(runBuildCacheCleanup({
+      repoRoot,
+      options: parseCliArgs([]),
+      stopBackendServicesImpl: async () => { throw new Error('ownership not proven'); },
+      removePathImpl: (value) => removed.push(value),
+      writeStdout: () => {},
+    }), /ownership/u);
+    assert.deepEqual(removed, []);
+    assert.equal(fs.readFileSync(backendFile, 'utf8'), 'fixture\n');
+    assert.equal(fs.existsSync(frontendFile), true);
+  } finally {
+    fs.rmSync(repoRoot, { recursive: true, force: true });
+  }
+});

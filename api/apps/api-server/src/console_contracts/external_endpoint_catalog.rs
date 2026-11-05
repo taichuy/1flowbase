@@ -152,16 +152,19 @@ pub(crate) struct ExternalEndpointRow {
 }
 
 impl ExternalEndpointRow {
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn classification(&self) -> ExternalEndpointClassification {
         self.classification
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn sources(&self) -> &BTreeSet<String> {
         &self.sources
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn binding_id(&self) -> Option<&str> {
         self.binding_id.as_deref()
@@ -902,6 +905,7 @@ impl ExternalEndpointCatalogCompiler {
         }
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn reject_unapproved_control(
         &self,
@@ -910,6 +914,7 @@ impl ExternalEndpointCatalogCompiler {
         ExternalEndpointCatalogError::UnknownControl { identity }
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn compile(self) -> ExternalEndpointCatalog {
         ExternalEndpointCatalog { rows: self.rows }
@@ -1008,6 +1013,7 @@ impl ExternalEndpointCatalog {
         self.rows.values()
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn row(&self, identity: &ExternalEndpointIdentity) -> Option<&ExternalEndpointRow> {
         self.rows.get(identity)
@@ -1056,6 +1062,7 @@ fn merge_classification(
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod construction_controls {
     use super::*;

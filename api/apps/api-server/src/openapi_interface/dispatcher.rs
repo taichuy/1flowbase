@@ -666,6 +666,7 @@ fn invalid(field: &'static str) -> anyhow::Error {
     control_plane::errors::ControlPlaneError::InvalidInput(field).into()
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;

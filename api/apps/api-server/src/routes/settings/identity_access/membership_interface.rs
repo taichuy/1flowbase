@@ -928,9 +928,11 @@ pub(crate) fn compile_registry(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableMembershipPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<MembershipInput, MembershipOutput> for UnavailableMembershipPort {
     fn execute<'a>(
@@ -946,6 +948,7 @@ impl ConsoleInterfacePort<MembershipInput, MembershipOutput> for UnavailableMemb
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;

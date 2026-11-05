@@ -247,12 +247,12 @@ jobs:
           publish_issue: "true"
           start_postgres: ${{ inputs.scope == 'repo' || inputs.scope == 'backend' || startsWith(inputs.scope, 'backend-consistency') || inputs.scope == 'state-protocols' || inputs.scope == 'repo-backend' || startsWith(inputs.scope, 'repo-backend-test-') || inputs.scope == 'repo-backend-history-maintenance' || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-') }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-artifacts
           path: tmp/test-governance
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-summary
@@ -307,7 +307,7 @@ jobs:
             rust-plugin-composition-2007-nodebug-${{ runner.os }}-
       - name: Run the frozen finite batch serially
         run: node scripts/node/plugin-composition-test-batch/runner.js
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: plugin-composition-2007-${{ inputs.candidate_sha }}
@@ -360,7 +360,7 @@ jobs:
             rust-plugin-composition-2014-nodebug-${{ runner.os }}-
       - name: Run the frozen finite batch serially
         run: node scripts/node/plugin-composition-test-batch/runner.js
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: plugin-composition-2014-${{ inputs.batch_mode || 'full' }}-${{ inputs.candidate_sha }}
@@ -402,7 +402,7 @@ jobs:
           environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
           publish_issue: "false"
           start_postgres: "false"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-repo-tooling
@@ -440,7 +440,7 @@ jobs:
           environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
           publish_issue: "false"
           start_postgres: "false"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-repo-frontend
@@ -488,7 +488,7 @@ jobs:
           environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
           publish_issue: "false"
           start_postgres: "false"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-repo-frontend-react-doctor
@@ -618,7 +618,7 @@ jobs:
           environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
           publish_issue: "false"
           start_postgres: ${{ startsWith(matrix.scope, 'repo-backend-test-') || matrix.scope == 'repo-backend-history-maintenance' }}
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-${{ matrix.scope }}
@@ -654,7 +654,7 @@ jobs:
           environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
           publish_issue: "false"
           start_postgres: "false"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-coverage-frontend
@@ -742,7 +742,7 @@ jobs:
       - name: Record immutable coverage target SHA
         if: always()
         run: echo "$QUALITY_GATE_TARGET_SHA" > tmp/test-governance/target-sha.txt
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-${{ matrix.scope }}
@@ -798,7 +798,7 @@ jobs:
       - name: Preserve profile pool equivalence evidence
         if: ${{ matrix.shard == 1 }}
         run: cp tmp/test-governance/coverage-shadow/api-server/pool-equivalence.json tmp/test-governance/coverage-shadow/api-server/shard-1/pool-equivalence.json
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-shadow-api-server-profraw-${{ matrix.shard }}
@@ -830,7 +830,7 @@ jobs:
           restore-keys: |
             rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
             rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           pattern: coverage-shadow-api-server-profraw-*
           path: tmp/test-governance/coverage-shadow/api-server/downloaded
@@ -848,7 +848,7 @@ jobs:
           INPUT_REPORT_TYPE: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           INPUT_ENVIRONMENT: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
         run: node scripts/node/cli/quality/github-quality-gate.js
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-coverage-backend-api-server-merge
@@ -880,6 +880,8 @@ jobs:
           node-version-file: web/.nvmrc
       - name: Prepare Trivy report directory
         run: mkdir -p tmp/test-governance
+      - name: Install verified Trivy from GitHub Release
+        uses: ./.github/actions/setup-trivy
       - name: Generate web HIGH Trivy warning report
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         env:
@@ -887,7 +889,7 @@ jobs:
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/1flowbase-web:latest
-          version: v0.70.0
+          skip-setup-trivy: true
           scanners: vuln
           severity: HIGH
           format: json
@@ -900,7 +902,7 @@ jobs:
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/1flowbase-web:latest
-          version: v0.70.0
+          skip-setup-trivy: true
           scanners: vuln
           severity: CRITICAL
           format: json
@@ -913,7 +915,7 @@ jobs:
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/1flowbase-api-server:latest
-          version: v0.70.0
+          skip-setup-trivy: true
           scanners: vuln
           severity: HIGH
           format: json
@@ -926,7 +928,7 @@ jobs:
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/1flowbase-api-server:latest
-          version: v0.70.0
+          skip-setup-trivy: true
           scanners: vuln
           severity: CRITICAL
           format: json
@@ -943,7 +945,7 @@ jobs:
           publish_issue: "false"
           start_postgres: "false"
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-container-images
@@ -978,7 +980,7 @@ jobs:
           ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
       - name: Resolve quality gate target SHA
         run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           pattern: "test-governance-!(artifacts)"
           path: tmp/test-governance/parallel
@@ -993,7 +995,7 @@ jobs:
           INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-history-maintenance,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage-fast,repo-backend-test-storage-postgres-1-of-4,repo-backend-test-storage-postgres-2-of-4,repo-backend-test-storage-postgres-3-of-4,repo-backend-test-storage-postgres-4-of-4,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-runtime-extension-host,coverage-backend-storage-postgres,coverage-backend-api-server-merge,container-images,ai-gateway-protocol-conformance,foundation-contracts'
           INPUT_PUBLISH_ISSUE: "true"
           INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-artifacts

@@ -807,6 +807,7 @@ fn paths_overlap(left: &std::path::Path, right: &std::path::Path) -> bool {
     left.starts_with(right) || right.starts_with(left)
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::observed_backup_job_state;

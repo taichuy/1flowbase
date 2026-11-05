@@ -31,6 +31,7 @@ pub(crate) fn request_origin(headers: &HeaderMap) -> Result<String, OAuthError> 
     validate_origin(&format!("{scheme}://{host}"), false).map_err(|_| OAuthError::invalid())
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/origin.rs"]
 mod tests;

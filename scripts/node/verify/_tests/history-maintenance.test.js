@@ -62,3 +62,16 @@ test('each maintenance selector needs its own executed tests; build output is no
     } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
   }
 });
+
+test('maintenance tests honor package incremental overrides while build and clippy retain development policy', () => {
+  for (const incremental of [true, false]) {
+    const commands = buildBackendCommands({ ...options, cargoJobs: 2, incremental, target: 'history-maintenance' });
+    assert.equal(commands.filter((entry) => entry.args[0] === 'test').length, 4);
+    for (const entry of commands) {
+      const isProfileTest = entry.args[0] === 'test';
+      assert.equal(entry.env.CARGO_INCREMENTAL, incremental ? isProfileTest ? undefined : '1' : '0');
+      assert.equal(entry.env.CARGO_PROFILE_TEST_INCREMENTAL, incremental && isProfileTest ? 'true' : undefined);
+      assert.equal(entry.env.CARGO_BUILD_JOBS, '2');
+    }
+  }
+});

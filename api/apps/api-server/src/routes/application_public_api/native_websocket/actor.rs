@@ -32,6 +32,7 @@ impl NativeConnectionActor {
         }
     }
 
+    #[cfg_attr(test, api_test_selection::group(public_api))]
     #[cfg(test)]
     pub(crate) fn state(&self) -> NativeConnectionState {
         self.state

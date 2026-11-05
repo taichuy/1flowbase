@@ -100,7 +100,7 @@ jobs:
               run_test system-managed-lifecycle -p control-plane --lib _tests::plugin_management::managed_service_install::
               run_test initial-assignment -p storage-durable-postgres --lib managed_initial_assignment_
             fi
-            run_test extension-install-http -p api-server --lib _tests::plugin_routes::extension_center
+            run_test extension-install-http -p api-server --test api_private_contracts _tests::plugin_routes::extension_center
             run_test extension-install-http-catalog -p api-server --test api_extension_catalog _tests::plugin_routes::extension_center
           else
             if [ "$TEST_SCOPE" = full ]; then
@@ -110,9 +110,9 @@ jobs:
               run_test worker -p runtime-extension-host managed_capability_multiplex
               run_test postgres -p control-plane-postgres-tests --test mcp_management_integration
             fi
-            run_test mcp-http -p api-server --lib managed_service_mcp
-            run_test mcp-media -p api-server --lib result_delivery::media::tests
-            run_test mcp-errors -p api-server --lib target_error_diagnostics
+            run_test mcp-http -p api-server --lib --test api_private_routes managed_service_mcp
+            run_test mcp-media -p api-server --test api_private_routes result_delivery::media::tests
+            run_test mcp-errors -p api-server --test api_private_routes target_error_diagnostics
             run_test lifecycle -p api-server --lib managed_services::
           fi
           test "$failures" -eq 0
@@ -126,7 +126,7 @@ jobs:
           cp api/target/debug/api-server "$evidence/api-server-candidate"
           git rev-parse HEAD > "$evidence/candidate-sha.txt"
           sha256sum "$evidence/api-server-candidate" > "$evidence/binary-sha256.txt"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: browser-managed-host-${{ inputs.candidate_sha || github.sha }}

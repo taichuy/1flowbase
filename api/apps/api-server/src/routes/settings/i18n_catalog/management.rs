@@ -412,6 +412,7 @@ pub async fn restore_all_catalog_overrides(
     Ok(Json(ApiSuccess::new(response)))
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::identity;

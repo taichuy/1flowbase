@@ -512,9 +512,11 @@ pub(crate) fn compile_registry(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableRoleAccessPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<RoleAccessInput, RoleAccessOutput> for UnavailableRoleAccessPort {
     fn execute<'a>(
@@ -530,6 +532,7 @@ impl ConsoleInterfacePort<RoleAccessInput, RoleAccessOutput> for UnavailableRole
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;

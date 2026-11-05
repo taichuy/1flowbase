@@ -25,11 +25,12 @@ node scripts/node/test-backend.js --workspace --test api_config --filter parse_b
 Each entry mounts the original test leaf under `src/_tests` and links the ordinary
 `api_server` library. The source files stay in place so relative fixture/include paths
 keep their meaning. Those leaves are no longer mounted by the library test harness.
-Private implementation tests remain in their owning modules.
+Private implementation tests retain their original source and private bindings.
+Select the target by the original test-name owner in the table below.
 
 每个入口仅挂载 `src/_tests` 中的原测试文件，并链接普通 `api_server` 库。
 原文件不移动，保留相对 fixture/include 路径；原库测试入口不再重复挂载这些文件。
-需要访问私有实现的白盒测试仍留在所属模块。
+需要访问私有实现的白盒测试保留原源码和私有绑定，按下表中的原测试名前缀选择目标。
 
 Full package/workspace test selection still discovers these targets and the remaining
 library tests. Keep the existing feature-specific and documentation-test gates;
@@ -70,7 +71,8 @@ workspace 全量预热的 feature 图。上述验收清除额外 test-debug 环�
 The `test-support` feature is enabled by the package's dev self-dependency. It adds
 explicit fixture factories; ordinary production constructors keep their behavior.
 Each target below mounts original test leaves and shares one fixture library.
-Private implementation cases remain in the library harness, including private contract checks extracted from otherwise public test leaves.
+Private implementation cases retain their original source, test names and private
+bindings across the four private harness partitions below.
 
 | Target | Scope |
 | --- | --- |
@@ -94,7 +96,46 @@ fixtures retain their existing path resolver. `ApiState` gains no feature field.
 
 The workspace test profile defaults to `debug = 0`, matching cache warmup.
 Ordinary target selection therefore reuses the same dependency profile without an extra environment override.
-The existing API package override still retains line-table debug information.
+The API package uses `debug = 0` and disables incremental compilation in the test profile.
+Its ordinary dev profile retains line-table debug information and the existing incremental setting.
+
+## Private test partitions / 私有测试分区
+
+原库测试的四组目标按自然模块划分，原测试名、过滤器、测试属性与私有绑定保留。
+以下数量描述旧默认集合的静态分区，不代表已经完成运行验收或资源验收。
+
+| Selection / 目标选择 | Original test-name owner / 原测试名归属 | Default reference count / 默认参考数 |
+| --- | --- | ---: |
+| `--lib` | 非 `routes::` 且非 `_tests::` 的所属模块测试 | 312 |
+| `--test api_private_contracts` | 中央 `_tests::` | 522 |
+| `--test api_public_api` | `routes::application_public_api::` | 334 |
+| `--test api_private_routes` | 其余 `routes::` | 383 |
+
+`src/lib.rs` 仍是同源生产文本；`src/lib_root.rs` 库入口与原生测试入口共享生产实现，
+只选择不同的测试挂载。既有七个公开 HTTP native targets 和其他原生契约目标继续保留。
+`root-1805-consumer-fixture` 保持原来的 `--lib` 专项入口，不按默认 `_tests::` 归属改写。
+Cargo 自动发现各目标，普通开发命令与无参缓存重置预热无需额外 feature 或环境参数。
+
+```bash
+node scripts/node/test-backend.js --workspace --test api_private_contracts --filter _tests::runtime_event_stream
+node scripts/node/test-backend.js --workspace --test api_public_api --filter routes::application_public_api::compat_sse
+node scripts/node/test-backend.js --workspace --test api_private_routes --filter result_delivery::media::tests
+node scripts/node/test-backend.js --package api-server --lib --filter provider_runtime::transport_session_lifecycle
+```
+
+A filter can match more than one private partition. Native Cargo accepts multiple
+explicit targets; select precisely the partitions that contained the original matches:
+
+```bash
+cargo test --manifest-path api/Cargo.toml -p api-server --test api_private_contracts --test api_private_routes runtime_event_stream
+```
+
+此过滤器原有 54 个中央契约测试和 4 个非 public-api 路由测试，两目标并集保留原命中。
+原生 Cargo 支持 `--lib` 与多个 `--test` 的组合；测试 CLI 每次只接受一个目标，
+需要时分别执行，并保留每条命令的零匹配检查。不要用 package 全目标替换定向并集，
+因为其他既有 native target 可能有额外同名命中。
+完整 package/workspace 测试、现有 nextest package 分片与无参 reset 的 all-targets
+预热自动发现四组；定向选择只运行所选目标，不等于其余目标已验证。
 
 ## Fixture prerequisites / Fixture 前提
 
@@ -110,7 +151,7 @@ Use the configured test database account.
 既有建库、schema 和扩展权限，并能连接维护库 `postgres` 进行 owner 析构清理。
 清理失败会记录错误；使用测试数据库账号。
 
-The remaining full library suite also uses the existing trusted-origin and SDK-worker
+The full private test suite also uses the existing trusted-origin and SDK-worker
 fixtures. Keep the CI fixture value `API_AUTH_PUBLIC_ORIGIN=https://auth-fixture.example`
 and prepare the required worker artifacts before the cases that consume them. The
 repository's `scripts/node/plugin-composition-test-batch/runner.js` owns the existing
@@ -118,7 +159,7 @@ plugin-composition worker preparation; the verification report records the four 
 examples used for the full library run. Let Cargo set `CARGO_MANIFEST_DIR` for each
 package instead of exporting one application path globally.
 
-完整剩余库回归还依赖既有 trusted-origin 与 SDK worker fixture。沿用上述 CI origin，
+完整私有测试回归还依赖既有 trusted-origin 与 SDK worker fixture。沿用上述 CI origin，
 在相应用例执行前准备 worker 产物；既有插件组合 runner 管理其 worker 准备，完整库
 验收使用的四个 example 见报告。普通 Cargo 命令由 Cargo 为各包设置
 `CARGO_MANIFEST_DIR`，不要把某个应用包目录全局导出给所有依赖。

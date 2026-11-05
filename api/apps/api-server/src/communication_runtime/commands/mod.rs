@@ -29,6 +29,7 @@ async fn wait(stop: &mut watch::Receiver<bool>) -> bool {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
 #[path = "_tests/mod.rs"]
 mod tests;

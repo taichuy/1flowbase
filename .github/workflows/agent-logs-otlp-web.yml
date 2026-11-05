@@ -35,7 +35,7 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - name: Build exact static UI with finite resource monitoring
         run: node scripts/node/agent-logs-exchange/ci-web.cjs
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: agent-logs-otlp-web-${{ inputs.source_ref || github.sha }}

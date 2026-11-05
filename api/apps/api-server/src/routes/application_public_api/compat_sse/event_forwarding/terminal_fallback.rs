@@ -28,6 +28,7 @@ pub(in super::super) async fn append_compatible_resume_terminal_event(
         .await;
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(super) struct CompatibleTerminalFallback<'a, F> {
     pub(super) state: &'a ApiState,
@@ -40,6 +41,7 @@ pub(super) struct CompatibleTerminalFallback<'a, F> {
     pub(super) ignored_waiting_callback_task_id: Option<uuid::Uuid>,
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(super) enum CompatibleTerminalFallbackOutcome {
     NotTerminal,
@@ -48,6 +50,7 @@ pub(super) enum CompatibleTerminalFallbackOutcome {
     IgnoredWaitingCallback,
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(super) async fn emit_compatible_terminal_fallback<F>(
     fallback: CompatibleTerminalFallback<'_, F>,

@@ -3,9 +3,9 @@ const { buildCargoCommandEnv } = require('../testing/warning-capture.js');
 // The maintenance executable is feature-gated; default workspace targets do not
 // compile it. Keep the existing service, adapter and real PostgreSQL evidence.
 function buildHistoryMaintenanceCommands({ cargoJobs, cargoTestThreads, incremental = false }) {
-  const env = buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental });
   const command = (label, args) => ({
-    label, command: 'cargo', args: [...args, '--jobs', String(cargoJobs)], cwd: 'api', env,
+    label, command: 'cargo', args: [...args, '--jobs', String(cargoJobs)], cwd: 'api',
+    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: args[0] === 'test' }),
   });
   const tests = [
     ['postgres', 'control-plane-postgres-tests', ['--test', 'responses_history_migration']],

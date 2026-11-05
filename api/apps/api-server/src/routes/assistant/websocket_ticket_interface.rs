@@ -256,9 +256,11 @@ fn required_origin(origin: Option<String>) -> Result<String, ApiError> {
         })
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableAssistantWebSocketTicketPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<AssistantWebSocketTicketInput, AssistantWebSocketTicketOutput>
     for UnavailableAssistantWebSocketTicketPort
@@ -276,6 +278,7 @@ impl ConsoleInterfacePort<AssistantWebSocketTicketInput, AssistantWebSocketTicke
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;

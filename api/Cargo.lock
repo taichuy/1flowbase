@@ -68,6 +68,7 @@ dependencies = [
  "access-control",
  "anyhow",
  "api-server",
+ "api-test-selection",
  "argon2",
  "async-trait",
  "axum",
@@ -135,6 +136,10 @@ dependencies = [
  "windows-sys 0.61.2",
  "zip 9.0.3",
 ]
+
+[[package]]
+name = "api-test-selection"
+version = "0.6.3"
 
 [[package]]
 name = "arc-swap"

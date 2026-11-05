@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { runRustCacheReset } = require('./core.js');
+const { runInResourceScope } = require('./resource-scope.js');
 
 function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(`用法：node scripts/node/reset-rust-cache/cli.js [--warmup-only]
@@ -8,14 +9,15 @@ function usage(writeStdout = (text) => process.stdout.write(text)) {
 停止当前 worktree 的 api-server，删除 api/target，获取 Cargo.lock 中的依赖，
 编译 dev-up 使用的 api-server binary，再准备测试配置下的普通库和 binary 测试目标，
 最后预热 workspace 全部测试目标（不运行测试）。阶段串行，本地两个测试阶段 jobs=1；
-CPU 预算默认半数可用逻辑 CPU，目标至少 4，不超过实际可用数量。
+本地 Linux 在 dev-rust.slice 下验证独立 scope 后才清理，CPU 至多半数主机逻辑 CPU，
+内存至多半数物理 RAM 并遵守更严格的上级限制，禁用 swap；保留调用者更低 CPU 上限。
 普通阶段遵循共享 jobs 配置，各阶段保留调用者更小的并发和 CPU 预算；CI 默认全机。
 不修改共享的开发并发配置。
 --warmup-only：首次开发初始化或补齐缓存时使用，保留 api/target 和运行中的服务。
 `);
 }
 
-async function main({ argv = process.argv.slice(2), writeStdout, runImpl = runRustCacheReset } = {}) {
+async function main({ argv = process.argv.slice(2), writeStdout, runImpl = runRustCacheReset, scopeImpl = runInResourceScope } = {}) {
   if (argv.length === 1 && (argv[0] === '-h' || argv[0] === '--help')) {
     usage(writeStdout);
     return 0;
@@ -25,7 +27,7 @@ async function main({ argv = process.argv.slice(2), writeStdout, runImpl = runRu
     throw new Error(`未知参数：${argv.join(' ')}`);
   }
 
-  return runImpl({ writeStdout, warmupOnly });
+  return scopeImpl({ argv, write: writeStdout, run: () => runImpl({ writeStdout, warmupOnly }) });
 }
 
 if (require.main === module) {

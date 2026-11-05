@@ -31,7 +31,7 @@ test('full backend verification checks types once and keeps separate build/test 
   }
 });
 
-test('verify-backend buildCommands enables incremental compilation when configured', () => {
+test('verify-backend test profile honors package overrides when incremental compilation is configured', () => {
   const commands = buildCommands({
     cargoJobs: 2,
     cargoTestThreads: 1,
@@ -43,7 +43,8 @@ test('verify-backend buildCommands enables incremental compilation when configur
 
   assert.deepEqual(commands[0].env, {
     CARGO_BUILD_JOBS: '2',
-    CARGO_INCREMENTAL: '1',
+    CARGO_INCREMENTAL: undefined,
+    CARGO_PROFILE_TEST_INCREMENTAL: 'true',
   });
 });
 
@@ -90,6 +91,8 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
           'control-plane-test-support',
           '--package',
           'postgres-test-support',
+          '--package',
+          'api-test-selection',
           '--all-targets',
           '--jobs',
           '4',
@@ -321,6 +324,13 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
   // fixture; unrelated production findings belong to the static gate lane.
   fs.mkdirSync(path.join(tempDir, 'scripts', 'node'), { recursive: true });
   fs.mkdirSync(path.join(tempDir, 'api'));
+  fs.writeFileSync(path.join(tempDir, 'api/Cargo.toml'), '[workspace.package]\nedition = "2021"\n');
+  const formatFiles = ['src/lib.rs', 'tests/native.rs'].map((name) => {
+    const file = path.join(tempDir, 'api/apps/api-server', name);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'fn fixture() {}\n');
+    return file;
+  });
   fs.writeFileSync(path.join(tempDir, 'scripts', 'node', 'tooling.js'), 'process.exitCode = 0;');
   fs.writeFileSync(scriptPath, `
     const { main } = require(${JSON.stringify(path.join(repoRoot, 'scripts/node/verify-backend.js'))});
@@ -345,6 +355,11 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
     ].join('\n')
   );
   fs.chmodSync(fakeCargoPath, 0o755);
+  const rustfmtLogPath = path.join(tempDir, 'rustfmt.json');
+  const fakeRustfmtPath = path.join(fakeBinDir, 'rustfmt');
+  fs.writeFileSync(fakeRustfmtPath, '#!' + process.execPath + '\n'
+    + 'require("node:fs").writeFileSync(process.env.VERIFY_RUSTFMT_LOG, JSON.stringify(process.argv.slice(2)));\n');
+  fs.chmodSync(fakeRustfmtPath, 0o755);
 
   const evidence = workspaceEvidence();
   fs.writeFileSync(path.join(tempDir, 'stdout.log'), evidence.stdout);
@@ -356,6 +371,7 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
       CI: 'true',
       PATH: `${fakeBinDir}:${process.env.PATH ?? ''}`,
       VERIFY_BACKEND_LOG: logPath,
+      VERIFY_RUSTFMT_LOG: rustfmtLogPath,
       VERIFY_BACKEND_STDOUT: path.join(tempDir, 'stdout.log'),
       VERIFY_BACKEND_STDERR: path.join(tempDir, 'stderr.log'),
       ONEFLOWBASE_WARNING_OUTPUT_DIR: warningOutputDir,
@@ -370,6 +386,8 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
     .trim()
     .split('\n');
 
+  assert.deepEqual(JSON.parse(fs.readFileSync(rustfmtLogPath, 'utf8')),
+    ['--check', '--edition', '2021', ...formatFiles.sort()]);
   assert.equal(invocations.length, 9);
   assert.match(invocations[1], new RegExp(`clippy --workspace --all-targets --jobs ${expectedParallelism} -- -D warnings`));
   assert.equal(invocations.filter((invocation) => invocation.startsWith('test --workspace ')).length, 1);
@@ -641,4 +659,45 @@ test('workspace reuse requires each protected selector and preserves fail-fast e
     assert.equal(calls.length, 1, missing.label);
     assert.ok(diagnostic.includes(missing.label), diagnostic);
   }
+});
+
+test('every backend test variant preserves package incremental overrides and configured jobs', () => {
+  const base = { cargoJobs: 2, cargoTestThreads: 2, incremental: true, repoRoot: '/repo-root', env: {} };
+  const variants = [
+    ...buildCommands({ ...base, target: 'all' }),
+    ...buildCommands({ ...base, target: 'image-llm-vision' }),
+    ...buildCommands({ ...base, target: 'official-i18n-seed' }),
+    ...BACKEND_TEST_SHARDS.flatMap((shard) => buildCommands({ ...base, target: 'test', shard: shard.key })),
+  ].filter((entry) => entry.command === 'cargo' && ['test', 'nextest'].includes(entry.args[0]));
+  assert.ok(variants.some((entry) => entry.args[0] === 'nextest'));
+  assert.ok(variants.some((entry) => entry.args.includes('--workspace')));
+  for (const entry of variants) {
+    const merged = { CARGO_INCREMENTAL: '1', ...entry.env };
+    assert.equal(merged.CARGO_INCREMENTAL, undefined, entry.label);
+    assert.ok(Object.hasOwn(entry.env, 'CARGO_INCREMENTAL'), entry.label);
+    assert.equal(merged.CARGO_PROFILE_TEST_INCREMENTAL, 'true', entry.label);
+    assert.equal(merged.CARGO_BUILD_JOBS, '2', entry.label);
+    if (entry.args[0] === 'test') assert.ok(entry.args.includes('--test-threads=2'), entry.label);
+    else assert.equal(entry.args[entry.args.indexOf('--test-threads') + 1], '2');
+  }
+  for (const target of ['clippy', 'check']) {
+    assert.equal(buildCommands({ ...base, target })[0].env.CARGO_INCREMENTAL, '1');
+  }
+  for (const target of ['all', 'test', 'image-llm-vision', 'official-i18n-seed', 'history-maintenance']) {
+    const commands = buildCommands({ ...base, incremental: false, target });
+    for (const entry of commands.filter((command) => command.command === 'cargo' && command.args[0] !== 'fmt')) {
+      assert.equal(entry.env.CARGO_INCREMENTAL, '0', entry.label);
+    }
+  }
+});
+
+
+test('format gate keeps one label and passes the explicit caller root to its internal helper', () => {
+  const repoRoot = '/isolated-fixture-root';
+  const commands = buildCommands({ repoRoot, cargoJobs: 2, target: 'fmt', env: {} });
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0].label, 'cargo-fmt');
+  assert.equal(commands[0].command, process.execPath);
+  assert.equal(commands[0].args.at(-1), repoRoot);
+  assert.match(commands[0].args[0], /testing[\/]rustfmt-api\.js$/u);
 });

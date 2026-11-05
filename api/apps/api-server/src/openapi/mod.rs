@@ -236,6 +236,7 @@ fn native_error_response() -> Value {
     })
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod workflow_operation_tests {
     use super::*;

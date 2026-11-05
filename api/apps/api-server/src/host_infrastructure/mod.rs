@@ -11,14 +11,19 @@ use anyhow::{anyhow, Result};
 use control_plane::ports::SessionStore;
 use control_plane::ports::{PublishedPlanCache, PublishedPublicationCache};
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) use cache_store_activation::CacheStoreActivationFactoryRegistry;
+
 pub use contracts::{
     CacheStore, ClaimedTask, DistributedLock, EventBus, ProviderTransportStore, RateLimitDecision,
     RateLimitStore, RuntimeEventStream, TaskQueue,
 };
+
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) use local::build_local_host_infrastructure_from_host_extensions_with_cache_factories;
+
 pub use local::{
     build_host_infrastructure_from_host_extensions, build_local_host_infrastructure,
     build_local_host_infrastructure_from_host_extensions,

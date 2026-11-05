@@ -19,7 +19,6 @@ use control_plane::{
     },
 };
 use plugin_framework::{
-    ForwardProxyLease,
     data_source_contract::{
         DataSourceConfigInput, DataSourceCreateRecordInput, DataSourceCreateRecordOutput,
         DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput, DataSourceDescribeResourceInput,
@@ -36,6 +35,7 @@ use plugin_framework::{
         ProviderResetCreditResult, ProviderRuntimeError, ProviderRuntimeErrorKind,
         ProviderStreamEvent, ProviderUsageWindowsResult,
     },
+    ForwardProxyLease,
 };
 #[cfg(test)]
 use runtime_core::runtime_backend::RuntimeBackendSlot;
@@ -50,7 +50,7 @@ use runtime_core::{
 };
 #[cfg(test)]
 use runtime_extension_host::RuntimeExtensionHost;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -60,8 +60,8 @@ use uuid::Uuid;
 
 use crate::network_egress_client::NetworkEgressHttpClientResolver;
 use crate::runtime_activity::{
-    ApplicationActivityFinish, ApplicationActivityGuard, ApplicationActivityKind,
-    ApplicationRuntimeActivityTracker, current_application_id,
+    current_application_id, ApplicationActivityFinish, ApplicationActivityGuard,
+    ApplicationActivityKind, ApplicationRuntimeActivityTracker,
 };
 
 mod capability_port;
@@ -383,6 +383,7 @@ impl ApiRuntimeServices {
         self
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn fixture_resource_owner(
         &self,
@@ -1117,6 +1118,7 @@ fn preserve_provider_invocation_outcome(
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/invocation_outcome.rs"]
 mod invocation_outcome_tests;

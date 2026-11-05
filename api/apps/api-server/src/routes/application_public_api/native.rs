@@ -76,9 +76,12 @@ mod response_projection;
 
 pub(crate) use response_projection::{blocking_run_projection_error, native_error, service_error};
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "native/_tests/authentication_failures.rs"]
 mod authentication_failure_tests;
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "native/_tests/catalog_admission.rs"]
 mod catalog_admission_tests;
@@ -473,6 +476,7 @@ pub struct NativeApiError {
     pub(crate) message: String,
 }
 
+#[cfg_attr(test, api_test_selection::fixture(contracts))]
 #[derive(Debug)]
 pub(crate) struct NativeRunRequestParseError {
     pub(crate) code: &'static str,
@@ -1119,8 +1123,10 @@ mod runtime_invoker;
 #[path = "native/native_streams.rs"]
 mod native_streams;
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 use runtime_invoker::compiled_plan_has_mcp_bindings;
+
 pub(crate) use runtime_invoker::native_runtime_invoker_factory;
 pub(crate) use runtime_invoker::public_mcp_runtime_invoker_for_actor;
 pub(crate) use runtime_invoker::runtime_internal_tool_invoker_for_run;

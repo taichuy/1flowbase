@@ -224,6 +224,7 @@ fn version_parts(version: &str) -> [u64; 3] {
     parts
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

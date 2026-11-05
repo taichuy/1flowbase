@@ -96,6 +96,7 @@ impl ResponsesConnectionActor {
         }
     }
 
+    #[cfg_attr(test, api_test_selection::group(public_api))]
     #[cfg(test)]
     pub(crate) fn state(&self) -> ConnectionState {
         self.state
@@ -202,6 +203,7 @@ pub(crate) async fn run_connection(
         .await;
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(super) async fn run_connection_loop<F, Fut>(socket: impl Into<Socket>, execute: F)
 where
@@ -213,6 +215,7 @@ where
     run_connection_loop_with_terminations(socket, execute, None).await;
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
     socket: impl Into<Socket>,

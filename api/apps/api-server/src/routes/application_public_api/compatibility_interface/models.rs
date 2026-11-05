@@ -419,9 +419,11 @@ fn contract<T: InterfaceContract>() -> ContractIdentity {
         .expect("static compatibility models contract is valid")
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 struct UnavailableCompatibilityModelsPort;
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 impl CompatibilityModelsPort for UnavailableCompatibilityModelsPort {
     fn list<'a>(
@@ -439,6 +441,7 @@ impl CompatibilityModelsPort for UnavailableCompatibilityModelsPort {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(super) fn unavailable_port() -> Arc<dyn CompatibilityModelsPort> {
     Arc::new(UnavailableCompatibilityModelsPort)

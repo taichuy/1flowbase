@@ -1,6 +1,9 @@
 //! Host-owned replay references are locators, never authorization credentials.
+
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
 use serde_json::{json, Value};
 
 use super::{
@@ -12,6 +15,8 @@ use crate::error_response::ApiError;
 
 pub(super) const READ_TOOL: &str = "mcp_resources_read";
 pub(super) const LIST_TOOL: &str = "mcp_resources_list";
+
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 const PREFIX: &str = "flowbase-resource://read/";
 
@@ -414,6 +419,7 @@ fn imported_file(
     })
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/resources.rs"]
 mod tests;

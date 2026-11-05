@@ -185,6 +185,7 @@ pub(super) fn observe_response(response: Response, capture: CaptureGuard) -> Res
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(crate) mod _tests;
 

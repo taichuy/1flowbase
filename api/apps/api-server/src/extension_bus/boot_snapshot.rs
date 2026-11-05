@@ -64,11 +64,14 @@ impl ExtensionBootSnapshot {
         self.dispatch_assemblies
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
+
+    #[cfg_attr(test, api_test_selection::group(core, contracts))]
     #[cfg(test)]
     pub(crate) fn dispatch_assembly_count(&self) -> usize {
         self.dispatch_assemblies
             .load(std::sync::atomic::Ordering::Relaxed)
     }
+
     pub(crate) fn generation_id(&self) -> uuid::Uuid {
         self.generation_id
     }
@@ -132,6 +135,7 @@ impl ExtensionBootSnapshot {
         self.managed_snapshots.get()?.get(&workspace_id).cloned()
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
         Self {
@@ -188,6 +192,7 @@ impl ExtensionBootSnapshot {
         })
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn compile_for_test(
         graph: Arc<EffectiveExtensionGraph>,
@@ -220,6 +225,7 @@ impl ExtensionBootSnapshot {
             .get_or_init(|| Arc::new(catalog))
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn external_endpoint_catalog(
         &self,

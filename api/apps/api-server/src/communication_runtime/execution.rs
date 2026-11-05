@@ -554,6 +554,7 @@ pub(super) fn send_failure(error: &anyhow::Error) -> CommunicationProgress {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/execution.rs"]
 mod tests;

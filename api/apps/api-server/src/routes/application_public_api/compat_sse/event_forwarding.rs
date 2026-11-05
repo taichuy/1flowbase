@@ -560,6 +560,7 @@ async fn forward_ordered_typed_events(
     false
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(super) struct SubscribedCompatibleRuntimeEventStream<F> {
     pub(super) state: Arc<ApiState>,
@@ -572,6 +573,7 @@ pub(super) struct SubscribedCompatibleRuntimeEventStream<F> {
     pub(super) mapper: F,
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(super) async fn send_subscribed_compatible_runtime_event_stream<F>(
     stream: SubscribedCompatibleRuntimeEventStream<F>,
@@ -808,6 +810,7 @@ pub(super) async fn send_subscribed_compatible_runtime_event_stream<F>(
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[cfg(test)]
 pub(super) async fn send_compatible_runtime_event_stream<F>(
@@ -843,6 +846,7 @@ pub(super) async fn send_compatible_runtime_event_stream<F>(
     .await;
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 async fn durable_sequence_for_ignored_waiting_callback(
     state: &ApiState,
@@ -858,6 +862,7 @@ async fn durable_sequence_for_ignored_waiting_callback(
         .map(|boundary| boundary.original.event_sequence)
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 fn log_compatible_sse_closed(
     sse_projection: &'static str,
@@ -883,6 +888,7 @@ fn log_compatible_sse_closed(
 use super::super::stream_terminal_fallback::durable_record_to_runtime_event_envelope;
 pub(super) use super::super::stream_terminal_fallback::durable_round_prefix;
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 struct CompatibleRuntimeEventsForward<'a, F> {
     state: &'a ApiState,
@@ -896,6 +902,7 @@ struct CompatibleRuntimeEventsForward<'a, F> {
     events: Vec<RuntimeEventEnvelope>,
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 enum CompatibleForwardOutcome {
     Open,
@@ -918,6 +925,7 @@ pub(super) fn take_ordered_compatible_event(
     Some(event)
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 async fn forward_compatible_runtime_events<F>(
     forward: CompatibleRuntimeEventsForward<'_, F>,
@@ -998,6 +1006,7 @@ where
     CompatibleForwardOutcome::Open
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 async fn forward_compatible_runtime_events_without_resume_durable_prefix<F>(
     forward: CompatibleRuntimeEventsForward<'_, F>,
@@ -1048,6 +1057,7 @@ where
     CompatibleForwardOutcome::Open
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 async fn forward_single_compatible_runtime_event<F>(
     state: &ApiState,
@@ -1127,6 +1137,7 @@ where
     CompatibleForwardOutcome::Open
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 struct CompatibleDurableRuntimeEventsForward<'a, F> {
     state: &'a ApiState,
@@ -1138,6 +1149,7 @@ struct CompatibleDurableRuntimeEventsForward<'a, F> {
     last_forwarded_durable_sequence: &'a mut i64,
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 async fn drain_compatible_durable_runtime_events<F>(
     forward: CompatibleDurableRuntimeEventsForward<'_, F>,
@@ -1206,6 +1218,7 @@ where
     .await
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 async fn send_compatible_sse_events(
     sender: &mpsc::Sender<Result<Event, Infallible>>,
@@ -1227,6 +1240,7 @@ pub(super) use terminal_fallback::is_answer_presentation_delta;
 pub(super) use terminal_fallback::is_public_terminal_runtime_event;
 use terminal_fallback::*;
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "tests/forwarding/_tests/committed_event_index.rs"]
 mod committed_event_index_tests;

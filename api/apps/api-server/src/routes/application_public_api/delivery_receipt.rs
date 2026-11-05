@@ -50,6 +50,7 @@ impl RuntimeEventDeliveryReceipt {
         self.settle(RuntimeEventDeliveryVerdict::Projected);
     }
 
+    #[cfg_attr(test, api_test_selection::group(public_api))]
     #[cfg(test)]
     pub(crate) fn event_id(&self) -> Option<uuid::Uuid> {
         self.claim.as_ref().map(|claim| claim.event.id)
@@ -63,6 +64,7 @@ impl RuntimeEventDeliveryReceipt {
         }
     }
 
+    #[cfg_attr(test, api_test_selection::group(public_api))]
     /// A receipt whose verdict is observed by the test instead of the store.
     #[cfg(test)]
     pub(crate) fn probe(
@@ -80,11 +82,13 @@ impl RuntimeEventDeliveryReceipt {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(crate) struct RuntimeEventDeliveryVerdictProbe {
     receiver: mpsc::UnboundedReceiver<RuntimeEventDeliveryOutcome>,
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 impl RuntimeEventDeliveryVerdictProbe {
     pub(crate) async fn verdict(mut self) -> Option<RuntimeEventDeliveryVerdict> {

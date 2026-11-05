@@ -137,6 +137,7 @@ pub async fn require_settings_feature_permission(
     Err(ControlPlaneError::PermissionDenied("console_operation_permission_denied").into())
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use std::{panic::AssertUnwindSafe, sync::Arc};

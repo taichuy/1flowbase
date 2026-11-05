@@ -73,7 +73,7 @@ jobs:
           run_test traffic -p api-server --lib --features root-1805-consumer-fixture network_proxy
           run_test workspace-regression -p api-server --lib --features root-1805-consumer-fixture root_1805_http_node
           exit "$verification_status"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: network-proxy-${{ github.sha }}

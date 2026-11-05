@@ -372,9 +372,11 @@ pub(crate) fn compile_registry(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableDocsPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<DocsInput, DocsOutput> for UnavailableDocsPort {
     fn execute<'a>(
@@ -390,6 +392,7 @@ impl ConsoleInterfacePort<DocsInput, DocsOutput> for UnavailableDocsPort {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

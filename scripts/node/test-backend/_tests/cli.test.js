@@ -24,7 +24,7 @@ async function runFixture(t, argv, cargoResult = passingResult) {
   let stderr = '';
   const status = await main(argv, {
     repoRoot,
-    env: {},
+    env: { CARGO_INCREMENTAL: '1' },
     runtimeConfig,
     writeStdout() {},
     writeStderr(text) { stderr += text; },
@@ -107,7 +107,8 @@ test('backend package, target and filter selections reach Cargo with configured 
       '--test-threads=2', ...(fixture.exact ? ['--exact'] : []),
     ]);
     assert.equal(call.env.CARGO_BUILD_JOBS, '5');
-    assert.equal(call.env.CARGO_INCREMENTAL, '1');
+    assert.equal(call.env.CARGO_INCREMENTAL, undefined);
+    assert.equal(call.env.CARGO_PROFILE_TEST_INCREMENTAL, 'true');
     assert.equal(call.cwd, path.join(result.repoRoot, 'api'));
     assert.equal(result.managedOptions.lockMode, 'heavy');
     assert.match(result.managedOptions.commandDisplay, /domain|api-server|control-plane-postgres-tests/u);
@@ -199,7 +200,8 @@ test('explicit workspace selections preserve native targets, filters and resourc
     assert.deepEqual(call.args, ['test', '--workspace', ...targetArgs, '--jobs', '5',
       'config_tests::selected', '--', '--test-threads=2', '--exact']);
     assert.equal(call.env.CARGO_BUILD_JOBS, '5');
-    assert.equal(call.env.CARGO_INCREMENTAL, '1');
+    assert.equal(call.env.CARGO_INCREMENTAL, undefined);
+    assert.equal(call.env.CARGO_PROFILE_TEST_INCREMENTAL, 'true');
     assert.equal(result.calls.length, 2);
     assert.equal(result.managedOptions.lockMode, 'heavy');
   }

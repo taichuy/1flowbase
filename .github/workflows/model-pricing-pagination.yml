@@ -89,7 +89,7 @@ jobs:
           run_evidence contracts cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts --lib
           run_evidence consumers cargo check --locked --manifest-path api/Cargo.toml -p control-plane --tests
           run_evidence repository cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib official_pricing_sync -- --test-threads=1
-          run_evidence http cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib _tests::billing_routes -- --test-threads=1
+          run_evidence http cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_contracts _tests::billing_routes -- --test-threads=1
       - uses: actions/cache/save@v5
         if: always() && steps.rust-cache.outputs.cache-hit != 'true'
         with:
@@ -98,7 +98,7 @@ jobs:
             ~/.cargo/git
             api/target
           key: ${{ steps.rust-cache.outputs.cache-primary-key }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: model-pricing-pagination-${{ github.sha }}

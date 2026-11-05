@@ -769,9 +769,11 @@ fn compile_registry_with_port(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableAssistantWebSocketCommandPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<AssistantWebSocketCommandInput, AssistantWebSocketCommandOutput>
     for UnavailableAssistantWebSocketCommandPort
@@ -789,6 +791,7 @@ impl ConsoleInterfacePort<AssistantWebSocketCommandInput, AssistantWebSocketComm
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;

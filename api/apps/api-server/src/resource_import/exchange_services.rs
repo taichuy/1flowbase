@@ -203,6 +203,7 @@ async fn http_request(
         .map_err(|_| HostServiceError::new("http_egress_request_failed"))
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "../_tests/exchange_host_service_errors.rs"]
 mod exchange_host_service_errors;

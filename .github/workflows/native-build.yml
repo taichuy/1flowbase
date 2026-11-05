@@ -33,7 +33,7 @@ jobs:
           NODE
       - name: Prepare pinned bootstrap resources
         run: node scripts/node/native-release/resources.js tmp/native-resources
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: native-bootstrap-resources
           path: tmp/native-resources
@@ -196,7 +196,7 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Native backend (${target})\n\n\x60${JSON.stringify(report)}\x60\n\nTarget and downloads report their matched keys; null means a cache miss.\n`);
           NODE
       - name: Preserve native backend artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-backend-${{ matrix.target }}
           path: |
@@ -204,13 +204,13 @@ jobs:
             api/target/release/system_recovery${{ matrix.suffix }}
           if-no-files-found: error
       - name: Download shared web dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: tmp/shared-web
       - name: Verify shared web dist
         run: node scripts/node/native-release/verify-web.js tmp/shared-web
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: native-bootstrap-resources
           path: tmp/native-resources
@@ -263,7 +263,7 @@ jobs:
         env:
           NATIVE_TARGET: ${{ matrix.target }}
         run: node scripts/node/native-release/smoke.js "tmp/native-extracted/1flowbase-$NATIVE_TARGET" tmp/test-governance/native-release/smoke
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: 1flowbase-${{ matrix.target }}
           path: |
@@ -273,7 +273,7 @@ jobs:
 
       - name: Preserve bounded native validation evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-evidence-${{ matrix.target }}
           path: |

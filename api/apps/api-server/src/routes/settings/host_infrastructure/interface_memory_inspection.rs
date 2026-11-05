@@ -487,6 +487,7 @@ fn has_registered_simple_operations(
     })
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

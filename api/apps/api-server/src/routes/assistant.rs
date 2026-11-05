@@ -43,8 +43,10 @@ use tokio::sync::{mpsc, oneshot};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod _tests;
+
 mod client_tools;
 pub mod conversation_events;
 pub(crate) mod interface;
@@ -59,8 +61,10 @@ pub use conversation_events::AssistantConversationSummaryResponse;
 use conversation_events::{AssistantConversationEventKind, AssistantConversationEventScope};
 pub use run_activity::AssistantRunActivityPageResponse;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use crate::routes::mcp_protocol::virtual_ui::VirtualMcpScope;
+
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
@@ -1062,6 +1066,7 @@ fn read_preference(meta: &Value, workspace_id: Uuid) -> AssistantPreferenceBody 
         .unwrap_or_default()
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "assistant/_tests/route_contracts.rs"]
 mod tests;
@@ -1070,7 +1075,10 @@ mod tests;
 mod execution_lifecycle;
 
 pub(crate) use execution_lifecycle::abort_assistant_execution_in;
+
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use execution_lifecycle::abort_registered_assistant_execution;
+
 pub(crate) use execution_lifecycle::execute_assistant_run;
 pub(super) use execution_lifecycle::launch_assistant_execution;

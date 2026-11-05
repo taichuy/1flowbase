@@ -124,6 +124,7 @@ impl ManagedExtensionComposition {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/reclamation.rs"]
 mod tests;

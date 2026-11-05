@@ -525,6 +525,7 @@ async fn send_durable_backfill(
     read_any
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

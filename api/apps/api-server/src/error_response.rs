@@ -286,6 +286,7 @@ fn sanitize_error_message(message: &str) -> String {
     sanitized
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "error_response/_tests/node_diagnostics.rs"]
 mod node_diagnostics_tests;

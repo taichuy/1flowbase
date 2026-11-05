@@ -38,6 +38,7 @@ contract!(Input, "application-agent-logs-input");
 contract!(Output, "application-agent-logs-output");
 contract!(TargetError, "application-agent-logs-error");
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "agent_logs/_tests/managed_projection.rs"]
 mod managed_projection_tests;

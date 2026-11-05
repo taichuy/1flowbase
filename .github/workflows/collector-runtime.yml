@@ -138,7 +138,7 @@ jobs:
           }
           for (const field of ['binary_sha256', 'native_binary_sha256']) assert.match(receipt[field], /^[0-9a-f]{64}$/);
           JS
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-governance-collector-runtime-${{ inputs.main_source_sha }}-${{ inputs.official_source_sha }}

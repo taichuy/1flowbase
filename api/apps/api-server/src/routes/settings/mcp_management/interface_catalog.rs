@@ -199,6 +199,7 @@ pub(super) fn interface_operation(entry: &domain::McpInterfaceCatalogEntry) -> S
     format!("{} {}", entry.method, entry.path)
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 pub(super) fn mcp_interface_entry_from_operation(
     operation: &crate::openapi_docs::DocsCatalogOperation,

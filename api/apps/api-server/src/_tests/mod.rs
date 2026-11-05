@@ -66,16 +66,13 @@ mod ui_management_routes;
 mod webmcp_routes;
 
 pub(crate) use application::{
-    ProviderInvocationGate, create_gated_provider_instance, create_marker_output_provider_instance,
-    create_ready_provider_instance,
+    create_gated_provider_instance, create_marker_output_provider_instance,
+    create_ready_provider_instance, ProviderInvocationGate,
 };
 #[path = "host_boot/workflow_schedule_worker.rs"]
 mod workflow_schedule_worker;
 
 mod interface_lifecycle_acceptance;
-
-// Shared only within the standard API test host; keep the fixture module private.
-pub(crate) use host_extensions::host_extension_boot_tests::NativeSettingsFixture;
 
 #[path = "console_routes/frontstage_contract_private.rs"]
 mod frontstage_routes;

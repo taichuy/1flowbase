@@ -377,9 +377,11 @@ pub(crate) fn compile_registry(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableFrontstageCallableCatalogPort;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<FrontstageCallableCatalogInput, FrontstageCallableCatalogOutput>
     for UnavailableFrontstageCallableCatalogPort
@@ -397,6 +399,7 @@ impl ConsoleInterfacePort<FrontstageCallableCatalogInput, FrontstageCallableCata
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

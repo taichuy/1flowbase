@@ -144,6 +144,7 @@ impl CompatibilityTypedStreamInvocation {
 }
 
 impl CompatibilityStreamEvent {
+    #[cfg_attr(test, api_test_selection::group(public_api))]
     #[cfg(test)]
     pub(crate) fn new(run: NativeRunResult, envelope: RuntimeEventEnvelope) -> Self {
         Self {
@@ -549,6 +550,7 @@ pub(crate) fn compile_registry(
     compiler.compile()
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn compile_registry_for_test(
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
@@ -558,9 +560,11 @@ pub(crate) fn compile_registry_for_test(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 struct UnavailableCompatibilityBlockingPort;
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 impl CompatibilityBlockingPort for UnavailableCompatibilityBlockingPort {
     fn execute<'a>(
@@ -851,6 +855,7 @@ fn project_stream_invocation(
     )
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 /// The protocol terminal ends delivery; the independent Kernel owner still
 /// settles the invocation even when the client has stopped reading.
 #[cfg(test)]

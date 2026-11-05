@@ -221,6 +221,7 @@ pub struct McpStreamableHttpClient {
     authentication_headers: HeaderMap,
 }
 
+#[cfg_attr(test, api_test_selection::fixture(routes))]
 #[derive(Clone, Copy)]
 enum McpEgressPolicy {
     PublicHttps,
@@ -343,6 +344,7 @@ impl McpStreamableHttpClient {
         .await
     }
 
+    #[cfg_attr(test, api_test_selection::group(routes))]
     #[cfg(test)]
     async fn connect_test_loopback(
         connection: &domain::McpUpstreamConnectionRecord,
@@ -366,6 +368,7 @@ impl McpStreamableHttpClient {
             .map(|(_, discovery)| discovery)
     }
 
+    #[cfg_attr(test, api_test_selection::group(routes))]
     #[cfg(test)]
     async fn connect_and_discover_test_loopback(
         connection: &domain::McpUpstreamConnectionRecord,
@@ -670,6 +673,7 @@ impl McpStreamableHttpClient {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

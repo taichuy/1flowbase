@@ -1,3 +1,4 @@
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod converged_task_tests {
     use super::*;
@@ -59,6 +60,7 @@ mod converged_task_tests {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 async fn to_application_conversation_message_response<F, Fut>(
     run: domain::FlowRunRecord,
@@ -125,6 +127,7 @@ fn to_application_conversation_message_summary_response(
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 async fn application_conversation_answer_text<F, Fut>(
     payload: &serde_json::Value,
@@ -167,6 +170,7 @@ where
     inline_application_conversation_error_text(payload)
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 async fn load_referenced_runtime_debug_artifact<F, Fut>(
     value: &serde_json::Value,
@@ -180,6 +184,7 @@ where
     load_debug_artifact(artifact_id).await
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn inline_application_conversation_answer_text(payload: &serde_json::Value) -> Option<String> {
     ["answer", "text", "content", "message"]
@@ -188,6 +193,7 @@ fn inline_application_conversation_answer_text(payload: &serde_json::Value) -> O
         .find_map(inline_conversation_value_text)
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn inline_application_conversation_error_text(payload: &serde_json::Value) -> Option<String> {
     payload
@@ -196,6 +202,7 @@ fn inline_application_conversation_error_text(payload: &serde_json::Value) -> Op
         .and_then(inline_conversation_value_text)
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn inline_conversation_value_text(value: &serde_json::Value) -> Option<String> {
     if runtime_debug_artifact_id(value).is_some() {
@@ -315,6 +322,7 @@ fn application_run_conversation_output_state_response(
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 /// The task anchor's detail: one user turn and the model's final answer. The
 /// answer item points at the member run that produced it so the console can
 /// still open that run; an unobserved answer stays an open, non-terminal item.
@@ -412,6 +420,7 @@ fn converged_task_conversation_messages(
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 /// A converged task states where its answer came from instead of letting the
 /// console report a missing answer for a task that already observed one.
 #[cfg(test)]
@@ -480,6 +489,7 @@ fn application_run_conversation_message_item_response(
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 async fn conversation_messages_from_single_run<F, Fut>(
     run: &domain::FlowRunRecord,
@@ -494,6 +504,7 @@ where
     conversation_messages_from_context_items(run, items, query, load_debug_artifact).await
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 async fn conversation_messages_from_run_detail<F, Fut>(
     detail: &domain::ApplicationRunDetail,
@@ -521,6 +532,7 @@ where
         .await
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 async fn conversation_messages_from_context_items<F, Fut>(
     run: &domain::FlowRunRecord,
@@ -563,6 +575,7 @@ where
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn renumber_imported_context_items(
     run_id: Uuid,
@@ -573,6 +586,7 @@ fn renumber_imported_context_items(
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 async fn imported_context_messages_from_run<F, Fut>(
     run: &domain::FlowRunRecord,
@@ -637,6 +651,7 @@ where
     items
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn is_hidden_conversation_history_message(message: &serde_json::Value) -> bool {
     message
@@ -646,6 +661,7 @@ fn is_hidden_conversation_history_message(message: &serde_json::Value) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 async fn llm_system_content_from_node_runs<F, Fut>(
     detail: &domain::ApplicationRunDetail,
@@ -675,6 +691,7 @@ where
     None
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 async fn llm_prompt_messages_system_content<F, Fut>(
     payload: &serde_json::Value,
@@ -700,6 +717,7 @@ where
     (!system.trim().is_empty()).then_some(system)
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 async fn llm_effective_system_content<F, Fut>(
     payload: &serde_json::Value,
@@ -721,6 +739,7 @@ where
         .or_else(|| conversation_prompt_text(effective_system))
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 async fn resolve_runtime_debug_artifact_value<F, Fut>(
     value: &serde_json::Value,
@@ -737,6 +756,7 @@ where
         .or_else(|| decode_runtime_debug_artifact_preview(value))
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn runtime_debug_artifact_id(value: &serde_json::Value) -> Option<Uuid> {
     if !value
@@ -753,6 +773,7 @@ fn runtime_debug_artifact_id(value: &serde_json::Value) -> Option<Uuid> {
         .and_then(|value| Uuid::parse_str(value).ok())
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn imported_context_window(
     run_id: Uuid,
@@ -798,6 +819,7 @@ fn parse_imported_context_cursor(run_id: Uuid, cursor: &str) -> Option<usize> {
     index.parse().ok()
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn imported_context_item(
     run: &domain::FlowRunRecord,
@@ -825,6 +847,7 @@ fn imported_context_item(
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 async fn run_level_system_content<F, Fut>(
     payload: &serde_json::Value,
@@ -847,6 +870,7 @@ where
         .or_else(|| conversation_prompt_text(system_value))
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn conversation_prompt_text(value: &serde_json::Value) -> Option<String> {
     if let Some(text) = value
@@ -869,6 +893,7 @@ fn conversation_prompt_text(value: &serde_json::Value) -> Option<String> {
     conversation_content_part_text(value).or_else(|| conversation_preview_text(value))
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn conversation_preview_text(value: &serde_json::Value) -> Option<String> {
     let preview = value
@@ -884,6 +909,7 @@ fn conversation_preview_text(value: &serde_json::Value) -> Option<String> {
         .or_else(|| Some(preview.to_string()))
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn conversation_message_content(message: &serde_json::Value) -> Option<String> {
     let content = message.get("content")?;
@@ -907,6 +933,7 @@ fn conversation_message_content(message: &serde_json::Value) -> Option<String> {
     conversation_content_part_text(content)
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn conversation_content_part_text(part: &serde_json::Value) -> Option<String> {
     if let Some(text) = part

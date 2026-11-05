@@ -104,6 +104,7 @@ pub(crate) fn context_filter(context: &McpClientContext) -> Option<serde_json::V
     ]}))
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/current_context.rs"]
 mod tests;

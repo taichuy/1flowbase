@@ -68,7 +68,7 @@ jobs:
             ~/.cargo/git
             api/target
           key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: agent-logs-otlp-api-${{ inputs.source_ref || github.sha }}

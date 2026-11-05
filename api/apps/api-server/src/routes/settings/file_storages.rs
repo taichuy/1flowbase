@@ -653,6 +653,7 @@ pub async fn delete_file_storage(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 /// Constructs private owner values without widening their production visibility.
 #[cfg(test)]
 pub(crate) fn root_2014_projection_fixture(

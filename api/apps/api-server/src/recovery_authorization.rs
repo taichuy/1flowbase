@@ -111,6 +111,7 @@ pub const fn recovery_intent_ttl() -> Duration {
     RECOVERY_INTENT_TTL
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn expire_reauth_challenge(token: Uuid) {
     if let Some(challenge) = state()
@@ -123,6 +124,7 @@ pub(crate) fn expire_reauth_challenge(token: Uuid) {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn mark_reauth_challenge_consumed(token: Uuid) {
     if let Some(challenge) = state()
@@ -135,6 +137,7 @@ pub(crate) fn mark_reauth_challenge_consumed(token: Uuid) {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;

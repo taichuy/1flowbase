@@ -852,7 +852,7 @@ test("container image publishing avoids deprecated artifact runtime and qemu cac
   const apiServerDockerfile = readApiServerDockerfile();
 
   assert.doesNotMatch(workflow, /actions\/upload-artifact@v4/u);
-  assert.match(workflow, /actions\/upload-artifact@v6/u);
+  assert.match(workflow, /actions\/upload-artifact@v7/u);
   assert.match(
     workflow,
     /docker\/setup-qemu-action@v4[\s\S]*?with:\n\s+cache-image: false/u,

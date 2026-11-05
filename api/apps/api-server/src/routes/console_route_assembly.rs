@@ -218,6 +218,7 @@ where
         &self.bindings
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) fn external_endpoint_contributions(
         &self,
@@ -762,6 +763,7 @@ pub fn validate_migrated_core_console_route_coverage(
     Ok(())
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;

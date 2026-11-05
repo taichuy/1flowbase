@@ -538,6 +538,7 @@ fn accepted_response(run_id: uuid::Uuid, status: domain::FlowRunStatus) -> Respo
         .into_response()
 }
 
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod error_mapping_tests {
     use super::*;

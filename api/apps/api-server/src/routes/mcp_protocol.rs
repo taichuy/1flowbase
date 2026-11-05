@@ -502,15 +502,18 @@ fn response_envelope_bytes(response: &JsonRpcResponse) -> Option<usize> {
     counter.0.checked_sub(media_bytes)
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn valid_image_base64(data: &str) -> bool {
     result_delivery::media::valid_base64(data, false)
 }
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "mcp_protocol/_tests/native_response.rs"]
 mod native_response_tests;
 
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod issue_1246_tests {
     use super::*;

@@ -8,13 +8,10 @@ use axum::{
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-
 use super::support::{
     create_fixture_provider_package, create_member, create_role, replace_member_roles,
     replace_role_permissions,
 };
-
-
 
 #[tokio::test]
 async fn plugin_routes_install_enable_assign_and_query_tasks() {
