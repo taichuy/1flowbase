@@ -262,8 +262,10 @@ pub(crate) fn production_interface_contributions(
         Arc::clone(&state.session_store),
         state.cookie_name.clone(),
     );
-    let console_membership =
-        crate::routes::membership_interface::membership_port(state.store.clone());
+    let console_membership = crate::routes::membership_interface::membership_port(
+        state.store.clone(),
+        state.event_workflow_changes.clone(),
+    );
     let console_organization = crate::routes::organization::interface::port(
         state.store.clone(),
         control_plane::navigation_cache::NavigationCache(state.infrastructure.cache_store()),
@@ -293,6 +295,7 @@ pub(crate) fn production_interface_contributions(
         state.console_operation_registry.inventory().clone(),
         state.settings_feature_registry.inventory().features.clone(),
         state.bootstrap_workspace_id,
+        state.event_workflow_changes.clone(),
     );
     let console_auth_center = crate::routes::auth_center_interface::auth_center_port(
         state.store.clone(),
@@ -324,6 +327,7 @@ pub(crate) fn production_interface_contributions(
             state.bootstrap_workspace_id,
             state.api_node_id.clone(),
             state.provider_install_root.clone(),
+            state.event_workflow_changes.clone(),
         );
     let console_applications = crate::routes::applications::interface::applications_port(
         state.store.clone(),
@@ -333,6 +337,7 @@ pub(crate) fn production_interface_contributions(
             install_root: state.provider_install_root.clone(),
             node_id: state.api_node_id.clone(),
         },
+        state.event_workflow_changes.clone(),
     );
     let console_application_api_keys =
         crate::routes::application_api::interface_keys::port(state.store.clone());
@@ -340,6 +345,7 @@ pub(crate) fn production_interface_contributions(
         crate::routes::application_api::interface_publication::port(
             state.store.clone(),
             state.infrastructure.cache_store(),
+            state.event_workflow_changes.clone(),
         );
     let console_workflow_schedule =
         crate::routes::application_api::interface_schedule::port(state.store.clone());
@@ -743,6 +749,34 @@ pub(crate) fn production_interface_contributions(
             &["api-server.console-application-publication"],
             crate::routes::application_api::interface_publication::compile_registry(
                 console_application_publication,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-events",
+            &[
+                "events.catalog.list",
+                "events.definitions.create",
+                "events.definitions.update",
+                "events.runtime.get",
+            ],
+            &["api-server.console-events"],
+            crate::routes::events::interface::compile_registry(
+                crate::routes::events::interface::Dependencies::new(state),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-workflow-event",
+            &[
+                "applications.workflow-event.get",
+                "applications.workflow-event.replace",
+            ],
+            &["api-server.console-workflow-event"],
+            crate::routes::application_api::interface_event::compile_registry(
+                crate::routes::application_api::interface_event::port(
+                    state.store.clone(),
+                    state.event_workflow_changes.clone(),
+                    state.event_workflow_statuses.clone(),
+                ),
             )?,
         ),
         InterfaceRegistryContribution::new(

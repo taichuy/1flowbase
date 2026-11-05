@@ -26,6 +26,7 @@ const {
 } = require("../frontstage-governance-hygiene/core.js");
 const { main: runSchemaHygiene } = require("../schema-hygiene/core.js");
 const { main: runSecurityRisk } = require("../security-risk/core.js");
+const { main: runSettingsRegistry } = require("../settings-registry/core.js");
 const { main: runViteLazyDepsGate } = require("../vite-lazy-deps-gate/core.js");
 const { main: runDevExperience } = require("../dev-experience/core.js");
 const { main: runPageDebug } = require("../page-debug/core.js");
@@ -65,6 +66,7 @@ const TOOLING_COMMANDS = new Set([
   "runtime-gate",
   "schema-hygiene",
   "security-risk",
+  "settings-registry",
   "vite-lazy-deps-gate",
 ]);
 
@@ -135,7 +137,7 @@ function parseToolingCliArgs(argv) {
 
 function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
-    "Usage: node scripts/node/tooling <api-debug|capacity-report|data-contracts|check-rust-backend|check-style-boundary|claude-skill-sync|dev-experience|foundation-contracts|frontstage-governance-hygiene|gate-router|growth-table-report|hotspot-review|i18n-hygiene|log-query-contract-report|mock-ui-sync|page-debug|raw-jsonb-report|rebuild-run-log-projection|repo-hygiene|runtime-gate|schema-hygiene|security-risk|vite-lazy-deps-gate> [args]\n",
+    "Usage: node scripts/node/tooling <api-debug|capacity-report|data-contracts|check-rust-backend|check-style-boundary|claude-skill-sync|dev-experience|foundation-contracts|frontstage-governance-hygiene|gate-router|growth-table-report|hotspot-review|i18n-hygiene|log-query-contract-report|mock-ui-sync|page-debug|raw-jsonb-report|rebuild-run-log-projection|repo-hygiene|runtime-gate|schema-hygiene|security-risk|settings-registry|vite-lazy-deps-gate> [args]\n",
   );
 }
 
@@ -149,6 +151,10 @@ async function main(argv = [], deps = {}) {
 
   if (!TOOLING_COMMANDS.has(options.command)) {
     throw new Error(`Unknown tooling command: ${options.command}`);
+  }
+
+  if (options.command === "settings-registry") {
+    return (deps.runSettingsRegistryImpl || runSettingsRegistry)(options.rest, deps);
   }
 
   if (options.command === "check-style-boundary") {

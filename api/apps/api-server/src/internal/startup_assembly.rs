@@ -413,6 +413,9 @@ pub(super) async fn app_and_runtime_host_from_config(
     }
     runtime_extension_host.mark_ready()?;
 
+    let event_center = control_plane::event_center::EventCenterRuntime::new(
+        infrastructure.event_bus(), config.event_center_policy,
+    )?;
     let state = Arc::new(ApiState {
         #[cfg(test)]
         test_resources: None,
@@ -424,6 +427,9 @@ pub(super) async fn app_and_runtime_host_from_config(
         settings_feature_registry: compiled_console_plan.settings_feature_registry.clone(),
         console_operation_registry: compiled_console_plan.console_operation_registry.clone(),
         infrastructure,
+        event_center,
+        event_workflow_changes: Arc::default(),
+        event_workflow_statuses: Default::default(),
         extension_boot_snapshot: Some(Arc::clone(&extension_boot_snapshot)),
         console_surface_registry: compiled_console_plan.console_surface_registry.clone(),
         file_storage_registry,
@@ -495,6 +501,9 @@ pub(super) async fn app_and_runtime_host_from_config(
         }
     }
     crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone(), generation_owner.clone());
+    let event_workflow_worker = crate::workers::event_workflow::spawn_event_workflow_loop(
+        state.clone(), generation_owner.clone(), state.event_workflow_statuses.clone(),
+    );
     crate::workers::provider_request_logs::spawn_provider_request_log_worker(state.clone());
     crate::workers::trace_projection::spawn_trace_projection_worker(state.clone());
     crate::workers::application_log_deletion::spawn(state.clone());
@@ -528,6 +537,7 @@ pub(super) async fn app_and_runtime_host_from_config(
             operations: store.managed_operation_lifetime(),
             lifecycle_worker,
             communication_worker,
+            event_workflow_worker: tokio::sync::Mutex::new(Some(event_workflow_worker)),
         },
     ))
     }.await;

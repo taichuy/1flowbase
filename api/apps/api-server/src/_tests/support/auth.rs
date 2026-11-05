@@ -344,6 +344,11 @@ async fn test_state_with_runtime_profile_state(
         .with_events(notification_events.clone()),
     );
     notification_service.bootstrap().await.unwrap();
+    let event_center = control_plane::event_center::EventCenterRuntime::new(
+        infrastructure.event_bus(),
+        config.event_center_policy,
+    )
+    .unwrap();
     let state = Arc::new(ApiState {
         #[cfg(test)]
         test_resources: Some(test_resources),
@@ -355,6 +360,9 @@ async fn test_state_with_runtime_profile_state(
         settings_feature_registry,
         console_operation_registry,
         infrastructure,
+        event_center,
+        event_workflow_changes: Arc::default(),
+        event_workflow_statuses: Default::default(),
         extension_boot_snapshot: Some(Arc::clone(&extension_boot_snapshot)),
         console_surface_registry,
         file_storage_registry,

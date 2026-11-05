@@ -19,6 +19,7 @@ pub mod console_policy_migration;
 #[path = "console_contracts/console_surface_registry.rs"]
 pub mod console_surface_registry;
 pub mod error_response;
+mod event_center;
 pub mod extension_bus;
 #[path = "console_contracts/external_endpoint_catalog.rs"]
 pub(crate) mod external_endpoint_catalog;
@@ -647,9 +648,15 @@ pub struct ApiRuntimeShutdown {
     operations: Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
     lifecycle_worker: control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxWorker,
     communication_worker: communication_runtime::CommunicationWorker,
+    event_workflow_worker:
+        tokio::sync::Mutex<Option<workers::event_workflow::EventWorkflowLoopHandle>>,
 }
 impl ApiRuntimeShutdown {
     pub async fn stop(&self) -> Result<()> {
+        let event_worker = self.event_workflow_worker.lock().await.take();
+        if let Some(worker) = event_worker {
+            worker.shutdown().await;
+        }
         self.communication_worker.stop().await;
         crate::managed_services::stream::revoke_all();
         self.services

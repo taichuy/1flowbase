@@ -37,6 +37,8 @@ impl ApiEnvironment {
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
+    /// Explicit deployment budget; absent keeps event runtime unavailable without guessing capacity.
+    pub event_center_policy: Option<control_plane::event_center::EventCenterRuntimePolicy>,
     pub env: ApiEnvironment,
     pub database_url: String,
     pub database_pool_max_connections: u32,
@@ -321,6 +323,11 @@ impl ApiConfig {
             ));
         }
         Ok(Self {
+            event_center_policy: map
+                .get("API_EVENT_CENTER_POLICY")
+                .map(|raw| serde_json::from_str(raw))
+                .transpose()
+                .map_err(|error| anyhow!("invalid env API_EVENT_CENTER_POLICY: {error}"))?,
             env,
             database_url: get("API_DATABASE_URL")?,
             database_pool_max_connections: parse_positive_u32(

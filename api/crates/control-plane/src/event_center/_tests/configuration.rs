@@ -127,6 +127,26 @@ fn trigger_input() -> WorkflowEventTriggerInput {
     }
 }
 #[tokio::test]
+async fn unavailable_source_does_not_prevent_disabling_its_subscription() {
+    let service = EventCenterConfigurationService::new(MemoryRepository::default());
+    let owner = actor();
+    let mut definition = input();
+    definition.enabled = false;
+    service.create_definition(&owner, definition).await.unwrap();
+    let mut trigger = trigger_input();
+    assert!(service
+        .validate_workflow_trigger(&owner, &trigger)
+        .await
+        .is_err());
+    trigger.enabled = false;
+    let saved = service
+        .save_workflow_trigger(&owner, Uuid::now_v7(), trigger)
+        .await
+        .unwrap();
+    assert!(!saved.configuration.enabled);
+}
+
+#[tokio::test]
 async fn definition_round_trip_and_workspace_isolation() {
     let service = EventCenterConfigurationService::new(MemoryRepository::default());
     let owner = actor();

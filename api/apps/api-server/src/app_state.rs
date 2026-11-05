@@ -408,6 +408,9 @@ pub struct ApiState {
     pub console_operation_registry: Arc<access_control::ConsoleOperationRegistry>,
     pub console_policy_reader: Arc<dyn RoleConsolePolicyReader>,
     pub infrastructure: Arc<HostInfrastructureRegistry>,
+    pub event_center: control_plane::event_center::EventCenterRuntime,
+    pub event_workflow_changes: Arc<tokio::sync::Notify>,
+    pub event_workflow_statuses: crate::workers::event_workflow::EventWorkflowStatuses,
     /// Present on production boot; lightweight test states may omit the production graph.
     pub extension_boot_snapshot: Option<Arc<ExtensionBootSnapshot>>,
     pub console_surface_registry: Arc<ConsoleSurfaceRegistry>,

@@ -3,6 +3,29 @@ use super::*;
 pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration> {
     vec![
         SettingsFeatureRegistration {
+            feature_id: "system.events".to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.events".to_string(),
+                surface_key: "events".to_string(),
+                path: "/settings/events".to_string(),
+                label_key: "events.title".to_string(),
+                description_key: "console.policy_groups.settings.system.events.description".to_string(),
+                order: 520,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/events"),
+                ("POST", "/api/console/events"),
+                ("PUT", "/api/console/events/{event_definition_id}"),
+                ("GET", "/api/console/events/runtime"),
+            ]),
+        },
+        SettingsFeatureRegistration {
             feature_id: "system.branding".to_owned(),
             owner: SettingsFeatureOwner { kind: SettingsFeatureOwnerKind::Core, owner_id: "boot-core".to_owned(), version: env!("CARGO_PKG_VERSION").to_owned() },
             lifecycle: SettingsFeatureLifecycle::Active,

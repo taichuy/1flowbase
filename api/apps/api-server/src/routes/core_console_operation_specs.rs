@@ -93,6 +93,10 @@ const fn resource_action(
 /// The Core's closed operation set. New route ownership fails compilation until it is declared
 /// here with an explicit policy group and authorization contract.
 pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
+    settings("events.catalog.list", "system.events"),
+    settings("events.definitions.create", "system.events"),
+    settings("events.definitions.update", "system.events"),
+    settings("events.runtime.get", "system.events"),
     authenticated_routes("core.authenticated", "core.authenticated"),
     other("patch_me", "other.personal-account"),
     other("patch_me_meta", "other.personal-account"),

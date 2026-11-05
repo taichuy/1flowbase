@@ -273,6 +273,12 @@ pub(super) fn expand_core_interface_registrations(
 
 pub(super) fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "events.catalog.list" => Some("List registered event definitions"),
+        "events.definitions.create" => Some("Create a custom event definition"),
+        "events.definitions.update" => Some("Update a custom event definition"),
+        "events.runtime.get" => Some("Inspect current event queues and activity"),
+        "get_workflow_event_trigger" => Some("Read workflow event trigger"),
+        "replace_workflow_event_trigger" => Some("Configure workflow event trigger"),
         "patch_me" => Some("Update own profile"),
         "patch_me_meta" => Some("Update own preferences"),
         "assistant_update_settings" => Some("Update own assistant preferences"),
@@ -490,6 +496,12 @@ pub(super) fn compile_console_interface_metadata(
             "assistant_update_settings" => "Update the signed-in user's assistant target and model preferences. Requires the independent assistant preference operation.".to_owned(),
             "system_templates.download" => "Download the selected catalog release once, verify its checksum and signature, and return the complete portable package for preview and subsequent installation without another catalog download.".to_owned(),
             "local_commands.execute" => "Execute a single command string in the backend instance environment as its OS account. Requires the local command operation permission; returns complete output and termination status without a reusable session, deployment opt-in, or automatic retry.".to_owned(),
+            "events.catalog.list" => "List workspace event contracts and their registered source, schema and supported trigger phases.".to_owned(),
+            "events.definitions.create" => "Create a workspace custom event definition without publishing or persisting any event instance.".to_owned(),
+            "events.definitions.update" => "Update a custom event's editable configuration while preserving its contract identity and workspace.".to_owned(),
+            "events.runtime.get" => "Inspect current workspace queues and bounded activity for this host instance without consuming messages or retaining history.".to_owned(),
+            "get_workflow_event_trigger" => "Read the selected workflow's event contract, lifecycle phase and input mapping under its application permission.".to_owned(),
+            "replace_workflow_event_trigger" => "Configure a workflow event subscription and RFC6901 input mapping. Consumption means dequeue, independently of workflow success.".to_owned(),
             "communications.options.get" => "Return published Agent-flow applications, visible enabled MCP instances and the selected application model and reasoning capabilities.".to_owned(),
             "communications.binding.get" => "Read the channel execution binding and plugin-owned default prompt without credentials.".to_owned(),
             "communications.binding.update" => "Validate and store the channel application, model, reasoning, file table, editable system prompt and selected MCP instances.".to_owned(),

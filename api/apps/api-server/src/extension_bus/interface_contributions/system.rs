@@ -73,6 +73,7 @@ pub(super) fn contributions(
                     api_node_id: state.api_node_id.clone(),
                     mcp_interface_catalog: mcp_interface_catalog_dependencies.clone(),
                 },
+                state.event_workflow_changes.clone(),
             )?,
         ),
         InterfaceRegistryContribution::new(

@@ -3,6 +3,8 @@ pub(crate) mod support {
 }
 #[path = "../system_settings/data_sources_routes.rs"]
 mod data_sources_routes;
+#[path = "../system_settings/event_center_routes.rs"]
+mod event_center_routes;
 #[path = "../system_settings/file_management_routes.rs"]
 mod file_management_routes;
 #[path = "../system_settings/settings_feature_data_models_routes.rs"]

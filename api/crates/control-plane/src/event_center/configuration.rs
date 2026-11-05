@@ -137,12 +137,20 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
         actor: &ActorContext,
         input: &WorkflowEventTriggerInput,
     ) -> anyhow::Result<()> {
+        if input.contract_id.trim().is_empty() || input.contract_version.trim().is_empty() {
+            return Err(Error::InvalidInput("event_contract_required").into());
+        }
         if input
             .input_mapping
             .iter()
             .any(|(name, pointer)| name.trim().is_empty() || !is_json_pointer(pointer))
         {
             return Err(Error::InvalidInput("invalid_event_input_mapping").into());
+        }
+        // Disabling a subscription must remain possible after its source is disabled/removed.
+        // Availability is an activation constraint, not a prerequisite for stopping work.
+        if !input.enabled {
+            return Ok(());
         }
         let event = self
             .catalog(actor)
@@ -181,7 +189,11 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
         if !self.repository.save_workflow_event_trigger(&record).await? {
             return Err(Error::NotFound("application").into());
         }
-        Ok(record)
+        // A concurrent first save can win the unique application key with another generated id.
+        // Return the persisted identity/revision, never an uncommitted subscription identity.
+        self.get_workflow_trigger(actor, application_id)
+            .await?
+            .ok_or_else(|| Error::NotFound("workflow_event_trigger").into())
     }
 }
 

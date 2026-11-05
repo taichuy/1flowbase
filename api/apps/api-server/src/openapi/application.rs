@@ -25,6 +25,8 @@ use utoipa::OpenApi;
         crate::routes::application_api::publish_application_api,
         crate::routes::application_api::unpublish_application_api,
         crate::routes::application_api::patch_application_api_status,
+        crate::routes::application_api::get_workflow_event_trigger,
+        crate::routes::application_api::replace_workflow_event_trigger,
         crate::routes::application_api::get_workflow_schedule_trigger,
         crate::routes::application_api::replace_workflow_schedule_trigger,
         crate::routes::application_api::get_application_api_docs_catalog,

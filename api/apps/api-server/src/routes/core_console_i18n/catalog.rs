@@ -24,6 +24,8 @@ macro_rules! resource {
 /// deliberately contains no translated value: request projections resolve translations from the
 /// dynamic catalog and the resolver falls back to the English key.
 pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
+    settings_feature!("events.title", "Event center"),
+    settings_feature!("console.policy_groups.settings.system.events.description", "Manage event definitions and observe current queues"),
     policy!("Personal account"),
     policy!("Profile and preference changes; password and sign-in security remain available"),
     settings_feature!("system_settings.title", "System settings"),

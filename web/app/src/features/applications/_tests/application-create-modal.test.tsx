@@ -262,6 +262,12 @@ describe('ApplicationFormModal create intent', () => {
       </AppProviders>
     );
     await selectApplicationType('Workflow');
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '触发方式' }));
+    fireEvent.click(
+      await screen.findByText('事件触发', {
+        selector: '.ant-select-item-option-content'
+      })
+    );
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '自定义事件源' }));
     fireEvent.click(
       await screen.findByText('Invoice · 1', {

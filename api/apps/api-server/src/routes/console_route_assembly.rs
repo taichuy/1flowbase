@@ -303,6 +303,7 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations_and
         .merge(super::members::route_assembly())
         .merge(super::notifications::route_assembly())
         .merge(super::communications::route_assembly())
+        .merge(super::events::route_assembly())
         .merge(super::organization::route_assembly())
         .merge(super::billing::route_assembly())
         .merge(super::model_definitions::route_assembly())

@@ -4,6 +4,10 @@ use utoipa::OpenApi;
 #[openapi(
     modifiers(&CanonicalExternalAuthenticationMetadata),
     paths(
+        crate::routes::events::catalog,
+        crate::routes::events::create,
+        crate::routes::events::update,
+        crate::routes::events::runtime,
         crate::health,
         crate::console_health,
         crate::routes::user_api_keys::list_user_api_keys,
