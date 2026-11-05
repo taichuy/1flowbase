@@ -70,6 +70,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 .collect::<Vec<_>>();
             (commands, registry.safe_snapshot())
         };
+        self.reclaim_affinity(&snapshot);
         if !new_commands.is_empty() {
             self.invocation_changed.notify_waiters();
         }

@@ -40,7 +40,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         let scope_requested = connection_scope_id.is_some();
 
         let owner_id = TransportOwnerId::new(protocol_session_id.to_string())?;
-        let session_id = TransportSessionId::new(hash_identity(&[
+        let base_session_id = TransportSessionId::new(hash_identity(&[
             protocol_session_id,
             &context.workspace_id.to_string(),
             context
@@ -52,6 +52,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             &input.protocol,
             &input.model,
         ]))?;
+        let mut session_id = base_session_id.clone();
         if self.shutdown.load(Ordering::Acquire) {
             return Err(admission_error(
                 "transport_session_shutdown",
@@ -127,6 +128,13 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 // existing owner; admission still checks the maintained state.
                 registry.maintain();
             }
+            session_id = self.select_affinity_slot(
+                &registry,
+                &base_session_id,
+                connection_scope.as_deref(),
+                input,
+                &target,
+            )?;
             let now = registry.safe_snapshot().observed_at;
             if invocation_deadline.is_some_and(|deadline| deadline <= now)
                 || handoff_deadline.is_some_and(|deadline| tokio::time::Instant::now() >= deadline)
@@ -386,6 +394,19 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     },
                 )
                 .map_err(map_registry_use_error)?;
+            self.affinity
+                .lock()
+                .expect("transport affinity")
+                .record_slot(&base_session_id, &session_id);
+            if let Some(scope) = &connection_scope {
+                scope
+                    .state
+                    .lock()
+                    .expect("transport connection bindings")
+                    .affinity
+                    .entry(base_session_id.as_str().into())
+                    .or_insert_with(|| session_id.clone());
+            }
             let cleanup_registry = self.registry.clone();
             let cleanup_changed = self.invocation_changed.clone();
             let cleanup_lease = lease.clone();
