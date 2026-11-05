@@ -7,6 +7,8 @@ use uuid::Uuid;
 pub struct CommunicationBindingInput {
     #[serde(default)]
     pub command_settings: Vec<super::CommunicationCommandSetting>,
+    #[serde(default)]
+    pub event_commands: Vec<super::CommunicationEventCommandBinding>,
     pub application_id: Uuid,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,

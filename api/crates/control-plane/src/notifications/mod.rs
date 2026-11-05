@@ -21,6 +21,8 @@ use uuid::Uuid;
 
 mod authorization;
 mod command_catalog;
+mod event_commands;
+pub use event_commands::*;
 mod command_events;
 pub use command_catalog::*;
 pub use command_events::{decode_builtin_command, terminate_communication_command_delivery};

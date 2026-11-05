@@ -304,10 +304,10 @@ impl CommunicationCommandRepository for PgControlPlaneStore {
                 )
             } else {
                 anyhow::ensure!(
-                    matches!(
+                    (matches!(
                         request.command_id.as_str(),
                         "host/new" | "host/model" | "host/help" | "host/rejected"
-                    ),
+                    ) || request.command_id.starts_with("user/")),
                     "plugin command requires frozen execution target"
                 );
                 (None, None, None, None, None, None)
@@ -351,7 +351,9 @@ impl CommunicationCommandRepository for PgControlPlaneStore {
     ) -> Result<Option<ClaimedBuiltinCommunicationCommand>> {
         let claim_id = Uuid::now_v7();
         // Requests remain ordered per chat while separate chats and ordinary generations run.
-        let row = sqlx::query("WITH candidate AS (SELECT e.event_id FROM communication_command_events e JOIN notification_instances n ON n.workspace_id=e.scope_id AND n.id=e.instance_id AND n.status='enabled' WHERE e.scope_id=$1 AND e.instance_id=$2 AND e.installation_id IS NULL AND e.reply_json IS NULL AND (e.effect_claim_id IS NULL OR e.effect_claim_expires_at<=clock_timestamp()) AND NOT EXISTS(SELECT 1 FROM communication_command_events earlier WHERE earlier.scope_id=e.scope_id AND earlier.instance_id=e.instance_id AND earlier.external_identity=e.external_identity AND earlier.conversation_id=e.conversation_id AND earlier.event_id<e.event_id AND earlier.reply_json IS NULL) ORDER BY e.event_id FOR UPDATE OF e SKIP LOCKED LIMIT 1) UPDATE communication_command_events e SET effect_claim_id=$3,effect_claim_expires_at=clock_timestamp()+make_interval(secs=>$4) FROM candidate c WHERE e.event_id=c.event_id RETURNING e.*")
+        // A previously claimed user event can already have been published. Reclaiming records
+        // an unknown outcome so the Host terminates it instead of replaying ephemeral delivery.
+        let row = sqlx::query("WITH candidate AS (SELECT e.event_id FROM communication_command_events e JOIN notification_instances n ON n.workspace_id=e.scope_id AND n.id=e.instance_id AND n.status='enabled' WHERE e.scope_id=$1 AND e.instance_id=$2 AND e.installation_id IS NULL AND e.reply_json IS NULL AND (e.effect_claim_id IS NULL OR e.effect_claim_expires_at<=clock_timestamp()) AND NOT EXISTS(SELECT 1 FROM communication_command_events earlier WHERE earlier.scope_id=e.scope_id AND earlier.instance_id=e.instance_id AND earlier.external_identity=e.external_identity AND earlier.conversation_id=e.conversation_id AND earlier.event_id<e.event_id AND earlier.reply_json IS NULL) ORDER BY e.event_id FOR UPDATE OF e SKIP LOCKED LIMIT 1) UPDATE communication_command_events e SET failure_code=CASE WHEN e.request_json->>'command_id' LIKE 'user/%' AND e.effect_claim_id IS NOT NULL THEN 'command_outcome_unknown' ELSE e.failure_code END,effect_claim_id=$3,effect_claim_expires_at=clock_timestamp()+make_interval(secs=>$4) FROM candidate c WHERE e.event_id=c.event_id RETURNING e.*")
             .bind(workspace_id).bind(instance_id).bind(claim_id).bind(f64::from(lease_seconds.clamp(1, 300))).fetch_optional(self.pool()).await?;
         row.as_ref()
             .map(|row| {

@@ -20,6 +20,11 @@ pub enum BuiltinCommunicationIntent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommunicationCommandIntent {
     Ordinary,
+    /// User-owned target, executed by the Host event publisher, never a plugin.
+    Event {
+        command_id: String,
+        arguments: String,
+    },
     Builtin(BuiltinCommunicationIntent),
     Plugin {
         command_id: String,

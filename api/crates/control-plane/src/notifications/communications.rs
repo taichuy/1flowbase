@@ -14,7 +14,8 @@ where
     R: NotificationRepository
         + PluginRepository
         + RoleConsolePolicyReader
-        + CommunicationRepository,
+        + CommunicationRepository
+        + crate::ports::EventCenterRepository,
 {
     pub async fn management_history(
         &self,
@@ -128,6 +129,8 @@ where
             }
         }
         self.validate_command_settings(actor, &input.command_settings, prior_settings)
+            .await?;
+        self.validate_event_commands(actor, &input.command_settings, &input.event_commands)
             .await?;
         if prior.is_none() && !input.mcp_instance_ids.contains(&plugin_mcp_instance_id) {
             input

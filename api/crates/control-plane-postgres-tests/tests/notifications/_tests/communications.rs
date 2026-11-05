@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub(super) const KEY: &str = "communications-fixture-master-key";
 pub(super) fn config() -> CommunicationBindingInput {
     CommunicationBindingInput {
+        event_commands: Vec::new(),
         command_settings: vec![],
         application_id: Uuid::now_v7(),
         model: None,

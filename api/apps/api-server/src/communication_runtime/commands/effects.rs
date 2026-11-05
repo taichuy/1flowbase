@@ -80,11 +80,30 @@ async fn execute(state: &ApiState, claim: &ClaimedBuiltinCommunicationCommand) -
     let intent = decode_builtin_command(record)?;
     let mut commands = state
         .notification_service
-        .command_catalog(&actor, &binding.config.command_settings)
+        .event_command_catalog(
+            &actor,
+            &binding.config.command_settings,
+            &binding.config.event_commands,
+        )
         .await?;
     let (response_session, text, failure) = match intent {
         CommunicationCommandIntent::Rejected { code, reply } => {
             (requested_session, reply.into(), Some(code))
+        }
+        CommunicationCommandIntent::Event {
+            command_id,
+            arguments,
+        } => {
+            return execute_event(
+                state,
+                claim,
+                &actor,
+                &binding,
+                &commands,
+                &command_id,
+                &arguments,
+            )
+            .await;
         }
         CommunicationCommandIntent::Builtin(builtin) => {
             if let Some((code, reply)) = unavailable(&commands, &record.request.command_id) {
@@ -358,4 +377,82 @@ async fn complete(
         )
         .await?;
     Ok(())
+}
+
+/// No await occurs between synchronous publish and forming its reply. A reclaimed uncertain
+/// Host claim is terminal; it must never replay an event which may already have been admitted.
+async fn execute_event(
+    state: &ApiState,
+    claim: &ClaimedBuiltinCommunicationCommand,
+    actor: &domain::ActorContext,
+    binding: &domain::CommunicationBindingRecord,
+    commands: &[CommunicationCommandView],
+    command_id: &str,
+    arguments: &str,
+) -> Result<()> {
+    let session = Uuid::parse_str(&claim.record.request.session_id)?;
+    if claim.record.failure_code.as_deref() == Some("command_outcome_unknown") {
+        return complete(
+            state,
+            claim,
+            session,
+            "The prior event publication outcome is unknown. It will not be retried automatically."
+                .into(),
+            Some("command_outcome_unknown".into()),
+        )
+        .await;
+    }
+    if let Some((code, reply)) = unavailable(commands, command_id) {
+        return complete(state, claim, session, reply.into(), Some(code)).await;
+    }
+    let result = async {
+        let current = state.notification_service.active_session(&claim.record.scope).await?.context("command session missing")?;
+        ensure!(current.id == session, "command session changed");
+        let command = binding.config.event_commands.iter().find(|c| c.command_id == command_id).context("event command removed")?;
+        let target = state.notification_service.event_command_definition(actor, command).await?;
+        ensure!(target.workspace_id == claim.record.scope.workspace_id && binding.workspace_id == target.workspace_id, "event command workspace mismatch");
+        let context = serde_json::json!({"arguments": arguments, "input_id": claim.record.event_id, "conversation_id": claim.record.scope.conversation_id, "instance_id": binding.instance_id});
+        let payload = control_plane::notifications::communication_event_payload(command, &context, &target)?;
+        let live_binding = active_binding(state, (binding.workspace_id, binding.instance_id)).await?;
+        ensure!(live_binding.revision == binding.revision, "event command binding changed");
+        let _permit = state.system_maintenance.try_enter_write(control_plane::system_recovery::SystemWriteOwner::CommunicationExecution)?;
+        // Recheck the live lease after asynchronous configuration and authorization reads.
+        ensure!(state.notification_service.renew_builtin_command_claim(claim, LEASE_SECONDS).await?, "command effect claim lost");
+        state.event_center.publish(&target, payload)
+    }.await;
+    let (text, failure) = match result {
+        Ok(receipt) => event_publication_reply(&receipt),
+        Err(error) => {
+            tracing::warn!(%error, command_id, "communication event command rejected");
+            ("Event publication was rejected. Check the arguments, event definition and channel permissions.".to_string(), Some("event_command_publish_rejected".into()))
+        }
+    };
+    complete(state, claim, session, text.into(), failure).await
+}
+
+pub(super) fn event_publication_reply(
+    receipt: &control_plane::event_center::EventPublishReceipt,
+) -> (String, Option<String>) {
+    use control_plane::event_center::EventTargetAdmissionStatus;
+    let accepted = receipt
+        .targets
+        .iter()
+        .filter(|t| t.status == EventTargetAdmissionStatus::Accepted)
+        .count();
+    let rejected = receipt.targets.len() - accepted;
+    let text = if receipt.targets.is_empty() {
+        "Event published with 0 receiving targets.".into()
+    } else {
+        format!("Event publication: {accepted} targets accepted, {rejected} targets rejected. Workflow execution has not been confirmed.")
+    };
+    (
+        text,
+        (rejected > 0).then(|| {
+            if accepted > 0 {
+                "event_publication_partial".into()
+            } else {
+                "event_publication_rejected".into()
+            }
+        }),
+    )
 }

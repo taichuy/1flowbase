@@ -137,7 +137,8 @@ impl Dependencies {
                     None => None,
                 };
                 let settings = binding.as_ref().map(|b| b.config.command_settings.as_slice()).unwrap_or_default();
-                let mut commands = self.service.command_catalog(actor, settings).await?;
+                let event_commands = binding.as_ref().map(|b| b.config.event_commands.as_slice()).unwrap_or_default();
+                let mut commands = self.service.event_command_catalog(actor, settings, event_commands).await?;
                 control_plane::notifications::apply_communication_model_availability(&mut commands, model_unavailable_reason);
                 json!({"published_agent_flows":published_agent_flows,"enabled_mcp_instances":enabled_mcp_instances,"run_capabilities":run_capabilities,"commands":commands})
             };
@@ -160,7 +161,8 @@ impl Dependencies {
                 let plugin_mcp_instance_id =
                     descriptor.as_ref().map(|_| provisioning::instance_id(id));
                 let settings = binding.as_ref().map(|b| b.config.command_settings.as_slice()).unwrap_or_default();
-                let mut commands = self.service.command_catalog(actor, settings).await?;
+                let event_commands = binding.as_ref().map(|b| b.config.event_commands.as_slice()).unwrap_or_default();
+                let mut commands = self.service.event_command_catalog(actor, settings, event_commands).await?;
                 let (_, reason) = crate::communication_runtime::command_capabilities::load(
                     &self.store, actor, binding.as_ref().map(|b| b.config.application_id),
                 ).await?;

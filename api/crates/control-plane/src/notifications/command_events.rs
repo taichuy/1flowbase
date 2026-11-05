@@ -51,6 +51,12 @@ pub fn decode_builtin_command(
         let (code, reply): (String, String) = serde_json::from_str(&record.request.arguments)?;
         return Ok(CommunicationCommandIntent::Rejected { code, reply });
     }
+    if record.request.command_id.starts_with("user/") {
+        return Ok(CommunicationCommandIntent::Event {
+            command_id: record.request.command_id.clone(),
+            arguments: record.request.arguments.clone(),
+        });
+    }
     let catalog = plugin_framework::communication_commands::builtin_communication_commands();
     let entry = catalog
         .iter()
@@ -120,6 +126,10 @@ where
                 serde_json::to_string(&(code, reply))?,
                 None,
             ),
+            CommunicationCommandIntent::Event {
+                command_id,
+                arguments,
+            } => (command_id, arguments, None),
             CommunicationCommandIntent::Plugin {
                 command_id,
                 arguments,

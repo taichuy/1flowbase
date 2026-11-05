@@ -593,3 +593,36 @@ async fn communication_command_help_uses_effective_availability_and_rechecks_dis
         Some("command_disabled")
     );
 }
+
+#[test]
+fn event_publication_reply_reports_admission_without_claiming_workflow_success() {
+    use control_plane::event_center::{
+        EventPublishReceipt, EventTargetAdmission, EventTargetAdmissionStatus as Status,
+    };
+    let mut receipt = EventPublishReceipt {
+        event_id: Uuid::now_v7(),
+        workspace_id: Uuid::now_v7(),
+        targets: vec![],
+    };
+    let reply = super::super::effects::event_publication_reply(&receipt);
+    assert!(reply.0.contains("0 receiving targets"));
+    assert_eq!(reply.1, None);
+    receipt.targets = vec![EventTargetAdmission {
+        subscription_id: Uuid::now_v7(),
+        status: Status::Accepted,
+    }];
+    let reply = super::super::effects::event_publication_reply(&receipt);
+    assert!(reply.0.contains("1 targets accepted, 0 targets rejected"));
+    assert_eq!(reply.1, None);
+    receipt.targets.push(EventTargetAdmission {
+        subscription_id: Uuid::now_v7(),
+        status: Status::ResourceExhausted,
+    });
+    let reply = super::super::effects::event_publication_reply(&receipt);
+    assert!(reply.0.contains("1 targets accepted, 1 targets rejected"));
+    assert_eq!(reply.1.as_deref(), Some("event_publication_partial"));
+    receipt.targets.remove(0);
+    let reply = super::super::effects::event_publication_reply(&receipt);
+    assert!(reply.0.contains("0 targets accepted, 1 targets rejected"));
+    assert_eq!(reply.1.as_deref(), Some("event_publication_rejected"));
+}

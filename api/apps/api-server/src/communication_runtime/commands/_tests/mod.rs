@@ -6,6 +6,7 @@ use serde_json::json;
 mod admission;
 mod delivery;
 mod effects;
+mod event_commands;
 
 struct Fixture {
     state: Arc<ApiState>,
@@ -52,6 +53,7 @@ impl Fixture {
                 &actor,
                 channel,
                 CommunicationBindingInput {
+                    event_commands: Vec::new(),
                     application_id: Uuid::now_v7(),
                     model: None,
                     reasoning_effort: None,
