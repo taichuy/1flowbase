@@ -109,6 +109,11 @@ async fn waiter(coordinator: &Arc<Coordinator>, scope: &Arc<TransportConnectionS
     let (parked, ready) = tokio::sync::oneshot::channel();
     let task = tokio::spawn(async move {
         let mut input = delivery_input(&scope);
+        // Unknown cursors deliberately retain the base-slot handoff path. This
+        // fixture tests a continuation, rather than an independent full request.
+        input.native_transport.as_mut().unwrap().wire_body["previous_response_id"] =
+            serde_json::json!("unknown-base-continuation");
+        input.client_transport = Some(ProviderClientTransport::Http);
         let original = input.native_transport.clone();
         let ctx = context(2_100_000);
         let result = {
@@ -296,7 +301,8 @@ async fn http_guard_drop_outside_runtime_context_still_uses_the_captured_close_o
 }
 
 #[tokio::test]
-async fn http_successor_waits_for_detached_http_or_websocket_predecessor_and_preserves_sequence() {
+async fn unknown_cursor_http_continuation_waits_for_detached_http_or_websocket_predecessor_and_preserves_sequence(
+) {
     for predecessor_http in [true, false] {
         let coordinator = coordinator();
         let old_guard = predecessor_http.then(|| coordinator.open_http_connection_scope());
@@ -370,7 +376,7 @@ async fn http_successor_waits_for_detached_http_or_websocket_predecessor_and_pre
 }
 
 #[tokio::test]
-async fn detached_http_waiter_is_woken_without_dispatch_while_predecessor_is_live() {
+async fn detached_unknown_cursor_http_waiter_is_woken_without_dispatch_while_predecessor_is_live() {
     let coordinator = coordinator();
     let (guard, first) = start(&coordinator).await;
     let successor = coordinator.open_http_connection_scope();
@@ -386,7 +392,7 @@ async fn detached_http_waiter_is_woken_without_dispatch_while_predecessor_is_liv
 }
 
 #[tokio::test]
-async fn two_http_waiters_dispatch_successors_serially() {
+async fn two_unknown_cursor_http_waiters_dispatch_successors_serially() {
     let coordinator = coordinator();
     let (guard, first) = start(&coordinator).await;
     let old_scope = guard.scope.clone();
@@ -439,4 +445,109 @@ async fn completed_http_delivery_can_drop_late_without_orphaning_successor() {
         .invocation_inflight(&next.lease.fence)
         .unwrap());
     coordinator.finish(next, &http_output()).await.unwrap();
+}
+
+#[tokio::test]
+async fn independent_http_guard_request_admits_while_http_or_websocket_predecessor_is_inflight() {
+    for predecessor_http in [true, false] {
+        let runtime = Arc::new(FakeTransportRuntime::new([]));
+        let coordinator = Arc::new(
+            Coordinator::new_with_clock(
+                runtime.clone(),
+                transport_config(),
+                FakeClock::new(2_000_000),
+            )
+            .unwrap(),
+        );
+        let old_guard = predecessor_http.then(|| coordinator.open_http_connection_scope());
+        let old_scope = old_guard
+            .as_ref()
+            .map(|guard| guard.scope.clone())
+            .unwrap_or_else(|| coordinator.open_connection_scope());
+        let first = coordinator
+            .prepare_dispatched(
+                "runtime-a",
+                &mut delivery_input(&old_scope),
+                &context(2_100_000),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            first.transport,
+            if predecessor_http {
+                RecoveryTransport::ProviderHttp
+            } else {
+                RecoveryTransport::AiNativeWebSocket
+            }
+        );
+        let old = first.lease.clone();
+        let successor = coordinator.open_http_connection_scope();
+        let successor_scope = successor.scope.clone();
+        let mut input = delivery_input(&successor_scope);
+        // The timeout is only a deadlock fence. The predecessor remains held
+        // until production admission returns the independent HTTP reservation.
+        let next = tokio::time::timeout(
+            Duration::from_secs(1),
+            coordinator.prepare_dispatched("runtime-a", &mut input, &context(2_100_000)),
+        )
+        .await
+        .expect("independent HTTP admission must not wait for predecessor completion")
+        .unwrap()
+        .unwrap();
+        assert_ne!(next.lease.fence.session_id, old.fence.session_id);
+        assert_eq!(next.transport, RecoveryTransport::ProviderHttp);
+        assert_eq!(input.client_transport, Some(ProviderClientTransport::Http));
+        assert_eq!(successor_scope.carrier, ProviderClientTransport::Http);
+        {
+            let registry = coordinator.registry.lock().await;
+            assert!(registry.invocation_inflight(&old.fence).unwrap());
+            assert!(registry.invocation_inflight(&next.lease.fence).unwrap());
+        }
+        assert!(runtime.commands().is_empty());
+        if let Some(guard) = old_guard {
+            drop(bind_response(Response::new(Body::empty()), guard));
+            closed(&coordinator, &old_scope).await;
+        } else {
+            coordinator.close_connection_scope(&old_scope).await;
+        }
+        assert_orphaned(&coordinator, &first).await;
+        {
+            let registry = coordinator.registry.lock().await;
+            assert_eq!(
+                registry.state(&next.lease.fence).unwrap(),
+                TransportSessionState::Active
+            );
+            assert!(registry.invocation_inflight(&next.lease.fence).unwrap());
+        }
+        let output = if predecessor_http {
+            http_output()
+        } else {
+            successful_output(old.fence.generation.get())
+        };
+        coordinator.finish(first, &output).await.unwrap();
+        coordinator.close_connection_scope(&old_scope).await;
+        {
+            let registry = coordinator.registry.lock().await;
+            assert_eq!(
+                registry.state(&next.lease.fence).unwrap(),
+                TransportSessionState::Active
+            );
+            assert!(registry.invocation_inflight(&next.lease.fence).unwrap());
+        }
+        assert!(
+            runtime.commands().is_empty(),
+            "late delivery close never cancels either execution"
+        );
+        coordinator.finish(next, &http_output()).await.unwrap();
+        drop(successor);
+        closed(&coordinator, &successor_scope).await;
+        assert!(coordinator
+            .safe_snapshot()
+            .await
+            .sessions
+            .iter()
+            .all(|session| !session.inflight));
+        assert!(runtime.commands().is_empty());
+    }
 }
