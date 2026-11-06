@@ -169,7 +169,7 @@ beforeEach(async () => {
 });
 
 describe('event center configuration and observations', () => {
-  test.each([schema, {}, true, false])(
+  test.each([schema, {}, true, false, null])(
     'previews and copies the complete read-only schema %j',
     async (payload_schema) => {
       api.listEventCatalog.mockResolvedValue([
@@ -564,7 +564,7 @@ describe('event center configuration and observations', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
     expect(screen.queryByText('inactive-subscription')).not.toBeInTheDocument();
   });
-  test('keeps a source with an undeclared schema read-only without inventing an accept-all schema', async () => {
+  test('shows a missing schema as literal null without inventing an accept-all schema', async () => {
     api.listEventCatalog.mockResolvedValue([
       {
         ...custom,
@@ -581,8 +581,13 @@ describe('event center configuration and observations', () => {
     );
     const drawer = screen.getByRole('dialog');
     expect(
-      within(drawer).getByText('This source has not declared a payload schema.')
-    ).toBeInTheDocument();
+      await within(drawer).findByTestId('schema-json-editor')
+    ).toHaveTextContent('null');
+    expect(
+      within(drawer).queryByText(
+        'This source has not declared a payload schema.'
+      )
+    ).not.toBeInTheDocument();
     expect(
       within(drawer).queryByRole('button', { name: 'Save' })
     ).not.toBeInTheDocument();
@@ -593,10 +598,10 @@ describe('event center configuration and observations', () => {
       within(drawer).queryByText(/accepts every payload/)
     ).not.toBeInTheDocument();
     expect(
-      within(drawer).queryByRole('button', {
+      within(drawer).getByRole('button', {
         name: 'Copy Payload schema JSON'
       })
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
     expect(api.createEventDefinition).not.toHaveBeenCalled();
     expect(api.updateEventDefinition).not.toHaveBeenCalled();
   });

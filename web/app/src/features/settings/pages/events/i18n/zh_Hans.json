@@ -65,7 +65,6 @@
   "observation_bytes": "观察字节数 / 预算",
   "accepts_all": "此结构允许所有正文。保存时会保留此规则。",
   "rejects_all": "此结构拒绝所有正文。保存时会保留此规则。",
-  "schema_undeclared": "此来源未声明正文结构。",
   "application_id": "应用标识",
   "inactive_workflow_subscriptions": "需关注的工作流订阅",
   "workflow_activation": "订阅激活情况",

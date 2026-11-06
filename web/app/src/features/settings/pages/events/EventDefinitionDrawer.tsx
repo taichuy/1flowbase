@@ -154,24 +154,11 @@ export function EventDefinitionDrawer({
                 }
               ]}
             />
-            {entry.payload_schema === null && (
-              <Alert type="info" title={t('schema_undeclared')} />
-            )}
-            {typeof entry.payload_schema === 'boolean' && (
-              <Alert
-                type="info"
-                title={
-                  entry.payload_schema ? t('accepts_all') : t('rejects_all')
-                }
-              />
-            )}
-            {entry.payload_schema !== null && (
-              <JsonPreviewBlock
-                title={t('payload_schema')}
-                value={entry.payload_schema}
-                maxAutoHeight={400}
-              />
-            )}
+            <JsonPreviewBlock
+              title={t('payload_schema')}
+              value={entry.payload_schema}
+              maxAutoHeight={400}
+            />
           </Space>
         )
       )}

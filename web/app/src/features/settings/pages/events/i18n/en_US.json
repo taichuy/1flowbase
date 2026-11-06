@@ -65,7 +65,6 @@
   "observation_bytes": "Observation bytes / budget",
   "accepts_all": "This schema accepts every payload. Its policy is preserved when saving.",
   "rejects_all": "This schema rejects every payload. Its policy is preserved when saving.",
-  "schema_undeclared": "This source has not declared a payload schema.",
   "application_id": "Application ID",
   "inactive_workflow_subscriptions": "Workflow subscriptions requiring attention",
   "workflow_activation": "Subscription activation",

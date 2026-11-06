@@ -4,7 +4,7 @@ feedback_category: interaction
 topic: 后台事件页必须对齐共享表格页面和URL状态
 summary: 用户纠正事件页应参照/settings/applications完整共享表格布局，tab有不同URL，并删除独立大标题空白面板。
 created_at: "2026-11-06 08"
-updated_at: "2026-11-06 09"
+updated_at: "2026-11-06 12"
 decision_policy: direct_reference
 status: active
 ---
@@ -18,7 +18,11 @@ status: active
 
 - 事件行操作采用简短文案“详情”，不用“查看详情”（用户明确纠正）。
 
+- 事件详情的 JSON 字段直接由共享高亮区块展示原值，包括 `null`；不把空值或布尔值换成业务解释提示，也不补造 `{}`。
+
 # 原因
+
+用户明确要求 JSON 字段原样展示；将 `null` 替换为“未声明结构”提示造成预期偏差。
 
 此前事件页把按钮放在表格外，并加了占据大块空白的标题面板；tab只用React本地状态，既不符合参照页面也不能分享/恢复视图。
 
