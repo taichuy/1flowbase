@@ -137,6 +137,7 @@ jobs:
           run_case mcp-internals --test api_private_routes routes::mcp_protocol::
           run_case terminal --test api_private_routes routes::terminal::
           run_case event-generation --test api_private_routes event_catalog_preserves_bound_and_unbound_views_without_retaining_boot
+          run_case workflow-event-generation --test api_private_routes workflow_event_adapter_borrows_generation_and_rejects_retired_owner
           run_case event-center-catalog --test api_system_settings event_center
           run_case existing-local-command --test api_private_routes local_commands
           run_case mcp-routes --test api_private_contracts mcp_protocol_routes
