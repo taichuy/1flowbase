@@ -401,7 +401,8 @@
       "tooltip": "提示信息",
       "vertical": "垂直",
       "write_denied": "当前表单没有写入权限",
-      "saved_output_failed": "记录已保存，但关联区块未收到保存结果，请刷新页面查看。"
+      "saved_output_failed": "记录已保存，但关联区块未收到保存结果，请刷新页面查看。",
+      "uninitialized": "此表单尚未配置。"
     },
     "common": {
       "design_unavailable": "当前无法保存区块设计",
@@ -420,7 +421,9 @@
       "search": "搜索数据表",
       "retry": "加载失败，点击重试",
       "loading": "正在加载数据表…",
-      "empty": "没有可用的数据表"
+      "empty": "没有可用的数据表",
+      "current_model": "当前数据表",
+      "other_models": "其他数据表"
     },
     "relation": {
       "field": "关联字段",

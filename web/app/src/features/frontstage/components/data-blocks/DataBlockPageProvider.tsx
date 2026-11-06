@@ -216,7 +216,12 @@ function DataBlockSlotHost({
               presentation: action.presentation ?? 'drawer',
               runtime_descriptor: descriptorWithConfig(existing, {
                 ...config,
-                relation,
+                relation:
+                  config.binding.model_id === binding.model_id &&
+                  config.binding.model_code === binding.model_code &&
+                  config.binding.data_source_id === binding.data_source_id
+                    ? relation
+                    : config.relation,
                 surface_size: action.size ?? 'middle'
               })
             }
@@ -240,6 +245,7 @@ function DataBlockSlotHost({
       const input = createCatalogBlockInput(entry, 0);
       const formConfig = {
         ...createFormBlockConfig(binding, mode),
+        initialized: false,
         relation,
         source_block_id: item.blockId,
         source_model_code: binding.model_code,

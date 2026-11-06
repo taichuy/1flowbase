@@ -1,3 +1,4 @@
+import { FormBlockInitializer } from './FormBlockInitializer';
 import { DATA_BLOCK_DESIGN_THEME } from '../shared/data-block-design-theme';
 import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -46,7 +47,15 @@ import {
 } from './form-state';
 
 export function FormBlock({ ctx }: DataBlockComponentProps) {
-  const config = readDataBlockConfig(ctx.props);
+  const incoming = readDataBlockConfig(ctx.props);
+  const [initialization, setInitialization] = useState<{
+    source: FormBlockConfig;
+    value: FormBlockConfig;
+  } | null>(null);
+  const config =
+    initialization && initialization.source === incoming
+      ? initialization.value
+      : incoming;
   const host = useDataBlockHost();
   const popupContainer = useDataBlockPopupContainer();
   if (!config || config.kind !== 'form')
@@ -62,11 +71,21 @@ export function FormBlock({ ctx }: DataBlockComponentProps) {
       theme={host?.design_mode ? DATA_BLOCK_DESIGN_THEME : undefined}
       getPopupContainer={popupContainer}
     >
-      <FormBlockSession
-        key={`${ctx.workspace.id}:${ctx.currentUser?.id ?? ''}:${host?.block_id ?? ''}:${config.binding.model_id}:${recordIdentity(config, ctx.inputs)}`}
-        ctx={ctx}
-        initialConfig={config}
-      />
+      {config.initialized === false ? (
+        <FormBlockInitializer
+          ctx={ctx}
+          config={config}
+          onInitialized={(value) =>
+            setInitialization({ source: config, value })
+          }
+        />
+      ) : (
+        <FormBlockSession
+          key={`${ctx.workspace.id}:${ctx.currentUser?.id ?? ''}:${host?.block_id ?? ''}:${config.binding.model_id}:${recordIdentity(config, ctx.inputs)}`}
+          ctx={ctx}
+          initialConfig={config}
+        />
+      )}
     </ConfigProvider>
   );
 }

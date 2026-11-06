@@ -120,6 +120,7 @@ export interface DataFormRule {
 
 export interface FormBlockConfig extends DataBlockCommon {
   kind: 'form';
+  initialized?: boolean;
   mode: DataBlockFormMode;
   items: DataFormItem[];
   rules: DataFormRule[];
@@ -173,6 +174,7 @@ export function createFormBlockConfig(
   return {
     version: 1,
     kind: 'form',
+    initialized: true,
     binding,
     title: '',
     description: '',

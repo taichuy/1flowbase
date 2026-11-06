@@ -379,6 +379,7 @@ describe('DataBlockPageProvider design persistence', () => {
             props: {
               data_block: expect.objectContaining({
                 kind: 'form',
+                initialized: false,
                 mode,
                 binding,
                 relation,
@@ -479,6 +480,64 @@ describe('DataBlockPageProvider design persistence', () => {
       expect.objectContaining({ name: 'old_customer_record' })
     );
     expect(mocks.saveCode).not.toHaveBeenCalled();
+  });
+
+  it('preserves a child form bound to another model when the source relation changes', async () => {
+    const { nodes, getHost } = await setup();
+    const independentBinding = {
+      model_id: 'notes-model',
+      model_code: 'notes',
+      data_source_id: null
+    };
+    const independentRelation = {
+      field_code: 'author',
+      parent_model_code: 'users',
+      parent_record_input: 'author_id'
+    };
+    const childConfig = {
+      ...createFormBlockConfig(independentBinding),
+      title: 'Independent notes',
+      relation: independentRelation,
+      surface_size: 'small' as const,
+      source_block_id: 'table-block',
+      source_model_code: 'orders',
+      items: [
+        {
+          id: 'body',
+          kind: 'field' as const,
+          field_code: 'body',
+          row: 'body',
+          span: 24
+        }
+      ]
+    };
+    nodes.set(
+      'other-model-form',
+      node('other-model-form', childConfig, 'table-block')
+    );
+    const action: DataBlockAction = {
+      id: 'create',
+      kind: 'create',
+      enabled: true,
+      target_block_id: 'other-model-form',
+      presentation: 'modal',
+      size: 'large'
+    };
+    await act(async () => {
+      await getHost().prepareAction(action, binding, 'create', relation);
+    });
+    expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
+      block_id: 'other-model-form',
+      input: {
+        presentation: 'modal',
+        runtime_descriptor: expect.objectContaining({
+          props: expect.objectContaining({
+            data_block: { ...childConfig, surface_size: 'large' }
+          })
+        })
+      }
+    });
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 
   it('does not rewrite an independent target block as a child form', async () => {

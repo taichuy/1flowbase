@@ -23,6 +23,8 @@ export function CreateDataBlockMenu({
   loading,
   error,
   onRetry,
+  currentBinding,
+  allowOtherModels = true,
   onCreate
 }: {
   workspaceId: string;
@@ -31,6 +33,8 @@ export function CreateDataBlockMenu({
   loading: boolean;
   error?: Error | null;
   onRetry?(): void;
+  currentBinding?: DataBlockBinding;
+  allowOtherModels?: boolean;
   onCreate(
     entry: NormalizedFrontstageBlockCatalogEntry,
     binding?: DataBlockBinding
@@ -42,13 +46,13 @@ export function CreateDataBlockMenu({
   const models = useQuery({
     queryKey: ['frontstage-design-models', workspaceId, actor?.id],
     queryFn: () => fetchConsoleDataModels({}, getFrontstageApiBaseUrl()),
-    enabled: open,
+    enabled: open && allowOtherModels,
     retry: false
   });
   const sources = useQuery({
     queryKey: ['frontstage-design-sources', workspaceId, actor?.id],
     queryFn: () => fetchConsoleDataSources(getFrontstageApiBaseUrl()),
-    enabled: open,
+    enabled: open && allowOtherModels,
     retry: false
   });
   const dataEntries = entries.filter(
@@ -74,6 +78,7 @@ export function CreateDataBlockMenu({
         const available = (models.data ?? []).filter(
           (model) =>
             model.status === 'published' &&
+            (!currentBinding || model.id !== currentBinding.model_id) &&
             model.capabilities.record.can_list &&
             `${model.title} ${model.code}`
               .toLowerCase()
@@ -154,7 +159,30 @@ export function CreateDataBlockMenu({
             entry.contributionCode === TABLE_BLOCK_CONTRIBUTION
               ? i18nText('frontstage', 'data_blocks.table.table')
               : i18nText('frontstage', 'data_blocks.form.form'),
-          children
+          children: currentBinding
+            ? [
+                {
+                  key: `${entry.id}:current`,
+                  label: i18nText(
+                    'frontstage',
+                    'data_blocks.create.current_model'
+                  ),
+                  onClick: () => choose(entry, currentBinding)
+                },
+                ...(allowOtherModels
+                  ? [
+                      {
+                        key: `${entry.id}:other`,
+                        label: i18nText(
+                          'frontstage',
+                          'data_blocks.create.other_models'
+                        ),
+                        children
+                      }
+                    ]
+                  : [])
+              ]
+            : children
         };
       })
     });

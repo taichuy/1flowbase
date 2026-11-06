@@ -401,7 +401,8 @@
       "tooltip": "Tooltip",
       "vertical": "Vertical",
       "write_denied": "You do not have permission to save this form",
-      "saved_output_failed": "The record was saved, but connected blocks did not receive the result. Refresh the page to view it."
+      "saved_output_failed": "The record was saved, but connected blocks did not receive the result. Refresh the page to view it.",
+      "uninitialized": "This form has not been configured."
     },
     "common": {
       "design_unavailable": "Block design cannot be saved right now",
@@ -420,7 +421,9 @@
       "search": "Search data tables",
       "retry": "Loading failed. Click to retry",
       "loading": "Loading data tables…",
-      "empty": "No data tables available"
+      "empty": "No data tables available",
+      "current_model": "Current data model",
+      "other_models": "Other data models"
     },
     "relation": {
       "field": "Relation field",
