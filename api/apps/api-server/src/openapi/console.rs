@@ -316,7 +316,6 @@ use utoipa::OpenApi;
         crate::routes::roles::RolePermissionsResponse,
         crate::routes::roles::RoleResponse,
         crate::routes::roles::UpdateRoleBody,
-        crate::routes::runtime_models::metadata_interface::RuntimeDataModelMetadataEnvelope,
         crate::routes::runtime_models::metadata::RuntimeDataModelMetadata,
         crate::routes::runtime_models::metadata::RuntimeDataModelField,
         crate::routes::runtime_models::metadata::RuntimeDataModelRecordCapabilities,

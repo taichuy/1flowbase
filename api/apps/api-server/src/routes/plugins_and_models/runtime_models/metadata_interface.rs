@@ -145,7 +145,7 @@ pub(super) fn register(
     params(("model_code" = String, Path, description = "Runtime model code")),
     security(("sessionCookie" = []), ("patBearer" = [])),
     responses(
-        (status = 200, body = RuntimeDataModelMetadataEnvelope),
+        (status = 200, body = RuntimeDataModelMetadata),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody),
         (status = 409, body = crate::error_response::ErrorBody)
@@ -190,11 +190,4 @@ pub async fn get_runtime_model_metadata(
         })?;
     let _receipt = outcome.receipt().clone().projected();
     Ok(Json(ApiSuccess::new(outcome.into_value())))
-}
-
-#[derive(utoipa::ToSchema)]
-#[allow(dead_code)]
-pub struct RuntimeDataModelMetadataEnvelope {
-    pub data: RuntimeDataModelMetadata,
-    pub meta: Option<serde_json::Value>,
 }
