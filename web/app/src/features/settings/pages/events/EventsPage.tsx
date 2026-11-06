@@ -33,6 +33,7 @@ export function EventsPage() {
   const requestedTab = useEventTab();
   const [drawer, setDrawer] = useState<{
     entry: EventCatalogEntry | null;
+    mode: 'view' | 'edit';
   } | null>(null);
   const canList = can('events.catalog.list');
   const canObserve = can('events.runtime.get');
@@ -46,12 +47,14 @@ export function EventsPage() {
     queryFn: () => listEventCatalog(),
     enabled: canList && tab === 'catalog'
   });
-  const editable = drawer?.entry
-    ? drawer.entry.origin === 'custom' &&
-      drawer.entry.id !== null &&
-      drawer.entry.payload_schema !== null &&
-      can('events.definitions.update')
-    : can('events.definitions.create');
+  const editable =
+    drawer?.mode === 'edit' &&
+    (drawer.entry
+      ? drawer.entry.origin === 'custom' &&
+        drawer.entry.id !== null &&
+        drawer.entry.payload_schema !== null &&
+        can('events.definitions.update')
+      : can('events.definitions.create'));
   const save = useMutation({
     mutationFn: async (values: CreateEventDefinitionInput) => {
       if (!csrfToken || !editable) throw new Error('operation not permitted');
@@ -72,9 +75,12 @@ export function EventsPage() {
       });
     }
   });
-  const open = (entry: EventCatalogEntry | null) => {
+  const open = (
+    entry: EventCatalogEntry | null,
+    mode: 'view' | 'edit' = 'view'
+  ) => {
     save.reset();
-    setDrawer({ entry });
+    setDrawer({ entry, mode });
   };
   const phase = (value: EventTriggerPhase) =>
     ({
@@ -167,7 +173,13 @@ export function EventsPage() {
             row.payload_schema !== null &&
             row.id &&
             can('events.definitions.update')
-              ? [{ key: 'edit', label: t('edit'), onClick: () => open(row) }]
+              ? [
+                  {
+                    key: 'edit',
+                    label: t('edit'),
+                    onClick: () => open(row, 'edit')
+                  }
+                ]
               : []),
             { key: 'view', label: t('view'), onClick: () => open(row) }
           ]}
@@ -212,7 +224,7 @@ export function EventsPage() {
                         type="primary"
                         aria-label={t('create')}
                         icon={<PlusOutlined />}
-                        onClick={() => open(null)}
+                        onClick={() => open(null, 'edit')}
                       >
                         {t('create')}
                       </Button>

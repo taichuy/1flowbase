@@ -30,7 +30,6 @@
   "empty": "No entries in this view",
   "forbidden": "You do not have permission to view the event catalog.",
   "read_only": "This event contract is managed by its source and is read-only here.",
-  "structured_field": "Structured schema",
   "contract_help": "Use custom. followed by lowercase letters, digits, hyphens or underscores; dots separate nonempty segments.",
   "save_error": "The event could not be saved. Check its identity and schema, then retry.",
   "catalog_error": "The event catalog could not be loaded. Retry with Refresh.",

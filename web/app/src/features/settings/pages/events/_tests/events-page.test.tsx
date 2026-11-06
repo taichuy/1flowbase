@@ -1,3 +1,4 @@
+import '../../../../../test/fixtures/rc-util-unique-ids';
 import type {
   EventCatalogEntry,
   EventRuntimeSnapshot
@@ -12,6 +13,7 @@ import {
   within
 } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
+import { App as AntApp } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { appI18n } from '../../../../../shared/i18n/app-i18n';
 import { EventsPage } from '../EventsPage';
@@ -21,6 +23,25 @@ const api = vi.hoisted(() => ({
   createEventDefinition: vi.fn(),
   updateEventDefinition: vi.fn(),
   getEventRuntime: vi.fn()
+}));
+const clipboard = vi.hoisted(() => ({ copy: vi.fn() }));
+vi.mock('../../../../../shared/ui/clipboard/use-clipboard-copy', () => ({
+  useClipboardCopy: () => ({ copied: false, copy: clipboard.copy })
+}));
+vi.mock('../../../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: async () => ({
+    default: ({
+      value,
+      options
+    }: {
+      value: string;
+      options?: { readOnly?: boolean };
+    }) => (
+      <pre data-testid="schema-json-editor" data-readonly={options?.readOnly}>
+        {value}
+      </pre>
+    )
+  })
 }));
 const access = vi.hoisted(() => ({
   operations: new Set([
@@ -121,7 +142,9 @@ function renderPage() {
   return render(
     <I18nextProvider i18n={appI18n}>
       <QueryClientProvider client={client}>
-        <EventsPage />
+        <AntApp>
+          <EventsPage />
+        </AntApp>
       </QueryClientProvider>
     </I18nextProvider>
   );
@@ -146,6 +169,44 @@ beforeEach(async () => {
 });
 
 describe('event center configuration and observations', () => {
+  test.each([schema, {}, true, false])(
+    'previews and copies the complete read-only schema %j',
+    async (payload_schema) => {
+      api.listEventCatalog.mockResolvedValue([
+        { ...custom, origin: 'core', id: null, payload_schema }
+      ]);
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: 'Details' }));
+      const editor = await screen.findByTestId('schema-json-editor');
+      expect(JSON.parse(editor.textContent ?? '')).toEqual(payload_schema);
+      expect(editor).toHaveAttribute('data-readonly', 'true');
+      expect(
+        screen.queryByRole('button', { name: 'Save' })
+      ).not.toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Copy Payload schema JSON' })
+      );
+      await waitFor(() =>
+        expect(clipboard.copy).toHaveBeenCalledWith(
+          JSON.stringify(payload_schema, null, 2)
+        )
+      );
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Zoom in to view Payload schema JSON'
+        })
+      );
+      const enlarged = await screen.findByRole('dialog', {
+        name: 'Payload schema JSON'
+      });
+      expect(
+        JSON.parse(
+          within(enlarged).getByTestId('schema-json-editor').textContent ?? ''
+        )
+      ).toEqual(payload_schema);
+    }
+  );
+
   test('opens event details with a single direct row action click', async () => {
     api.listEventCatalog.mockResolvedValue([
       { ...custom, origin: 'core', id: null }
@@ -277,9 +338,25 @@ describe('event center configuration and observations', () => {
       )
     );
   });
+  test('custom event details stay read-only even when editing is authorized', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Details' }));
+    expect(
+      JSON.parse(
+        (await screen.findByTestId('schema-json-editor')).textContent ?? ''
+      )
+    ).toEqual(schema);
+    expect(
+      screen.queryByRole('button', { name: 'Save' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Add schema field' })
+    ).not.toBeInTheDocument();
+    expect(api.updateEventDefinition).not.toHaveBeenCalled();
+  });
   test('editing a disabled custom definition preserves nested schema and immutable identity', async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Order' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
     const drawer = screen.getByRole('dialog');
     expect(within(drawer).getByLabelText('Contract ID')).toBeDisabled();
     expect(within(drawer).getByLabelText('Contract version')).toBeDisabled();
@@ -514,6 +591,11 @@ describe('event center configuration and observations', () => {
     ).not.toBeInTheDocument();
     expect(
       within(drawer).queryByText(/accepts every payload/)
+    ).not.toBeInTheDocument();
+    expect(
+      within(drawer).queryByRole('button', {
+        name: 'Copy Payload schema JSON'
+      })
     ).not.toBeInTheDocument();
     expect(api.createEventDefinition).not.toHaveBeenCalled();
     expect(api.updateEventDefinition).not.toHaveBeenCalled();

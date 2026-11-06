@@ -10,11 +10,11 @@ import {
   Form,
   Input,
   Space,
-  Switch,
-  Typography
+  Switch
 } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { JsonPreviewBlock } from '../../../../shared/ui/json-preview/JsonPreviewBlock';
 import { JsonSchemaInlineEditor } from '../../../agent-flow/components/detail/fields/json-schema/JsonSchemaSettingsPanel';
 
 export function EventDefinitionDrawer({
@@ -125,8 +125,10 @@ export function EventDefinitionDrawer({
         </Form>
       ) : (
         entry && (
-          <Space orientation="vertical" size="middle">
-            <Alert type="info" showIcon title={t('read_only')} />
+          <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+            {entry.origin !== 'custom' && (
+              <Alert type="info" showIcon title={t('read_only')} />
+            )}
             <Descriptions
               column={1}
               items={[
@@ -152,7 +154,6 @@ export function EventDefinitionDrawer({
                 }
               ]}
             />
-            <Typography.Text>{t('payload_schema')}</Typography.Text>
             {entry.payload_schema === null && (
               <Alert type="info" title={t('schema_undeclared')} />
             )}
@@ -164,27 +165,13 @@ export function EventDefinitionDrawer({
                 }
               />
             )}
-            {entry.payload_schema !== null &&
-              typeof entry.payload_schema !== 'boolean' && (
-                <Descriptions
-                  column={1}
-                  items={Object.entries(
-                    (entry.payload_schema.properties ?? {}) as Record<
-                      string,
-                      Record<string, unknown>
-                    >
-                  ).map(([name, field]) => ({
-                    key: name,
-                    label: name,
-                    children:
-                      typeof field === 'object' &&
-                      field !== null &&
-                      typeof field.type === 'string'
-                        ? field.type
-                        : t('structured_field')
-                  }))}
-                />
-              )}
+            {entry.payload_schema !== null && (
+              <JsonPreviewBlock
+                title={t('payload_schema')}
+                value={entry.payload_schema}
+                maxAutoHeight={400}
+              />
+            )}
           </Space>
         )
       )}
