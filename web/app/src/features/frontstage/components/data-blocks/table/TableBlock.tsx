@@ -1,3 +1,6 @@
+import { DATA_BLOCK_DESIGN_THEME } from '../shared/data-block-design-theme';
+import { FRONTSTAGE_DESIGN_BLUE } from '../../../lib/design-mode-theme';
+import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { DataBlockModal as Modal } from '../shared/DataBlockModal';
 import {
   useEffect,
@@ -101,7 +104,7 @@ function ConfiguredTableBlock({
   initialConfig
 }: DataBlockComponentProps & { initialConfig: TableBlockConfig }) {
   const host = useDataBlockHost();
-  const containerRef = useRef<HTMLElement>(null);
+  const popupContainer = useDataBlockPopupContainer();
   const { token } = theme.useToken();
   const [config, setConfig] = useState(initialConfig);
   useEffect(() => {
@@ -631,21 +634,12 @@ function ConfiguredTableBlock({
       />
     );
 
-  const providerTheme = useMemo(
-    () => ({
-      token: { colorPrimary: design ? token.blue : token.colorPrimary }
-    }),
-    [design, token.blue, token.colorPrimary]
-  );
   return (
     <ConfigProvider
-      theme={providerTheme}
-      getPopupContainer={(trigger) =>
-        trigger?.parentElement ?? containerRef.current!
-      }
+      theme={design ? DATA_BLOCK_DESIGN_THEME : undefined}
+      getPopupContainer={popupContainer}
     >
       <section
-        ref={containerRef}
         className={`data-table-block${design ? ' data-table-block-design' : ''}`}
         aria-label={
           config.title || i18nText('frontstage', 'data_blocks.table.table')
@@ -655,7 +649,7 @@ function ConfiguredTableBlock({
             background: token.colorBgContainer,
             color: token.colorText,
             borderRadius: token.borderRadiusLG,
-            '--data-table-design-color': token.blue,
+            '--data-table-design-color': FRONTSTAGE_DESIGN_BLUE.primary,
             '--data-table-border-color': token.colorBorderSecondary
           } as CSSProperties
         }

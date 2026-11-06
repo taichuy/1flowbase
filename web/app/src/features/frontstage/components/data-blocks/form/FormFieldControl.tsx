@@ -1,3 +1,4 @@
+import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { useState } from 'react';
 import {
   Alert,
@@ -34,9 +35,9 @@ type Props = {
   readOnly?: boolean;
   id?: string;
 };
-const popupContainer = (node: HTMLElement) => node.parentElement ?? node;
 
 function RelationControl({ ctx, field, value, onChange, readOnly, id }: Props) {
+  const popupContainer = useDataBlockPopupContainer();
   const [page, setPage] = useState(1);
   const [labels, setLabels] = useState<Record<string, string>>({});
   const binding =
@@ -162,6 +163,7 @@ function RelationControl({ ctx, field, value, onChange, readOnly, id }: Props) {
 }
 
 export function FormFieldControl(props: Props) {
+  const popupContainer = useDataBlockPopupContainer();
   const { field, value, onChange, readOnly, id } = props;
   if (field.field_kind === 'many_to_one' || field.field_kind === 'many_to_many')
     return <RelationControl {...props} />;

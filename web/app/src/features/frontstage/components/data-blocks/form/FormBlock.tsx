@@ -1,7 +1,10 @@
+import { DATA_BLOCK_DESIGN_THEME } from '../shared/data-block-design-theme';
+import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
+  ConfigProvider,
   Divider,
   Empty,
   Form,
@@ -44,6 +47,7 @@ import {
 export function FormBlock({ ctx }: DataBlockComponentProps) {
   const config = readDataBlockConfig(ctx.props);
   const host = useDataBlockHost();
+  const popupContainer = useDataBlockPopupContainer();
   if (!config || config.kind !== 'form')
     return (
       <Alert
@@ -53,11 +57,16 @@ export function FormBlock({ ctx }: DataBlockComponentProps) {
       />
     );
   return (
-    <FormBlockSession
-      key={`${ctx.workspace.id}:${ctx.currentUser?.id ?? ''}:${host?.block_id ?? ''}:${config.binding.model_id}:${recordIdentity(config, ctx.inputs)}`}
-      ctx={ctx}
-      initialConfig={config}
-    />
+    <ConfigProvider
+      theme={host?.design_mode ? DATA_BLOCK_DESIGN_THEME : undefined}
+      getPopupContainer={popupContainer}
+    >
+      <FormBlockSession
+        key={`${ctx.workspace.id}:${ctx.currentUser?.id ?? ''}:${host?.block_id ?? ''}:${config.binding.model_id}:${recordIdentity(config, ctx.inputs)}`}
+        ctx={ctx}
+        initialConfig={config}
+      />
+    </ConfigProvider>
   );
 }
 

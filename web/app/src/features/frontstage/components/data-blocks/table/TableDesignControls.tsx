@@ -1,3 +1,4 @@
+import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { useState, type ReactNode } from 'react';
 import { Button, Input, Popover, Switch, Typography } from 'antd';
 import {
@@ -145,6 +146,7 @@ export function TableFieldMenu({
   onCreate: () => void;
   canCreate: boolean;
 }) {
+  const popupContainer = useDataBlockPopupContainer();
   const [search, setSearch] = useState('');
   const sensors = useTableDragSensors();
   const matching = fields.filter((field) =>
@@ -178,6 +180,7 @@ export function TableFieldMenu({
       ));
   return (
     <Popover
+      getPopupContainer={popupContainer}
       trigger={['hover', 'click']}
       placement="bottomRight"
       content={
@@ -300,8 +303,10 @@ export function TableActionMenu({
   onChange: (action: DataBlockAction) => Promise<boolean>;
   label: string;
 }) {
+  const popupContainer = useDataBlockPopupContainer();
   return (
     <Popover
+      getPopupContainer={popupContainer}
       trigger={['hover', 'click']}
       placement="bottomRight"
       content={

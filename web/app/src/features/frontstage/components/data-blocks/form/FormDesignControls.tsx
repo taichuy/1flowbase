@@ -1,3 +1,4 @@
+import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { DataBlockModal as Modal } from '../shared/DataBlockModal';
 import { useState, type ReactNode } from 'react';
 import {
@@ -52,7 +53,6 @@ type Props = {
   dialog: DesignDialog;
   setDialog(dialog: DesignDialog): void;
 };
-const popupContainer = (node: HTMLElement) => node.parentElement ?? node;
 export function newFormItem(
   kind: DataFormItem['kind'],
   fieldCode?: string
@@ -62,6 +62,7 @@ export function newFormItem(
 }
 
 export function FormDesignControls(props: Props) {
+  const popupContainer = useDataBlockPopupContainer();
   const { ctx, config, fields, saving, onSave, dialog, setDialog } = props;
   const [creatingField, setCreatingField] = useState(false);
   const [search, setSearch] = useState('');
@@ -268,6 +269,7 @@ function FormSettingsModal({
   saving,
   onSave
 }: Props & { dialog: Exclude<DesignDialog, null> }) {
+  const popupContainer = useDataBlockPopupContainer();
   const [draft, setDraft] = useState(config);
   const [item, setItem] = useState<DataFormItem | null>(
     typeof dialog === 'object' ? dialog : null
@@ -601,6 +603,7 @@ function RuleEditor({
   onChange(rule: DataFormRule): void;
   onRemove(): void;
 }) {
+  const popupContainer = useDataBlockPopupContainer();
   return (
     <section className="data-form-rule">
       <DataBlockFilterEditor

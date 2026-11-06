@@ -1,3 +1,4 @@
+import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { DataBlockModal as Modal } from '../shared/DataBlockModal';
 import { useState } from 'react';
 import {
@@ -24,8 +25,6 @@ import { DataBlockFilterEditor } from '../shared/DataBlockFilterEditor';
 import { presentationOptions, sizeOptions } from './table-labels';
 
 export type SaveTableConfig = (config: TableBlockConfig) => Promise<boolean>;
-const popupContainer = (trigger: HTMLElement) =>
-  trigger.parentElement ?? trigger;
 
 export function TableBlockSettings({
   config,
@@ -42,6 +41,7 @@ export function TableBlockSettings({
   disabled: boolean;
   onSave: SaveTableConfig;
 }) {
+  const popupContainer = useDataBlockPopupContainer();
   const [section, setSection] = useState<string | null>(null);
   const [draft, setDraft] = useState(config);
   const items = [
@@ -345,6 +345,7 @@ export function TableColumnSettings({
   disabled: boolean;
   onSave: (column: DataBlockColumn) => Promise<boolean>;
 }) {
+  const popupContainer = useDataBlockPopupContainer();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(column);
   return (
@@ -528,6 +529,7 @@ export function TableActionSettings({
   disabled: boolean;
   onSave: (action: DataBlockAction) => Promise<boolean>;
 }) {
+  const popupContainer = useDataBlockPopupContainer();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(action);
   return (

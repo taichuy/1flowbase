@@ -1,3 +1,4 @@
+import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import {
   DndContext,
@@ -138,6 +139,7 @@ function FormLayoutItem({
   onRemove(): void;
   children: ReactNode;
 }) {
+  const popupContainer = useDataBlockPopupContainer();
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: item.id, disabled: !design || saving });
   const [resizeSpan, setResizeSpan] = useState<number | null>(null);
@@ -181,7 +183,7 @@ function FormLayoutItem({
             />
             <Dropdown
               trigger={['click']}
-              getPopupContainer={(node) => node.parentElement ?? node}
+              getPopupContainer={popupContainer}
               menu={{
                 items: [
                   {
