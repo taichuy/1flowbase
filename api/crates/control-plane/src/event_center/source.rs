@@ -11,9 +11,9 @@ use std::sync::{Arc, Weak};
 use uuid::Uuid;
 
 pub(super) struct RegisteredSource {
-    descriptor: EventSourceDescriptor,
+    pub(super) descriptor: EventSourceDescriptor,
     queues: Vec<EventSourceQueueSnapshot>,
-    bytes: u64,
+    pub(super) bytes: u64,
 }
 struct SourceLease {
     inner: Weak<RuntimeInner>,
@@ -44,17 +44,18 @@ fn metadata_bytes(
     descriptor: &EventSourceDescriptor,
     queues: &[EventSourceQueueSnapshot],
 ) -> Option<u64> {
-    serde_json::to_vec(&(descriptor, queues))
-        .ok()
-        .map(|bytes| bytes.len() as u64)
+    serde_json::to_vec(&(descriptor, queues)).ok().map(|bytes| {
+        (bytes.len() as u64)
+            .saturating_add(std::mem::size_of::<RegisteredSource>() as u64)
+            .saturating_add(std::mem::size_of::<Uuid>() as u64)
+    })
 }
 impl EventSourceObserver for EventCenterRuntime {
     fn register_source(
         &self,
         descriptor: EventSourceDescriptor,
     ) -> anyhow::Result<Arc<dyn EventSourceRegistration>> {
-        let policy = self
-            .inner
+        self.inner
             .policy
             .ok_or(control_plane_contracts::ports::EventBusError::Unconfigured)?;
         if [
@@ -77,12 +78,8 @@ impl EventSourceObserver for EventCenterRuntime {
         let bytes = metadata_bytes(&descriptor, &[])
             .ok_or_else(|| anyhow::anyhow!("source_metadata_invalid"))?;
         let mut state = self.inner.lock();
-        // Live source metadata uses the explicit host topic identity budget; no history retained.
-        if state.sources.len() >= policy.bus_limits.max_topics
-            || bytes
-                > (policy.bus_limits.max_topic_name_bytes as u64)
-                    .saturating_sub(state.sources.values().map(|source| source.bytes).sum())
-        {
+        // Source-owned metadata and activity share the explicit observation budget.
+        if !state.observation.replace_metadata(0, bytes) {
             return Err(
                 control_plane_contracts::ports::EventBusError::ResourceExhausted("source_metadata")
                     .into(),
@@ -118,8 +115,15 @@ impl EventCenterRuntime {
                 registration_id: *id,
                 descriptor: source.descriptor.clone(),
                 queues: source.queues.clone(),
+                metadata_bytes: source.bytes,
             })
             .collect();
+        let source_metadata_bytes = state
+            .sources
+            .values()
+            .filter(|source| source.descriptor.scope == scope)
+            .map(|source| source.bytes)
+            .sum::<u64>();
         let workflow_queues = state
             .memberships
             .values()
@@ -146,7 +150,8 @@ impl EventCenterRuntime {
             scope,
             sources,
             activity,
-            observation_bytes,
+            observation_bytes: observation_bytes + source_metadata_bytes,
+            source_metadata_bytes,
             observation_loss,
         }
     }
@@ -308,9 +313,6 @@ impl SourceLease {
         let Some(inner) = self.inner.upgrade() else {
             return false;
         };
-        let Some(policy) = inner.policy else {
-            return false;
-        };
         let mut state = inner.lock();
         let Some(source) = state.sources.get(&self.id) else {
             return false;
@@ -318,15 +320,8 @@ impl SourceLease {
         let Some(bytes) = metadata_bytes(&source.descriptor, &queues) else {
             return false;
         };
-        let others: u64 = state
-            .sources
-            .iter()
-            .filter(|(id, _)| **id != self.id)
-            .map(|(_, source)| source.bytes)
-            .sum();
-        if queues.len() > policy.bus_limits.max_topics
-            || bytes > (policy.bus_limits.max_topic_name_bytes as u64).saturating_sub(others)
-        {
+        let previous = source.bytes;
+        if !state.observation.replace_metadata(previous, bytes) {
             return false;
         }
         if let Some(source) = state.sources.get_mut(&self.id) {
@@ -339,7 +334,14 @@ impl SourceLease {
 impl Drop for SourceLease {
     fn drop(&mut self) {
         if let Some(inner) = self.inner.upgrade() {
-            inner.lock().sources.remove(&self.id);
+            let mut state = inner.lock();
+            if let Some(source) = state.sources.remove(&self.id) {
+                let released = state.observation.replace_metadata(source.bytes, 0);
+                debug_assert!(
+                    released,
+                    "live source metadata reservation must be released"
+                );
+            }
         }
     }
 }

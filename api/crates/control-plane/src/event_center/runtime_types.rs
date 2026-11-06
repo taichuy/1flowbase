@@ -150,8 +150,10 @@ pub struct EventRuntimeSnapshot {
     pub activity: Vec<EventRuntimeActivity>,
     /// Rejections retained within this workspace's bounded observation window.
     pub admission_rejected: u64,
-    /// Workspace activity and accounting metadata charge; not process RSS.
+    /// Workspace activity, accounting and live source metadata charge; not process RSS.
     pub observation_bytes: u64,
+    /// Included in observation_bytes; only metadata belonging to this projection scope.
+    pub source_metadata_bytes: u64,
     pub observation_loss: EventObservationLossSnapshot,
     pub observation_max_bytes: u64,
     pub observation_ttl_ms: u64,
@@ -166,6 +168,7 @@ pub struct EventSourceTarget {
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EventRegisteredSourceSnapshot {
+    pub metadata_bytes: u64,
     pub registration_id: Uuid,
     pub descriptor: EventSourceDescriptor,
     pub queues: Vec<EventSourceQueueSnapshot>,
@@ -182,5 +185,7 @@ pub struct EventSourceRuntimeSnapshot {
     pub workflow_queues: Vec<EventRuntimeQueueSnapshot>,
     pub activity: Vec<EventRuntimeActivity>,
     pub observation_bytes: u64,
+    /// Included in observation_bytes; only metadata belonging to this projection scope.
+    pub source_metadata_bytes: u64,
     pub observation_loss: EventObservationLossSnapshot,
 }

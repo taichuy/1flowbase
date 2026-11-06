@@ -373,3 +373,99 @@ fn lazy_payload_projection_only_runs_for_eligible_target_under_same_admission_de
     );
     assert!(target.try_recv().unwrap().is_none());
 }
+
+#[test]
+fn sources_share_observation_budget_evict_activity_and_ignore_bus_topic_limits() {
+    let scope = EventSourceScope::Workspace {
+        workspace_id: Uuid::now_v7(),
+    };
+    let other_scope = EventSourceScope::Workspace {
+        workspace_id: Uuid::now_v7(),
+    };
+    let first_descriptor = descriptor(scope.clone());
+    let mut second_descriptor = descriptor(other_scope.clone());
+    second_descriptor.payload_schema = json!({"description": "schema".repeat(400)});
+    let first_charge = metadata_bytes(&first_descriptor, &[]).unwrap();
+    let second_charge = metadata_bytes(&second_descriptor, &[]).unwrap();
+    let budget = first_charge + second_charge;
+    let runtime = EventCenterRuntime::new(
+        Arc::new(MemoryEventBus::new()),
+        Some(EventCenterRuntimePolicy {
+            // These limits only belong to actual EventBus topics, not source/schema registrations.
+            bus_limits: EventBusLimits {
+                max_items: 1,
+                max_json_bytes: 64_000,
+                max_waiters: 1,
+                max_topics: 1,
+                max_consumers: 1,
+                max_topic_name_bytes: 1,
+            },
+            observation_max_bytes: budget,
+            observation_ttl_ms: 60_000,
+        }),
+    )
+    .unwrap();
+    let first = runtime.register_source(first_descriptor).unwrap();
+    for _ in 0..12 {
+        first.observe(observation(EventSourceFact::Published, vec![]));
+    }
+    let before = runtime.snapshot_sources(scope.clone());
+    assert!(!before.activity.is_empty());
+    assert_eq!(before.source_metadata_bytes, first_charge);
+    assert!(before.observation_bytes > first_charge);
+    let second = runtime.register_source(second_descriptor).unwrap();
+    let retained = runtime.snapshot_sources(scope.clone());
+    let other = runtime.snapshot_sources(other_scope.clone());
+    assert!(retained.activity.is_empty());
+    assert_eq!(retained.sources.len(), 1);
+    assert_eq!(other.sources.len(), 1);
+    assert_eq!(retained.sources[0].metadata_bytes, first_charge);
+    assert_eq!(
+        retained.source_metadata_bytes + other.source_metadata_bytes,
+        budget
+    );
+    assert_eq!(retained.observation_bytes + other.observation_bytes, budget);
+    assert_eq!(
+        runtime.snapshot(workspace(&scope)).observation_bytes,
+        first_charge
+    );
+    assert!(runtime.register_source(descriptor(scope.clone())).is_err());
+    assert_eq!(retained, runtime.snapshot_sources(scope.clone()));
+    let queue = EventSourceQueueSnapshot {
+        queue_id: "original".into(),
+        subscriber_id: "subscriber".into(),
+        consumer_ids: vec![],
+        buffered: None,
+        in_flight: None,
+        accepted: None,
+        dequeued: None,
+        dropped: None,
+        observed_at_unix_ms: 1,
+    };
+    assert!(!first.set_queue_snapshots(vec![queue.clone()]));
+    assert_eq!(retained, runtime.snapshot_sources(scope.clone()));
+    let clone = second.clone();
+    drop(second);
+    assert_eq!(
+        runtime
+            .snapshot_sources(other_scope.clone())
+            .source_metadata_bytes,
+        second_charge
+    );
+    drop(clone);
+    assert_eq!(runtime.snapshot_sources(other_scope).observation_bytes, 0);
+    assert!(first.set_queue_snapshots(vec![queue]));
+    first.observe(observation(EventSourceFact::Published, vec![]));
+    let resumed = runtime.snapshot_sources(scope.clone());
+    assert!(!resumed.activity.is_empty());
+    assert!(resumed.observation_bytes <= budget);
+    assert!(first.set_queue_snapshots(vec![]));
+    assert_eq!(
+        runtime
+            .snapshot_sources(scope.clone())
+            .source_metadata_bytes,
+        first_charge
+    );
+    drop(first);
+    assert_eq!(runtime.snapshot_sources(scope).source_metadata_bytes, 0);
+}

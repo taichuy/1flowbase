@@ -327,6 +327,15 @@ impl EventCenterRuntime {
             })
             .map(queue_snapshot)
             .collect();
+        let source_metadata_bytes = state
+            .sources
+            .values()
+            .filter(|source| {
+                source.descriptor.scope
+                    == domain::event_center::EventSourceScope::Workspace { workspace_id }
+            })
+            .map(|source| source.bytes)
+            .sum::<u64>();
         EventRuntimeSnapshot {
             instance_id: self.inner.instance_id,
             configured: self.inner.policy.is_some(),
@@ -341,7 +350,8 @@ impl EventCenterRuntime {
                 })
                 .count() as u64,
             activity,
-            observation_bytes,
+            observation_bytes: observation_bytes + source_metadata_bytes,
+            source_metadata_bytes,
             observation_loss,
             observation_max_bytes: self
                 .inner

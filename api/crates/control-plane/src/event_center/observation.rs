@@ -24,6 +24,7 @@ pub(super) struct Observation {
     entries: VecDeque<Entry>,
     accounting: VecDeque<Accounting>,
     bytes: u64,
+    metadata_bytes: u64,
     policy: Option<EventCenterRuntimePolicy>,
 }
 impl Observation {
@@ -32,17 +33,47 @@ impl Observation {
             entries: VecDeque::new(),
             accounting: VecDeque::new(),
             bytes: 0,
+            metadata_bytes: 0,
             policy,
         }
+    }
+    /// Reserve live source/queue metadata in the same budget, evicting old activity first.
+    /// A failed reservation leaves both existing metadata and observations unchanged.
+    pub fn replace_metadata(&mut self, previous: u64, replacement: u64) -> bool {
+        let Some(policy) = self.policy else {
+            return false;
+        };
+        let Some(retained) = self.metadata_bytes.checked_sub(previous) else {
+            return false;
+        };
+        let Some(next) = retained.checked_add(replacement) else {
+            return false;
+        };
+        if next > policy.observation_max_bytes {
+            return false;
+        }
+        let now = Instant::now();
+        self.make_room(
+            0,
+            now,
+            Duration::from_millis(policy.observation_ttl_ms),
+            policy.observation_max_bytes - next,
+            None,
+        );
+        self.metadata_bytes = next;
+        true
     }
     pub fn record(&mut self, activity: EventRuntimeActivity) {
         self.record_at(activity, Instant::now());
     }
 
     fn record_at(&mut self, activity: EventRuntimeActivity, now: Instant) {
-        let Some(policy) = self.policy else {
+        let Some(mut policy) = self.policy else {
             return;
         };
+        policy.observation_max_bytes = policy
+            .observation_max_bytes
+            .saturating_sub(self.metadata_bytes);
         let ttl = Duration::from_millis(policy.observation_ttl_ms);
         let window = accounting_window(policy);
         // Expire accounting first: losses outside its finite coverage cannot be counted.
@@ -128,7 +159,7 @@ impl Observation {
         max_bytes: u64,
         protected_workspace: Option<EventSourceScope>,
     ) {
-        while bytes > max_bytes.saturating_sub(self.bytes) {
+        while self.bytes > max_bytes || bytes > max_bytes.saturating_sub(self.bytes) {
             if let Some((at, removed, activity)) = self.entries.pop_front() {
                 self.bytes -= removed;
                 if let Some(ledger) = self.ledger_mut(scope(&activity)) {
