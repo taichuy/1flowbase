@@ -64,7 +64,7 @@ fn package_over_former_capacity_limits() -> PortableTemplatePackage {
             icon: None,
             icon_type: None,
             icon_background: None,
-            flow_document: json!({"graph":{"nodes":[],"edges":[]}}),
+            flow_document: json!({"schemaVersion": domain::FLOW_SCHEMA_VERSION, "graph":{"nodes":[],"edges":[]}}),
             mapping: None,
             published: None,
             schedule: None,

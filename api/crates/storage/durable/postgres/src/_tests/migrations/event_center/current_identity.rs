@@ -48,8 +48,17 @@ async fn event_center_current_identity_migration_clears_only_new_configuration()
             .await
             .unwrap();
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
-    for table in ["event_definitions", "workflow_event_triggers"] {
-        let count: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM {table}"))
+    for (table, count_query) in [
+        (
+            "event_definitions",
+            "SELECT count(*) FROM event_definitions",
+        ),
+        (
+            "workflow_event_triggers",
+            "SELECT count(*) FROM workflow_event_triggers",
+        ),
+    ] {
+        let count: i64 = sqlx::query_scalar(count_query)
             .fetch_one(&pool)
             .await
             .unwrap();
