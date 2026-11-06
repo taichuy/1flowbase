@@ -145,6 +145,21 @@ export function EventsPage() {
       dataIndex: 'owner_id',
       width: 220
     },
+    ...(['scope', 'point_id', 'binding', 'coverage'] as const).map((key) => ({
+      key,
+      title: t(key),
+      width: 220,
+      render: (_: unknown, row: EventCatalogEntry) => {
+        if (!row.source) return '—';
+        if (key === 'scope') {
+          const scope = row.source.selection.scope;
+          return scope.kind === 'workspace'
+            ? `${t('workspace_scope')} · ${scope.workspace_id}`
+            : t(scope.kind);
+        }
+        return key === 'point_id' ? row.source.point_id : t(row.source[key]);
+      }
+    })),
     {
       key: 'enabled',
       title: t('enabled'),
@@ -213,7 +228,12 @@ export function EventsPage() {
                 columns={columns}
                 rows={catalog.data ?? []}
                 rowKey={(row) =>
-                  `${row.owner_id}:${row.contract_id}:${row.contract_version}`
+                  JSON.stringify([
+                    row.owner_id,
+                    row.contract_id,
+                    row.contract_version,
+                    row.source?.selection
+                  ])
                 }
                 tableKey="catalog"
                 loading={catalog.isPending}

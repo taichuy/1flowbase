@@ -120,3 +120,135 @@ test.each(['disabled', 'missing', 'unsupported phase'])(
     );
   }
 );
+
+test('same-contract source scopes remain distinct and save canonical source with only advertised phases', async () => {
+  const common = {
+    id: null,
+    owner_id: 'runtime',
+    enabled: true,
+    origin: 'core',
+    contract_id: 'runtime.event',
+    contract_version: '1',
+    description: '',
+    payload_schema: null,
+    supported_phases: ['published']
+  };
+  const system = { source_id: 'runtime.required', scope: { kind: 'system' } };
+  api.fetchWorkflowEventCatalog.mockResolvedValue([
+    {
+      ...common,
+      name: 'Workspace source',
+      supported_phases: ['consumed'],
+      source: {
+        selection: {
+          source_id: 'runtime.required',
+          scope: { kind: 'workspace', workspace_id: 'workspace-a' }
+        },
+        point_id: 'runtime.required',
+        binding: 'active',
+        coverage: 'live'
+      }
+    },
+    {
+      ...common,
+      name: 'System source',
+      source: {
+        selection: system,
+        point_id: 'runtime.required',
+        binding: 'active',
+        coverage: 'live'
+      }
+    }
+  ]);
+  const saved = vi.fn();
+  function Editor() {
+    const [form] = Form.useForm();
+    return (
+      <Form
+        form={form}
+        initialValues={{ event: { enabled: true, input_mapping: {} } }}
+        onFinish={saved}
+      >
+        <WorkflowEventTriggerFields form={form} fields={[]} />
+        <Button htmlType="submit">Save source</Button>
+      </Form>
+    );
+  }
+  render(
+    <AppProviders>
+      <Editor />
+    </AppProviders>
+  );
+  await waitFor(() => expect(api.fetchWorkflowEventCatalog).toHaveBeenCalled());
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '事件来源' }));
+  fireEvent.click(await screen.findByText(/System source · 1/));
+  const selects = screen.getAllByRole('combobox');
+  fireEvent.mouseDown(selects[1]);
+  // Only the source adapter's published phase is offered.
+  expect(screen.queryByText('消费时（出队）')).not.toBeInTheDocument();
+  fireEvent.click(await screen.findByText('发布时'));
+  fireEvent.click(screen.getByRole('button', { name: 'Save source' }));
+  await waitFor(() =>
+    expect(saved).toHaveBeenCalledWith({
+      event: {
+        enabled: true,
+        contract_id: 'runtime.event',
+        contract_version: '1',
+        source: system,
+        trigger_phase: 'published',
+        input_mapping: {}
+      }
+    })
+  );
+});
+
+test('an unavailable stored system registration is explained and can be disabled without losing its source identity', async () => {
+  const source = { source_id: 'native.source', scope: { kind: 'system' } };
+  api.fetchWorkflowEventCatalog.mockResolvedValue([
+    {
+      contract_id: stored.contract_id,
+      contract_version: stored.contract_version,
+      name: 'Native source',
+      enabled: false,
+      origin: 'core',
+      supported_phases: ['consumed'],
+      source: {
+        selection: source,
+        point_id: 'native.point',
+        binding: 'declaration',
+        coverage: 'unavailable'
+      }
+    }
+  ]);
+  const saved = vi.fn();
+  const rejected = vi.fn();
+  function Editor() {
+    const [form] = Form.useForm();
+    return (
+      <Form
+        form={form}
+        initialValues={{ event: { ...stored, source } }}
+        onFinish={saved}
+        onFinishFailed={rejected}
+      >
+        <WorkflowEventTriggerFields form={form} fields={[]} />
+        <Button htmlType="submit">Save system source</Button>
+      </Form>
+    );
+  }
+  render(
+    <AppProviders>
+      <Editor />
+    </AppProviders>
+  );
+  await screen.findByText(/Native source · 1/);
+  fireEvent.click(screen.getByRole('button', { name: 'Save system source' }));
+  await waitFor(() => expect(rejected).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole('switch', { name: '启用订阅' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save system source' }));
+  await waitFor(() =>
+    expect(saved).toHaveBeenCalledWith({
+      event: { ...stored, source, enabled: false }
+    })
+  );
+});
