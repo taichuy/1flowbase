@@ -462,8 +462,10 @@
   "event": {
     "lifecycle_hint": "Consumed 表示出队，不表示业务成功；消费者失败互不影响。",
     "subscription_enabled": "启用订阅",
-    "source": "自定义事件源",
-    "source_unavailable": "请选择已启用的自定义事件及其支持的阶段。",
+    "source": "事件来源",
+    "system_scope": "系统",
+    "unbound_scope": "未绑定",
+    "source_unavailable": "请选择可用的事件来源及其支持的阶段。",
     "phase": "触发阶段",
     "subscribed": "订阅时",
     "published": "发布时",

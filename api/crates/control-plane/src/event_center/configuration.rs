@@ -57,7 +57,16 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
 
     pub async fn catalog(&self, actor: &ActorContext) -> anyhow::Result<Vec<EventCatalogEntry>> {
         let mut entries = if self.registered_workspace_id == Some(actor.current_workspace_id) {
-            self.registered_events.clone()
+            self.registered_events
+                .iter()
+                .filter(|entry| {
+                    entry
+                        .source
+                        .as_ref()
+                        .is_none_or(|source| source_visible(actor, &source.selection.scope))
+                })
+                .cloned()
+                .collect()
         } else {
             Vec::new()
         };
@@ -137,6 +146,14 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
         actor: &ActorContext,
         input: &WorkflowEventTriggerInput,
     ) -> anyhow::Result<()> {
+        if let Some(source) = &input.source {
+            if source.source_id.trim().is_empty()
+                || !source_visible(actor, &source.scope)
+                || source.scope == EventSourceScope::Unbound
+            {
+                return Err(Error::PermissionDenied("event_source_scope").into());
+            }
+        }
         if input.contract_id.trim().is_empty() || input.contract_version.trim().is_empty() {
             return Err(Error::InvalidInput("event_contract_required").into());
         }
@@ -158,6 +175,15 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
             .into_iter()
             .find(|entry| {
                 entry.enabled
+                    && match (&input.source, &entry.source) {
+                        (None, None) => entry.origin == EventDefinitionOrigin::Custom,
+                        (Some(selected), Some(source)) => {
+                            selected == &source.selection
+                                && source.binding == EventSourceBinding::Active
+                                && source.coverage == EventSourceCoverage::Live
+                        }
+                        _ => false,
+                    }
                     && entry.contract_id == input.contract_id
                     && entry.contract_version == input.contract_version
             })
@@ -246,3 +272,10 @@ pub(super) fn payload_validator(schema: &Value) -> anyhow::Result<jsonschema::Va
 #[cfg(test)]
 #[path = "_tests/configuration.rs"]
 mod tests;
+
+fn source_visible(actor: &ActorContext, scope: &EventSourceScope) -> bool {
+    match scope {
+        EventSourceScope::Workspace { workspace_id } => *workspace_id == actor.current_workspace_id,
+        EventSourceScope::System | EventSourceScope::Unbound => actor.is_root,
+    }
+}

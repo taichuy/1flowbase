@@ -2,9 +2,25 @@
 
 [中文](README.md)
 
-The event center is available at `/settings/events`. Definitions, workflow trigger configuration and communication command bindings are durable. Event instances, queues, lifecycle signals and activity observations belong to the current host process and may be lost on restart. Consumers retain ownership of their existing business records.
+The Event Center lives at `/settings/events`. Custom definitions, workflow trigger configuration, and communication command bindings are durable. Custom event instances, Event Center delivery queues, and observations are process-local and may be lost on restart. Existing runtime, lifecycle, and communication sources keep their original persistence, retry, fencing, and acknowledgment semantics.
 
 Each tab has its own URL: `/settings/events?tab=catalog`, `/settings/events?tab=queues`, and `/settings/events?tab=activity`. Opening `/settings/events` selects the catalog. Reloading and browser back/forward preserve the tab identified by the URL. The page uses the same shared table toolbar and column settings as Application management, without a separate title panel.
+
+## System sources and original queues
+
+The catalog distinguishes declarations from attached sources. `source.selection` identifies the stable source and explicit scope; `point_id` identifies an extension point, while `contract_id` and `contract_version` identify the business contract. Schemas come from typed owners or managed declarations. The shared JSON viewer displays objects, booleans, and `null` unchanged. Runtime streams advertise the actual `RuntimeEventEnvelope` schema rather than inventing a schema for each dynamic `event_type`.
+
+Attached families include runtime required/diagnostic/after-commit streams, communication commands, native model and credit notifications, and managed publications permitted by the frozen graph. Private Notify/watch/socket primitives are outside this event inventory. Binding, coverage, and supported phases reflect actual adapters; declarations and unbound sources cannot trigger workflows.
+
+Current queues separates original source queues from Event Center workflow queues. Runtime counters come from the original channels; durable pending/paused/claimed counts come from read-only aggregation of the existing outbox. Unknown cumulative counters remain unknown. Reading observations never dequeues a message. Consumption is original ownership handoff before a handler result, retry decision, or acknowledgment. Required delivery and diagnostic drop behavior remain unchanged.
+
+Each scope retains its own activity, memory accounting, and loss window. Workspace and System remain distinct even when their UUID values coincide. Ordinary users see their current workspace; root can also inspect System and Unbound. Historical outbox rows without trusted scope remain Unbound. Additional durable metadata contains scope, producer identity, and workflow ancestry only, never another canonical payload. Queue refresh errors are explicit rather than represented as empty queues.
+
+Source definitions, schemas, queue identities and activity share `observation_max_bytes`. The center owns the only queue-observation ledger. Runtime accepted/dequeued/dropped counters update one admitted queue in place; they do not clone or serialize a second queue map. Admission reserves the maximum numeric width and fixed map/handle metadata charge, rather than measuring process RSS. Queue retirement immediately releases its identity strings; surviving original owner clones retain their guard charge until final drop.
+
+`queue_observation_complete=false` means some queue metadata was refused. This warning applies even if the visible queue list is empty; the list is partial, and absent counters are not zeros. Trigger capability and original delivery remain unchanged. The flag stays conservative until an authoritative full queue refresh succeeds or the source owner is removed. Existing durable owners retain their full absolute snapshot refresh.
+
+Workflow configuration persists an optional source selection; omission preserves custom-event behavior. Only root may select System sources, and Workspace sources cannot cross workspaces. Trusted workflow ancestor IDs propagate through execution, durable publication, and internal MCP calls. A workflow cannot reenter the same causal chain; there is no arbitrary depth cap. Observations remain payload-free; source bodies are projected lazily only for actual matching targets. Run records continue to store mapped inputs and necessary identity metadata only.
 
 ## Trigger phases
 

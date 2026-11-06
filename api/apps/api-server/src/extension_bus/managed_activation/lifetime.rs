@@ -175,6 +175,7 @@ impl ManagedExtensionComposition {
     /// Called only after every owned operation, frozen reference and runtime worker has completed.
     pub(crate) async fn cleanup_after_shutdown(&self) {
         *self.snapshots.lock().await = ManagedSnapshots::default();
+        self.refresh_lifecycle_source_observations().await;
     }
 }
 

@@ -30,3 +30,22 @@ export function navigateEventTab(tab: EventTab, replace = false) {
   else window.history.pushState(window.history.state, '', href);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
+
+export function useEventScope(): string | null {
+  const search = useSyncExternalStore(
+    subscribe,
+    () => window.location.search,
+    () => ''
+  );
+  return new URLSearchParams(search).get('scope');
+}
+export function navigateEventScope(scope: string) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('scope', scope);
+  window.history.pushState(
+    window.history.state,
+    '',
+    `${url.pathname}${url.search}${url.hash}`
+  );
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}

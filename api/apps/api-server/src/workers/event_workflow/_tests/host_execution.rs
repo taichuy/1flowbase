@@ -131,6 +131,7 @@ async fn workflow_snapshot(
             user_id,
             application.id,
             WorkflowEventTriggerInput {
+                source: None,
                 enabled: true,
                 contract_id: definition.contract_id.clone(),
                 contract_version: "1".into(),
@@ -433,3 +434,6 @@ async fn current_publication_must_match_before_handoff() {
 
 #[path = "host_lifecycle.rs"]
 mod lifecycle;
+
+#[path = "host_execution/joined_sources.rs"]
+mod joined_sources;

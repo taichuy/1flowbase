@@ -1,4 +1,4 @@
-//! Durable event configuration. Event instances, deliveries and observations are ephemeral.
+//! Event configuration and source-owned ephemeral observation contracts.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -39,6 +39,8 @@ pub struct EventDefinitionRecord {
 /// Read-only projection of registered sources. Empty phases mean no source adapter is available.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EventCatalogEntry {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<EventCatalogSource>,
     pub id: Option<Uuid>,
     pub enabled: bool,
     pub owner_id: String,
@@ -54,6 +56,7 @@ pub struct EventCatalogEntry {
 impl From<EventDefinitionRecord> for EventCatalogEntry {
     fn from(value: EventDefinitionRecord) -> Self {
         Self {
+            source: None,
             id: Some(value.id),
             enabled: value.enabled,
             owner_id: value.workspace_id.to_string(),
@@ -96,6 +99,8 @@ pub struct UpdateEventDefinitionInput {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowEventTriggerInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<EventSourceSelection>,
     pub enabled: bool,
     pub contract_id: String,
     pub contract_version: String,
@@ -135,3 +140,6 @@ pub fn is_json_pointer(value: &str) -> bool {
 #[cfg(test)]
 #[path = "_tests/configuration.rs"]
 mod tests;
+
+mod source;
+pub use source::*;

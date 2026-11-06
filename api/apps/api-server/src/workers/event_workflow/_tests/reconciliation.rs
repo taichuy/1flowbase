@@ -8,6 +8,7 @@ fn trigger() -> WorkflowEventTriggerRecord {
         workspace_id: Uuid::now_v7(),
         application_id: Uuid::now_v7(),
         configuration: WorkflowEventTriggerInput {
+            source: None,
             enabled: true,
             contract_id: "custom.invoice".into(),
             contract_version: "1".into(),
@@ -156,8 +157,8 @@ async fn activation_decision_controls_real_subscribed_signal_and_restoration_doe
     assert_eq!(
         delivery.signal().body,
         EventCenterSignalBody::Subscribed {
-            subscription_id: trigger.id,
-            consumer_id: id,
+            subscription_id: trigger.id.to_string(),
+            consumer_id: id.to_string(),
         }
     );
     assert_eq!(

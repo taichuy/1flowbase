@@ -147,6 +147,38 @@ export function EventDefinitionDrawer({
                   label: t('owner_id'),
                   children: entry.owner_id
                 },
+                ...(entry.source
+                  ? [
+                      {
+                        key: 'source_id',
+                        label: t('source_id'),
+                        children: entry.source.selection.source_id
+                      },
+                      {
+                        key: 'point_id',
+                        label: t('point_id'),
+                        children: entry.source.point_id
+                      },
+                      {
+                        key: 'scope',
+                        label: t('scope'),
+                        children:
+                          entry.source.selection.scope.kind === 'workspace'
+                            ? `${t('workspace_scope')} · ${entry.source.selection.scope.workspace_id}`
+                            : t(entry.source.selection.scope.kind)
+                      },
+                      {
+                        key: 'binding',
+                        label: t('binding'),
+                        children: t(entry.source.binding)
+                      },
+                      {
+                        key: 'coverage',
+                        label: t('coverage'),
+                        children: t(entry.source.coverage)
+                      }
+                    ]
+                  : []),
                 {
                   key: 'description',
                   label: t('description'),

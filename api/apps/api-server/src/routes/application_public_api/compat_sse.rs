@@ -767,6 +767,9 @@ pub(crate) async fn start_compatible_typed_start_stream_for_actor(
             observation_context,
         },
         provider_transport_slot,
+        Some(control_plane::ports::RuntimeEventSourceBinding::workspace(
+            actor.workspace_id,
+        )),
         mcp_runtime_invoker,
     )
     .await?;
@@ -875,6 +878,7 @@ pub(crate) async fn start_compatible_typed_resume_stream_for_consumer(
             actor,
             reservation,
         },
+        None,
         None,
         mcp_runtime_invoker,
     )
@@ -1179,7 +1183,7 @@ async fn attach_compatible_typed_stream_with_replay(
                             axum::http::StatusCode::SERVICE_UNAVAILABLE,
                             "runtime_event_delivery_proof_unavailable",
                             "selected callback round is not durably recoverable",
-                        ))
+                        ));
                     }
                 };
             }

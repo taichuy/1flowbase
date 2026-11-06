@@ -1,3 +1,5 @@
+mod observation;
+pub use observation::{lifecycle_source_id, LifecycleSourceObserver};
 use std::{sync::Arc, time::Duration as StdDuration};
 
 use anyhow::Result;
@@ -46,6 +48,7 @@ pub trait LifecycleDeliveryCompletionPort: Send + Sync {
 #[derive(Clone)]
 pub struct LifecycleOutboxDispatcher<R> {
     repository: R,
+    observer: Option<Arc<dyn control_plane_contracts::ports::LifecycleFactObserver>>,
     delivery: Arc<dyn LifecycleFactDeliveryPort>,
     completion: Arc<dyn LifecycleDeliveryCompletionPort>,
     worker_id: Uuid,
@@ -68,6 +71,7 @@ where
     ) -> Self {
         Self {
             repository,
+            observer: None,
             delivery,
             completion,
             worker_id: Uuid::now_v7(),
@@ -78,6 +82,14 @@ where
             batch: Arc::new(tokio::sync::Mutex::new(())),
             closed: Arc::new(std::sync::Mutex::new(false)),
         }
+    }
+
+    pub fn with_lifecycle_observer(
+        mut self,
+        observer: Arc<dyn control_plane_contracts::ports::LifecycleFactObserver>,
+    ) -> Self {
+        self.observer = Some(observer);
+        self
     }
 
     pub async fn run_once(&self) -> Result<usize> {
@@ -100,6 +112,11 @@ where
         // Start the bounded claimed batch together; no queued claim expires behind slow siblings.
         let mut attempts = tokio::task::JoinSet::new();
         for fact in facts {
+            // The original repository has committed this queue claim; observation precedes
+            // any handler result, deadline/fence decision, retry or terminal ACK.
+            if let Some(observer) = &self.observer {
+                observer.consumed(&fact, &self.worker_id.to_string());
+            }
             let dispatcher = self.clone();
             attempts.spawn(async move { dispatcher.dispatch_claim(fact).await });
         }
@@ -140,7 +157,13 @@ where
         } else {
             match tokio::time::timeout(
                 self.delivery_deadline.min(remaining),
-                self.delivery.deliver(&fact),
+                control_plane_contracts::ports::with_lifecycle_workflow_ancestors(
+                    fact.observation_context
+                        .as_ref()
+                        .map(|context| context.workflow_ancestor_ids.clone())
+                        .unwrap_or_default(),
+                    self.delivery.deliver(&fact),
+                ),
             )
             .await
             {
@@ -397,6 +420,7 @@ mod tests {
     pub(super) fn repository() -> MemoryRepository {
         MemoryRepository {
             record: LifecycleOutboxRecord {
+                observation_context: None,
                 event_id: Uuid::now_v7(),
                 transaction_id: Uuid::now_v7(),
                 contract_id: "model_definition.committed".to_string(),
@@ -694,3 +718,7 @@ mod tests {
 #[cfg(test)]
 #[path = "_tests/lifecycle_outbox_budgets.rs"]
 mod budget_tests;
+
+#[cfg(test)]
+#[path = "_tests/lifecycle_source_observation.rs"]
+mod source_observation_tests;

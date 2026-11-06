@@ -165,6 +165,9 @@ fn field_code_to_static(model_code: &'static str, field_code: &str) -> Option<&'
 }
 
 fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKind {
+    if model_code == "workflow_event_triggers" && field_code == "source" {
+        return crate::ModelFieldKind::Json;
+    }
     if matches!(model_code, "event_definitions" | "workflow_event_triggers") {
         match field_code {
             "payload_schema" | "input_mapping" => return crate::ModelFieldKind::Json,
@@ -249,7 +252,8 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
 
 fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
     match model_code {
-        "event_definitions" | "workflow_event_triggers" => true,
+        "event_definitions" => true,
+        "workflow_event_triggers" => field_code != "source",
         "notification_instances" => field_code != "installation_id",
         "system_notifications" => field_code != "read_at",
         "notification_send_logs" => !matches!(
@@ -1009,6 +1013,7 @@ pub fn builtin_data_model_contract(code: &str) -> Option<BuiltinDataModelContrac
                 "input_mapping",
                 "updated_by",
                 "updated_at",
+                "source",
             ],
             capabilities: DataModelCapabilities {
                 can_delete: false,

@@ -1312,3 +1312,5 @@ fn mcp_get_omits_materialized_empty_body_for_explicitly_unmapped_interface() {
         catalog.tools[0].parameter_schema
     );
 }
+#[path = "virtual_ui/causal_lineage.rs"]
+mod causal_lineage;

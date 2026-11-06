@@ -31,6 +31,13 @@ pub(super) async fn forward_required_runtime_event<R: OrchestrationRuntimeReposi
     // marks persistence failures on that exact generation.
     persist_runtime_event_payload_for_generation(repository, flow_run_id, &fact, generation_writer)
         .await?;
+    if fact.durability != crate::ports::RuntimeEventDurability::Ephemeral {
+        if let Some(observation) =
+            generation_writer.and_then(|writer| writer.after_commit_observation())
+        {
+            observation.published(&envelope);
+        }
+    }
     Ok(envelope)
 }
 

@@ -1,3 +1,4 @@
+pub use crate::event_center::catalog::EventSourceCatalog;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     sync::{Arc, Mutex},
@@ -409,6 +410,7 @@ pub struct ApiState {
     pub console_policy_reader: Arc<dyn RoleConsolePolicyReader>,
     pub infrastructure: Arc<HostInfrastructureRegistry>,
     pub event_center: control_plane::event_center::EventCenterRuntime,
+    pub event_sources: Arc<EventSourceCatalog>,
     pub event_workflow_changes: Arc<tokio::sync::Notify>,
     pub event_workflow_statuses: crate::workers::event_workflow::EventWorkflowStatuses,
     /// Present on production boot; lightweight test states may omit the production graph.

@@ -20,6 +20,7 @@ fn input() -> CreateEventDefinitionInput {
 }
 fn trigger() -> WorkflowEventTriggerInput {
     WorkflowEventTriggerInput {
+        source: None,
         enabled: false,
         contract_id: input().contract_id,
         contract_version: "1".into(),
@@ -152,6 +153,12 @@ async fn workflow_configuration_reloads_and_cannot_write_another_workspace_appli
     assert_eq!(reloaded.workspace_id, workspace.id);
     assert_eq!(reloaded.updated_by, owner.user_id);
     let mut revised = trigger();
+    revised.source = Some(EventSourceSelection {
+        source_id: "native.available-later".into(),
+        scope: EventSourceScope::Workspace {
+            workspace_id: workspace.id,
+        },
+    });
     revised.trigger_phase = EventTriggerPhase::Consumed;
     revised.input_mapping = BTreeMap::from([("source".into(), "/source_event_id".into())]);
     let saved = service

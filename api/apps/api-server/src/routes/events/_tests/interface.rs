@@ -14,7 +14,9 @@ async fn event_catalog_preserves_bound_and_unbound_views_without_retaining_boot(
         initial_owners,
         "registry descendants must not own Boot"
     );
-    let registered = crate::event_center::catalog::registered_events(Some(boot), &actor);
+    let registered = state
+        .event_sources
+        .registered_events(Some(boot), &actor, &state.event_center);
     let expected = EventCenterConfigurationService::with_registered_events(
         state.store.clone(),
         actor.current_workspace_id,
@@ -32,10 +34,16 @@ async fn event_catalog_preserves_bound_and_unbound_views_without_retaining_boot(
     let mut unbound_state = (*state).clone();
     unbound_state.extension_boot_snapshot = None;
     let unbound = Dependencies::new(&unbound_state);
-    let expected = EventCenterConfigurationService::new(state.store.clone())
-        .catalog(&actor)
-        .await
-        .unwrap();
+    let expected = EventCenterConfigurationService::with_registered_events(
+        state.store.clone(),
+        actor.current_workspace_id,
+        state
+            .event_sources
+            .registered_events(None, &actor, &state.event_center),
+    )
+    .catalog(&actor)
+    .await
+    .unwrap();
     let Output(value) = unbound
         .execute(&principal, Input::Catalog)
         .await

@@ -700,6 +700,7 @@ pub(super) async fn test_app_with_runtime_event_stream(
         console_operation_registry: base_state.console_operation_registry.clone(),
         infrastructure: base_state.infrastructure.clone(),
         event_center: base_state.event_center.clone(),
+        event_sources: base_state.event_sources.clone(),
         event_workflow_changes: base_state.event_workflow_changes.clone(),
         event_workflow_statuses: base_state.event_workflow_statuses.clone(),
         extension_boot_snapshot: base_state.extension_boot_snapshot.clone(),

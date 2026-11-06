@@ -27,6 +27,10 @@ fn trigger(row: PgRow) -> anyhow::Result<WorkflowEventTriggerRecord> {
         workspace_id: row.try_get("workspace_id")?,
         application_id: row.try_get("application_id")?,
         configuration: WorkflowEventTriggerInput {
+            source: row
+                .try_get::<Option<serde_json::Value>, _>("source")?
+                .map(serde_json::from_value)
+                .transpose()?,
             enabled: row.try_get("enabled")?,
             contract_id: row.try_get("contract_id")?,
             contract_version: row.try_get("contract_version")?,
@@ -111,10 +115,10 @@ impl EventCenterRepository for PgControlPlaneStore {
         let phase = phase
             .as_str()
             .ok_or(Error::InvalidInput("invalid_event_phase"))?;
-        let result = sqlx::query("INSERT INTO workflow_event_triggers (id,workspace_id,application_id,enabled,contract_id,contract_version,trigger_phase,input_mapping,updated_by,updated_at) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 FROM applications WHERE id=$3 AND workspace_id=$2 ON CONFLICT (workspace_id,application_id) DO UPDATE SET enabled=EXCLUDED.enabled,contract_id=EXCLUDED.contract_id,contract_version=EXCLUDED.contract_version,trigger_phase=EXCLUDED.trigger_phase,input_mapping=EXCLUDED.input_mapping,updated_by=EXCLUDED.updated_by,updated_at=EXCLUDED.updated_at")
+        let result = sqlx::query("INSERT INTO workflow_event_triggers (id,workspace_id,application_id,enabled,contract_id,contract_version,trigger_phase,input_mapping,updated_by,updated_at,source) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11 FROM applications WHERE id=$3 AND workspace_id=$2 ON CONFLICT (workspace_id,application_id) DO UPDATE SET enabled=EXCLUDED.enabled,contract_id=EXCLUDED.contract_id,contract_version=EXCLUDED.contract_version,trigger_phase=EXCLUDED.trigger_phase,input_mapping=EXCLUDED.input_mapping,updated_by=EXCLUDED.updated_by,updated_at=EXCLUDED.updated_at,source=EXCLUDED.source")
             .bind(record.id).bind(record.workspace_id).bind(record.application_id).bind(record.configuration.enabled)
             .bind(&record.configuration.contract_id).bind(&record.configuration.contract_version).bind(phase)
-            .bind(serde_json::to_value(&record.configuration.input_mapping)?).bind(record.updated_by).bind(record.updated_at)
+            .bind(serde_json::to_value(&record.configuration.input_mapping)?).bind(record.updated_by).bind(record.updated_at).bind(record.configuration.source.as_ref().map(serde_json::to_value).transpose()?)
             .execute(self.pool()).await?;
         Ok(result.rows_affected() == 1)
     }

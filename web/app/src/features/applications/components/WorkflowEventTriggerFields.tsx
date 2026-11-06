@@ -1,3 +1,7 @@
+import type {
+  EventCatalogEntry,
+  EventSourceSelection
+} from '@1flowbase/api-client';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Form, Input, Select, Switch, type FormInstance } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -28,25 +32,59 @@ export function WorkflowEventTriggerFields({
   const contract_version = Form.useWatch(['event', 'contract_version'], form);
   const enabled = Form.useWatch(['event', 'enabled'], form);
   const trigger_phase = Form.useWatch(['event', 'trigger_phase'], form);
-  const available =
-    catalog.data?.filter(
-      (entry) => entry.origin === 'custom' && entry.enabled
-    ) ?? [];
+  const source = Form.useWatch(['event', 'source'], form) as
+    | EventSourceSelection
+    | undefined;
+  const identity = (
+    entry: Pick<EventCatalogEntry, 'contract_id' | 'contract_version'> & {
+      source?: { selection: EventSourceSelection };
+    }
+  ) =>
+    JSON.stringify([
+      entry.contract_id,
+      entry.contract_version,
+      entry.source?.selection.source_id ?? null,
+      entry.source?.selection.scope.kind ?? null,
+      entry.source?.selection.scope.kind === 'workspace'
+        ? entry.source.selection.scope.workspace_id
+        : null
+    ]);
+  const currentIdentity = identity({
+    contract_id,
+    contract_version,
+    source: source ? { selection: source } : undefined
+  });
+  const eligible = (entry: EventCatalogEntry) =>
+    entry.enabled &&
+    (entry.source
+      ? entry.source.binding === 'active' &&
+        entry.source.coverage === 'live' &&
+        entry.source.selection.scope.kind !== 'unbound'
+      : entry.origin === 'custom');
+  const scopeLabels = {
+    system: t('event.system_scope'),
+    unbound: t('event.unbound_scope')
+  };
+  const sourceLabel = (entry: EventCatalogEntry) =>
+    `${entry.name} · ${entry.contract_version}${
+      entry.source
+        ? ` · ${entry.source.selection.scope.kind === 'workspace' ? entry.source.selection.scope.workspace_id : scopeLabels[entry.source.selection.scope.kind]} · ${entry.source.selection.source_id}`
+        : ''
+    }`;
+  const available = catalog.data?.filter(eligible) ?? [];
   const selected = catalog.data?.find(
-    (entry) =>
-      entry.contract_id === contract_id &&
-      entry.contract_version === contract_version
+    (entry) => identity(entry) === currentIdentity
   );
-  const sourceAvailable = selected?.origin === 'custom' && selected.enabled;
+  const sourceAvailable = selected ? eligible(selected) : false;
   const sourceOptions = available.map((entry) => ({
-    value: JSON.stringify([entry.contract_id, entry.contract_version]),
-    label: `${entry.name} · ${entry.contract_version}`,
+    value: identity(entry),
+    label: sourceLabel(entry),
     disabled: false
   }));
   if (contract_id && !sourceAvailable) {
     sourceOptions.push({
-      value: JSON.stringify([contract_id, contract_version]),
-      label: `${selected?.name ?? contract_id} · ${contract_version} · ${t('event.source_unavailable')}`,
+      value: currentIdentity,
+      label: `${selected ? sourceLabel(selected) : contract_id} · ${t('event.source_unavailable')}`,
       disabled: true
     });
   }
@@ -100,18 +138,17 @@ export function WorkflowEventTriggerFields({
         <Select
           aria-label={t('event.source')}
           loading={catalog.isPending}
-          value={
-            contract_id
-              ? JSON.stringify([contract_id, contract_version])
-              : undefined
-          }
+          value={contract_id ? currentIdentity : undefined}
           options={sourceOptions}
           onChange={(value) => {
-            const [contract_id, contract_version] = JSON.parse(
-              value
-            ) as string[];
-            form.setFieldValue(['event', 'contract_id'], contract_id);
-            form.setFieldValue(['event', 'contract_version'], contract_version);
+            const entry = available.find((entry) => identity(entry) === value);
+            if (!entry) return;
+            form.setFieldValue(['event', 'contract_id'], entry.contract_id);
+            form.setFieldValue(
+              ['event', 'contract_version'],
+              entry.contract_version
+            );
+            form.setFieldValue(['event', 'source'], entry.source?.selection);
             form.setFieldValue(['event', 'trigger_phase'], undefined);
             form.setFieldValue(['event', 'input_mapping'], {});
           }}
@@ -134,6 +171,13 @@ export function WorkflowEventTriggerFields({
         <Input />
       </Form.Item>
       <Form.Item
+        name={['event', 'source']}
+        hidden
+        getValueProps={() => ({ value: '' })}
+      >
+        <Input />
+      </Form.Item>
+      <Form.Item
         name={['event', 'contract_version']}
         hidden
         rules={[{ required: true }]}
@@ -146,7 +190,8 @@ export function WorkflowEventTriggerFields({
         dependencies={[
           ['event', 'enabled'],
           ['event', 'contract_id'],
-          ['event', 'contract_version']
+          ['event', 'contract_version'],
+          ['event', 'source']
         ]}
         rules={[
           { required: true },
@@ -160,6 +205,15 @@ export function WorkflowEventTriggerFields({
         ]}
       >
         <Select options={phaseOptions} />
+      </Form.Item>
+      {/* Register the whole mapping even when no Start input controls exist.
+          Disabling a stored source must retain mappings for historical inputs. */}
+      <Form.Item
+        name={['event', 'input_mapping']}
+        hidden
+        getValueProps={() => ({ value: '' })}
+      >
+        <Input />
       </Form.Item>
       {fields
         .filter((field) =>

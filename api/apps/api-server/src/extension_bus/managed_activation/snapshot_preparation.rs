@@ -135,11 +135,15 @@ impl ManagedExtensionComposition {
                     retained.push(old.clone());
                 }
             }
+            for (workspace, snapshot) in &published {
+                self.register_candidate_lifecycle_sources(*workspace, snapshot);
+            }
             visible.current = published.clone();
             if let Some((publisher, prepared)) = prepared_host {
                 publisher.publish(prepared);
             }
             drop(visible);
+            self.refresh_lifecycle_source_observations().await;
             self.notify_reclamation();
             Ok::<_, anyhow::Error>(previous)
         }

@@ -267,3 +267,16 @@ pub trait ModelDefinitionRepository: Send + Sync {
     }
     async fn append_audit_log(&self, event: &AuditLogRecord) -> anyhow::Result<()>;
 }
+
+impl ModelDefinitionCommittedFact {
+    /// Canonical AfterCommitFact schema owned by this typed business fact.
+    pub fn event_source_schema() -> serde_json::Value {
+        serde_json::json!({"type":"object","required":["payload"],"properties":{"payload":{
+            "type":"object","required":["model_definition_id","scope_kind","scope_id"],"properties":{
+                "model_definition_id":{"type":"string","format":"uuid"},
+                "scope_kind":{"type":"string","enum":["workspace","system"]},
+                "scope_id":{"type":"string","format":"uuid"}
+            },"additionalProperties":false
+        }}})
+    }
+}

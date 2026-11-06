@@ -277,6 +277,19 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
                     trigger: WorkflowInvocationTrigger::Event {
                         signal_id: command.signal_id,
                         event_id: command.event_id,
+                        source_context: command
+                            .context
+                            .get("source_context")
+                            .cloned()
+                            .map(serde_json::from_value)
+                            .transpose()?,
+                        workflow_ancestor_ids: command
+                            .context
+                            .get("workflow_ancestor_ids")
+                            .cloned()
+                            .map(serde_json::from_value)
+                            .transpose()?
+                            .unwrap_or_default(),
                         subscription_id: command.subscription_id,
                         trigger_phase: snapshot.configuration.trigger_phase,
                         idempotency_key: key,
@@ -295,7 +308,7 @@ pub struct InvokeWorkflowEventCommand {
     /// Unique identity of this lifecycle signal, including subscribed/consumed signals.
     pub signal_id: Uuid,
     /// Original published event identity, absent for subscription establishment.
-    pub event_id: Option<Uuid>,
+    pub event_id: Option<String>,
     pub subscription_id: Uuid,
     /// Canonical serialized lifecycle signal, with phase-specific metadata and payload.
     pub context: Value,
@@ -352,11 +365,37 @@ fn validate_event_context(command: &InvokeWorkflowEventCommand) -> Result<()> {
             .and_then(Value::as_str)
             .and_then(|id| Uuid::parse_str(id).ok())
     };
+    let source_context: Option<domain::event_center::EventSourceContext> = context
+        .get("source_context")
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|_| ControlPlaneError::InvalidInput("event_context"))?;
+    match (&command.trigger.configuration.source, &source_context) {
+        (None, None) => {}
+        (Some(selected), Some(source))
+            if selected.source_id == source.source_id && selected.scope == source.scope => {}
+        _ => return Err(ControlPlaneError::InvalidInput("event_source_context").into()),
+    }
     let original = match command.trigger.configuration.trigger_phase {
         EventTriggerPhase::Subscribed => None,
-        EventTriggerPhase::Published => Some(command.signal_id),
-        EventTriggerPhase::Consumed => uuid_at("source_event_id"),
+        EventTriggerPhase::Published => match &source_context {
+            Some(source) => source.original_event_id.clone(),
+            None => Some(command.signal_id.to_string()),
+        },
+        EventTriggerPhase::Consumed => context
+            .get("source_event_id")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
     };
+    if let Some(source) = &source_context {
+        if command.trigger.configuration.trigger_phase != EventTriggerPhase::Subscribed
+            && (source.original_event_id != original
+                || original.as_ref().is_none_or(|id| id.trim().is_empty()))
+        {
+            return Err(ControlPlaneError::InvalidInput("event_source_context").into());
+        }
+    }
     if uuid_at("workspace_id") != Some(command.trigger.workspace_id)
         || uuid_at("event_id") != Some(command.signal_id)
         || context.get("phase").and_then(Value::as_str) != Some(phase)
