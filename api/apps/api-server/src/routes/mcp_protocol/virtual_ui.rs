@@ -951,7 +951,7 @@ fn get(
         "name": tool.name,
         "short_description": tool.short_description,
         "full_description": tool.full_description,
-        "input_schema": input_schema::mapped_schema(&tool.parameter_schema, &tool.input_mapping),
+        "input_schema": input_schema::tool_mapped_schema(&tool.execution_target, &tool.parameter_schema, &tool.input_mapping),
         "result_schema": tool.result_schema,
         "risk_level": tool.risk_level,
         "des_id": tool.des_id,

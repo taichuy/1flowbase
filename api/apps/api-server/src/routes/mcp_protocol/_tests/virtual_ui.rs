@@ -1285,3 +1285,30 @@ async fn link_only_and_template_reads_use_canonical_dispatch_with_public_replay_
         .iter()
         .all(|args| args["link_only"] == false && args["query"] == "a"));
 }
+
+#[test]
+fn mcp_get_omits_materialized_empty_body_for_explicitly_unmapped_interface() {
+    let mut catalog = catalog_with_server_bound_workspace();
+    catalog.tools[0].parameter_schema = json!({"type":"object","properties":{"body":{"type":"object","additionalProperties":false}},"required":["body"],"additionalProperties":false});
+    catalog.tools[0].input_mapping = json!({"interface_parameters":[],"mappings":[]});
+    let scope = VirtualMcpScope::selected(&catalog, &["selected".to_string()]);
+    let VirtualToolOutcome::Success(result) =
+        get(&catalog, &scope, &json!({"tool_id":"lookup"}), false)
+    else {
+        panic!("visible tool");
+    };
+    assert_eq!(
+        result["structuredContent"]["input_schema"],
+        json!({"type":"object","properties":{},"additionalProperties":false})
+    );
+    catalog.tools[0].input_mapping = json!({});
+    let VirtualToolOutcome::Success(raw) =
+        get(&catalog, &scope, &json!({"tool_id":"lookup"}), false)
+    else {
+        panic!("visible tool");
+    };
+    assert_eq!(
+        raw["structuredContent"]["input_schema"],
+        catalog.tools[0].parameter_schema
+    );
+}
