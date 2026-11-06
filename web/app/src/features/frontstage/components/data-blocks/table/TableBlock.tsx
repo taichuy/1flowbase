@@ -1,3 +1,4 @@
+import { DataBlockModal as Modal } from '../shared/DataBlockModal';
 import {
   useEffect,
   useMemo,
@@ -12,7 +13,6 @@ import {
   Button,
   ConfigProvider,
   Empty,
-  Modal,
   Popover,
   Space,
   Spin,
@@ -895,7 +895,7 @@ function ConfiguredTableBlock({
               const existing = config.columns.find(
                 (column) => column.field_code === fieldCode
               );
-              await saveConfig({
+              const attached = await saveConfig({
                 ...config,
                 columns: existing
                   ? config.columns.map((column) =>
@@ -905,6 +905,13 @@ function ConfiguredTableBlock({
                     )
                   : [...config.columns, { field_code: fieldCode }]
               });
+              if (!attached)
+                throw new Error(
+                  i18nText(
+                    'frontstage',
+                    'data_blocks.fields.created_attach_failed'
+                  )
+                );
             }}
           />
         )}

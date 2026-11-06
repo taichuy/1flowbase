@@ -1,5 +1,11 @@
 import { createContext, useContext } from 'react';
-import type { DataBlockAction, DataBlockBinding, DataBlockConfig, DataBlockFormMode, DataBlockRelation } from './types';
+import type {
+  DataBlockAction,
+  DataBlockBinding,
+  DataBlockConfig,
+  DataBlockFormMode,
+  DataBlockRelation
+} from './types';
 
 export interface DataBlockTarget {
   block_id: string;
@@ -14,8 +20,16 @@ export interface DataBlockHost {
   saving: boolean;
   targets: readonly DataBlockTarget[];
   saveConfig(config: DataBlockConfig): Promise<void>;
-  prepareAction(action: DataBlockAction, binding: DataBlockBinding, mode: DataBlockFormMode, relation?: DataBlockRelation): Promise<DataBlockAction>;
-  openAction(action: DataBlockAction, inputs?: Readonly<Record<string, string>>): void | Promise<void>;
+  prepareAction(
+    action: DataBlockAction,
+    binding: DataBlockBinding,
+    mode: DataBlockFormMode,
+    relation?: DataBlockRelation
+  ): Promise<DataBlockAction>;
+  openAction(
+    action: DataBlockAction,
+    inputs?: Readonly<Record<string, string>>
+  ): void | Promise<void>;
   close(): void;
 }
 

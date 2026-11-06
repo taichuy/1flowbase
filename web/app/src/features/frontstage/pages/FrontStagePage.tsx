@@ -1,3 +1,15 @@
+import { CreateDataBlockMenu } from '../components/data-blocks/CreateDataBlockMenu';
+import { DataBlockPageProvider } from '../components/data-blocks/DataBlockPageProvider';
+import {
+  createTableBlockConfig,
+  createFormBlockConfig,
+  TABLE_BLOCK_CONTRIBUTION,
+  FORM_BLOCK_CONTRIBUTION,
+  readDataBlockConfig,
+  type DataBlockBinding
+} from '../lib/data-blocks/types';
+import { dataBlockSurfaceWidth } from '../lib/data-blocks/ports';
+import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 import { useFrontstageDesignPersistence } from './frontstage-page/controllers/use-frontstage-design-persistence';
 import { useFrontstagePageRefresh } from './frontstage-page/controllers/use-frontstage-page-refresh';
 import { Alert, Button, Divider, Drawer, Empty, Modal, Typography } from 'antd';
@@ -231,7 +243,13 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     pageId: activePageContent?.page.id,
     tabId: activePageContent?.tab.id,
     rootUid: displayedPageDocument?.rootUid,
-    blocks: displayedPageDocument?.blocks
+    blocks: useMemo(() => {
+      const blocks = new Map(
+        (displayedPageDocument?.blocks ?? []).map((block) => [block.id, block])
+      );
+      for (const block of assemblyBlocks) blocks.set(block.id, block);
+      return [...blocks.values()];
+    }, [displayedPageDocument?.blocks, assemblyBlocks])
   });
 
   const jsBlockCapabilityHandlers = useMemo(
@@ -750,12 +768,23 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     void saveBlockComposition(activePageContent, next);
   };
 
-  const handleAddBlock = () =>
+  const handleAddBlock = (
+    entry: NormalizedFrontstageBlockCatalogEntry,
+    binding?: DataBlockBinding
+  ) =>
     addBlock({
       canAddBlock,
       blockCatalog,
       activePageContent,
-      blockCompositionState
+      blockCompositionState,
+      entry,
+      dataBlockConfig: binding
+        ? entry.contributionCode === TABLE_BLOCK_CONTRIBUTION
+          ? createTableBlockConfig(binding)
+          : entry.contributionCode === FORM_BLOCK_CONTRIBUTION
+            ? createFormBlockConfig(binding)
+            : undefined
+        : undefined
     });
 
   const canEditPageTree = canEnterDesignMode && isDesignMode;
@@ -822,7 +851,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       runtimeContext={nativeBlockRuntimeContext}
       nativeContextHost={nativeContextHost}
       renderBlockIds={[layer.block_id]}
-      sharedSignalCoordinator={undefined}
+      sharedSignalCoordinator={pageSignalCoordinator}
       onRuntimeRefresh={assemblyRuntime.refreshBlock}
       isDesignMode={canEnterDesignMode && isDesignMode}
       designActions={designActions}
@@ -839,6 +868,12 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     const layer = assemblyOverlays[index];
     if (!layer) return null;
     const title = layer.title ? blockI18n.t(layer.title) : layer.title;
+    const surfaceBlock = assemblyBlocks.find(
+      (block) => block.id === layer.block_id
+    );
+    const surfaceWidth = dataBlockSurfaceWidth(
+      surfaceBlock ? readDataBlockConfig(surfaceBlock.props) : null
+    );
     const parentLayer = assemblyLayers.find(
       (candidate) => candidate.block_id === layer.parent_block_id
     );
@@ -861,7 +896,11 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
           open={runtimeVisible}
           forceRender
           title={title}
-          size="min(720px, 92vw)"
+          size={
+            typeof surfaceWidth === 'number'
+              ? `min(${surfaceWidth}px, 92vw)`
+              : surfaceWidth
+          }
           onClose={closeBlock}
         >
           {content}
@@ -875,7 +914,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
           forceRender
           footer={null}
           title={title}
-          width={720}
+          width={surfaceWidth}
           onCancel={closeBlock}
         >
           {content}
@@ -1028,28 +1067,28 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       ) : null}
       {renderAssemblyOverlays()}
       {canEnterDesignMode && isDesignMode && selectedPageNode ? (
-        <Button
-          size="middle"
-          aria-label={i18nText('frontstage', 'auto.create_block')}
-          data-flowbase-frontstage-canvas-footer=""
-          onClick={() => void handleAddBlock()}
+        <CreateDataBlockMenu
+          workspaceId={workspaceId}
+          entries={blockCatalog.items}
+          error={blockCatalog.error}
+          onRetry={() => {
+            void blockCatalog.refetch();
+          }}
           disabled={!canAddBlock || blockCatalog.loading}
           loading={isBlockSavePending || blockCatalog.loading}
-          style={{
-            margin: '8px 16px 16px',
-            borderStyle: 'dashed',
-            borderColor: FRONTSTAGE_DESIGN_BLUE.dashed,
-            color: FRONTSTAGE_DESIGN_BLUE.primary
-          }}
-        >
-          {i18nText('frontstage', 'auto.add_block_button')}
-        </Button>
+          onCreate={handleAddBlock}
+        />
       ) : null}
     </FrontstageRuntimeActivityContext>
   );
 
   return (
-    <>
+    <DataBlockPageProvider
+      workspaceId={workspaceId}
+      pageId={selectedPageId ?? null}
+      tabId={activePageContent?.tab.id ?? tabId}
+      navigate={onNavigateBlock}
+    >
       <>
         <section
           className={[
@@ -1205,6 +1244,6 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
           />
         ) : null}
       </>
-    </>
+    </DataBlockPageProvider>
   );
 };

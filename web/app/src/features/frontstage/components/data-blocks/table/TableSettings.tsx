@@ -1,3 +1,4 @@
+import { DataBlockModal as Modal } from '../shared/DataBlockModal';
 import { useState } from 'react';
 import {
   Button,
@@ -5,7 +6,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Select,
   Space,
   Switch

@@ -279,10 +279,9 @@ function FormBlockSession({
       setSuccess(true);
       try {
         const published = await ctx.outputs.publish({
-          saved_record_id:
-            typeof savedId === 'string' || typeof savedId === 'number'
-              ? String(savedId)
-              : null,
+          ...(typeof savedId === 'string' || typeof savedId === 'number'
+            ? { saved_record_id: String(savedId) }
+            : {}),
           saved_record: saved,
           save_revision: revision.current
         });
@@ -531,11 +530,19 @@ function FormBlockSession({
               setDialog={setDialog}
               onFieldCreated={async (code) => {
                 await metadata.refetch();
-                if (!config.items.some((item) => item.field_code === code))
-                  await saveConfig({
+                if (!config.items.some((item) => item.field_code === code)) {
+                  const attached = await saveConfig({
                     ...config,
                     items: [...config.items, newFormItem('field', code)]
                   });
+                  if (!attached)
+                    throw new Error(
+                      i18nText(
+                        'frontstage',
+                        'data_blocks.fields.created_attach_failed'
+                      )
+                    );
+                }
               }}
             />
           )}

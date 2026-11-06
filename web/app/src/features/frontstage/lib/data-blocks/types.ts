@@ -1,9 +1,14 @@
 import type { BlockContext } from '@1flowbase/page-protocol';
-import type { RuntimeDataModelMetadata, RuntimeDataModelField } from '@1flowbase/api-client';
+import type {
+  RuntimeDataModelMetadata,
+  RuntimeDataModelField
+} from '@1flowbase/api-client';
 
 export type DataBlockMetadata = RuntimeDataModelMetadata;
 export type DataBlockField = RuntimeDataModelField;
-export interface DataBlockComponentProps { ctx: BlockContext; }
+export interface DataBlockComponentProps {
+  ctx: BlockContext;
+}
 
 export interface DataBlockBinding {
   model_id: string;
@@ -41,7 +46,16 @@ export interface DataBlockColumn {
   action?: DataBlockAction;
 }
 
-export type DataFilterOperator = '$eq' | '$ne' | '$includes' | '$notIncludes' | '$gt' | '$gte' | '$lt' | '$lte' | '$in';
+export type DataFilterOperator =
+  | '$eq'
+  | '$ne'
+  | '$includes'
+  | '$notIncludes'
+  | '$gt'
+  | '$gte'
+  | '$lt'
+  | '$lte'
+  | '$in';
 export interface DataFilterCondition {
   id: string;
   field_code: string;
@@ -131,20 +145,75 @@ export function emptyDataFilter(): DataFilterGroup {
   return { id: 'root', conjunction: 'and', conditions: [] };
 }
 
-export function createTableBlockConfig(binding: DataBlockBinding): TableBlockConfig {
-  return { version: 1, kind: 'table', binding, title: '', description: '', columns: [], actions: [], row_actions: [], page_size: 20, density: 'small', show_index: true, height: null, filter: emptyDataFilter(), sort: null };
+export function createTableBlockConfig(
+  binding: DataBlockBinding
+): TableBlockConfig {
+  return {
+    version: 1,
+    kind: 'table',
+    binding,
+    title: '',
+    description: '',
+    columns: [],
+    actions: [],
+    row_actions: [],
+    page_size: 20,
+    density: 'small',
+    show_index: true,
+    height: null,
+    filter: emptyDataFilter(),
+    sort: null
+  };
 }
 
-export function createFormBlockConfig(binding: DataBlockBinding, mode: DataBlockFormMode = 'create'): FormBlockConfig {
-  return { version: 1, kind: 'form', binding, title: '', description: '', mode, items: [], rules: [], label_layout: 'vertical', label_align: 'left', label_width: 120, label_wrap: true, colon: true, submit_enabled: false, submit_title: '', close_after_submit: true };
+export function createFormBlockConfig(
+  binding: DataBlockBinding,
+  mode: DataBlockFormMode = 'create'
+): FormBlockConfig {
+  return {
+    version: 1,
+    kind: 'form',
+    binding,
+    title: '',
+    description: '',
+    mode,
+    items: [],
+    rules: [],
+    label_layout: 'vertical',
+    label_align: 'left',
+    label_width: 120,
+    label_wrap: true,
+    colon: true,
+    submit_enabled: false,
+    submit_title: '',
+    close_after_submit: true
+  };
 }
 
-export function readDataBlockConfig(props: Readonly<Record<string, unknown>>): DataBlockConfig | null {
+export function readDataBlockConfig(
+  props: Readonly<Record<string, unknown>>
+): DataBlockConfig | null {
   const value = props.data_block;
   if (!value || typeof value !== 'object') return null;
   const candidate = value as Partial<DataBlockConfig>;
-  if (candidate.version !== 1 || !candidate.binding?.model_id || !candidate.binding.model_code) return null;
-  if (candidate.kind === 'table' && Array.isArray(candidate.columns) && Array.isArray(candidate.actions) && Array.isArray(candidate.row_actions)) return candidate as TableBlockConfig;
-  if (candidate.kind === 'form' && Array.isArray(candidate.items) && Array.isArray(candidate.rules)) return candidate as FormBlockConfig;
+  if (
+    candidate.version !== 1 ||
+    !candidate.binding?.model_id ||
+    !candidate.binding.model_code
+  )
+    return null;
+  if (
+    candidate.kind === 'table' &&
+    Array.isArray(candidate.columns) &&
+    Array.isArray(candidate.actions) &&
+    Array.isArray(candidate.row_actions)
+  )
+    return candidate as TableBlockConfig;
+  if (
+    candidate.kind === 'form' &&
+    Array.isArray(candidate.items) &&
+    Array.isArray(candidate.rules)
+  )
+    return candidate as FormBlockConfig;
   return null;
 }

@@ -213,7 +213,7 @@ export function FormFieldControl(props: Props) {
     if (display === 'checkbox' || display === 'checkbox_group')
       return (
         <Checkbox.Group
-          id={id}
+          aria-labelledby={id ? `${id}_label` : undefined}
           options={indexedOptions}
           value={selected}
           onChange={(next) =>
