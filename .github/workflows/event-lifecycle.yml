@@ -13,7 +13,7 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center]
 
 permissions:
   contents: read
@@ -30,7 +30,7 @@ env:
 
 jobs:
   acceptance:
-    if: inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement'
+    if: inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement' && inputs.scope != 'system-event-center'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -157,7 +157,7 @@ jobs:
           path: tmp/test-governance/event-lifecycle/ci
 
   event-center-acceptance:
-    if: inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement'
+    if: inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement' || inputs.scope == 'system-event-center'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -218,7 +218,34 @@ jobs:
               failed=1
             fi
           }
-          if [ "$EVIDENCE_SCOPE" = event-center-supplement ]; then
+          run_crate_tests() {
+            label="$1"
+            shift
+            if cargo test --locked --manifest-path api/Cargo.toml "$@" -- --test-threads=1 > "$evidence/$label.log" 2>&1; then
+              node scripts/node/verify/cargo-test-results.js "$evidence/$label.log" || failed=1
+            else
+              tail -c 7000 "$evidence/$label.log"
+              failed=1
+            fi
+          }
+          if [ "$EVIDENCE_SCOPE" = system-event-center ]; then
+            run_crate_tests source-contracts -p control-plane-contracts --lib
+            run_crate_tests source-ingress -p control-plane --lib event_center
+            run_crate_tests reliable-source-observation -p control-plane --lib lifecycle_source_observation
+            run_crate_tests reliable-dispatch -p control-plane --lib lifecycle_outbox_dispatcher
+            run_crate_tests runtime-persistence -p control-plane --lib after_commit_lanes
+            run_crate_tests event-bus -p storage-ephemeral --lib memory_event_bus
+            run_crate_tests durable-queue -p storage-durable-postgres --lib lifecycle_outbox_repository_tests
+            run_crate_tests durable-publications -p storage-durable-postgres --lib notification_publication
+            run_crate_tests source-configuration -p control-plane-postgres-tests --test event_center_configuration
+            run_tests runtime-sources --test api_private_contracts _tests::runtime_event_stream
+            run_tests source-workflows --test api_private_contracts workers::event_workflow
+            run_tests source-catalog --test api_system_settings event_center
+            run_tests source-mcp-lineage --test api_private_routes system_event_center_mcp_spawn_preserves_causal_lineage
+            run_tests source-authority --test api_private_contracts event_center_operations_compile_as_new_authority_without_legacy_grants
+            run_tests source-command-workflow --lib communication_runtime::commands
+            run_tests source-applications --test api_application workflow
+          elif [ "$EVIDENCE_SCOPE" = event-center-supplement ]; then
             run_tests activation-restoration --test api_private_contracts activation_decision_controls_real_subscribed_signal_and_restoration_does_not_replay
           else
             run_tests host-lifecycle --test api_private_contracts workers::event_workflow
@@ -228,6 +255,15 @@ jobs:
           fi
           run_tests communications --test api_private_routes routes::communications
           test "$failed" = 0
+      - name: Build matching system-event local verification candidate
+        if: inputs.scope == 'system-event-center'
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=tmp/test-governance/event-center/ci
+          cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server > "$evidence/build.log" 2>&1 || { tail -c 7000 "$evidence/build.log"; exit 1; }
+          cp api/target/debug/api-server "$evidence/api-server-candidate"
+          sha256sum "$evidence/api-server-candidate" > "$evidence/binary-sha256.txt"
       - uses: actions/cache/save@v5
         if: ${{ always() && !cancelled() && steps.event-center-cache.outputs.cache-hit != 'true' }}
         with:

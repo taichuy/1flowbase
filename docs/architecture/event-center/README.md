@@ -2,9 +2,21 @@
 
 [English](README.en.md)
 
-事件中心位于 `/settings/events`。事件定义、工作流触发配置和通信指令绑定持久保存；事件实例、队列、生命周期信号和观察动态仅保存在当前宿主内存，重启允许丢失。消费者已有的业务记录仍由消费者管理。
+事件中心位于 `/settings/events`。自定义事件定义、工作流触发配置和通信指令绑定持久保存；自定义事件实例、事件中心投递队列和观察动态仅保存在当前宿主内存，重启允许丢失。系统既有 runtime / lifecycle / communication 来源通过其真实 owner 接入；其原有持久化、重试、fence 与 ACK 保持不变，不能因观察日志临时保存就推断原始事件也不持久化。
 
 三个页签使用独立 URL：`/settings/events?tab=catalog`（事件目录）、`/settings/events?tab=queues`（当前队列）、`/settings/events?tab=activity`（近期动态）。直接打开 `/settings/events` 默认进入目录；刷新、前进和后退保留 URL 对应页签。页面沿用应用管理的共享表格工具栏和列设置，不另设标题面板。
+
+## 系统来源与真实队列
+
+事件目录区分来源已声明与已接入：`source.selection` 保存稳定来源身份和明确 scope，`point_id` 表示扩展点，`contract_id` / `contract_version` 表示实际业务契约。Schema 来自 typed owner 或受管声明；`null`、布尔 Schema 和对象均由共享 JSON 区块原样展示。已有运行流声明使用真实 `RuntimeEventEnvelope` Schema，不为每个动态 `event_type` 伪造字段规则。
+
+已接入范围包括运行时 required / diagnostic / after-commit、通信命令、原生模型与积分通知，以及冻结图允许的 managed publications。内部 `Notify`、watch 和任意 socket 不因此变成可订阅的业务事件。来源的 `binding`、`coverage` 和 `supported_phases` 由实际 adapter 决定；声明或未绑定范围不能触发工作流。
+
+“当前队列”分别展示原始来源队列和事件工作流队列。required / diagnostic 的统计来自原始通道；durable pending / paused / claimed 来自现有 outbox 的只读聚合。没有可靠累计真值的字段显示未知，不补零。读取快照不取走消息；consumed 在原始责任交接时成立，后续 handler 失败或 ACK 不撤销它。diagnostic 丢弃与 required / durable 交付规则均保留原语义。
+
+运行视图按 scope 分开保留动态、费用与丢失窗口，不合并不同窗口为伪全局计数。Workspace 与 System 即使使用相同 UUID 也不是同一范围；普通用户只看到当前工作区，root 可看 System 和 Unbound。旧 outbox 没有可信 scope 的行保持 Unbound；新元数据只保存可信 scope、生产者与因果工作流 ID，不复制 canonical 正文。队列刷新失败明确提示，不把失败当作空队列。
+
+工作流选择持久保存可选 `source` 身份；旧的缺省值仍表示自定义事件。系统来源必须由 root 选择，工作区来源不能跨工作区。工作流祖先 ID 沿真实运行、持久发布和内部 MCP 调用传递；同一因果链中的工作流不再次进入，不使用任意固定深度阈值。近期观察不保存正文，只有真实匹配的目标才延迟投影源正文，运行记录仍仅保存映射输入和必要身份元数据。
 
 ## 三种触发时机
 
