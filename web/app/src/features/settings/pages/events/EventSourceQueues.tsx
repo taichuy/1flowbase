@@ -36,10 +36,20 @@ export function EventSourceQueues({
       key: 'name',
       title: t('name'),
       width: 220,
+      ellipsis: true,
       mobileRole: 'title',
       render: (_, row) => (
         <Button
           type="link"
+          title={row.descriptor.name}
+          styles={{
+            root: { maxWidth: '100%' },
+            content: {
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }
+          }}
           onClick={() => setRegistration(row.registration_id)}
         >
           {row.descriptor.name}
