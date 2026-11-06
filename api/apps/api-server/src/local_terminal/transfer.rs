@@ -96,7 +96,7 @@ pub(super) async fn transfer<R: AsyncRead + Unpin>(
     output.flush().await?;
     output.sync_all().await?;
     drop(output);
-    let sha256 = format!("{:x}", hasher.finalize());
+    let sha256 = format!("{:x}", base16ct::HexDisplay(&hasher.finalize()));
     if input
         .expected_sha256
         .as_ref()
@@ -117,7 +117,9 @@ pub(super) async fn transfer<R: AsyncRead + Unpin>(
         staged_bytes += read as u64;
     }
     drop(staged);
-    if staged_bytes != bytes || format!("{:x}", staged_hash.finalize()) != sha256 {
+    if staged_bytes != bytes
+        || format!("{:x}", base16ct::HexDisplay(&staged_hash.finalize())) != sha256
+    {
         return Err(invalid("terminal_file_hash_mismatch"));
     }
     budget.check().map_err(super::file_error)?;
