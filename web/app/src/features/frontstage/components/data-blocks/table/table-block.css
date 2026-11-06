@@ -1,0 +1,125 @@
+.data-table-block {
+  position: relative;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid transparent;
+}
+.data-table-block-design:hover,
+.data-table-block-design:focus-within {
+  border-color: var(--data-table-design-color);
+}
+.data-table-block-heading,
+.data-table-toolbar,
+.data-table-column-title,
+.data-table-row-actions-title,
+.data-table-field-option,
+.data-table-filter-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.data-table-block-heading,
+.data-table-toolbar,
+.data-table-field-option {
+  justify-content: space-between;
+}
+.data-table-toolbar {
+  min-height: 28px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.data-table-block-heading {
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.data-table-design-button {
+  color: var(--data-table-design-color);
+  border-color: var(--data-table-design-color);
+  border-style: dashed;
+}
+.data-table-column-title {
+  white-space: nowrap;
+}
+.data-table-column-config,
+.data-table-action-config,
+.data-table-column-title > .data-table-drag-handle {
+  visibility: hidden;
+}
+.data-table-column-title:hover > .data-table-column-config,
+.data-table-column-title:focus-within > .data-table-column-config,
+.data-table-column-title:hover > .data-table-drag-handle,
+.data-table-column-title:focus-within > .data-table-drag-handle,
+.data-table-action:hover > .data-table-action-config,
+.data-table-action:focus-within > .data-table-action-config {
+  visibility: visible;
+}
+.data-table-action {
+  display: inline-flex;
+  align-items: center;
+}
+.data-table-drag-handle {
+  cursor: grab;
+  touch-action: none;
+  border: 0;
+  padding: 2px;
+  background: transparent;
+  color: inherit;
+}
+.data-table-drag-handle:active {
+  cursor: grabbing;
+}
+.data-table-field-menu,
+.data-table-action-menu {
+  width: 240px;
+  max-height: 360px;
+  overflow: auto;
+}
+.data-table-field-option {
+  min-height: 32px;
+}
+.data-table-field-option > span:first-of-type {
+  flex: 1;
+}
+.data-table-filter-panel {
+  width: min(560px, calc(100vw - 64px));
+  max-height: 60vh;
+  overflow: auto;
+}
+.data-table-filter-buttons {
+  justify-content: flex-end;
+  border-top: 1px solid var(--data-table-border-color);
+  padding-top: 12px;
+  margin-top: 12px;
+}
+.data-table-state {
+  min-height: 120px;
+  display: grid;
+  align-items: center;
+}
+.data-table-state-config,
+.data-table-empty-columns {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+}
+.data-table-cell-link {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-inline: 0;
+}
+@media (max-width: 640px) {
+  .data-table-block {
+    padding: 12px;
+  }
+  .data-table-toolbar {
+    align-items: flex-start;
+  }
+  .data-table-column-config,
+  .data-table-action-config,
+  .data-table-column-title > .data-table-drag-handle {
+    visibility: visible;
+  }
+}
