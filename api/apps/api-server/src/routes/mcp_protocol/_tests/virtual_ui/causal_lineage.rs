@@ -311,4 +311,43 @@ async fn system_event_center_mcp_spawn_preserves_causal_lineage() {
             && context.workflow_ancestor_ids == expected),
         "actual native postcommit metadata lost the explicit workflow chain: {recorded:?}"
     );
+    drop(recorded);
+
+    // A later invocation from the boot store must not retain the prior invocation's chain.
+    // It still uses the same real Console dispatch and spawned transaction owner.
+    facts.0.lock().unwrap().clear();
+    assert!(control_plane_contracts::ports::lifecycle_workflow_ancestor_ids().is_empty());
+    let independent_invoker = runtime_mcp_invoker(state.clone(), &cookie).await;
+    let output =
+        invoke_runtime_create_model(&independent_invoker, "system_event_mcp_without_ancestors")
+            .await;
+    assert!(!output.is_error, "{}", output.content);
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM model_definitions WHERE scope_id=$1 AND code=$2")
+            .bind(workspace)
+            .bind("system_event_mcp_without_ancestors")
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap();
+    assert_eq!(
+        count, 1,
+        "the independent Console model transaction must commit"
+    );
+    let recorded = facts.0.lock().unwrap();
+    assert_eq!(
+        recorded.len(),
+        1,
+        "one independent model-create fact must commit"
+    );
+    assert_eq!(
+        recorded[0].scope,
+        domain::event_center::EventSourceScope::Workspace {
+            workspace_id: workspace
+        }
+    );
+    assert!(
+        recorded[0].workflow_ancestor_ids.is_empty(),
+        "independent invocation inherited another workflow's chain: {recorded:?}"
+    );
+    assert!(control_plane_contracts::ports::lifecycle_workflow_ancestor_ids().is_empty());
 }

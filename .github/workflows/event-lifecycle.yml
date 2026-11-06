@@ -13,7 +13,7 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage]
 
 permissions:
   contents: read
@@ -30,7 +30,7 @@ env:
 
 jobs:
   acceptance:
-    if: inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement' && inputs.scope != 'system-event-center' && inputs.scope != 'system-event-center-supplement'
+    if: inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement' && inputs.scope != 'system-event-center' && inputs.scope != 'system-event-center-supplement' && inputs.scope != 'system-event-center-lineage'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -157,7 +157,7 @@ jobs:
           path: tmp/test-governance/event-lifecycle/ci
 
   event-center-acceptance:
-    if: inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement' || (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement')
+    if: inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement' || (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -201,7 +201,7 @@ jobs:
           jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
           echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
       - name: Compile affected host targets and prepare existing managed worker
-        if: inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement'
+        if: inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage'
         shell: bash
         run: |
           set -euo pipefail
@@ -237,7 +237,13 @@ jobs:
               failed=1
             fi
           }
-          if [ "$EVIDENCE_SCOPE" = system-event-center-supplement ]; then
+          if [ "$EVIDENCE_SCOPE" = system-event-center-lineage ]; then
+            cargo test --locked --manifest-path api/Cargo.toml -p api-server --features test-support --test api_private_routes system_event_center_mcp_spawn_preserves_causal_lineage -- --list > "$evidence/list-mcp-lineage.log" 2>&1
+            grep -q ': test$' "$evidence/list-mcp-lineage.log" || { cat "$evidence/list-mcp-lineage.log"; exit 1; }
+            run_tests source-mcp-lineage --test api_private_routes system_event_center_mcp_spawn_preserves_causal_lineage
+            run_tests source-workflows --test api_private_contracts workers::event_workflow
+            run_tests source-managed --test api_private_contracts system_event_center_managed_source_
+          elif [ "$EVIDENCE_SCOPE" = system-event-center-supplement ]; then
             # Prove the newly mounted leaves exist before interpreting execution output.
             for selection in 'api_private_routes system_event_center_mcp_spawn_preserves_causal_lineage' 'api_private_contracts system_event_center_managed_source_' 'api_private_contracts system_event_center_communication_source_'; do
               read -r target filter <<< "$selection"
@@ -278,12 +284,12 @@ jobs:
             run_tests command-workflow --lib communication_runtime::commands
             run_tests applications --test api_application workflow
           fi
-          if [ "$EVIDENCE_SCOPE" != system-event-center-supplement ]; then
+          if [ "$EVIDENCE_SCOPE" != system-event-center-supplement ] && [ "$EVIDENCE_SCOPE" != system-event-center-lineage ]; then
             run_tests communications --test api_private_routes routes::communications
           fi
           test "$failed" = 0
       - name: Build matching system-event local verification candidate
-        if: (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement')
+        if: (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
         shell: bash
         run: |
           set -euo pipefail

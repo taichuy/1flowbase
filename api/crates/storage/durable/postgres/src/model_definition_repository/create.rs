@@ -77,7 +77,11 @@ pub(super) async fn create_model_definition(
     let permit = store
         .managed_operations
         .admit(control_plane_contracts::ports::ManagedOwnedOperation::Create)?;
-    let owner = store.clone();
+    // Resolve trusted context before the transaction owner spawns: task locals do not cross
+    // this boundary. The store getter preserves an explicit chain over ambient context.
+    let owner = store
+        .clone()
+        .with_workflow_ancestor_ids(store.workflow_ancestor_ids());
     let input = input.clone();
     tokio::spawn(async move {
         let _permit = permit;
