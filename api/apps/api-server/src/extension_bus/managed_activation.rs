@@ -1032,3 +1032,8 @@ pub(crate) fn validate_interface_protocol(
 
 #[path = "managed_activation/snapshot_preparation.rs"]
 mod snapshot_preparation;
+
+#[cfg_attr(test, api_test_selection::group(contracts))]
+#[cfg(all(test, feature = "test-support"))]
+#[path = "managed_activation/_tests/source_observation.rs"]
+mod source_observation_tests;
