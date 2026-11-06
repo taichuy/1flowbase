@@ -151,7 +151,7 @@ describe('event center configuration and observations', () => {
       { ...custom, origin: 'core', id: null }
     ]);
     renderPage();
-    const view = await screen.findByRole('button', { name: 'View details' });
+    const view = await screen.findByRole('button', { name: 'Details' });
     expect(
       screen.queryByRole('button', { name: 'Actions' })
     ).not.toBeInTheDocument();
