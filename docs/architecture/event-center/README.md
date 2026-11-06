@@ -8,19 +8,27 @@
 
 ## 系统来源与真实队列
 
-事件目录区分来源已声明与已接入：`source.selection` 保存稳定来源身份和明确 scope，`point_id` 表示扩展点，`contract_id` / `contract_version` 表示实际业务契约。Schema 来自 typed owner 或受管声明；`null`、布尔 Schema 和对象均由共享 JSON 区块原样展示。已有运行流声明使用真实 `RuntimeEventEnvelope` Schema，不为每个动态 `event_type` 伪造字段规则。
+事件目录管理当前事件定义：同一作用域内的 `contract_id` 是事件标识，对应一份当前 Schema，不再通过契约版本区分事件。创建、订阅、通信事件绑定和事件中心信号均不携带版本。`source.selection` 保存稳定来源身份和明确 scope，技术详情中的 `point_id` 表示底层扩展接入点。Schema 来自 typed owner 或受管声明；`null`、布尔 Schema 和对象均由共享 JSON 区块原样展示。已有运行流声明使用真实 `RuntimeEventEnvelope` Schema，不为每个动态 `event_type` 伪造字段规则。
 
-已接入范围包括运行时 required / diagnostic / after-commit、通信命令、原生模型与积分通知，以及冻结图允许的 managed publications。内部 `Notify`、watch 和任意 socket 不因此变成可订阅的业务事件。来源的 `binding`、`coverage` 和 `supported_phases` 由实际 adapter 决定；声明或未绑定范围不能触发工作流。
+已接入范围包括运行时 required / diagnostic / after-commit、通信命令、原生模型与积分通知，以及冻结图允许的 managed publications。内部 `Notify`、watch 和任意 socket 不因此变成可订阅的业务事件。可用触发时机由实际 adapter 决定。纯声明模板和 Unbound 历史来源不作为普通目录行重复展示，原始历史队列仍可在运行视图检查。目录按作用域与事件标识去重，不按运行实例生成重复定义。
 
 “当前队列”分别展示原始来源队列和事件工作流队列。required / diagnostic 的统计来自原始通道；durable pending / paused / claimed 来自现有 outbox 的只读聚合。没有可靠累计真值的字段显示未知，不补零。读取快照不取走消息；consumed 在原始责任交接时成立，后续 handler 失败或 ACK 不撤销它。diagnostic 丢弃与 required / durable 交付规则均保留原语义。
 
 运行视图按 scope 分开保留动态、费用与丢失窗口，不合并不同窗口为伪全局计数。Workspace 与 System 即使使用相同 UUID 也不是同一范围；普通用户只看到当前工作区，root 可看 System 和 Unbound。旧 outbox 没有可信 scope 的行保持 Unbound；新元数据只保存可信 scope、生产者与因果工作流 ID，不复制 canonical 正文。队列刷新失败明确提示，不把失败当作空队列。
 
-工作流选择持久保存可选 `source` 身份；旧的缺省值仍表示自定义事件。系统来源必须由 root 选择，工作区来源不能跨工作区。工作流祖先 ID 沿真实运行、持久发布和内部 MCP 调用传递；同一因果链中的工作流不再次进入，不使用任意固定深度阈值。近期观察不保存正文，只有真实匹配的目标才延迟投影源正文，运行记录仍仅保存映射输入和必要身份元数据。
+工作流选择持久保存可选 `source` 身份；不设置 source 表示自定义事件。系统来源必须由 root 选择，工作区来源不能跨工作区。工作流祖先 ID 沿真实运行、持久发布和内部 MCP 调用传递；同一因果链中的工作流不再次进入，不使用任意固定深度阈值。近期观察不保存正文，只有真实匹配的目标才延迟投影源正文，运行记录仍仅保存映射输入和必要身份元数据。
 
 来源定义、schema、队列身份和 activity 共用 `observation_max_bytes`。中心持有唯一队列观察台账；runtime 的 accepted/dequeued/dropped 只原位更新已接纳的单个队列，不复制或序列化第二份队列 map。接纳时预留数值最大文本宽度以及 map/handle 的固定元数据费用；这是一套明确计费口径，不是进程 RSS。队列退休立即释放身份字符串，原始 owner 仍持有的 handle 克隆继续计费，直到最后一次 drop。
 
 `queue_observation_complete=false` 表示部分队列元数据未获接纳。即使可见队列为空，也要显示观察不完整；缺失计数不能当成零。该状态不改变触发能力或原始投递，直到权威 owner 完整刷新成功或来源 owner 清理后才恢复。可靠来源继续使用原有绝对快照全量刷新。
+
+## 目录与定义归属
+
+目录默认显示名称、事件标识、来源分类、作用域、启用、可用触发时机和操作。所属模块与发布点放入只读详情；不再展示契约版本、注册状态或观察覆盖列。系统/插件的所属模块来自定义方，自定义事件没有所属模块，工作区归属由 scope 表达。来源分类根据定义方确定，不根据消费者是否通过插件执行决定。
+
+后台 DTO 对自定义事件提供布尔 enabled；系统/插件为 null，不能通过自定义事件写入口启停。来源接口读取失败、队列观察预算不足仍明确报告，不能因为删除诊断列而掩盖异常。自定义事件正文按当前 Schema 校验；只保存配置，不增加事件正文历史或旧工作流迁移机制。
+
+原始插件、native lifecycle 和 outbox 的协议版本属于来源适配器的既有协议身份，仍由原始派发器校验；它们不进入事件中心定义、来源ID或订阅匹配，不存在隐藏默认事件版本或另建版本映射表。
 
 ## 三种触发时机
 
@@ -36,7 +44,7 @@
 
 ## 使用路径
 
-1. 在事件目录创建 `custom.<name>` 契约，设置版本和正文 schema。系统与插件注册来源只读；只允许选择已接入来源的触发时机。
+1. 在事件目录创建 `custom.<name>` 事件，填写非空展示名称和正文 Schema，不填写版本。名称可以重复，事件标识在工作区内唯一；更新 Schema 修改当前定义，不生成历史版本。只有自定义事件允许启停；系统与插件事件由定义方管理，启用列显示“—”。
 2. 在应用中创建 Workflow，选择 Event 触发类型，保存事件、阶段与输入映射，再发布工作流。未发布、无权限或来源不可用时不激活订阅，当前队列页显示原因。
 3. 输入映射使用 RFC6901 指针，例如 `/payload/order_id`；沿用现有 Start 的 string/number/boolean 输入规则。只把明确映射的输入和必要事件标识写入工作流运行，不额外保存完整事件正文。
 4. 通信绑定可新增 `user/<name>` 指令，并映射 `/arguments`、`/input_id`、`/conversation_id`、`/instance_id` 到事件字段。底座、插件与用户指令不能重名；不覆盖 `/new`、`/model` 或 `/help`。

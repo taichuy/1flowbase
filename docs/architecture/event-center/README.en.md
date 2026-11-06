@@ -8,9 +8,9 @@ Each tab has its own URL: `/settings/events?tab=catalog`, `/settings/events?tab=
 
 ## System sources and original queues
 
-The catalog distinguishes declarations from attached sources. `source.selection` identifies the stable source and explicit scope; `point_id` identifies an extension point, while `contract_id` and `contract_version` identify the business contract. Schemas come from typed owners or managed declarations. The shared JSON viewer displays objects, booleans, and `null` unchanged. Runtime streams advertise the actual `RuntimeEventEnvelope` schema rather than inventing a schema for each dynamic `event_type`.
+The catalog manages current event definitions. Within a scope, `contract_id` identifies an event and its current schema; Event Center does not use contract versions. Creation, subscriptions, communication event bindings and Event Center signals do not carry a version. `source.selection` identifies the stable source and explicit scope; `point_id` in technical details identifies its underlying extension point. Schemas come from typed owners or managed declarations. The shared JSON viewer displays objects, booleans, and `null` unchanged. Runtime streams advertise the actual `RuntimeEventEnvelope` schema rather than inventing a schema for each dynamic `event_type`.
 
-Attached families include runtime required/diagnostic/after-commit streams, communication commands, native model and credit notifications, and managed publications permitted by the frozen graph. Private Notify/watch/socket primitives are outside this event inventory. Binding, coverage, and supported phases reflect actual adapters; declarations and unbound sources cannot trigger workflows.
+Attached families include runtime required/diagnostic/after-commit streams, communication commands, native model and credit notifications, and managed publications permitted by the frozen graph. Private Notify/watch/socket primitives are outside this event inventory. Available trigger phases reflect actual adapters. Declaration-only templates and historical Unbound sources do not appear as duplicate ordinary catalog entries; original historical queues remain inspectable in runtime views. Catalog identity is scope plus event identifier, independent of individual run registrations.
 
 Current queues separates original source queues from Event Center workflow queues. Runtime counters come from the original channels; durable pending/paused/claimed counts come from read-only aggregation of the existing outbox. Unknown cumulative counters remain unknown. Reading observations never dequeues a message. Consumption is original ownership handoff before a handler result, retry decision, or acknowledgment. Required delivery and diagnostic drop behavior remain unchanged.
 
@@ -21,6 +21,14 @@ Source definitions, schemas, queue identities and activity share `observation_ma
 `queue_observation_complete=false` means some queue metadata was refused. This warning applies even if the visible queue list is empty; the list is partial, and absent counters are not zeros. Trigger capability and original delivery remain unchanged. The flag stays conservative until an authoritative full queue refresh succeeds or the source owner is removed. Existing durable owners retain their full absolute snapshot refresh.
 
 Workflow configuration persists an optional source selection; omission preserves custom-event behavior. Only root may select System sources, and Workspace sources cannot cross workspaces. Trusted workflow ancestor IDs propagate through execution, durable publication, and internal MCP calls. A workflow cannot reenter the same causal chain; there is no arbitrary depth cap. Observations remain payload-free; source bodies are projected lazily only for actual matching targets. Run records continue to store mapped inputs and necessary identity metadata only.
+
+## Catalog and definition ownership
+
+The default columns are Name, Event ID, Source category, Scope, Enabled, Supported trigger phases, and Actions. Owning module and extension point belong in read-only details. Contract version, registration status and observation coverage are not management columns. System/plugin ownership follows the defining module. Custom events have no owning module; their workspace is represented by scope. Source category does not depend on whether a consumer executes through a plugin.
+
+The catalog DTO exposes a boolean enabled value for custom events and null for system/plugin events. Custom-event write endpoints cannot toggle system/plugin sources. Request failures and incomplete queue observations remain explicit rather than being hidden with the removed columns. Custom payloads are validated against the current schema. Only configuration is durable; this design does not add payload archives or a legacy workflow migration mechanism.
+
+Existing plugin, native lifecycle and outbox protocol versions remain with their original adapters and dispatchers. They are not part of Event Center definitions, source IDs or subscription matching. There is no hidden default event version or separate version-translation registry.
 
 ## Trigger phases
 
@@ -36,7 +44,7 @@ An `EventDelivery` continues to hold its resource charge until its guard is rele
 
 ## Configuration flow
 
-1. Create a `custom.<name>` contract with a version and payload schema. System and plugin declarations are read-only; only implemented source phases can be selected.
+1. Create a `custom.<name>` event with a nonempty display name and payload schema, without a version. Names may repeat; the event identifier is unique within its workspace. Editing the schema updates the current definition without creating historical versions. Only custom events can be enabled or disabled. System and plugin events are managed by their defining owners and show a dash in the Enabled column.
 2. Create a Workflow application with the Event trigger. Configure its event, phase and input mapping, then publish it. Missing publication, authority or source availability prevents activation and is reported on the current queues page.
 3. Map input names to RFC6901 pointers such as `/payload/order_id`. Existing Start string/number/boolean rules apply. Only explicitly mapped inputs and necessary event identities are included in workflow run records, not an extra copy of the entire event context.
 4. Communication bindings support `user/<name>` commands. Map `/arguments`, `/input_id`, `/conversation_id` and `/instance_id` into event fields. Names must not conflict with builtin, plugin or other user commands, including `/new`, `/model` and `/help`.

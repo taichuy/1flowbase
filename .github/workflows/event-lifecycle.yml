@@ -206,7 +206,26 @@ jobs:
         run: |
           set -euo pipefail
           evidence=tmp/test-governance/event-center/ci
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --features test-support --test api_private_contracts --test api_private_routes --no-run > "$evidence/host-compile.log" 2>&1 || { tail -c 7000 "$evidence/host-compile.log"; exit 1; }
+          if [ '${{ inputs.scope }}' = system-event-center ]; then
+            compile_failed=0
+            compile_target() {
+              label="$1"
+              shift
+              if ! cargo test --locked --manifest-path api/Cargo.toml "$@" --no-run > "$evidence/$label-compile.log" 2>&1; then
+                tail -c 7000 "$evidence/$label-compile.log"
+                compile_failed=1
+              fi
+            }
+            compile_target host -p api-server --features test-support --lib --test api_private_contracts --test api_private_routes --test api_system_settings --test api_application
+            compile_target core -p control-plane --lib
+            compile_target contracts -p control-plane-contracts --lib
+            compile_target storage -p storage-durable-postgres --lib
+            compile_target configuration -p control-plane-postgres-tests --test event_center_configuration
+            compile_target domain -p domain --lib
+            test "$compile_failed" = 0
+          else
+            cargo test --locked --manifest-path api/Cargo.toml -p api-server --features test-support --test api_private_contracts --test api_private_routes --no-run > "$evidence/host-compile.log" 2>&1 || { tail -c 7000 "$evidence/host-compile.log"; exit 1; }
+          fi
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker > "$evidence/managed-worker-build.log" 2>&1 || { tail -c 7000 "$evidence/managed-worker-build.log"; exit 1; }
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - name: Event Center host and affected route acceptance
@@ -259,6 +278,13 @@ jobs:
             run_tests source-managed --test api_private_contracts system_event_center_managed_source_
             run_tests source-communication --test api_private_contracts system_event_center_communication_source_
           elif [ "$EVIDENCE_SCOPE" = system-event-center ]; then
+            run_crate_tests source-domain -p domain --lib event_center
+            run_crate_tests source-model-contract -p domain --lib modeling_tests
+            run_crate_tests source-migration -p storage-durable-postgres --lib event_center_current_identity_migration_clears_only_new_configuration
+            run_crate_tests source-backup -p storage-durable-postgres --lib system_backup::selective::_tests::event_configuration
+            run_crate_tests source-archive -p control-plane --lib application::archive::event_tests
+            run_crate_tests source-command-configuration -p control-plane --lib event_commands
+            run_crate_tests source-workflow-context -p control-plane --lib workflow_event
             run_crate_tests source-contracts -p control-plane-contracts --lib
             run_crate_tests source-ingress -p control-plane --lib event_center
             run_crate_tests reliable-dispatch -p control-plane --lib lifecycle_outbox_dispatcher
@@ -296,6 +322,7 @@ jobs:
           evidence=tmp/test-governance/event-center/ci
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server > "$evidence/build.log" 2>&1 || { tail -c 7000 "$evidence/build.log"; exit 1; }
           cp api/target/debug/api-server "$evidence/api-server-candidate"
+          strip --strip-unneeded "$evidence/api-server-candidate"
           sha256sum "$evidence/api-server-candidate" > "$evidence/binary-sha256.txt"
       - uses: actions/cache/save@v5
         if: ${{ always() && !cancelled() && steps.event-center-cache.outputs.cache-hit != 'true' }}
