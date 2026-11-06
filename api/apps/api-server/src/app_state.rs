@@ -417,6 +417,7 @@ pub struct ApiState {
     pub file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     pub runtime_engine: Arc<RuntimeEngine>,
     pub provider_runtime: Arc<ApiRuntimeServices>,
+    pub terminal_jobs: Arc<crate::local_command::jobs::JobRegistry>,
     pub process_started_at: OffsetDateTime,
     pub runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
     pub assistant_conversation_events: Arc<AssistantConversationEventHub>,

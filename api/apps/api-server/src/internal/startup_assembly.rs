@@ -435,6 +435,7 @@ pub(super) async fn app_and_runtime_host_from_config(
         file_storage_registry,
         runtime_engine,
         provider_runtime: provider_runtime.clone(),
+        terminal_jobs: Default::default(),
         process_started_at,
         runtime_activity,
         assistant_conversation_events,
