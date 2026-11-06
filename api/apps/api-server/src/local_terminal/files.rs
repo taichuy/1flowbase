@@ -16,15 +16,10 @@ pub(super) fn metadata(path: &Path, meta: &Metadata) -> FileMetadata {
     #[cfg(unix)]
     let permissions = {
         use std::os::unix::fs::PermissionsExt;
-        format!("{:o}", meta.permissions().mode() & 0o7777)
+        Some(meta.permissions().mode())
     };
     #[cfg(not(unix))]
-    let permissions = if meta.permissions().readonly() {
-        "readonly"
-    } else {
-        "readwrite"
-    }
-    .to_owned();
+    let permissions: Option<u32> = None;
     FileMetadata {
         name: path
             .file_name()
@@ -43,19 +38,14 @@ pub(super) fn metadata(path: &Path, meta: &Metadata) -> FileMetadata {
         }
         .into(),
         size: meta.len(),
-        modified_at: modified
-            .and_then(|v| {
-                time::OffsetDateTime::from_unix_timestamp_nanos(v.as_nanos() as i128).ok()
-            })
-            .and_then(|v| {
-                v.format(&time::format_description::well_known::Rfc3339)
-                    .ok()
-            }),
+        modified_at: modified.map(|value| value.as_secs()),
         permissions,
         version: format!(
-            "weak:{}:{}",
+            "weak:{}:{}:{:?}:{}",
             meta.len(),
-            modified.map(|v| v.as_nanos()).unwrap_or_default()
+            modified.map(|v| v.as_nanos()).unwrap_or_default(),
+            permissions,
+            meta.permissions().readonly()
         ),
     }
 }

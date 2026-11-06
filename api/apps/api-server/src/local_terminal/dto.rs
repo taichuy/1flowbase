@@ -84,8 +84,8 @@ pub struct FileMetadata {
     pub path: String,
     pub kind: String,
     pub size: u64,
-    pub modified_at: Option<String>,
-    pub permissions: String,
+    pub modified_at: Option<u64>,
+    pub permissions: Option<u32>,
     pub version: String,
 }
 #[derive(Debug, Serialize, ToSchema)]

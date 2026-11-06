@@ -114,6 +114,11 @@ fn terminal_lists_incremental_cursor_and_native_paths_and_rejects_invalid_budget
     assert_ne!(a.entries[0].name, b.entries[0].name);
     assert!(Path::new(&a.entries[0].path).is_absolute());
     assert_eq!(a.entries[0].kind, "file");
+    assert!(a.entries[0].modified_at.is_some());
+    #[cfg(unix)]
+    assert!(a.entries[0].permissions.is_some());
+    #[cfg(windows)]
+    assert!(a.entries[0].permissions.is_none());
     assert!(path("relative/path").is_err());
     assert!(stat(PathInput {
         path: temp.0.to_str().unwrap().into(),
