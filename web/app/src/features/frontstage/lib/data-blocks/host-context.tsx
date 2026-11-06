@@ -30,6 +30,8 @@ export interface DataBlockHost {
     action: DataBlockAction,
     inputs?: Readonly<Record<string, string>>
   ): void | Promise<void>;
+  /** Transient layout interaction; the owning container keeps Escape for drag cancellation. */
+  setDragActive?(active: boolean): void;
   close(): void;
 }
 

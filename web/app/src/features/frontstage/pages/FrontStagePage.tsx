@@ -151,6 +151,21 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
   } = useFrontstageWorkspace(pageId);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isJsxStudioOpen, setIsJsxStudioOpen] = useState(false);
+  const [draggingBlockIds, setDraggingBlockIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const handleBlockDragActivityChange = useCallback(
+    (blockId: string, active: boolean) => {
+      setDraggingBlockIds((current) => {
+        if (current.has(blockId) === active) return current;
+        const next = new Set(current);
+        if (active) next.add(blockId);
+        else next.delete(blockId);
+        return next;
+      });
+    },
+    []
+  );
   const {
     savedPageContent,
     setSavedPageContent,
@@ -883,6 +898,10 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
           ? null
           : (parentLayer?.block_id ?? null)
       );
+    // A nested drag also suspends its ancestors' Escape-close handlers.
+    const keyboard = !assemblyOverlays
+      .slice(index)
+      .some((candidate) => draggingBlockIds.has(candidate.block_id));
     const content = (
       <>
         {renderAssemblyLayerCanvas(layer)}
@@ -894,6 +913,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       return (
         <Drawer
           open={runtimeVisible}
+          keyboard={keyboard}
           forceRender
           title={title}
           size={
@@ -911,6 +931,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       return (
         <Modal
           open={runtimeVisible}
+          keyboard={keyboard}
           forceRender
           footer={null}
           title={title}
@@ -1088,6 +1109,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       pageId={selectedPageId ?? null}
       tabId={activePageContent?.tab.id ?? tabId}
       navigate={onNavigateBlock}
+      onDragActivityChange={handleBlockDragActivityChange}
     >
       <>
         <section

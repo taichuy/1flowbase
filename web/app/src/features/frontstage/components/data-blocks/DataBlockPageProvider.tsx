@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useMemo,
   useState,
@@ -39,6 +40,7 @@ interface PageHost {
   workspaceId: string;
   pageId: string | null;
   tabId?: string;
+  onDragActivityChange?(blockId: string, active: boolean): void;
   navigate?(
     blockId: string | null,
     options?: { inputs?: Readonly<Record<string, string>> }
@@ -52,7 +54,13 @@ export function DataBlockPageProvider({
 }: PageHost & { children: ReactNode }) {
   const context = useMemo(
     () => value,
-    [value.workspaceId, value.pageId, value.tabId, value.navigate]
+    [
+      value.workspaceId,
+      value.pageId,
+      value.tabId,
+      value.navigate,
+      value.onDragActivityChange
+    ]
   );
   return (
     <PageContext.Provider value={context}>{children}</PageContext.Provider>
@@ -128,6 +136,10 @@ function DataBlockSlotHost({
   pageContent?: FrontstagePageContent;
 }) {
   const { workspaceId, pageId, tabId } = page;
+  const setDragActive = useCallback(
+    (active: boolean) => page.onDragActivityChange?.(item.blockId, active),
+    [page.onDragActivityChange, item.blockId]
+  );
   const mutations = useFrontstageBlockTreeMutations(workspaceId, pageId);
   const catalog = useFrontstageBlockCatalog({
     workspaceId: isDesignMode ? workspaceId : null
@@ -158,6 +170,7 @@ function DataBlockSlotHost({
   const host: DataBlockHost = {
     block_id: item.blockId,
     design_mode: isDesignMode,
+    setDragActive,
     saving,
     targets: (roots.data ?? [])
       .filter((candidate) => candidate.block_id !== item.blockId)

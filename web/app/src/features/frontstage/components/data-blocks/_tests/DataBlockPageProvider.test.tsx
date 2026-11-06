@@ -204,7 +204,10 @@ function Probe({ capture }: { capture(host: DataBlockHost | null): void }) {
   return <span>{host?.block_id ?? 'no-host'}</span>;
 }
 
-async function setup(isDesignMode = true) {
+async function setup(
+  isDesignMode = true,
+  onDragActivityChange?: (blockId: string, active: boolean) => void
+) {
   const config = createTableBlockConfig(binding);
   const currentNode = node('table-block', config);
   const otherRoot = node('other-root', createFormBlockConfig(binding));
@@ -233,6 +236,7 @@ async function setup(isDesignMode = true) {
         workspaceId="workspace-1"
         pageId="page-1"
         tabId="tab-1"
+        onDragActivityChange={onDragActivityChange}
       >
         <DataBlockSlotProvider
           item={renderItem(config)}
@@ -275,6 +279,21 @@ beforeEach(() => {
 });
 
 describe('DataBlockPageProvider design persistence', () => {
+  it('reports drag activity for its own block with a stable callback across config updates', async () => {
+    const activity = vi.fn();
+    const { getHost, config } = await setup(true, activity);
+    const report = getHost().setDragActive;
+    expect(report).toBeTypeOf('function');
+    act(() => report?.(true));
+    expect(activity).toHaveBeenLastCalledWith('table-block', true);
+    await act(async () => {
+      await getHost().saveConfig(config);
+    });
+    expect(getHost().setDragActive).toBe(report);
+    act(() => getHost().setDragActive?.(false));
+    expect(activity).toHaveBeenLastCalledWith('table-block', false);
+  });
+
   it('saves configuration against the latest descriptor without rewriting authored source, props, or ports', async () => {
     const { config, nodes, getHost } = await setup();
     const latest = node('table-block', config);

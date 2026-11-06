@@ -1,5 +1,12 @@
+import { useDataBlockHost } from '../../../lib/data-blocks/host-context';
 import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type CSSProperties,
+  type ReactNode
+} from 'react';
 import {
   DndContext,
   KeyboardSensor,
@@ -36,6 +43,15 @@ export function FormLayout({
   onSettings
 }: Props) {
   const [dragging, setDragging] = useState(false);
+  const reportDragActive = useDataBlockHost()?.setDragActive;
+  const changeDragActivity = useCallback(
+    (active: boolean) => {
+      setDragging(active);
+      reportDragActive?.(active);
+    },
+    [reportDragActive]
+  );
+  useEffect(() => () => reportDragActive?.(false), [reportDragActive]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor)
@@ -44,7 +60,7 @@ export function FormLayout({
   for (const item of items)
     rows.set(item.row, [...(rows.get(item.row) ?? []), item]);
   const drop = ({ active, over }: DragEndEvent) => {
-    setDragging(false);
+    changeDragActivity(false);
     if (!over || saving) return;
     const target = over.data.current as
       | { itemId?: string; placement?: Placement }
@@ -57,8 +73,8 @@ export function FormLayout({
   return (
     <DndContext
       sensors={sensors}
-      onDragStart={() => setDragging(true)}
-      onDragCancel={() => setDragging(false)}
+      onDragStart={() => changeDragActivity(true)}
+      onDragCancel={() => changeDragActivity(false)}
       onDragEnd={drop}
     >
       <div className={`data-form-grid${dragging ? ' is-dragging' : ''}`}>
