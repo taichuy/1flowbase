@@ -8,6 +8,7 @@ import {
   Divider,
   Empty,
   Form,
+  Grid,
   Space,
   Spin,
   Typography
@@ -76,6 +77,9 @@ function FormBlockSession({
 }: DataBlockComponentProps & { initialConfig: FormBlockConfig }) {
   const host = useDataBlockHost();
   const [config, setConfig] = useState(initialConfig);
+  const screens = Grid.useBreakpoint();
+  const mobile = screens.md === false;
+  const labelLayout = mobile ? 'vertical' : config.label_layout;
   const [values, setValues] = useState<Record<string, unknown>>(() =>
     initialConfig.mode === 'create'
       ? defaultFormValues(initialConfig.items)
@@ -495,18 +499,16 @@ function FormBlockSession({
       {(ready || design) && (
         <Form
           component="div"
-          layout={config.label_layout}
-          labelAlign={config.label_align}
+          layout={labelLayout}
+          labelAlign={mobile ? 'left' : config.label_align}
           labelWrap={config.label_wrap}
           colon={config.colon}
           labelCol={
-            config.label_layout === 'horizontal'
+            labelLayout === 'horizontal'
               ? { flex: `${config.label_width}px` }
               : undefined
           }
-          wrapperCol={
-            config.label_layout === 'horizontal' ? { flex: 1 } : undefined
-          }
+          wrapperCol={labelLayout === 'horizontal' ? { flex: 1 } : undefined}
         >
           {!config.items.length && design && (
             <Empty
