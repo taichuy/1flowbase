@@ -116,6 +116,50 @@ pub fn execute(command: &str, cancellation: &Cancellation) -> io::Result<Complet
     })
 }
 
+/// A raw sink replaces the JSON spool for detached jobs; no second output copy is written.
+pub trait RawOutput: Send + Sync {
+    fn append(&self, bytes: &[u8]) -> io::Result<()>;
+}
+
+pub fn private_output_file() -> io::Result<File> {
+    Spool::new()?.into_file()
+}
+
+pub fn execute_observed(
+    command: &str,
+    cancellation: &Cancellation,
+    stdout: Arc<dyn RawOutput>,
+    stderr: Arc<dyn RawOutput>,
+) -> io::Result<ExecutionMetadata> {
+    if command.trim().is_empty() || command.contains('\0') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid local command",
+        ));
+    }
+    if cancellation.is_cancelled() {
+        return Err(io::ErrorKind::Interrupted.into());
+    }
+    let start = Instant::now();
+    let stdout = Spool::observed(stdout);
+    let stderr = Spool::observed(stderr);
+    #[cfg(unix)]
+    let result = unix::run(command, stdout, stderr, cancellation)?;
+    #[cfg(windows)]
+    let result = windows::run(command, stdout, stderr, cancellation)?;
+    Ok(ExecutionMetadata {
+        exit_code: result.exit_code,
+        signal: result.signal,
+        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+        timed_out: false,
+        truncated: false,
+        discarded_bytes: 0,
+        encoding_lossy: false,
+        output_complete: true,
+        cleanup_complete: result.cleanup_complete,
+    })
+}
+
 fn collect<R: Read + Send, E: Read + Send>(
     stdout: R,
     stderr: E,
