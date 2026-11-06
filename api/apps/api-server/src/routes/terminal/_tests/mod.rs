@@ -10,6 +10,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
+mod managed_projection;
 mod transfers;
 struct Temp(std::path::PathBuf);
 impl Temp {
@@ -71,9 +72,15 @@ fn terminal_contract_requires_explicit_budgets_and_keeps_contents_out_of_hooks()
     )
     .is_err());
     let input = TerminalInput::Info(InfoInput {});
-    assert!(input.project_for_managed_hook().is_none());
+    assert_eq!(
+        input.project_for_managed_hook().unwrap(),
+        json!({"action":"info"})
+    );
     let output = TerminalOutput::Info(local_terminal::info());
-    assert!(output.project_for_managed_hook().is_none());
+    assert_eq!(
+        output.project_for_managed_hook().unwrap(),
+        json!({"kind":"info","capability_count":3,"pty":false})
+    );
     let registry = crate::app_state::compile_core_console_operation_registry(
         &crate::app_state::compile_core_settings_feature_registry().unwrap(),
     )

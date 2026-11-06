@@ -18,6 +18,7 @@ use std::sync::{Arc, Weak};
 use utoipa::ToSchema;
 use uuid::Uuid;
 mod handlers;
+mod managed_projection;
 #[path = "../../local_terminal/transfer.rs"]
 mod transfer;
 pub use handlers::*;
@@ -79,10 +80,22 @@ pub(crate) enum TerminalOutput {
 impl InterfaceContract for TerminalInput {
     const CONTRACT_ID: &'static str = "console-terminal-input";
     const CONTRACT_VERSION: &'static str = "1";
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        Some(managed_projection::input_schema())
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        Some(managed_projection::input(self))
+    }
 }
 impl InterfaceContract for TerminalOutput {
     const CONTRACT_ID: &'static str = "console-terminal-output";
     const CONTRACT_VERSION: &'static str = "1";
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        Some(managed_projection::output_schema())
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        Some(managed_projection::output(self))
+    }
 }
 struct TerminalAdapter {
     state: Weak<ApiState>,
@@ -232,6 +245,113 @@ pub(crate) const INTERFACE_IDS: &[&str] = &[
     "terminal.jobs.read",
     "terminal.jobs.cancel",
 ];
+const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.info",
+        binding_id: "http.console.terminal.info.v1",
+        method: "POST",
+        path: "/api/console/terminal/info",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.files.list",
+        binding_id: "http.console.terminal.files.list.v1",
+        method: "POST",
+        path: "/api/console/terminal/files/list",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.files.stat",
+        binding_id: "http.console.terminal.files.stat.v1",
+        method: "POST",
+        path: "/api/console/terminal/files/stat",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.files.read_text",
+        binding_id: "http.console.terminal.files.read_text.v1",
+        method: "POST",
+        path: "/api/console/terminal/files/read-text",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.files.read_range",
+        binding_id: "http.console.terminal.files.read_range.v1",
+        method: "POST",
+        path: "/api/console/terminal/files/read-range",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.files.search",
+        binding_id: "http.console.terminal.files.search.v1",
+        method: "POST",
+        path: "/api/console/terminal/files/search",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.files.read_image",
+        binding_id: "http.console.terminal.files.read_image.v1",
+        method: "POST",
+        path: "/api/console/terminal/files/read-image",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.files.read_audio",
+        binding_id: "http.console.terminal.files.read_audio.v1",
+        method: "POST",
+        path: "/api/console/terminal/files/read-audio",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.files.read_resource",
+        binding_id: "http.console.terminal.files.read_resource.v1",
+        method: "POST",
+        path: "/api/console/terminal/files/read-resource",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.files.import_resource",
+        binding_id: "http.console.terminal.files.import_resource.v1",
+        method: "POST",
+        path: "/api/console/terminal/files/import-resource",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.files.download_file",
+        binding_id: "http.console.terminal.files.download_file.v1",
+        method: "POST",
+        path: "/api/console/terminal/files/download-file",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.jobs.start",
+        binding_id: "http.console.terminal.jobs.start.v1",
+        method: "POST",
+        path: "/api/console/terminal/jobs/start",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.jobs.get",
+        binding_id: "http.console.terminal.jobs.get.v1",
+        method: "POST",
+        path: "/api/console/terminal/jobs/get",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.jobs.read",
+        binding_id: "http.console.terminal.jobs.read.v1",
+        method: "POST",
+        path: "/api/console/terminal/jobs/read",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "terminal.jobs.cancel",
+        binding_id: "http.console.terminal.jobs.cancel.v1",
+        method: "POST",
+        path: "/api/console/terminal/jobs/cancel",
+        mutating: true,
+    },
+];
 pub(crate) fn compile_registry(
     state: &Arc<ApiState>,
 ) -> Result<
@@ -241,113 +361,7 @@ pub(crate) fn compile_registry(
     console_interface::compile_registry(
         "api-server.console-terminal",
         "graph:console-terminal-v1",
-        &[
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.info",
-                binding_id: "http.console.terminal.info.v1",
-                method: "POST",
-                path: "/api/console/terminal/info",
-                mutating: false,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.files.list",
-                binding_id: "http.console.terminal.files.list.v1",
-                method: "POST",
-                path: "/api/console/terminal/files/list",
-                mutating: false,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.files.stat",
-                binding_id: "http.console.terminal.files.stat.v1",
-                method: "POST",
-                path: "/api/console/terminal/files/stat",
-                mutating: false,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.files.read_text",
-                binding_id: "http.console.terminal.files.read_text.v1",
-                method: "POST",
-                path: "/api/console/terminal/files/read-text",
-                mutating: false,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.files.read_range",
-                binding_id: "http.console.terminal.files.read_range.v1",
-                method: "POST",
-                path: "/api/console/terminal/files/read-range",
-                mutating: false,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.files.search",
-                binding_id: "http.console.terminal.files.search.v1",
-                method: "POST",
-                path: "/api/console/terminal/files/search",
-                mutating: false,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.files.read_image",
-                binding_id: "http.console.terminal.files.read_image.v1",
-                method: "POST",
-                path: "/api/console/terminal/files/read-image",
-                mutating: false,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.files.read_audio",
-                binding_id: "http.console.terminal.files.read_audio.v1",
-                method: "POST",
-                path: "/api/console/terminal/files/read-audio",
-                mutating: false,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.files.read_resource",
-                binding_id: "http.console.terminal.files.read_resource.v1",
-                method: "POST",
-                path: "/api/console/terminal/files/read-resource",
-                mutating: false,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.files.import_resource",
-                binding_id: "http.console.terminal.files.import_resource.v1",
-                method: "POST",
-                path: "/api/console/terminal/files/import-resource",
-                mutating: true,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.files.download_file",
-                binding_id: "http.console.terminal.files.download_file.v1",
-                method: "POST",
-                path: "/api/console/terminal/files/download-file",
-                mutating: true,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.jobs.start",
-                binding_id: "http.console.terminal.jobs.start.v1",
-                method: "POST",
-                path: "/api/console/terminal/jobs/start",
-                mutating: true,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.jobs.get",
-                binding_id: "http.console.terminal.jobs.get.v1",
-                method: "POST",
-                path: "/api/console/terminal/jobs/get",
-                mutating: false,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.jobs.read",
-                binding_id: "http.console.terminal.jobs.read.v1",
-                method: "POST",
-                path: "/api/console/terminal/jobs/read",
-                mutating: false,
-            },
-            ConsoleInterfaceDeclaration {
-                interface_id: "terminal.jobs.cancel",
-                binding_id: "http.console.terminal.jobs.cancel.v1",
-                method: "POST",
-                path: "/api/console/terminal/jobs/cancel",
-                mutating: true,
-            },
-        ],
+        DECLARATIONS,
         Arc::new(TerminalAdapter {
             state: Arc::downgrade(state),
         }),
