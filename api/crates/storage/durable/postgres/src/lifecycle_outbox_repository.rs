@@ -174,23 +174,19 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
         use domain::event_center::{EventSourceQueueSnapshot, EventSourceScope};
         use std::collections::BTreeMap;
         let rows = sqlx::query(r#"
-            select fact.observation_context->'scope' as source_scope,
+            select coalesce(fact.observation_context->'scope', '{"kind":"unbound"}'::jsonb) as source_scope,
                    fact.contract_id, fact.contract_version, delivery.subscriber_id,
                    array_agg(distinct delivery.handler_id) as consumer_ids,
                    count(*) filter (where delivery.status in ('pending','paused')) as buffered,
                    count(*) filter (where delivery.status = 'claimed') as in_flight
             from lifecycle_outbox fact
             join lifecycle_outbox_deliveries delivery using(event_id)
-            where fact.observation_context is not null
-            group by fact.observation_context->'scope', fact.contract_id, fact.contract_version, delivery.subscriber_id
+            group by coalesce(fact.observation_context->'scope', '{"kind":"unbound"}'::jsonb), fact.contract_id, fact.contract_version, delivery.subscriber_id
         "#).fetch_all(self.pool()).await?;
         let mut sources = BTreeMap::new();
         let now = (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64;
         for row in rows {
             let scope: EventSourceScope = serde_json::from_value(row.try_get("source_scope")?)?;
-            if scope == EventSourceScope::Unbound {
-                continue;
-            }
             let contract_id: String = row.try_get("contract_id")?;
             let contract_version: String = row.try_get("contract_version")?;
             let subscriber_id: String = row.try_get("subscriber_id")?;

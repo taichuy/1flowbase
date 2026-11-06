@@ -130,18 +130,14 @@ impl ManagedExtensionComposition {
                 })
                 .unwrap_or_default();
             let source = EventSourceDescriptor {
-                source_id: format!(
-                    "lifecycle/{scope:?}/{}@{}",
-                    descriptor.contract.contract_id.as_str(),
-                    descriptor.contract.contract_version.as_str()
-                ),
+                source_id: control_plane::lifecycle_outbox_dispatcher::lifecycle_source_id(&scope, descriptor.contract.contract_id.as_str(), descriptor.contract.contract_version.as_str()),
                 owner_id: descriptor.owner_module_id.as_str().into(),
                 point_id: descriptor.point_id.as_str().into(),
                 contract_id: descriptor.contract.contract_id.as_str().into(),
                 contract_version: descriptor.contract.contract_version.as_str().into(),
                 name: descriptor.point_id.as_str().into(),
                 description:
-                    "Registered frozen managed EventStream; existing durable outbox owns delivery"
+                    "Registered frozen managed EventStream. Scoped queue counts cover trusted metadata only; historical unbound deliveries are listed separately"
                         .into(),
                 payload_schema: serde_json::json!({"type":"object","required":["payload"],"properties":{"payload":schema}}),
                 origin: EventDefinitionOrigin::Plugin,

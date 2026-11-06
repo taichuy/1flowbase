@@ -1,5 +1,5 @@
 mod observation;
-pub use observation::LifecycleSourceObserver;
+pub use observation::{lifecycle_source_id, LifecycleSourceObserver};
 use std::{sync::Arc, time::Duration as StdDuration};
 
 use anyhow::Result;

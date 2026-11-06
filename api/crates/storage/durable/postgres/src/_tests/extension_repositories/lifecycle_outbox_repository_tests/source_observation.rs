@@ -192,3 +192,35 @@ async fn durable_queue_snapshot_is_read_only_scoped_and_survives_retry_and_store
         "recovery/snapshot/retry never publish"
     );
 }
+
+#[tokio::test]
+async fn historical_null_scope_backlog_is_unbound_and_never_assigned_to_a_workspace() {
+    let store = store().await;
+    let input = RecordLifecycleFactInput {
+        observation_context: None,
+        event_id: Uuid::now_v7(),
+        transaction_id: Uuid::now_v7(),
+        contract_id: "historical.legacy-fact".into(),
+        contract_version: "v1".into(),
+        canonical_payload: b"payload must not infer scope".to_vec(),
+        occurred_at: OffsetDateTime::now_utc(),
+        publication: publication(&["legacy-original"]),
+    };
+    store.record_lifecycle_fact(&input).await.unwrap();
+    let facts = store.lifecycle_source_queue_snapshots().await.unwrap();
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0].scope, EventSourceScope::Unbound);
+    assert_eq!(facts[0].queues[0].buffered, Some(1));
+    assert_eq!(facts[0].queues[0].in_flight, Some(0));
+    assert_eq!(facts[0].queues[0].subscriber_id, "legacy-original");
+    sqlx::query("delete from lifecycle_outbox where event_id=$1")
+        .bind(input.event_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert!(store
+        .lifecycle_source_queue_snapshots()
+        .await
+        .unwrap()
+        .is_empty());
+}
