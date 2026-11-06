@@ -24,6 +24,7 @@ pub use contracts::{
 #[cfg(test)]
 pub(crate) use local::build_local_host_infrastructure_from_host_extensions_with_cache_factories;
 
+pub(crate) use local::attach_local_event_source_observer;
 pub use local::{
     build_host_infrastructure_from_host_extensions, build_local_host_infrastructure,
     build_local_host_infrastructure_from_host_extensions,

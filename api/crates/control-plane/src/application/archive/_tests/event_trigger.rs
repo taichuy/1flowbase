@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 #[test]
 fn event_archive_import_preserves_contract_and_mapping_but_disables_subscription() {
     let configuration = WorkflowEventTriggerInput {
+        source: None,
         enabled: true,
         contract_id: "custom.invoice".into(),
         contract_version: "1".into(),
@@ -53,6 +54,7 @@ fn create_rejects_event_configuration_for_schedule_or_nonworkflow_application() 
     use crate::application::validation_policy::validate_create_workflow_trigger_config;
     let configuration = CreateWorkflowTriggerConfig::Event {
         configuration: WorkflowEventTriggerInput {
+            source: None,
             enabled: false,
             contract_id: "custom.invoice".into(),
             contract_version: "1".into(),

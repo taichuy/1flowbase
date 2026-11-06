@@ -1,6 +1,6 @@
 use super::*;
 use control_plane_contracts::ports::EventBusLimits;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use storage_ephemeral::MemoryEventBus;
 
 fn runtime() -> EventCenterRuntime {
@@ -125,12 +125,10 @@ fn trusted_scope_isolates_system_other_workspace_unbound_and_custom() {
     );
     assert_eq!(runtime.snapshot_sources(scope.clone()).activity.len(), 1);
     assert!(runtime.snapshot_sources(other).activity.is_empty());
-    assert!(
-        runtime
-            .snapshot_sources(EventSourceScope::System)
-            .activity
-            .is_empty()
-    );
+    assert!(runtime
+        .snapshot_sources(EventSourceScope::System)
+        .activity
+        .is_empty());
     let mut unbound = descriptor(EventSourceScope::Unbound);
     assert!(runtime.register_source(unbound.clone()).is_err());
     unbound.binding = EventSourceBinding::Declaration;
@@ -147,12 +145,10 @@ fn trusted_scope_isolates_system_other_workspace_unbound_and_custom() {
     system.observe_with_payload(observation(EventSourceFact::Published, vec![]), &mut || {
         Some(json!({}))
     });
-    assert!(
-        runtime
-            .snapshot(domain::SYSTEM_SCOPE_ID)
-            .activity
-            .is_empty()
-    );
+    assert!(runtime
+        .snapshot(domain::SYSTEM_SCOPE_ID)
+        .activity
+        .is_empty());
 }
 
 #[test]
@@ -211,11 +207,9 @@ fn original_dequeue_is_before_result_and_observer_dequeue_is_not_original_consum
             .count(),
         1
     );
-    assert!(
-        !serde_json::to_string(&snapshot.activity)
-            .unwrap()
-            .contains("do-not-retain-body")
-    );
+    assert!(!serde_json::to_string(&snapshot.activity)
+        .unwrap()
+        .contains("do-not-retain-body"));
 }
 
 #[test]
@@ -244,13 +238,11 @@ fn full_causal_chain_rejects_reentry_but_delivers_distinct_workflow_and_propagat
     let delivered = allowed.try_recv().unwrap().unwrap();
     chain.push(next);
     assert_eq!(delivered.signal().workflow_ancestor_ids, chain);
-    assert!(
-        runtime
-            .snapshot_sources(scope)
-            .activity
-            .iter()
-            .any(|item| item.admission == Some(EventTargetAdmissionStatus::Reentrant))
-    );
+    assert!(runtime
+        .snapshot_sources(scope)
+        .activity
+        .iter()
+        .any(|item| item.admission == Some(EventTargetAdmissionStatus::Reentrant)));
 }
 
 #[test]
@@ -468,4 +460,81 @@ fn sources_share_observation_budget_evict_activity_and_ignore_bus_topic_limits()
     );
     drop(first);
     assert_eq!(runtime.snapshot_sources(scope).source_metadata_bytes, 0);
+}
+
+#[test]
+fn system_source_projects_to_authorized_workflow_workspace_without_losing_original_scope() {
+    let runtime = runtime();
+    let target_workspace = Uuid::now_v7();
+    let workflow = Uuid::now_v7();
+    let system = runtime
+        .register_source(descriptor(EventSourceScope::System))
+        .unwrap();
+    let target = runtime
+        .subscribe_source(
+            EventRuntimeSubscription {
+                subscription_id: Uuid::now_v7(),
+                workspace_id: target_workspace,
+                contract_id: "runtime.envelope".into(),
+                contract_version: "1".into(),
+                trigger_phase: EventTriggerPhase::Published,
+                consumer_id: workflow,
+            },
+            EventSourceTarget {
+                scope: EventSourceScope::System,
+                source_id: "runtime.required".into(),
+                workflow_id: workflow,
+            },
+        )
+        .unwrap();
+    let same_uuid_workspace = EventSourceScope::Workspace {
+        workspace_id: domain::SYSTEM_SCOPE_ID,
+    };
+    let foreign = subscribe(
+        &runtime,
+        same_uuid_workspace.clone(),
+        Uuid::now_v7(),
+        EventTriggerPhase::Published,
+    );
+    assert!(runtime
+        .subscribe_source(
+            EventRuntimeSubscription {
+                subscription_id: Uuid::now_v7(),
+                workspace_id: target_workspace,
+                contract_id: "runtime.envelope".into(),
+                contract_version: "1".into(),
+                trigger_phase: EventTriggerPhase::Published,
+                consumer_id: Uuid::now_v7()
+            },
+            EventSourceTarget {
+                scope: same_uuid_workspace,
+                source_id: "runtime.required".into(),
+                workflow_id: Uuid::now_v7()
+            }
+        )
+        .is_err());
+    system.observe_with_payload(observation(EventSourceFact::Published, vec![]), &mut || {
+        Some(json!({"actual":"system"}))
+    });
+    let delivery = target.try_recv().unwrap().unwrap();
+    assert_eq!(delivery.signal().workspace_id, target_workspace);
+    assert_eq!(
+        delivery.signal().source_context.as_ref().unwrap().scope,
+        EventSourceScope::System
+    );
+    assert!(foreign.try_recv().unwrap().is_none());
+    assert!(
+        runtime.snapshot(target_workspace).activity.is_empty(),
+        "system observations never leak through ordinary workspace GET"
+    );
+    system.observe_with_payload(
+        observation(EventSourceFact::Published, vec![workflow]),
+        &mut || panic!("reentrant workflow must not project body"),
+    );
+    assert!(target.try_recv().unwrap().is_none());
+    assert!(runtime
+        .snapshot_sources(EventSourceScope::System)
+        .activity
+        .iter()
+        .any(|item| item.admission == Some(EventTargetAdmissionStatus::Reentrant)));
 }

@@ -53,6 +53,13 @@ impl PgControlPlaneStore {
         self
     }
 
+    /// Trusted execution context; explicit store ancestry survives spawned owner tasks.
+    pub fn workflow_ancestor_ids(&self) -> Vec<Uuid> {
+        self.workflow_ancestor_ids
+            .clone()
+            .unwrap_or_else(control_plane_contracts::ports::lifecycle_workflow_ancestor_ids)
+    }
+
     pub(crate) fn lifecycle_observation_context(
         &self,
         scope: domain::event_center::EventSourceScope,
@@ -62,9 +69,7 @@ impl PgControlPlaneStore {
             scope,
             producer_id,
         );
-        if let Some(ancestors) = &self.workflow_ancestor_ids {
-            context.workflow_ancestor_ids = ancestors.clone();
-        }
+        context.workflow_ancestor_ids = self.workflow_ancestor_ids();
         context
     }
 

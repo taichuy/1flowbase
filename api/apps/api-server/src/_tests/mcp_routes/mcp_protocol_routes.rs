@@ -1050,3 +1050,86 @@ mod result_delivery;
 
 #[path = "mcp_protocol_routes/role_policy.rs"]
 mod role_policy;
+
+#[tokio::test]
+async fn system_event_center_mcp_spawn_preserves_causal_lineage() {
+    use control_plane_contracts::ports::{
+        LifecycleFactObserver, LifecycleObservationContext, LifecycleOutboxRecord,
+        RecordLifecycleFactInput,
+    };
+    use std::sync::{Arc, Mutex};
+    use uuid::Uuid;
+    #[derive(Default)]
+    struct CommittedModelFacts(Mutex<Vec<LifecycleObservationContext>>);
+    impl LifecycleFactObserver for CommittedModelFacts {
+        fn published(&self, input: &RecordLifecycleFactInput) {
+            if let Some(context) = &input.observation_context {
+                if context.producer_id == "model_definition.create" {
+                    self.0.lock().unwrap().push(context.clone());
+                }
+            }
+        }
+        fn consumed(&self, _: &LifecycleOutboxRecord, _: &str) {}
+    }
+    let (base, _) = test_api_state_with_database_url().await;
+    let facts = Arc::new(CommittedModelFacts::default());
+    // The compiled Console port intentionally owns the boot store without an ancestry field.
+    // Only the later runtime invoker store owns the trusted workflow context.
+    let state = Arc::new(crate::app_state::ApiState {
+        store: base.store.clone().with_lifecycle_observer(facts.clone()),
+        ..(*base).clone()
+    });
+    let app = crate::app_with_state(state.clone());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_mcp_instance(&app, &cookie, &csrf).await;
+    create_model_probe_tool(&app, &cookie, &csrf).await;
+    let mut headers = HeaderMap::new();
+    headers.insert(COOKIE, HeaderValue::from_str(&cookie).unwrap());
+    let workspace = require_session(&state, &headers)
+        .await
+        .unwrap()
+        .actor
+        .current_workspace_id;
+    let expected = vec![Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7()];
+    let causal = Arc::new(crate::app_state::ApiState {
+        store: state
+            .store
+            .clone()
+            .with_workflow_ancestor_ids(expected.clone()),
+        ..(*state).clone()
+    });
+    let invoker = runtime_mcp_invoker(causal, &cookie).await;
+    let output = control_plane_contracts::ports::with_lifecycle_workflow_ancestors(
+        vec![Uuid::now_v7()],
+        async move {
+            tokio::spawn(async move {
+                assert!(
+                    control_plane_contracts::ports::lifecycle_workflow_ancestor_ids().is_empty(),
+                    "spawn does not inherit tasklocal context"
+                );
+                invoke_runtime_create_model(&invoker, "system_event_mcp_causal_native").await
+            })
+            .await
+            .unwrap()
+        },
+    )
+    .await;
+    assert!(!output.is_error, "{}", output.content);
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM model_definitions WHERE scope_id=$1 AND code=$2")
+            .bind(workspace)
+            .bind("system_event_mcp_causal_native")
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap();
+    assert_eq!(count, 1, "the actual Console model transaction must commit");
+    let recorded = facts.0.lock().unwrap();
+    assert!(
+        recorded.iter().any(|context| context.scope
+            == domain::event_center::EventSourceScope::Workspace {
+                workspace_id: workspace
+            }
+            && context.workflow_ancestor_ids == expected),
+        "actual native postcommit metadata lost the explicit workflow chain: {recorded:?}"
+    );
+}

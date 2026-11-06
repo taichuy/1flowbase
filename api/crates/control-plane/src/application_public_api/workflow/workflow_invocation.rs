@@ -24,7 +24,9 @@ use crate::{
 pub enum WorkflowInvocationTrigger {
     Event {
         signal_id: Uuid,
-        event_id: Option<Uuid>,
+        event_id: Option<String>,
+        source_context: Option<domain::event_center::EventSourceContext>,
+        workflow_ancestor_ids: Vec<Uuid>,
         subscription_id: Uuid,
         trigger_phase: domain::event_center::EventTriggerPhase,
         idempotency_key: String,
@@ -200,12 +202,16 @@ impl WorkflowInvocationTrigger {
             Self::Event {
                 signal_id,
                 event_id,
+                source_context,
+                workflow_ancestor_ids,
                 subscription_id,
                 trigger_phase,
                 ..
             } => WorkflowRunTriggerContext::Event {
                 signal_id: *signal_id,
-                event_id: *event_id,
+                event_id: event_id.as_deref(),
+                source_context: source_context.as_ref(),
+                workflow_ancestor_ids,
                 subscription_id: *subscription_id,
                 trigger_phase: *trigger_phase,
             },
@@ -284,11 +290,14 @@ impl WorkflowInvocationTrigger {
             Self::Event {
                 signal_id,
                 event_id,
+                source_context,
+                workflow_ancestor_ids,
                 subscription_id,
                 trigger_phase,
                 ..
             } => json!({
                 "trigger_source": "workflow_event", "signal_id": signal_id, "event_id": event_id,
+                "source_context": source_context, "workflow_ancestor_ids": workflow_ancestor_ids,
                 "subscription_id": subscription_id, "trigger_phase": trigger_phase,
                 "application_id": application_id, "publication_version_id": publication_version_id,
             }),

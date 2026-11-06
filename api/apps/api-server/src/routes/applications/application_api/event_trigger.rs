@@ -19,6 +19,9 @@ impl From<domain::event_center::EventTriggerPhase> for WorkflowEventTriggerPhase
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowEventTriggerBody {
+    #[serde(default)]
+    #[schema(value_type = Option<serde_json::Value>)]
+    pub source: Option<domain::event_center::EventSourceSelection>,
     pub enabled: bool,
     pub contract_id: String,
     pub contract_version: String,
@@ -29,6 +32,7 @@ pub struct WorkflowEventTriggerBody {
 impl WorkflowEventTriggerBody {
     pub(super) fn into_domain(self) -> domain::event_center::WorkflowEventTriggerInput {
         domain::event_center::WorkflowEventTriggerInput {
+            source: self.source,
             enabled: self.enabled,
             contract_id: self.contract_id,
             contract_version: self.contract_version,
@@ -49,6 +53,8 @@ impl WorkflowEventTriggerBody {
 }
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowEventTriggerResponse {
+    #[schema(value_type = Option<serde_json::Value>)]
+    pub source: Option<domain::event_center::EventSourceSelection>,
     pub id: Uuid,
     pub workspace_id: Uuid,
     pub application_id: Uuid,
@@ -64,6 +70,7 @@ pub(super) fn to_workflow_event_trigger_response(
     record: domain::event_center::WorkflowEventTriggerRecord,
 ) -> Result<WorkflowEventTriggerResponse, ApiError> {
     Ok(WorkflowEventTriggerResponse {
+        source: record.configuration.source,
         id: record.id,
         workspace_id: record.workspace_id,
         application_id: record.application_id,

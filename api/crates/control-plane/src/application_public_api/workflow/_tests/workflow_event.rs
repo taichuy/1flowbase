@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 fn configuration() -> WorkflowEventTriggerInput {
     WorkflowEventTriggerInput {
+        source: None,
         enabled: true,
         contract_id: "custom.invoice".into(),
         contract_version: "1".into(),
@@ -131,7 +132,7 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
         trigger,
         publication: publication.clone(),
         signal_id,
-        event_id: Some(signal_id),
+        event_id: Some(signal_id.to_string()),
         subscription_id: Uuid::now_v7(),
         context: json!({"workspace_id":app.workspace_id,"event_id":signal_id,"contract_id":"custom.invoice","contract_version":"1","phase":"published","payload":{"invoice/id":"A-001"}}),
     };
@@ -204,7 +205,10 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
         .unwrap()
         .unwrap();
     assert_eq!(republished.id, command.publication.id);
-    assert_ne!(republished.document_snapshot, command.publication.document_snapshot);
+    assert_ne!(
+        republished.document_snapshot,
+        command.publication.document_snapshot
+    );
     assert!(matches!(
         service.invoke_event(command.clone()).await.unwrap(),
         WorkflowEventInvocationOutcome::Skipped {
@@ -270,4 +274,125 @@ fn event_mapping_rejects_objects_for_scalar_start_fields_without_stringifying() 
         &json!({"payload":{"invoice":"A"}})
     )
     .is_err());
+}
+
+#[tokio::test]
+async fn native_source_string_identity_and_causal_metadata_survive_invocation_without_body_archive()
+{
+    use crate::application_public_api::{
+        mapping::ApplicationApiMappingConfig,
+        publications::{ApplicationPublicationService, PublishApplicationCommand},
+        ApplicationPublicApiTestHarness,
+    };
+    use domain::event_center::*;
+    let user = Uuid::from_u128(0x11111111111111111111111111111111);
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_workflow_application(user, "Native source workflow");
+    harness.set_workflow_trigger_type(application.id, domain::WorkflowTriggerType::Event);
+    let repository = harness.repository();
+    let scope = EventSourceScope::Workspace {
+        workspace_id: application.workspace_id,
+    };
+    let descriptor = EventSourceDescriptor {
+        source_id: "native.fact.source".into(),
+        owner_id: "native".into(),
+        point_id: "native.point".into(),
+        contract_id: "native.fact".into(),
+        contract_version: "1".into(),
+        name: "Fact".into(),
+        description: String::new(),
+        payload_schema: json!({"type":"object"}),
+        origin: EventDefinitionOrigin::Core,
+        scope: scope.clone(),
+        binding: EventSourceBinding::Active,
+        coverage: EventSourceCoverage::Live,
+        supported_phases: vec![EventTriggerPhase::Published],
+    };
+    let service = WorkflowEventTriggerService::new(repository.clone())
+        .with_registered_events(vec![descriptor.into()]);
+    let mut selected = configuration();
+    selected.contract_id = "native.fact".into();
+    selected.source = Some(EventSourceSelection {
+        source_id: "native.fact.source".into(),
+        scope: scope.clone(),
+    });
+    service
+        .replace_trigger(user, application.id, selected)
+        .await
+        .unwrap();
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: user,
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: false,
+        })
+        .await
+        .unwrap();
+    repository.set_active_publication_document_snapshot(application.id, document());
+    let trigger = service
+        .get_trigger(user, application.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let publication = service.prepare_subscription(&trigger).await.unwrap();
+    let signal = Uuid::now_v7();
+    let ancestor = Uuid::now_v7();
+    let source = EventSourceContext {
+        registration_id: Uuid::now_v7(),
+        scope,
+        source_id: "native.fact.source".into(),
+        point_id: "native.point".into(),
+        original_event_id: Some("native:not-a-uuid:42".into()),
+        producer_id: Some("real-producer".into()),
+    };
+    let command = InvokeWorkflowEventCommand {
+        subscription_id: trigger.id,
+        trigger,
+        publication,
+        signal_id: signal,
+        event_id: source.original_event_id.clone(),
+        context: json!({"workspace_id":application.workspace_id,"event_id":signal,"contract_id":"native.fact","contract_version":"1","phase":"published","source_context":source,"workflow_ancestor_ids":[ancestor,application.id],"payload":{"invoice/id":"native-invoice","secret":"never-store-source-body-in-trigger-metadata"}}),
+    };
+    let WorkflowEventInvocationOutcome::Invoked(invoked) =
+        service.invoke_event(command.clone()).await.unwrap()
+    else {
+        panic!("native source must invoke");
+    };
+    let metadata = &invoked.flow_run.input_payload["trigger"];
+    assert_eq!(metadata["event_id"], "native:not-a-uuid:42");
+    assert_eq!(
+        metadata["source_context"]["original_event_id"],
+        "native:not-a-uuid:42"
+    );
+    assert_eq!(
+        metadata["workflow_ancestor_ids"],
+        json!([ancestor, application.id])
+    );
+    assert_eq!(
+        invoked.flow_run.input_payload["event-start"]["invoice"],
+        "native-invoice"
+    );
+    assert!(!serde_json::to_string(metadata)
+        .unwrap()
+        .contains("never-store-source-body"));
+    let mut mismatched = command.clone();
+    mismatched.context["source_context"]["scope"] = json!({"kind":"system"});
+    assert!(service.invoke_event(mismatched).await.is_err());
+    let mut missing = command;
+    missing.context["source_context"]["original_event_id"] = Value::Null;
+    assert!(service.invoke_event(missing).await.is_err());
+    assert!(
+        WorkflowEventTriggerService::new(repository)
+            .prepare_subscription(
+                &service
+                    .get_trigger(user, application.id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+            )
+            .await
+            .is_err(),
+        "restored receivers revalidate source availability"
+    );
 }

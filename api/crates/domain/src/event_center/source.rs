@@ -71,3 +71,43 @@ pub struct EventSourceContext {
     pub original_event_id: Option<String>,
     pub producer_id: Option<String>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct EventSourceSelection {
+    pub source_id: String,
+    pub scope: EventSourceScope,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventCatalogSource {
+    pub selection: EventSourceSelection,
+    pub point_id: String,
+    pub binding: EventSourceBinding,
+    pub coverage: EventSourceCoverage,
+}
+impl From<EventSourceDescriptor> for super::EventCatalogEntry {
+    fn from(source: EventSourceDescriptor) -> Self {
+        Self {
+            id: None,
+            enabled: source.binding == EventSourceBinding::Active
+                && source.coverage == EventSourceCoverage::Live,
+            owner_id: source.owner_id,
+            contract_id: source.contract_id,
+            contract_version: source.contract_version,
+            name: source.name,
+            description: source.description,
+            payload_schema: source.payload_schema,
+            origin: source.origin,
+            supported_phases: source.supported_phases,
+            source: Some(EventCatalogSource {
+                selection: EventSourceSelection {
+                    source_id: source.source_id,
+                    scope: source.scope,
+                },
+                point_id: source.point_id,
+                binding: source.binding,
+                coverage: source.coverage,
+            }),
+        }
+    }
+}

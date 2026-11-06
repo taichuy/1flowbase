@@ -1,7 +1,7 @@
 use super::{observation::Observation, runtime_types::*, subscription::EventCenterSubscription};
 use control_plane_contracts::{
-    ControlPlaneContractError as Error,
     ports::{EventBus, EventBusError},
+    ControlPlaneContractError as Error,
 };
 use domain::event_center::EventDefinitionRecord;
 use serde_json::Value;
@@ -83,7 +83,10 @@ impl RuntimeInner {
         } = state;
         for membership in memberships.values_mut().filter(|membership| {
             super::source::matches_source(membership, signal)
-                && membership.spec.workspace_id == signal.workspace_id
+                && (membership.spec.workspace_id == signal.workspace_id
+                    || signal.source_context.as_ref().is_some_and(|context| {
+                        context.scope == domain::event_center::EventSourceScope::System
+                    }))
                 && membership.spec.contract_id == signal.contract_id
                 && membership.spec.contract_version == signal.contract_version
                 && membership.spec.trigger_phase == signal.phase()
@@ -102,6 +105,7 @@ impl RuntimeInner {
                 continue;
             }
             let mut outgoing = signal.clone();
+            outgoing.workspace_id = membership.spec.workspace_id;
             if let Some(id) = membership.workflow_id {
                 outgoing.workflow_ancestor_ids.push(id);
             }

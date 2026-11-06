@@ -70,6 +70,7 @@ async fn published_workflow(fixture: &Fixture, definition: &EventDefinitionRecor
             actor.user_id,
             application.id,
             WorkflowEventTriggerInput {
+                source: None,
                 enabled: true,
                 contract_id: definition.contract_id.clone(),
                 contract_version: definition.contract_version.clone(),

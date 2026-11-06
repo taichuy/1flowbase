@@ -22,6 +22,7 @@ pub(crate) struct Dependencies {
     boot: Option<Arc<crate::extension_bus::ExtensionBootSnapshot>>,
     changes: Arc<tokio::sync::Notify>,
     statuses: crate::workers::event_workflow::EventWorkflowStatuses,
+    sources: Arc<crate::event_center::catalog::EventSourceCatalog>,
 }
 impl Dependencies {
     pub(crate) fn new(state: &ApiState) -> Self {
@@ -31,6 +32,7 @@ impl Dependencies {
             boot: state.extension_boot_snapshot.clone(),
             changes: state.event_workflow_changes.clone(),
             statuses: state.event_workflow_statuses.clone(),
+            sources: state.event_sources.clone(),
         }
     }
 }
@@ -77,20 +79,16 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
         Box::pin(async move {
             let result: Result<Value, ApiError> = async {
                 let actor = principal.actor();
-                let service = EventCenterConfigurationService::new(self.store.clone());
+                let entries =
+                    self.sources
+                        .registered_events(self.boot.as_deref(), actor, &self.runtime);
+                let service = EventCenterConfigurationService::with_registered_events(
+                    self.store.clone(),
+                    actor.current_workspace_id,
+                    entries,
+                );
                 match input {
-                    Input::Catalog => {
-                        let entries = crate::event_center::catalog::registered_events(
-                            self.boot.as_deref(),
-                            actor,
-                        );
-                        let service = EventCenterConfigurationService::with_registered_events(
-                            self.store.clone(),
-                            actor.current_workspace_id,
-                            entries,
-                        );
-                        Ok(serde_json::to_value(service.catalog(actor).await?)?)
-                    }
+                    Input::Catalog => Ok(serde_json::to_value(service.catalog(actor).await?)?),
                     Input::Create(input) => {
                         definition_value(service.create_definition(actor, input).await?)
                     }
@@ -99,11 +97,34 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                         self.changes.notify_one();
                         definition_value(record)
                     }
-                    Input::Runtime => Ok(serde_json::to_value(RuntimeResponse {
-                        snapshot: self.runtime.snapshot(actor.current_workspace_id),
-                        workflow_subscriptions: self.statuses.snapshot(actor.current_workspace_id),
-                        workflow_refresh_error: self.statuses.refresh_error(),
-                    })?),
+                    Input::Runtime => {
+                        use control_plane_contracts::ports::LifecycleOutboxRepository;
+                        let source_queue_refresh_error =
+                            if let Some(observer) = &self.sources.lifecycle_observer {
+                                match self.store.lifecycle_source_queue_snapshots().await {
+                                    Ok(facts) => {
+                                        observer.refresh_queue_snapshots(facts);
+                                        None
+                                    }
+                                    Err(_) => Some("source_queue_refresh_unavailable".to_owned()),
+                                }
+                            } else {
+                                Some("source_queue_observer_unavailable".to_owned())
+                            };
+                        let source_views = crate::event_center::catalog::visible_scopes(actor)
+                            .into_iter()
+                            .map(|scope| self.runtime.snapshot_sources(scope))
+                            .collect();
+                        Ok(serde_json::to_value(RuntimeResponse {
+                            snapshot: self.runtime.snapshot(actor.current_workspace_id),
+                            source_views,
+                            source_queue_refresh_error,
+                            workflow_subscriptions: self
+                                .statuses
+                                .snapshot(actor.current_workspace_id),
+                            workflow_refresh_error: self.statuses.refresh_error(),
+                        })?)
+                    }
                 }
             }
             .await;
@@ -113,6 +134,8 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
 }
 #[derive(serde::Serialize)]
 struct RuntimeResponse {
+    source_views: Vec<control_plane::event_center::EventSourceRuntimeSnapshot>,
+    source_queue_refresh_error: Option<String>,
     #[serde(flatten)]
     snapshot: control_plane::event_center::EventRuntimeSnapshot,
     workflow_subscriptions: Vec<crate::workers::event_workflow::EventWorkflowStatus>,

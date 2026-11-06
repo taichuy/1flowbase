@@ -118,6 +118,11 @@ async fn event_center_routes_keep_definition_configuration_separate_from_publica
     assert_eq!(runtime["data"]["activity"], json!([]));
     assert_eq!(runtime["data"]["queues"], json!([]));
     assert_eq!(runtime["data"]["workflow_subscriptions"], json!([]));
+    let views = runtime["data"]["source_views"].as_array().unwrap();
+    assert_eq!(views.len(), 3);
+    assert_eq!(views[0]["scope"]["kind"], "workspace");
+    assert_eq!(views[1]["scope"]["kind"], "system");
+    assert_eq!(views[2]["scope"]["kind"], "unbound");
     let mut update = definition();
     let object = update.as_object_mut().unwrap();
     object.remove("contract_id");
@@ -212,6 +217,40 @@ async fn event_center_routes_use_independent_operations_and_fail_closed_when_gro
         .0,
         StatusCode::FORBIDDEN
     );
+    group["operations"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"kind":"simple","operation_id":"events.runtime.get","enabled":true}));
+    assert_eq!(
+        request(
+            &app,
+            "PUT",
+            &policy_path,
+            &cookie,
+            &csrf,
+            Some(json!({"groups":[group.clone()]}))
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    let (status, scoped) = request(
+        &app,
+        "GET",
+        "/api/console/events/runtime",
+        &member_cookie,
+        "",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let views = scoped["data"]["source_views"].as_array().unwrap();
+    assert_eq!(
+        views.len(),
+        1,
+        "operation permission never grants system/unbound visibility"
+    );
+    assert_eq!(views[0]["scope"]["kind"], "workspace");
     group["enabled"] = json!(false);
     assert_eq!(
         request(

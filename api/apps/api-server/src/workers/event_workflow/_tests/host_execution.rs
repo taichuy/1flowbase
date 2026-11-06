@@ -131,6 +131,7 @@ async fn workflow_snapshot(
             user_id,
             application.id,
             WorkflowEventTriggerInput {
+                source: None,
                 enabled: true,
                 contract_id: definition.contract_id.clone(),
                 contract_version: "1".into(),

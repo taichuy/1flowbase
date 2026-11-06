@@ -45,6 +45,19 @@ pub(super) async fn app_and_runtime_host_from_config(
         &extension_graph,
         store.pool().clone(),
     )?;
+    let event_center = control_plane::event_center::EventCenterRuntime::new(
+        infrastructure.event_bus(),
+        config.event_center_policy,
+    )?;
+    let (store, event_sources) = crate::event_center::catalog::EventSourceCatalog::attach_local(
+        &mut infrastructure,
+        store,
+        &event_center,
+        Some(Arc::new(lifecycle_plan.clone())),
+    )?;
+    let lifecycle_source_observer = event_sources.lifecycle_observer.clone().ok_or_else(|| {
+        anyhow::anyhow!("local event source assembly must provide lifecycle observer")
+    })?;
     let capsule_store = storage_durable_postgres::PgProviderProtocolCapsuleStore::new(
         store.pool().clone(),
         config.provider_secret_master_key.clone(),
@@ -213,6 +226,9 @@ pub(super) async fn app_and_runtime_host_from_config(
     );
     let managed_composition = provider_runtime.managed_composition()?;
     managed_composition.attach_native_lifecycle_plan(lifecycle_plan.clone())?;
+    managed_composition
+        .attach_lifecycle_source_observer(lifecycle_source_observer.clone())
+        .await?;
     lifecycle_publication_catalog.attach_workspace_source(Arc::new(
         extension_bus::ManagedWorkspacePublicationSource(Arc::downgrade(&managed_composition)),
     ))?;
@@ -225,6 +241,7 @@ pub(super) async fn app_and_runtime_host_from_config(
                 &managed_composition,
             ))),
         )
+        .with_lifecycle_observer(lifecycle_source_observer.clone())
         .spawn();
     extension_boot_snapshot.attach_managed_composition(provider_runtime.managed_composition()?)?;
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
@@ -413,9 +430,6 @@ pub(super) async fn app_and_runtime_host_from_config(
     }
     runtime_extension_host.mark_ready()?;
 
-    let event_center = control_plane::event_center::EventCenterRuntime::new(
-        infrastructure.event_bus(), config.event_center_policy,
-    )?;
     let state = Arc::new(ApiState {
         #[cfg(test)]
         test_resources: None,
@@ -428,6 +442,7 @@ pub(super) async fn app_and_runtime_host_from_config(
         console_operation_registry: compiled_console_plan.console_operation_registry.clone(),
         infrastructure,
         event_center,
+        event_sources,
         event_workflow_changes: Arc::default(),
         event_workflow_statuses: Default::default(),
         extension_boot_snapshot: Some(Arc::clone(&extension_boot_snapshot)),

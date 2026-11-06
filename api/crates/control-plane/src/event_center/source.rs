@@ -1,5 +1,5 @@
 use super::{
-    runtime::{Membership, RuntimeInner, activity},
+    runtime::{activity, Membership, RuntimeInner},
     *,
 };
 use control_plane_contracts::ports::{
@@ -170,7 +170,7 @@ impl EventCenterRuntime {
     ) -> anyhow::Result<EventCenterSubscription> {
         if target.scope == EventSourceScope::Unbound
             || target.source_id.trim().is_empty()
-            || spec.workspace_id != workspace(&target.scope)
+            || matches!(&target.scope, EventSourceScope::Workspace { workspace_id } if *workspace_id != spec.workspace_id)
         {
             return Err(anyhow::anyhow!("source_subscription_scope_invalid"));
         }
