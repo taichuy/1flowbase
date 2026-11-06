@@ -10,7 +10,9 @@ use axum::{
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
+mod download_acl;
 mod managed_projection;
+mod mcp_media;
 mod transfers;
 struct Temp(std::path::PathBuf);
 impl Temp {
@@ -150,8 +152,8 @@ async fn terminal_routes_enforce_independent_operations_and_shared_job_registry(
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{value}");
-    assert_eq!(value["text"], "a");
-    assert_eq!(value["next_offset"], 1);
+    assert_eq!(value["data"]["text"], "a");
+    assert_eq!(value["data"]["next_offset"], 1);
     let (status, _) = request(
         &app,
         "POST",
@@ -216,14 +218,17 @@ async fn terminal_routes_enforce_independent_operations_and_shared_job_registry(
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{replay}");
-    assert_eq!(first["execution_id"], replay["execution_id"]);
+    assert_eq!(
+        first["data"]["execution_id"],
+        replay["data"]["execution_id"]
+    );
     let (status, _) = request(
         &app,
         "POST",
         "/api/console/terminal/jobs/get",
         &root,
         &csrf,
-        json!({"execution_id":first["execution_id"]}),
+        json!({"execution_id":first["data"]["execution_id"]}),
     )
     .await;
     assert_eq!(
@@ -237,7 +242,7 @@ async fn terminal_routes_enforce_independent_operations_and_shared_job_registry(
         "/api/console/terminal/jobs/cancel",
         &cookie,
         &token,
-        json!({"execution_id":first["execution_id"]}),
+        json!({"execution_id":first["data"]["execution_id"]}),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -248,7 +253,7 @@ async fn terminal_routes_enforce_independent_operations_and_shared_job_registry(
         "/api/console/terminal/jobs/get",
         &cookie,
         &token,
-        json!({"execution_id":first["execution_id"]}),
+        json!({"execution_id":first["data"]["execution_id"]}),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);

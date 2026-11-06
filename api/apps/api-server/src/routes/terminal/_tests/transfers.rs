@@ -154,7 +154,7 @@ async fn terminal_import_and_download_use_real_file_tables_and_reject_revoked_so
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{imported}");
-    assert_eq!(imported["record"]["filename"], "import.bin");
+    assert_eq!(imported["data"]["record"]["filename"], "import.bin");
     let content = control_plane::file_management::FileAccessService::new(
         state.store.clone(),
         state.file_storage_registry.clone(),
@@ -164,7 +164,7 @@ async fn terminal_import_and_download_use_real_file_tables_and_reject_revoked_so
     .read(
         actor.clone(),
         table_id,
-        Uuid::parse_str(imported["record"]["id"].as_str().unwrap()).unwrap(),
+        Uuid::parse_str(imported["data"]["record"]["id"].as_str().unwrap()).unwrap(),
     )
     .await
     .unwrap();
