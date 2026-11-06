@@ -1,4 +1,4 @@
-name: Local command native evidence
+name: Local terminal native evidence
 
 on:
   workflow_dispatch:
@@ -6,7 +6,9 @@ on:
     branches: [dev, 'codex/local-command-portable-*']
     paths:
       - 'api/apps/api-server/src/local_command/**'
+      - 'api/apps/api-server/src/local_terminal/**'
       - 'api/apps/api-server/src/routes/local_commands/**'
+      - 'api/apps/api-server/src/routes/terminal/**'
       - 'api/apps/api-server/tests/local-command-platform/**'
       - 'api/crates/control-plane/src/system_services/local_command.rs'
       - '.github/workflows/local-command.yml'
@@ -43,7 +45,7 @@ jobs:
           workspaces: api/apps/api-server/tests/local-command-platform -> target
           key: local-command-${{ matrix.platform }}
           cache-on-failure: true
-      - name: Test actual production process module on native OS
+      - name: Test production process, job and filesystem modules on native OS
         env:
           RUST_BACKTRACE: '1'
         run: |

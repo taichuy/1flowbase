@@ -4,3 +4,6 @@ pub mod process;
 
 #[path = "../../src/local_command/jobs/mod.rs"]
 pub mod jobs;
+
+#[path = "../../src/local_terminal/mod.rs"]
+pub mod local_terminal;
