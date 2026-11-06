@@ -311,7 +311,7 @@ describe('event center configuration and observations', () => {
       screen.queryByRole('columnheader', { name: 'Owner' })
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('columnheader', { name: 'Contract ID' })
+      screen.getByRole('columnheader', { name: 'Event ID' })
     ).toBeInTheDocument();
   });
   test('a runtime URL cannot bypass catalog-only permissions', async () => {
@@ -334,7 +334,7 @@ describe('event center configuration and observations', () => {
     fireEvent.change(within(drawer).getByLabelText('Name'), {
       target: { value: 'Request' }
     });
-    fireEvent.change(within(drawer).getByLabelText('Contract ID'), {
+    fireEvent.change(within(drawer).getByLabelText('Event ID'), {
       target: { value: 'custom.request' }
     });
     fireEvent.click(within(drawer).getByRole('switch', { name: 'Enabled' }));
@@ -381,7 +381,7 @@ describe('event center configuration and observations', () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
     const drawer = screen.getByRole('dialog');
-    expect(within(drawer).getByLabelText('Contract ID')).toBeDisabled();
+    expect(within(drawer).getByLabelText('Event ID')).toBeDisabled();
     expect(within(drawer).getByLabelText('Contract version')).toBeDisabled();
     fireEvent.change(within(drawer).getByLabelText('Name'), {
       target: { value: 'Changed order' }
