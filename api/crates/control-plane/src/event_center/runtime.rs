@@ -64,7 +64,6 @@ impl RuntimeInner {
             occurred_at_unix_ms: unix_ms(),
             workspace_id: spec.workspace_id,
             contract_id: spec.contract_id.clone(),
-            contract_version: spec.contract_version.clone(),
             body,
         }
     }
@@ -88,7 +87,6 @@ impl RuntimeInner {
                         context.scope == domain::event_center::EventSourceScope::System
                     }))
                 && membership.spec.contract_id == signal.contract_id
-                && membership.spec.contract_version == signal.contract_version
                 && membership.spec.trigger_phase == signal.phase()
         }) {
             if membership
@@ -191,7 +189,7 @@ impl EventCenterRuntime {
         if self.inner.policy.is_none() {
             return Err(EventBusError::Unconfigured.into());
         }
-        if spec.contract_id.trim().is_empty() || spec.contract_version.trim().is_empty() {
+        if spec.contract_id.trim().is_empty() {
             return Err(Error::InvalidInput("event_identity_required").into());
         }
         let key = (spec.workspace_id, spec.subscription_id);
@@ -201,7 +199,6 @@ impl EventCenterRuntime {
             if existing.workflow_id != workflow_id
                 || existing.source_target != source_target
                 || existing.spec.contract_id != spec.contract_id
-                || existing.spec.contract_version != spec.contract_version
                 || existing.spec.trigger_phase != spec.trigger_phase
             {
                 return Err(Error::Conflict("event_subscription_identity").into());
@@ -217,13 +214,12 @@ impl EventCenterRuntime {
             // Include the complete contract identity so the bus's topic-name byte policy
             // also bounds membership identity metadata; UUIDs isolate runtime generations.
             format!(
-                "event-center/{}/{}/{}/{}/{}:{}",
+                "event-center/{}/{}/{}/{}/{}",
                 self.inner.instance_id,
                 spec.workspace_id,
                 spec.subscription_id,
                 spec.contract_id.len(),
-                spec.contract_id,
-                spec.contract_version
+                spec.contract_id
             ) + &source_target
                 .as_ref()
                 .map(|target| format!("/source/{}", target.source_id))
@@ -287,10 +283,7 @@ impl EventCenterRuntime {
         if !definition.enabled {
             return Err(Error::InvalidInput("event_unavailable").into());
         }
-        super::configuration::validate_identity(
-            &definition.contract_id,
-            &definition.contract_version,
-        )?;
+        super::configuration::validate_identity(&definition.contract_id)?;
         let validator = super::configuration::payload_validator(&definition.payload_schema)?;
         if !validator.is_valid(&payload) {
             return Err(Error::InvalidInput("event_payload_schema_violation").into());
@@ -302,7 +295,6 @@ impl EventCenterRuntime {
             occurred_at_unix_ms: unix_ms(),
             workspace_id: definition.workspace_id,
             contract_id: definition.contract_id.clone(),
-            contract_version: definition.contract_version.clone(),
             body: EventCenterSignalBody::Published { payload },
         };
         let mut state = self.inner.lock();
@@ -414,7 +406,6 @@ pub(super) fn activity(
         event_id: signal.event_id,
         workspace_id: signal.workspace_id,
         contract_id: signal.contract_id.clone(),
-        contract_version: signal.contract_version.clone(),
         phase: signal.phase(),
         source_event_id,
         subscription_id: target.map(|value| value.subscription_id).or(
@@ -465,7 +456,6 @@ pub(super) fn queue_snapshot(membership: &Membership) -> EventRuntimeQueueSnapsh
         subscription_id: membership.spec.subscription_id,
         workspace_id: membership.spec.workspace_id,
         contract_id: membership.spec.contract_id.clone(),
-        contract_version: membership.spec.contract_version.clone(),
         trigger_phase: membership.spec.trigger_phase,
         consumer_ids: membership.consumers.iter().copied().collect(),
         closed: membership.closed,

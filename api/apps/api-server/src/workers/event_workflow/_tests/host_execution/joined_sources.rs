@@ -17,7 +17,7 @@ use control_plane::{
 use control_plane_contracts::ports::{
     CreateModelDefinitionInput, LifecycleOutboxRepository, ModelDefinitionRepository,
 };
-use domain::event_center::{EventSourceCoverage, EventSourceScope};
+use domain::event_center::EventSourceScope;
 use futures_util::FutureExt;
 use std::{future::Future, panic::AssertUnwindSafe};
 
@@ -100,11 +100,10 @@ async fn joined_fixture(
     state.event_sources = sources;
     fixture.state = Arc::new(state);
     let scope = scope(&fixture);
-    let entries = fixture.state.event_sources.registered_events(
-        fixture.state.extension_boot_snapshot.as_deref(),
-        &fixture.actor,
-        &fixture.state.event_center,
-    );
+    let entries = fixture
+        .state
+        .event_sources
+        .registered_events(&fixture.actor, &fixture.state.event_center);
     let entry = entries
         .iter()
         .find(|entry| {
@@ -122,7 +121,7 @@ async fn joined_fixture(
         .expect("source is selectable before its first real publication");
     assert!(entry.supported_phases.contains(&phase));
     let source = entry.source.as_ref().unwrap();
-    assert_eq!(source.coverage, EventSourceCoverage::Live);
+    assert!(entry.enabled.is_none());
     assert!(fixture
         .state
         .event_center
@@ -139,7 +138,6 @@ async fn joined_fixture(
                     source: Some(source.selection.clone()),
                     enabled: true,
                     contract_id: entry.contract_id.clone(),
-                    contract_version: entry.contract_version.clone(),
                     trigger_phase: phase,
                     input_mapping: BTreeMap::from([("invoice".into(), pointer.into())]),
                 },
@@ -269,8 +267,7 @@ async fn system_event_center_real_published_runtime_persister_triggers_workflow_
         let audit = fixture.state.event_center.subscribe_source(
             EventRuntimeSubscription {
                 subscription_id: Uuid::now_v7(), workspace_id: fixture.actor.current_workspace_id,
-                contract_id: RUNTIME_EVENT_REQUIRED_CONTRACT_ID.into(), contract_version: "1".into(),
-                trigger_phase: EventTriggerPhase::Published, consumer_id: Uuid::now_v7(),
+                contract_id: RUNTIME_EVENT_REQUIRED_CONTRACT_ID.into(), trigger_phase: EventTriggerPhase::Published, consumer_id: Uuid::now_v7(),
             },
             EventSourceTarget { scope: scope(&fixture), source_id: RUNTIME_EVENT_REQUIRED_CONTRACT_ID.into(), workflow_id: Uuid::now_v7() },
         ).unwrap();

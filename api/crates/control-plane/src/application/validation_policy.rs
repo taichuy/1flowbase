@@ -365,7 +365,6 @@ pub(super) fn validate_create_workflow_trigger_config(
         CreateWorkflowTriggerConfig::Extension { .. } => domain::WorkflowTriggerType::Extension,
         CreateWorkflowTriggerConfig::Event { configuration } => {
             if configuration.contract_id.trim().is_empty()
-                || configuration.contract_version.trim().is_empty()
                 || configuration.input_mapping.iter().any(|(name, pointer)| {
                     name.trim().is_empty() || !domain::event_center::is_json_pointer(pointer)
                 })

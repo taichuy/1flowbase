@@ -34,8 +34,7 @@ fn validate_declarations(
         {
             return Err(Error::InvalidInput("invalid_event_command_declaration").into());
         }
-        if !binding.contract_id.starts_with("custom.") || binding.contract_version.trim().is_empty()
-        {
+        if !binding.contract_id.starts_with("custom.") {
             return Err(Error::InvalidInput("invalid_event_command_target").into());
         }
         for (field, pointer) in &binding.input_mapping {
@@ -58,10 +57,7 @@ fn definition<'a>(
     workspace_id: Uuid,
 ) -> Option<&'a EventDefinitionRecord> {
     definitions.iter().find(|d| {
-        d.workspace_id == workspace_id
-            && d.enabled
-            && d.contract_id == binding.contract_id
-            && d.contract_version == binding.contract_version
+        d.workspace_id == workspace_id && d.enabled && d.contract_id == binding.contract_id
     })
 }
 
@@ -73,10 +69,7 @@ pub fn communication_event_payload(
     definition: &EventDefinitionRecord,
 ) -> Result<Value> {
     anyhow::ensure!(
-        binding.enabled
-            && definition.enabled
-            && binding.contract_id == definition.contract_id
-            && binding.contract_version == definition.contract_version,
+        binding.enabled && definition.enabled && binding.contract_id == definition.contract_id,
         "event command target unavailable"
     );
     let mut payload = serde_json::Map::new();

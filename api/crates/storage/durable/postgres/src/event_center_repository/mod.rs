@@ -10,7 +10,6 @@ fn definition(row: PgRow) -> anyhow::Result<EventDefinitionRecord> {
         id: row.try_get("id")?,
         workspace_id: row.try_get("workspace_id")?,
         contract_id: row.try_get("contract_id")?,
-        contract_version: row.try_get("contract_version")?,
         name: row.try_get("name")?,
         description: row.try_get("description")?,
         payload_schema: row.try_get("payload_schema")?,
@@ -33,7 +32,6 @@ fn trigger(row: PgRow) -> anyhow::Result<WorkflowEventTriggerRecord> {
                 .transpose()?,
             enabled: row.try_get("enabled")?,
             contract_id: row.try_get("contract_id")?,
-            contract_version: row.try_get("contract_version")?,
             trigger_phase: serde_json::from_value(serde_json::Value::String(phase))?,
             input_mapping: serde_json::from_value(row.try_get("input_mapping")?)?,
         },
@@ -66,8 +64,15 @@ impl EventCenterRepository for PgControlPlaneStore {
         &self,
         workspace_id: Uuid,
     ) -> anyhow::Result<Vec<EventDefinitionRecord>> {
-        sqlx::query("SELECT * FROM event_definitions WHERE workspace_id = $1 ORDER BY contract_id, contract_version, id")
-            .bind(workspace_id).fetch_all(self.pool()).await?.into_iter().map(definition).collect()
+        sqlx::query(
+            "SELECT * FROM event_definitions WHERE workspace_id = $1 ORDER BY contract_id, id",
+        )
+        .bind(workspace_id)
+        .fetch_all(self.pool())
+        .await?
+        .into_iter()
+        .map(definition)
+        .collect()
     }
     async fn get_event_definition(
         &self,
@@ -83,8 +88,8 @@ impl EventCenterRepository for PgControlPlaneStore {
             .transpose()
     }
     async fn create_event_definition(&self, record: &EventDefinitionRecord) -> anyhow::Result<()> {
-        sqlx::query("INSERT INTO event_definitions (id,workspace_id,contract_id,contract_version,name,description,payload_schema,enabled,created_by,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
-            .bind(record.id).bind(record.workspace_id).bind(&record.contract_id).bind(&record.contract_version)
+        sqlx::query("INSERT INTO event_definitions (id,workspace_id,contract_id,name,description,payload_schema,enabled,created_by,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)")
+            .bind(record.id).bind(record.workspace_id).bind(&record.contract_id)
             .bind(&record.name).bind(&record.description).bind(&record.payload_schema).bind(record.enabled)
             .bind(record.created_by).bind(record.created_at).bind(record.updated_at)
             .execute(self.pool()).await.map_err(mutation_error)?;
@@ -115,9 +120,9 @@ impl EventCenterRepository for PgControlPlaneStore {
         let phase = phase
             .as_str()
             .ok_or(Error::InvalidInput("invalid_event_phase"))?;
-        let result = sqlx::query("INSERT INTO workflow_event_triggers (id,workspace_id,application_id,enabled,contract_id,contract_version,trigger_phase,input_mapping,updated_by,updated_at,source) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11 FROM applications WHERE id=$3 AND workspace_id=$2 ON CONFLICT (workspace_id,application_id) DO UPDATE SET enabled=EXCLUDED.enabled,contract_id=EXCLUDED.contract_id,contract_version=EXCLUDED.contract_version,trigger_phase=EXCLUDED.trigger_phase,input_mapping=EXCLUDED.input_mapping,updated_by=EXCLUDED.updated_by,updated_at=EXCLUDED.updated_at,source=EXCLUDED.source")
+        let result = sqlx::query("INSERT INTO workflow_event_triggers (id,workspace_id,application_id,enabled,contract_id,trigger_phase,input_mapping,updated_by,updated_at,source) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 FROM applications WHERE id=$3 AND workspace_id=$2 ON CONFLICT (workspace_id,application_id) DO UPDATE SET enabled=EXCLUDED.enabled,contract_id=EXCLUDED.contract_id,trigger_phase=EXCLUDED.trigger_phase,input_mapping=EXCLUDED.input_mapping,updated_by=EXCLUDED.updated_by,updated_at=EXCLUDED.updated_at,source=EXCLUDED.source")
             .bind(record.id).bind(record.workspace_id).bind(record.application_id).bind(record.configuration.enabled)
-            .bind(&record.configuration.contract_id).bind(&record.configuration.contract_version).bind(phase)
+            .bind(&record.configuration.contract_id).bind(phase)
             .bind(serde_json::to_value(&record.configuration.input_mapping)?).bind(record.updated_by).bind(record.updated_at).bind(record.configuration.source.as_ref().map(serde_json::to_value).transpose()?)
             .execute(self.pool()).await?;
         Ok(result.rows_affected() == 1)

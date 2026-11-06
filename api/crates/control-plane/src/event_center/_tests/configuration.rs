@@ -48,9 +48,7 @@ impl EventCenterRepository for MemoryRepository {
     async fn create_event_definition(&self, row: &EventDefinitionRecord) -> anyhow::Result<()> {
         let mut rows = self.definitions.lock().unwrap();
         if rows.iter().any(|existing| {
-            existing.workspace_id == row.workspace_id
-                && existing.contract_id == row.contract_id
-                && existing.contract_version == row.contract_version
+            existing.workspace_id == row.workspace_id && existing.contract_id == row.contract_id
         }) {
             return Err(Error::Conflict("event_definition_identity").into());
         }
@@ -110,7 +108,6 @@ fn actor() -> ActorContext {
 fn input() -> CreateEventDefinitionInput {
     CreateEventDefinitionInput {
         contract_id: "custom.order.created".into(),
-        contract_version: "1".into(),
         name: "Order created".into(),
         description: String::new(),
         payload_schema: serde_json::json!({"type":"object", "properties":{"order_id":{"type":"string"}}, "required":["order_id"]}),
@@ -122,7 +119,6 @@ fn trigger_input() -> WorkflowEventTriggerInput {
         source: None,
         enabled: true,
         contract_id: "custom.order.created".into(),
-        contract_version: "1".into(),
         trigger_phase: EventTriggerPhase::Consumed,
         input_mapping: BTreeMap::from([("order".into(), "/payload/order_id".into())]),
     }
@@ -183,6 +179,9 @@ async fn definition_round_trip_and_workspace_isolation() {
     assert_eq!(updated.contract_id, created.contract_id);
     assert!(service.create_definition(&owner, input()).await.is_err());
     assert!(service.create_definition(&outsider, input()).await.is_ok());
+    let mut same_name = input();
+    same_name.contract_id = "custom.other-order".into();
+    assert!(service.create_definition(&owner, same_name).await.is_ok());
 }
 #[tokio::test]
 async fn rejects_owned_namespaces_invalid_schema_and_external_resolution() {
@@ -272,10 +271,12 @@ async fn triggers_require_visible_enabled_event_supported_phase_and_valid_pointe
         vec![EventCatalogEntry {
             source: None,
             id: None,
-            enabled: true,
-            owner_id: "acme".into(),
+            scope: EventSourceScope::Workspace {
+                workspace_id: owner.current_workspace_id,
+            },
+            enabled: None,
+            owner_id: Some("acme".into()),
             contract_id: "acme.order".into(),
-            contract_version: "1".into(),
             name: "Plugin order".into(),
             description: String::new(),
             payload_schema: serde_json::json!({}),
@@ -297,7 +298,6 @@ fn source_entry(scope: EventSourceScope, phases: Vec<EventTriggerPhase>) -> Even
         owner_id: "native".into(),
         point_id: "native.point".into(),
         contract_id: "native.fact".into(),
-        contract_version: "1".into(),
         name: "Fact".into(),
         description: String::new(),
         payload_schema: serde_json::json!({"type":"object"}),
@@ -379,7 +379,7 @@ async fn source_selection_authorizes_scope_and_matches_identity_before_phase() {
         "legacy None must never select a registered native source"
     );
     let mut unavailable = entries;
-    unavailable[0].source.as_mut().unwrap().coverage = EventSourceCoverage::Unavailable;
+    unavailable[0].supported_phases.clear();
     let unavailable_service = EventCenterConfigurationService::with_registered_events(
         MemoryRepository::default(),
         owner.current_workspace_id,
@@ -395,4 +395,24 @@ async fn source_selection_authorizes_scope_and_matches_identity_before_phase() {
         .validate_workflow_trigger(&owner, &selected)
         .await
         .is_ok());
+}
+
+#[tokio::test]
+async fn catalog_custom_definition_has_scope_switch_and_no_module_or_version() {
+    let owner = actor();
+    let service = EventCenterConfigurationService::new(MemoryRepository::default());
+    service.create_definition(&owner, input()).await.unwrap();
+    let entry = service.catalog(&owner).await.unwrap().remove(0);
+    assert_eq!(
+        entry.scope,
+        EventSourceScope::Workspace {
+            workspace_id: owner.current_workspace_id
+        }
+    );
+    assert_eq!(entry.enabled, Some(true));
+    assert_eq!(entry.owner_id, None);
+    assert!(serde_json::to_value(entry)
+        .unwrap()
+        .get("contract_version")
+        .is_none());
 }

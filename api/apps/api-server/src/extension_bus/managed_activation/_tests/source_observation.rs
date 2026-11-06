@@ -150,7 +150,6 @@ impl Fixture {
                     subscription_id: Uuid::now_v7(),
                     workspace_id: self.actor.current_workspace_id,
                     contract_id: contract.into(),
-                    contract_version: source.descriptor.contract_version,
                     trigger_phase: phase,
                     consumer_id: Uuid::now_v7(),
                 },
@@ -225,7 +224,10 @@ async fn owned(fixture: &Fixture, checks: impl Future<Output = ()>) {
         .snapshot_sources(fixture.scope())
         .sources
         .iter()
-        .all(|source| source.descriptor.origin != EventDefinitionOrigin::Plugin));
+        .all(
+            |source| ![MANAGED_PROCESSED_EVENT_ID, COMMUNICATION_COMMAND_POINT]
+                .contains(&source.descriptor.point_id.as_str())
+        ));
 }
 
 fn manifest(name: &str, handler: &str) -> Value {

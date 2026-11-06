@@ -33,7 +33,6 @@ fn definition() -> EventDefinitionRecord {
         id: Uuid::now_v7(),
         workspace_id: Uuid::now_v7(),
         contract_id: "custom.orders".into(),
-        contract_version: "1".into(),
         name: "Orders".into(),
         description: String::new(),
         payload_schema: serde_json::json!({"type":"object","properties":{"secret":{"type":"string"}},"required":["secret"]}),
@@ -48,7 +47,6 @@ fn spec(definition: &EventDefinitionRecord, phase: EventTriggerPhase) -> EventRu
         subscription_id: Uuid::now_v7(),
         workspace_id: definition.workspace_id,
         contract_id: definition.contract_id.clone(),
-        contract_version: definition.contract_version.clone(),
         trigger_phase: phase,
         consumer_id: Uuid::now_v7(),
     }
@@ -115,12 +113,10 @@ async fn independent_subscriptions_fan_out_and_same_subscription_consumers_compe
         .unwrap();
     let receipt = runtime.publish(&definition, payload()).unwrap();
     assert_eq!(receipt.targets.len(), 2);
-    assert!(
-        receipt
-            .targets
-            .iter()
-            .all(|target| target.status == EventTargetAdmissionStatus::Accepted)
-    );
+    assert!(receipt
+        .targets
+        .iter()
+        .all(|target| target.status == EventTargetAdmissionStatus::Accepted));
     let delivery = receive(&first).await;
     let other = receive(&separate).await;
     assert_eq!(delivery.signal().event_id, receipt.event_id);
@@ -147,13 +143,11 @@ async fn consumed_observes_real_handoff_and_never_creates_a_business_target() {
     let observer = runtime
         .subscribe(spec(&definition, EventTriggerPhase::Consumed), false)
         .unwrap();
-    assert!(
-        runtime
-            .publish(&definition, payload())
-            .unwrap()
-            .targets
-            .is_empty()
-    );
+    assert!(runtime
+        .publish(&definition, payload())
+        .unwrap()
+        .targets
+        .is_empty());
     empty(&observer).await;
     let business_spec = spec(&definition, EventTriggerPhase::Published);
     let business = runtime.subscribe(business_spec.clone(), false).unwrap();
@@ -167,11 +161,9 @@ async fn consumed_observes_real_handoff_and_never_creates_a_business_target() {
         matches!(&control_delivery.signal().body, EventCenterSignalBody::Consumed { source_event_id, subscription_id, consumer_id }
         if *source_event_id == receipt.event_id.to_string() && *subscription_id == business_spec.subscription_id.to_string() && *consumer_id == business_spec.consumer_id.to_string())
     );
-    assert!(
-        !serde_json::to_string(control_delivery.signal())
-            .unwrap()
-            .contains("business-payload-never-in-activity")
-    );
+    assert!(!serde_json::to_string(control_delivery.signal())
+        .unwrap()
+        .contains("business-payload-never-in-activity"));
     drop(control_delivery);
     drop(business_delivery); // Business failure/Drop cannot erase the fact.
     empty(&observer).await;
@@ -185,11 +177,9 @@ async fn consumed_observes_real_handoff_and_never_creates_a_business_target() {
             .count(),
         1
     );
-    assert!(
-        !serde_json::to_string(&snapshot.activity)
-            .unwrap()
-            .contains("business-payload-never-in-activity")
-    );
+    assert!(!serde_json::to_string(&snapshot.activity)
+        .unwrap()
+        .contains("business-payload-never-in-activity"));
 }
 
 #[tokio::test]
@@ -262,40 +252,32 @@ async fn partial_admission_and_full_budget_never_block_consumed_fact_or_release_
     assert!(bus.event_bus_snapshot().charged_json_bytes > 0);
     assert_eq!(bus.event_bus_snapshot().waiters, 0);
     let snapshot = runtime.snapshot(definition.workspace_id);
-    assert!(
-        snapshot
-            .activity
-            .iter()
-            .any(|activity| activity.phase == EventTriggerPhase::Consumed
-                && activity.admission.is_none()
-                && activity.source_event_id == Some(receipt.event_id))
-    );
-    assert!(
-        snapshot
-            .activity
-            .iter()
-            .any(|activity| activity.phase == EventTriggerPhase::Consumed
-                && activity.admission == Some(EventTargetAdmissionStatus::ResourceExhausted))
-    );
-    assert!(
-        runtime
-            .publish(&definition, payload())
-            .unwrap()
-            .targets
-            .iter()
-            .all(|target| target.status == EventTargetAdmissionStatus::ResourceExhausted)
-    );
+    assert!(snapshot
+        .activity
+        .iter()
+        .any(|activity| activity.phase == EventTriggerPhase::Consumed
+            && activity.admission.is_none()
+            && activity.source_event_id == Some(receipt.event_id)));
+    assert!(snapshot
+        .activity
+        .iter()
+        .any(|activity| activity.phase == EventTriggerPhase::Consumed
+            && activity.admission == Some(EventTargetAdmissionStatus::ResourceExhausted)));
+    assert!(runtime
+        .publish(&definition, payload())
+        .unwrap()
+        .targets
+        .iter()
+        .all(|target| target.status == EventTargetAdmissionStatus::ResourceExhausted));
     empty(&observer).await;
     drop(delivery);
     assert_eq!(bus.event_bus_snapshot().charged_json_bytes, 0);
-    assert!(
-        runtime
-            .publish(&definition, payload())
-            .unwrap()
-            .targets
-            .iter()
-            .any(|target| target.status == EventTargetAdmissionStatus::Accepted)
-    );
+    assert!(runtime
+        .publish(&definition, payload())
+        .unwrap()
+        .targets
+        .iter()
+        .any(|target| target.status == EventTargetAdmissionStatus::Accepted));
 }
 
 #[tokio::test]
@@ -315,17 +297,15 @@ async fn closed_generation_drains_and_final_drop_reclaims_membership_but_not_liv
     );
     let delivery = receive(&second).await;
     assert!(first.recv().await.unwrap().is_none());
-    assert!(
-        runtime
-            .subscribe(
-                EventRuntimeSubscription {
-                    consumer_id: Uuid::now_v7(),
-                    ..first_spec
-                },
-                false
-            )
-            .is_err()
-    );
+    assert!(runtime
+        .subscribe(
+            EventRuntimeSubscription {
+                consumer_id: Uuid::now_v7(),
+                ..first_spec
+            },
+            false
+        )
+        .is_err());
     drop(first);
     drop(second);
     assert!(runtime.snapshot(definition.workspace_id).queues.is_empty());
@@ -351,7 +331,7 @@ async fn workspace_contract_phase_and_consumer_identity_cannot_cross_or_silently
     let first = runtime.subscribe(first_spec.clone(), false).unwrap();
     assert!(runtime.subscribe(first_spec.clone(), false).is_err());
     let mut rebind = first_spec.clone();
-    rebind.contract_version = "2".into();
+    rebind.contract_id = "custom.changed".into();
     rebind.consumer_id = Uuid::now_v7();
     assert!(runtime.subscribe(rebind, false).is_err());
     let mut other_definition = definition.clone();
@@ -366,21 +346,18 @@ async fn workspace_contract_phase_and_consumer_identity_cannot_cross_or_silently
     let outsider = runtime.snapshot(other_definition.workspace_id);
     assert_eq!(own.queues.len(), 1);
     assert_eq!(outsider.queues.len(), 1);
-    assert!(
-        own.activity
-            .iter()
-            .all(|activity| activity.workspace_id == definition.workspace_id)
-    );
+    assert!(own
+        .activity
+        .iter()
+        .all(|activity| activity.workspace_id == definition.workspace_id));
     assert!(outsider.activity.is_empty());
     assert_eq!(outsider.admission_rejected, 0);
     let mut invalid = definition.clone();
     invalid.enabled = false;
     assert!(runtime.publish(&invalid, payload()).is_err());
-    assert!(
-        runtime
-            .publish(&definition, serde_json::json!({"secret":12}))
-            .is_err()
-    );
+    assert!(runtime
+        .publish(&definition, serde_json::json!({"secret":12}))
+        .is_err());
     invalid.enabled = true;
     invalid.payload_schema = serde_json::json!({"$ref":"https://example.com/schema"});
     assert!(runtime.publish(&invalid, payload()).is_err());
@@ -402,23 +379,19 @@ async fn observation_is_bounded_payload_free_read_only_and_resets_with_instance(
     assert!(snapshot.activity.len() < 20);
     assert!(snapshot.observation_bytes <= explicit.observation_max_bytes);
     assert_eq!(snapshot, runtime.snapshot(definition.workspace_id));
-    assert!(
-        !serde_json::to_string(&snapshot)
-            .unwrap()
-            .contains("business-payload-never-in-activity")
-    );
+    assert!(!serde_json::to_string(&snapshot)
+        .unwrap()
+        .contains("business-payload-never-in-activity"));
     assert_eq!(bus.event_bus_snapshot().consumers, 0);
     let replacement = EventCenterRuntime::new(bus, Some(explicit)).unwrap();
     assert_ne!(
         snapshot.instance_id,
         replacement.snapshot(definition.workspace_id).instance_id
     );
-    assert!(
-        replacement
-            .snapshot(definition.workspace_id)
-            .activity
-            .is_empty()
-    );
+    assert!(replacement
+        .snapshot(definition.workspace_id)
+        .activity
+        .is_empty());
 }
 
 #[tokio::test]
@@ -512,4 +485,30 @@ async fn readiness_does_not_create_consumption_and_competing_try_dequeue_has_one
     assert_eq!(bus.event_bus_snapshot().waiters, 1);
     drop(waiting);
     assert_eq!(bus.event_bus_snapshot().waiters, 0);
+}
+
+#[tokio::test]
+async fn current_schema_replaces_body_validation_without_rebinding_subscription() {
+    let (runtime, _) = runtime(8);
+    let mut definition = definition();
+    let subscription = runtime
+        .subscribe(spec(&definition, EventTriggerPhase::Published), false)
+        .unwrap();
+    definition.payload_schema = serde_json::json!({"type":"object","required":["amount"],"additionalProperties":false,"properties":{"amount":{"type":"integer"}}});
+    assert!(runtime.publish(&definition, payload()).is_err());
+    runtime
+        .publish(&definition, serde_json::json!({"amount":42}))
+        .unwrap();
+    let delivery = receive(&subscription).await;
+    let encoded = serde_json::to_value(delivery.signal()).unwrap();
+    assert!(encoded.get("contract_version").is_none());
+    assert_eq!(encoded["payload"], serde_json::json!({"amount":42}));
+    delivery.complete();
+    let snapshot = serde_json::to_value(runtime.snapshot(definition.workspace_id)).unwrap();
+    for activity in snapshot["activity"].as_array().unwrap() {
+        assert!(activity.get("contract_version").is_none());
+    }
+    for queue in snapshot["queues"].as_array().unwrap() {
+        assert!(queue.get("contract_version").is_none());
+    }
 }

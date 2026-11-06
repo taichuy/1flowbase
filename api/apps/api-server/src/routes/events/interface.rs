@@ -19,7 +19,6 @@ use uuid::Uuid;
 pub(crate) struct Dependencies {
     store: storage_durable_postgres::MainDurableStore,
     runtime: EventCenterRuntime,
-    boot: Option<Arc<crate::extension_bus::ExtensionBootSnapshot>>,
     changes: Arc<tokio::sync::Notify>,
     statuses: crate::workers::event_workflow::EventWorkflowStatuses,
     sources: Arc<crate::event_center::catalog::EventSourceCatalog>,
@@ -29,7 +28,6 @@ impl Dependencies {
         Self {
             store: state.store.clone(),
             runtime: state.event_center.clone(),
-            boot: state.extension_boot_snapshot.clone(),
             changes: state.event_workflow_changes.clone(),
             statuses: state.event_workflow_statuses.clone(),
             sources: state.event_sources.clone(),
@@ -79,9 +77,7 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
         Box::pin(async move {
             let result: Result<Value, ApiError> = async {
                 let actor = principal.actor();
-                let entries =
-                    self.sources
-                        .registered_events(self.boot.as_deref(), actor, &self.runtime);
+                let entries = self.sources.registered_events(actor, &self.runtime);
                 let service = EventCenterConfigurationService::with_registered_events(
                     self.store.clone(),
                     actor.current_workspace_id,

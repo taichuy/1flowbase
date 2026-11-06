@@ -56,7 +56,7 @@ async fn fixture_for_phase(phase: EventTriggerPhase, pointer: &str) -> Fixture {
         .await
         .unwrap();
     let definition = EventCenterConfigurationService::new(state.store.for_actor(actor.clone())).create_definition(&actor, CreateEventDefinitionInput {
-        contract_id: "custom.worker.invoice".into(), contract_version: "1".into(), name: "Invoice".into(), description: String::new(), enabled: true,
+        contract_id: "custom.worker.invoice".into(), name: "Invoice".into(), description: String::new(), enabled: true,
         payload_schema: json!({"type":"object","properties":{"invoice":{"type":"string"}},"required":["invoice"]}),
     }).await.unwrap();
     let snapshot = workflow_snapshot(&state, &actor, &definition, phase, pointer).await;
@@ -134,7 +134,6 @@ async fn workflow_snapshot(
                 source: None,
                 enabled: true,
                 contract_id: definition.contract_id.clone(),
-                contract_version: "1".into(),
                 trigger_phase: phase,
                 input_mapping: BTreeMap::from([("invoice".into(), pointer.into())]),
             },
@@ -295,7 +294,6 @@ async fn rejects_before_handoff(invalidation: Invalidation, idle: bool) {
                     subscription_id: trigger.id,
                     workspace_id: trigger.workspace_id,
                     contract_id: trigger.configuration.contract_id.clone(),
-                    contract_version: trigger.configuration.contract_version.clone(),
                     trigger_phase: trigger.configuration.trigger_phase,
                     consumer_id: trigger.application_id,
                 },

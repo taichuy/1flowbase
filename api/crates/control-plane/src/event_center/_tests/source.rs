@@ -27,7 +27,6 @@ fn descriptor(scope: EventSourceScope) -> EventSourceDescriptor {
         owner_id: "runtime".into(),
         point_id: "runtime.required.handoff".into(),
         contract_id: "runtime.envelope".into(),
-        contract_version: "1".into(),
         name: "Required".into(),
         description: String::new(),
         payload_schema: Value::Null,
@@ -59,7 +58,6 @@ fn subscribe(
                 subscription_id: Uuid::now_v7(),
                 workspace_id: workspace(&scope),
                 contract_id: "runtime.envelope".into(),
-                contract_version: "1".into(),
                 trigger_phase: phase,
                 consumer_id: Uuid::now_v7(),
             },
@@ -485,7 +483,6 @@ fn system_source_projects_to_authorized_workflow_workspace_without_losing_origin
                 subscription_id: Uuid::now_v7(),
                 workspace_id: target_workspace,
                 contract_id: "runtime.envelope".into(),
-                contract_version: "1".into(),
                 trigger_phase: EventTriggerPhase::Published,
                 consumer_id: workflow,
             },
@@ -511,7 +508,6 @@ fn system_source_projects_to_authorized_workflow_workspace_without_losing_origin
                 subscription_id: Uuid::now_v7(),
                 workspace_id: target_workspace,
                 contract_id: "runtime.envelope".into(),
-                contract_version: "1".into(),
                 trigger_phase: EventTriggerPhase::Published,
                 consumer_id: Uuid::now_v7()
             },
@@ -546,4 +542,22 @@ fn system_source_projects_to_authorized_workflow_workspace_without_losing_origin
         .activity
         .iter()
         .any(|item| item.admission == Some(EventTargetAdmissionStatus::Reentrant)));
+}
+
+#[test]
+fn current_definition_rejects_conflicting_schema_or_defining_owner() {
+    let runtime = runtime();
+    let original = descriptor(EventSourceScope::System);
+    let _lease = runtime.register_source(original.clone()).unwrap();
+    let mut changed = original.clone();
+    changed.payload_schema = json!({"type":"string"});
+    assert!(runtime.register_source(changed).is_err());
+    let mut changed = original.clone();
+    changed.owner_id = "other-owner".into();
+    assert!(runtime.register_source(changed).is_err());
+    let mut other_scope = original;
+    other_scope.scope = EventSourceScope::Workspace {
+        workspace_id: Uuid::now_v7(),
+    };
+    assert!(runtime.register_source(other_scope).is_ok());
 }

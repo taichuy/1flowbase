@@ -30,11 +30,9 @@ pub(super) async fn validate_handoff(state: &ApiState, snapshot: &Snapshot) -> a
         ports::EventCenterRepository, ControlPlaneContractError as Error,
     };
     let actor = authorized_actor(state, &snapshot.trigger).await?;
-    let entries = state.event_sources.registered_events(
-        state.extension_boot_snapshot.as_deref(),
-        &actor,
-        &state.event_center,
-    );
+    let entries = state
+        .event_sources
+        .registered_events(&actor, &state.event_center);
     let store = state.store.for_actor(actor);
     let current = store
         .get_workflow_event_trigger(
@@ -76,11 +74,9 @@ pub(super) async fn execute_delivery(
         } => Some(source_event_id.clone()),
     };
     let actor = authorized_actor(state, &snapshot.trigger).await?;
-    let entries = state.event_sources.registered_events(
-        state.extension_boot_snapshot.as_deref(),
-        &actor,
-        &state.event_center,
-    );
+    let entries = state
+        .event_sources
+        .registered_events(&actor, &state.event_center);
     let actor_store = state
         .store
         .clone()

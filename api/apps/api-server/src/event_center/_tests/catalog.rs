@@ -29,9 +29,9 @@ fn runtime_capabilities_exist_before_first_run_without_fake_queues_or_subscripti
         runtime_bound: true,
         ..Default::default()
     };
-    let entries = catalog.registered_events(None, &actor, &runtime);
+    let entries = catalog.registered_events(&actor, &runtime);
     assert_eq!(entries.len(), 6);
-    assert!(entries.iter().all(|entry| entry.enabled
+    assert!(entries.iter().all(|entry| entry.enabled.is_none()
         && entry.payload_schema["properties"]["event_id"]["type"] == "string"
         && entry
             .supported_phases
@@ -54,7 +54,7 @@ fn runtime_capabilities_exist_before_first_run_without_fake_queues_or_subscripti
         );
     }
     actor.is_root = false;
-    let workspace_only = catalog.registered_events(None, &actor, &runtime);
+    let workspace_only = catalog.registered_events(&actor, &runtime);
     assert_eq!(workspace_only.len(), 3);
     assert!(workspace_only.iter().all(|entry| matches!(
         entry.source.as_ref().unwrap().selection.scope,
@@ -70,11 +70,11 @@ fn policy_and_provider_binding_are_real_capability_requirements() {
             runtime_bound: bound,
             ..Default::default()
         };
-        let entries = catalog.registered_events(None, &actor, &runtime(configured));
-        assert!(!entries.is_empty());
-        assert!(entries.iter().all(|entry| !entry.enabled
-            && entry.supported_phases.is_empty()
-            && entry.source.as_ref().unwrap().coverage == EventSourceCoverage::Unavailable));
+        let entries = catalog.registered_events(&actor, &runtime(configured));
+        assert!(
+            entries.is_empty(),
+            "unavailable declarations are not available definitions"
+        );
     }
 }
 
@@ -106,14 +106,13 @@ fn registered_runtime_schema_and_catalog_do_not_add_unbound_graph_placeholders()
             "the actual registered point contract must own the source schema"
         );
     }
-    let boot = crate::extension_bus::compile_extension_boot_snapshot(graph, &assembly).unwrap();
     let runtime = runtime(true);
     let actor = ActorContext::root(uuid::Uuid::now_v7(), uuid::Uuid::now_v7(), "root");
     let catalog = EventSourceCatalog {
         runtime_bound: true,
         ..Default::default()
     };
-    let entries = catalog.registered_events(Some(&boot), &actor, &runtime);
+    let entries = catalog.registered_events(&actor, &runtime);
     let is_runtime = |entry: &&EventCatalogEntry| {
         descriptors.iter().any(|source| {
             entry
@@ -121,7 +120,6 @@ fn registered_runtime_schema_and_catalog_do_not_add_unbound_graph_placeholders()
                 .as_ref()
                 .is_some_and(|metadata| metadata.point_id == source.point_id)
                 && entry.contract_id == source.contract_id
-                && entry.contract_version == source.contract_version
         })
     };
     let runtime_entries = entries.iter().filter(is_runtime).collect::<Vec<_>>();
@@ -155,22 +153,53 @@ fn registered_runtime_schema_and_catalog_do_not_add_unbound_graph_placeholders()
         dropped: None,
         observed_at_unix_ms: 42
     }]));
-    let with_history = catalog.registered_events(Some(&boot), &actor, &runtime);
-    assert_eq!(with_history.iter().filter(is_runtime).count(), 7);
+    let with_history = catalog.registered_events(&actor, &runtime);
+    assert_eq!(with_history.iter().filter(is_runtime).count(), 6);
     assert!(
-        with_history.iter().any(
-            |entry| entry
-                .source
-                .as_ref()
-                .is_some_and(
-                    |metadata| metadata.selection.source_id == "historical-runtime-owner"
-                        && metadata.selection.scope == EventSourceScope::Unbound
-                )
-        ),
-        "real historical coverage remains visible"
+        !with_history
+            .iter()
+            .any(|entry| entry.scope == EventSourceScope::Unbound),
+        "historical backlog remains in runtime only"
     );
     assert_eq!(
         runtime.snapshot_sources(EventSourceScope::Unbound).sources[0].queues[0].buffered,
         Some(2)
     );
+}
+
+#[test]
+fn concurrent_runtime_registrations_share_one_catalog_definition_per_scope() {
+    use control_plane_contracts::ports::EventSourceObserver;
+    let runtime = runtime(true);
+    let actor = ActorContext::root(uuid::Uuid::now_v7(), uuid::Uuid::now_v7(), "root");
+    let scope = EventSourceScope::Workspace {
+        workspace_id: actor.current_workspace_id,
+    };
+    let descriptor =
+        control_plane::ports::runtime_event_source_descriptors(scope, EventSourceBinding::Active)
+            .remove(0);
+    let _first = runtime.register_source(descriptor.clone()).unwrap();
+    let _second = runtime.register_source(descriptor.clone()).unwrap();
+    let catalog = EventSourceCatalog {
+        runtime_bound: true,
+        ..Default::default()
+    };
+    let entries = catalog.registered_events(&actor, &runtime);
+    let matching = entries
+        .iter()
+        .filter(|entry| {
+            entry.scope == descriptor.scope && entry.contract_id == descriptor.contract_id
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(matching.len(), 1);
+    let entry = matching[0];
+    assert_eq!(entry.enabled, None);
+    assert_eq!(
+        entry.owner_id.as_deref(),
+        Some(descriptor.owner_id.as_str())
+    );
+    let json = serde_json::to_value(entry).unwrap();
+    assert!(json.get("contract_version").is_none());
+    assert!(json["source"].get("coverage").is_none());
+    assert!(json["source"].get("binding").is_none());
 }

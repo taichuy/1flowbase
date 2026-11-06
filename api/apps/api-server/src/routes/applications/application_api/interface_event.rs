@@ -85,7 +85,6 @@ struct WorkflowEventAdapter {
     statuses: crate::workers::event_workflow::EventWorkflowStatuses,
     sources: Arc<crate::event_center::catalog::EventSourceCatalog>,
     runtime: control_plane::event_center::EventCenterRuntime,
-    boot: Option<Arc<crate::extension_bus::ExtensionBootSnapshot>>,
 }
 pub(crate) fn port(
     state: &crate::app_state::ApiState,
@@ -96,7 +95,6 @@ pub(crate) fn port(
         statuses: state.event_workflow_statuses.clone(),
         sources: state.event_sources.clone(),
         runtime: state.event_center.clone(),
-        boot: state.extension_boot_snapshot.clone(),
     })
 }
 impl ConsoleInterfacePort<WorkflowEventInput, WorkflowEventOutput> for WorkflowEventAdapter {
@@ -108,7 +106,7 @@ impl ConsoleInterfacePort<WorkflowEventInput, WorkflowEventOutput> for WorkflowE
         Box::pin(async move {
             let result: Result<WorkflowEventOutput, ApiError> = async {
                 let actor = principal.actor();
-                let entries = self.sources.registered_events(self.boot.as_deref(), actor, &self.runtime);
+                let entries = self.sources.registered_events(actor, &self.runtime);
                 let service = WorkflowEventTriggerService::new(self.store.for_actor(actor.clone())).with_registered_events(entries);
                 Ok(match input {
                     WorkflowEventInput::Get { application_id } => WorkflowEventOutput::Optional(

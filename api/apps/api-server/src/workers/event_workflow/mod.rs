@@ -121,11 +121,11 @@ async fn reconcile(
         let prepared = async {
             let actor = authorized_actor(state, trigger).await?;
             WorkflowEventTriggerService::new(state.store.for_actor(actor.clone()))
-                .with_registered_events(state.event_sources.registered_events(
-                    state.extension_boot_snapshot.as_deref(),
-                    &actor,
-                    &state.event_center,
-                ))
+                .with_registered_events(
+                    state
+                        .event_sources
+                        .registered_events(&actor, &state.event_center),
+                )
                 .prepare_subscription(trigger)
                 .await
         }
@@ -180,7 +180,6 @@ async fn reconcile(
             subscription_id: trigger.id,
             workspace_id: trigger.workspace_id,
             contract_id: trigger.configuration.contract_id.clone(),
-            contract_version: trigger.configuration.contract_version.clone(),
             trigger_phase: trigger.configuration.trigger_phase,
             consumer_id: trigger.application_id,
         };
@@ -280,7 +279,6 @@ fn same_identity(left: &WorkflowEventTriggerRecord, right: &WorkflowEventTrigger
     left.id == right.id
         && left.workspace_id == right.workspace_id
         && left.configuration.contract_id == right.configuration.contract_id
-        && left.configuration.contract_version == right.configuration.contract_version
         && left.configuration.trigger_phase == right.configuration.trigger_phase
         && left.configuration.source == right.configuration.source
 }

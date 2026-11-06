@@ -25,7 +25,6 @@ fn activity(workspace_id: Uuid) -> EventRuntimeActivity {
         event_id: Uuid::now_v7(),
         workspace_id,
         contract_id: "custom.example".into(),
-        contract_version: "1".into(),
         phase: EventTriggerPhase::Published,
         source_event_id: None,
         subscription_id: None,

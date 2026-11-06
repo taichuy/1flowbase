@@ -24,7 +24,7 @@ async fn configure(fixture: &mut Fixture) -> EventDefinitionRecord {
     .unwrap();
     let definition = control_plane::event_center::EventCenterConfigurationService::new(fixture.state.store.clone())
         .create_definition(&fixture.actor, CreateEventDefinitionInput {
-            contract_id: "custom.command-test".into(), contract_version: "1".into(), name: "Command test".into(), description: String::new(), enabled: true,
+            contract_id: "custom.command-test".into(), name: "Command test".into(), description: String::new(), enabled: true,
             payload_schema: json!({"type":"object","required":["message"],"additionalProperties":false,"properties":{"message":{"type":"string","minLength":1}}}),
         }).await.unwrap();
     let mut binding = fixture
@@ -43,7 +43,6 @@ async fn configure(fixture: &mut Fixture) -> EventDefinitionRecord {
             description: "Publish event".into(),
             enabled: true,
             contract_id: definition.contract_id.clone(),
-            contract_version: "1".into(),
             input_mapping: std::collections::BTreeMap::from([(
                 "message".into(),
                 "/arguments".into(),
@@ -244,7 +243,6 @@ async fn admitted_event_command_delivers_the_mapped_payload_to_the_explicit_even
                 subscription_id: Uuid::now_v7(),
                 workspace_id: fixture.key.0,
                 contract_id: target.contract_id.clone(),
-                contract_version: target.contract_version.clone(),
                 trigger_phase: domain::event_center::EventTriggerPhase::Published,
                 consumer_id: Uuid::now_v7(),
             },

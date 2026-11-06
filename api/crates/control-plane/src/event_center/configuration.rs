@@ -84,13 +84,15 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
         actor: &ActorContext,
         input: CreateEventDefinitionInput,
     ) -> anyhow::Result<EventDefinitionRecord> {
-        validate_identity(&input.contract_id, &input.contract_version)?;
+        validate_identity(&input.contract_id)?;
         validate_fields(&input.name, &input.payload_schema)?;
-        if self
-            .registered_events
-            .iter()
-            .any(|entry| entry.contract_id == input.contract_id)
-        {
+        if self.registered_events.iter().any(|entry| {
+            entry.contract_id == input.contract_id
+                && entry.scope
+                    == EventSourceScope::Workspace {
+                        workspace_id: actor.current_workspace_id,
+                    }
+        }) {
             return Err(Error::Conflict("registered_event_identity").into());
         }
         let now = OffsetDateTime::now_utc();
@@ -98,7 +100,6 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
             id: Uuid::now_v7(),
             workspace_id: actor.current_workspace_id,
             contract_id: input.contract_id,
-            contract_version: input.contract_version,
             name: input.name,
             description: input.description,
             payload_schema: input.payload_schema,
@@ -119,7 +120,7 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
     ) -> anyhow::Result<EventDefinitionRecord> {
         validate_fields(&input.name, &input.payload_schema)?;
         let mut record = self.get_definition(actor, id).await?;
-        validate_identity(&record.contract_id, &record.contract_version)?;
+        validate_identity(&record.contract_id)?;
         record.name = input.name;
         record.description = input.description;
         record.payload_schema = input.payload_schema;
@@ -154,7 +155,7 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
                 return Err(Error::PermissionDenied("event_source_scope").into());
             }
         }
-        if input.contract_id.trim().is_empty() || input.contract_version.trim().is_empty() {
+        if input.contract_id.trim().is_empty() {
             return Err(Error::InvalidInput("event_contract_required").into());
         }
         if input
@@ -174,18 +175,13 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
             .await?
             .into_iter()
             .find(|entry| {
-                entry.enabled
+                entry.enabled != Some(false)
                     && match (&input.source, &entry.source) {
                         (None, None) => entry.origin == EventDefinitionOrigin::Custom,
-                        (Some(selected), Some(source)) => {
-                            selected == &source.selection
-                                && source.binding == EventSourceBinding::Active
-                                && source.coverage == EventSourceCoverage::Live
-                        }
+                        (Some(selected), Some(source)) => selected == &source.selection,
                         _ => false,
                     }
                     && entry.contract_id == input.contract_id
-                    && entry.contract_version == input.contract_version
             })
             .ok_or(Error::InvalidInput("event_unavailable"))?;
         if !event.supported_phases.contains(&input.trigger_phase) {
@@ -223,15 +219,13 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
     }
 }
 
-pub(super) fn validate_identity(contract_id: &str, contract_version: &str) -> anyhow::Result<()> {
+pub(super) fn validate_identity(contract_id: &str) -> anyhow::Result<()> {
     let slug = contract_id.strip_prefix("custom.").unwrap_or("");
     if slug.is_empty()
         || !slug.bytes().all(|ch| {
             ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, b'-' | b'_' | b'.')
         })
         || slug.split('.').any(str::is_empty)
-        || contract_version.trim().is_empty()
-        || contract_version.trim() != contract_version
     {
         return Err(Error::InvalidInput("invalid_custom_event_identity").into());
     }

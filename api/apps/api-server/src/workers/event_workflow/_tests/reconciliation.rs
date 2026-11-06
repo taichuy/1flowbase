@@ -11,7 +11,6 @@ fn trigger() -> WorkflowEventTriggerRecord {
             source: None,
             enabled: true,
             contract_id: "custom.invoice".into(),
-            contract_version: "1".into(),
             trigger_phase: EventTriggerPhase::Published,
             input_mapping: BTreeMap::new(),
         },
@@ -119,7 +118,6 @@ async fn activation_decision_controls_real_subscribed_signal_and_restoration_doe
         subscription_id: trigger.id,
         workspace_id: trigger.workspace_id,
         contract_id: trigger.configuration.contract_id.clone(),
-        contract_version: "1".into(),
         trigger_phase: EventTriggerPhase::Subscribed,
         consumer_id: id,
     };

@@ -119,7 +119,7 @@ async fn system_event_center_communication_source_real_receipt_commit_handoff_an
     owned(&fixture, async {
         fixture.install(commands_manifest()).await;
         let source = fixture.source(COMMUNICATION_COMMAND_POINT);
-        assert_eq!(source.descriptor.origin, EventDefinitionOrigin::Plugin);
+        assert_eq!(source.descriptor.origin, EventDefinitionOrigin::Core);
         assert_eq!(source.descriptor.scope, fixture.scope());
         assert_eq!(source.descriptor.point_id, COMMUNICATION_COMMAND_POINT);
         let published = fixture.target(COMMUNICATION_COMMAND_POINT, EventTriggerPhase::Published);

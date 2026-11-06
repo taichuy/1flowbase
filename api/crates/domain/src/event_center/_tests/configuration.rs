@@ -20,7 +20,7 @@ fn consumed_is_a_distinct_dequeue_phase_not_an_ack_alias() {
 
 #[test]
 fn source_selection_is_additive_and_keeps_same_uuid_workspace_distinct_from_system() {
-    let legacy = serde_json::json!({"enabled":true,"contract_id":"custom.orders","contract_version":"1","trigger_phase":"published","input_mapping":{}});
+    let legacy = serde_json::json!({"enabled":true,"contract_id":"custom.orders","trigger_phase":"published","input_mapping":{}});
     let mut input: WorkflowEventTriggerInput = serde_json::from_value(legacy.clone()).unwrap();
     assert!(input.source.is_none());
     assert_eq!(serde_json::to_value(&input).unwrap(), legacy);
@@ -43,4 +43,22 @@ fn source_selection_is_additive_and_keeps_same_uuid_workspace_distinct_from_syst
             workspace_id: crate::SYSTEM_SCOPE_ID
         }
     );
+}
+
+#[test]
+fn event_center_inputs_reject_removed_version() {
+    let current = serde_json::json!({"enabled":true,"contract_id":"custom.orders","name":"Orders","description":"","payload_schema":{"type":"object"}});
+    let input: CreateEventDefinitionInput = serde_json::from_value(current.clone()).unwrap();
+    assert_eq!(serde_json::to_value(input).unwrap(), current);
+    let mut old = current;
+    old["contract_version"] = serde_json::json!("1");
+    assert!(serde_json::from_value::<CreateEventDefinitionInput>(old).is_err());
+}
+
+#[test]
+fn workflow_input_rejects_removed_version() {
+    let mut old = serde_json::json!({"enabled":true,"contract_id":"custom.orders","trigger_phase":"published","input_mapping":{}});
+    assert!(serde_json::from_value::<WorkflowEventTriggerInput>(old.clone()).is_ok());
+    old["contract_version"] = serde_json::json!("1");
+    assert!(serde_json::from_value::<WorkflowEventTriggerInput>(old).is_err());
 }

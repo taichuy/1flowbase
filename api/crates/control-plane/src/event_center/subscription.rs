@@ -1,5 +1,5 @@
 use super::{
-    runtime::{Key, RuntimeInner, activity},
+    runtime::{activity, Key, RuntimeInner},
     runtime_types::*,
 };
 use control_plane_contracts::ports::{EventBusError, EventConsumer, EventDelivery};
@@ -58,7 +58,6 @@ impl EventCenterSubscription {
             .map_err(|_| EventBusError::InvalidBody)?;
         if signal.workspace_id != self.spec.workspace_id
             || signal.contract_id != self.spec.contract_id
-            || signal.contract_version != self.spec.contract_version
             || signal.phase() != self.spec.trigger_phase
         {
             return Err(EventBusError::InvalidBody.into());

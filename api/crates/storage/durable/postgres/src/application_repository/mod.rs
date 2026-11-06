@@ -403,15 +403,14 @@ impl ApplicationRepository for PgControlPlaneStore {
                         r#"
                         insert into workflow_event_triggers (
                             id, workspace_id, application_id, enabled, contract_id,
-                            contract_version, trigger_phase, input_mapping, updated_by, updated_at
-                        ) values ($1, $2, $3, false, $4, $5, $6, $7, $8, now())
+                            trigger_phase, input_mapping, updated_by, updated_at
+                        ) values ($1, $2, $3, false, $4, $5, $6, $7, now())
                         "#,
                     )
                     .bind(Uuid::now_v7())
                     .bind(input.workspace_id)
                     .bind(application_id)
                     .bind(&configuration.contract_id)
-                    .bind(&configuration.contract_version)
                     .bind(phase)
                     .bind(serde_json::to_value(&configuration.input_mapping)?)
                     .bind(input.actor_user_id)

@@ -24,7 +24,6 @@ pub struct WorkflowEventTriggerBody {
     pub source: Option<domain::event_center::EventSourceSelection>,
     pub enabled: bool,
     pub contract_id: String,
-    pub contract_version: String,
     pub trigger_phase: WorkflowEventTriggerPhaseBody,
     /// Workflow Start input name to RFC6901 pointer into the lifecycle signal.
     pub input_mapping: std::collections::BTreeMap<String, String>,
@@ -35,7 +34,6 @@ impl WorkflowEventTriggerBody {
             source: self.source,
             enabled: self.enabled,
             contract_id: self.contract_id,
-            contract_version: self.contract_version,
             trigger_phase: match self.trigger_phase {
                 WorkflowEventTriggerPhaseBody::Subscribed => {
                     domain::event_center::EventTriggerPhase::Subscribed
@@ -60,7 +58,6 @@ pub struct WorkflowEventTriggerResponse {
     pub application_id: Uuid,
     pub enabled: bool,
     pub contract_id: String,
-    pub contract_version: String,
     pub trigger_phase: WorkflowEventTriggerPhaseBody,
     pub input_mapping: std::collections::BTreeMap<String, String>,
     pub updated_by: Uuid,
@@ -76,7 +73,6 @@ pub(super) fn to_workflow_event_trigger_response(
         application_id: record.application_id,
         enabled: record.configuration.enabled,
         contract_id: record.configuration.contract_id,
-        contract_version: record.configuration.contract_version,
         trigger_phase: record.configuration.trigger_phase.into(),
         input_mapping: record.configuration.input_mapping,
         updated_by: record.updated_by,

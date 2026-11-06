@@ -619,13 +619,13 @@ pub(crate) fn native_lifecycle_source_descriptors(
     use domain::event_center::*;
     use extension_contracts::LifecycleContract;
     [
-        (ModelDefinitionCommittedFact::CONTRACT_ID, ModelDefinitionCommittedFact::CONTRACT_VERSION, ModelDefinitionCommittedFact::event_source_schema(), extension_contracts::MANAGED_CREATE_EVENT_POINT),
-        (CreditNotificationFact::CONTRACT_ID, CreditNotificationFact::CONTRACT_VERSION, CreditNotificationFact::event_source_schema(), "1flowbase.credit.integration-notification"),
-        (ModelDefinitionIntegrationNotification::CONTRACT_ID, ModelDefinitionIntegrationNotification::CONTRACT_VERSION, ModelDefinitionIntegrationNotification::event_source_schema(), "1flowbase.model-definition.integration-notification"),
-    ].into_iter().filter(|(contract, _, _, _)| scope != EventSourceScope::System || *contract != CreditNotificationFact::CONTRACT_ID)
-    .map(|(contract, version, schema, point)| EventSourceDescriptor {
-        source_id: lifecycle_source_id(&scope, contract, version), owner_id: "control-plane.lifecycle".into(),
-        point_id: point.into(), contract_id: contract.into(), contract_version: version.into(),
+        (ModelDefinitionCommittedFact::CONTRACT_ID, ModelDefinitionCommittedFact::event_source_schema(), extension_contracts::MANAGED_CREATE_EVENT_POINT),
+        (CreditNotificationFact::CONTRACT_ID, CreditNotificationFact::event_source_schema(), "1flowbase.credit.integration-notification"),
+        (ModelDefinitionIntegrationNotification::CONTRACT_ID, ModelDefinitionIntegrationNotification::event_source_schema(), "1flowbase.model-definition.integration-notification"),
+    ].into_iter().filter(|(contract, _, _)| scope != EventSourceScope::System || *contract != CreditNotificationFact::CONTRACT_ID)
+    .map(|(contract, schema, point)| EventSourceDescriptor {
+        source_id: lifecycle_source_id(&scope, contract), owner_id: "control-plane.lifecycle".into(),
+        point_id: point.into(), contract_id: contract.into(),
         name: contract.into(),
         description: "Native committed lifecycle fact. Scoped queue counts cover trusted metadata only; historical unbound deliveries are listed separately and cannot be assigned to a workspace.".into(),
         payload_schema: schema, origin: EventDefinitionOrigin::Core, scope: scope.clone(),
@@ -647,14 +647,25 @@ pub(crate) fn register_native_lifecycle_sources(
     use domain::event_center::*;
     for mut descriptor in native_lifecycle_source_descriptors(plan, scope) {
         descriptor.scope = EventSourceScope::Unbound;
-        descriptor.source_id = lifecycle_source_id(
-            &descriptor.scope,
-            &descriptor.contract_id,
-            &descriptor.contract_version,
-        );
+        descriptor.source_id = lifecycle_source_id(&descriptor.scope, &descriptor.contract_id);
         descriptor.binding = EventSourceBinding::Declaration;
         descriptor.coverage = EventSourceCoverage::Unavailable;
         descriptor.supported_phases.clear();
-        observer.register(descriptor, &[]);
+        use control_plane_contracts::ports::{
+            CreditNotificationFact, ModelDefinitionCommittedFact,
+        };
+        use extension_contracts::LifecycleContract;
+        let version = match descriptor.contract_id.as_str() {
+            ModelDefinitionCommittedFact::CONTRACT_ID => {
+                ModelDefinitionCommittedFact::CONTRACT_VERSION
+            }
+            CreditNotificationFact::CONTRACT_ID => CreditNotificationFact::CONTRACT_VERSION,
+            ModelDefinitionIntegrationNotification::CONTRACT_ID => {
+                ModelDefinitionIntegrationNotification::CONTRACT_VERSION
+            }
+            _ => continue,
+        };
+        let contract = descriptor.contract_id.clone();
+        observer.register(descriptor, (&contract, version), false, &[]);
     }
 }

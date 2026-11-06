@@ -401,8 +401,6 @@ fn validate_event_context(command: &InvokeWorkflowEventCommand) -> Result<()> {
         || context.get("phase").and_then(Value::as_str) != Some(phase)
         || context.get("contract_id").and_then(Value::as_str)
             != Some(command.trigger.configuration.contract_id.as_str())
-        || context.get("contract_version").and_then(Value::as_str)
-            != Some(command.trigger.configuration.contract_version.as_str())
         || original != command.event_id
         || (command.trigger.configuration.trigger_phase == EventTriggerPhase::Consumed
             && original.is_none())

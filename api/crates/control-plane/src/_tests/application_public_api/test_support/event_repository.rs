@@ -45,9 +45,7 @@ impl EventCenterRepository for ApplicationPublicApiTestRepository {
     async fn create_event_definition(&self, record: &EventDefinitionRecord) -> Result<()> {
         let mut inner = self.inner.lock().unwrap();
         if inner.event_definitions.values().any(|row| {
-            row.workspace_id == record.workspace_id
-                && row.contract_id == record.contract_id
-                && row.contract_version == record.contract_version
+            row.workspace_id == record.workspace_id && row.contract_id == record.contract_id
         }) {
             return Err(ControlPlaneError::Conflict("event_identity").into());
         }

@@ -75,7 +75,6 @@ impl EventSourceObserver for EventCenterRuntime {
             &descriptor.owner_id,
             &descriptor.point_id,
             &descriptor.contract_id,
-            &descriptor.contract_version,
         ]
         .iter()
         .any(|value| value.trim().is_empty())
@@ -90,6 +89,20 @@ impl EventSourceObserver for EventCenterRuntime {
         let bytes = metadata_bytes(&descriptor, &[])
             .ok_or_else(|| anyhow::anyhow!("source_metadata_invalid"))?;
         let mut state = self.inner.lock();
+        if state.sources.values().any(|source| {
+            let existing = &source.descriptor;
+            active(existing)
+                && active(&descriptor)
+                && existing.scope == descriptor.scope
+                && existing.contract_id == descriptor.contract_id
+                && (existing.source_id != descriptor.source_id
+                    || existing.owner_id != descriptor.owner_id
+                    || existing.point_id != descriptor.point_id
+                    || existing.payload_schema != descriptor.payload_schema
+                    || existing.origin != descriptor.origin)
+        }) {
+            return Err(anyhow::anyhow!("event_source_definition_conflict"));
+        }
         // Source-owned metadata and activity share the explicit observation budget.
         if !state.observation.replace_metadata(0, bytes) {
             return Err(
@@ -299,7 +312,6 @@ impl SourceLease {
             occurred_at_unix_ms: observation.occurred_at_unix_ms,
             workspace_id: workspace(&context.scope),
             contract_id: descriptor.contract_id.clone(),
-            contract_version: descriptor.contract_version.clone(),
             source_context: Some(context),
             workflow_ancestor_ids: observation.workflow_ancestor_ids,
             body,
@@ -311,7 +323,6 @@ impl SourceLease {
                 matches_source(membership, &signal)
                     && membership.spec.trigger_phase == signal.phase()
                     && membership.spec.contract_id == signal.contract_id
-                    && membership.spec.contract_version == signal.contract_version
                     && !membership.closed
                     && membership
                         .workflow_id

@@ -46,8 +46,8 @@ impl ManagedExtensionComposition {
         }
         drop(snapshots);
         observer.retain_managed_sources(&sources.keys().cloned().collect());
-        for (_, (descriptor, targets)) in sources {
-            observer.register(descriptor, &targets);
+        for ((_, contract, version), (descriptor, targets)) in sources {
+            observer.register(descriptor, (&contract, &version), true, &targets);
         }
     }
 
@@ -71,8 +71,8 @@ impl ManagedExtensionComposition {
                 },
             );
         }
-        for (_, (descriptor, targets)) in sources {
-            observer.register(descriptor, &targets);
+        for ((_, contract, version), (descriptor, targets)) in sources {
+            observer.register(descriptor, (&contract, &version), true, &targets);
         }
     }
 
@@ -130,17 +130,20 @@ impl ManagedExtensionComposition {
                 })
                 .unwrap_or_default();
             let source = EventSourceDescriptor {
-                source_id: control_plane::lifecycle_outbox_dispatcher::lifecycle_source_id(&scope, descriptor.contract.contract_id.as_str(), descriptor.contract.contract_version.as_str()),
+                source_id: control_plane::lifecycle_outbox_dispatcher::lifecycle_source_id(&scope, descriptor.contract.contract_id.as_str()),
                 owner_id: descriptor.owner_module_id.as_str().into(),
                 point_id: descriptor.point_id.as_str().into(),
                 contract_id: descriptor.contract.contract_id.as_str().into(),
-                contract_version: descriptor.contract.contract_version.as_str().into(),
                 name: descriptor.point_id.as_str().into(),
                 description:
                     "Registered frozen managed EventStream. Scoped queue counts cover trusted metadata only; historical unbound deliveries are listed separately"
                         .into(),
                 payload_schema: serde_json::json!({"type":"object","required":["payload"],"properties":{"payload":schema}}),
-                origin: EventDefinitionOrigin::Plugin,
+                origin: if point.provenance().module_kind() == extension_contracts::extension_bus::ModuleKind::BootCore {
+                    EventDefinitionOrigin::Core
+                } else {
+                    EventDefinitionOrigin::Plugin
+                },
                 scope: scope.clone(),
                 binding: EventSourceBinding::Active,
                 coverage: EventSourceCoverage::Live,
@@ -153,9 +156,21 @@ impl ManagedExtensionComposition {
             let key = (
                 scope.clone(),
                 source.contract_id.clone(),
-                source.contract_version.clone(),
+                descriptor.contract.contract_version.as_str().to_owned(),
             );
             if let Some((existing, subscribers)) = sources.get_mut(&key) {
+                if existing.supported_phases.is_empty() {
+                    continue;
+                }
+                if existing.owner_id != source.owner_id
+                    || existing.point_id != source.point_id
+                    || existing.payload_schema != source.payload_schema
+                    || existing.origin != source.origin
+                {
+                    tracing::error!(contract_id = %source.contract_id, "conflicting managed event observation definition");
+                    existing.supported_phases.clear();
+                    continue;
+                }
                 if current {
                     *existing = source;
                 }

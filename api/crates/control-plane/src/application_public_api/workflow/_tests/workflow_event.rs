@@ -10,7 +10,6 @@ fn configuration() -> WorkflowEventTriggerInput {
         source: None,
         enabled: true,
         contract_id: "custom.invoice".into(),
-        contract_version: "1".into(),
         trigger_phase: domain::event_center::EventTriggerPhase::Published,
         input_mapping: BTreeMap::from([("invoice".into(), "/payload/invoice~1id".into())]),
     }
@@ -91,7 +90,6 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
             &actor,
             domain::event_center::CreateEventDefinitionInput {
                 contract_id: "custom.invoice".into(),
-                contract_version: "1".into(),
                 name: "Invoice".into(),
                 description: String::new(),
                 payload_schema: json!({"type":"object"}),
@@ -134,7 +132,7 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
         signal_id,
         event_id: Some(signal_id.to_string()),
         subscription_id: Uuid::now_v7(),
-        context: json!({"workspace_id":app.workspace_id,"event_id":signal_id,"contract_id":"custom.invoice","contract_version":"1","phase":"published","payload":{"invoice/id":"A-001"}}),
+        context: json!({"workspace_id":app.workspace_id,"event_id":signal_id,"contract_id":"custom.invoice","phase":"published","payload":{"invoice/id":"A-001"}}),
     };
     let WorkflowEventInvocationOutcome::Invoked(first) =
         service.invoke_event(command.clone()).await.unwrap()
@@ -298,7 +296,6 @@ async fn native_source_string_identity_and_causal_metadata_survive_invocation_wi
         owner_id: "native".into(),
         point_id: "native.point".into(),
         contract_id: "native.fact".into(),
-        contract_version: "1".into(),
         name: "Fact".into(),
         description: String::new(),
         payload_schema: json!({"type":"object"}),
@@ -352,7 +349,7 @@ async fn native_source_string_identity_and_causal_metadata_survive_invocation_wi
         publication,
         signal_id: signal,
         event_id: source.original_event_id.clone(),
-        context: json!({"workspace_id":application.workspace_id,"event_id":signal,"contract_id":"native.fact","contract_version":"1","phase":"published","source_context":source,"workflow_ancestor_ids":[ancestor,application.id],"payload":{"invoice/id":"native-invoice","secret":"never-store-source-body-in-trigger-metadata"}}),
+        context: json!({"workspace_id":application.workspace_id,"event_id":signal,"contract_id":"native.fact","phase":"published","source_context":source,"workflow_ancestor_ids":[ancestor,application.id],"payload":{"invoice/id":"native-invoice","secret":"never-store-source-body-in-trigger-metadata"}}),
     };
     let WorkflowEventInvocationOutcome::Invoked(invoked) =
         service.invoke_event(command.clone()).await.unwrap()

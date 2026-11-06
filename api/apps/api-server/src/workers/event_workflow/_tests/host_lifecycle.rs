@@ -77,7 +77,6 @@ fn original(fixture: &Fixture) -> EventRuntimeSubscription {
         subscription_id: Uuid::now_v7(),
         workspace_id: fixture.definition.workspace_id,
         contract_id: fixture.definition.contract_id.clone(),
-        contract_version: fixture.definition.contract_version.clone(),
         trigger_phase: EventTriggerPhase::Published,
         consumer_id: Uuid::now_v7(),
     }

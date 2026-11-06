@@ -8,7 +8,6 @@ fn event_archive_import_preserves_contract_and_mapping_but_disables_subscription
         source: None,
         enabled: true,
         contract_id: "custom.invoice".into(),
-        contract_version: "1".into(),
         trigger_phase: EventTriggerPhase::Published,
         input_mapping: BTreeMap::from([("invoice".into(), "/payload/id".into())]),
     };
@@ -57,7 +56,6 @@ fn create_rejects_event_configuration_for_schedule_or_nonworkflow_application() 
             source: None,
             enabled: false,
             contract_id: "custom.invoice".into(),
-            contract_version: "1".into(),
             trigger_phase: EventTriggerPhase::Consumed,
             input_mapping: BTreeMap::new(),
         },

@@ -12,9 +12,30 @@ use std::{
 
 struct RegisteredSource {
     lease: Arc<dyn EventSourceRegistration>,
-    origin: EventDefinitionOrigin,
+    definition_fingerprint: [u8; 32],
+    managed_owned: bool,
     phases: Vec<EventTriggerPhase>,
     native_template: Option<EventSourceDescriptor>,
+}
+
+// Registration-only comparison evidence. The center owns live scoped descriptors and
+// charges their schemas to its observation budget; this adapter retains only 32 bytes.
+fn definition_fingerprint(descriptor: &EventSourceDescriptor) -> anyhow::Result<[u8; 32]> {
+    use sha2::{Digest, Sha256};
+    // The workspace enables preserve_order. Canonicalize the temporary schema so equal
+    // objects with different insertion order remain the same current definition.
+    let mut schema = descriptor.payload_schema.clone();
+    schema.sort_all_objects();
+    Ok(Sha256::digest(serde_json::to_vec(&(
+        &descriptor.source_id,
+        &descriptor.contract_id,
+        &descriptor.scope,
+        &descriptor.owner_id,
+        &descriptor.point_id,
+        &schema,
+        descriptor.origin,
+    ))?)
+    .into())
 }
 
 pub struct LifecycleSourceObserver {
@@ -32,41 +53,63 @@ impl LifecycleSourceObserver {
 
     /// Source owner supplies actual schema/point and frozen subscriber bindings before publish.
     /// Refresh restores queue declarations only; it never fabricates lifecycle observations.
+    /// Returns whether the definition was accepted; observation rejection never changes delivery.
     pub fn register(
         &self,
         descriptor: EventSourceDescriptor,
+        protocol_identity: (&str, &str),
+        managed_owned: bool,
         targets: &[LifecycleSubscriberTarget],
-    ) {
+    ) -> bool {
         let key = (
             descriptor.scope.clone(),
-            descriptor.contract_id.clone(),
-            descriptor.contract_version.clone(),
+            protocol_identity.0.to_owned(),
+            protocol_identity.1.to_owned(),
         );
-        let Ok(mut sources) = self.sources.lock() else {
-            return;
+        let definition_fingerprint = match definition_fingerprint(&descriptor) {
+            Ok(fingerprint) => fingerprint,
+            Err(error) => {
+                tracing::warn!(contract_id = %descriptor.contract_id, %error, "lifecycle source definition fingerprint unavailable");
+                return false;
+            }
         };
+        let Ok(mut sources) = self.sources.lock() else {
+            return false;
+        };
+        if let Some(existing) = sources.get(&key) {
+            if existing.definition_fingerprint != definition_fingerprint
+                || existing.managed_owned != managed_owned
+            {
+                tracing::error!(contract_id = %descriptor.contract_id, "conflicting lifecycle observation definition");
+                return false;
+            }
+        }
         if sources
             .get(&key)
             .is_none_or(|source| source.phases != descriptor.supported_phases)
         {
             let native_template = (descriptor.scope == EventSourceScope::Unbound
                 && native_scope_supported(
-                    &descriptor.contract_id,
-                    &descriptor.contract_version,
+                    protocol_identity.0,
+                    protocol_identity.1,
                     &EventSourceScope::Unbound,
                 )
                 && !descriptor.payload_schema.is_null())
             .then(|| descriptor.clone());
-            let origin = descriptor.origin;
             let phases = descriptor.supported_phases.clone();
-            let Ok(lease) = self.observer.register_source(descriptor) else {
-                return;
+            let lease = match self.observer.register_source(descriptor) {
+                Ok(lease) => lease,
+                Err(error) => {
+                    tracing::warn!(contract_id = %key.1, %error, "lifecycle source observation registration rejected");
+                    return false;
+                }
             };
             sources.insert(
                 key.clone(),
                 RegisteredSource {
                     lease,
-                    origin,
+                    definition_fingerprint,
+                    managed_owned,
                     phases,
                     native_template,
                 },
@@ -92,6 +135,7 @@ impl LifecycleSourceObserver {
                 );
             }
         }
+        true
     }
 
     /// Root calls this after the repository's read-only grouped snapshot, including on GET.
@@ -131,9 +175,9 @@ impl LifecycleSourceObserver {
                 // An existing row proves queue ownership, but never proves a missing schema or
                 // executable frozen graph. Such queues remain visible with no trigger capability.
                 self.register(EventSourceDescriptor {
-                    source_id: lifecycle_source_id(&source.scope, &source.contract_id, &source.contract_version),
+                    source_id: lifecycle_source_id(&source.scope, &source.contract_id),
                     owner_id: "control-plane.lifecycle.historical".into(), point_id: "lifecycle-outbox.historical".into(),
-                    contract_id: source.contract_id.clone(), contract_version: source.contract_version.clone(),
+                    contract_id: source.contract_id.clone(),
                     name: source.contract_id.clone(),
                     description: if source.scope == EventSourceScope::Unbound {
                         "Historical durable deliveries lack trusted source scope. Their backlog is unbound; scoped queue counts exclude these rows and cannot describe the complete legacy backlog."
@@ -142,7 +186,7 @@ impl LifecycleSourceObserver {
                     }.into(),
                     payload_schema: serde_json::Value::Null, origin: EventDefinitionOrigin::Core, scope: source.scope.clone(),
                     binding: EventSourceBinding::Declaration, coverage: EventSourceCoverage::Unavailable, supported_phases: Vec::new(),
-                }, &[]);
+                }, (&source.contract_id, &source.contract_version), false, &[]);
                 self.source(&context, &source.contract_id, &source.contract_version)
             } else {
                 lease
@@ -159,9 +203,7 @@ impl LifecycleSourceObserver {
         keys: &std::collections::BTreeSet<(EventSourceScope, String, String)>,
     ) {
         if let Ok(mut sources) = self.sources.lock() {
-            sources.retain(|key, source| {
-                source.origin != EventDefinitionOrigin::Plugin || keys.contains(key)
-            });
+            sources.retain(|key, source| !source.managed_owned || keys.contains(key));
         }
     }
 
@@ -194,18 +236,32 @@ impl LifecycleSourceObserver {
             .native_template
             .clone()?;
         descriptor.scope = context.scope.clone();
-        descriptor.source_id = lifecycle_source_id(&context.scope, contract, version);
+        descriptor.source_id = lifecycle_source_id(&context.scope, contract);
         descriptor.binding = EventSourceBinding::Active;
         descriptor.coverage = EventSourceCoverage::Live;
         descriptor.supported_phases =
             vec![EventTriggerPhase::Published, EventTriggerPhase::Consumed];
         let phases = descriptor.supported_phases.clone();
-        let lease = self.observer.register_source(descriptor).ok()?;
+        let definition_fingerprint = match definition_fingerprint(&descriptor) {
+            Ok(fingerprint) => fingerprint,
+            Err(error) => {
+                tracing::warn!(contract_id = %contract, %error, "native source definition fingerprint unavailable");
+                return None;
+            }
+        };
+        let lease = match self.observer.register_source(descriptor) {
+            Ok(lease) => lease,
+            Err(error) => {
+                tracing::warn!(contract_id = %contract, %error, "native source observation registration rejected");
+                return None;
+            }
+        };
         sources.insert(
             key,
             RegisteredSource {
                 lease: lease.clone(),
-                origin: EventDefinitionOrigin::Core,
+                definition_fingerprint,
+                managed_owned: false,
                 phases,
                 native_template: None,
             },
@@ -261,7 +317,7 @@ fn now_ms() -> i64 {
 }
 
 /// Canonical source identity shared by host definitions, lazy activation and managed graphs.
-pub fn lifecycle_source_id(scope: &EventSourceScope, contract: &str, version: &str) -> String {
+pub fn lifecycle_source_id(scope: &EventSourceScope, contract: &str) -> String {
     let scope = match scope {
         EventSourceScope::Workspace { workspace_id } => format!("workspace/{workspace_id}"),
         EventSourceScope::System => "system".into(),
@@ -279,11 +335,7 @@ pub fn lifecycle_source_id(scope: &EventSourceScope, contract: &str, version: &s
             })
             .collect()
     }
-    format!(
-        "lifecycle/{scope}/contract/{}/version/{}",
-        component(contract),
-        component(version)
-    )
+    format!("lifecycle/{scope}/contract/{}", component(contract))
 }
 
 fn native_scope_supported(contract: &str, version: &str, scope: &EventSourceScope) -> bool {

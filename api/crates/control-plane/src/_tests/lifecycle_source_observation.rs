@@ -149,7 +149,6 @@ fn source_scope_is_owner_bound_and_observing_without_targets_does_not_project_a_
             owner_id: "native-owner".into(),
             point_id: "source.point".into(),
             contract_id: "business.fact".into(),
-            contract_version: "v1".into(),
             name: "Fact".into(),
             description: "typed fact fixture".into(),
             payload_schema: serde_json::json!({"type":"object"}),
@@ -159,6 +158,8 @@ fn source_scope_is_owner_bound_and_observing_without_targets_does_not_project_a_
             coverage: EventSourceCoverage::Live,
             supported_phases: vec![EventTriggerPhase::Published, EventTriggerPhase::Consumed],
         },
+        ("business.fact", "v1"),
+        false,
         &[LifecycleSubscriberTarget {
             subscriber_id: "string/original-owner".into(),
             handler_id: "handler".into(),
@@ -227,12 +228,10 @@ fn native_template() -> EventSourceDescriptor {
         source_id: lifecycle_source_id(
             &EventSourceScope::Unbound,
             ModelDefinitionCommittedFact::CONTRACT_ID,
-            ModelDefinitionCommittedFact::CONTRACT_VERSION,
         ),
         owner_id: "native-owner".into(),
         point_id: extension_contracts::MANAGED_CREATE_EVENT_POINT.into(),
         contract_id: ModelDefinitionCommittedFact::CONTRACT_ID.into(),
-        contract_version: ModelDefinitionCommittedFact::CONTRACT_VERSION.into(),
         name: "Native template".into(),
         description: "Historical scope is unavailable; scoped queues are a trusted subset".into(),
         payload_schema: ModelDefinitionCommittedFact::event_source_schema(),
@@ -251,6 +250,8 @@ fn boot_template_activates_first_new_workspace_publish_without_inventing_a_queue
     let template = native_template();
     observer.register(
         template.clone(),
+        (&template.contract_id, "v1"),
+        false,
         &[LifecycleSubscriberTarget {
             subscriber_id: "template-is-not-a-queue".into(),
             handler_id: "not-active".into(),
@@ -276,7 +277,7 @@ fn boot_template_activates_first_new_workspace_publish_without_inventing_a_queue
         event_id: Uuid::now_v7(),
         transaction_id: Uuid::now_v7(),
         contract_id: template.contract_id.clone(),
-        contract_version: template.contract_version.clone(),
+        contract_version: "v1".into(),
         canonical_payload: b"no body target".to_vec(),
         occurred_at: OffsetDateTime::now_utc(),
         publication: control_plane_contracts::ports::LifecyclePublicationPlan {
@@ -291,7 +292,7 @@ fn boot_template_activates_first_new_workspace_publish_without_inventing_a_queue
     assert_eq!(registered[1].0.scope, scope);
     assert_eq!(
         registered[1].0.source_id,
-        lifecycle_source_id(&scope, &input.contract_id, &input.contract_version)
+        lifecycle_source_id(&scope, &input.contract_id)
     );
     assert_eq!(registered[1].1.facts.lock().unwrap().len(), 2);
     assert!(registered[1].1.queues.lock().unwrap().is_empty());
@@ -303,7 +304,7 @@ fn complete_queue_refresh_recovers_actual_scope_and_clears_removed_backlog_witho
     let registry = Arc::new(SourceRegistry::default());
     let observer = LifecycleSourceObserver::new(registry.clone());
     let template = native_template();
-    observer.register(template.clone(), &[]);
+    observer.register(template.clone(), (&template.contract_id, "v1"), false, &[]);
     let scope = EventSourceScope::Workspace {
         workspace_id: Uuid::now_v7(),
     };
@@ -322,7 +323,7 @@ fn complete_queue_refresh_recovers_actual_scope_and_clears_removed_backlog_witho
         control_plane_contracts::ports::LifecycleSourceQueueFacts {
             scope: scope.clone(),
             contract_id: template.contract_id.clone(),
-            contract_version: template.contract_version.clone(),
+            contract_version: "v1".into(),
             queues: vec![queue.clone()],
         },
         control_plane_contracts::ports::LifecycleSourceQueueFacts {
@@ -371,26 +372,24 @@ fn canonical_source_identity_distinguishes_namespace_and_component_boundaries() 
                 workspace_id: domain::SYSTEM_SCOPE_ID
             },
             "native.fact",
-            "v1"
         ),
         format!(
-            "lifecycle/workspace/{}/contract/native.fact/version/v1",
+            "lifecycle/workspace/{}/contract/native.fact",
             domain::SYSTEM_SCOPE_ID
         )
     );
     assert_ne!(
-        lifecycle_source_id(&EventSourceScope::System, "native.fact", "v1"),
+        lifecycle_source_id(&EventSourceScope::System, "native.fact"),
         lifecycle_source_id(
             &EventSourceScope::Workspace {
                 workspace_id: domain::SYSTEM_SCOPE_ID
             },
             "native.fact",
-            "v1"
         )
     );
     assert_ne!(
-        lifecycle_source_id(&EventSourceScope::Unbound, "x/y", "z"),
-        lifecycle_source_id(&EventSourceScope::Unbound, "x", "y/z")
+        lifecycle_source_id(&EventSourceScope::Unbound, "x/y"),
+        lifecycle_source_id(&EventSourceScope::Unbound, "x%2Fy")
     );
 }
 
@@ -402,14 +401,9 @@ fn credit_template_cannot_activate_a_system_source_but_keeps_workspace_uuid_iden
     let observer = LifecycleSourceObserver::new(registry.clone());
     let mut template = native_template();
     template.contract_id = CreditNotificationFact::CONTRACT_ID.into();
-    template.contract_version = CreditNotificationFact::CONTRACT_VERSION.into();
     template.payload_schema = CreditNotificationFact::event_source_schema();
-    template.source_id = lifecycle_source_id(
-        &template.scope,
-        &template.contract_id,
-        &template.contract_version,
-    );
-    observer.register(template.clone(), &[]);
+    template.source_id = lifecycle_source_id(&template.scope, &template.contract_id);
+    observer.register(template.clone(), (&template.contract_id, "v1"), false, &[]);
     let mut input = RecordLifecycleFactInput {
         observation_context: Some(LifecycleObservationContext {
             scope: EventSourceScope::System,
@@ -419,7 +413,7 @@ fn credit_template_cannot_activate_a_system_source_but_keeps_workspace_uuid_iden
         event_id: Uuid::now_v7(),
         transaction_id: Uuid::now_v7(),
         contract_id: template.contract_id,
-        contract_version: template.contract_version,
+        contract_version: CreditNotificationFact::CONTRACT_VERSION.into(),
         canonical_payload: b"no matching body target".to_vec(),
         occurred_at: OffsetDateTime::now_utc(),
         publication: control_plane_contracts::ports::LifecyclePublicationPlan {
@@ -445,4 +439,102 @@ fn credit_template_cannot_activate_a_system_source_but_keeps_workspace_uuid_iden
             workspace_id: domain::SYSTEM_SCOPE_ID
         }
     );
+}
+
+#[test]
+fn managed_cleanup_uses_lifecycle_owner_instead_of_display_origin() {
+    let runtime = crate::event_center::EventCenterRuntime::new(
+        Arc::new(storage_ephemeral::MemoryEventBus::new()),
+        Some(crate::event_center::EventCenterRuntimePolicy {
+            bus_limits: control_plane_contracts::ports::EventBusLimits {
+                max_items: 8,
+                max_json_bytes: 64000,
+                max_waiters: 4,
+                max_topics: 8,
+                max_consumers: 8,
+                max_topic_name_bytes: 4096,
+            },
+            observation_max_bytes: 64000,
+            observation_ttl_ms: 60000,
+        }),
+    )
+    .unwrap();
+    let observer = LifecycleSourceObserver::new(Arc::new(runtime.clone()));
+    let mut managed = native_template();
+    managed.scope = EventSourceScope::Workspace {
+        workspace_id: Uuid::now_v7(),
+    };
+    managed.origin = EventDefinitionOrigin::Core;
+    observer.register(managed.clone(), (&managed.contract_id, "v1"), true, &[]);
+    let native = native_template();
+    observer.register(native.clone(), (&native.contract_id, "v1"), false, &[]);
+    let scope = managed.scope.clone();
+    assert_eq!(runtime.snapshot_sources(scope.clone()).sources.len(), 1);
+    observer.retain_managed_sources(&Default::default());
+    assert!(runtime.snapshot_sources(scope).sources.is_empty());
+    assert_eq!(
+        runtime
+            .snapshot_sources(EventSourceScope::Unbound)
+            .sources
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn same_key_and_phase_schema_changes_are_rejected_while_equal_objects_and_phase_updates_work() {
+    let registry = Arc::new(SourceRegistry::default());
+    let observer = LifecycleSourceObserver::new(registry.clone());
+    let mut descriptor = native_template();
+    descriptor.scope = EventSourceScope::Workspace {
+        workspace_id: Uuid::now_v7(),
+    };
+    descriptor.binding = EventSourceBinding::Active;
+    descriptor.coverage = EventSourceCoverage::Live;
+    descriptor.supported_phases = vec![EventTriggerPhase::Published, EventTriggerPhase::Consumed];
+    descriptor.payload_schema = serde_json::from_str(
+        r#"{"type":"object","properties":{"a":{"type":"string"},"b":{"type":"integer"}}}"#,
+    )
+    .unwrap();
+    assert!(observer.register(
+        descriptor.clone(),
+        (&descriptor.contract_id, "v1"),
+        true,
+        &[]
+    ));
+    let mut changed = descriptor.clone();
+    changed.payload_schema["properties"]["a"]["type"] = serde_json::json!("integer");
+    assert!(
+        !observer.register(changed, (&descriptor.contract_id, "v1"), true, &[]),
+        "same key and phases cannot hide a changed current schema"
+    );
+    assert_eq!(registry.0.lock().unwrap().len(), 1);
+    let mut reordered = descriptor.clone();
+    reordered.payload_schema = serde_json::from_str(
+        r#"{"properties":{"b":{"type":"integer"},"a":{"type":"string"}},"type":"object"}"#,
+    )
+    .unwrap();
+    assert_eq!(reordered.payload_schema, descriptor.payload_schema);
+    assert!(observer.register(
+        reordered.clone(),
+        (&descriptor.contract_id, "v1"),
+        true,
+        &[]
+    ));
+    assert_eq!(
+        registry.0.lock().unwrap().len(),
+        1,
+        "equal definitions reuse the lease"
+    );
+    reordered.supported_phases = vec![EventTriggerPhase::Consumed];
+    assert!(observer.register(
+        reordered.clone(),
+        (&descriptor.contract_id, "v1"),
+        true,
+        &[]
+    ));
+    let registered = registry.0.lock().unwrap();
+    assert_eq!(registered.len(), 2);
+    assert_eq!(registered[1].0.payload_schema, descriptor.payload_schema);
+    assert_eq!(registered[1].0.supported_phases, reordered.supported_phases);
 }

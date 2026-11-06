@@ -164,7 +164,6 @@ async fn runtime_adapter_pressure_rejects_metadata_without_rejecting_original_de
                 subscription_id: Uuid::now_v7(),
                 workspace_id: workspace,
                 contract_id: RUNTIME_EVENT_REQUIRED_CONTRACT_ID.into(),
-                contract_version: "1".into(),
                 trigger_phase: EventTriggerPhase::Published,
                 consumer_id: Uuid::now_v7(),
             },

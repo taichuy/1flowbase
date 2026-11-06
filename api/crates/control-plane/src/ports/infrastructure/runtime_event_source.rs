@@ -70,7 +70,6 @@ pub fn runtime_event_source_descriptors(
         owner_id: RUNTIME_EVENT_LANE_OWNER_MODULE_ID.into(),
         point_id: point.into(),
         contract_id: contract.into(),
-        contract_version: RUNTIME_EVENT_LANE_CONTRACT_VERSION.into(),
         name: contract.into(),
         description: "Canonical runtime event envelope at its original delivery owner".into(),
         payload_schema: runtime_event_envelope_schema(),

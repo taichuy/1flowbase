@@ -11,7 +11,6 @@ use uuid::Uuid;
 fn input() -> CreateEventDefinitionInput {
     CreateEventDefinitionInput {
         contract_id: "custom.orders.created".into(),
-        contract_version: "1".into(),
         name: "Order created".into(),
         description: "Event configuration fixture".into(),
         payload_schema: json!({"type":"object","properties":{"order_id":{"type":"string"}}}),
@@ -23,7 +22,6 @@ fn trigger() -> WorkflowEventTriggerInput {
         source: None,
         enabled: false,
         contract_id: input().contract_id,
-        contract_version: "1".into(),
         trigger_phase: EventTriggerPhase::Published,
         input_mapping: BTreeMap::from([("order_id".into(), "/payload/order_id".into())]),
     }

@@ -410,6 +410,7 @@ fn event_configuration_models_protect_physical_contract_and_dedicated_service_wr
             crate::DataModelRecordCapabilities::read_only()
         );
         assert!(contract.owns_field_code("workspace_id"));
+        assert!(!contract.owns_field_code("contract_version"));
         assert!(!contract.owns_field_code("scope_id"));
         for field in contract.system_field_codes {
             let field_contract = contract.field_contract(field).unwrap();

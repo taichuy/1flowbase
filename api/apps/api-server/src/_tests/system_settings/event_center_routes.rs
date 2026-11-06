@@ -52,7 +52,7 @@ async fn request(
 }
 
 fn definition() -> Value {
-    json!({"contract_id":"custom.invoice","contract_version":"1","name":"Invoice","description":"Route fixture","enabled":true,
+    json!({"contract_id":"custom.invoice","name":"Invoice","description":"Route fixture","enabled":true,
         "payload_schema":{"type":"object","properties":{"amount":{"type":"number"}},"required":["amount"],"additionalProperties":false}})
 }
 
@@ -93,6 +93,22 @@ async fn event_center_routes_keep_definition_configuration_separate_from_publica
     .await;
     assert_eq!(status, StatusCode::OK, "{created}");
     assert!(created["data"]["created_at"].is_string());
+    assert!(created["data"].get("contract_version").is_none());
+    let mut removed_version = definition();
+    removed_version["contract_version"] = json!("1");
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/api/console/events",
+            &cookie,
+            &csrf,
+            Some(removed_version)
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
     let id = created["data"]["id"].as_str().unwrap();
     let (status, catalog) = request(&app, "GET", "/api/console/events", &cookie, "", None).await;
     assert_eq!(status, StatusCode::OK);
@@ -102,6 +118,10 @@ async fn event_center_routes_keep_definition_configuration_separate_from_publica
         .iter()
         .find(|row| row["id"] == id)
         .unwrap();
+    assert_eq!(row["owner_id"], Value::Null);
+    assert_eq!(row["enabled"], true);
+    assert_eq!(row["scope"]["kind"], "workspace");
+    assert!(row.get("contract_version").is_none());
     assert_eq!(
         row["supported_phases"],
         json!(["subscribed", "published", "consumed"])
@@ -126,7 +146,6 @@ async fn event_center_routes_keep_definition_configuration_separate_from_publica
     let mut update = definition();
     let object = update.as_object_mut().unwrap();
     object.remove("contract_id");
-    object.remove("contract_version");
     object.insert("enabled".into(), json!(false));
     let (status, saved) = request(
         &app,
@@ -320,7 +339,6 @@ async fn event_center_runtime_route_observes_without_consuming_or_exposing_paylo
                 subscription_id: Uuid::now_v7(),
                 workspace_id: definition.workspace_id,
                 contract_id: definition.contract_id.clone(),
-                contract_version: definition.contract_version.clone(),
                 trigger_phase: EventTriggerPhase::Published,
                 consumer_id: Uuid::now_v7(),
             },

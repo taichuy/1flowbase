@@ -33,7 +33,6 @@ async fn selective_event_and_application_configuration_roundtrip_without_cross_o
         id: Uuid::now_v7(),
         workspace_id: workspace.id,
         contract_id: "custom.backup.orders".into(),
-        contract_version: "1".into(),
         name: "Original event".into(),
         description: "Configuration only".into(),
         payload_schema: json!({"type":"object"}),
@@ -62,7 +61,6 @@ async fn selective_event_and_application_configuration_roundtrip_without_cross_o
         source: None,
         enabled: false,
         contract_id: definition.contract_id.clone(),
-        contract_version: definition.contract_version.clone(),
         trigger_phase: EventTriggerPhase::Published,
         input_mapping: BTreeMap::from([("input".into(), "/payload".into())]),
     };

@@ -1,5 +1,4 @@
 use domain::{event_center::*, ActorContext};
-use extension_contracts::extension_bus::{EffectiveExtensionGraph, ExtensionPointKind, ModuleKind};
 use std::{collections::BTreeMap, sync::Arc};
 
 /// Composition-root capability evidence. Lightweight states default to unavailable adapters.
@@ -49,7 +48,6 @@ impl EventSourceCatalog {
 
     pub(crate) fn registered_events(
         &self,
-        boot: Option<&crate::extension_bus::ExtensionBootSnapshot>,
         actor: &ActorContext,
         runtime: &control_plane::event_center::EventCenterRuntime,
     ) -> Vec<EventCatalogEntry> {
@@ -85,20 +83,17 @@ impl EventSourceCatalog {
                 }
             }
         }
-        // Actual registrations, including legacy Unbound queue owners, precede graph
-        // fallback so a declaration cannot add a second placeholder for the same point.
+        // Actual scoped registrations contribute capabilities to the same definition.
+        // Historical Unbound queue owners remain exclusively in the runtime projection.
         for scope in scopes {
             for source in runtime.snapshot_sources(scope).sources {
                 insert(&mut entries, source.descriptor.into());
             }
         }
-        if let Some(boot) = boot {
-            project_graph(boot.graph(), actor, &mut entries);
-            if let Some(managed) = boot.managed_snapshot(actor.current_workspace_id) {
-                project_graph(&managed.graph, actor, &mut entries);
-            }
-        }
-        entries.into_values().collect()
+        entries
+            .into_values()
+            .filter(|entry| !entry.supported_phases.is_empty())
+            .collect()
     }
 }
 pub(crate) fn visible_scopes(actor: &ActorContext) -> Vec<EventSourceScope> {
@@ -115,77 +110,34 @@ fn unavailable(source: &mut EventSourceDescriptor) {
     source.coverage = EventSourceCoverage::Unavailable;
     source.supported_phases.clear();
 }
-type Key = (EventSourceSelection, String, String);
+type Key = (EventSourceScope, String);
 fn insert(entries: &mut BTreeMap<Key, EventCatalogEntry>, entry: EventCatalogEntry) {
-    if let Some(source) = &entry.source {
-        entries.insert(
-            (
-                source.selection.clone(),
-                entry.contract_id.clone(),
-                entry.contract_version.clone(),
-            ),
-            entry,
-        );
+    if entry.scope == EventSourceScope::Unbound || entry.supported_phases.is_empty() {
+        return;
     }
-}
-fn project_graph(
-    graph: &EffectiveExtensionGraph,
-    actor: &ActorContext,
-    entries: &mut BTreeMap<Key, EventCatalogEntry>,
-) {
-    for point in graph.points() {
-        let descriptor = point.descriptor();
-        if descriptor.point_kind != ExtensionPointKind::EventStream {
-            continue;
+    let key = (entry.scope.clone(), entry.contract_id.clone());
+    if let Some(existing) = entries.get_mut(&key) {
+        // Registration validates current schema and defining owner. Multiple runtime leases
+        // contribute capability phases, rather than duplicate definition rows.
+        if existing.supported_phases.is_empty() {
+            return;
         }
-        if entries.values().any(|entry| {
-            entry.contract_id == descriptor.contract.contract_id.as_str()
-                && entry.contract_version == descriptor.contract.contract_version.as_str()
-                && entry
-                    .source
-                    .as_ref()
-                    .is_some_and(|source| source.point_id == descriptor.point_id.as_str())
-        }) {
-            continue;
+        if existing.owner_id != entry.owner_id
+            || existing.payload_schema != entry.payload_schema
+            || existing.origin != entry.origin
+            || existing.source != entry.source
+        {
+            tracing::error!(contract_id = %entry.contract_id, "conflicting event catalog definition");
+            existing.supported_phases.clear();
+            return;
         }
-        let contract_id = descriptor.contract.contract_id.as_str().to_owned();
-        // A graph declaration by itself has no trusted publication scope or executable adapter.
-        // Unbound definitions are visible only in the explicit root projection.
-        if !actor.is_root {
-            continue;
+        for phase in entry.supported_phases {
+            if !existing.supported_phases.contains(&phase) {
+                existing.supported_phases.push(phase);
+            }
         }
-        insert(
-            entries,
-            EventCatalogEntry {
-                id: None,
-                enabled: false,
-                owner_id: descriptor.owner_module_id.as_str().into(),
-                name: contract_id.clone(),
-                description: descriptor.point_id.as_str().into(),
-                contract_id,
-                contract_version: descriptor.contract.contract_version.as_str().into(),
-                payload_schema: descriptor
-                    .contract
-                    .payload_schema
-                    .clone()
-                    .unwrap_or(serde_json::Value::Null),
-                origin: if point.provenance().module_kind() == ModuleKind::BootCore {
-                    EventDefinitionOrigin::Core
-                } else {
-                    EventDefinitionOrigin::Plugin
-                },
-                supported_phases: Vec::new(),
-                source: Some(EventCatalogSource {
-                    selection: EventSourceSelection {
-                        source_id: format!("declaration:{}", descriptor.point_id.as_str()),
-                        scope: EventSourceScope::Unbound,
-                    },
-                    point_id: descriptor.point_id.as_str().into(),
-                    binding: EventSourceBinding::Declaration,
-                    coverage: EventSourceCoverage::Unavailable,
-                }),
-            },
-        );
+    } else {
+        entries.insert(key, entry);
     }
 }
 

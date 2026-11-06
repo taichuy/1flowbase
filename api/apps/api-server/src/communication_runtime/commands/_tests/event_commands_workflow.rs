@@ -73,7 +73,6 @@ async fn published_workflow(fixture: &Fixture, definition: &EventDefinitionRecor
                 source: None,
                 enabled: true,
                 contract_id: definition.contract_id.clone(),
-                contract_version: definition.contract_version.clone(),
                 trigger_phase: EventTriggerPhase::Published,
                 input_mapping: BTreeMap::from([("message".into(), "/payload/message".into())]),
             },
