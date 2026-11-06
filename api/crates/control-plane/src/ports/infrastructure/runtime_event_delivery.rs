@@ -19,6 +19,7 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use super::runtime_events::{RuntimeEventDurability, RuntimeEventEnvelope};
+use super::{RuntimeEventQueueObservation, RuntimeEventSourceObservation};
 
 pub const RUNTIME_EVENT_REQUIRED_POINT_ID: &str = "1flowbase.application.runtime-event.required";
 pub const RUNTIME_EVENT_DIAGNOSTIC_POINT_ID: &str =
@@ -59,12 +60,16 @@ impl std::error::Error for RuntimeEventRequiredDeliveryError {}
 
 #[derive(Clone)]
 pub struct RuntimeEventRequiredLane {
+    pub(crate) observation: Option<RuntimeEventQueueObservation>,
     sender: mpsc::Sender<RuntimeEventEnvelope>,
 }
 
 impl RuntimeEventRequiredLane {
     pub(crate) fn new(sender: mpsc::Sender<RuntimeEventEnvelope>) -> Self {
-        Self { sender }
+        Self {
+            sender,
+            observation: None,
+        }
     }
 
     /// Resolves when the consumer drops its receiver, including while idle.
@@ -82,10 +87,15 @@ impl RuntimeEventRequiredLane {
             sequence: event.sequence,
             status: RuntimeEventRequiredDeliveryStatus::Delivered,
         };
-        self.sender
-            .send(event)
+        let permit = self
+            .sender
+            .reserve()
             .await
             .map_err(|_| RuntimeEventRequiredDeliveryError::ReceiverClosed)?;
+        if let Some(observation) = &self.observation {
+            observation.accepted();
+        }
+        permit.send(event);
         Ok(receipt)
     }
 }
@@ -148,6 +158,7 @@ impl RuntimeEventDiagnosticDeliveryCounters {
 
 #[derive(Clone)]
 pub struct RuntimeEventDiagnosticLane {
+    pub(crate) observation: Option<RuntimeEventQueueObservation>,
     sender: mpsc::Sender<RuntimeEventEnvelope>,
     counters: Arc<RuntimeEventDiagnosticDeliveryCounters>,
 }
@@ -157,7 +168,11 @@ impl RuntimeEventDiagnosticLane {
         sender: mpsc::Sender<RuntimeEventEnvelope>,
         counters: Arc<RuntimeEventDiagnosticDeliveryCounters>,
     ) -> Self {
-        Self { sender, counters }
+        Self {
+            sender,
+            counters,
+            observation: None,
+        }
     }
 
     pub fn snapshot(&self) -> RuntimeEventDiagnosticDeliverySnapshot {
@@ -167,11 +182,17 @@ impl RuntimeEventDiagnosticLane {
     pub fn try_send(&self, event: RuntimeEventEnvelope) -> RuntimeEventDiagnosticDeliveryReceipt {
         let event_id = event.event_id.clone();
         let sequence = event.sequence;
-        let (status, dropped_total) = match self.sender.try_send(event) {
-            Ok(()) => (
-                RuntimeEventDiagnosticDeliveryStatus::Delivered,
-                self.counters.snapshot().dropped_total,
-            ),
+        let (status, dropped_total) = match self.sender.try_reserve() {
+            Ok(permit) => {
+                if let Some(observation) = &self.observation {
+                    observation.accepted();
+                }
+                permit.send(event);
+                (
+                    RuntimeEventDiagnosticDeliveryStatus::Delivered,
+                    self.counters.snapshot().dropped_total,
+                )
+            }
             Err(mpsc::error::TrySendError::Full(_)) => {
                 let reason = RuntimeEventDiagnosticDropReason::ReceiverFull;
                 (
@@ -187,6 +208,11 @@ impl RuntimeEventDiagnosticLane {
                 )
             }
         };
+        if matches!(status, RuntimeEventDiagnosticDeliveryStatus::Dropped(_)) {
+            if let Some(observation) = &self.observation {
+                observation.dropped();
+            }
+        }
         RuntimeEventDiagnosticDeliveryReceipt {
             event_id,
             sequence,
@@ -337,6 +363,10 @@ impl Drop for RuntimeEventAfterCommitScopeOwner {
 }
 #[derive(Clone)]
 pub struct RuntimeEventAfterCommitLane {
+    observation: Option<RuntimeEventSourceObservation>,
+    // One sequential persister owns this generation; scalar watermark avoids event history.
+    observed_sequence: Arc<Mutex<Option<i64>>>,
+    queue_observations: Vec<RuntimeEventQueueObservation>,
     graph_fingerprint: Option<String>,
     subscribers: Vec<OrderedAfterCommitSubscriber>,
     scope: Arc<AfterCommitScope>,
@@ -345,6 +375,9 @@ pub struct RuntimeEventAfterCommitLane {
 impl Default for RuntimeEventAfterCommitLane {
     fn default() -> Self {
         Self {
+            observation: None,
+            observed_sequence: Default::default(),
+            queue_observations: Vec::new(),
             graph_fingerprint: None,
             subscribers: Vec::new(),
             scope: Arc::new(AfterCommitScope::default()),
@@ -353,6 +386,25 @@ impl Default for RuntimeEventAfterCommitLane {
 }
 
 impl RuntimeEventAfterCommitLane {
+    pub fn with_source_observation(
+        mut self,
+        observation: Option<RuntimeEventSourceObservation>,
+    ) -> Self {
+        self.queue_observations = observation
+            .as_ref()
+            .map(|observation| {
+                self.subscribers
+                    .iter()
+                    .map(|subscriber| {
+                        observation.queue(subscriber.registration.subscriber_id.as_str().to_owned())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        self.observation = observation;
+        self
+    }
+
     pub(crate) fn scope_owner(&self) -> RuntimeEventAfterCommitScopeOwner {
         RuntimeEventAfterCommitScopeOwner(self.clone())
     }
@@ -363,6 +415,9 @@ impl RuntimeEventAfterCommitLane {
             .entries
             .retain(|_, state| *state == RuntimeEventAfterCommitClaimState::InFlight);
         drop(claims);
+        for queue in &self.queue_observations {
+            queue.retire();
+        }
         self.scope.changed.notify_waiters();
     }
     pub fn retained_claim_count(&self) -> usize {
@@ -472,6 +527,9 @@ impl RuntimeEventAfterCommitLane {
         }
 
         Ok(Self {
+            observation: None,
+            observed_sequence: Default::default(),
+            queue_observations: Vec::new(),
             graph_fingerprint: Some(graph.fingerprint().as_str().to_string()),
             subscribers,
             scope: Arc::new(AfterCommitScope::default()),
@@ -492,8 +550,18 @@ impl RuntimeEventAfterCommitLane {
                 subscribers: Vec::new(),
             };
         }
+        if let Some(observation) = &self.observation {
+            let mut last = self
+                .observed_sequence
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if last.is_none_or(|last| event.sequence > last) {
+                *last = Some(event.sequence);
+                observation.published(&event);
+            }
+        }
         let mut receipts = Vec::new();
-        for subscriber in &self.subscribers {
+        for (subscriber_index, subscriber) in self.subscribers.iter().enumerate() {
             let key = RuntimeEventAfterCommitIdempotencyKey {
                 run_id: event.run_id,
                 sequence: event.sequence,
@@ -547,6 +615,12 @@ impl RuntimeEventAfterCommitLane {
                     event: event.clone(),
                     idempotency_key: key.clone(),
                 };
+                // Each original native handoff is observed before its handler result;
+                // retry remains owned by this dispatcher rather than the observer.
+                if let Some(queue) = self.queue_observations.get(subscriber_index) {
+                    queue.accepted();
+                    queue.consumed(&event);
+                }
                 match tokio::time::timeout(
                     subscriber.registration.timeout,
                     subscriber.registration.subscriber.deliver(delivery),

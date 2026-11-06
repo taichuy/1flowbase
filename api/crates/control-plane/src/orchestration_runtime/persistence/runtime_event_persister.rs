@@ -343,6 +343,7 @@ where
             }
         }
     }
+    let after_commit = after_commit.with_source_observation(writer.after_commit_observation());
     let scope_owner = after_commit.scope_owner();
     tokio::spawn(async move {
         let _scope_owner = scope_owner;

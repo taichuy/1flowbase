@@ -250,3 +250,129 @@ async fn ephemeral_delta_creates_neither_history_nor_after_commit_delivery() {
         0
     );
 }
+
+#[derive(Default)]
+struct SourceFacts(Mutex<Vec<control_plane::ports::EventSourceFact>>);
+impl control_plane::ports::EventSourceRegistration for SourceFacts {
+    fn observe_with_payload(
+        &self,
+        observation: control_plane::ports::EventSourceObservation,
+        _body: &mut dyn FnMut() -> Option<serde_json::Value>,
+    ) -> control_plane::ports::EventSourceObservationStatus {
+        self.0.lock().unwrap().push(observation.fact);
+        control_plane::ports::EventSourceObservationStatus::Observed
+    }
+    fn observe(
+        &self,
+        observation: control_plane::ports::EventSourceObservation,
+    ) -> control_plane::ports::EventSourceObservationStatus {
+        self.0.lock().unwrap().push(observation.fact);
+        control_plane::ports::EventSourceObservationStatus::Observed
+    }
+    fn set_queue_snapshots(
+        &self,
+        _queues: Vec<domain::event_center::EventSourceQueueSnapshot>,
+    ) -> bool {
+        true
+    }
+}
+struct SourceObserver(Arc<SourceFacts>);
+impl control_plane::ports::EventSourceObserver for SourceObserver {
+    fn register_source(
+        &self,
+        _descriptor: domain::event_center::EventSourceDescriptor,
+    ) -> anyhow::Result<Arc<dyn control_plane::ports::EventSourceRegistration>> {
+        Ok(self.0.clone())
+    }
+}
+
+#[tokio::test]
+async fn source_after_commit_observes_only_successful_persistence_and_handoff_before_failed_handler(
+) {
+    use control_plane::ports::{
+        runtime_event_source_descriptors, EventSourceFact, RuntimeEventSourceBinding,
+        RuntimeEventSourceObservation,
+    };
+    let repository = crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let run = Uuid::now_v7();
+    let facts = Arc::new(SourceFacts::default());
+    let binding = RuntimeEventSourceBinding::workspace(Uuid::now_v7());
+    let descriptor = runtime_event_source_descriptors(
+        binding.scope.clone(),
+        domain::event_center::EventSourceBinding::Active,
+    )
+    .remove(2);
+    let observation = RuntimeEventSourceObservation::register(
+        &SourceObserver(facts.clone()),
+        descriptor,
+        binding,
+        run,
+        Uuid::now_v7(),
+    )
+    .unwrap();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let lane = after_commit_lane(
+        AfterCommitBehavior::Error,
+        calls.clone(),
+        Duration::from_secs(1),
+        1,
+    )
+    .with_source_observation(Some(observation));
+    assert_eq!(
+        facts
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|fact| matches!(fact, EventSourceFact::Subscribed { .. }))
+            .count(),
+        1
+    );
+    let event = durable_lane_event(run, 7);
+    repository.fail_next_runtime_event_append();
+    assert!(control_plane::orchestration_runtime::persist_runtime_debug_stream_events_with_after_commit(&repository, vec![event.clone()], &lane).await.is_err());
+    assert!(!facts.0.lock().unwrap().iter().any(|fact| matches!(
+        fact,
+        EventSourceFact::Published | EventSourceFact::Consumed { .. }
+    )));
+    let receipts = control_plane::orchestration_runtime::persist_runtime_debug_stream_events_with_after_commit(&repository, vec![event.clone()], &lane).await.unwrap();
+    assert_eq!(
+        receipts[0].subscribers[0].status,
+        RuntimeEventAfterCommitDeliveryStatus::Failed
+    );
+    assert!(facts
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|fact| matches!(fact, EventSourceFact::Consumed { .. })));
+    control_plane::orchestration_runtime::persist_runtime_debug_stream_events_with_after_commit(
+        &repository,
+        vec![event],
+        &lane,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        facts
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|fact| matches!(fact, EventSourceFact::Published))
+            .count(),
+        1,
+        "native retry must not republish the same persisted event"
+    );
+    assert_eq!(
+        facts
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|fact| matches!(fact, EventSourceFact::Subscribed { .. }))
+            .count(),
+        1,
+        "delivery attempts are not new subscriptions"
+    );
+}

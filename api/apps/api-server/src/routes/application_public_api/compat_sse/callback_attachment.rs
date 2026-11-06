@@ -395,6 +395,7 @@ pub(super) async fn follow_missing_compatible_round_events(
                             reservation: Some(reservation),
                         },
                         None,
+                        None,
                         invoker,
                     )
                     .await?;

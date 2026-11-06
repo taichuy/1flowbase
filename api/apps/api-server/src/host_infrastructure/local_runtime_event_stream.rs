@@ -8,13 +8,15 @@ use std::{
 
 use anyhow::{anyhow, Result};
 use control_plane::ports::{
-    ensure_ephemeral_payload_size, ephemeral_metadata_size_bytes,
+    ensure_ephemeral_payload_size, ephemeral_metadata_size_bytes, runtime_event_source_descriptors,
     AppendTerminalIfMissingAndCloseOutcome, EphemeralEntrySnapshot, EphemeralEntryValueSnapshot,
-    EphemeralInspectionCapabilities, EphemeralValueRevealMode, RuntimeEventCloseReason,
-    RuntimeEventClosure, RuntimeEventDiagnosticLane, RuntimeEventDurability, RuntimeEventEnvelope,
+    EphemeralInspectionCapabilities, EphemeralValueRevealMode, EventSourceObserver,
+    EventSourceRegistration, RuntimeEventCloseReason, RuntimeEventClosure,
+    RuntimeEventDiagnosticLane, RuntimeEventDurability, RuntimeEventEnvelope,
     RuntimeEventOverflowBehavior, RuntimeEventPayload, RuntimeEventReceiver,
-    RuntimeEventRequiredLane, RuntimeEventStream, RuntimeEventStreamPolicy,
-    RuntimeEventSubscription, RuntimeEventTerminalWriter, RuntimeEventTrimPolicy,
+    RuntimeEventRequiredLane, RuntimeEventSourceBinding, RuntimeEventSourceObservation,
+    RuntimeEventStream, RuntimeEventStreamPolicy, RuntimeEventSubscription,
+    RuntimeEventTerminalWriter, RuntimeEventTrimPolicy,
 };
 use time::{Duration as TimeDuration, OffsetDateTime};
 use tokio::sync::{broadcast, watch};
@@ -35,6 +37,7 @@ pub struct LocalRuntimeEventStream {
     scheduler_started: Arc<AtomicBool>,
     recoverable_retention: TimeDuration,
     recoverable_byte_budget: Option<usize>,
+    source_observer: Option<Arc<dyn EventSourceObserver>>,
 }
 
 struct LocalRuntimeEventTerminalWriter {
@@ -56,6 +59,10 @@ impl RuntimeEventTerminalWriter for LocalRuntimeEventTerminalWriter {
         }
         ring.persistence_owner_claimed = true;
         true
+    }
+
+    fn after_commit_observation(&self) -> Option<RuntimeEventSourceObservation> {
+        self.run.source_observations[2].clone()
     }
 
     fn generation_id(&self) -> Option<Uuid> {
@@ -162,6 +169,7 @@ impl RuntimeEventTerminalWriter for LocalRuntimeEventTerminalWriter {
 
 struct LocalRunEventStream {
     generation_id: Uuid,
+    source_observations: [Option<RuntimeEventSourceObservation>; 3],
     recoverable_retention: TimeDuration,
     next_sequence: AtomicI64,
     ring: Mutex<RetainedRuntimeEvents>,
@@ -233,11 +241,37 @@ impl Default for LocalRuntimeEventStream {
             scheduler_started: Arc::new(AtomicBool::new(false)),
             recoverable_retention: DEFAULT_RECOVERABLE_RETENTION,
             recoverable_byte_budget: None,
+            source_observer: None,
         }
     }
 }
 
 impl LocalRuntimeEventStream {
+    pub fn with_event_source_observer(mut self, observer: Arc<dyn EventSourceObserver>) -> Self {
+        self.source_observer = Some(observer);
+        self
+    }
+
+    /// Boot-owned declarations allow discovery before any run exists. Keep these leases
+    /// in the composition root; declarations own no queues and emit no source facts.
+    pub fn declare_event_sources(
+        &self,
+        scope: domain::event_center::EventSourceScope,
+    ) -> Vec<Arc<dyn EventSourceRegistration>> {
+        self.source_observer
+            .as_ref()
+            .map(|observer| {
+                runtime_event_source_descriptors(
+                    scope,
+                    domain::event_center::EventSourceBinding::Declaration,
+                )
+                .into_iter()
+                .filter_map(|descriptor| observer.register_source(descriptor).ok())
+                .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -598,6 +632,23 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
     }
 
     async fn open_run(&self, run_id: Uuid, policy: RuntimeEventStreamPolicy) -> Result<()> {
+        self.open_run_scoped(
+            run_id,
+            policy,
+            RuntimeEventSourceBinding {
+                scope: domain::event_center::EventSourceScope::Unbound,
+                workflow_ancestor_ids: Vec::new(),
+            },
+        )
+        .await
+    }
+
+    async fn open_run_scoped(
+        &self,
+        run_id: Uuid,
+        policy: RuntimeEventStreamPolicy,
+        binding: RuntimeEventSourceBinding,
+    ) -> Result<()> {
         self.start_expiry_scheduler();
         self.purge_expired_runs();
         let mut runs = self
@@ -611,22 +662,36 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
                 run.retire_payloads();
                 runs.insert(
                     run_id,
-                    Arc::new(LocalRunEventStream::new(
-                        policy,
-                        self.broadcast_capacity,
-                        self.recoverable_retention,
-                    )),
+                    Arc::new(
+                        LocalRunEventStream::new(
+                            policy,
+                            self.broadcast_capacity,
+                            self.recoverable_retention,
+                        )
+                        .with_sources(
+                            self.source_observer.as_deref(),
+                            binding.clone(),
+                            run_id,
+                        ),
+                    ),
                 );
             }
             Some(_) => {}
             None => {
                 runs.insert(
                     run_id,
-                    Arc::new(LocalRunEventStream::new(
-                        policy,
-                        self.broadcast_capacity,
-                        self.recoverable_retention,
-                    )),
+                    Arc::new(
+                        LocalRunEventStream::new(
+                            policy,
+                            self.broadcast_capacity,
+                            self.recoverable_retention,
+                        )
+                        .with_sources(
+                            self.source_observer.as_deref(),
+                            binding.clone(),
+                            run_id,
+                        ),
+                    ),
                 );
             }
         }
@@ -664,6 +729,14 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             envelope
         };
 
+        if let Some(observation) = &run.source_observations[if is_required_delivery_event(&envelope)
+        {
+            0
+        } else {
+            1
+        }] {
+            observation.published(&envelope);
+        }
         run.broadcast(envelope.clone());
         Ok(envelope)
     }
@@ -700,7 +773,15 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             .map(|event| event.sequence)
             .unwrap_or_else(|| from_sequence.unwrap_or(0));
         let (required_sender, diagnostic_sender, live_events) =
-            RuntimeEventReceiver::bounded_lanes(self.broadcast_capacity);
+            RuntimeEventReceiver::bounded_observed_lanes(
+                self.broadcast_capacity,
+                run.source_observations[0]
+                    .as_ref()
+                    .map(|observation| observation.queue(Uuid::now_v7().to_string())),
+                run.source_observations[1]
+                    .as_ref()
+                    .map(|observation| observation.queue(Uuid::now_v7().to_string())),
+            );
 
         if closure.borrow().is_some() {
             // Close may have appended a terminal after the first replay snapshot.

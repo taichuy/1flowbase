@@ -216,6 +216,10 @@ pub trait RuntimeEventTerminalWriter: Send + Sync {
         true
     }
 
+    fn after_commit_observation(&self) -> Option<RuntimeEventSourceObservation> {
+        None
+    }
+
     fn generation_id(&self) -> Option<Uuid> {
         None
     }
@@ -266,6 +270,8 @@ pub struct RuntimeEventReceiver {
     required: RuntimeEventRequiredReceiver,
     diagnostic: mpsc::Receiver<RuntimeEventEnvelope>,
     diagnostic_counters: Arc<RuntimeEventDiagnosticDeliveryCounters>,
+    required_observation: Option<RuntimeEventQueueObservation>,
+    diagnostic_observation: Option<RuntimeEventQueueObservation>,
     required_open: bool,
     diagnostic_open: bool,
 }
@@ -293,6 +299,8 @@ impl RuntimeEventReceiver {
             required: RuntimeEventRequiredReceiver::Bounded(required),
             diagnostic,
             diagnostic_counters: Arc::new(RuntimeEventDiagnosticDeliveryCounters::default()),
+            required_observation: None,
+            diagnostic_observation: None,
             required_open: true,
             diagnostic_open: true,
         }
@@ -316,10 +324,25 @@ impl RuntimeEventReceiver {
                 required: RuntimeEventRequiredReceiver::Bounded(required),
                 diagnostic,
                 diagnostic_counters,
+                required_observation: None,
+                diagnostic_observation: None,
                 required_open: true,
                 diagnostic_open: true,
             },
         )
+    }
+
+    pub fn bounded_observed_lanes(
+        capacity: usize,
+        required: Option<RuntimeEventQueueObservation>,
+        diagnostic: Option<RuntimeEventQueueObservation>,
+    ) -> (RuntimeEventRequiredLane, RuntimeEventDiagnosticLane, Self) {
+        let (mut required_lane, mut diagnostic_lane, mut receiver) = Self::bounded_lanes(capacity);
+        required_lane.observation = required.clone();
+        diagnostic_lane.observation = diagnostic.clone();
+        receiver.required_observation = required;
+        receiver.diagnostic_observation = diagnostic;
+        (required_lane, diagnostic_lane, receiver)
     }
 
     pub fn from_unbounded(required: mpsc::UnboundedReceiver<RuntimeEventEnvelope>) -> Self {
@@ -328,6 +351,8 @@ impl RuntimeEventReceiver {
             required: RuntimeEventRequiredReceiver::Unbounded(required),
             diagnostic,
             diagnostic_counters: Arc::new(RuntimeEventDiagnosticDeliveryCounters::default()),
+            required_observation: None,
+            diagnostic_observation: None,
             required_open: true,
             diagnostic_open: false,
         }
@@ -344,17 +369,30 @@ impl RuntimeEventReceiver {
                     tokio::select! {
                         biased;
                         event = self.required.recv() => match event {
-                            Some(event) => return Some(event),
+                            Some(event) => { if let Some(observation) = &self.required_observation { observation.consumed(&event); } return Some(event); },
                             None => self.required_open = false,
                         },
                         event = self.diagnostic.recv() => match event {
-                            Some(event) => return Some(event),
+                            Some(event) => { if let Some(observation) = &self.diagnostic_observation { observation.consumed(&event); } return Some(event); },
                             None => self.diagnostic_open = false,
                         },
                     }
                 }
-                (true, false) => return self.required.recv().await,
-                (false, true) => return self.diagnostic.recv().await,
+                (true, false) => {
+                    let event = self.required.recv().await;
+                    if let (Some(event), Some(observation)) = (&event, &self.required_observation) {
+                        observation.consumed(event);
+                    }
+                    return event;
+                }
+                (false, true) => {
+                    let event = self.diagnostic.recv().await;
+                    if let (Some(event), Some(observation)) = (&event, &self.diagnostic_observation)
+                    {
+                        observation.consumed(event);
+                    }
+                    return event;
+                }
                 (false, false) => return None,
             }
         }
@@ -376,6 +414,16 @@ pub trait RuntimeEventStream: Send + Sync {
     ) -> anyhow::Result<Arc<dyn RuntimeEventTerminalWriter>> {
         let subscription = self.subscribe(run_id, None).await?;
         Ok(subscription.terminal_writer)
+    }
+
+    /// Trusted execution owners bind scope before any producer appends. Legacy implementations stay unobserved.
+    async fn open_run_scoped(
+        &self,
+        run_id: Uuid,
+        policy: RuntimeEventStreamPolicy,
+        _binding: RuntimeEventSourceBinding,
+    ) -> anyhow::Result<()> {
+        self.open_run(run_id, policy).await
     }
 
     async fn open_run(&self, run_id: Uuid, policy: RuntimeEventStreamPolicy) -> anyhow::Result<()>;
@@ -465,5 +513,16 @@ pub trait RuntimeEventStream: Send + Sync {
         _reveal_mode: EphemeralValueRevealMode,
     ) -> anyhow::Result<Option<EphemeralEntryValueSnapshot>> {
         Ok(None)
+    }
+}
+
+impl Drop for RuntimeEventReceiver {
+    fn drop(&mut self) {
+        if let Some(observation) = &self.required_observation {
+            observation.retire();
+        }
+        if let Some(observation) = &self.diagnostic_observation {
+            observation.retire();
+        }
     }
 }

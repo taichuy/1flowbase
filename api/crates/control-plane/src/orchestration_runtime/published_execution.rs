@@ -301,7 +301,9 @@ where
         }
         let mut communication_events = None;
         let execution = async {
-            communication_events = self.begin_communication_events(&flow_run).await?;
+            communication_events = self
+                .begin_communication_events(&flow_run, Some(application.workspace_id))
+                .await?;
             let execution = self
                 .resume_execution_segment(ResumeExecutionSegmentInput {
                     transport_connection_scope: None,

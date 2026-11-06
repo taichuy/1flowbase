@@ -9,7 +9,13 @@ pub(in super::super) async fn launch_assistant_execution(
     let application_id = execution.application_id;
     dependencies
         .runtime_event_stream
-        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .open_run_scoped(
+            run_id,
+            RuntimeEventStreamPolicy::debug_default(),
+            control_plane::ports::RuntimeEventSourceBinding::workspace(
+                execution.actor.current_workspace_id,
+            ),
+        )
         .await?;
     let persister_handle = start_runtime_debug_event_persister(
         dependencies.store.clone(),

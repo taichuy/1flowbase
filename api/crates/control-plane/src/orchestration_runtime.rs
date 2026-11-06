@@ -435,6 +435,7 @@ pub struct OrchestrationRuntimeService<R, H> {
     provider_secret_master_key: String,
     require_provider_usage_for_billing: bool,
     runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
+    runtime_event_source_binding: Option<crate::ports::RuntimeEventSourceBinding>,
     pub(super) provider_request_log_queue: Option<Arc<dyn TaskQueue>>,
     provider_transport_store: Arc<dyn crate::ports::ProviderTransportStore>,
     api_node_id: Option<String>,
@@ -485,6 +486,7 @@ where
             provider_secret_master_key: provider_secret_master_key.into(),
             require_provider_usage_for_billing,
             runtime_event_stream: None,
+            runtime_event_source_binding: None,
             provider_request_log_queue: None,
             provider_transport_store,
             api_node_id: None,
@@ -531,6 +533,15 @@ where
         self.model_routing_cache_store = Some(cache_store.clone());
         self.llm_routing_counter_store =
             Some(Arc::new(CacheStoreLlmRoutingCounterStore { cache_store }));
+        self
+    }
+
+    /// Trusted execution-owner binding, including event-workflow causal ancestors.
+    pub fn with_runtime_event_source_binding(
+        mut self,
+        binding: crate::ports::RuntimeEventSourceBinding,
+    ) -> Self {
+        self.runtime_event_source_binding = Some(binding);
         self
     }
 

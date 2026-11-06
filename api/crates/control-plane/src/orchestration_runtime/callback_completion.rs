@@ -236,12 +236,13 @@ where
                 };
                 match acquired.disposition {
                     ResumeClaimDisposition::Completed => {
-                        return Ok(PreparedCallbackTask::NoExecution(Box::new(flow_run)))
+                        return Ok(PreparedCallbackTask::NoExecution(Box::new(flow_run)));
                     }
                     ResumeClaimDisposition::InProgress => {
-                        return Err(
-                            ControlPlaneError::Conflict("callback_resume_already_admitted").into(),
+                        return Err(ControlPlaneError::Conflict(
+                            "callback_resume_already_admitted",
                         )
+                        .into());
                     }
                     ResumeClaimDisposition::Acquired => CommitToolCallbackResultsOutput {
                         callback_task: committed.callback_task,
@@ -374,7 +375,9 @@ where
         // never open or close the winning producer's generation.
         let mut communication_events = None;
         let result = async {
-            communication_events = self.begin_communication_events(&flow_run).await?;
+            communication_events = self
+                .begin_communication_events(&flow_run, Some(application.workspace_id))
+                .await?;
             if callback_task.callback_kind == "data_model_side_effect_confirmation" {
                 self.complete_data_model_side_effect_callback(
                     command,
