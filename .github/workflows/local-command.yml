@@ -2,6 +2,11 @@ name: Local terminal native evidence
 
 on:
   workflow_dispatch:
+    inputs:
+      include_api:
+        description: Run the focused terminal and MCP API batch instead of the native matrix
+        type: boolean
+        default: false
   push:
     branches: [dev, 'codex/local-command-portable-*']
     paths:
@@ -22,6 +27,7 @@ concurrency:
 
 jobs:
   native:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.include_api != true }}
     name: Native commands (${{ matrix.platform }})
     strategy:
       fail-fast: false
@@ -60,4 +66,85 @@ jobs:
         with:
           name: local-command-${{ matrix.platform }}-${{ github.sha }}
           path: tmp/test-governance/local-command-portable/
+          if-no-files-found: warn
+
+  api:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_api == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api -> target
+          key: terminal-mcp-api
+          cache-on-failure: true
+      - name: Compile the finite API batch
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/test-governance/terminal-mcp-api
+          git rev-parse HEAD > tmp/test-governance/terminal-mcp-api/candidate-sha.txt
+          export CARGO_BUILD_JOBS="$(nproc)"
+          cargo test --locked --manifest-path api/Cargo.toml --workspace --no-run \
+            --test api_private_routes --test api_private_contracts --test interface_coverage_inventory \
+            2>&1 | tee tmp/test-governance/terminal-mcp-api/compile.log
+      - name: Execute terminal and MCP contracts
+        run: |
+          set -uo pipefail
+          export CARGO_BUILD_JOBS="$(nproc)"
+          failures=0
+          run_case() {
+            name="$1"; shift
+            cargo test --locked --manifest-path api/Cargo.toml --workspace "$@" -- --nocapture \
+              > "tmp/test-governance/terminal-mcp-api/${name}.log" 2>&1
+            status=$?
+            if ! rg -q 'test result: (ok|FAILED)\. [1-9][0-9]* passed' "tmp/test-governance/terminal-mcp-api/${name}.log"; then status=1; fi
+            printf '%s %s\n' "$name" "$status" >> tmp/test-governance/terminal-mcp-api/statuses.txt
+            if [ "$status" -ne 0 ]; then failures=$((failures + 1)); tail -c 5000 "tmp/test-governance/terminal-mcp-api/${name}.log"; fi
+          }
+          run_case mcp-internals --test api_private_routes routes::mcp_protocol::
+          run_case terminal --test api_private_routes routes::terminal::
+          run_case existing-local-command --test api_private_routes local_commands
+          run_case mcp-routes --test api_private_contracts mcp_protocol_routes
+          run_case mcp-oauth --test api_private_contracts mcp_oauth_routes
+          run_case interface-inventory --test interface_coverage_inventory
+          run_case console-projection --test api_private_contracts console_interface_projection_inventory_is_key_only_and_exact
+          run_case console-display --test api_private_contracts console_display_inventory_matches_key_only_fixture
+          exit "$failures"
+      - name: Build the candidate API for isolated runtime acceptance
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          export CARGO_BUILD_JOBS="$(nproc)"
+          cargo build --locked --manifest-path api/Cargo.toml --workspace --bin api-server \
+            2>&1 | tee tmp/test-governance/terminal-mcp-api/runtime-build.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: terminal-mcp-api-evidence-${{ github.sha }}
+          path: tmp/test-governance/terminal-mcp-api/
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: terminal-mcp-api-binary-${{ github.sha }}
+          path: api/target/debug/api-server
+          compression-level: 0
           if-no-files-found: warn
