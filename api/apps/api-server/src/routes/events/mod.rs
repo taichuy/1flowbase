@@ -90,7 +90,7 @@ pub(crate) async fn create(
 }
 
 #[utoipa::path(put, path="/api/console/events/{event_definition_id}", tag="Events", operation_id="events.definitions.update",
-    summary="Update a custom event definition", description="Updates the name, schema or enabled state of a custom event in the current workspace. Contract identity and version remain unchanged.",
+    summary="Update a custom event definition", description="Updates the name, schema or enabled state of a custom event in the current workspace. The event identifier remains unchanged.",
     params(("event_definition_id"=Uuid,Path,description="Custom event definition identifier")), request_body=Value, responses((status=200,body=Value)))]
 pub(crate) async fn update(
     State(state): State<Arc<ApiState>>,
