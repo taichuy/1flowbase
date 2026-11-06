@@ -181,9 +181,6 @@ export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
         title={t('ephemeral')}
         description={t('consumed_help')}
       />
-      <Button onClick={() => void query.refetch()} loading={query.isFetching}>
-        {t('refresh')}
-      </Button>
       {query.isError && (
         <Alert type="error" showIcon title={t('runtime_error')} />
       )}
@@ -297,6 +294,14 @@ export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
             rows={snapshot?.queues ?? []}
             rowKey="subscription_id"
             loading={query.isPending}
+            toolbar={
+              <Button
+                onClick={() => void query.refetch()}
+                loading={query.isFetching}
+              >
+                {t('refresh')}
+              </Button>
+            }
           />
         </>
       ) : (
@@ -315,6 +320,14 @@ export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
             ])
           }
           loading={query.isPending}
+          toolbar={
+            <Button
+              onClick={() => void query.refetch()}
+              loading={query.isFetching}
+            >
+              {t('refresh')}
+            </Button>
+          }
         />
       )}
     </Space>

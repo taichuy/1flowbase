@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { Flex } from 'antd';
 import { useTranslation } from 'react-i18next';
 import {
   DataTable,
+  DataTableColumnSettings,
   type DataTableColumn
 } from '../../../../shared/ui/data-table/DataTable';
 import { DataTableLayout } from '../../../../shared/ui/data-table/DataTableLayout';
@@ -12,13 +14,15 @@ export function EventsTable<T extends object>({
   rows,
   rowKey,
   tableKey,
-  loading = false
+  loading = false,
+  toolbar
 }: {
   columns: DataTableColumn<T>[];
   rows: T[];
   rowKey: keyof T | ((row: T) => string);
   tableKey: string;
   loading?: boolean;
+  toolbar?: ReactNode;
 }) {
   const { t } = useTranslation('settingsEvents');
   const [page, setPage] = useState(1);
@@ -42,6 +46,15 @@ export function EventsTable<T extends object>({
         )}
         rowKey={rowKey}
         loading={loading}
+        toolbar={
+          <Flex justify="flex-end" gap={8} wrap>
+            {toolbar}
+            <DataTableColumnSettings
+              columns={columns}
+              configuration={configuration}
+            />
+          </Flex>
+        }
         emptyText={t('empty')}
         page={currentPage}
         pageSize={pageSize}

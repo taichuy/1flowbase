@@ -4,6 +4,7 @@ import type {
 } from '@1flowbase/api-client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -127,6 +128,10 @@ function renderPage() {
 }
 beforeEach(async () => {
   vi.clearAllMocks();
+  window.history.replaceState({}, '', '/settings/events');
+  for (const key of Object.keys(window.localStorage)) {
+    if (key.startsWith('settings.events.')) window.localStorage.removeItem(key);
+  }
   await appI18n.changeLanguage('en_US');
   access.operations = new Set([
     'events.catalog.list',
@@ -141,6 +146,88 @@ beforeEach(async () => {
 });
 
 describe('event center configuration and observations', () => {
+  test.each([
+    ['queues', 'Current queues'],
+    ['activity', 'Recent activity']
+  ])('opens and restores the %s tab from its URL', async (tab, label) => {
+    window.history.replaceState({}, '', `/settings/events?tab=${tab}`);
+    const view = renderPage();
+    expect(await screen.findByText('host-instance')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: label })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    expect(api.listEventCatalog).not.toHaveBeenCalled();
+    view.unmount();
+    renderPage();
+    expect(await screen.findByText('host-instance')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: label })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+  });
+  test('tab navigation updates the URL and follows browser back and forward', async () => {
+    renderPage();
+    await screen.findByRole('button', { name: 'Order' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Current queues' }));
+    expect(window.location.search).toBe('?tab=queues');
+    fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
+    expect(window.location.search).toBe('?tab=activity');
+    await act(async () => {
+      window.history.back();
+      await waitFor(() => expect(window.location.search).toBe('?tab=queues'));
+    });
+    expect(screen.getByRole('tab', { name: 'Current queues' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await act(async () => {
+      window.history.forward();
+      await waitFor(() => expect(window.location.search).toBe('?tab=activity'));
+    });
+    expect(
+      screen.getByRole('tab', { name: 'Recent activity' })
+    ).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: 'Event catalog' }));
+    expect(window.location.search).toBe('?tab=catalog');
+  });
+  test('shared column settings change the visible fields and persist the selection', async () => {
+    access.operations.add('patch_me_meta');
+    const view = renderPage();
+    await screen.findByRole('button', { name: 'Order' });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Field configuration' })
+    );
+    const fields = await screen.findByRole('dialog', {
+      name: 'Customize visible fields'
+    });
+    fireEvent.click(within(fields).getByRole('checkbox', { name: 'Owner' }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('columnheader', { name: 'Owner' })
+      ).not.toBeInTheDocument()
+    );
+    view.unmount();
+    renderPage();
+    await screen.findByRole('button', { name: 'Order' });
+    expect(
+      screen.queryByRole('columnheader', { name: 'Owner' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: 'Contract ID' })
+    ).toBeInTheDocument();
+  });
+  test('a runtime URL cannot bypass catalog-only permissions', async () => {
+    access.operations = new Set(['events.catalog.list']);
+    window.history.replaceState({}, '', '/settings/events?tab=queues');
+    renderPage();
+    await screen.findByRole('button', { name: 'Order' });
+    expect(window.location.search).toBe('?tab=catalog');
+    expect(
+      screen.queryByRole('tab', { name: 'Current queues' })
+    ).not.toBeInTheDocument();
+    expect(api.getEventRuntime).not.toHaveBeenCalled();
+  });
   test('creates a definition using the structured schema editor and retains disabled configuration', async () => {
     renderPage();
     fireEvent.click(

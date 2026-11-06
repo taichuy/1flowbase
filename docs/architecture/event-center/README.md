@@ -4,6 +4,8 @@
 
 事件中心位于 `/settings/events`。事件定义、工作流触发配置和通信指令绑定持久保存；事件实例、队列、生命周期信号和观察动态仅保存在当前宿主内存，重启允许丢失。消费者已有的业务记录仍由消费者管理。
 
+三个页签使用独立 URL：`/settings/events?tab=catalog`（事件目录）、`/settings/events?tab=queues`（当前队列）、`/settings/events?tab=activity`（近期动态）。直接打开 `/settings/events` 默认进入目录；刷新、前进和后退保留 URL 对应页签。页面沿用应用管理的共享表格工具栏和列设置，不另设标题面板。
+
 ## 三种触发时机
 
 | 时机 | 事实 |

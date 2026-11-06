@@ -1288,10 +1288,10 @@
         "referenceSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] td:nth-child(2)"
       },
       {
-        "id": "events-toolbar-no-overlap-body",
+        "id": "events-table-toolbar-no-overlap-rows",
         "type": "no_overlap",
-        "subjectSelector": ".settings-section-surface__toolbar",
-        "referenceSelector": ".settings-section-surface__body"
+        "subjectSelector": ".settings-section-surface .data-table__toolbar",
+        "referenceSelector": ".settings-section-surface .data-table__scroll-area"
       }
     ]
   },
@@ -1382,10 +1382,10 @@
         "referenceSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] td:nth-child(2)"
       },
       {
-        "id": "events-toolbar-no-overlap-body",
+        "id": "events-table-toolbar-no-overlap-rows",
         "type": "no_overlap",
-        "subjectSelector": ".settings-section-surface__toolbar",
-        "referenceSelector": ".settings-section-surface__body"
+        "subjectSelector": ".settings-section-surface .data-table__toolbar",
+        "referenceSelector": ".settings-section-surface .data-table__scroll-area"
       }
     ]
   },

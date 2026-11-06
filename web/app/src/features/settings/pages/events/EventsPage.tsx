@@ -7,10 +7,10 @@ import {
   type EventTriggerPhase
 } from '@1flowbase/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Space, Tabs, Tag, Typography } from 'antd';
-import { useState } from 'react';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import { Alert, Button, Flex, Tabs, Tag } from 'antd';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { i18nText } from '../../../../shared/i18n/text';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import type { DataTableColumn } from '../../../../shared/ui/data-table/DataTable';
@@ -19,22 +19,32 @@ import { SettingsSectionSurface } from '../../components/SettingsSectionSurface'
 import { EventDefinitionDrawer } from './EventDefinitionDrawer';
 import { EventRuntimePanel } from './EventRuntimePanel';
 import { EventsTable } from './EventsTable';
+import {
+  navigateEventTab,
+  useEventTab,
+  type EventTab
+} from './event-navigation';
 
 export function EventsPage() {
   const { t } = useTranslation('settingsEvents');
   const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState('catalog');
+  const requestedTab = useEventTab();
   const [drawer, setDrawer] = useState<{
     entry: EventCatalogEntry | null;
   } | null>(null);
   const canList = can('events.catalog.list');
   const canObserve = can('events.runtime.get');
+  const tab = canObserve ? requestedTab : 'catalog';
+  useEffect(() => {
+    if (!canObserve && requestedTab !== 'catalog')
+      navigateEventTab('catalog', true);
+  }, [canObserve, requestedTab]);
   const catalog = useQuery({
     queryKey: ['settings', 'events', 'catalog'],
     queryFn: () => listEventCatalog(),
-    enabled: canList
+    enabled: canList && tab === 'catalog'
   });
   const editable = drawer?.entry
     ? drawer.entry.origin === 'custom' &&
@@ -168,77 +178,64 @@ export function EventsPage() {
     }
   ];
   return (
-    <SettingsSectionSurface
-      heightMode="fill"
-      toolbar={
-        <Typography.Title level={4}>
-          {i18nText('settings', 'events.title')}
-        </Typography.Title>
-      }
-    >
-      <Tabs
-        activeKey={tab}
-        onChange={setTab}
-        items={[
-          {
-            key: 'catalog',
-            label: t('catalog'),
-            children: canList ? (
-              <Space
-                orientation="vertical"
-                size="middle"
-                style={{ width: '100%' }}
-              >
-                <Space>
-                  <Button
-                    onClick={() => void catalog.refetch()}
-                    loading={catalog.isFetching}
-                  >
-                    {t('refresh')}
-                  </Button>
-                  {can('events.definitions.create') && (
-                    <Button type="primary" onClick={() => open(null)}>
-                      {t('create')}
-                    </Button>
-                  )}
-                </Space>
-                {catalog.isError && (
-                  <Alert type="error" showIcon title={t('catalog_error')} />
-                )}
-                <EventsTable
-                  columns={columns}
-                  rows={catalog.data ?? []}
-                  rowKey={(row) =>
-                    `${row.owner_id}:${row.contract_id}:${row.contract_version}`
-                  }
-                  tableKey="catalog"
-                  loading={catalog.isPending}
-                />
-              </Space>
-            ) : (
-              <Alert type="warning" title={t('forbidden')} />
-            )
-          },
-          ...(canObserve
-            ? [
-                {
-                  key: 'queues',
-                  label: t('queues'),
-                  children:
-                    tab === 'queues' ? <EventRuntimePanel tab="queues" /> : null
-                },
-                {
-                  key: 'activity',
-                  label: t('activity'),
-                  children:
-                    tab === 'activity' ? (
-                      <EventRuntimePanel tab="activity" />
-                    ) : null
+    <SettingsSectionSurface heightMode="fill">
+      <Flex vertical gap={16} style={{ height: '100%', minHeight: 0 }}>
+        <Tabs
+          activeKey={tab}
+          onChange={(next) => navigateEventTab(next as EventTab)}
+          items={[
+            { key: 'catalog', label: t('catalog') },
+            ...(canObserve
+              ? [
+                  { key: 'queues', label: t('queues') },
+                  { key: 'activity', label: t('activity') }
+                ]
+              : [])
+          ]}
+        />
+        {tab === 'catalog' ? (
+          canList ? (
+            <>
+              {catalog.isError && (
+                <Alert type="error" showIcon title={t('catalog_error')} />
+              )}
+              <EventsTable
+                columns={columns}
+                rows={catalog.data ?? []}
+                rowKey={(row) =>
+                  `${row.owner_id}:${row.contract_id}:${row.contract_version}`
                 }
-              ]
-            : [])
-        ]}
-      />
+                tableKey="catalog"
+                loading={catalog.isPending}
+                toolbar={
+                  <>
+                    {can('events.definitions.create') && (
+                      <Button
+                        type="primary"
+                        aria-label={t('create')}
+                        icon={<PlusOutlined />}
+                        onClick={() => open(null)}
+                      >
+                        {t('create')}
+                      </Button>
+                    )}
+                    <Button
+                      onClick={() => void catalog.refetch()}
+                      loading={catalog.isFetching}
+                    >
+                      {t('refresh')}
+                    </Button>
+                  </>
+                }
+              />
+            </>
+          ) : (
+            <Alert type="warning" title={t('forbidden')} />
+          )
+        ) : (
+          <EventRuntimePanel key={tab} tab={tab} />
+        )}
+      </Flex>
       {drawer && (
         <EventDefinitionDrawer
           key={drawer.entry?.id ?? drawer.entry?.contract_id ?? 'create'}

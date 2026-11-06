@@ -4,6 +4,8 @@
 
 The event center is available at `/settings/events`. Definitions, workflow trigger configuration and communication command bindings are durable. Event instances, queues, lifecycle signals and activity observations belong to the current host process and may be lost on restart. Consumers retain ownership of their existing business records.
 
+Each tab has its own URL: `/settings/events?tab=catalog`, `/settings/events?tab=queues`, and `/settings/events?tab=activity`. Opening `/settings/events` selects the catalog. Reloading and browser back/forward preserve the tab identified by the URL. The page uses the same shared table toolbar and column settings as Application management, without a separate title panel.
+
 ## Trigger phases
 
 | Phase | Meaning |
