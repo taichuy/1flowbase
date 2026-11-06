@@ -253,3 +253,116 @@ async fn terminal_routes_enforce_independent_operations_and_shared_job_registry(
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
+
+#[tokio::test]
+async fn terminal_mcp_bindable_catalog_and_tool_creation_preserve_canonical_ids() {
+    use std::collections::BTreeSet;
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state);
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let (status, catalog) = request(
+        &app,
+        "GET",
+        "/api/console/mcp/interface-capabilities",
+        &cookie,
+        &csrf,
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{catalog}");
+    let entries = catalog["data"].as_array().unwrap();
+    // Pin the user-facing IDs independently of handler function names and OpenAPI generation.
+    let expected = [
+        ("terminal.info", "info"),
+        ("terminal.files.list", "files/list"),
+        ("terminal.files.stat", "files/stat"),
+        ("terminal.files.read_text", "files/read-text"),
+        ("terminal.files.read_range", "files/read-range"),
+        ("terminal.files.search", "files/search"),
+        ("terminal.files.read_image", "files/read-image"),
+        ("terminal.files.read_audio", "files/read-audio"),
+        ("terminal.files.read_resource", "files/read-resource"),
+        ("terminal.files.import_resource", "files/import-resource"),
+        ("terminal.files.download_file", "files/download-file"),
+        ("terminal.jobs.start", "jobs/start"),
+        ("terminal.jobs.get", "jobs/get"),
+        ("terminal.jobs.read", "jobs/read"),
+        ("terminal.jobs.cancel", "jobs/cancel"),
+    ];
+    let terminal_entries = entries
+        .iter()
+        .filter(|entry| {
+            entry["path"]
+                .as_str()
+                .is_some_and(|path| path.starts_with("/api/console/terminal/"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(terminal_entries.len(), expected.len());
+    let actual = terminal_entries
+        .iter()
+        .map(|entry| {
+            (
+                entry["interface_id"].as_str().unwrap().to_owned(),
+                entry["method"].as_str().unwrap().to_owned(),
+                entry["path"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    let identities = expected
+        .iter()
+        .map(|(id, path)| {
+            (
+                (*id).to_owned(),
+                "POST".to_owned(),
+                format!("/api/console/terminal/{path}"),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        actual, identities,
+        "bindable discovery must use canonical terminal IDs, not handler names"
+    );
+    let legacy = entries
+        .iter()
+        .find(|entry| entry["path"] == "/api/console/local-commands/execute")
+        .unwrap();
+    assert_eq!(
+        legacy["interface_id"], "execute_local_command",
+        "preserve the existing execute OpenAPI ID"
+    );
+
+    for (index, (id, _)) in expected.into_iter().enumerate() {
+        let entry = terminal_entries
+            .iter()
+            .find(|entry| entry["interface_id"] == id)
+            .unwrap();
+        assert_eq!(entry["bindable"], true, "{id}: {entry}");
+        assert_eq!(entry["disabled_reason"], Value::Null, "{id}");
+        assert_eq!(entry["parameter_schema"]["type"], "object", "{id}");
+        assert_ne!(entry["result_schema"], json!(false), "{id}");
+        let (status, created) = request(
+            &app, "POST", "/api/console/mcp/tools", &cookie, &csrf,
+            json!({
+                "tool_id":format!("terminal_contract_{index}"),
+                "des_id":"terminalcontractv1",
+                "name":format!("Terminal contract {index}"),
+                "short_description":"Validate a terminal interface binding.",
+                "full_description":"Bind a canonical terminal interface through the real MCP catalog.",
+                "execution_target":{"kind":"interface_wrapper","interface_id":id},
+                "parameter_schema":{}, "result_schema":{},
+                "input_mapping":{"mappings":[]}, "output_mapping":{},
+                "permission_code":null, "risk_level":"low", "status":"enabled"
+            }),
+        ).await;
+        assert_eq!(status, StatusCode::CREATED, "{id}: {created}");
+        assert_eq!(created["data"]["execution_target"]["interface_id"], id);
+        assert_eq!(
+            created["data"]["parameter_schema"], entry["parameter_schema"],
+            "{id}"
+        );
+        assert_eq!(
+            created["data"]["result_schema"], entry["result_schema"],
+            "{id}"
+        );
+    }
+}

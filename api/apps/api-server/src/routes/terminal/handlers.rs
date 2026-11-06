@@ -1,6 +1,6 @@
 use super::*;
 /// Inspect backend terminal capabilities.
-#[utoipa::path(post, path = "/api/console/terminal/info", request_body = InfoInput, responses((status = 200, body = InfoOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/info", operation_id = "terminal.info", request_body = InfoInput, responses((status = 200, body = InfoOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn info(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -18,7 +18,7 @@ pub async fn info(
     ))
 }
 /// List local directory entries.
-#[utoipa::path(post, path = "/api/console/terminal/files/list", request_body = ListInput, responses((status = 200, body = ListOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/files/list", operation_id = "terminal.files.list", request_body = ListInput, responses((status = 200, body = ListOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn files_list(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -36,7 +36,7 @@ pub async fn files_list(
     ))
 }
 /// Inspect a local file.
-#[utoipa::path(post, path = "/api/console/terminal/files/stat", request_body = PathInput, responses((status = 200, body = FileMetadata), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/files/stat", operation_id = "terminal.files.stat", request_body = PathInput, responses((status = 200, body = FileMetadata), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn files_stat(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -54,7 +54,7 @@ pub async fn files_stat(
     ))
 }
 /// Read a local text slice.
-#[utoipa::path(post, path = "/api/console/terminal/files/read-text", request_body = TextInput, responses((status = 200, body = TextOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/files/read-text", operation_id = "terminal.files.read_text", request_body = TextInput, responses((status = 200, body = TextOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn files_read_text(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -72,7 +72,7 @@ pub async fn files_read_text(
     ))
 }
 /// Read a local byte range.
-#[utoipa::path(post, path = "/api/console/terminal/files/read-range", request_body = RangeInput, responses((status = 200, body = RangeOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/files/read-range", operation_id = "terminal.files.read_range", request_body = RangeInput, responses((status = 200, body = RangeOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn files_read_range(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -90,7 +90,7 @@ pub async fn files_read_range(
     ))
 }
 /// Search local text files.
-#[utoipa::path(post, path = "/api/console/terminal/files/search", request_body = SearchInput, responses((status = 200, body = SearchOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/files/search", operation_id = "terminal.files.search", request_body = SearchInput, responses((status = 200, body = SearchOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn files_search(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -108,7 +108,7 @@ pub async fn files_search(
     ))
 }
 /// Read a local image.
-#[utoipa::path(post, path = "/api/console/terminal/files/read-image", request_body = MediaInput, responses((status = 200, body = MediaOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/files/read-image", operation_id = "terminal.files.read_image", request_body = MediaInput, responses((status = 200, body = MediaOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn files_read_image(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -126,7 +126,7 @@ pub async fn files_read_image(
     ))
 }
 /// Read local audio.
-#[utoipa::path(post, path = "/api/console/terminal/files/read-audio", request_body = MediaInput, responses((status = 200, body = MediaOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/files/read-audio", operation_id = "terminal.files.read_audio", request_body = MediaInput, responses((status = 200, body = MediaOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn files_read_audio(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -144,7 +144,7 @@ pub async fn files_read_audio(
     ))
 }
 /// Read a local resource.
-#[utoipa::path(post, path = "/api/console/terminal/files/read-resource", request_body = ResourceInput, responses((status = 200, body = ResourceOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/files/read-resource", operation_id = "terminal.files.read_resource", request_body = ResourceInput, responses((status = 200, body = ResourceOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn files_read_resource(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -162,7 +162,7 @@ pub async fn files_read_resource(
     ))
 }
 /// Import a resource into a file table.
-#[utoipa::path(post, path = "/api/console/terminal/files/import-resource", request_body = ImportInput, responses((status = 200, body = ImportOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/files/import-resource", operation_id = "terminal.files.import_resource", request_body = ImportInput, responses((status = 200, body = ImportOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn files_import_resource(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -180,7 +180,7 @@ pub async fn files_import_resource(
     ))
 }
 /// Download a file table record to the backend.
-#[utoipa::path(post, path = "/api/console/terminal/files/download-file", request_body = DownloadInput, responses((status = 200, body = DownloadOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/files/download-file", operation_id = "terminal.files.download_file", request_body = DownloadInput, responses((status = 200, body = DownloadOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn files_download_file(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -198,7 +198,7 @@ pub async fn files_download_file(
     ))
 }
 /// Start a backend command job.
-#[utoipa::path(post, path = "/api/console/terminal/jobs/start", request_body = StartInput, responses((status = 200, body = JobSnapshot), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/jobs/start", operation_id = "terminal.jobs.start", request_body = StartInput, responses((status = 200, body = JobSnapshot), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn jobs_start(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -216,7 +216,7 @@ pub async fn jobs_start(
     ))
 }
 /// Inspect a backend command job.
-#[utoipa::path(post, path = "/api/console/terminal/jobs/get", request_body = JobInput, responses((status = 200, body = JobSnapshot), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/jobs/get", operation_id = "terminal.jobs.get", request_body = JobInput, responses((status = 200, body = JobSnapshot), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn jobs_get(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -234,7 +234,7 @@ pub async fn jobs_get(
     ))
 }
 /// Read backend command job output.
-#[utoipa::path(post, path = "/api/console/terminal/jobs/read", request_body = JobReadInput, responses((status = 200, body = ReadOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/jobs/read", operation_id = "terminal.jobs.read", request_body = JobReadInput, responses((status = 200, body = ReadOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn jobs_read(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -252,7 +252,7 @@ pub async fn jobs_read(
     ))
 }
 /// Cancel a backend command job.
-#[utoipa::path(post, path = "/api/console/terminal/jobs/cancel", request_body = JobInput, responses((status = 200, body = JobSnapshot), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/terminal/jobs/cancel", operation_id = "terminal.jobs.cancel", request_body = JobInput, responses((status = 200, body = JobSnapshot), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn jobs_cancel(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
