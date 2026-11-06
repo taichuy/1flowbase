@@ -1,5 +1,8 @@
 use super::*;
 
+#[cfg(unix)]
+mod delegation;
+
 #[test]
 fn local_command_contract_accepts_only_command_and_keeps_content_private() {
     let body: LocalCommandBody =
