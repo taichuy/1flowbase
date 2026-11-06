@@ -33,7 +33,6 @@ pub struct EventSourceDescriptor {
     pub owner_id: String,
     pub point_id: String,
     pub contract_id: String,
-    pub contract_version: String,
     pub name: String,
     pub description: String,
     /// Actual source schema; null means unknown, not an empty object schema.
@@ -82,18 +81,15 @@ pub struct EventSourceSelection {
 pub struct EventCatalogSource {
     pub selection: EventSourceSelection,
     pub point_id: String,
-    pub binding: EventSourceBinding,
-    pub coverage: EventSourceCoverage,
 }
 impl From<EventSourceDescriptor> for super::EventCatalogEntry {
     fn from(source: EventSourceDescriptor) -> Self {
         Self {
             id: None,
-            enabled: source.binding == EventSourceBinding::Active
-                && source.coverage == EventSourceCoverage::Live,
-            owner_id: source.owner_id,
+            scope: source.scope.clone(),
+            enabled: None,
+            owner_id: Some(source.owner_id),
             contract_id: source.contract_id,
-            contract_version: source.contract_version,
             name: source.name,
             description: source.description,
             payload_schema: source.payload_schema,
@@ -105,8 +101,6 @@ impl From<EventSourceDescriptor> for super::EventCatalogEntry {
                     scope: source.scope,
                 },
                 point_id: source.point_id,
-                binding: source.binding,
-                coverage: source.coverage,
             }),
         }
     }

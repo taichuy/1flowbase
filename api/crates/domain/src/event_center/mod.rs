@@ -26,7 +26,6 @@ pub struct EventDefinitionRecord {
     pub id: Uuid,
     pub workspace_id: Uuid,
     pub contract_id: String,
-    pub contract_version: String,
     pub name: String,
     pub description: String,
     pub payload_schema: Value,
@@ -42,10 +41,10 @@ pub struct EventCatalogEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<EventCatalogSource>,
     pub id: Option<Uuid>,
-    pub enabled: bool,
-    pub owner_id: String,
+    pub scope: EventSourceScope,
+    pub enabled: Option<bool>,
+    pub owner_id: Option<String>,
     pub contract_id: String,
-    pub contract_version: String,
     pub name: String,
     pub description: String,
     pub payload_schema: Value,
@@ -58,10 +57,12 @@ impl From<EventDefinitionRecord> for EventCatalogEntry {
         Self {
             source: None,
             id: Some(value.id),
-            enabled: value.enabled,
-            owner_id: value.workspace_id.to_string(),
+            scope: EventSourceScope::Workspace {
+                workspace_id: value.workspace_id,
+            },
+            enabled: Some(value.enabled),
+            owner_id: None,
             contract_id: value.contract_id,
-            contract_version: value.contract_version,
             name: value.name,
             description: value.description,
             payload_schema: value.payload_schema,
@@ -79,14 +80,13 @@ impl From<EventDefinitionRecord> for EventCatalogEntry {
 #[serde(deny_unknown_fields)]
 pub struct CreateEventDefinitionInput {
     pub contract_id: String,
-    pub contract_version: String,
     pub name: String,
     pub description: String,
     pub payload_schema: Value,
     pub enabled: bool,
 }
 
-/// Contract identity and creator are immutable; create another definition for a new version.
+/// Event identity and creator are immutable; the payload schema is the current definition.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateEventDefinitionInput {
@@ -103,7 +103,6 @@ pub struct WorkflowEventTriggerInput {
     pub source: Option<EventSourceSelection>,
     pub enabled: bool,
     pub contract_id: String,
-    pub contract_version: String,
     pub trigger_phase: EventTriggerPhase,
     /// Workflow input name -> RFC6901 pointer into the lifecycle signal.
     pub input_mapping: BTreeMap<String, String>,

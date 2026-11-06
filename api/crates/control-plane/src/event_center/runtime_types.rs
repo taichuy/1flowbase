@@ -20,7 +20,6 @@ pub struct EventRuntimeSubscription {
     pub subscription_id: Uuid,
     pub workspace_id: Uuid,
     pub contract_id: String,
-    pub contract_version: String,
     pub trigger_phase: EventTriggerPhase,
     pub consumer_id: Uuid,
 }
@@ -35,7 +34,6 @@ pub struct EventCenterSignal {
     pub occurred_at_unix_ms: i64,
     pub workspace_id: Uuid,
     pub contract_id: String,
-    pub contract_version: String,
     #[serde(flatten)]
     pub body: EventCenterSignalBody,
 }
@@ -104,7 +102,6 @@ pub struct EventRuntimeActivity {
     pub event_id: Uuid,
     pub workspace_id: Uuid,
     pub contract_id: String,
-    pub contract_version: String,
     pub phase: EventTriggerPhase,
     pub source_event_id: Option<Uuid>,
     pub subscription_id: Option<Uuid>,
@@ -119,7 +116,6 @@ pub struct EventRuntimeQueueSnapshot {
     pub subscription_id: Uuid,
     pub workspace_id: Uuid,
     pub contract_id: String,
-    pub contract_version: String,
     pub trigger_phase: EventTriggerPhase,
     pub consumer_ids: Vec<Uuid>,
     pub closed: bool,
