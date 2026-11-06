@@ -25,9 +25,17 @@ This path supports ordinary text, standard function tools, and the notifications
 
 ## Recovery persistence and request admission
 
-Protocol adapters own HTTP / WebSocket request admission. `PgProviderProtocolCapsuleStore` persists complete protocol contexts and continuation native histories without a smaller guessed business payload cap. The independent 2 MiB rejection has been removed; payloads above that former threshold remain encrypted, restart-readable and atomically consumable. Physical representation and actual database / I/O failures still propagate; histories are neither truncated nor silently discarded.
+Protocol adapters own HTTP / WebSocket request admission. `PgProviderProtocolCapsuleStore` faithfully stores the protocol contexts and continuation content supplied to it. Production native continuations carry a v3 integrity proof in `native_history`, not an expanded history array; original native requests and outputs reside in runtime events and their archives. There is no smaller business payload cap inferred from client payloads or host resources. The independent 2 MiB rejection has been removed; content above that former threshold remains encrypted, restart-readable and atomically consumable. Physical representation and actual database / I/O failures still propagate; histories are neither truncated nor silently discarded.
 
 AEAD binding to flow run / capsule kind / slot key, digest / size verification, existing expiry and invocation authorization remain in place. Capacity and lifetime are independent. PostgreSQL regressions restore both large payload types exactly and verify ciphertext, locators and single consumption.
+
+## Native recovery after transport ownership is lost
+
+A local `continuation_owner_unavailable` fact means the plugin no longer has the old connection's runtime state. It does not establish an upstream refusal or invalid history. Before semantic output is committed, the plugin delegates recovery through a typed receipt retaining the original epoch and attempt. Actual upstream refusals, known ownership conflicts, and invalid associations remain terminal.
+
+Only after that explicit failure does the host load original native material. It checks the authorized response round, scope, provider configuration, and source associations, then verifies the complete prefix against its v3 proof. Recovery preserves native item order, opaque reasoning, encrypted content, tool calls and results, and current request parameters. It replaces input and removes the unavailable cursor only after completeness is established. The recovered input is validated against the original sealed payload; later preparation must not overwrite it with the old delta.
+
+The complete rebuild uses the current invocation's remaining budget, deadline, partition token, and frozen provider selection. It does not rerun tools or the input pipeline. Normal continuation carries only source identities, without expanding or caching complete history. Runtime material can expire or be incomplete. Missing or ambiguous sources, failed validation, or already committed semantic output prevent rebuilding and preserve the original failure. Upgrade the plugin together with a host that supports this receipt.
 
 ## Request and handoff size
 

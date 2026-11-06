@@ -25,9 +25,17 @@ DeepSeek 插件只负责 Native 工具选择到 Chat Completions 的转换：`au
 
 ## 协议恢复持久化与请求准入
 
-HTTP / WebSocket 的请求准入由协议适配层拥有；持久化协议上下文与 continuation 原生历史由 `PgProviderProtocolCapsuleStore` 保存完整内容，不能再猜测客户端载荷或宿主资源条件，添加更小的业务容量上限。已移除独立的 2 MiB capsule 拒绝条件，超过旧阈值的上下文和历史仍可加密保存、重启读取和原子消费。物理类型表示、实际数据库 / I/O 失败继续显式传播，不吞错或截断历史。
+HTTP / WebSocket 的请求准入由协议适配层拥有；`PgProviderProtocolCapsuleStore` 保真保存提交给它的协议上下文与 continuation 内容。生产原生续接的 `native_history` 是 v3 完整性证明，不是展开的历史数组；原生请求和输出原文保存在运行事件及其归档中。不能根据客户端载荷或宿主资源猜测更小的业务容量上限。已移除独立的 2 MiB capsule 拒绝条件，超过旧阈值的内容仍可加密保存、重启读取和原子消费。物理类型表示、实际数据库 / I/O 失败继续显式传播，不吞错或截断历史。
 
 此次修复保留 flow-run / capsule-kind / slot-key 的 AEAD 身份绑定、digest / size 完整性验证、已有过期策略与调用所属权限；数据容量和生命周期是独立维度。真实 PostgreSQL 回归对超过旧阈值的两种载荷逐值恢复，并检查密文、locator 与唯一消费语义。
+
+## 连接归属丢失后的原生恢复
+
+插件报告的本地 `continuation_owner_unavailable` 表示旧连接的运行状态不可用，不等于上游拒绝请求或历史无效。插件在尚未提交语义输出时交回带原 epoch、attempt 的 typed recovery receipt；真实上游拒绝、已知归属冲突和无效关联保留终止语义。
+
+底座只在该明确失败后按需读取原生材料，先核对已授权的响应回合、作用域、供应商配置和来源关联，再验证完整前缀的 v3 证明。恢复保留原生 item 顺序、opaque reasoning、加密内容、工具调用及回执和当前请求参数，仅在完整性成立时替换 input 并移除失效游标。恢复输入必须经过与原 sealed payload 绑定的验证，后续准备阶段不能将它覆盖回旧增量。
+
+完整重建沿用当前调用的剩余预算、deadline、partition token 与冻结的供应商选择，不重跑工具或输入流程。正常续接只携带定位身份，不展开或缓存完整历史。运行材料可能过期或未完整保存；缺失、歧义、校验失败或已经提交语义输出时，不构造伪完整请求，保留原失败。插件与支持该 receipt 的宿主需要配对升级。
 
 ## 请求与交接大小
 

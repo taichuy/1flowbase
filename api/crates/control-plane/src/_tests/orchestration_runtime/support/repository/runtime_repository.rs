@@ -668,6 +668,21 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         self.memory_list_runtime_spans(flow_run_id)
     }
 
+    async fn list_runtime_event_durable_page(
+        &self,
+        flow_run_id: Uuid,
+        after_sequence: i64,
+        through_sequence: Option<i64>,
+        limit: usize,
+    ) -> Result<Vec<domain::RuntimeEventRecord>> {
+        self.inner.lock().unwrap().native_recovery_page_reads += 1;
+        let mut records = self.memory_list_runtime_events(flow_run_id, after_sequence)?;
+        records.retain(|record| through_sequence.is_none_or(|end| record.sequence <= end));
+        records.sort_by_key(|record| record.sequence);
+        records.truncate(limit.max(1));
+        Ok(records)
+    }
+
     async fn list_runtime_events(
         &self,
         flow_run_id: Uuid,

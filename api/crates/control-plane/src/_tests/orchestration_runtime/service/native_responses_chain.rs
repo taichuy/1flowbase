@@ -825,3 +825,353 @@ async fn native_client_tool_completion_commits_durable_formal_items() {
         assert!(delivered_position < terminal_position);
     }
 }
+
+fn unavailable_owner_output(reason: &str) -> ProviderRuntimeInvocationOutput {
+    ProviderRuntimeInvocationOutput {
+        events: vec![],
+        result: ProviderInvocationResult {
+            finish_reason: Some(ProviderFinishReason::Error),
+            provider_metadata: json!({"__fixture_recovery_failure":{
+                "attempt":0,"transport":"ai_native_web_socket","transport_epoch":1,
+                "commit_level":"lifecycle_only","disposition":"logical_invocation_retry","reason":reason,
+            }}),
+            ..Default::default()
+        },
+    }
+}
+
+async fn recover_native_source_chain(mode: &str, custom: bool) {
+    use crate::ports::NativeContinuationRecoverySource as Source;
+    let reasoning = json!({"type":"reasoning","id":"rs_old","encrypted_content":"opaque==",
+        "summary":[],"future":{"preserve":[1,null,false]}});
+    let tool = if custom {
+        json!({"type":"custom_tool_call","id":"ct_old","call_id":"call_native","name":"exec",
+            "input":"read\0opaque","future":{"native":true}})
+    } else {
+        json!({"type":"function_call","id":"fc_old","call_id":"call_native","name":"exec",
+            "arguments":"{ \"path\": \"fixture\" }","future":{"native":true}})
+    };
+    let tools = if custom {
+        json!([{"type":"custom","name":"exec","format":{"type":"text"}}])
+    } else {
+        json!([{"type":"function","name":"exec","parameters":{"type":"object","properties":{"path":{"type":"string"}}}}])
+    };
+    let output = json!({"type":if custom {"custom_tool_call_output"} else {"function_call_output"},
+        "call_id":"call_native","output":"result\0exact","future":{"suffix":true}});
+    let mut events = Vec::new();
+    for (index, item) in [(0, reasoning.clone()), (2, tool.clone())] {
+        for phase in [
+            ProviderOutputItemPhase::Added,
+            ProviderOutputItemPhase::Done,
+        ] {
+            events.push(ProviderStreamEvent::OutputItem {
+                phase,
+                output_index: index,
+                item: item.clone(),
+            });
+        }
+    }
+    events.push(ProviderStreamEvent::Finish {
+        reason: ProviderFinishReason::ToolCall,
+    });
+    let reason = if mode == "generic_native_retry" {
+        "transport_disconnected"
+    } else {
+        "continuation_owner_unavailable"
+    };
+    let mut failure = unavailable_owner_output(reason);
+    if matches!(mode, "streamed" | "semantic") {
+        failure.result.provider_metadata["__fixture_recovery_streamed"] = json!(true);
+    }
+    if mode == "semantic" {
+        failure.events.push(ProviderStreamEvent::TextDelta {
+            delta: "committed".into(),
+        });
+    }
+    if mode == "auth" {
+        failure.result.provider_metadata["__fixture_auth_failure"] = json!(true);
+    }
+    if mode == "peer_refusal" {
+        failure.result.provider_metadata["__fixture_recovery_failure"]["reason"] =
+            json!("transport_rejected");
+        failure.result.provider_metadata["__fixture_recovery_failure"]["disposition"] =
+            json!("terminal_interruption");
+        failure.result.provider_metadata["__fixture_recovery_failure"]["commit_level"] =
+            json!("terminal");
+    }
+    let final_output = if mode == "repeated_owner_loss" {
+        unavailable_owner_output(reason)
+    } else {
+        text_output(true)
+    };
+    let (service, captured) =
+        OrchestrationRuntimeService::for_tests_with_captured_provider_outputs(vec![
+            ProviderRuntimeInvocationOutput {
+                events: vec![ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Stop,
+                }],
+                result: ProviderInvocationResult {
+                    response_id: Some("upstream-pwarm".into()),
+                    finish_reason: Some(ProviderFinishReason::Stop),
+                    ..Default::default()
+                },
+            },
+            ProviderRuntimeInvocationOutput {
+                events,
+                result: ProviderInvocationResult {
+                    response_id: Some("upstream-tool-round".into()),
+                    finish_reason: Some(ProviderFinishReason::ToolCall),
+                    tool_calls: vec![ProviderToolCall {
+                        id: "call_native".into(),
+                        name: "exec".into(),
+                        arguments: if custom {
+                            json!({"input":"read\0opaque"})
+                        } else {
+                            json!({"path":"fixture"})
+                        },
+                        provider_metadata: if custom {
+                            json!({"type":"custom_tool_call"})
+                        } else {
+                            json!({})
+                        },
+                    }],
+                    ..Default::default()
+                },
+            },
+            failure,
+            final_output,
+        ]);
+    service.enable_native_responses_fixture().await;
+    let seeded = service
+        .seed_application_with_flow("Native owner-loss recovery chain")
+        .await;
+    let start = || StartFlowDebugRunCommand {
+        actor_user_id: seeded.actor_user_id,
+        application_id: seeded.application_id,
+        input_payload: json!({"node-start":{"query":"question"}}),
+        document_snapshot: None,
+        debug_session_id: None,
+    };
+    let initial = service.start_flow_debug_run(start()).await.unwrap();
+    let initial = service
+        .continue_native_responses_fixture(
+            ContinueFlowDebugRunCommand {
+                application_id: seeded.application_id,
+                flow_run_id: initial.flow_run.id,
+                workspace_id: Uuid::nil(),
+            },
+            ProviderTransportPayload::openai_responses(
+                json!({"model":"gpt-5.4-mini","generate":false,"tools":tools,"input":"question"}),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(initial.flow_run.status, domain::FlowRunStatus::Succeeded);
+    let initial_source = Source {
+        flow_run_id: initial.flow_run.id,
+        response_round_id: initial.flow_run.id,
+    };
+    let continuation = service
+        .native_continuation_fixture(initial.flow_run.id)
+        .await;
+    let turn = service.start_flow_debug_run(start()).await.unwrap();
+    let turn = service
+        .continue_native_responses_fixture(
+            ContinueFlowDebugRunCommand {
+                application_id: seeded.application_id,
+                flow_run_id: turn.flow_run.id,
+                workspace_id: Uuid::nil(),
+            },
+            ProviderTransportPayload::openai_responses(
+                json!({"model":"gpt-5.4-mini","tools":tools,"input":[]}),
+            )
+            .unwrap()
+            .with_native_recovery_source(initial_source)
+            .bind_openai_continuation(continuation)
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        turn.flow_run.status,
+        domain::FlowRunStatus::Succeeded,
+        "{:?}",
+        turn.flow_run.error_payload
+    );
+    assert_eq!(
+        service.native_recovery_page_reads_fixture(),
+        0,
+        "ordinary continuation cannot load native history"
+    );
+    let stored = service.llm_selection_events_fixture(turn.flow_run.id).await;
+    assert!(
+        stored
+            .iter()
+            .any(|event| event.event_type == "provider_output_item_done"
+                && event.payload["item"] == tool
+                && event.payload["committed_delivery"] == true),
+        "the real client-executable tool must own an indexed committed durable source"
+    );
+    if mode == "legacy" {
+        service.alter_native_recovery_source_fixture(initial.flow_run.id, "legacy", None);
+        service.alter_native_recovery_source_fixture(
+            turn.flow_run.id,
+            "legacy",
+            Some(initial_source),
+        );
+    } else if matches!(
+        mode,
+        "missing_output"
+            | "missing_reply"
+            | "duplicate_output"
+            | "ambiguous"
+            | "proof"
+            | "foreign_scope"
+            | "cycle"
+    ) {
+        service.alter_native_recovery_source_fixture(turn.flow_run.id, mode, None);
+    }
+    let continuation = service.native_continuation_fixture(turn.flow_run.id).await;
+    let followup = service.start_flow_debug_run(start()).await.unwrap();
+    let mut source = Source {
+        flow_run_id: turn.flow_run.id,
+        response_round_id: turn.flow_run.id,
+    };
+    if mode == "missing_source" {
+        source.flow_run_id = Uuid::now_v7();
+    }
+    let wire = json!({"model":"gpt-5.4-mini","tools":tools,"input":[output],
+        "future":{"request":"unchanged"},"metadata":{"client":"opaque"}});
+    let completed = service
+        .continue_native_responses_fixture(
+            ContinueFlowDebugRunCommand {
+                application_id: seeded.application_id,
+                flow_run_id: followup.flow_run.id,
+                workspace_id: Uuid::nil(),
+            },
+            ProviderTransportPayload::openai_responses(wire.clone())
+                .unwrap()
+                .with_native_recovery_source(source)
+                .bind_openai_continuation(continuation)
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let succeeds = matches!(mode, "complete" | "legacy" | "streamed");
+    let sends = if succeeds || mode == "repeated_owner_loss" {
+        4
+    } else {
+        3
+    };
+    let inputs = captured.lock().unwrap();
+    assert_eq!(
+        inputs.len(),
+        sends,
+        "mode={mode}; {:?}",
+        completed.flow_run.error_payload
+    );
+    assert_eq!(
+        completed.flow_run.status,
+        if succeeds {
+            domain::FlowRunStatus::Succeeded
+        } else {
+            domain::FlowRunStatus::Failed
+        },
+        "mode={mode}; {:?}",
+        completed.flow_run.error_payload
+    );
+    assert_eq!(
+        inputs[2].native_transport.as_ref().unwrap().wire_body["input"],
+        wire["input"]
+    );
+    if succeeds {
+        let rebuilt = &inputs[3].native_transport.as_ref().unwrap().wire_body;
+        assert_eq!(
+            rebuilt["input"],
+            json!([
+                {"type":"message","role":"user","content":[{"type":"input_text","text":"question"}]},
+                reasoning,tool,output,
+            ])
+        );
+        assert!(rebuilt.get("previous_response_id").is_none());
+        assert!(inputs[3].previous_response_id.is_none());
+        for field in ["model", "tools", "future", "metadata"] {
+            assert_eq!(rebuilt[field], wire[field]);
+        }
+        assert_eq!(
+            inputs[2].provider_config, inputs[3].provider_config,
+            "same selected provider config"
+        );
+        assert_eq!(
+            inputs[2].run_context["provider_recovery"]["policy"]["budget"]
+                ["absolute_deadline_unix_ms"],
+            inputs[3].run_context["provider_recovery"]["policy"]["budget"]
+                ["absolute_deadline_unix_ms"]
+        );
+        assert!(service.native_recovery_page_reads_fixture() > 0);
+    } else {
+        assert!(
+            completed
+                .flow_run
+                .error_payload
+                .as_ref()
+                .unwrap()
+                .to_string()
+                .contains("scripted continuation owner unavailable"),
+            "preserve original provider failure"
+        );
+        if matches!(
+            mode,
+            "generic_native_retry" | "auth" | "peer_refusal" | "semantic"
+        ) {
+            assert_eq!(service.native_recovery_page_reads_fixture(), 0);
+        }
+        if mode == "repeated_owner_loss" {
+            assert_eq!(
+                service.native_recovery_page_reads_fixture(),
+                4,
+                "each of two flows is paged once; no second materialization"
+            );
+        }
+    }
+    drop(inputs);
+    assert_eq!(
+        service
+            .list_model_failover_attempt_ledger(followup.flow_run.id)
+            .await
+            .len(),
+        if sends == 4 { 2 } else { 1 },
+        "each provider send is billed/recorded once"
+    );
+}
+
+#[tokio::test]
+async fn native_owner_loss_rebuilds_complete_real_custom_and_function_tool_chains() {
+    for custom in [true, false] {
+        recover_native_source_chain("complete", custom).await;
+    }
+    recover_native_source_chain("legacy", true).await;
+    recover_native_source_chain("streamed", true).await;
+}
+
+#[tokio::test]
+async fn native_owner_loss_preserves_original_error_for_unprovable_sources_and_generic_retry() {
+    for mode in [
+        "missing_source",
+        "missing_output",
+        "missing_reply",
+        "duplicate_output",
+        "ambiguous",
+        "proof",
+        "foreign_scope",
+        "cycle",
+        "generic_native_retry",
+        "auth",
+        "peer_refusal",
+        "semantic",
+        "repeated_owner_loss",
+    ] {
+        recover_native_source_chain(mode, true).await;
+    }
+}
