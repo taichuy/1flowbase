@@ -60,6 +60,13 @@
   flex: 0 0 auto;
 }
 
+/* Ant hides the options slot below screenSM. Keep explicitly enabled page-size
+   controls usable inside shared table footers; fixed-size and cursor pagers
+   do not render this slot. This does not affect standalone Ant pagination. */
+.data-table .data-table__pagination .ant-pagination-options {
+  display: inline-block;
+}
+
 .data-table__cursor-pagination {
   gap: 8px;
 }

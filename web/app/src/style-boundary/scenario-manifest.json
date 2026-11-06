@@ -1212,7 +1212,8 @@
     "impactFiles": [
       "web/app/src/features/settings/pages/events/EventsPage.tsx",
       "web/app/src/features/settings/pages/events/EventsTable.tsx",
-      "web/app/src/style-boundary/scene-fixtures/settings/events.ts"
+      "web/app/src/style-boundary/scene-fixtures/settings/events.ts",
+      "web/app/src/shared/ui/data-table/data-table.css"
     ],
     "boundaryNodes": [
       {
@@ -1264,6 +1265,16 @@
           {
             "property": "text-overflow",
             "expected": "ellipsis"
+          }
+        ]
+      },
+      {
+        "id": "events-pagination-size",
+        "selector": ".data-table__pagination .ant-pagination-options",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "block"
           }
         ]
       }
@@ -1306,7 +1317,8 @@
     "impactFiles": [
       "web/app/src/features/settings/pages/events/EventsPage.tsx",
       "web/app/src/features/settings/pages/events/EventsTable.tsx",
-      "web/app/src/style-boundary/scene-fixtures/settings/events.ts"
+      "web/app/src/style-boundary/scene-fixtures/settings/events.ts",
+      "web/app/src/shared/ui/data-table/data-table.css"
     ],
     "boundaryNodes": [
       {
@@ -1358,6 +1370,16 @@
           {
             "property": "text-overflow",
             "expected": "ellipsis"
+          }
+        ]
+      },
+      {
+        "id": "events-pagination-size",
+        "selector": ".data-table__pagination .ant-pagination-options",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "block"
           }
         ]
       }

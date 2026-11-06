@@ -58,6 +58,7 @@ export function EventsTable<T extends object>({
         emptyText={t('empty')}
         page={currentPage}
         pageSize={pageSize}
+        pageSizeOptions={[10, 20, 50, 100]}
         total={rows.length}
         onPageChange={(next, size) => {
           setPage(next);
