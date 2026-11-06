@@ -259,6 +259,29 @@ pub(crate) async fn replay_for_import(
     control_plane::file_management::ImportedResourceFile,
     extension_contracts::FileImportError,
 > {
+    replay_for_actor(
+        generation,
+        actor,
+        user,
+        uri,
+        binding.caller.selected_mcp_instance_ids.as_deref(),
+        Some(binding.subject.installation_id().as_str()),
+    )
+    .await
+}
+
+/// Replays an authorized source for either a native caller or a managed Host callback.
+pub(crate) async fn replay_for_actor(
+    generation: &crate::generation_dispatch::GenerationLease,
+    actor: &domain::ActorContext,
+    user: domain::UserRecord,
+    uri: &str,
+    selected_instance_ids: Option<&[String]>,
+    caller_installation: Option<&str>,
+) -> Result<
+    control_plane::file_management::ImportedResourceFile,
+    extension_contracts::FileImportError,
+> {
     use extension_contracts::FileImportError;
     let state = &generation.state;
     let dispatch = &generation.owner;
@@ -268,10 +291,8 @@ pub(crate) async fn replay_for_import(
         .read_catalog_for_actor(actor)
         .await
         .map_err(|_| FileImportError::new("file_import_resource_not_visible"))?;
-    let ids = binding
-        .caller
-        .selected_mcp_instance_ids
-        .clone()
+    let ids = selected_instance_ids
+        .map(<[String]>::to_vec)
         .unwrap_or_else(|| {
             catalog
                 .instances
@@ -321,11 +342,13 @@ pub(crate) async fn replay_for_import(
         .any(|registration| {
             registration.declaration.operations.iter().any(|operation| {
                 operation.interface_id == *interface_id
-                    && reentrant_serialized_source(
-                        binding.subject.installation_id().as_str(),
-                        &registration.installation_id.to_string(),
-                        operation.requires_mutation_lock(),
-                    )
+                    && caller_installation.is_some_and(|caller| {
+                        reentrant_serialized_source(
+                            caller,
+                            &registration.installation_id.to_string(),
+                            operation.requires_mutation_lock(),
+                        )
+                    })
             })
         })
     {

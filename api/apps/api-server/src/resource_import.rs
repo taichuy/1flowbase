@@ -1,7 +1,9 @@
 //! API composition adapter for the resource replay + file upload Host Service.
 mod exchange_services;
+mod native;
 use crate::{app_state::ApiState, error_response::ApiError};
 use extension_contracts::{FileImportError, FileImportRequest};
+pub(crate) use native::import_for_principal;
 use runtime_core::runtime_backend::{
     FileImportBinding, FileImportFuture, FileImportPort, RuntimeCallerContext,
 };
@@ -107,47 +109,7 @@ impl ApiFileImportPort {
         state: &ApiState,
         binding: &FileImportBinding,
     ) -> Result<(domain::ActorContext, domain::UserRecord), FileImportError> {
-        let denied = || FileImportError::new("file_import_caller_invalid");
-        let delegated = &binding.caller;
-        let user = state
-            .store
-            .find_user_by_id(delegated.actor.user_id)
-            .await
-            .map_err(|_| denied())?
-            .ok_or_else(denied)?;
-        if user.session_version != delegated.session_version
-            || matches!(user.status, domain::UserStatus::Disabled)
-        {
-            return Err(denied());
-        }
-        if let Some(identity) = &delegated.session_identity {
-            let session = state
-                .session_store
-                .get(identity.expose_to_trusted_handler())
-                .await
-                .map_err(|_| denied())?
-                .ok_or_else(denied)?;
-            if !session_matches_caller(
-                &session,
-                delegated,
-                time::OffsetDateTime::now_utc().unix_timestamp(),
-            ) {
-                return Err(denied());
-            }
-        }
-        let actor = state
-            .store
-            .load_actor_context(
-                user.id,
-                delegated.actor.tenant_id,
-                delegated.actor.current_workspace_id,
-                Some(&delegated.actor.effective_display_role),
-            )
-            .await
-            .map_err(|_| denied())?;
-        if actor.effective_display_role != delegated.actor.effective_display_role {
-            return Err(denied());
-        }
+        let (actor, user) = current_actor(state, &binding.caller).await?;
         self.current_operation(state, binding, &actor).await?;
         Ok((actor, user))
     }
@@ -188,36 +150,105 @@ impl ApiFileImportPort {
         {
             return Err(denied());
         }
-        if let Some(ids) = &binding.caller.selected_mcp_instance_ids {
-            use crate::routes::mcp_protocol::virtual_ui;
-            let mut catalog =
-                control_plane::mcp_management::McpManagementService::new(state.store.clone())
-                    .read_catalog_for_actor(actor)
-                    .await
-                    .map_err(|_| denied())?;
-            let interfaces =
-                crate::routes::mcp_management::mcp_interface_catalog_entries(state, actor)
-                    .await
-                    .map_err(|_| denied())?;
-            let interfaces = virtual_ui::McpInterfaceCatalogSnapshot::new(interfaces);
-            crate::managed_service_mcp::append(
-                &state.store,
-                state.console_surface_registry.managed_services(),
-                actor,
-                &mut catalog,
-                ids,
-                &interfaces,
-            )
-            .await
-            .map_err(|_| denied())?;
-            let scope = virtual_ui::VirtualMcpScope::from_instance_ids(ids.clone());
-            if !catalog.bindings.iter().any(|entry| virtual_ui::visible_tool(&catalog, &scope, &entry.tool_id, false).is_some_and(|(_, tool)| matches!(&tool.execution_target, domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } if interface_id == &operation.interface_id))) {
-                return Err(denied());
-            }
-        }
+        current_selected_operation(
+            state,
+            actor,
+            &operation.interface_id,
+            &binding.caller.selected_mcp_instance_ids,
+        )
+        .await?;
         Ok(())
     }
 }
+/// Current identity is shared by native callers and managed Host callbacks.
+async fn current_actor(
+    state: &ApiState,
+    delegated: &RuntimeCallerContext,
+) -> Result<(domain::ActorContext, domain::UserRecord), FileImportError> {
+    let denied = || FileImportError::new("file_import_caller_invalid");
+    let user = state
+        .store
+        .find_user_by_id(delegated.actor.user_id)
+        .await
+        .map_err(|_| denied())?
+        .ok_or_else(denied)?;
+    if user.session_version != delegated.session_version
+        || matches!(user.status, domain::UserStatus::Disabled)
+    {
+        return Err(denied());
+    }
+    if let Some(identity) = &delegated.session_identity {
+        let session = state
+            .session_store
+            .get(identity.expose_to_trusted_handler())
+            .await
+            .map_err(|_| denied())?
+            .ok_or_else(denied)?;
+        if !session_matches_caller(
+            &session,
+            delegated,
+            time::OffsetDateTime::now_utc().unix_timestamp(),
+        ) {
+            return Err(denied());
+        }
+    }
+    let actor = state
+        .store
+        .load_actor_context(
+            user.id,
+            delegated.actor.tenant_id,
+            delegated.actor.current_workspace_id,
+            Some(&delegated.actor.effective_display_role),
+        )
+        .await
+        .map_err(|_| denied())?;
+    if actor.effective_display_role != delegated.actor.effective_display_role {
+        return Err(denied());
+    }
+    Ok((actor, user))
+}
+
+async fn current_selected_operation(
+    state: &ApiState,
+    actor: &domain::ActorContext,
+    caller_interface_id: &str,
+    selected_mcp_instance_ids: &Option<Vec<String>>,
+) -> Result<(), FileImportError> {
+    let denied = || FileImportError::new("file_import_caller_invalid");
+    if let Some(ids) = selected_mcp_instance_ids {
+        use crate::routes::mcp_protocol::virtual_ui;
+        let mut catalog =
+            control_plane::mcp_management::McpManagementService::new(state.store.clone())
+                .read_catalog_for_actor(actor)
+                .await
+                .map_err(|_| denied())?;
+        let interfaces = crate::routes::mcp_management::mcp_interface_catalog_entries(state, actor)
+            .await
+            .map_err(|_| denied())?;
+        let interfaces = virtual_ui::McpInterfaceCatalogSnapshot::new(interfaces);
+        crate::managed_service_mcp::append(
+            &state.store,
+            state.console_surface_registry.managed_services(),
+            actor,
+            &mut catalog,
+            ids,
+            &interfaces,
+        )
+        .await
+        .map_err(|_| denied())?;
+        let scope = virtual_ui::VirtualMcpScope::from_instance_ids(ids.clone());
+        let caller_visible = catalog.bindings.iter().any(|entry| {
+            virtual_ui::visible_tool(&catalog, &scope, &entry.tool_id, false).is_some_and(|(_, tool)| {
+                matches!(&tool.execution_target, domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } if interface_id == caller_interface_id)
+            })
+        });
+        if !caller_visible {
+            return Err(denied());
+        }
+    }
+    Ok(())
+}
+
 impl FileImportPort for ApiFileImportPort {
     fn execute<'a>(
         &'a self,
