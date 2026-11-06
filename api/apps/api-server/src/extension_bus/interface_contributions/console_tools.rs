@@ -152,6 +152,11 @@ pub(super) fn contributions(
             crate::routes::frontstage::callable_interface_dispatch::compile_registry(
                 crate::routes::frontstage::callable_interface_dispatch::port(
                     crate::routes::frontstage::callable_interface_dispatch::FrontstageCallableDispatchDependencies {
+                        interface_registry: Arc::downgrade(
+                            state.extension_boot_snapshot.as_ref()
+                                .and_then(|snapshot| snapshot.interface_registry())
+                                .expect("callable dispatch requires a generation interface registry"),
+                        ),
                         store: state.store.clone(),
                         openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
                             store: state.store.clone(),

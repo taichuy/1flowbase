@@ -147,6 +147,21 @@ async fn runtime_metadata_and_visible_blocks_use_data_grants_without_design_perm
     assert_eq!(target_field["relation_target_model_code"], "data_targets");
     let catalog = catalog_entry(app, &root, workspace_id, "runtime.models.metadata.get").await;
     assert_eq!(catalog["path"], "/api/runtime/models/{model_code}/metadata");
+    // Metadata's read-only target still requires the outer callable POST's CSRF token.
+    let (status, denied) = dispatch(
+        app,
+        &reader,
+        "",
+        workspace_id,
+        page_id,
+        tab_id,
+        &block,
+        "GET",
+        "/api/runtime/models/{model_code}/metadata",
+        json!({"path":{"model_code":"data_blocks"}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
     let (status, projected) = dispatch(
         app,
         &reader,
@@ -355,6 +370,20 @@ async fn runtime_metadata_and_visible_blocks_use_data_grants_without_design_perm
     assert_eq!(status, StatusCode::NO_CONTENT, "{payload}");
     let (reader, token) = login(app, "data-reader", "temp-pass").await;
     assert_eq!(get(app, METADATA, &reader).await.0, StatusCode::OK);
+    let (status, hidden_metadata) = dispatch(
+        app,
+        &reader,
+        &token,
+        workspace_id,
+        page_id,
+        tab_id,
+        &block,
+        "GET",
+        "/api/runtime/models/{model_code}/metadata",
+        json!({"path":{"model_code":"data_blocks"}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{hidden_metadata}");
     assert_eq!(
         dispatch(
             app,

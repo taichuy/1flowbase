@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Weak},
+};
 
 use axum::{
     body::Body,
@@ -219,6 +222,9 @@ impl InterfaceContract for FrontstageCallableDispatchOutput {
 pub(crate) struct FrontstageCallableDispatchDependencies {
     pub(crate) store: storage_durable_postgres::MainDurableStore,
     pub(crate) openapi: OpenApiCapabilityCatalogDependencies,
+    // Contributions are assembled before their generation's complete registry is published.
+    // A weak handle reads that published snapshot without a registry -> handler -> registry cycle.
+    pub(crate) interface_registry: Weak<interface_runtime::DynamicInterfaceRegistry>,
     pub(crate) dispatcher: Arc<dyn CallableDispatchPort>,
 }
 
@@ -255,7 +261,12 @@ impl FrontstageCallableDispatchAdapter {
         )
         .await?
         .ok_or(ControlPlaneError::NotFound("frontstage_callable"))?;
-        if !is_runtime_data_callable(&callable, self.0.openapi.interface_registry.as_deref())
+        let interface_registry = self
+            .0
+            .interface_registry
+            .upgrade()
+            .map(|registry| registry.snapshot());
+        if !is_runtime_data_callable(&callable, interface_registry.as_deref())
             && !actor.has_permission("frontstage.page.design")
         {
             return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
