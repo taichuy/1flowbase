@@ -164,5 +164,4 @@ jobs:
         with:
           name: terminal-mcp-api-binary-${{ github.sha }}
           path: api/target/debug/api-server
-          compression-level: 0
           if-no-files-found: warn
