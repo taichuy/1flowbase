@@ -7,17 +7,22 @@ use control_plane_contracts::ports::{
     EventSourceObserver, EventSourceRegistration,
 };
 use domain::event_center::*;
-use std::sync::{Arc, Weak};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Weak},
+};
 use uuid::Uuid;
 
 pub(super) struct RegisteredSource {
     pub(super) descriptor: EventSourceDescriptor,
-    queues: Vec<EventSourceQueueSnapshot>,
+    pub(super) queues: BTreeMap<Uuid, super::source_queue::SourceQueueEntry>,
+    pub(super) base_bytes: u64,
+    pub(super) queue_observation_complete: bool,
     pub(super) bytes: u64,
 }
-struct SourceLease {
-    inner: Weak<RuntimeInner>,
-    id: Uuid,
+pub(super) struct SourceLease {
+    pub(super) inner: Weak<RuntimeInner>,
+    pub(super) id: Uuid,
 }
 
 pub(super) fn matches_source(membership: &Membership, signal: &EventCenterSignal) -> bool {
@@ -44,11 +49,18 @@ fn metadata_bytes(
     descriptor: &EventSourceDescriptor,
     queues: &[EventSourceQueueSnapshot],
 ) -> Option<u64> {
-    serde_json::to_vec(&(descriptor, queues)).ok().map(|bytes| {
-        (bytes.len() as u64)
-            .saturating_add(std::mem::size_of::<RegisteredSource>() as u64)
-            .saturating_add(std::mem::size_of::<Uuid>() as u64)
-    })
+    let descriptor_bytes = serde_json::to_vec(descriptor).ok()?.len() as u64;
+    let mut bytes = descriptor_bytes
+        .checked_add(
+            (std::mem::size_of::<RegisteredSource>()
+                + std::mem::size_of::<SourceLease>()
+                + 2 * std::mem::size_of::<usize>()) as u64,
+        )?
+        .checked_add(std::mem::size_of::<Uuid>() as u64)?;
+    for queue in queues {
+        bytes = bytes.checked_add(super::source_queue::queue_entry(queue.clone(), false)?.bytes)?;
+    }
+    Some(bytes)
 }
 impl EventSourceObserver for EventCenterRuntime {
     fn register_source(
@@ -90,7 +102,9 @@ impl EventSourceObserver for EventCenterRuntime {
             id,
             RegisteredSource {
                 descriptor,
-                queues: Vec::new(),
+                queues: BTreeMap::new(),
+                base_bytes: bytes,
+                queue_observation_complete: true,
                 bytes,
             },
         );
@@ -114,7 +128,12 @@ impl EventCenterRuntime {
             .map(|(id, source)| EventRegisteredSourceSnapshot {
                 registration_id: *id,
                 descriptor: source.descriptor.clone(),
-                queues: source.queues.clone(),
+                queues: source
+                    .queues
+                    .values()
+                    .filter_map(|queue| queue.snapshot.clone())
+                    .collect(),
+                queue_observation_complete: source.queue_observation_complete,
                 metadata_bytes: source.bytes,
             })
             .collect();
@@ -190,12 +209,18 @@ impl EventSourceRegistration for SourceLease {
     ) -> Status {
         self.observe_fact(observation, Some(payload))
     }
+    fn open_queue(
+        self: Arc<Self>,
+        queue: EventSourceQueueSnapshot,
+    ) -> Option<Arc<dyn control_plane_contracts::ports::EventSourceQueueRegistration>> {
+        self.open_observed_queue(queue)
+    }
     fn set_queue_snapshots(&self, queues: Vec<EventSourceQueueSnapshot>) -> bool {
         self.replace_queues(queues)
     }
 }
 impl SourceLease {
-    fn observe_fact(
+    pub(super) fn observe_fact(
         &self,
         observation: EventSourceObservation,
         payload: Option<&mut dyn FnMut() -> Option<serde_json::Value>>,
@@ -317,16 +342,59 @@ impl SourceLease {
         let Some(source) = state.sources.get(&self.id) else {
             return false;
         };
-        let Some(bytes) = metadata_bytes(&source.descriptor, &queues) else {
-            return false;
-        };
         let previous = source.bytes;
+        let base_bytes = source.base_bytes;
+        // An authoritative durable refresh cannot invalidate live runtime handle reservations.
+        if source.queues.values().any(|queue| queue.incremental) {
+            state
+                .sources
+                .get_mut(&self.id)
+                .expect("source exists under lock")
+                .queue_observation_complete = false;
+            return false;
+        }
+        let mut replacement = BTreeMap::new();
+        let mut bytes = base_bytes;
+        for queue in queues {
+            let Some(entry) = super::source_queue::queue_entry(queue, false) else {
+                state
+                    .sources
+                    .get_mut(&self.id)
+                    .expect("source exists under lock")
+                    .queue_observation_complete = false;
+                return false;
+            };
+            let Some(next) = bytes.checked_add(entry.bytes) else {
+                state
+                    .sources
+                    .get_mut(&self.id)
+                    .expect("source exists under lock")
+                    .queue_observation_complete = false;
+                return false;
+            };
+            if !state.observation.can_replace_metadata(previous, next) {
+                state
+                    .sources
+                    .get_mut(&self.id)
+                    .expect("source exists under lock")
+                    .queue_observation_complete = false;
+                return false;
+            }
+            bytes = next;
+            replacement.insert(Uuid::now_v7(), entry);
+        }
         if !state.observation.replace_metadata(previous, bytes) {
+            state
+                .sources
+                .get_mut(&self.id)
+                .expect("source exists under lock")
+                .queue_observation_complete = false;
             return false;
         }
         if let Some(source) = state.sources.get_mut(&self.id) {
-            source.queues = queues;
+            source.queues = replacement;
             source.bytes = bytes;
+            source.queue_observation_complete = true;
         }
         true
     }

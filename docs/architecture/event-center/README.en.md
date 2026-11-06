@@ -16,6 +16,10 @@ Current queues separates original source queues from Event Center workflow queue
 
 Each scope retains its own activity, memory accounting, and loss window. Workspace and System remain distinct even when their UUID values coincide. Ordinary users see their current workspace; root can also inspect System and Unbound. Historical outbox rows without trusted scope remain Unbound. Additional durable metadata contains scope, producer identity, and workflow ancestry only, never another canonical payload. Queue refresh errors are explicit rather than represented as empty queues.
 
+Source definitions, schemas, queue identities and activity share `observation_max_bytes`. The center owns the only queue-observation ledger. Runtime accepted/dequeued/dropped counters update one admitted queue in place; they do not clone or serialize a second queue map. Admission reserves the maximum numeric width and fixed map/handle metadata charge, rather than measuring process RSS. Queue retirement immediately releases its identity strings; surviving original owner clones retain their guard charge until final drop.
+
+`queue_observation_complete=false` means some queue metadata was refused. This warning applies even if the visible queue list is empty; the list is partial, and absent counters are not zeros. Trigger capability and original delivery remain unchanged. The flag stays conservative until an authoritative full queue refresh succeeds or the source owner is removed. Existing durable owners retain their full absolute snapshot refresh.
+
 Workflow configuration persists an optional source selection; omission preserves custom-event behavior. Only root may select System sources, and Workspace sources cannot cross workspaces. Trusted workflow ancestor IDs propagate through execution, durable publication, and internal MCP calls. A workflow cannot reenter the same causal chain; there is no arbitrary depth cap. Observations remain payload-free; source bodies are projected lazily only for actual matching targets. Run records continue to store mapped inputs and necessary identity metadata only.
 
 ## Trigger phases

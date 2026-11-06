@@ -252,7 +252,10 @@ async fn ephemeral_delta_creates_neither_history_nor_after_commit_delivery() {
 }
 
 #[derive(Default)]
-struct SourceFacts(Mutex<Vec<control_plane::ports::EventSourceFact>>);
+struct SourceFacts(
+    Mutex<Vec<control_plane::ports::EventSourceFact>>,
+    std::sync::atomic::AtomicBool,
+);
 impl control_plane::ports::EventSourceRegistration for SourceFacts {
     fn observe_with_payload(
         &self,
@@ -269,12 +272,51 @@ impl control_plane::ports::EventSourceRegistration for SourceFacts {
         self.0.lock().unwrap().push(observation.fact);
         control_plane::ports::EventSourceObservationStatus::Observed
     }
+    fn open_queue(
+        self: Arc<Self>,
+        queue: domain::event_center::EventSourceQueueSnapshot,
+    ) -> Option<Arc<dyn control_plane::ports::EventSourceQueueRegistration>> {
+        if self.1.load(std::sync::atomic::Ordering::SeqCst) {
+            return None;
+        }
+        let consumer = queue.consumer_ids.first()?.clone();
+        Some(Arc::new(SourceQueueFacts {
+            facts: self,
+            subscriber: queue.subscriber_id,
+            consumer,
+        }))
+    }
     fn set_queue_snapshots(
         &self,
         _queues: Vec<domain::event_center::EventSourceQueueSnapshot>,
     ) -> bool {
         true
     }
+}
+struct SourceQueueFacts {
+    facts: Arc<SourceFacts>,
+    subscriber: String,
+    consumer: String,
+}
+impl control_plane::ports::EventSourceQueueRegistration for SourceQueueFacts {
+    fn record(&self, _: control_plane::ports::EventSourceQueueChange, _: i64) -> bool {
+        true
+    }
+    fn consumed(
+        &self,
+        _: control_plane::ports::EventSourceQueueConsumption,
+    ) -> control_plane::ports::EventSourceObservationStatus {
+        self.facts
+            .0
+            .lock()
+            .unwrap()
+            .push(control_plane::ports::EventSourceFact::Consumed {
+                subscriber_id: self.subscriber.clone(),
+                consumer_id: self.consumer.clone(),
+            });
+        control_plane::ports::EventSourceObservationStatus::Observed
+    }
+    fn retire(&self) {}
 }
 struct SourceObserver(Arc<SourceFacts>);
 impl control_plane::ports::EventSourceObserver for SourceObserver {
@@ -374,5 +416,50 @@ async fn source_after_commit_observes_only_successful_persistence_and_handoff_be
             .count(),
         1,
         "delivery attempts are not new subscriptions"
+    );
+}
+
+#[tokio::test]
+async fn after_commit_observer_queue_rejection_keeps_original_durable_handler_delivery() {
+    use control_plane::ports::{
+        runtime_event_source_descriptors, RuntimeEventSourceBinding, RuntimeEventSourceObservation,
+    };
+    let repository = crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let run = Uuid::now_v7();
+    let facts = Arc::new(SourceFacts::default());
+    facts.1.store(true, std::sync::atomic::Ordering::SeqCst);
+    let binding = RuntimeEventSourceBinding::workspace(Uuid::now_v7());
+    let observation = RuntimeEventSourceObservation::register(
+        &SourceObserver(facts),
+        runtime_event_source_descriptors(
+            binding.scope.clone(),
+            domain::event_center::EventSourceBinding::Active,
+        )
+        .remove(2),
+        binding,
+        run,
+        Uuid::now_v7(),
+    )
+    .unwrap();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let lane = after_commit_lane(
+        AfterCommitBehavior::Success,
+        calls.clone(),
+        Duration::from_secs(1),
+        1,
+    )
+    .with_source_observation(Some(observation));
+    let receipts = control_plane::orchestration_runtime::persist_runtime_debug_stream_events_with_after_commit(&repository, vec![durable_lane_event(run, 1)], &lane).await.unwrap();
+    assert_eq!(
+        receipts[0].subscribers[0].status,
+        RuntimeEventAfterCommitDeliveryStatus::Delivered
+    );
+    assert_eq!(
+        calls.lock().unwrap()[0].subscriber_id.as_str(),
+        "fixture.subscriber"
+    );
+    assert_eq!(
+        repository.list_runtime_events(run, 0).await.unwrap().len(),
+        1
     );
 }

@@ -42,6 +42,30 @@ pub enum EventSourceObservationStatus {
     InvalidBody,
 }
 
+/// Payload-free dequeue identity. Queue subscriber/consumer identities remain in the
+/// central registration and are never duplicated in an adapter-owned queue ledger.
+#[derive(Debug, Clone)]
+pub struct EventSourceQueueConsumption {
+    pub original_event_id: String,
+    pub producer_id: Option<String>,
+    pub occurred_at_unix_ms: i64,
+    pub workflow_ancestor_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum EventSourceQueueChange {
+    Accepted,
+    Dropped,
+}
+
+/// Incremental queue observer. The central owner budgets identity, counters and handle
+/// metadata before admission. Retire removes visible facts; final drop releases its guard.
+pub trait EventSourceQueueRegistration: Send + Sync {
+    fn record(&self, change: EventSourceQueueChange, observed_at_unix_ms: i64) -> bool;
+    fn consumed(&self, event: EventSourceQueueConsumption) -> EventSourceObservationStatus;
+    fn retire(&self);
+}
+
 /// Keep this lease for the source lifetime. Last drop removes registration and queue metadata.
 /// Observation failure must never change publication, dequeue, retry, fence or ACK correctness.
 pub trait EventSourceRegistration: Send + Sync {
@@ -56,6 +80,14 @@ pub trait EventSourceRegistration: Send + Sync {
     ) -> EventSourceObservationStatus;
     /// Metadata-only facts. Published cannot enqueue a workflow body through this method.
     fn observe(&self, observation: EventSourceObservation) -> EventSourceObservationStatus;
+    /// Admission failure marks queue observation incomplete, without changing original delivery.
+    /// One original consumer identity is required per incremental handle.
+    /// An admitted handle owns no copied queue strings. Do not mix incremental handles with
+    /// full replacements on the same source lease while those handles remain alive.
+    fn open_queue(
+        self: Arc<Self>,
+        queue: EventSourceQueueSnapshot,
+    ) -> Option<Arc<dyn EventSourceQueueRegistration>>;
     /// Replaces all queue facts for this source; an empty vector clears retired queues.
     fn set_queue_snapshots(&self, queues: Vec<EventSourceQueueSnapshot>) -> bool;
 }

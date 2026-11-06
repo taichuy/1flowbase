@@ -168,6 +168,9 @@ pub struct EventSourceTarget {
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EventRegisteredSourceSnapshot {
+    /// False after rejected queue metadata admission/refresh, until an authoritative full
+    /// refresh succeeds or this source owner is removed. Does not change trigger capability.
+    pub queue_observation_complete: bool,
     pub metadata_bytes: u64,
     pub registration_id: Uuid,
     pub descriptor: EventSourceDescriptor,

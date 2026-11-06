@@ -37,6 +37,14 @@ impl Observation {
             policy,
         }
     }
+    pub fn can_replace_metadata(&self, previous: u64, replacement: u64) -> bool {
+        self.policy.is_some_and(|policy| {
+            self.metadata_bytes
+                .checked_sub(previous)
+                .and_then(|retained| retained.checked_add(replacement))
+                .is_some_and(|next| next <= policy.observation_max_bytes)
+        })
+    }
     /// Reserve live source/queue metadata in the same budget, evicting old activity first.
     /// A failed reservation leaves both existing metadata and observations unchanged.
     pub fn replace_metadata(&mut self, previous: u64, replacement: u64) -> bool {

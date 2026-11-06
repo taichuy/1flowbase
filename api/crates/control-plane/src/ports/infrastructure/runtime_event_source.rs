@@ -1,10 +1,7 @@
 //! Runtime-owner scope, generation leases and original queue handoff observations.
 use super::*;
 use domain::event_center::*;
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, Mutex},
-};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeEventSourceBinding {
@@ -102,10 +99,12 @@ pub fn runtime_event_source_descriptors(
 
 #[derive(Clone)]
 pub struct RuntimeEventSourceObservation {
+    inner: Arc<RuntimeSourceObservation>,
+}
+struct RuntimeSourceObservation {
     lease: Arc<dyn EventSourceRegistration>,
     binding: RuntimeEventSourceBinding,
     producer: String,
-    queues: Arc<Mutex<BTreeMap<String, EventSourceQueueSnapshot>>>,
 }
 impl RuntimeEventSourceObservation {
     pub fn register(
@@ -116,10 +115,11 @@ impl RuntimeEventSourceObservation {
         generation_id: Uuid,
     ) -> Option<Self> {
         observer.register_source(descriptor).ok().map(|lease| Self {
-            lease,
-            binding,
-            producer: format!("{run_id}:{generation_id}"),
-            queues: Default::default(),
+            inner: Arc::new(RuntimeSourceObservation {
+                lease,
+                binding,
+                producer: format!("{run_id}:{generation_id}"),
+            }),
         })
     }
     fn fact(
@@ -129,100 +129,75 @@ impl RuntimeEventSourceObservation {
     ) -> EventSourceObservation {
         EventSourceObservation {
             original_event_id: event.map(|event| event.event_id.clone()),
-            producer_id: Some(self.producer.clone()),
+            producer_id: Some(self.inner.producer.clone()),
             occurred_at_unix_ms: now_ms(),
-            workflow_ancestor_ids: self.binding.workflow_ancestor_ids.clone(),
+            workflow_ancestor_ids: self.inner.binding.workflow_ancestor_ids.clone(),
             fact,
         }
     }
     pub fn published(&self, event: &RuntimeEventEnvelope) {
-        let _ = self.lease.observe_with_payload(
+        let _ = self.inner.lease.observe_with_payload(
             self.fact(Some(event), EventSourceFact::Published),
             &mut || serde_json::to_value(event).ok(),
         );
     }
-    pub fn queue(&self, subscriber: String) -> RuntimeEventQueueObservation {
-        let queue = RuntimeEventQueueObservation {
-            source: self.clone(),
-            subscriber,
-        };
-        let mut queues = self.queues.lock().unwrap_or_else(|e| e.into_inner());
-        queues.insert(
-            queue.subscriber.clone(),
-            EventSourceQueueSnapshot {
-                queue_id: format!("{}:{}", self.producer, queue.subscriber),
-                subscriber_id: queue.subscriber.clone(),
-                consumer_ids: vec![queue.subscriber.clone()],
+    pub fn queue(&self, subscriber: String) -> Option<RuntimeEventQueueObservation> {
+        let queue = self
+            .inner
+            .lease
+            .clone()
+            .open_queue(EventSourceQueueSnapshot {
+                queue_id: format!("{}:{}", self.inner.producer, subscriber),
+                subscriber_id: subscriber.clone(),
+                consumer_ids: vec![subscriber.clone()],
                 buffered: Some(0),
                 in_flight: None,
                 accepted: Some(0),
                 dequeued: Some(0),
                 dropped: Some(0),
                 observed_at_unix_ms: now_ms(),
-            },
-        );
-        let _ = self
-            .lease
-            .set_queue_snapshots(queues.values().cloned().collect());
-        drop(queues);
-        let _ = self.lease.observe(self.fact(
+            });
+        // The original subscription is real even when its observation metadata is rejected.
+        let _ = self.inner.lease.observe(self.fact(
             None,
             EventSourceFact::Subscribed {
-                subscriber_id: queue.subscriber.clone(),
-                consumer_id: queue.subscriber.clone(),
+                subscriber_id: subscriber.clone(),
+                consumer_id: subscriber,
             },
         ));
-        queue
+        queue.map(|queue| RuntimeEventQueueObservation {
+            source: self.clone(),
+            queue,
+        })
     }
 }
 #[derive(Clone)]
 pub struct RuntimeEventQueueObservation {
     source: RuntimeEventSourceObservation,
-    subscriber: String,
+    queue: Arc<dyn EventSourceQueueRegistration>,
 }
 impl RuntimeEventQueueObservation {
     pub fn accepted(&self) {
-        self.update(|q| {
-            *q.accepted.as_mut().unwrap() += 1;
-            *q.buffered.as_mut().unwrap() += 1;
-        });
+        let _ = self
+            .queue
+            .record(EventSourceQueueChange::Accepted, now_ms());
     }
     pub fn dropped(&self) {
-        self.update(|q| *q.dropped.as_mut().unwrap() += 1);
+        let _ = self.queue.record(EventSourceQueueChange::Dropped, now_ms());
     }
     pub fn consumed(&self, event: &RuntimeEventEnvelope) {
-        self.update(|q| {
-            *q.dequeued.as_mut().unwrap() += 1;
-            *q.buffered.as_mut().unwrap() = q.buffered.unwrap().saturating_sub(1);
+        let _ = self.queue.consumed(EventSourceQueueConsumption {
+            original_event_id: event.event_id.clone(),
+            producer_id: Some(self.source.inner.producer.clone()),
+            occurred_at_unix_ms: now_ms(),
+            workflow_ancestor_ids: self.source.inner.binding.workflow_ancestor_ids.clone(),
         });
-        let _ = self.source.lease.observe(self.source.fact(
-            Some(event),
-            EventSourceFact::Consumed {
-                subscriber_id: self.subscriber.clone(),
-                consumer_id: self.subscriber.clone(),
-            },
-        ));
-    }
-    fn update(&self, update: impl FnOnce(&mut EventSourceQueueSnapshot)) {
-        let mut queues = self.source.queues.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(queue) = queues.get_mut(&self.subscriber) {
-            update(queue);
-            queue.observed_at_unix_ms = now_ms();
-        }
-        let _ = self
-            .source
-            .lease
-            .set_queue_snapshots(queues.values().cloned().collect());
     }
     pub fn retire(&self) {
-        let mut queues = self.source.queues.lock().unwrap_or_else(|e| e.into_inner());
-        queues.remove(&self.subscriber);
-        let _ = self
-            .source
-            .lease
-            .set_queue_snapshots(queues.values().cloned().collect());
+        self.queue.retire();
     }
 }
+
 fn now_ms() -> i64 {
     (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64
 }

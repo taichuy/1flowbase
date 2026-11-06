@@ -777,10 +777,10 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
                 self.broadcast_capacity,
                 run.source_observations[0]
                     .as_ref()
-                    .map(|observation| observation.queue(Uuid::now_v7().to_string())),
+                    .and_then(|observation| observation.queue(Uuid::now_v7().to_string())),
                 run.source_observations[1]
                     .as_ref()
-                    .map(|observation| observation.queue(Uuid::now_v7().to_string())),
+                    .and_then(|observation| observation.queue(Uuid::now_v7().to_string())),
             );
 
         if closure.borrow().is_some() {

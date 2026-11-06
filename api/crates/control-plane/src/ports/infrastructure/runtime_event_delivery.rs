@@ -269,6 +269,7 @@ pub struct TrustedRuntimeEventAfterCommitRegistration {
 
 #[derive(Clone)]
 struct OrderedAfterCommitSubscriber {
+    observation: Option<RuntimeEventQueueObservation>,
     contribution_id: String,
     registration: TrustedRuntimeEventAfterCommitRegistration,
 }
@@ -366,7 +367,6 @@ pub struct RuntimeEventAfterCommitLane {
     observation: Option<RuntimeEventSourceObservation>,
     // One sequential persister owns this generation; scalar watermark avoids event history.
     observed_sequence: Arc<Mutex<Option<i64>>>,
-    queue_observations: Vec<RuntimeEventQueueObservation>,
     graph_fingerprint: Option<String>,
     subscribers: Vec<OrderedAfterCommitSubscriber>,
     scope: Arc<AfterCommitScope>,
@@ -377,7 +377,6 @@ impl Default for RuntimeEventAfterCommitLane {
         Self {
             observation: None,
             observed_sequence: Default::default(),
-            queue_observations: Vec::new(),
             graph_fingerprint: None,
             subscribers: Vec::new(),
             scope: Arc::new(AfterCommitScope::default()),
@@ -390,17 +389,11 @@ impl RuntimeEventAfterCommitLane {
         mut self,
         observation: Option<RuntimeEventSourceObservation>,
     ) -> Self {
-        self.queue_observations = observation
-            .as_ref()
-            .map(|observation| {
-                self.subscribers
-                    .iter()
-                    .map(|subscriber| {
-                        observation.queue(subscriber.registration.subscriber_id.as_str().to_owned())
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        for subscriber in &mut self.subscribers {
+            subscriber.observation = observation.as_ref().and_then(|source| {
+                source.queue(subscriber.registration.subscriber_id.as_str().to_owned())
+            });
+        }
         self.observation = observation;
         self
     }
@@ -415,7 +408,11 @@ impl RuntimeEventAfterCommitLane {
             .entries
             .retain(|_, state| *state == RuntimeEventAfterCommitClaimState::InFlight);
         drop(claims);
-        for queue in &self.queue_observations {
+        for queue in self
+            .subscribers
+            .iter()
+            .filter_map(|subscriber| subscriber.observation.as_ref())
+        {
             queue.retire();
         }
         self.scope.changed.notify_waiters();
@@ -518,6 +515,7 @@ impl RuntimeEventAfterCommitLane {
                 anyhow::anyhow!("runtime event after-commit subscriber is not registered")
             })?;
             subscribers.push(OrderedAfterCommitSubscriber {
+                observation: None,
                 contribution_id: contribution_id.to_string(),
                 registration,
             });
@@ -529,7 +527,6 @@ impl RuntimeEventAfterCommitLane {
         Ok(Self {
             observation: None,
             observed_sequence: Default::default(),
-            queue_observations: Vec::new(),
             graph_fingerprint: Some(graph.fingerprint().as_str().to_string()),
             subscribers,
             scope: Arc::new(AfterCommitScope::default()),
@@ -561,7 +558,7 @@ impl RuntimeEventAfterCommitLane {
             }
         }
         let mut receipts = Vec::new();
-        for (subscriber_index, subscriber) in self.subscribers.iter().enumerate() {
+        for subscriber in &self.subscribers {
             let key = RuntimeEventAfterCommitIdempotencyKey {
                 run_id: event.run_id,
                 sequence: event.sequence,
@@ -617,7 +614,7 @@ impl RuntimeEventAfterCommitLane {
                 };
                 // Each original native handoff is observed before its handler result;
                 // retry remains owned by this dispatcher rather than the observer.
-                if let Some(queue) = self.queue_observations.get(subscriber_index) {
+                if let Some(queue) = &subscriber.observation {
                     queue.accepted();
                     queue.consumed(&event);
                 }

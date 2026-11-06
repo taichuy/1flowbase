@@ -114,6 +114,13 @@ impl EventSourceRegistration for SourceLease {
         self.facts.lock().unwrap().push(fact);
         EventSourceObservationStatus::Observed
     }
+    fn open_queue(
+        self: Arc<Self>,
+        _: EventSourceQueueSnapshot,
+    ) -> Option<Arc<dyn control_plane_contracts::ports::EventSourceQueueRegistration>> {
+        // This durable observer fixture only exercises authoritative full refreshes.
+        None
+    }
     fn set_queue_snapshots(&self, queues: Vec<EventSourceQueueSnapshot>) -> bool {
         *self.queues.lock().unwrap() = queues;
         true

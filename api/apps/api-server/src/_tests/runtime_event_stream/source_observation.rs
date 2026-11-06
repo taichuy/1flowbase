@@ -297,6 +297,12 @@ impl EventSourceRegistration for ProjectionLease {
     fn observe(&self, observation: EventSourceObservation) -> EventSourceObservationStatus {
         self.inner.observe(observation)
     }
+    fn open_queue(
+        self: Arc<Self>,
+        queue: domain::event_center::EventSourceQueueSnapshot,
+    ) -> Option<Arc<dyn EventSourceQueueRegistration>> {
+        self.inner.clone().open_queue(queue)
+    }
     fn set_queue_snapshots(
         &self,
         queues: Vec<domain::event_center::EventSourceQueueSnapshot>,
@@ -382,8 +388,8 @@ async fn observed_original_lanes_preserve_backpressure_and_diagnostic_drop_count
     .unwrap();
     let (required, diagnostic, mut receiver) = RuntimeEventReceiver::bounded_observed_lanes(
         1,
-        Some(required_source.queue("original-required".into())),
-        Some(diagnostic_source.queue("original-diagnostic".into())),
+        required_source.queue("original-required".into()),
+        diagnostic_source.queue("original-diagnostic".into()),
     );
     required
         .send(RuntimeEventEnvelope::new(run, 1, required_text_delta(1)))
@@ -621,5 +627,122 @@ async fn workspace_and_system_with_same_uuid_remain_distinct_delivery_scopes() {
             .sources
             .len(),
         3
+    );
+}
+
+#[tokio::test]
+async fn runtime_source_queue_pressure_is_budgeted_without_changing_original_delivery() {
+    let center = Arc::new(
+        EventCenterRuntime::new(
+            Arc::new(storage_ephemeral::MemoryEventBus::new()),
+            Some(EventCenterRuntimePolicy {
+                bus_limits: EventBusLimits {
+                    max_items: 16,
+                    max_json_bytes: 64_000,
+                    max_waiters: 4,
+                    max_topics: 16,
+                    max_consumers: 16,
+                    max_topic_name_bytes: 4096,
+                },
+                observation_max_bytes: 16_000,
+                observation_ttl_ms: 60_000,
+            }),
+        )
+        .unwrap(),
+    );
+    let scope = EventSourceScope::Workspace {
+        workspace_id: Uuid::now_v7(),
+    };
+    let EventSourceScope::Workspace { workspace_id } = scope.clone() else {
+        unreachable!()
+    };
+    let stream = LocalRuntimeEventStream::new().with_event_source_observer(center.clone());
+    let run = Uuid::now_v7();
+    stream
+        .open_run_scoped(
+            run,
+            RuntimeEventStreamPolicy::debug_default(),
+            RuntimeEventSourceBinding::workspace(workspace_id),
+        )
+        .await
+        .unwrap();
+    let base = center.snapshot_sources(scope.clone()).source_metadata_bytes;
+    assert_eq!(center.snapshot_sources(scope.clone()).sources.len(), 3);
+    let mut originals = Vec::new();
+    for _ in 0..128 {
+        originals.push(stream.subscribe(run, None).await.unwrap());
+    }
+    let pressure = center.snapshot_sources(scope.clone());
+    assert!(pressure.observation_bytes <= 16_000);
+    assert!(pressure
+        .sources
+        .iter()
+        .any(|source| !source.queue_observation_complete));
+    assert!(
+        pressure
+            .sources
+            .iter()
+            .map(|source| source.queues.len())
+            .sum::<usize>()
+            < 256
+    );
+    for sequence in 0..3 {
+        let original = stream
+            .append(run, required_text_delta(sequence))
+            .await
+            .unwrap();
+        for subscription in &mut originals {
+            let received = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                subscription.live_events.recv(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(
+                received, original,
+                "refused observation metadata must not change actual stream handoff"
+            );
+        }
+    }
+    let updated = center.snapshot_sources(scope.clone());
+    assert_eq!(
+        updated.source_metadata_bytes,
+        pressure.source_metadata_bytes
+    );
+    assert!(updated.observation_bytes <= 16_000);
+    let required = updated
+        .sources
+        .iter()
+        .find(|source| source.descriptor.source_id == RUNTIME_EVENT_REQUIRED_CONTRACT_ID)
+        .unwrap();
+    assert!(!required.queues.is_empty());
+    assert!(required.queues.iter().all(|queue| queue.accepted == Some(3)
+        && queue.dequeued == Some(3)
+        && queue.buffered == Some(0)));
+    drop(originals);
+    // Original forwarding tasks own sender clones; their ordinary closed-channel exit,
+    // rather than observer bookkeeping, releases the last charged handle.
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            if center.snapshot_sources(scope.clone()).source_metadata_bytes == base {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let retired = center.snapshot_sources(scope);
+    assert!(retired
+        .sources
+        .iter()
+        .all(|source| source.queues.is_empty()));
+    assert!(
+        retired
+            .sources
+            .iter()
+            .any(|source| !source.queue_observation_complete),
+        "a rejected observation must remain explicit even with no visible queues"
     );
 }

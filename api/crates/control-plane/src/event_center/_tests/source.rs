@@ -270,13 +270,20 @@ fn queue_snapshots_are_absolute_nullable_read_only_bounded_and_removed_with_leas
     let mut oversize = queue;
     oversize.queue_id = "x".repeat(20_000);
     assert!(!source.set_queue_snapshots(vec![oversize]));
-    assert_eq!(snapshot, runtime.snapshot_sources(scope.clone()));
+    let mut incomplete = snapshot.clone();
+    incomplete.sources[0].queue_observation_complete = false;
+    assert_eq!(incomplete, runtime.snapshot_sources(scope.clone()));
     for _ in 0..30 {
         source.observe(observation(EventSourceFact::Published, vec![]));
     }
     let observed = runtime.snapshot_sources(scope.clone());
     assert!(observed.observation_bytes <= 4096);
     assert!(observed.activity.len() < 30);
+    assert!(source.set_queue_snapshots(vec![]));
+    assert!(
+        runtime.snapshot_sources(scope.clone()).sources[0].queue_observation_complete,
+        "a successful authoritative full refresh restores completeness"
+    );
     drop(source);
     assert!(runtime.snapshot_sources(scope).sources.is_empty());
 }
@@ -435,7 +442,9 @@ fn sources_share_observation_budget_evict_activity_and_ignore_bus_topic_limits()
         observed_at_unix_ms: 1,
     };
     assert!(!first.set_queue_snapshots(vec![queue.clone()]));
-    assert_eq!(retained, runtime.snapshot_sources(scope.clone()));
+    let mut incomplete = retained.clone();
+    incomplete.sources[0].queue_observation_complete = false;
+    assert_eq!(incomplete, runtime.snapshot_sources(scope.clone()));
     let clone = second.clone();
     drop(second);
     assert_eq!(
