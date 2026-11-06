@@ -283,6 +283,7 @@ jobs:
             run_crate_tests source-migration -p storage-durable-postgres --lib event_center_current_identity_migration_clears_only_new_configuration
             run_crate_tests source-backup -p storage-durable-postgres --lib system_backup::selective::_tests::event_configuration
             run_crate_tests source-archive -p control-plane --lib application::archive::event_tests
+            run_crate_tests source-portable-template -p control-plane --lib portable_template
             run_crate_tests source-command-configuration -p control-plane --lib event_commands
             run_crate_tests source-workflow-context -p control-plane --lib workflow_event
             run_crate_tests source-contracts -p control-plane-contracts --lib
@@ -296,6 +297,8 @@ jobs:
             run_tests runtime-sources --test api_private_contracts _tests::runtime_event_stream
             run_tests source-workflows --test api_private_contracts workers::event_workflow
             run_tests source-catalog --test api_system_settings event_center
+            run_tests source-generation-ownership --test api_private_routes event_catalog_preserves_bound_and_unbound_views_without_retaining_boot
+            run_tests workflow-generation-ownership --test api_private_routes workflow_event_adapter_borrows_generation_and_rejects_retired_owner
             run_tests source-mcp-lineage --test api_private_routes system_event_center_mcp_spawn_preserves_causal_lineage
             run_tests source-authority --test api_private_contracts event_center_operations_compile_as_new_authority_without_legacy_grants
             run_tests source-command-workflow --lib communication_runtime::commands

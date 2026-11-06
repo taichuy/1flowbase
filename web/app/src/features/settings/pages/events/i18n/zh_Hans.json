@@ -109,7 +109,7 @@
   "loss_oversize_dropped": "窗口内超大记录丢弃",
   "loss_window_help": "仅统计所选范围当前计数窗口内的观察记录损失，不代表事件消费失败；窗口结束或计数记录被淘汰后重新计数。",
   "loss_unavailable": "当前没有可用的观察损失计数窗口，不能据此认定没有记录丢失。",
-  "scope": "来源作用域",
+  "scope": "作用域",
   "workspace_scope": "工作区",
   "system": "系统",
   "unbound": "未绑定",

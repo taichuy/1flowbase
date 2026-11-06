@@ -109,7 +109,7 @@
   "loss_oversize_dropped": "Oversized records dropped in window",
   "loss_window_help": "Counts cover observation records lost in this source scope during the current accounting window, not failed event consumption. They restart when the window ends or its accounting record is evicted.",
   "loss_unavailable": "No observation loss accounting window is available. This does not establish that no records were lost.",
-  "scope": "Source scope",
+  "scope": "Scope",
   "workspace_scope": "Workspace",
   "system": "System",
   "unbound": "Unbound",

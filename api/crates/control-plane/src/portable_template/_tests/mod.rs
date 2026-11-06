@@ -541,3 +541,84 @@ fn selected_translations_can_be_exported_without_native_resources() {
 }
 
 mod native_plan;
+
+#[test]
+fn event_trigger_package_preflight_accepts_current_identity_and_rejects_invalid_mapping() {
+    let mut package = snapshot();
+    let application_id = Uuid::from_u128(901);
+    package.applications.push(PortableApplication {
+        id: application_id,
+        application_type: domain::ApplicationType::Workflow,
+        workflow_trigger_type: Some(domain::WorkflowTriggerType::Event),
+        name: "Current event workflow".into(),
+        description: String::new(),
+        icon: None,
+        icon_type: None,
+        icon_background: None,
+        flow_document: json!({"schemaVersion":domain::FLOW_SCHEMA_VERSION,"graph":{"nodes":[{
+            "id":"event-start","type":"workflow_start","bindings":{},"outputs":[],"config":{"input_fields":[
+                {"key":"invoice","valueType":"string","required":true}
+            ]}
+        }],"edges":[]}}),
+        mapping: None,
+        published: None,
+        schedule: None,
+        event_trigger: Some(
+            serde_json::from_value(json!({
+                "enabled":false,"contract_id":"custom.invoice","trigger_phase":"published",
+                "input_mapping":{"invoice":"/payload/invoice_id"}
+            }))
+            .unwrap(),
+        ),
+        dependency_issues: vec![],
+    });
+    // Exercise the package wire reader and the same production preflight used by
+    // PortableTemplateService, rather than reimplementing event mapping rules.
+    let encoded = serde_json::to_value(&package).unwrap();
+    assert!(encoded["applications"][0]["event_trigger"]
+        .get("contract_version")
+        .is_none());
+    let package: PortableTemplatePackage = serde_json::from_value(encoded).unwrap();
+    let target = snapshot();
+    let preview = preview_portable_template(&package, &target);
+    assert!(preview.valid, "{:?}", preview.failures);
+    assert!(preview
+        .effects
+        .iter()
+        .any(|effect| effect.kind == "application"
+            && effect.source_id == application_id.to_string()
+            && effect.action == "create"));
+    for mapping in [
+        BTreeMap::new(),
+        BTreeMap::from([("unknown".into(), "/payload/invoice_id".into())]),
+        BTreeMap::from([("invoice".into(), "/bad~2escape".into())]),
+    ] {
+        let mut invalid = package.clone();
+        invalid.applications[0]
+            .event_trigger
+            .as_mut()
+            .unwrap()
+            .input_mapping = mapping;
+        let rejected = preview_portable_template(&invalid, &target);
+        assert!(!rejected.valid);
+        assert!(
+            rejected.failures.contains(&format!(
+                "portable_template_invalid_event_mapping:{application_id}"
+            )),
+            "{:?}",
+            rejected.failures
+        );
+    }
+    let mut invalid_identity = package;
+    invalid_identity.applications[0]
+        .event_trigger
+        .as_mut()
+        .unwrap()
+        .contract_id
+        .clear();
+    let rejected = preview_portable_template(&invalid_identity, &target);
+    assert!(!rejected.valid);
+    assert!(rejected.failures.contains(&format!(
+        "portable_template_invalid_event_trigger:{application_id}"
+    )));
+}
