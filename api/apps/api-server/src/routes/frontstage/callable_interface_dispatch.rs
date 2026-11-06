@@ -405,7 +405,8 @@ fn is_runtime_data_callable(
         return registry
             .and_then(|registry| {
                 registry.binding(
-                    &interface_runtime::BindingId::new(metadata_interface::BINDING_ID).unwrap(),
+                    &interface_runtime::BindingId::new(metadata_interface::BINDING_ID)
+                        .expect("static runtime metadata binding is valid"),
                 )
             })
             .is_some_and(|binding| {

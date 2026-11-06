@@ -134,7 +134,7 @@ describe('TableBlock runtime boundaries', () => {
   it('passes the actual backend primary key and persisted action target to the host', async () => {
     const { owner } = setup();
     fireEvent.click(
-      screen.getAllByRole('button', { name: 'data_blocks.table.view' })[1]
+      screen.getAllByRole('button', { name: 'data_blocks.common.view' })[1]
     );
     await waitFor(() =>
       expect(owner.openAction).toHaveBeenCalledWith(
@@ -154,7 +154,9 @@ describe('TableBlock runtime boundaries', () => {
     });
     const { publish } = setup();
     expect(
-      screen.getByRole('button', { name: 'data_blocks.table.delete' })
+      screen.getByRole('button', {
+        name: /^(?:delete )?auto\.delete$/
+      })
     ).toBeDisabled();
     fireEvent.click(screen.getAllByRole('checkbox')[0]);
     await waitFor(() =>
@@ -164,11 +166,13 @@ describe('TableBlock runtime boundaries', () => {
       })
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'data_blocks.table.delete' })
+      screen.getByRole('button', {
+        name: /^(?:delete )?auto\.delete$/
+      })
     );
     fireEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'data_blocks.table.delete'
+        name: /^(?:delete )?auto\.delete$/
       })
     );
     await waitFor(() =>
@@ -197,7 +201,9 @@ describe('TableBlock runtime boundaries', () => {
       false
     );
     expect(
-      screen.getByRole('button', { name: 'data_blocks.table.refresh' })
+      screen.getByRole('button', {
+        name: /^(?:reload )?auto\.refresh$/
+      })
     ).toBeDisabled();
     expect(mocks.refetch).not.toHaveBeenCalled();
   });
@@ -211,10 +217,12 @@ describe('TableBlock runtime boundaries', () => {
     expect(screen.getByText('Alpha')).toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'data_blocks.table.view' })
+      screen.queryByRole('button', { name: 'data_blocks.common.view' })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'data_blocks.table.delete' })
+      screen.queryByRole('button', {
+        name: /^(?:delete )?auto\.delete$/
+      })
     ).not.toBeInTheDocument();
   });
   it('uses effective backend capabilities even when the saved configuration enables actions', () => {
@@ -232,10 +240,12 @@ describe('TableBlock runtime boundaries', () => {
     });
     setup();
     expect(
-      screen.queryByRole('button', { name: 'data_blocks.table.view' })
+      screen.queryByRole('button', { name: 'data_blocks.common.view' })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'data_blocks.table.delete' })
+      screen.queryByRole('button', {
+        name: /^(?:delete )?auto\.delete$/
+      })
     ).not.toBeInTheDocument();
     expect(screen.getByText('Alpha')).toBeInTheDocument();
   });
@@ -253,17 +263,17 @@ describe('TableBlock design persistence', () => {
       }
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'data_blocks.table.block_settings' })
+      screen.getByRole('button', { name: 'auto.configuration' })
     );
     fireEvent.click(
-      await screen.findByText('data_blocks.table.title_description')
+      await screen.findByText('data_blocks.form.title_description')
     );
     const dialog = await screen.findByRole('dialog');
     fireEvent.change(within(dialog).getAllByRole('textbox')[0], {
       target: { value: 'Unsaved title' }
     });
     fireEvent.click(
-      within(dialog).getByRole('button', { name: 'data_blocks.table.save' })
+      within(dialog).getByRole('button', { name: 'files.save' })
     );
     await waitFor(() =>
       expect(owner.saveConfig).toHaveBeenCalledWith(

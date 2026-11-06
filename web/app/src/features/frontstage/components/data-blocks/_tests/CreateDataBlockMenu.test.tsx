@@ -173,7 +173,9 @@ function setup(
 
 async function openType(title: string) {
   fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
-  const item = await screen.findByRole('menuitem', { name: title });
+  const item = await screen.findByRole('menuitem', {
+    name: new RegExp(`^${title}(?: right)?$`)
+  });
   fireEvent.mouseEnter(item);
 }
 
@@ -201,8 +203,12 @@ describe('CreateDataBlockMenu catalog and model selection', () => {
     expect(
       await screen.findByRole('menuitem', { name: 'JS 区块' })
     ).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: '表格' })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: '表单' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: /^表格(?: right)?$/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: /^表单(?: right)?$/ })
+    ).toBeInTheDocument();
     expect(onCreate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('menuitem', { name: 'JS 区块' }));
     expect(onCreate).toHaveBeenCalledExactlyOnceWith(entries[0], undefined);
@@ -217,10 +223,10 @@ describe('CreateDataBlockMenu catalog and model selection', () => {
       const { onCreate } = setup();
       await openType(title);
       const sourceItem = await screen.findByRole('menuitem', {
-        name: 'CRM 数据源'
+        name: /^CRM 数据源(?: right)?$/
       });
       expect(
-        screen.getByRole('menuitem', { name: '主数据源' })
+        screen.getByRole('menuitem', { name: /^主数据源(?: right)?$/ })
       ).toBeInTheDocument();
       expect(onCreate).not.toHaveBeenCalled();
       fireEvent.mouseEnter(sourceItem);
@@ -306,7 +312,7 @@ describe('CreateDataBlockMenu catalog and model selection', () => {
     const { onCreate } = setup({ disabled: true });
     fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
     expect(
-      screen.queryByRole('menuitem', { name: '表格' })
+      screen.queryByRole('menuitem', { name: /^表格(?: right)?$/ })
     ).not.toBeInTheDocument();
     expect(api.fetchConsoleDataModels).not.toHaveBeenCalled();
     expect(api.fetchConsoleDataSources).not.toHaveBeenCalled();

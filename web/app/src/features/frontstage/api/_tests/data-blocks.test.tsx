@@ -405,7 +405,7 @@ describe('canonical data writes and cache refresh', () => {
               : result.current.remove.mutateAsync('A');
         await expect(pending).rejects.toBe(failure);
       });
-      expect(result.current[operation].isError).toBe(true);
+      await waitFor(() => expect(result.current[operation].isError).toBe(true));
       expect(invalidate).not.toHaveBeenCalled();
       for (const cache of [target, source]) {
         expect(client.getQueryState(cache.key)?.isInvalidated).toBe(false);

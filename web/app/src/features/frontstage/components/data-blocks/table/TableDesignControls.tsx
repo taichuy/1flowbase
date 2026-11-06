@@ -188,11 +188,11 @@ export function TableFieldMenu({
             onChange={(event) => setSearch(event.target.value)}
             placeholder={i18nText(
               'frontstage',
-              'data_blocks.table.search_fields'
+              'data_blocks.form.search_fields'
             )}
             aria-label={i18nText(
               'frontstage',
-              'data_blocks.table.search_fields'
+              'data_blocks.form.search_fields'
             )}
           />
           <DndContext
@@ -281,7 +281,7 @@ export function TableFieldMenu({
         icon={<SettingOutlined />}
         disabled={disabled}
       >
-        {i18nText('frontstage', 'data_blocks.table.configure_fields')}
+        {i18nText('frontstage', 'data_blocks.form.configure_fields')}
       </Button>
     </Popover>
   );

@@ -57,13 +57,17 @@ pub(super) fn register(
     operation: &AuthorizationOperation,
 ) -> Result<(), RegistryCompilationError> {
     let id = InterfaceId::new(INTERFACE_ID).expect("static metadata interface id");
-    let identity = InterfaceIdentity::new(id.clone(), InterfaceVersion::new("1").unwrap());
+    let identity = InterfaceIdentity::new(
+        id.clone(),
+        InterfaceVersion::new("1").expect("static runtime model version is valid"),
+    );
     let contracts = InterfaceContracts::unary(
         contract::<RuntimeModelMetadataInput>(),
         contract::<RuntimeDataModelMetadata>(),
         contract::<RuntimeModelOperationTargetError>(),
     );
-    let handler = HandlerReference::new("api-server.runtime-models.metadata.handler").unwrap();
+    let handler = HandlerReference::new("api-server.runtime-models.metadata.handler")
+        .expect("static runtime metadata handler is valid");
     compiler.register_definition(InterfaceDefinition::new(
         identity.clone(),
         contracts.clone(),
@@ -76,14 +80,16 @@ pub(super) fn register(
         InterfaceExecution::new(
             InterfaceExecutionMode::Unary,
             handler.clone(),
-            TargetReference::new("runtime-core.model-metadata.read").unwrap(),
+            TargetReference::new("runtime-core.model-metadata.read")
+                .expect("static runtime metadata target is valid"),
         ),
         InterfaceAuditPolicy::ReadOnly,
         InterfaceErrorPolicy::TypedTarget,
         InterfaceLifecycle::BootSnapshot,
         owner.clone(),
     ))?;
-    let plugin = PluginIdentity::new("api-server.runtime-model-authentication").unwrap();
+    let plugin = PluginIdentity::new("api-server.runtime-model-authentication")
+        .expect("static runtime authentication plugin is valid");
     compiler.register_authentication_adapter(
         &id,
         1,
@@ -96,27 +102,32 @@ pub(super) fn register(
             InterfaceExtensionIsolation::TrustedInProcess,
             [],
         )
-        .unwrap(),
+        .expect("runtime authentication registration is valid"),
         ActivatedAuthenticationAdapter::new(
             plugin,
             InterfaceExtensionTier::BuiltIn,
-            AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER).unwrap(),
-            AuthenticationActivationIdentity::new(ACTIVATION).unwrap(),
+            AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
+                .expect("static runtime authentication adapter is valid"),
+            AuthenticationActivationIdentity::new(ACTIVATION)
+                .expect("static runtime authentication activation is valid"),
             PrincipalProfile::User,
         ),
     )?;
     compiler.register_binding(
         ProtocolBinding::new(
-            BindingId::new(BINDING_ID).unwrap(),
+            BindingId::new(BINDING_ID).expect("static runtime metadata binding is valid"),
             identity,
             contracts,
             ProtocolProjection::http(
-                RouteIdentity::new("GET", "/api/runtime/models/:model_code/metadata").unwrap(),
+                RouteIdentity::new("GET", "/api/runtime/models/:model_code/metadata")
+                    .expect("static runtime metadata route is valid"),
             ),
         ),
         InvocationAdapterPlan::new(
-            AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER).unwrap(),
-            AuthorizationAdapterReference::new(AUTHORIZATION_ADAPTER).unwrap(),
+            AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
+                .expect("static runtime authentication adapter is valid"),
+            AuthorizationAdapterReference::new(AUTHORIZATION_ADAPTER)
+                .expect("static runtime authorization adapter is valid"),
             None,
         ),
     )?;
@@ -153,7 +164,7 @@ pub async fn get_runtime_model_metadata(
         .interface_registry()
         .ok_or_else(|| anyhow::anyhow!("interface registry unavailable"))?
         .snapshot();
-    let binding = BindingId::new(BINDING_ID).unwrap();
+    let binding = BindingId::new(BINDING_ID).expect("static runtime metadata binding is valid");
     let authenticated = boot
         .authenticate_invocation::<_, UserPrincipal>(
             Arc::clone(&snapshot),

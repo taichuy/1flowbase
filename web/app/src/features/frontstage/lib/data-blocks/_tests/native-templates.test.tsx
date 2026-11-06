@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { cleanup, render, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -23,9 +24,9 @@ afterEach(() => {
 /** Compile the actual shipped YAML scalar rather than duplicating template source. */
 function contributionTemplate(code: string): string {
   const manifest = readFileSync(
-    new URL(
-      '../../../../../../../../api/plugins/capability-plugins/1flowbase/manifest.yaml',
-      import.meta.url
+    resolve(
+      process.cwd(),
+      '../../api/plugins/capability-plugins/1flowbase/manifest.yaml'
     ),
     'utf8'
   );

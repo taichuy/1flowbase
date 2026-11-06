@@ -152,8 +152,8 @@ export function CreateDataBlockMenu({
           key: entry.id,
           label:
             entry.contributionCode === TABLE_BLOCK_CONTRIBUTION
-              ? i18nText('frontstage', 'data_blocks.create.table')
-              : i18nText('frontstage', 'data_blocks.create.form'),
+              ? i18nText('frontstage', 'data_blocks.table.table')
+              : i18nText('frontstage', 'data_blocks.form.form'),
           children
         };
       })

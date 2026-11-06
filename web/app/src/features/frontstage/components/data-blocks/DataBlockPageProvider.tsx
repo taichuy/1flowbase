@@ -269,7 +269,7 @@ function DataBlockSlotHost({
           (mode === 'create'
             ? i18nText('frontstage', 'data_blocks.common.create')
             : mode === 'edit'
-              ? i18nText('frontstage', 'data_blocks.common.edit')
+              ? i18nText('frontstage', 'auto.edit')
               : i18nText('frontstage', 'data_blocks.common.view')),
         description: '',
         presentation: action.presentation ?? 'drawer',

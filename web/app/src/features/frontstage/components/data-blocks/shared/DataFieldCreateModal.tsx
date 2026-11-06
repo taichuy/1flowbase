@@ -308,7 +308,7 @@ export function DataFieldCreateModal({
         ) : null}
         <Form.Item
           name="description"
-          label={i18nText('frontstage', 'data_blocks.fields.description')}
+          label={i18nText('frontstage', 'auto.description')}
         >
           <Input.TextArea />
         </Form.Item>

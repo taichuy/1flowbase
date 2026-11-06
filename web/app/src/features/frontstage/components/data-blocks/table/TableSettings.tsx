@@ -47,7 +47,7 @@ export function TableBlockSettings({
   const items = [
     {
       key: 'title',
-      label: i18nText('frontstage', 'data_blocks.table.title_description')
+      label: i18nText('frontstage', 'data_blocks.form.title_description')
     },
     {
       key: 'layout',
@@ -92,10 +92,7 @@ export function TableBlockSettings({
           size="small"
           icon={<SettingOutlined />}
           disabled={disabled}
-          aria-label={i18nText(
-            'frontstage',
-            'data_blocks.table.block_settings'
-          )}
+          aria-label={i18nText('frontstage', 'auto.configuration')}
         />
       </Dropdown>
       <Modal
@@ -107,8 +104,8 @@ export function TableBlockSettings({
         okButtonProps={{
           disabled: Boolean(draft.linkage && !draft.linkage.field_code)
         }}
-        okText={i18nText('frontstage', 'data_blocks.table.save')}
-        cancelText={i18nText('frontstage', 'data_blocks.table.cancel')}
+        okText={i18nText('frontstage', 'files.save')}
+        cancelText={i18nText('frontstage', 'auto.cancel')}
         onOk={async () => {
           if (await onSave(draft)) setSection(null);
         }}
@@ -116,9 +113,7 @@ export function TableBlockSettings({
         <Form layout="vertical" disabled={disabled}>
           {section === 'title' && (
             <>
-              <Form.Item
-                label={i18nText('frontstage', 'data_blocks.table.title')}
-              >
+              <Form.Item label={i18nText('frontstage', 'auto.title')}>
                 <Input
                   value={draft.title}
                   onChange={(event) =>
@@ -126,9 +121,7 @@ export function TableBlockSettings({
                   }
                 />
               </Form.Item>
-              <Form.Item
-                label={i18nText('frontstage', 'data_blocks.table.description')}
-              >
+              <Form.Item label={i18nText('frontstage', 'auto.description')}>
                 <Input.TextArea
                   value={draft.description}
                   onChange={(event) =>
@@ -396,8 +389,8 @@ export function TableColumnSettings({
         title={title}
         onCancel={() => setOpen(false)}
         confirmLoading={disabled}
-        okText={i18nText('frontstage', 'data_blocks.table.save')}
-        cancelText={i18nText('frontstage', 'data_blocks.table.cancel')}
+        okText={i18nText('frontstage', 'files.save')}
+        cancelText={i18nText('frontstage', 'auto.cancel')}
         onOk={async () => {
           if (await onSave(draft)) setOpen(false);
         }}
@@ -413,9 +406,7 @@ export function TableColumnSettings({
               }
             />
           </Form.Item>
-          <Form.Item
-            label={i18nText('frontstage', 'data_blocks.table.tooltip')}
-          >
+          <Form.Item label={i18nText('frontstage', 'data_blocks.form.tooltip')}>
             <Input
               value={draft.tooltip}
               onChange={(event) =>
@@ -611,18 +602,18 @@ export function TableActionSettings({
           disabled={disabled}
           aria-label={i18nText(
             'frontstage',
-            'data_blocks.table.action_settings'
+            'data_blocks.form.action_settings'
           )}
         />
       </Dropdown>
       <Modal
         getContainer={false}
         open={open}
-        title={i18nText('frontstage', 'data_blocks.table.action_settings')}
+        title={i18nText('frontstage', 'data_blocks.form.action_settings')}
         onCancel={() => setOpen(false)}
         confirmLoading={disabled}
-        okText={i18nText('frontstage', 'data_blocks.table.save')}
-        cancelText={i18nText('frontstage', 'data_blocks.table.cancel')}
+        okText={i18nText('frontstage', 'files.save')}
+        cancelText={i18nText('frontstage', 'auto.cancel')}
         onOk={async () => {
           if (await onSave(draft)) setOpen(false);
         }}

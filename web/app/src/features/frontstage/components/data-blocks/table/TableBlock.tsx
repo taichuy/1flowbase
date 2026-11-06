@@ -456,7 +456,7 @@ function ConfiguredTableBlock({
       width: design ? 200 : 160,
       title: (
         <div className="data-table-row-actions-title">
-          <span>{i18nText('frontstage', 'data_blocks.table.actions')}</span>
+          <span>{i18nText('frontstage', 'files.actions')}</span>
           {design && (
             <TableActionMenu
               actions={config.row_actions}
@@ -742,7 +742,7 @@ function ConfiguredTableBlock({
                 disabled={disabled}
                 label={i18nText(
                   'frontstage',
-                  'data_blocks.table.configure_actions'
+                  'data_blocks.form.configure_actions'
                 )}
                 onChange={(action) => saveAction(action, false)}
               />
@@ -876,8 +876,8 @@ function ConfiguredTableBlock({
             danger: true,
             disabled: !deleteIds?.length || !capabilities?.can_delete
           }}
-          okText={i18nText('frontstage', 'data_blocks.table.delete')}
-          cancelText={i18nText('frontstage', 'data_blocks.table.cancel')}
+          okText={i18nText('frontstage', 'auto.delete')}
+          cancelText={i18nText('frontstage', 'auto.cancel')}
           onOk={() => void confirmDelete()}
         >
           {i18nText('frontstage', 'data_blocks.table.delete_description', {

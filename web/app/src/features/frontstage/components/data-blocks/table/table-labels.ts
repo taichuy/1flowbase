@@ -9,13 +9,13 @@ export function actionTitle(action: DataBlockAction): string {
     case 'create':
       return i18nText('frontstage', 'data_blocks.table.create');
     case 'delete':
-      return i18nText('frontstage', 'data_blocks.table.delete');
+      return i18nText('frontstage', 'auto.delete');
     case 'refresh':
-      return i18nText('frontstage', 'data_blocks.table.refresh');
+      return i18nText('frontstage', 'auto.refresh');
     case 'view':
-      return i18nText('frontstage', 'data_blocks.table.view');
+      return i18nText('frontstage', 'data_blocks.common.view');
     case 'edit':
-      return i18nText('frontstage', 'data_blocks.table.edit');
+      return i18nText('frontstage', 'auto.edit');
     case 'open':
       return i18nText('frontstage', 'data_blocks.table.open');
   }
@@ -25,13 +25,13 @@ export function presentationOptions() {
   return [
     {
       value: 'drawer',
-      label: i18nText('frontstage', 'data_blocks.table.drawer')
+      label: i18nText('frontstage', 'auto.block_tree_drawer')
     },
     {
       value: 'modal',
       label: i18nText('frontstage', 'data_blocks.table.modal')
     },
-    { value: 'page', label: i18nText('frontstage', 'data_blocks.table.page') }
+    { value: 'page', label: i18nText('frontstage', 'auto.page') }
   ];
 }
 export function sizeOptions() {

@@ -312,12 +312,12 @@ function FormSettingsModal({
       onOk={() => void save()}
       confirmLoading={saving}
       okText={i18nText('frontstage', 'data_blocks.form.save_design')}
-      cancelText={i18nText('frontstage', 'data_blocks.form.cancel')}
+      cancelText={i18nText('frontstage', 'auto.cancel')}
     >
       <Form layout="vertical">
         {(dialog === 'title' || item) && (
           <>
-            <Form.Item label={i18nText('frontstage', 'data_blocks.form.title')}>
+            <Form.Item label={i18nText('frontstage', 'auto.title')}>
               <Input
                 value={item ? (item.title ?? '') : draft.title}
                 onChange={(event) =>
@@ -327,9 +327,7 @@ function FormSettingsModal({
                 }
               />
             </Form.Item>
-            <Form.Item
-              label={i18nText('frontstage', 'data_blocks.form.description')}
-            >
+            <Form.Item label={i18nText('frontstage', 'auto.description')}>
               <Input.TextArea
                 value={item ? (item.description ?? '') : draft.description}
                 onChange={(event) =>
@@ -376,7 +374,7 @@ function FormSettingsModal({
                       patchItem({ required: event.target.checked })
                     }
                   >
-                    {i18nText('frontstage', 'data_blocks.form.required')}
+                    {i18nText('frontstage', 'data_blocks.fields.required')}
                   </Checkbox>
                 </Form.Item>
                 <Form.Item>
@@ -638,7 +636,7 @@ function RuleEditor({
             },
             {
               value: 'required',
-              label: i18nText('frontstage', 'data_blocks.form.required')
+              label: i18nText('frontstage', 'data_blocks.fields.required')
             },
             {
               value: 'optional',
