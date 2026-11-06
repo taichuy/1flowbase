@@ -233,6 +233,13 @@ fn run(job: Arc<Job>) {
         )
     }))
     .unwrap_or_else(|_| Err(std::io::Error::other("execution worker panicked")));
+    #[cfg(test)]
+    if let Err(error) = &result {
+        eprintln!(
+            "local-command job={} execution failed: {error:?}",
+            job.input.request_id
+        );
+    }
     let mut state = lock(&job.state);
     state.snapshot.state = match &result {
         Ok(metadata) => state.stop.unwrap_or(if metadata.exit_code == Some(0) {
