@@ -229,7 +229,13 @@ jobs:
             compile_target domain -p domain --lib
             test "$compile_failed" = 0
           else
-            cargo test --locked --manifest-path api/Cargo.toml -p api-server --features test-support --test api_private_contracts --test api_private_routes --no-run > "$evidence/host-compile.log" 2>&1 || { tail -c 7000 "$evidence/host-compile.log"; exit 1; }
+            for target in api_private_contracts api_private_routes; do
+              cargo test --locked --manifest-path api/Cargo.toml -p api-server --features test-support --test "$target" --no-run 2>&1 | tee "$evidence/host-$target-compile.log"
+            done
+            if [ '${{ inputs.scope }}' = system-event-center-supplement ]; then
+              cargo test --locked --manifest-path api/Cargo.toml -p api-server --features test-support --test api_system_settings --no-run 2>&1 | tee "$evidence/host-api_system_settings-compile.log"
+              cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib --no-run 2>&1 | tee "$evidence/storage-compile.log"
+            fi
           fi
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker > "$evidence/managed-worker-build.log" 2>&1 || { tail -c 7000 "$evidence/managed-worker-build.log"; exit 1; }
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
@@ -274,6 +280,9 @@ jobs:
               cargo test --locked --manifest-path api/Cargo.toml -p api-server --features test-support --test "$target" "$filter" -- --list > "$evidence/list-$filter.log" 2>&1
               grep -q ': test$' "$evidence/list-$filter.log" || { cat "$evidence/list-$filter.log"; exit 1; }
             done
+            run_crate_tests source-migration -p storage-durable-postgres --lib event_center_current_identity_migration_clears_only_new_configuration
+            run_tests source-catalog --test api_system_settings event_center
+            run_tests source-catalog-definitions --test api_private_contracts event_center::catalog::tests
             run_crate_tests source-model-contract -p domain --lib modeling_tests
             run_crate_tests source-configuration -p control-plane-postgres-tests --test event_center_configuration
             run_tests runtime-sources --test api_private_contracts _tests::runtime_event_stream
@@ -302,6 +311,7 @@ jobs:
             run_tests runtime-sources --test api_private_contracts _tests::runtime_event_stream
             run_tests source-workflows --test api_private_contracts workers::event_workflow
             run_tests source-catalog --test api_system_settings event_center
+            run_tests source-catalog-definitions --test api_private_contracts event_center::catalog::tests
             run_tests health --test health_routes
             run_tests source-generation-ownership --test api_private_routes event_catalog_preserves_bound_and_unbound_views_without_retaining_boot
             run_tests workflow-generation-ownership --test api_private_routes workflow_event_adapter_borrows_generation_and_rejects_retired_owner

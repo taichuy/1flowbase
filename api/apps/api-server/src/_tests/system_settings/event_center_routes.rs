@@ -107,7 +107,7 @@ async fn event_center_routes_keep_definition_configuration_separate_from_publica
         )
         .await
         .0,
-        StatusCode::BAD_REQUEST
+        StatusCode::UNPROCESSABLE_ENTITY
     );
     let id = created["data"]["id"].as_str().unwrap();
     let (status, catalog) = request(&app, "GET", "/api/console/events", &cookie, "", None).await;

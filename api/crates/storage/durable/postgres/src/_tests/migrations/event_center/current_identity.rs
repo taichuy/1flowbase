@@ -24,8 +24,8 @@ async fn event_center_current_identity_migration_clears_only_new_configuration()
     old["event_commands"] = json!([{"contract_id":"custom.draft","contract_version":"old"}]);
     sqlx::query("INSERT INTO communication_bindings(instance_id,scope_id,actor_user_id,config_json,plugin_mcp_instance_id) VALUES($1,$2,$3,$4,'tools')")
         .bind(instance).bind(workspace).bind(owner).bind(old).execute(&pool).await.unwrap();
-    let before_binding: Value = sqlx::query_scalar(
-        "SELECT to_jsonb(b)-'config_json' FROM communication_bindings b WHERE instance_id=$1",
+    let (before_binding, before_updated_at): (Value, time::OffsetDateTime) = sqlx::query_as(
+        "SELECT to_jsonb(b)-'config_json'-'updated_at', updated_at FROM communication_bindings b WHERE instance_id=$1",
     )
     .bind(instance)
     .fetch_one(&pool)
@@ -73,14 +73,16 @@ async fn event_center_current_identity_migration_clears_only_new_configuration()
             .await
             .unwrap();
     assert_eq!(after_config, retained);
-    let after_binding: Value = sqlx::query_scalar(
-        "SELECT to_jsonb(b)-'config_json' FROM communication_bindings b WHERE instance_id=$1",
+    let (after_binding, after_updated_at): (Value, time::OffsetDateTime) = sqlx::query_as(
+        "SELECT to_jsonb(b)-'config_json'-'updated_at', updated_at FROM communication_bindings b WHERE instance_id=$1",
     )
     .bind(instance)
     .fetch_one(&pool)
     .await
     .unwrap();
     assert_eq!(before_binding, after_binding);
+    // Removing event_commands is an UPDATE: retain the existing audit trigger semantics.
+    assert!(after_updated_at > before_updated_at);
     let after_apps: Vec<Value> =
         sqlx::query_scalar("SELECT to_jsonb(a) FROM applications a ORDER BY id")
             .fetch_all(&pool)
