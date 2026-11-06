@@ -33,7 +33,18 @@ pub(crate) async fn download(
             state.infrastructure.ephemeral_kv_store(),
         )
         .read(actor, input.file_table_id, input.record_id)
-        .await?;
+        .await
+        .map_err(|error| {
+            if let Some(runtime_core::runtime_acl::RuntimeAclError::PermissionDenied(reason)) =
+                error.downcast_ref::<runtime_core::runtime_acl::RuntimeAclError>()
+            {
+                ApiError::from(control_plane::errors::ControlPlaneError::PermissionDenied(
+                    reason,
+                ))
+            } else {
+                ApiError::from(error)
+            }
+        })?;
         let reader = source
             .reader
             .into_inner()
