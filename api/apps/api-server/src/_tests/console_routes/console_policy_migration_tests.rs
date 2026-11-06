@@ -1066,3 +1066,115 @@ fn ac_010_cli_commands_and_static_evidence_are_deterministic() {
         .unwrap()
         .contains("Actor operation/row matrices"));
 }
+
+// Independently enumerate the approved terminal surface so missing or extra operations fail closed.
+const TERMINAL_OPERATION_IDS: [&str; 15] = [
+    "terminal.info",
+    "terminal.files.list",
+    "terminal.files.stat",
+    "terminal.files.read_text",
+    "terminal.files.read_range",
+    "terminal.files.search",
+    "terminal.files.read_image",
+    "terminal.files.read_audio",
+    "terminal.files.read_resource",
+    "terminal.files.import_resource",
+    "terminal.files.download_file",
+    "terminal.jobs.start",
+    "terminal.jobs.get",
+    "terminal.jobs.read",
+    "terminal.jobs.cancel",
+];
+
+#[test]
+fn terminal_migration_disposes_exact_operation_set_as_default_disabled_local_commands() {
+    let settings = compile_core_settings_feature_registry().unwrap();
+    let registry = compile_core_console_operation_registry(&settings).unwrap();
+    let expected = TERMINAL_OPERATION_IDS
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    let actual = registry
+        .inventory()
+        .operations
+        .iter()
+        .filter(|operation| operation.operation_id.starts_with("terminal."))
+        .map(|operation| operation.operation_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        actual, expected,
+        "the complete terminal operation set must be audited"
+    );
+    let migration = compile_core_console_policy_migration_plan(registry.inventory())
+        .expect("every terminal operation must have an explicit migration disposition");
+    let disposed = migration
+        .dispositions()
+        .iter()
+        .filter(|disposition| disposition.operation_id.starts_with("terminal."))
+        .map(|disposition| disposition.operation_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(disposed, expected);
+    for operation in TERMINAL_OPERATION_IDS {
+        let disposition = migration.disposition(operation).unwrap();
+        assert_eq!(disposition.policy_group_kind, "other", "{operation}");
+        assert_eq!(
+            disposition.policy_group_id, "other.local-commands",
+            "{operation}"
+        );
+        assert_eq!(disposition.authorization, "simple", "{operation}");
+        assert!(
+            disposition.is_default_disabled_new_operation(),
+            "{operation}"
+        );
+    }
+}
+
+#[test]
+fn terminal_migration_never_projects_legacy_role_grants_into_new_authority() {
+    let settings = compile_core_settings_feature_registry().unwrap();
+    let registry = compile_core_console_operation_registry(&settings).unwrap();
+    let migration = compile_core_console_policy_migration_plan(registry.inventory()).unwrap();
+    // Include every audited legacy source grant, not only the most obvious file/MCP grants.
+    let legacy_grants = migration
+        .legacy_mappings()
+        .iter()
+        .map(|mapping| mapping.legacy_grant.clone())
+        .collect::<Vec<_>>();
+    assert!(!legacy_grants.is_empty());
+    for mapping in migration.legacy_mappings() {
+        for operation in TERMINAL_OPERATION_IDS {
+            assert!(
+                !migration
+                    .disposition(operation)
+                    .unwrap()
+                    .has_legacy_grant(&mapping.legacy_grant),
+                "{} must not grant {operation}",
+                mapping.legacy_grant
+            );
+        }
+        if let ConsolePolicyMigrationLegacyGrantProjection::Operations(operations) =
+            &mapping.projection
+        {
+            assert!(
+                operations.iter().all(|operation| !TERMINAL_OPERATION_IDS
+                    .contains(&operation.operation_id().as_str())),
+                "{} must not project any terminal operation",
+                mapping.legacy_grant
+            );
+        }
+    }
+    for grants in [&[][..], legacy_grants.as_slice()] {
+        let preview = project_compiled_console_policy_migration_plan(
+            migration.plan(),
+            Uuid::now_v7(),
+            grants,
+        )
+        .expect("historic roles must remain migratable without new terminal authority");
+        assert!(preview
+            .effective_after
+            .iter()
+            .all(|entry| !TERMINAL_OPERATION_IDS.contains(&entry.operation_id.as_str())));
+        assert!(preview.authorization_delta.added.is_empty());
+        assert!(preview.authorization_delta.removed.is_empty());
+        assert!(preview.effective_delta.is_empty());
+    }
+}
