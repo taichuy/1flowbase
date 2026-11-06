@@ -290,14 +290,13 @@ async fn test_state_with_runtime_profile_state(
     )
     .expect("test extension graph input should assemble");
     let extension_boot_snapshot = Arc::new(
-        crate::extension_bus::ExtensionBootSnapshot::compile(
+        crate::extension_bus::compile_extension_boot_snapshot(
             Arc::new(
                 extension_assembly
                     .compile_graph()
                     .expect("test extension graph should compile"),
             ),
-            extension_assembly.interface_operations(),
-            Vec::new(),
+            &extension_assembly,
         )
         .expect("test extension boot snapshot should compile"),
     );
@@ -519,18 +518,18 @@ pub async fn login_and_capture_cookie(
         .await
         .unwrap();
 
+    let status = response.status();
     let cookie = response
         .headers()
         .get("set-cookie")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned);
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
+    assert_eq!(status, StatusCode::OK, "sign-in failed: {payload}");
     (
-        cookie,
+        cookie.unwrap_or_else(|| panic!("sign-in response omitted Set-Cookie: {payload}")),
         payload["data"]["csrf_token"].as_str().unwrap().to_string(),
     )
 }

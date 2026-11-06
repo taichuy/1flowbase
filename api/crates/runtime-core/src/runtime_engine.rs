@@ -1000,7 +1000,9 @@ impl RuntimeEngine {
         Ok(serde_json::json!({ "deleted": true }))
     }
 
-    fn load_available_metadata(
+    /// Resolve a published, available model and its active template in the caller workspace.
+    /// Callers must still enforce action grants before exposing its metadata.
+    pub fn load_available_metadata(
         &self,
         model_code: &str,
         workspace_id: Uuid,

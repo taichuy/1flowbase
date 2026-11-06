@@ -102,6 +102,18 @@ export function createFrontendModuleExtraLib(
   moduleSource: string,
   exports: readonly string[]
 ): BlockSourceExtraLib {
+  if (moduleSource === '@1flowbase/data-blocks') {
+    return {
+      source: moduleSource,
+      filePath: 'file:///node_modules/@1flowbase/data-blocks/index.d.ts',
+      content: `declare module '@1flowbase/data-blocks' {
+  import type { ReactElement } from 'react';
+  import type { BlockContext } from '@1flowbase/block-sdk';
+  export function TableBlock(props: { ctx: BlockContext }): ReactElement;
+  export function FormBlock(props: { ctx: BlockContext }): ReactElement;
+}`
+    };
+  }
   if (moduleSource === '@1flowbase/files') {
     return {
       source: moduleSource,

@@ -223,6 +223,11 @@ async fn fixture_state() -> (
         .with_events(notification_events.clone()),
     );
     notification_service.bootstrap().await.unwrap();
+    let event_center = control_plane::event_center::EventCenterRuntime::new(
+        infrastructure.event_bus(),
+        config.event_center_policy,
+    )
+    .expect("test event center runtime");
     let state = Arc::new(ApiState {
         store: store.clone(),
         console_policy_reader: Arc::new(store.clone()),
@@ -232,6 +237,10 @@ async fn fixture_state() -> (
         settings_feature_registry,
         console_operation_registry,
         infrastructure,
+        event_center,
+        event_sources: Arc::default(),
+        event_workflow_changes: Arc::default(),
+        event_workflow_statuses: Default::default(),
         console_surface_registry: Arc::new(
             api_server::console_surface_registry::ConsoleSurfaceRegistry::default(),
         ),
@@ -934,3 +943,6 @@ mod ui_management_routes;
 
 #[path = "_tests/runtime_ordered_tree_cache.rs"]
 mod runtime_ordered_tree_cache;
+
+#[path = "_tests/runtime_model_metadata.rs"]
+mod runtime_model_metadata;

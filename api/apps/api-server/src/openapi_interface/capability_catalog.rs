@@ -490,7 +490,9 @@ pub fn operation_risk_level(method: &str) -> &'static str {
 }
 
 fn static_operation_is_bindable(path: &str) -> bool {
-    path.starts_with("/api/console/") || path.starts_with(crate::routes::PUBLIC_API_PATH_PREFIX)
+    path == crate::routes::runtime_models::metadata_interface::OPENAPI_PATH
+        || path.starts_with("/api/console/")
+        || path.starts_with(crate::routes::PUBLIC_API_PATH_PREFIX)
 }
 
 fn static_disabled_reason(

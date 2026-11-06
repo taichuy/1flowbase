@@ -1,6 +1,7 @@
 import type { BlockContextSeed } from '@1flowbase/page-protocol';
 import { frontstageNativeInstanceRenderKey } from '../../hooks/use-frontstage-native-block-instance';
 import { NativeRuntimeSlotSurface } from '../page-canvas/NativeRuntimeSlotSurface';
+import { DataBlockSlotProvider } from '../data-blocks/DataBlockPageProvider';
 
 import { Alert } from 'antd';
 import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
@@ -448,22 +449,28 @@ export const RenderPlanSlot = memo(function RenderPlanSlot({
 
     if (runtimePreparation) {
       return (
-        <NativeRuntimeSlotSurface
+        <DataBlockSlotProvider
           item={item}
-          preparation={runtimePreparation}
-          signalCoordinator={signalCoordinator}
-          runtimeInputValues={runtimeInputValues}
-          runtimeContext={runtimeContext}
-          nativeContextHost={nativeContextHost}
           pageContent={pageContent}
-          contentViewportStyle={contentViewportStyle}
-          surfaceLayoutEpoch={isDesignMode ? 'design' : 'preview'}
-          fillsAvailableHeight={fillsAvailableHeight}
-          onIntrinsicSizeReport={handleIntrinsicSizeReport}
-          onRetry={
-            onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
-          }
-        />
+          isDesignMode={Boolean(isDesignMode)}
+        >
+          <NativeRuntimeSlotSurface
+            item={item}
+            preparation={runtimePreparation}
+            signalCoordinator={signalCoordinator}
+            runtimeInputValues={runtimeInputValues}
+            runtimeContext={runtimeContext}
+            nativeContextHost={nativeContextHost}
+            pageContent={pageContent}
+            contentViewportStyle={contentViewportStyle}
+            surfaceLayoutEpoch={isDesignMode ? 'design' : 'preview'}
+            fillsAvailableHeight={fillsAvailableHeight}
+            onIntrinsicSizeReport={handleIntrinsicSizeReport}
+            onRetry={
+              onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
+            }
+          />
+        </DataBlockSlotProvider>
       );
     }
 

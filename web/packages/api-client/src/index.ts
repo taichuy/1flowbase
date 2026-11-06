@@ -11,6 +11,7 @@ export {
   getConsoleApplicationRunConversationMessages
 } from './console/application-run-conversation';
 export * from './console/modeling/data-models';
+export * from './console/modeling/runtime-model-metadata';
 export * from './console/modeling/file-management';
 export * from './console/frontend-blocks';
 export * from './console/frontstage';

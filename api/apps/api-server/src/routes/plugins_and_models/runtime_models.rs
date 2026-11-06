@@ -31,6 +31,8 @@ use storage_durable_postgres::MainDurableStore;
 
 mod error_mapping;
 mod interface;
+pub(crate) mod metadata;
+pub(crate) mod metadata_interface;
 
 use error_mapping::{map_runtime_error, runtime_acl_denial_reason};
 
@@ -85,10 +87,15 @@ pub fn router() -> Router<Arc<ApiState>> {
 
 pub(crate) fn route_assembly(
 ) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
-    crate::external_route_assembly::ExternalRouteAssembly::new().route(
-        "/models/:model_code/*operation_path",
-        crate::external_route_assembly::any(dispatch_runtime_operation),
-    )
+    crate::external_route_assembly::ExternalRouteAssembly::new()
+        .route(
+            "/models/:model_code/metadata",
+            crate::external_route_assembly::get(metadata_interface::get_runtime_model_metadata),
+        )
+        .route(
+            "/models/:model_code/*operation_path",
+            crate::external_route_assembly::any(dispatch_runtime_operation),
+        )
 }
 
 struct RuntimeModelOperationAdapter {
@@ -128,6 +135,18 @@ pub(crate) fn compile_runtime_model_interface_registry_for_test() -> Result<
 }
 
 impl interface::RuntimeModelOperationPort for RuntimeModelOperationAdapter {
+    fn metadata<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        model_code: String,
+    ) -> interface::RuntimeModelMetadataFuture<'a> {
+        Box::pin(async move {
+            metadata::load(self, principal.actor(), &model_code)
+                .await
+                .map_err(interface::RuntimeModelOperationTargetError)
+        })
+    }
+
     fn execute<'a>(
         &'a self,
         principal: &'a UserPrincipal,
@@ -382,6 +401,11 @@ pub(crate) fn runtime_operation_requires_csrf(
     model_code: &str,
     path: &str,
 ) -> bool {
+    if method == plugin_framework::DataModelOperationMethod::Get
+        && path == format!("/api/runtime/models/{model_code}/metadata")
+    {
+        return false;
+    }
     // Authentication owns credential validation, not runtime-model availability projection.
     // When resolution rejects the operation, the typed Handler repeats the same pure lookup and
     // returns the established model/operation error before any side effect can execute.

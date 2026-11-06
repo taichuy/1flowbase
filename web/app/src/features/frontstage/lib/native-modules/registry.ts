@@ -228,6 +228,22 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       };
     }
   ),
+  registration(
+    '@1flowbase/data-blocks',
+    ['TableBlock', 'FormBlock'],
+    async () => {
+      const [table, form, tableStyle, formStyle] = await Promise.all([
+        import('../../components/data-blocks/table/TableBlock'),
+        import('../../components/data-blocks/form/FormBlock'),
+        import('../../components/data-blocks/table/table-block.css?inline'),
+        import('../../components/data-blocks/form/form-block.css?inline')
+      ]);
+      return {
+        module: { TableBlock: table.TableBlock, FormBlock: form.FormBlock },
+        styles: [tableStyle, formStyle].map((style) => ({ css: style.default }))
+      };
+    }
+  ),
   registration('@1flowbase/block-sdk', ['blockSdkVersion'], async () => ({
     module: await import('@1flowbase/block-sdk')
   })),

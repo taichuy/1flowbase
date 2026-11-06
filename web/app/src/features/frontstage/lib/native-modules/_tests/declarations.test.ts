@@ -5,6 +5,22 @@ import { collectNativeModuleDeclarations } from '../../../../../../build/native-
 import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../editor-declarations';
 
 describe('frontend Monaco module declarations', () => {
+  test('data block templates require the standard block context', () => {
+    expect(
+      typeCheckSource({
+        extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+        source: `
+import type { BlockContext } from '@1flowbase/block-sdk';
+import { TableBlock, FormBlock } from '@1flowbase/data-blocks';
+declare const ctx: BlockContext;
+const table = <TableBlock ctx={ctx} />;
+const form = <FormBlock ctx={ctx} />;
+// @ts-expect-error data blocks must receive the authorized host context.
+const missing = <TableBlock />;
+void table; void form; void missing;`
+      })
+    ).toEqual([]);
+  });
   test('file table blocks accept a table code and reject untyped storage/request options', () => {
     expect(
       typeCheckSource({
