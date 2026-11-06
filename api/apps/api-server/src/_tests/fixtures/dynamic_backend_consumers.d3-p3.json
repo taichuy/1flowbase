@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 467,
+  "projected_interface_count": 473,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -598,6 +598,12 @@
       "Subscribe flow debug run stream"
     ],
     [
+      "get_workflow_event_trigger",
+      "GET",
+      "/api/console/applications/:application_id/workflow-event-trigger",
+      "Read workflow event trigger"
+    ],
+    [
       "get_workflow_schedule_trigger",
       "GET",
       "/api/console/applications/:application_id/workflow-schedule-trigger",
@@ -716,6 +722,18 @@
       "GET",
       "/api/console/docs/operations/:operation_id/openapi.json",
       "Get console docs operation openapi"
+    ],
+    [
+      "events.catalog.list",
+      "GET",
+      "/api/console/events",
+      "List registered event definitions"
+    ],
+    [
+      "events.runtime.get",
+      "GET",
+      "/api/console/events/runtime",
+      "Inspect current event queues and activity"
     ],
     [
       "frontend_blocks.view",
@@ -1708,6 +1726,12 @@
       "Data sources secret rotate"
     ],
     [
+      "events.definitions.create",
+      "POST",
+      "/api/console/events",
+      "Create a custom event definition"
+    ],
+    [
       "files.access_links.create",
       "POST",
       "/api/console/files/:file_table_id/records/:record_id/access-links",
@@ -2638,6 +2662,12 @@
       "Save draft"
     ],
     [
+      "replace_workflow_event_trigger",
+      "PUT",
+      "/api/console/applications/:application_id/workflow-event-trigger",
+      "Configure workflow event trigger"
+    ],
+    [
       "replace_workflow_schedule_trigger",
       "PUT",
       "/api/console/applications/:application_id/workflow-schedule-trigger",
@@ -2648,6 +2678,12 @@
       "PUT",
       "/api/console/communications/instances/:instance_id/binding",
       "Save communication binding"
+    ],
+    [
+      "events.definitions.update",
+      "PUT",
+      "/api/console/events/:event_definition_id",
+      "Update a custom event definition"
     ],
     [
       "frontstage.tabs.document.save",

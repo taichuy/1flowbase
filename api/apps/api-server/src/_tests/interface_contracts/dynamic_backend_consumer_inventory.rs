@@ -118,6 +118,15 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "notifications.messages.read_all"
                     | "files.access_links.create"
                     | "notifications.instances.list"
+                    // Event-center contracts from bf969b7aa were already mounted but absent
+                    // from this fixture. Their exact summaries and descriptions are also
+                    // absent from the pinned seed; await an official catalog release.
+                    | "events.catalog.list"
+                    | "events.definitions.create"
+                    | "events.definitions.update"
+                    | "events.runtime.get"
+                    | "get_workflow_event_trigger"
+                    | "replace_workflow_event_trigger"
                     // Communication contracts were added after the pinned official catalog.
                     | "communications.management.conversations.messages.list"
                     | "communications.management.conversations.list"
