@@ -153,6 +153,9 @@ jobs:
           export CARGO_BUILD_JOBS="$(nproc)"
           cargo build --locked --manifest-path api/Cargo.toml --workspace --bin api-server \
             2>&1 | tee tmp/test-governance/terminal-mcp-api/runtime-build.log
+          mkdir -p tmp/terminal-mcp-runtime
+          strip -o tmp/terminal-mcp-runtime/api-server api/target/debug/api-server
+          sha256sum tmp/terminal-mcp-runtime/api-server > tmp/test-governance/terminal-mcp-api/runtime-sha256.txt
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -163,5 +166,5 @@ jobs:
         if: ${{ !cancelled() && steps.runtime_build.outcome == 'success' }}
         with:
           name: terminal-mcp-api-binary-${{ github.sha }}
-          path: api/target/debug/api-server
+          path: tmp/terminal-mcp-runtime/api-server
           if-no-files-found: warn

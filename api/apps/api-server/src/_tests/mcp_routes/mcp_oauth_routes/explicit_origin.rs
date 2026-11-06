@@ -15,6 +15,7 @@ async fn forwarded(
         .header("host", "127.0.0.1")
         .header("x-forwarded-proto", "http")
         .header("origin", ISSUER)
+        .header("mcp-protocol-version", "2025-11-25")
         .header("content-type", content_type);
     if let Some(cookie) = cookie {
         request = request.header("cookie", cookie);

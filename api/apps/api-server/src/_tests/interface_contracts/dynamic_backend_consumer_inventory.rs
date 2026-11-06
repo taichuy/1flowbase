@@ -298,6 +298,8 @@ fn console_display_inventory_matches_key_only_fixture() {
         reference.starts_with("auto.")
             || reference.starts_with("console.")
             || *reference == "system_settings.title"
+            // Event Center owns this existing static reference outside console.*.
+            || *reference == "events.title"
     }));
     assert!(static_references
         .iter()
