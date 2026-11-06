@@ -644,9 +644,9 @@ async fn frontend_block_catalog_exposes_js_table_and_form_without_overwriting_te
     )
     .unwrap();
     let snapshot = Arc::new(
-        crate::extension_bus::ExtensionBootSnapshot::compile_for_test(
+        crate::extension_bus::compile_extension_boot_snapshot(
             Arc::new(assembly.compile_graph().unwrap()),
-            assembly.interface_operations(),
+            &assembly,
         )
         .unwrap(),
     );
