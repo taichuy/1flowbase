@@ -199,14 +199,9 @@ fn source_field_schema(
     interface_param: &str,
     mcp_param: &str,
 ) -> Value {
-    let mut candidates = vec![mcp_param.to_owned()];
-    if let Some(location) = mcp_param
-        .split('.')
-        .next()
-        .filter(|location| matches!(*location, "path" | "query" | "body"))
-    {
-        push_candidate(&mut candidates, format!("{location}.{interface_param}"));
-    }
+    // Transport location belongs to the interface, while mcp_param is only an
+    // Agent-facing name. A body field named `path` must not inherit the URL container.
+    let mut candidates = Vec::new();
     match interface_parameter_type(input_mapping, interface_param) {
         Some("json_body" | "form") => {
             push_candidate(&mut candidates, format!("body.{interface_param}"));
@@ -216,6 +211,14 @@ fn source_field_schema(
             push_candidate(&mut candidates, format!("query.{interface_param}"));
         }
         _ => {}
+    }
+    push_candidate(&mut candidates, mcp_param.to_owned());
+    if let Some(location) = mcp_param
+        .split('.')
+        .next()
+        .filter(|location| matches!(*location, "path" | "query" | "body"))
+    {
+        push_candidate(&mut candidates, format!("{location}.{interface_param}"));
     }
     for location in ["path", "query", "body"] {
         push_candidate(&mut candidates, format!("{location}.{interface_param}"));

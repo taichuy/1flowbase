@@ -1314,3 +1314,31 @@ fn mcp_get_omits_materialized_empty_body_for_explicitly_unmapped_interface() {
 }
 #[path = "virtual_ui/causal_lineage.rs"]
 mod causal_lineage;
+
+#[test]
+fn mcp_get_advertises_a_string_file_path_beside_url_host_parameters() {
+    let mut catalog = catalog_with_server_bound_workspace();
+    catalog.tools[0].parameter_schema = json!({"type":"object","properties":{
+        "path":{"type":"object","properties":{"host_id":{"type":"string","minLength":1}},"required":["host_id"],"additionalProperties":false},
+        "body":{"type":"object","properties":{"path":{"type":"string","minLength":1}},"required":["path"],"additionalProperties":false}
+    },"required":["path","body"],"additionalProperties":false});
+    catalog.tools[0].input_mapping = json!({
+        "interface_parameters":[{"name":"host_id","parameter_type":"url"},{"name":"path","parameter_type":"json_body"}],
+        "mappings":[
+            {"interface_param":"host_id","mcp_param":"host_id","required":true},
+            {"interface_param":"path","mcp_param":"path","required":true}
+        ]
+    });
+    let scope = VirtualMcpScope::single("selected".into());
+    let VirtualToolOutcome::Success(result) =
+        get(&catalog, &scope, &json!({"tool_id":"lookup"}), false)
+    else {
+        panic!("visible tool");
+    };
+    let schema = &result["structuredContent"]["input_schema"];
+    assert_eq!(schema["properties"]["path"]["type"], "string");
+    let validator = jsonschema::validator_for(schema).unwrap();
+    assert!(validator.is_valid(&json!({"host_id":"saved-host","path":"/tmp/file.txt"})));
+    assert!(!validator.is_valid(&json!({"host_id":"saved-host","path":{"host_id":"saved-host"}})));
+    assert!(!validator.is_valid(&json!({"host_id":"saved-host","path":""})));
+}
