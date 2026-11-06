@@ -13,6 +13,7 @@ fn fixture(
     let (sender, receiver) = mpsc::channel(capacity);
     let (done, completion) = tokio::sync::oneshot::channel();
     let id = Identity {
+        recovery_context: None,
         run: Uuid::now_v7(),
         node: "model".into(),
         node_run: Uuid::now_v7(),

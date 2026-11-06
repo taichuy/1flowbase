@@ -198,6 +198,17 @@ impl ResolvedProviderRoute {
 
 #[async_trait]
 pub trait ProviderInvoker: Send + Sync {
+    /// Default deny: only the host owning durable native source evidence may rebuild.
+    /// Called once, after a validated owner-loss receipt and ledger admission.
+    async fn materialize_native_continuation(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _route: &ResolvedProviderRoute,
+        _input: ProviderInvocationInput,
+    ) -> Result<Option<ProviderInvocationInput>> {
+        Ok(None)
+    }
+
     async fn provider_distribution_registry_fingerprint(&self) -> Result<String> {
         Ok("builtin-provider-distribution-registry/v1".to_string())
     }

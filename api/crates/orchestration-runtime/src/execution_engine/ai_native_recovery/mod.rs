@@ -499,6 +499,35 @@ impl AiNativeRecoveryLedger {
     }
 }
 
+/// Narrow admission for a typed local owner loss. This reserves the ordinary ledger
+/// budget/token before durable materialization; it does not authorize an upstream send.
+pub fn decide_native_owner_replay_with_default_bucket(
+    ledger: &mut AiNativeRecoveryLedger,
+    receipt: &ProviderRecoveryReceipt,
+    partition: ProviderRetryPartition,
+    now_unix_ms: i64,
+    outer_attempt: u16,
+) -> AiNativeRecoveryReceipt {
+    let reproducible = ledger.reproducible;
+    if ledger.input_mode == RecoveryInputMode::NativeOpaque
+        && receipt.reason == extension_contracts::RecoveryReason::ContinuationOwnerUnavailable
+        && receipt
+            .validate_against(&ledger.provider_directive())
+            .is_ok()
+    {
+        ledger.reproducible = true;
+    }
+    let result = decide_outer_replay_with_default_bucket(
+        ledger,
+        Some(receipt),
+        partition,
+        now_unix_ms,
+        outer_attempt,
+    );
+    ledger.reproducible = reproducible;
+    result
+}
+
 pub fn decide_outer_replay_with_default_bucket(
     ledger: &mut AiNativeRecoveryLedger,
     receipt: Option<&ProviderRecoveryReceipt>,

@@ -309,6 +309,8 @@ pub enum RecoveryTransport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RecoveryReason {
+    /// The selected worker no longer has its local continuation owner.
+    ContinuationOwnerUnavailable,
     TransportDisconnected,
     TransportRejected,
     ProtocolError,
@@ -367,6 +369,12 @@ impl ProviderRecoveryReceipt {
 
     pub fn validate(&self) -> Result<(), String> {
         validate_commit_disposition(self.commit_level, self.disposition)?;
+        if self.reason == RecoveryReason::ContinuationOwnerUnavailable
+            && (self.commit_level != CommitLevel::LifecycleOnly
+                || self.disposition != RecoveryDisposition::LogicalInvocationRetry)
+        {
+            return Err("continuation owner loss requires a lifecycle-only logical retry".into());
+        }
         if self.is_full_context_http_rebuild() {
             if self.attempt == 0 {
                 return Err("HTTP full-context rebuild requires a recovery attempt".to_string());

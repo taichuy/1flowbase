@@ -324,3 +324,54 @@ fn native_exact_authorization_does_not_erase_commit_terminal_or_deadline_gates()
         "native grant cannot authorize an unrelated semantic input"
     );
 }
+
+#[test]
+fn native_owner_loss_admission_preserves_deadline_total_budget_and_semantic_barriers() {
+    use extension_contracts::provider_contract::{RecoveryReason, RecoveryTransport};
+    for case in ["deadline", "budget", "semantic", "generic"] {
+        let mut ledger = AiNativeRecoveryLedger::with_total_attempt_budget(
+            100,
+            1,
+            false,
+            RecoveryInputMode::NativeOpaque,
+            if case == "budget" { 1 } else { 4 },
+        )
+        .unwrap();
+        let receipt = ProviderRecoveryReceipt {
+            attempt: 0,
+            transport: RecoveryTransport::AiNativeWebSocket,
+            transport_epoch: ledger.current_epoch(),
+            socket_incarnation: None,
+            commit_level: CommitLevel::LifecycleOnly,
+            disposition: RecoveryDisposition::LogicalInvocationRetry,
+            reason: if case == "generic" {
+                RecoveryReason::TransportDisconnected
+            } else {
+                RecoveryReason::ContinuationOwnerUnavailable
+            },
+        };
+        if case == "semantic" {
+            ledger.observe_events(&[ProviderStreamEvent::TextDelta {
+                delta: "committed".into(),
+            }]);
+        }
+        let partition =
+            ProviderRetryPartition::new(format!("owner-loss-{case}"), "endpoint", "credential")
+                .unwrap();
+        let before = ledger.current_epoch();
+        let result = decide_native_owner_replay_with_default_bucket(
+            &mut ledger,
+            &receipt,
+            partition,
+            if case == "deadline" { 100 } else { 1 },
+            0,
+        );
+        assert_ne!(result.decision, OuterReplayDecision::Retry, "{case}");
+        assert_eq!(ledger.current_epoch(), before, "denial cannot rotate epoch");
+        assert_eq!(
+            result.total_attempts_charged, 1,
+            "debit actual attempt exactly once"
+        );
+        assert_eq!(ledger.absolute_deadline_unix_ms(), 100);
+    }
+}

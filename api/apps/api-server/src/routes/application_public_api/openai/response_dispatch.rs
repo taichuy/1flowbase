@@ -423,6 +423,12 @@ async fn prepare_response(
                     ))
                 })?;
             let payload = payload
+                .with_native_recovery_source(
+                    control_plane_contracts::ports::NativeContinuationRecoverySource {
+                        flow_run_id: previous_flow_run_id,
+                        response_round_id: round_id,
+                    },
+                )
                 .bind_openai_continuation(continuation)
                 .map_err(|_| {
                     OpenAiRouteError::Native(native::NativeApiError::new(

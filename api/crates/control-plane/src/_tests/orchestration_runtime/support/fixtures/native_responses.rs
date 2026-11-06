@@ -1,6 +1,20 @@
 use super::*;
 
 impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemoryProviderRuntime> {
+    pub fn native_recovery_page_reads_fixture(&self) -> usize {
+        self.repository.native_recovery_page_reads()
+    }
+
+    pub fn alter_native_recovery_source_fixture(
+        &self,
+        run_id: Uuid,
+        mode: &str,
+        predecessor: Option<crate::ports::NativeContinuationRecoverySource>,
+    ) {
+        self.repository
+            .alter_native_recovery_source(run_id, mode, predecessor)
+    }
+
     pub fn for_tests_with_captured_provider_outputs(
         outputs: Vec<crate::ports::ProviderRuntimeInvocationOutput>,
     ) -> (

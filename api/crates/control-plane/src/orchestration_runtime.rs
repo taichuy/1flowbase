@@ -720,7 +720,24 @@ where
             .map(|callback| callback_predecessor_receipt(input.native_transport.as_ref(), callback))
             .transpose()?
             .flatten();
-        let transport = match (input.native_transport, provider_continuation.as_ref()) {
+        let native_transport = input.native_transport.map(|payload| {
+            let round_id = payload
+                .wire_body()
+                .get("previous_response_id")
+                .and_then(Value::as_str)
+                .and_then(|id| id.strip_prefix("resp_"))
+                .and_then(|id| Uuid::parse_str(id).ok());
+            match round_id {
+                Some(response_round_id) => payload.with_native_recovery_source(
+                    crate::ports::NativeContinuationRecoverySource {
+                        flow_run_id: input.flow_run.id,
+                        response_round_id,
+                    },
+                ),
+                None => payload,
+            }
+        });
+        let transport = match (native_transport, provider_continuation.as_ref()) {
             (Some(payload), Some(continuation))
                 if payload.wire_body().get("previous_response_id").is_some() =>
             {

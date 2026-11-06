@@ -15,6 +15,96 @@ struct AutomaticTransportReplay {
     selected: SelectedLlmInvocation,
 }
 
+// Both returned and streamed failures use the same receipt/budget/materialization gate.
+async fn decide_attempt_recovery<I: ProviderInvoker + ?Sized>(
+    ledger: &mut AiNativeRecoveryLedger,
+    receipt: &std::result::Result<Option<extension_contracts::ProviderRecoveryReceipt>, String>,
+    partition: ai_native_recovery::ProviderRetryPartition,
+    now: i64,
+    outer_attempt: u16,
+    invoker: &I,
+    replay: &mut AutomaticTransportReplay,
+    rebuild_attempted: &mut bool,
+    failed: bool,
+) -> ai_native_recovery::AiNativeRecoveryReceipt {
+    let Ok(receipt) = receipt else {
+        return ledger.reject_invalid_receipt(outer_attempt);
+    };
+    let owner_loss = receipt.as_ref().is_some_and(|receipt| {
+        receipt.reason == extension_contracts::RecoveryReason::ContinuationOwnerUnavailable
+    });
+    let materializable = failed
+        && owner_loss
+        && !*rebuild_attempted
+        && replay.selected.input_mode == RecoveryInputMode::NativeOpaque
+        && replay
+            .selected
+            .invocation
+            .input
+            .native_transport
+            .as_ref()
+            .is_some_and(|native| {
+                native.protocol == "openai_responses"
+                    && native
+                        .wire_body
+                        .get("previous_response_id")
+                        .is_some_and(|id| !id.is_null())
+            });
+    if owner_loss && !materializable {
+        // A repeated owner failure cannot reopen generic opaque reconstruction.
+        ledger.select_input_representation(replay.selected.input_mode, false);
+    }
+    let mut decision = if materializable {
+        ai_native_recovery::decide_native_owner_replay_with_default_bucket(
+            ledger,
+            receipt.as_ref().expect("typed owner loss"),
+            partition,
+            now,
+            outer_attempt,
+        )
+    } else {
+        decide_outer_replay_with_default_bucket(
+            ledger,
+            receipt.as_ref(),
+            partition,
+            now,
+            outer_attempt,
+        )
+    };
+    if materializable && decision.decision == OuterReplayDecision::Retry {
+        *rebuild_attempted = true;
+        let mut input = replay.selected.invocation.input.clone();
+        input.run_context.insert(
+            "task_deadline_unix_ms".into(),
+            json!(ledger.absolute_deadline_unix_ms()),
+        );
+        let rebuilt = invoker
+            .materialize_native_continuation(
+                &replay.resolved.runtime,
+                replay
+                    .resolved
+                    .route
+                    .as_ref()
+                    .expect("selected frozen route"),
+                input,
+            )
+            .await;
+        match rebuilt {
+            Ok(Some(input))
+                if unix_millis(OffsetDateTime::now_utc()) < ledger.absolute_deadline_unix_ms() =>
+            {
+                replay.selected.invocation.input = input;
+            }
+            _ => {
+                // No new send occurred. Preserve the provider's original error and actual debit.
+                decision.decision = OuterReplayDecision::NonReproducible;
+                decision.original_terminal_preserved = true;
+            }
+        }
+    }
+    decision
+}
+
 pub(crate) async fn execute_llm_node_provider_round<I>(
     plan: &CompiledPlan,
     node: &CompiledNode,
@@ -191,6 +281,7 @@ where
     // An automatic replay belongs to the selected logical invocation. In particular, rerunning
     // distribution/route resolution could choose another account even at the same queue index.
     let mut automatic_replay: Option<AutomaticTransportReplay> = None;
+    let mut native_rebuild_attempted = false;
 
     for attempt_index in 0..request_count {
         let (resolved_attempt, replay_selected) = if let Some(replay) = automatic_replay.take() {
@@ -498,7 +589,7 @@ where
         if let Some(communication) = &runtime_context.communication {
             communication.check_active().await?;
         }
-        let replay_attempt = AutomaticTransportReplay {
+        let mut replay_attempt = AutomaticTransportReplay {
             resolved: llm_route_preflight::ResolvedLlmRequestRuntime {
                 runtime: attempt_runtime.clone(),
                 route: Ok(resolved_route.clone()),
@@ -561,17 +652,22 @@ where
                 // receipt stays distinguishable from an absent one so a
                 // corrupted receipt can never authorize a replay.
                 let provider_recovery_receipt = parse_provider_recovery_receipt(&provider_error);
-                let recovery_receipt = match provider_recovery_receipt.as_ref() {
-                    Ok(receipt) => decide_outer_replay_with_default_bucket(
-                        &mut recovery_ledger,
-                        receipt.as_ref(),
-                        retry_partition,
-                        unix_millis(attempt_finished_at),
-                        u16::try_from(attempt_index).unwrap_or(u16::MAX),
+                let recovery_receipt = decide_attempt_recovery(
+                    &mut recovery_ledger,
+                    &provider_recovery_receipt,
+                    retry_partition,
+                    unix_millis(attempt_finished_at),
+                    u16::try_from(attempt_index).unwrap_or(u16::MAX),
+                    invoker,
+                    &mut replay_attempt,
+                    &mut native_rebuild_attempted,
+                    matches!(
+                        provider_error.kind,
+                        ProviderRuntimeErrorKind::ProviderTransportUnavailable
+                            | ProviderRuntimeErrorKind::EndpointUnreachable
                     ),
-                    Err(_) => recovery_ledger
-                        .reject_invalid_receipt(u16::try_from(attempt_index).unwrap_or(u16::MAX)),
-                };
+                )
+                .await;
                 let typed_commit_blocks_replay = matches!(
                     recovery_receipt.decision,
                     OuterReplayDecision::SemanticCommitted
@@ -665,7 +761,7 @@ where
         let attempt_finished_at = OffsetDateTime::now_utc();
         canonicalize_provider_output_tool_call_names(&mut output, &invocation_tools);
         recovery_ledger.observe_events(&output.events);
-        let provider_recovery_receipt = output.result.recovery_receipt();
+        let mut provider_recovery_receipt = output.result.recovery_receipt();
         let provider_observability = take_provider_observability_metadata(&mut output.result);
 
         let usage = collect_usage(&output.events, &output.result.usage);
@@ -739,6 +835,11 @@ where
             .or(invalid_finish_reason_error)
             .or(reasoning_only_output_error)
             .or(terminal_finish_error);
+        if matches!(provider_recovery_receipt, Ok(None)) {
+            if let Some(error) = provider_error.as_ref() {
+                provider_recovery_receipt = parse_provider_recovery_receipt(error);
+            }
+        }
         let failed_after_first_token = (provider_error.is_some()
             || output_protocol_failure.is_some())
             && content_delta_seen_before_terminal_failure(&output.events, finish_reason.as_ref());
@@ -832,18 +933,25 @@ where
         );
         let ai_native_recovery = Some({
             let outer_attempt = u16::try_from(attempt_index).unwrap_or(u16::MAX);
-            match provider_recovery_receipt.as_ref() {
-                Ok(receipt) => decide_outer_replay_with_default_bucket(
-                    &mut recovery_ledger,
-                    receipt.as_ref(),
-                    retry_partition,
-                    unix_millis(attempt_finished_at),
-                    outer_attempt,
-                ),
-                // Present but untrustworthy: never a retry, and never reported as
-                // "the provider sent nothing".
-                Err(_) => recovery_ledger.reject_invalid_receipt(outer_attempt),
-            }
+            decide_attempt_recovery(
+                &mut recovery_ledger,
+                &provider_recovery_receipt,
+                retry_partition,
+                unix_millis(attempt_finished_at),
+                outer_attempt,
+                invoker,
+                &mut replay_attempt,
+                &mut native_rebuild_attempted,
+                error_payload.is_some()
+                    && provider_error.as_ref().is_some_and(|error| {
+                        matches!(
+                            error.kind,
+                            ProviderRuntimeErrorKind::ProviderTransportUnavailable
+                                | ProviderRuntimeErrorKind::EndpointUnreachable
+                        )
+                    }),
+            )
+            .await
         });
         if let Some(receipt) = ai_native_recovery.as_ref() {
             attach_ai_native_recovery_receipt(&mut attempt, receipt);

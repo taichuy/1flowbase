@@ -12,6 +12,17 @@ where
         + 'static,
     H: ProviderRuntimePort + Clone + Send + Sync,
 {
+    async fn materialize_native_continuation(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        route: &orchestration_runtime::execution_engine::ResolvedProviderRoute,
+        input: ProviderInvocationInput,
+    ) -> Result<Option<ProviderInvocationInput>> {
+        self.materialize_owned_native_continuation(runtime, route, input)
+            .await
+            .map(Some)
+    }
+
     async fn provider_distribution_registry_fingerprint(&self) -> Result<String> {
         self.runtime
             .provider_distribution_registry_fingerprint()
@@ -231,6 +242,12 @@ where
     ) -> Result<orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode>
     {
         self.ensure_continuation_route(runtime, &route.runtime_capabilities)?;
+        if native_continuation_recovery::apply_verified_rebuild(
+            self.provider_transport_payload.as_ref(),
+            input,
+        )? {
+            return Ok(orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode::NativeOpaque);
+        }
         self.apply_selected_provider_transport(runtime, &route.runtime_capabilities, input)?;
         Ok(if input.native_transport.is_some() {
             orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode::NativeOpaque
@@ -240,6 +257,12 @@ where
     }
 
     fn permits_selected_native_exact_replay(&self, input: &ProviderInvocationInput) -> bool {
+        if native_continuation_recovery::is_verified_rebuild(
+            self.provider_transport_payload.as_ref(),
+            input,
+        ) {
+            return true;
+        }
         let Some(payload) = self.provider_transport_payload.as_ref() else {
             return false;
         };
@@ -481,7 +504,7 @@ where
             }
         }
         let presentation_source_node_id = input.trace_context.get("node_id").cloned();
-        let native_capture = native_trajectory::start(
+        let native_capture = native_trajectory::start_with_recovery_context(
             self.repository.clone(),
             self.flow_run_id,
             active_node
@@ -489,6 +512,16 @@ where
                 .map(|node| (node.node_id.clone(), node.node_run_id)),
             &input,
             self.observation_context.as_ref(),
+            selected_native_transport.then(|| {
+                json!({
+                    "workspace_id": self.workspace_id,
+                    "response_round_id": self.response_round_id.or(self.flow_run_id),
+                    "predecessor_source": self.provider_transport_payload.as_ref()
+                        .and_then(|payload| payload.native_recovery_source()),
+                    "predecessor_history": self.native_history,
+                    "provider_binding": native_inference_binding,
+                })
+            }),
         )
         .await;
         let native_observer = native_capture.observer();

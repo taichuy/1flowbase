@@ -18,6 +18,7 @@ mod failover_queue;
 mod fee_lifecycle;
 mod internal_compaction;
 mod main_instance_routing;
+mod native_continuation_recovery;
 mod native_trajectory;
 mod protocol_context;
 mod protocol_observation;

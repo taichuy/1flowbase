@@ -799,3 +799,88 @@ fn provider_invoker_defaults_cannot_authorize_native_snapshot_replay() {
         .insert(ProviderInvocationCapability::ResponsesNativePassthrough);
     assert!(!CapturingInference::default().permits_selected_native_exact_replay(&input));
 }
+
+struct NativeOwnerWithoutMaterializer(std::sync::atomic::AtomicUsize);
+#[async_trait::async_trait]
+impl ProviderInvoker for NativeOwnerWithoutMaterializer {
+    fn prepare_selected_llm_input(
+        &self,
+        _: &CompiledLlmRuntime,
+        _: &ResolvedProviderRoute,
+        input: &mut ProviderInvocationInput,
+    ) -> Result<ai_native_recovery::RecoveryInputMode> {
+        input.native_transport = Some(extension_contracts::ProviderNativeTransport {
+            protocol: "openai_responses".into(),
+            wire_body: json!({"previous_response_id":"old","input":[]}),
+            digest: "test-only".into(),
+            size_bytes: 0,
+        });
+        Ok(ai_native_recovery::RecoveryInputMode::NativeOpaque)
+    }
+    async fn invoke_llm(
+        &self,
+        _: &CompiledLlmRuntime,
+        input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        use extension_contracts::{
+            CommitLevel, ProviderRecoveryDirective, ProviderRecoveryReceipt, RecoveryDisposition,
+            RecoveryReason, RecoveryTransport,
+        };
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let directive: ProviderRecoveryDirective =
+            serde_json::from_value(input.run_context["provider_recovery"].clone())?;
+        let receipt = ProviderRecoveryReceipt {
+            attempt: 0,
+            transport: RecoveryTransport::AiNativeWebSocket,
+            transport_epoch: directive.transport_epoch,
+            socket_incarnation: None,
+            commit_level: CommitLevel::LifecycleOnly,
+            disposition: RecoveryDisposition::LogicalInvocationRetry,
+            reason: RecoveryReason::ContinuationOwnerUnavailable,
+        };
+        Err(ExtensionContractError::runtime(
+            ProviderRuntimeError::new(
+                ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+                "original owner missing",
+            )
+            .with_provider_details(json!({"1flowbase_provider_recovery":receipt})),
+        )
+        .into())
+    }
+}
+
+#[tokio::test]
+async fn typed_native_owner_loss_without_host_materializer_preserves_error_without_second_send() {
+    let plan = executable_routed_plan();
+    let invoker = NativeOwnerWithoutMaterializer(std::sync::atomic::AtomicUsize::new(0));
+    let templates = serde_json::from_value(
+        json!({"prompt_messages":[{"id":"user","role":"user","content":"question"}]}),
+    )
+    .unwrap();
+    let pool = serde_json::from_value(json!({"start":{"query":"question"}})).unwrap();
+    let output = execute_llm_node_provider_round(
+        &plan,
+        &plan.nodes["llm-b"],
+        &Map::new(),
+        &templates,
+        &pool,
+        &ExecutionRuntimeContext::default(),
+        &invoker,
+    )
+    .await
+    .unwrap();
+    assert_eq!(invoker.0.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(output
+        .error_payload
+        .unwrap()
+        .to_string()
+        .contains("original owner missing"));
+    assert_eq!(
+        output.metrics_payload["attempts"][0]["ai_native_recovery"]["decision"],
+        "non_reproducible"
+    );
+    assert_eq!(
+        output.metrics_payload["attempts"][0]["ai_native_recovery"]["total_attempts_charged"],
+        1
+    );
+}
