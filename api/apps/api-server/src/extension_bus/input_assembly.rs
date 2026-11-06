@@ -424,10 +424,14 @@ fn runtime_event_required_extension_point() -> Result<ExtensionPointDescriptor> 
         point_id: ExtensionPointId::new(RUNTIME_EVENT_REQUIRED_POINT_ID)?,
         owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
         point_kind: ExtensionPointKind::EventStream,
-        contract: ContractDescriptor::new(
-            RUNTIME_EVENT_REQUIRED_CONTRACT_ID,
-            RUNTIME_EVENT_LANE_CONTRACT_VERSION,
-        )?,
+        contract: {
+            let mut contract = ContractDescriptor::new(
+                RUNTIME_EVENT_REQUIRED_CONTRACT_ID,
+                RUNTIME_EVENT_LANE_CONTRACT_VERSION,
+            )?;
+            contract.payload_schema = Some(control_plane::ports::runtime_event_envelope_schema());
+            contract
+        },
         scope: ScopeSemantics::Global,
         cardinality: Cardinality::Many,
         ordering: OrderingSemantics::Dependency,
@@ -444,10 +448,14 @@ fn runtime_event_diagnostic_extension_point() -> Result<ExtensionPointDescriptor
         point_id: ExtensionPointId::new(RUNTIME_EVENT_DIAGNOSTIC_POINT_ID)?,
         owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
         point_kind: ExtensionPointKind::EventStream,
-        contract: ContractDescriptor::new(
-            RUNTIME_EVENT_DIAGNOSTIC_CONTRACT_ID,
-            RUNTIME_EVENT_LANE_CONTRACT_VERSION,
-        )?,
+        contract: {
+            let mut contract = ContractDescriptor::new(
+                RUNTIME_EVENT_DIAGNOSTIC_CONTRACT_ID,
+                RUNTIME_EVENT_LANE_CONTRACT_VERSION,
+            )?;
+            contract.payload_schema = Some(control_plane::ports::runtime_event_envelope_schema());
+            contract
+        },
         scope: ScopeSemantics::Global,
         cardinality: Cardinality::Many,
         ordering: OrderingSemantics::Dependency,
@@ -464,10 +472,14 @@ fn runtime_event_after_commit_extension_point() -> Result<ExtensionPointDescript
         point_id: ExtensionPointId::new(RUNTIME_EVENT_AFTER_COMMIT_POINT_ID)?,
         owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
         point_kind: ExtensionPointKind::EventStream,
-        contract: ContractDescriptor::new(
-            RUNTIME_EVENT_AFTER_COMMIT_CONTRACT_ID,
-            RUNTIME_EVENT_LANE_CONTRACT_VERSION,
-        )?,
+        contract: {
+            let mut contract = ContractDescriptor::new(
+                RUNTIME_EVENT_AFTER_COMMIT_CONTRACT_ID,
+                RUNTIME_EVENT_LANE_CONTRACT_VERSION,
+            )?;
+            contract.payload_schema = Some(control_plane::ports::runtime_event_envelope_schema());
+            contract
+        },
         scope: ScopeSemantics::Global,
         cardinality: Cardinality::Many,
         ordering: OrderingSemantics::Dependency,

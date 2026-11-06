@@ -8,7 +8,7 @@ use control_plane::{
         publications::ApplicationPublicationVersionRecord,
         workflow_event::WorkflowEventTriggerService,
     },
-    event_center::{EventCenterSubscription, EventRuntimeSubscription},
+    event_center::{EventCenterSubscription, EventRuntimeSubscription, EventSourceTarget},
     system_recovery::SystemWriteOwner,
 };
 use control_plane_contracts::ports::EventCenterRepository;
@@ -120,7 +120,12 @@ async fn reconcile(
     for (id, trigger) in &configured {
         let prepared = async {
             let actor = authorized_actor(state, trigger).await?;
-            WorkflowEventTriggerService::new(state.store.for_actor(actor))
+            WorkflowEventTriggerService::new(state.store.for_actor(actor.clone()))
+                .with_registered_events(state.event_sources.registered_events(
+                    state.extension_boot_snapshot.as_deref(),
+                    &actor,
+                    &state.event_center,
+                ))
                 .prepare_subscription(trigger)
                 .await
         }
@@ -171,17 +176,30 @@ async fn reconcile(
             .get(id)
             .is_some_and(|logical| logical.emit_on_activation)
             || activation.is_some();
-        let subscription = match state.event_center.subscribe(
-            EventRuntimeSubscription {
-                subscription_id: trigger.id,
-                workspace_id: trigger.workspace_id,
-                contract_id: trigger.configuration.contract_id.clone(),
-                contract_version: trigger.configuration.contract_version.clone(),
-                trigger_phase: trigger.configuration.trigger_phase,
-                consumer_id: trigger.application_id,
-            },
-            emit_subscribed,
-        ) {
+        let spec = EventRuntimeSubscription {
+            subscription_id: trigger.id,
+            workspace_id: trigger.workspace_id,
+            contract_id: trigger.configuration.contract_id.clone(),
+            contract_version: trigger.configuration.contract_version.clone(),
+            trigger_phase: trigger.configuration.trigger_phase,
+            consumer_id: trigger.application_id,
+        };
+        let opened = match &trigger.configuration.source {
+            Some(source) => state.event_center.subscribe_source(
+                spec,
+                EventSourceTarget {
+                    source_id: source.source_id.clone(),
+                    scope: source.scope.clone(),
+                    workflow_id: trigger.application_id,
+                },
+            ),
+            None => {
+                state
+                    .event_center
+                    .subscribe_workflow(spec, emit_subscribed, trigger.application_id)
+            }
+        };
+        let subscription = match opened {
             Ok(subscription) => Arc::new(subscription),
             Err(error) => {
                 statuses.activation(
@@ -264,6 +282,7 @@ fn same_identity(left: &WorkflowEventTriggerRecord, right: &WorkflowEventTrigger
         && left.configuration.contract_id == right.configuration.contract_id
         && left.configuration.contract_version == right.configuration.contract_version
         && left.configuration.trigger_phase == right.configuration.trigger_phase
+        && left.configuration.source == right.configuration.source
 }
 
 async fn run(

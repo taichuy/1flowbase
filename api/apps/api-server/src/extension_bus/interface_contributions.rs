@@ -772,11 +772,7 @@ pub(crate) fn production_interface_contributions(
             ],
             &["api-server.console-workflow-event"],
             crate::routes::application_api::interface_event::compile_registry(
-                crate::routes::application_api::interface_event::port(
-                    state.store.clone(),
-                    state.event_workflow_changes.clone(),
-                    state.event_workflow_statuses.clone(),
-                ),
+                crate::routes::application_api::interface_event::port(state),
             )?,
         ),
         InterfaceRegistryContribution::new(

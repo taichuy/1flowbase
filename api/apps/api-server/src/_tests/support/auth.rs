@@ -360,6 +360,7 @@ async fn test_state_with_runtime_profile_state(
         console_operation_registry,
         infrastructure,
         event_center,
+        event_sources: Arc::default(),
         event_workflow_changes: Arc::default(),
         event_workflow_statuses: Default::default(),
         extension_boot_snapshot: Some(Arc::clone(&extension_boot_snapshot)),

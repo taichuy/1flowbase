@@ -2,6 +2,7 @@ mod lifecycle;
 mod memory_comparison;
 mod payload_admission;
 mod recoverable;
+mod source_observation;
 
 use std::time::Duration;
 

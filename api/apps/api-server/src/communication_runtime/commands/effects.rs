@@ -418,7 +418,7 @@ async fn execute_event(
         let _permit = state.system_maintenance.try_enter_write(control_plane::system_recovery::SystemWriteOwner::CommunicationExecution)?;
         // Recheck the live lease after asynchronous configuration and authorization reads.
         ensure!(state.notification_service.renew_builtin_command_claim(claim, LEASE_SECONDS).await?, "command effect claim lost");
-        state.event_center.publish(&target, payload)
+        state.event_center.publish_with_ancestors(&target, payload, state.store.workflow_ancestor_ids())
     }.await;
     let (text, failure) = match result {
         Ok(receipt) => event_publication_reply(&receipt),

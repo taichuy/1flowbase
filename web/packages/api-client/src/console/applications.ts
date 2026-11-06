@@ -342,6 +342,7 @@ export function createConsoleApplicationTag(
 }
 
 export interface ReplaceConsoleWorkflowEventTriggerInput {
+  source?: import('./events').EventSourceSelection;
   enabled: boolean;
   contract_id: string;
   contract_version: string;

@@ -102,6 +102,7 @@ fn recorded_input(
     input: &PublishOptionalNotificationInput,
 ) -> RecordLifecycleFactInput {
     RecordLifecycleFactInput {
+        observation_context: None,
         event_id: event,
         transaction_id: input.transaction_id,
         contract_id: input.contract.contract_id().into(),

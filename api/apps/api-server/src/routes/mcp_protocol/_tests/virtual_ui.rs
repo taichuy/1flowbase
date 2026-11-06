@@ -1174,3 +1174,6 @@ async fn mcp_call_file_param_reaches_existing_interface_dispatch() {
     .unwrap();
     assert!(matches!(result, VirtualToolOutcome::Success(_)));
 }
+
+#[path = "virtual_ui/causal_lineage.rs"]
+mod causal_lineage;

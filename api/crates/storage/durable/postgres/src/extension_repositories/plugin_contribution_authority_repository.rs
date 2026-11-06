@@ -19,6 +19,8 @@ use std::{future::Future, pin::Pin};
 use uuid::Uuid;
 
 struct PgContributionAuthorityLease {
+    lifecycle_observer:
+        Option<std::sync::Arc<dyn control_plane_contracts::ports::LifecycleFactObserver>>,
     managed_operations:
         std::sync::Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
     transaction: Transaction<'static, Postgres>,
@@ -329,12 +331,12 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
                 let event_id = input.event_id;
                 let result = async move {
                     let record =
-                crate::lifecycle_outbox_repository::record_derived_lifecycle_fact_in_transaction(
+                crate::lifecycle_outbox_repository::record_derived_lifecycle_fact_in_transaction_with_outcome(
                     &mut self.transaction,
                     &input,
                 )
                 .await;
-                    let record = match record {
+                    let (record, inserted) = match record {
                         Ok(record) => record,
                         Err(error) => {
                             self.transaction.rollback().await?;
@@ -343,7 +345,8 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
                         }
                     };
                     self.transaction.commit().await?;
-                    drop(publication);
+                    if inserted { if let Some(observer) = &self.lifecycle_observer { observer.published(&input); } }
+                    publication.committed();
                     Ok(record)
                 }
                 .await;
@@ -765,6 +768,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         }
         Ok(Box::new(PgManagedInstallationSwitchLease {
             authority: PgContributionAuthorityLease {
+                lifecycle_observer: self.lifecycle_observer.clone(),
                 managed_operations: self.managed_operations.clone(),
                 transaction,
                 snapshots,
@@ -808,6 +812,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             snapshots.push(snapshot(&mut transaction, installation_id, workspace_id, None).await?);
         }
         Ok(Box::new(PgContributionAuthorityLease {
+            lifecycle_observer: self.lifecycle_observer.clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots,
@@ -828,6 +833,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         let snapshot = snapshot(&mut transaction, installation_id, workspace_id, None).await?;
         let installation = locked_installation(&mut transaction, installation_id).await?;
         Ok(Box::new(PgContributionAuthorityLease {
+            lifecycle_observer: self.lifecycle_observer.clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],
@@ -947,6 +953,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         .await?;
         let installation = locked_installation(&mut transaction, installation_id).await?;
         Ok(Box::new(PgContributionAuthorityLease {
+            lifecycle_observer: self.lifecycle_observer.clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],
@@ -970,6 +977,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         .await?;
         let installation = locked_installation(&mut transaction, installation_id).await?;
         Ok(Box::new(PgContributionAuthorityLease {
+            lifecycle_observer: self.lifecycle_observer.clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],

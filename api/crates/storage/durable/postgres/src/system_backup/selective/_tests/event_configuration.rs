@@ -59,6 +59,7 @@ async fn selective_event_and_application_configuration_roundtrip_without_cross_o
         .await
         .unwrap();
     let original_configuration = WorkflowEventTriggerInput {
+        source: None,
         enabled: false,
         contract_id: definition.contract_id.clone(),
         contract_version: definition.contract_version.clone(),

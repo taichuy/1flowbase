@@ -14,7 +14,7 @@ import {
 const events: EventCatalogEntry[] = [
   {
     id: null,
-    enabled: true,
+    enabled: false,
     owner_id: '1flowbase.boot-core',
     contract_id: '1flowbase.communication.command.requested',
     contract_version: '1',
@@ -22,6 +22,15 @@ const events: EventCatalogEntry[] = [
     description: 'Communication command requested.',
     payload_schema: null,
     origin: 'core',
+    source: {
+      selection: {
+        source_id: 'communication.command',
+        scope: { kind: 'unbound' }
+      },
+      point_id: 'communication.command.requested',
+      binding: 'declaration',
+      coverage: 'unavailable'
+    },
     supported_phases: []
   },
   {

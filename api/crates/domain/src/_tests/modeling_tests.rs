@@ -413,7 +413,10 @@ fn event_configuration_models_protect_physical_contract_and_dedicated_service_wr
         assert!(!contract.owns_field_code("scope_id"));
         for field in contract.system_field_codes {
             let field_contract = contract.field_contract(field).unwrap();
-            assert!(field_contract.is_required);
+            assert_eq!(
+                field_contract.is_required,
+                !(code == "workflow_event_triggers" && *field == "source")
+            );
             assert_eq!(field_contract.physical_column_name, *field);
             assert_eq!(field_contract.is_unique, *field == "id");
         }
@@ -434,4 +437,17 @@ fn event_configuration_models_protect_physical_contract_and_dedicated_service_wr
             .field_kind,
         crate::ModelFieldKind::Json
     );
+}
+
+#[test]
+fn workflow_event_trigger_source_is_owned_nullable_json() {
+    let contract = crate::builtin_data_model_contract("workflow_event_triggers").unwrap();
+    assert!(contract.owns_field_code("source"));
+    let field = contract.field_contract("source").unwrap();
+    assert_eq!(field.field_kind, crate::ModelFieldKind::Json);
+    assert!(!field.is_required);
+    assert_eq!(field.physical_column_name, "source");
+    assert!(!crate::builtin_data_model_contract("event_definitions")
+        .unwrap()
+        .owns_field_code("source"));
 }

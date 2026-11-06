@@ -320,6 +320,7 @@ async fn communication_command_terminal_exhaustion_and_old_paused_backlog_never_
             .base
             .store
             .record_lifecycle_fact(&RecordLifecycleFactInput {
+                observation_context: None,
                 event_id: generic,
                 transaction_id: generic,
                 contract_id: "fixture.generic.paused".into(),

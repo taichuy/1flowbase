@@ -180,6 +180,19 @@ impl control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryPort
         owner.terminate_command_delivery(fact, termination).await
     }
     async fn deliver(&self, fact: &LifecycleOutboxRecord) -> Result<()> {
+        control_plane_contracts::ports::with_lifecycle_workflow_ancestors(
+            fact.observation_context
+                .as_ref()
+                .map(|context| context.workflow_ancestor_ids.clone())
+                .unwrap_or_default(),
+            self.deliver_owned(fact),
+        )
+        .await
+    }
+}
+
+impl ApiLifecycleFactDelivery {
+    async fn deliver_owned(&self, fact: &LifecycleOutboxRecord) -> Result<()> {
         if let Some(owner) = &self.managed {
             let owner = owner.upgrade().ok_or({
                 LifecycleDeliveryBlocked(LifecycleDeliveryPauseReason::FrozenGraphUnavailable)
@@ -330,6 +343,7 @@ mod tests {
         );
         let subscriber = &plan.subscribers()[0];
         let record = LifecycleOutboxRecord {
+            observation_context: None,
             event_id,
             transaction_id,
             contract_id: subscriber.fact_contract_id.clone(),
@@ -573,5 +587,74 @@ mod tests {
             .extend_active_host_extensions(&[(manifest, contribution)])
             .unwrap();
         assembly
+    }
+    #[test]
+    fn native_definition_projection_has_no_unbound_phases_or_system_credit_source() {
+        use domain::event_center::*;
+        use extension_contracts::LifecycleContract;
+        let assembly = independent_plugin_fixture_assembly();
+        let graph = assembly.compile_graph().unwrap();
+        let plan = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
+        let declarations = native_lifecycle_source_descriptors(&plan, EventSourceScope::Unbound);
+        assert_eq!(declarations.len(), 3);
+        assert!(declarations
+            .iter()
+            .all(|d| d.binding == EventSourceBinding::Declaration
+                && d.coverage == EventSourceCoverage::Unavailable
+                && d.supported_phases.is_empty()));
+        let system = native_lifecycle_source_descriptors(&plan, EventSourceScope::System);
+        assert_eq!(system.len(), 2);
+        assert!(system.iter().all(|d| d.contract_id
+            != control_plane_contracts::ports::CreditNotificationFact::CONTRACT_ID));
+    }
+}
+
+/// Pure typed definition projection. It does not create a lease or a subscriber queue.
+pub(crate) fn native_lifecycle_source_descriptors(
+    _plan: &EffectiveLifecycleSubscriberPlan,
+    scope: domain::event_center::EventSourceScope,
+) -> Vec<domain::event_center::EventSourceDescriptor> {
+    use control_plane::lifecycle_outbox_dispatcher::lifecycle_source_id;
+    use control_plane_contracts::ports::{CreditNotificationFact, ModelDefinitionCommittedFact};
+    use domain::event_center::*;
+    use extension_contracts::LifecycleContract;
+    [
+        (ModelDefinitionCommittedFact::CONTRACT_ID, ModelDefinitionCommittedFact::CONTRACT_VERSION, ModelDefinitionCommittedFact::event_source_schema(), extension_contracts::MANAGED_CREATE_EVENT_POINT),
+        (CreditNotificationFact::CONTRACT_ID, CreditNotificationFact::CONTRACT_VERSION, CreditNotificationFact::event_source_schema(), "1flowbase.credit.integration-notification"),
+        (ModelDefinitionIntegrationNotification::CONTRACT_ID, ModelDefinitionIntegrationNotification::CONTRACT_VERSION, ModelDefinitionIntegrationNotification::event_source_schema(), "1flowbase.model-definition.integration-notification"),
+    ].into_iter().filter(|(contract, _, _, _)| scope != EventSourceScope::System || *contract != CreditNotificationFact::CONTRACT_ID)
+    .map(|(contract, version, schema, point)| EventSourceDescriptor {
+        source_id: lifecycle_source_id(&scope, contract, version), owner_id: "control-plane.lifecycle".into(),
+        point_id: point.into(), contract_id: contract.into(), contract_version: version.into(),
+        name: contract.into(),
+        description: "Native committed lifecycle fact. Scoped queue counts cover trusted metadata only; historical unbound deliveries are listed separately and cannot be assigned to a workspace.".into(),
+        payload_schema: schema, origin: EventDefinitionOrigin::Core, scope: scope.clone(),
+        binding: if scope == EventSourceScope::Unbound { EventSourceBinding::Declaration } else { EventSourceBinding::Active },
+        coverage: if scope == EventSourceScope::Unbound { EventSourceCoverage::Unavailable } else { EventSourceCoverage::Live },
+        supported_phases: if scope == EventSourceScope::Unbound { Vec::new() } else { vec![EventTriggerPhase::Published, EventTriggerPhase::Consumed] },
+    }).collect()
+}
+
+/// Install native templates once at boot; never instantiate every possible workspace/queue.
+/// The scope argument filters the definition family only. Actual leases are activated from
+/// trusted publication/consumption context or from existing scoped durable queue rows.
+pub(crate) fn register_native_lifecycle_sources(
+    observer: &control_plane::lifecycle_outbox_dispatcher::LifecycleSourceObserver,
+    plan: &EffectiveLifecycleSubscriberPlan,
+    scope: domain::event_center::EventSourceScope,
+) {
+    use control_plane::lifecycle_outbox_dispatcher::lifecycle_source_id;
+    use domain::event_center::*;
+    for mut descriptor in native_lifecycle_source_descriptors(plan, scope) {
+        descriptor.scope = EventSourceScope::Unbound;
+        descriptor.source_id = lifecycle_source_id(
+            &descriptor.scope,
+            &descriptor.contract_id,
+            &descriptor.contract_version,
+        );
+        descriptor.binding = EventSourceBinding::Declaration;
+        descriptor.coverage = EventSourceCoverage::Unavailable;
+        descriptor.supported_phases.clear();
+        observer.register(descriptor, &[]);
     }
 }

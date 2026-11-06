@@ -33,6 +33,7 @@ export function EventsPage() {
   const requestedTab = useEventTab();
   const [drawer, setDrawer] = useState<{
     entry: EventCatalogEntry | null;
+    mode: 'view' | 'edit';
   } | null>(null);
   const canList = can('events.catalog.list');
   const canObserve = can('events.runtime.get');
@@ -46,12 +47,14 @@ export function EventsPage() {
     queryFn: () => listEventCatalog(),
     enabled: canList && tab === 'catalog'
   });
-  const editable = drawer?.entry
-    ? drawer.entry.origin === 'custom' &&
-      drawer.entry.id !== null &&
-      drawer.entry.payload_schema !== null &&
-      can('events.definitions.update')
-    : can('events.definitions.create');
+  const editable =
+    drawer?.mode === 'edit' &&
+    (drawer.entry
+      ? drawer.entry.origin === 'custom' &&
+        drawer.entry.id !== null &&
+        drawer.entry.payload_schema !== null &&
+        can('events.definitions.update')
+      : can('events.definitions.create'));
   const save = useMutation({
     mutationFn: async (values: CreateEventDefinitionInput) => {
       if (!csrfToken || !editable) throw new Error('operation not permitted');
@@ -72,9 +75,12 @@ export function EventsPage() {
       });
     }
   });
-  const open = (entry: EventCatalogEntry | null) => {
+  const open = (
+    entry: EventCatalogEntry | null,
+    mode: 'view' | 'edit' = 'view'
+  ) => {
     save.reset();
-    setDrawer({ entry });
+    setDrawer({ entry, mode });
   };
   const phase = (value: EventTriggerPhase) =>
     ({
@@ -139,6 +145,21 @@ export function EventsPage() {
       dataIndex: 'owner_id',
       width: 220
     },
+    ...(['scope', 'point_id', 'binding', 'coverage'] as const).map((key) => ({
+      key,
+      title: t(key),
+      width: 220,
+      render: (_: unknown, row: EventCatalogEntry) => {
+        if (!row.source) return '—';
+        if (key === 'scope') {
+          const scope = row.source.selection.scope;
+          return scope.kind === 'workspace'
+            ? `${t('workspace_scope')} · ${scope.workspace_id}`
+            : t(scope.kind);
+        }
+        return key === 'point_id' ? row.source.point_id : t(row.source[key]);
+      }
+    })),
     {
       key: 'enabled',
       title: t('enabled'),
@@ -167,7 +188,13 @@ export function EventsPage() {
             row.payload_schema !== null &&
             row.id &&
             can('events.definitions.update')
-              ? [{ key: 'edit', label: t('edit'), onClick: () => open(row) }]
+              ? [
+                  {
+                    key: 'edit',
+                    label: t('edit'),
+                    onClick: () => open(row, 'edit')
+                  }
+                ]
               : []),
             { key: 'view', label: t('view'), onClick: () => open(row) }
           ]}
@@ -201,7 +228,12 @@ export function EventsPage() {
                 columns={columns}
                 rows={catalog.data ?? []}
                 rowKey={(row) =>
-                  `${row.owner_id}:${row.contract_id}:${row.contract_version}`
+                  JSON.stringify([
+                    row.owner_id,
+                    row.contract_id,
+                    row.contract_version,
+                    row.source?.selection
+                  ])
                 }
                 tableKey="catalog"
                 loading={catalog.isPending}
@@ -212,7 +244,7 @@ export function EventsPage() {
                         type="primary"
                         aria-label={t('create')}
                         icon={<PlusOutlined />}
-                        onClick={() => open(null)}
+                        onClick={() => open(null, 'edit')}
                       >
                         {t('create')}
                       </Button>

@@ -167,6 +167,12 @@ fn install_legacy_local_infrastructure_services(registry: &mut HostInfrastructur
         RATE_LIMIT_STORE_NAMESPACE,
         LOCAL_CACHE_MAX_CAPACITY,
     )) as Arc<dyn RateLimitStore>);
+    registry.set_runtime_event_stream(
+        Arc::new(configured_runtime_event_stream()) as Arc<dyn RuntimeEventStream>
+    );
+}
+
+fn configured_runtime_event_stream() -> LocalRuntimeEventStream {
     let mut event_stream = LocalRuntimeEventStream::new();
     if let Ok(value) = std::env::var("API_RUNTIME_REPLAY_HOT_TTL_SECONDS") {
         match value.parse::<u64>() {
@@ -187,5 +193,23 @@ fn install_legacy_local_infrastructure_services(registry: &mut HostInfrastructur
             ),
         }
     }
-    registry.set_runtime_event_stream(Arc::new(event_stream) as Arc<dyn RuntimeEventStream>);
+    event_stream
+}
+
+/// Install before any run/store clone escapes boot, using the existing retention configuration.
+pub(crate) fn attach_local_event_source_observer(
+    registry: &mut HostInfrastructureRegistry,
+    observer: Arc<dyn control_plane_contracts::ports::EventSourceObserver>,
+) -> Result<()> {
+    if registry.default_provider("runtime-event-stream") != Some(LOCAL_PROVIDER_CODE)
+        || registry.default_provider_source("runtime-event-stream") != Some(LOCAL_PROVIDER_SOURCE)
+    {
+        return Err(anyhow!(
+            "runtime event source observer requires the active local provider"
+        ));
+    }
+    registry.set_runtime_event_stream(Arc::new(
+        configured_runtime_event_stream().with_event_source_observer(observer),
+    ) as Arc<dyn RuntimeEventStream>);
+    Ok(())
 }

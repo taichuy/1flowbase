@@ -831,7 +831,11 @@ impl ApplicationRuntimeDebugCommandsAdapter {
 
         self.dependencies
             .runtime_event_stream
-            .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+            .open_run_scoped(
+                run_id,
+                RuntimeEventStreamPolicy::debug_default(),
+                control_plane::ports::RuntimeEventSourceBinding::workspace(workspace_id),
+            )
             .await
             .map_err(ApiError::from)
             .map_err(ConsoleInterfaceTargetError)

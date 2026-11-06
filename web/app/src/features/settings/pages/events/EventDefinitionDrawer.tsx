@@ -10,11 +10,11 @@ import {
   Form,
   Input,
   Space,
-  Switch,
-  Typography
+  Switch
 } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { JsonPreviewBlock } from '../../../../shared/ui/json-preview/JsonPreviewBlock';
 import { JsonSchemaInlineEditor } from '../../../agent-flow/components/detail/fields/json-schema/JsonSchemaSettingsPanel';
 
 export function EventDefinitionDrawer({
@@ -125,8 +125,10 @@ export function EventDefinitionDrawer({
         </Form>
       ) : (
         entry && (
-          <Space orientation="vertical" size="middle">
-            <Alert type="info" showIcon title={t('read_only')} />
+          <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+            {entry.origin !== 'custom' && (
+              <Alert type="info" showIcon title={t('read_only')} />
+            )}
             <Descriptions
               column={1}
               items={[
@@ -145,6 +147,38 @@ export function EventDefinitionDrawer({
                   label: t('owner_id'),
                   children: entry.owner_id
                 },
+                ...(entry.source
+                  ? [
+                      {
+                        key: 'source_id',
+                        label: t('source_id'),
+                        children: entry.source.selection.source_id
+                      },
+                      {
+                        key: 'point_id',
+                        label: t('point_id'),
+                        children: entry.source.point_id
+                      },
+                      {
+                        key: 'scope',
+                        label: t('scope'),
+                        children:
+                          entry.source.selection.scope.kind === 'workspace'
+                            ? `${t('workspace_scope')} · ${entry.source.selection.scope.workspace_id}`
+                            : t(entry.source.selection.scope.kind)
+                      },
+                      {
+                        key: 'binding',
+                        label: t('binding'),
+                        children: t(entry.source.binding)
+                      },
+                      {
+                        key: 'coverage',
+                        label: t('coverage'),
+                        children: t(entry.source.coverage)
+                      }
+                    ]
+                  : []),
                 {
                   key: 'description',
                   label: t('description'),
@@ -152,39 +186,11 @@ export function EventDefinitionDrawer({
                 }
               ]}
             />
-            <Typography.Text>{t('payload_schema')}</Typography.Text>
-            {entry.payload_schema === null && (
-              <Alert type="info" title={t('schema_undeclared')} />
-            )}
-            {typeof entry.payload_schema === 'boolean' && (
-              <Alert
-                type="info"
-                title={
-                  entry.payload_schema ? t('accepts_all') : t('rejects_all')
-                }
-              />
-            )}
-            {entry.payload_schema !== null &&
-              typeof entry.payload_schema !== 'boolean' && (
-                <Descriptions
-                  column={1}
-                  items={Object.entries(
-                    (entry.payload_schema.properties ?? {}) as Record<
-                      string,
-                      Record<string, unknown>
-                    >
-                  ).map(([name, field]) => ({
-                    key: name,
-                    label: name,
-                    children:
-                      typeof field === 'object' &&
-                      field !== null &&
-                      typeof field.type === 'string'
-                        ? field.type
-                        : t('structured_field')
-                  }))}
-                />
-              )}
+            <JsonPreviewBlock
+              title={t('payload_schema')}
+              value={entry.payload_schema}
+              maxAutoHeight={400}
+            />
           </Space>
         )
       )}

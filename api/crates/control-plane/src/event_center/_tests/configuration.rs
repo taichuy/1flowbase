@@ -119,6 +119,7 @@ fn input() -> CreateEventDefinitionInput {
 }
 fn trigger_input() -> WorkflowEventTriggerInput {
     WorkflowEventTriggerInput {
+        source: None,
         enabled: true,
         contract_id: "custom.order.created".into(),
         contract_version: "1".into(),
@@ -269,6 +270,7 @@ async fn triggers_require_visible_enabled_event_supported_phase_and_valid_pointe
         MemoryRepository::default(),
         owner.current_workspace_id,
         vec![EventCatalogEntry {
+            source: None,
             id: None,
             enabled: true,
             owner_id: "acme".into(),
@@ -287,4 +289,110 @@ async fn triggers_require_visible_enabled_event_supported_phase_and_valid_pointe
         .validate_workflow_trigger(&owner, &unsupported)
         .await
         .is_err());
+}
+
+fn source_entry(scope: EventSourceScope, phases: Vec<EventTriggerPhase>) -> EventCatalogEntry {
+    EventSourceDescriptor {
+        source_id: "native.same-contract".into(),
+        owner_id: "native".into(),
+        point_id: "native.point".into(),
+        contract_id: "native.fact".into(),
+        contract_version: "1".into(),
+        name: "Fact".into(),
+        description: String::new(),
+        payload_schema: serde_json::json!({"type":"object"}),
+        origin: EventDefinitionOrigin::Core,
+        scope,
+        binding: EventSourceBinding::Active,
+        coverage: EventSourceCoverage::Live,
+        supported_phases: phases,
+    }
+    .into()
+}
+
+#[tokio::test]
+async fn source_selection_authorizes_scope_and_matches_identity_before_phase() {
+    let mut owner = actor();
+    owner.current_workspace_id = domain::SYSTEM_SCOPE_ID;
+    let workspace = EventSourceScope::Workspace {
+        workspace_id: owner.current_workspace_id,
+    };
+    let entries = vec![
+        source_entry(workspace.clone(), vec![EventTriggerPhase::Consumed]),
+        source_entry(EventSourceScope::System, vec![EventTriggerPhase::Published]),
+    ];
+    let service = EventCenterConfigurationService::with_registered_events(
+        MemoryRepository::default(),
+        owner.current_workspace_id,
+        entries.clone(),
+    );
+    let mut selected = trigger_input();
+    selected.contract_id = "native.fact".into();
+    selected.trigger_phase = EventTriggerPhase::Published;
+    selected.source = Some(EventSourceSelection {
+        source_id: "native.same-contract".into(),
+        scope: EventSourceScope::System,
+    });
+    assert!(service
+        .validate_workflow_trigger(&owner, &selected)
+        .await
+        .is_ok());
+    let mut non_root = owner.clone();
+    non_root.is_root = false;
+    assert!(service
+        .validate_workflow_trigger(&non_root, &selected)
+        .await
+        .is_err());
+    selected.source.as_mut().unwrap().scope = workspace.clone();
+    assert!(service
+        .validate_workflow_trigger(&owner, &selected)
+        .await
+        .is_err());
+    selected.trigger_phase = EventTriggerPhase::Consumed;
+    assert!(service
+        .validate_workflow_trigger(&non_root, &selected)
+        .await
+        .is_ok());
+    let saved = service
+        .save_workflow_trigger(&owner, Uuid::now_v7(), selected.clone())
+        .await
+        .unwrap();
+    assert_eq!(saved.configuration.source, selected.source);
+    selected.source.as_mut().unwrap().scope = EventSourceScope::Workspace {
+        workspace_id: Uuid::now_v7(),
+    };
+    assert!(service
+        .validate_workflow_trigger(&owner, &selected)
+        .await
+        .is_err());
+    selected.source.as_mut().unwrap().scope = EventSourceScope::Unbound;
+    assert!(service
+        .validate_workflow_trigger(&owner, &selected)
+        .await
+        .is_err());
+    selected.source = None;
+    assert!(
+        service
+            .validate_workflow_trigger(&owner, &selected)
+            .await
+            .is_err(),
+        "legacy None must never select a registered native source"
+    );
+    let mut unavailable = entries;
+    unavailable[0].source.as_mut().unwrap().coverage = EventSourceCoverage::Unavailable;
+    let unavailable_service = EventCenterConfigurationService::with_registered_events(
+        MemoryRepository::default(),
+        owner.current_workspace_id,
+        unavailable,
+    );
+    selected.source = saved.configuration.source;
+    assert!(unavailable_service
+        .validate_workflow_trigger(&owner, &selected)
+        .await
+        .is_err());
+    selected.enabled = false;
+    assert!(unavailable_service
+        .validate_workflow_trigger(&owner, &selected)
+        .await
+        .is_ok());
 }

@@ -238,6 +238,7 @@ async fn fixture_state() -> (
         console_operation_registry,
         infrastructure,
         event_center,
+        event_sources: Arc::default(),
         event_workflow_changes: Arc::default(),
         event_workflow_statuses: Default::default(),
         console_surface_registry: Arc::new(

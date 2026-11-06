@@ -120,6 +120,7 @@ impl ManagedExtensionComposition {
                 tracing::debug!(%error, "managed retained snapshot remains protected");
             }
         }
+        self.refresh_lifecycle_source_observations().await;
         drop(assembly);
     }
 }

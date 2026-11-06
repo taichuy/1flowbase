@@ -95,6 +95,7 @@ async fn open_partial(
             reservation: Some(reservation),
         },
         None,
+        None,
         Arc::new(NoTools),
     )
     .await
@@ -628,6 +629,7 @@ async fn callback_preclaim_invoker_failure_retries_through_ingress_prepare() {
             reservation: plan.reservation,
         },
         None,
+        None,
         Arc::new(NoTools),
     )
     .await;
@@ -669,6 +671,7 @@ async fn callback_open_and_subscribe_failure_release_own_receipt_for_immediate_r
                 actor: actor.clone(),
                 reservation: Some(reservation),
             },
+            None,
             None,
             Arc::new(NoTools),
         )
@@ -731,6 +734,7 @@ async fn cancelled_callback_preparation_releases_receipt_but_handoff_disarms_dro
             actor: actor.clone(),
             reservation: Some(reservation),
         },
+        None,
         None,
         Arc::new(NoTools),
     ));
@@ -830,6 +834,7 @@ async fn partial_tool_results_keep_waiting_receipt_without_opening_or_execution(
             actor: actor.clone(),
             reservation: Some(reservation),
         },
+        None,
         None,
         Arc::new(NoTools),
     )
