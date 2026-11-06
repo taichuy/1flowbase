@@ -108,14 +108,29 @@ jobs:
       - name: Execute terminal and MCP contracts
         run: |
           set -uo pipefail
+          set +e
           export CARGO_BUILD_JOBS="$(nproc)"
           failures=0
           run_case() {
             name="$1"; shift
-            cargo test --locked --manifest-path api/Cargo.toml --workspace "$@" -- --nocapture \
-              > "tmp/test-governance/terminal-mcp-api/${name}.log" 2>&1
-            status=$?
-            if ! rg -q 'test result: (ok|FAILED)\. [1-9][0-9]* passed' "tmp/test-governance/terminal-mcp-api/${name}.log"; then status=1; fi
+            log="tmp/test-governance/terminal-mcp-api/${name}.log"
+            if cargo test --locked --manifest-path api/Cargo.toml --workspace "$@" -- --nocapture > "$log" 2>&1; then
+              status=0
+            else
+              status=$?
+            fi
+            if ! python3 - "$log" "$status" <<'PY'
+          import json, pathlib, re, sys
+          path = pathlib.Path(sys.argv[1])
+          text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", path.read_text(errors="replace"))
+          counts = re.findall(r"test result: (?:ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored", text)
+          passed = sum(int(row[0]) for row in counts)
+          failed = sum(int(row[1]) for row in counts)
+          ignored = sum(int(row[2]) for row in counts)
+          path.with_suffix(".json").write_text(json.dumps({"exit_code": int(sys.argv[2]), "passed": passed, "failed": failed, "ignored": ignored, "nonzero": passed + failed > 0}, indent=2))
+          sys.exit(0 if passed + failed > 0 else 1)
+          PY
+            then status=1; fi
             printf '%s %s\n' "$name" "$status" >> tmp/test-governance/terminal-mcp-api/statuses.txt
             if [ "$status" -ne 0 ]; then failures=$((failures + 1)); tail -c 5000 "tmp/test-governance/terminal-mcp-api/${name}.log"; fi
           }
@@ -124,6 +139,8 @@ jobs:
           run_case existing-local-command --test api_private_routes local_commands
           run_case mcp-routes --test api_private_contracts mcp_protocol_routes
           run_case mcp-oauth --test api_private_contracts mcp_oauth_routes
+          run_case native-import --test api_private_contracts resource_import::native::tests::
+          run_case terminal-migration --test api_private_contracts terminal_migration_
           run_case interface-inventory --test interface_coverage_inventory
           run_case console-projection --test api_private_contracts console_interface_projection_inventory_is_key_only_and_exact
           run_case console-display --test api_private_contracts console_display_inventory_matches_key_only_fixture
