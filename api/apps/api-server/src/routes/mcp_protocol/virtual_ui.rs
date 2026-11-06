@@ -801,7 +801,13 @@ pub(crate) async fn dispatch(
             })
             .await
         }
-        (resources::LIST_TOOL, None) => Ok(VirtualToolOutcome::Success(resources::list_result())),
+        (resources::LIST_TOOL | resources::TEMPLATES_TOOL, None) => Ok(resources::list_result(
+            actor,
+            catalog,
+            &effective_scope,
+            &arguments,
+            name == resources::TEMPLATES_TOOL,
+        )),
         (resources::READ_TOOL, None) => {
             resources::read(McpCallRequest {
                 dependencies,

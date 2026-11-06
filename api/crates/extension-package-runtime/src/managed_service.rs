@@ -42,6 +42,22 @@ pub struct ManagedMcpMediaMapping {
     pub structured_content_path: String,
     #[serde(default)]
     pub resource_read: bool,
+    /// Public replay parameters only; authorization identity is always host derived.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_read_arguments: Option<serde_json::Map<String, Value>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resources: Vec<ManagedMcpResourceDeclaration>,
+}
+
+/// Static discovery entries; listing never executes the source operation.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedMcpResourceDeclaration {
+    pub name: String,
+    pub uri: String,
+    pub arguments: serde_json::Map<String, Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
 }
 
 /// Canonical typed content declaration; the historical name remains reexported.
@@ -77,6 +93,9 @@ pub enum ManagedMcpImageMapping {
     },
     Resource {
         uri_path: String,
+        /// Skip only an explicitly null text/blob value; missing/malformed data is an error.
+        #[serde(default)]
+        skip_if_null: bool,
         #[serde(default)]
         mime_type_path: Option<String>,
         #[serde(default)]
@@ -152,6 +171,7 @@ impl ManagedMcpMediaMapping {
                     text_path,
                     blob_path,
                     annotations_path,
+                    ..
                 } => {
                     if text_path.is_some() == blob_path.is_some() {
                         return Err("resource requires exactly one text or blob path");
@@ -172,7 +192,7 @@ impl ManagedMcpMediaMapping {
                 return Err("invalid media mapping paths or content type");
             }
             if mapping.resource_read && !matches!(item, Resource { .. } | ResourceLink { .. }) {
-                return Err("resource_read requires embedded resource content");
+                return Err("resource_read requires resource or resource_link content");
             }
         }
         if mapping.resource_read
@@ -181,7 +201,21 @@ impl ManagedMcpMediaMapping {
                 .iter()
                 .any(|item| matches!(item, ManagedMcpImageMapping::Resource { .. }))
         {
-            return Err("resource_read requires embedded resource content");
+            return Err("resource_read requires an embedded resource declaration");
+        }
+        if !mapping.resource_read
+            && (mapping.resource_read_arguments.is_some() || !mapping.resources.is_empty())
+        {
+            return Err("resource declarations require resource_read");
+        }
+        let mut resource_uris = BTreeSet::new();
+        for resource in &mapping.resources {
+            if resource.name.trim().is_empty()
+                || resource.uri.trim().is_empty()
+                || !resource_uris.insert(&resource.uri)
+            {
+                return Err("resource declarations require unique URI and nonempty name");
+            }
         }
         Ok(mapping)
     }

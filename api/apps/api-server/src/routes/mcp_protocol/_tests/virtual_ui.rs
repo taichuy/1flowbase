@@ -1174,3 +1174,114 @@ async fn mcp_call_file_param_reaches_existing_interface_dispatch() {
     .unwrap();
     assert!(matches!(result, VirtualToolOutcome::Success(_)));
 }
+
+struct LinkOnlyFixtureDispatch {
+    calls: std::sync::Mutex<Vec<Value>>,
+}
+#[async_trait::async_trait]
+impl McpInterfaceDispatchPort for LinkOnlyFixtureDispatch {
+    async fn execute(
+        &self,
+        _: HeaderMap,
+        _: domain::McpInterfaceCatalogEntry,
+        body: McpDebugExecuteBody,
+        _: McpServerBoundInputs,
+    ) -> Result<Value, debug_execute::McpDebugExecuteError> {
+        let link_only = body.mcp_arguments["link_only"] == true;
+        self.calls.lock().unwrap().push(body.mcp_arguments);
+        Ok(
+            json!({"uri":"urn:file:a","name":"a","mime":"application/octet-stream",
+            "blob":if link_only { Value::Null } else { json!("YWJjAA==") },"metadata":{"size":4}}),
+        )
+    }
+}
+
+#[tokio::test]
+async fn link_only_and_template_reads_use_canonical_dispatch_with_public_replay_overrides() {
+    let mut catalog = readable_resource_catalog();
+    catalog.tools[0].output_mapping["resource_read_arguments"] = json!({"link_only":false});
+    catalog.tools[0].output_mapping["mcp_content"][1]["skip_if_null"] = json!(true);
+    catalog.tools[0].output_mapping["resources"] =
+        json!([{"name":"a","uri":"urn:file:a","arguments":{"query":"a","link_only":true}}]);
+    let dispatch_port = LinkOnlyFixtureDispatch {
+        calls: Default::default(),
+    };
+    let (_state, dependencies) = resource_dispatch_fixture().await;
+    let interfaces = media_fixture_interfaces();
+    let actor =
+        domain::ActorContext::root(uuid::Uuid::from_u128(10), uuid::Uuid::from_u128(10), "root");
+    let scope = VirtualMcpScope::single("selected".into());
+    let headers = HeaderMap::new();
+    let invoke = |name, args| {
+        dispatch(
+            &dependencies,
+            &interfaces,
+            &dispatch_port,
+            &headers,
+            &actor,
+            &catalog,
+            &scope,
+            name,
+            args,
+            None,
+        )
+    };
+    let VirtualToolOutcome::Success(first) = invoke(
+        MCP_CALL,
+        json!({"tool_id":"lookup","arguments":{"query":"a","link_only":true}}),
+    )
+    .await
+    .unwrap() else {
+        panic!("initial call");
+    };
+    let blocks = first["content"].as_array().unwrap();
+    assert!(!blocks.iter().any(|block| block["type"] == "resource"));
+    let link_uri = blocks
+        .iter()
+        .find(|block| block["type"] == "resource_link")
+        .unwrap()["uri"]
+        .as_str()
+        .unwrap();
+    let VirtualToolOutcome::Success(list) = invoke(resources::LIST_TOOL, json!({})).await.unwrap()
+    else {
+        panic!("list");
+    };
+    let listed_uri = list["resources"][0]["uri"].as_str().unwrap();
+    let VirtualToolOutcome::Success(templates) =
+        invoke(resources::TEMPLATES_TOOL, json!({})).await.unwrap()
+    else {
+        panic!("templates");
+    };
+    assert_eq!(
+        dispatch_port.calls.lock().unwrap().len(),
+        1,
+        "discovery executes no source tool"
+    );
+    let template = templates["resourceTemplates"][0]["uriTemplate"]
+        .as_str()
+        .unwrap();
+    let encode = |s: &str| {
+        percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
+    };
+    let expanded = template
+        .replace("{arguments}", &encode(r#"{"query":"a","link_only":true}"#))
+        .replace("{resource_uri}", &encode("urn:file:a"));
+    for uri in [link_uri, listed_uri, expanded.as_str()] {
+        let VirtualToolOutcome::Success(read) = invoke(resources::READ_TOOL, json!({"uri":uri}))
+            .await
+            .unwrap()
+        else {
+            panic!("read");
+        };
+        assert_eq!(
+            read,
+            json!({"contents":[{"uri":uri,"mimeType":"application/octet-stream","blob":"YWJjAA=="}]})
+        );
+    }
+    let calls = dispatch_port.calls.lock().unwrap();
+    assert_eq!(calls.len(), 4);
+    assert_eq!(calls[0]["link_only"], true);
+    assert!(calls[1..]
+        .iter()
+        .all(|args| args["link_only"] == false && args["query"] == "a"));
+}
