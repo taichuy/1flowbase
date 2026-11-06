@@ -602,7 +602,7 @@ async fn retained_asset_requires_current_workspace_contribution_and_disable_revo
 }
 
 #[tokio::test]
-async fn ac_001_ac_002_ac_003_frontend_block_catalog_exposes_one_lightweight_system_jsx_block() {
+async fn frontend_block_catalog_exposes_js_table_and_form_without_overwriting_templates() {
     let (mut state, database_url) = test_api_state_with_database_url().await;
     let root_user_id: Uuid = sqlx::query_scalar("select id from users where account = 'root'")
         .fetch_one(&PgPool::connect(&database_url).await.unwrap())
@@ -670,8 +670,23 @@ async fn ac_001_ac_002_ac_003_frontend_block_catalog_exposes_one_lightweight_sys
     let payload: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     let entries = payload["data"].as_array().unwrap();
-    assert_eq!(entries.len(), 1);
-    let entry = &entries[0];
+    let codes = entries
+        .iter()
+        .map(|entry| entry["contribution_code"].as_str().unwrap())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        codes,
+        std::collections::BTreeSet::from([
+            "frontstage.js-ui-block",
+            "frontstage.table-block",
+            "frontstage.form-block"
+        ])
+    );
+    assert_eq!(entries.len(), 3);
+    let entry = entries
+        .iter()
+        .find(|entry| entry["contribution_code"] == "frontstage.js-ui-block")
+        .unwrap();
     assert_eq!(entry["provider_code"], "1flowbase");
     assert_eq!(entry["contribution_code"], "frontstage.js-ui-block");
     assert_eq!(entry["runtime"], "native_react");
@@ -680,6 +695,17 @@ async fn ac_001_ac_002_ac_003_frontend_block_catalog_exposes_one_lightweight_sys
     let template = entry["code_template"].as_str().unwrap();
     assert!(!template.contains("tailwindcss"));
     assert!(!template.contains("@1flowbase/native-components"));
+    for contribution in ["frontstage.table-block", "frontstage.form-block"] {
+        let data_block = entries
+            .iter()
+            .find(|entry| entry["contribution_code"] == contribution)
+            .unwrap();
+        assert_eq!(data_block["runtime"], "native_react");
+        assert_ne!(
+            data_block["code_template"], entry["code_template"],
+            "JS managed template must not replace {contribution}"
+        );
+    }
 
     let pool = PgPool::connect(&database_url).await.unwrap();
     let installation_count: i64 = sqlx::query_scalar(
@@ -696,6 +722,22 @@ async fn ac_001_ac_002_ac_003_frontend_block_catalog_exposes_one_lightweight_sys
     .unwrap();
     assert_eq!(installation_count, 1);
     assert_eq!(catalog_count, 1);
+    // Repeated ensure must preserve all official contributions, not rewrite them to JS.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/frontend-blocks")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let repeated: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(repeated["data"], payload["data"]);
 }
 
 #[tokio::test]

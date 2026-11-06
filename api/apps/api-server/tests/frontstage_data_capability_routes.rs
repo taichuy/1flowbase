@@ -933,3 +933,6 @@ mod ui_management_routes;
 
 #[path = "_tests/runtime_ordered_tree_cache.rs"]
 mod runtime_ordered_tree_cache;
+
+#[path = "_tests/runtime_model_metadata.rs"]
+mod runtime_model_metadata;

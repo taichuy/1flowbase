@@ -4,6 +4,7 @@ use utoipa::OpenApi;
 #[openapi(
     modifiers(&CanonicalExternalAuthenticationMetadata),
     paths(
+        crate::routes::runtime_models::metadata_interface::get_runtime_model_metadata,
         crate::routes::events::catalog,
         crate::routes::events::create,
         crate::routes::events::update,
@@ -315,6 +316,10 @@ use utoipa::OpenApi;
         crate::routes::roles::RolePermissionsResponse,
         crate::routes::roles::RoleResponse,
         crate::routes::roles::UpdateRoleBody,
+        crate::routes::runtime_models::metadata_interface::RuntimeDataModelMetadataEnvelope,
+        crate::routes::runtime_models::metadata::RuntimeDataModelMetadata,
+        crate::routes::runtime_models::metadata::RuntimeDataModelField,
+        crate::routes::runtime_models::metadata::RuntimeDataModelRecordCapabilities,
         crate::routes::runtime_models::RuntimeListResponse,
         crate::routes::runtime_models::RuntimeRecordEnvelope,
         crate::routes::session::SwitchWorkspaceBody,

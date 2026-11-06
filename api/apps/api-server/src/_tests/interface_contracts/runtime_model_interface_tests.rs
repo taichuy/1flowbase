@@ -11,6 +11,7 @@ fn eil_f07_dynamic_runtime_methods_publish_frozen_typed_bindings() {
         "http.runtime.models.dynamic.put.v1",
         "http.runtime.models.dynamic.patch.v1",
         "http.runtime.models.dynamic.delete.v1",
+        "http.runtime.models.metadata.get.v1",
     ];
 
     assert_eq!(registry.bindings().len(), expected.len());
@@ -48,4 +49,30 @@ fn eil_f07_dynamic_runtime_router_has_one_kernel_execution_path() {
     assert!(source.contains("interface::invoke(state, headers, method, model_code, uri, body)"));
     assert!(!source.contains("impl interface::RuntimeModelOperationPort for ApiState"));
     assert!(!source.contains("Arc<ApiState> as Arc<dyn interface::RuntimeModelOperationPort>"));
+}
+
+#[test]
+fn runtime_metadata_has_a_dedicated_typed_contract_and_exact_route() {
+    let registry =
+        crate::routes::runtime_models::compile_runtime_model_interface_registry_for_test().unwrap();
+    let binding = registry
+        .binding(&BindingId::new("http.runtime.models.metadata.get.v1").unwrap())
+        .unwrap();
+    assert_eq!(
+        binding.interface_identity().interface_id().as_str(),
+        "runtime.models.metadata.get"
+    );
+    assert_eq!(binding.projection().http_route().unwrap().method(), "GET");
+    assert_eq!(
+        binding.projection().http_route().unwrap().path(),
+        "/api/runtime/models/:model_code/metadata"
+    );
+    assert_eq!(
+        binding.input_contract().contract_id(),
+        "runtime-model-metadata-input"
+    );
+    assert_eq!(
+        binding.output_contract().contract_id(),
+        "runtime-model-metadata-output"
+    );
 }
