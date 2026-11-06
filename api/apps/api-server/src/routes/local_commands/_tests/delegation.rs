@@ -60,7 +60,7 @@ async fn local_command_mcp_delegation_preserves_authorization_and_output() {
         .await
         .unwrap()
         .into_iter()
-        .find(|entry| entry.interface_id == "local_commands.execute")
+        .find(|entry| entry.interface_id == "execute_local_command")
         .unwrap();
     let member = create_member(&app, &cookie, &csrf, "delegated-command", "temp-pass").await;
     create_role(&app, &cookie, &csrf, "delegated_command_role").await;
@@ -101,7 +101,7 @@ async fn local_command_mcp_delegation_preserves_authorization_and_output() {
                 HeaderMap::new(),
                 interface.clone(),
                 serde_json::from_value::<McpDebugExecuteBody>(json!({
-                    "interface_id":"local_commands.execute",
+                    "interface_id":"execute_local_command",
                     "debug_response_mode":"debug_details",
                     "mcp_arguments":{"command":command},
                     "input_mapping":{"mappings":[{"interface_param":"command","source":{"kind":"mcp_argument","path":"command"},"required":true}]},
@@ -136,8 +136,8 @@ async fn local_command_mcp_delegation_preserves_authorization_and_output() {
 
 #[tokio::test]
 async fn local_command_http_disconnect_keeps_completion_audit_owner() {
-    let (state, database_url) = test_api_state_with_database_url().await;
-    let app = crate::app_with_state(state);
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state.clone());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let temp = Temp::new();
     let started = temp.0.join("started");
@@ -157,7 +157,7 @@ async fn local_command_http_disconnect_keeps_completion_audit_owner() {
         .header("content-type", "application/json")
         .body(Body::from(json!({"command":command}).to_string()))
         .unwrap();
-    let response_task = tokio::spawn(app.oneshot(request));
+    let response_task = tokio::spawn(app.clone().oneshot(request));
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         while !started.exists() {
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
@@ -170,17 +170,14 @@ async fn local_command_http_disconnect_keeps_completion_audit_owner() {
     assert!(response_task.await.unwrap_err().is_cancelled());
     std::fs::write(&release, b"release").unwrap();
 
-    let store = storage_durable_postgres::build_main_durable_postgres(&database_url)
-        .await
-        .unwrap()
-        .store;
+    // Only the request disconnects; the running application owns its database and audit sink.
     let audits: Vec<(uuid::Uuid, String, Value)> =
         tokio::time::timeout(std::time::Duration::from_secs(10), async {
             loop {
                 let rows = sqlx::query_as::<_, (uuid::Uuid, String, Value)>(
                     "SELECT target_id, event_code, payload FROM audit_logs WHERE target_type = 'local_command'",
                 )
-                .fetch_all(store.pool())
+                .fetch_all(state.store.pool())
                 .await
                 .unwrap();
                 if rows.len() == 2 {
