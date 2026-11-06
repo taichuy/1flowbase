@@ -141,10 +141,14 @@ describe('form drag Escape ownership', () => {
       const handle = await startKeyboardDrag(fixture.container);
       expect(fixture.activity).toHaveBeenLastCalledWith(true);
       escape(handle);
+      expect(
+        fixture.container.querySelector('.data-form-grid')
+      ).not.toHaveClass('is-dragging');
+      // Reject synchronous release: the same native key still has window-level
+      // portal listeners to visit, even though the visual drag has cancelled.
+      expect(fixture.activity).toHaveBeenLastCalledWith(true);
       await waitFor(() =>
-        expect(
-          fixture.container.querySelector('.data-form-grid')
-        ).not.toHaveClass('is-dragging')
+        expect(fixture.activity).toHaveBeenLastCalledWith(false)
       );
       expect(fixture.closed).not.toHaveBeenCalled();
       expect(fixture.changed).not.toHaveBeenCalled();
@@ -169,6 +173,44 @@ describe('form drag Escape ownership', () => {
       expect(fixture.activity).toHaveBeenLastCalledWith(false)
     );
     expect(fixture.changed).not.toHaveBeenCalled();
+    escape(screen.getByRole('button', { name: 'Unmount form layout' }));
+    expect(fixture.closed).toHaveBeenCalledOnce();
+  });
+  it('does not let a cancelled drag release a new drag started before the next task', async () => {
+    const fixture = setup('drawer');
+    const handle = await startKeyboardDrag(fixture.container);
+    escape(handle);
+    expect(fixture.activity).toHaveBeenLastCalledWith(true);
+    fireEvent.keyDown(handle, { key: ' ', code: 'Space', keyCode: 32 });
+    expect(fixture.container.querySelector('.data-form-grid')).toHaveClass(
+      'is-dragging'
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(fixture.activity).toHaveBeenLastCalledWith(true);
+    expect(fixture.closed).not.toHaveBeenCalled();
+    escape(handle);
+    await waitFor(() =>
+      expect(fixture.activity).toHaveBeenLastCalledWith(false)
+    );
+    expect(fixture.changed).not.toHaveBeenCalled();
+  });
+
+  it('clears a pending cancellation release when the layout unmounts', async () => {
+    const fixture = setup('drawer');
+    const handle = await startKeyboardDrag(fixture.container);
+    escape(handle);
+    expect(fixture.activity).toHaveBeenLastCalledWith(true);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Unmount form layout' })
+    );
+    expect(fixture.activity).toHaveBeenLastCalledWith(false);
+    const callsAfterUnmount = fixture.activity.mock.calls.length;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(fixture.activity).toHaveBeenCalledTimes(callsAfterUnmount);
     escape(screen.getByRole('button', { name: 'Unmount form layout' }));
     expect(fixture.closed).toHaveBeenCalledOnce();
   });

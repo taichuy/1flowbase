@@ -3,6 +3,7 @@ import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode
@@ -44,14 +45,38 @@ export function FormLayout({
 }: Props) {
   const [dragging, setDragging] = useState(false);
   const reportDragActive = useDataBlockHost()?.setDragActive;
+  const releaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearReleaseTimer = useCallback(() => {
+    if (releaseTimer.current !== null) {
+      clearTimeout(releaseTimer.current);
+      releaseTimer.current = null;
+    }
+  }, []);
   const changeDragActivity = useCallback(
     (active: boolean) => {
+      clearReleaseTimer();
       setDragging(active);
       reportDragActive?.(active);
     },
-    [reportDragActive]
+    [clearReleaseTimer, reportDragActive]
   );
-  useEffect(() => () => reportDragActive?.(false), [reportDragActive]);
+  const cancelDrag = useCallback(() => {
+    setDragging(false);
+    clearReleaseTimer();
+    // DndKit cancels on document keydown before the container's window Escape
+    // handler. Keep its keyboard lock until this native event finishes dispatching.
+    releaseTimer.current = setTimeout(() => {
+      releaseTimer.current = null;
+      reportDragActive?.(false);
+    }, 0);
+  }, [clearReleaseTimer, reportDragActive]);
+  useEffect(
+    () => () => {
+      clearReleaseTimer();
+      reportDragActive?.(false);
+    },
+    [clearReleaseTimer, reportDragActive]
+  );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor)
@@ -74,7 +99,7 @@ export function FormLayout({
     <DndContext
       sensors={sensors}
       onDragStart={() => changeDragActivity(true)}
-      onDragCancel={() => changeDragActivity(false)}
+      onDragCancel={cancelDrag}
       onDragEnd={drop}
     >
       <div className={`data-form-grid${dragging ? ' is-dragging' : ''}`}>
