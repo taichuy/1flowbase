@@ -1,4 +1,4 @@
-//! Durable event configuration. Event instances, deliveries and observations are ephemeral.
+//! Event configuration and source-owned ephemeral observation contracts.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -135,3 +135,6 @@ pub fn is_json_pointer(value: &str) -> bool {
 #[cfg(test)]
 #[path = "_tests/configuration.rs"]
 mod tests;
+
+mod source;
+pub use source::*;

@@ -1,3 +1,5 @@
+mod event_source;
+pub use event_source::*;
 mod managed_operation_lifetime;
 pub use managed_operation_lifetime::*;
 use std::collections::BTreeMap;

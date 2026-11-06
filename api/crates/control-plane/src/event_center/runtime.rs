@@ -27,10 +27,13 @@ pub(super) struct RuntimeInner {
 pub(super) struct RuntimeState {
     pub memberships: BTreeMap<Key, Membership>,
     pub observation: Observation,
+    pub sources: BTreeMap<Uuid, super::source::RegisteredSource>,
 }
 pub(super) struct Membership {
     pub generation: Uuid,
     pub spec: EventRuntimeSubscription,
+    pub source_target: Option<EventSourceTarget>,
+    pub workflow_id: Option<Uuid>,
     pub topic: String,
     pub consumers: BTreeSet<Uuid>,
     pub closed: bool,
@@ -42,7 +45,8 @@ pub(super) struct Membership {
 }
 impl RuntimeInner {
     pub fn lock(&self) -> MutexGuard<'_, RuntimeState> {
-        // No await or user callback occurs under this lock. Drop must recover accounting.
+        // No await occurs under this lock. Source payload callbacks only project local data.
+        // Drop must recover accounting even if a source projection panics.
         self.state
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -54,6 +58,8 @@ impl RuntimeInner {
         body: EventCenterSignalBody,
     ) -> EventCenterSignal {
         EventCenterSignal {
+            source_context: None,
+            workflow_ancestor_ids: Vec::new(),
             event_id: Uuid::now_v7(),
             occurred_at_unix_ms: unix_ms(),
             workspace_id: spec.workspace_id,
@@ -69,26 +75,45 @@ impl RuntimeInner {
         state: &mut RuntimeState,
         signal: &EventCenterSignal,
     ) -> Result<Vec<EventTargetAdmission>, EventBusError> {
-        let bytes = json_bytes(signal)?;
         let mut targets = Vec::new();
         let RuntimeState {
             memberships,
             observation,
+            ..
         } = state;
         for membership in memberships.values_mut().filter(|membership| {
-            membership.spec.workspace_id == signal.workspace_id
+            super::source::matches_source(membership, signal)
+                && membership.spec.workspace_id == signal.workspace_id
                 && membership.spec.contract_id == signal.contract_id
                 && membership.spec.contract_version == signal.contract_version
                 && membership.spec.trigger_phase == signal.phase()
         }) {
+            if membership
+                .workflow_id
+                .is_some_and(|id| signal.workflow_ancestor_ids.contains(&id))
+            {
+                membership.admission_rejected = membership.admission_rejected.saturating_add(1);
+                let target = EventTargetAdmission {
+                    subscription_id: membership.spec.subscription_id,
+                    status: EventTargetAdmissionStatus::Reentrant,
+                };
+                observation.record(activity(signal, Some(&target)));
+                targets.push(target);
+                continue;
+            }
+            let mut outgoing = signal.clone();
+            if let Some(id) = membership.workflow_id {
+                outgoing.workflow_ancestor_ids.push(id);
+            }
+            let bytes = json_bytes(&outgoing)?;
             let result = if membership.closed {
                 Err(EventBusError::Closed)
             } else {
                 self.bus
                     .try_reserve(&membership.topic, bytes)
                     .and_then(|permit| {
-                        let body =
-                            serde_json::to_value(signal).map_err(|_| EventBusError::InvalidBody)?;
+                        let body = serde_json::to_value(&outgoing)
+                            .map_err(|_| EventBusError::InvalidBody)?;
                         permit.send(body)
                     })
             };
@@ -137,6 +162,7 @@ impl EventCenterRuntime {
                 policy,
                 state: Mutex::new(RuntimeState {
                     memberships: BTreeMap::new(),
+                    sources: BTreeMap::new(),
                     observation: Observation::new(policy),
                 }),
             }),
@@ -148,6 +174,16 @@ impl EventCenterRuntime {
         spec: EventRuntimeSubscription,
         emit_subscribed: bool,
     ) -> anyhow::Result<EventCenterSubscription> {
+        self.subscribe_bound(spec, emit_subscribed, None, None)
+    }
+
+    pub(super) fn subscribe_bound(
+        &self,
+        spec: EventRuntimeSubscription,
+        emit_subscribed: bool,
+        source_target: Option<EventSourceTarget>,
+        workflow_id: Option<Uuid>,
+    ) -> anyhow::Result<EventCenterSubscription> {
         if self.inner.policy.is_none() {
             return Err(EventBusError::Unconfigured.into());
         }
@@ -158,7 +194,9 @@ impl EventCenterRuntime {
         let mut state = self.inner.lock();
         let first = !state.memberships.contains_key(&key);
         let topic = if let Some(existing) = state.memberships.get(&key) {
-            if existing.spec.contract_id != spec.contract_id
+            if existing.workflow_id != workflow_id
+                || existing.source_target != source_target
+                || existing.spec.contract_id != spec.contract_id
                 || existing.spec.contract_version != spec.contract_version
                 || existing.spec.trigger_phase != spec.trigger_phase
             {
@@ -182,7 +220,10 @@ impl EventCenterRuntime {
                 spec.contract_id.len(),
                 spec.contract_id,
                 spec.contract_version
-            )
+            ) + &source_target
+                .as_ref()
+                .map(|target| format!("/source/{}", target.source_id))
+                .unwrap_or_default()
         };
         let consumer = self.inner.bus.open_consumer(&topic)?;
         // Dispatch against the existing observer set, under the membership lock, before
@@ -191,8 +232,8 @@ impl EventCenterRuntime {
             let signal = self.inner.signal(
                 &spec,
                 EventCenterSignalBody::Subscribed {
-                    subscription_id: spec.subscription_id,
-                    consumer_id: spec.consumer_id,
+                    subscription_id: spec.subscription_id.to_string(),
+                    consumer_id: spec.consumer_id.to_string(),
                 },
             );
             state.observation.record(activity(&signal, None));
@@ -202,6 +243,8 @@ impl EventCenterRuntime {
         let membership = state.memberships.entry(key).or_insert_with(|| Membership {
             generation: Uuid::now_v7(),
             spec: spec.clone(),
+            source_target,
+            workflow_id,
             topic,
             consumers: BTreeSet::new(),
             closed: false,
@@ -225,6 +268,15 @@ impl EventCenterRuntime {
         definition: &EventDefinitionRecord,
         payload: Value,
     ) -> anyhow::Result<EventPublishReceipt> {
+        self.publish_with_ancestors(definition, payload, Vec::new())
+    }
+
+    pub fn publish_with_ancestors(
+        &self,
+        definition: &EventDefinitionRecord,
+        payload: Value,
+        workflow_ancestor_ids: Vec<Uuid>,
+    ) -> anyhow::Result<EventPublishReceipt> {
         if self.inner.policy.is_none() {
             return Err(EventBusError::Unconfigured.into());
         }
@@ -240,6 +292,8 @@ impl EventCenterRuntime {
             return Err(Error::InvalidInput("event_payload_schema_violation").into());
         }
         let signal = EventCenterSignal {
+            source_context: None,
+            workflow_ancestor_ids,
             event_id: Uuid::now_v7(),
             occurred_at_unix_ms: unix_ms(),
             workspace_id: definition.workspace_id,
@@ -264,21 +318,14 @@ impl EventCenterRuntime {
         let queues = state
             .memberships
             .values()
-            .filter(|membership| membership.spec.workspace_id == workspace_id)
-            .map(|membership| EventRuntimeQueueSnapshot {
-                subscription_id: membership.spec.subscription_id,
-                workspace_id,
-                contract_id: membership.spec.contract_id.clone(),
-                contract_version: membership.spec.contract_version.clone(),
-                trigger_phase: membership.spec.trigger_phase,
-                consumer_ids: membership.consumers.iter().copied().collect(),
-                closed: membership.closed,
-                buffered: membership.buffered,
-                in_flight: membership.in_flight,
-                accepted: membership.accepted,
-                consumed: membership.consumed,
-                admission_rejected: membership.admission_rejected,
+            .filter(|membership| {
+                membership.spec.workspace_id == workspace_id
+                    && membership.source_target.as_ref().is_none_or(|target| {
+                        target.scope
+                            == domain::event_center::EventSourceScope::Workspace { workspace_id }
+                    })
             })
+            .map(queue_snapshot)
             .collect();
         EventRuntimeSnapshot {
             instance_id: self.inner.instance_id,
@@ -317,33 +364,62 @@ pub(super) fn activity(
         EventCenterSignalBody::Subscribed {
             subscription_id,
             consumer_id,
-        } => (None, Some(*subscription_id), Some(*consumer_id)),
+        } => (
+            None,
+            Uuid::parse_str(subscription_id).ok(),
+            Uuid::parse_str(consumer_id).ok(),
+        ),
         EventCenterSignalBody::Consumed {
             source_event_id,
             subscription_id,
             consumer_id,
         } => (
-            Some(*source_event_id),
-            Some(*subscription_id),
-            Some(*consumer_id),
+            Uuid::parse_str(source_event_id).ok(),
+            Uuid::parse_str(subscription_id).ok(),
+            Uuid::parse_str(consumer_id).ok(),
         ),
     };
+    let (original_subscriber_id, original_consumer_id) = match &signal.body {
+        EventCenterSignalBody::Subscribed {
+            subscription_id,
+            consumer_id,
+        }
+        | EventCenterSignalBody::Consumed {
+            subscription_id,
+            consumer_id,
+            ..
+        } if signal.source_context.is_some() => {
+            (Some(subscription_id.clone()), Some(consumer_id.clone()))
+        }
+        _ => (None, None),
+    };
     EventRuntimeActivity {
+        source_context: signal.source_context.clone(),
+        original_subscriber_id,
+        original_consumer_id,
         event_id: signal.event_id,
         workspace_id: signal.workspace_id,
         contract_id: signal.contract_id.clone(),
         contract_version: signal.contract_version.clone(),
         phase: signal.phase(),
         source_event_id,
-        subscription_id: target
-            .map(|value| value.subscription_id)
-            .or(subscription_id),
-        consumer_id,
+        subscription_id: target.map(|value| value.subscription_id).or(
+            if signal.source_context.is_some() {
+                None
+            } else {
+                subscription_id
+            },
+        ),
+        consumer_id: if signal.source_context.is_some() {
+            None
+        } else {
+            consumer_id
+        },
         admission: target.map(|value| value.status),
         observed_at_unix_ms: signal.occurred_at_unix_ms,
     }
 }
-fn unix_ms() -> i64 {
+pub(super) fn unix_ms() -> i64 {
     i64::try_from(OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000).unwrap_or(i64::MAX)
 }
 fn json_bytes(value: &impl serde::Serialize) -> Result<u64, EventBusError> {
@@ -368,3 +444,21 @@ fn json_bytes(value: &impl serde::Serialize) -> Result<u64, EventBusError> {
 #[cfg(test)]
 #[path = "_tests/runtime.rs"]
 mod tests;
+
+pub(super) fn queue_snapshot(membership: &Membership) -> EventRuntimeQueueSnapshot {
+    EventRuntimeQueueSnapshot {
+        source_target: membership.source_target.clone(),
+        subscription_id: membership.spec.subscription_id,
+        workspace_id: membership.spec.workspace_id,
+        contract_id: membership.spec.contract_id.clone(),
+        contract_version: membership.spec.contract_version.clone(),
+        trigger_phase: membership.spec.trigger_phase,
+        consumer_ids: membership.consumers.iter().copied().collect(),
+        closed: membership.closed,
+        buffered: membership.buffered,
+        in_flight: membership.in_flight,
+        accepted: membership.accepted,
+        consumed: membership.consumed,
+        admission_rejected: membership.admission_rejected,
+    }
+}

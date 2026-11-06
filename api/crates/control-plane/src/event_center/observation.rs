@@ -1,4 +1,5 @@
 use super::runtime_types::*;
+use domain::event_center::EventSourceScope;
 use std::{
     collections::VecDeque,
     mem::size_of,
@@ -10,7 +11,7 @@ type Entry = (Instant, u64, EventRuntimeActivity);
 
 /// Fixed-size, payload-free ledger. Both ledgers and activity use the same host budget.
 struct Accounting {
-    workspace_id: Uuid,
+    scope: EventSourceScope,
     started: Instant,
     started_at_unix_ms: i64,
     expired: u64,
@@ -59,7 +60,7 @@ impl Observation {
         {
             let (at, bytes, expired) = self.entries.pop_front().expect("front exists");
             self.bytes -= bytes;
-            if let Some(ledger) = self.ledger_mut(expired.workspace_id) {
+            if let Some(ledger) = self.ledger_mut(scope(&expired)) {
                 if expiration_in_window(at, ledger.started, now, ttl) {
                     ledger.expired = ledger.expired.saturating_add(1);
                 }
@@ -68,7 +69,7 @@ impl Observation {
         if ttl.is_zero() || ACCOUNTING_BYTES > policy.observation_max_bytes {
             return;
         }
-        if self.ledger_mut(activity.workspace_id).is_none() {
+        if self.ledger_mut(scope(&activity)).is_none() {
             self.make_room(
                 ACCOUNTING_BYTES,
                 now,
@@ -77,7 +78,7 @@ impl Observation {
                 None,
             );
             self.accounting.push_back(Accounting {
-                workspace_id: activity.workspace_id,
+                scope: scope(&activity),
                 started: now,
                 started_at_unix_ms: activity.observed_at_unix_ms,
                 expired: 0,
@@ -97,7 +98,7 @@ impl Observation {
                 .observation_max_bytes
                 .saturating_sub(ACCOUNTING_BYTES)
         {
-            if let Some(ledger) = self.ledger_mut(activity.workspace_id) {
+            if let Some(ledger) = self.ledger_mut(scope(&activity)) {
                 ledger.oversize_dropped = ledger.oversize_dropped.saturating_add(1);
             }
             return;
@@ -107,16 +108,16 @@ impl Observation {
             now,
             ttl,
             policy.observation_max_bytes,
-            Some(activity.workspace_id),
+            Some(scope(&activity)),
         );
         self.bytes += bytes;
         self.entries.push_back((now, bytes, activity));
     }
 
-    fn ledger_mut(&mut self, workspace_id: Uuid) -> Option<&mut Accounting> {
+    fn ledger_mut(&mut self, scope: EventSourceScope) -> Option<&mut Accounting> {
         self.accounting
             .iter_mut()
-            .find(|ledger| ledger.workspace_id == workspace_id)
+            .find(|ledger| ledger.scope == scope)
     }
 
     fn make_room(
@@ -125,12 +126,12 @@ impl Observation {
         now: Instant,
         ttl: Duration,
         max_bytes: u64,
-        protected_workspace: Option<Uuid>,
+        protected_workspace: Option<EventSourceScope>,
     ) {
         while bytes > max_bytes.saturating_sub(self.bytes) {
             if let Some((at, removed, activity)) = self.entries.pop_front() {
                 self.bytes -= removed;
-                if let Some(ledger) = self.ledger_mut(activity.workspace_id) {
+                if let Some(ledger) = self.ledger_mut(scope(&activity)) {
                     // Entries are pruned before admission, so these are budget losses.
                     if now.saturating_duration_since(at) < ttl {
                         ledger.evicted = ledger.evicted.saturating_add(1);
@@ -139,7 +140,7 @@ impl Observation {
             } else if let Some(index) = self
                 .accounting
                 .iter()
-                .position(|ledger| Some(ledger.workspace_id) != protected_workspace)
+                .position(|ledger| Some(&ledger.scope) != protected_workspace.as_ref())
             {
                 self.accounting.remove(index);
                 // Evicted accounting is explicitly unavailable, never exported globally.
@@ -155,12 +156,28 @@ impl Observation {
         &self,
         workspace_id: Uuid,
     ) -> (Vec<EventRuntimeActivity>, u64, EventObservationLossSnapshot) {
-        self.snapshot_at(workspace_id, Instant::now())
+        self.snapshot_scope(&EventSourceScope::Workspace { workspace_id })
     }
 
+    #[cfg(test)]
     fn snapshot_at(
         &self,
         workspace_id: Uuid,
+        now: Instant,
+    ) -> (Vec<EventRuntimeActivity>, u64, EventObservationLossSnapshot) {
+        self.snapshot_scope_at(&EventSourceScope::Workspace { workspace_id }, now)
+    }
+
+    pub fn snapshot_scope(
+        &self,
+        scope: &EventSourceScope,
+    ) -> (Vec<EventRuntimeActivity>, u64, EventObservationLossSnapshot) {
+        self.snapshot_scope_at(scope, Instant::now())
+    }
+
+    fn snapshot_scope_at(
+        &self,
+        requested_scope: &EventSourceScope,
         now: Instant,
     ) -> (Vec<EventRuntimeActivity>, u64, EventObservationLossSnapshot) {
         let duration_ms = self
@@ -179,7 +196,7 @@ impl Observation {
         };
         let ttl = Duration::from_millis(policy.observation_ttl_ms);
         let ledger = self.accounting.iter().find(|ledger| {
-            ledger.workspace_id == workspace_id
+            ledger.scope == *requested_scope
                 && now.saturating_duration_since(ledger.started) < accounting_window(policy)
         });
         let mut bytes = 0;
@@ -193,7 +210,7 @@ impl Observation {
         }
         let mut activity = Vec::new();
         for (at, size, value) in &self.entries {
-            if value.workspace_id != workspace_id {
+            if scope(value) != *requested_scope {
                 continue;
             }
             if now.saturating_duration_since(*at) < ttl {
@@ -220,3 +237,13 @@ fn expiration_in_window(at: Instant, started: Instant, now: Instant, ttl: Durati
 #[cfg(test)]
 #[path = "_tests/observation.rs"]
 mod tests;
+
+fn scope(activity: &EventRuntimeActivity) -> EventSourceScope {
+    activity
+        .source_context
+        .as_ref()
+        .map(|context| context.scope.clone())
+        .unwrap_or(EventSourceScope::Workspace {
+            workspace_id: activity.workspace_id,
+        })
+}
