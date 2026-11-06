@@ -172,7 +172,6 @@ export function ApplicationFormModal({
         event: {
           enabled: false,
           contract_id: '',
-          contract_version: '',
           trigger_phase: 'published',
           input_mapping: {}
         },

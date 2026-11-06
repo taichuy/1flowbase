@@ -14,12 +14,6 @@ export function EventSourceQueues({
   sources: EventRegisteredSourceSnapshot[];
 }) {
   const { t } = useTranslation('settingsEvents');
-  const sourceLabels = {
-    active: t('active'),
-    declaration: t('declaration'),
-    live: t('live'),
-    unavailable: t('unavailable')
-  };
   const counterLabels = {
     buffered: t('buffered'),
     in_flight: t('in_flight'),
@@ -56,9 +50,7 @@ export function EventSourceQueues({
         </Button>
       )
     },
-    ...(
-      ['source_id', 'point_id', 'contract_id', 'contract_version'] as const
-    ).map((key) => ({
+    ...(['source_id', 'point_id', 'contract_id'] as const).map((key) => ({
       key,
       title: t(key),
       render: (_: unknown, row: EventRegisteredSourceSnapshot) =>
@@ -86,14 +78,7 @@ export function EventSourceQueues({
           )}
         </Typography.Text>
       )
-    },
-    ...(['binding', 'coverage'] as const).map((key) => ({
-      key,
-      title: t(key),
-      width: 160,
-      render: (_: unknown, row: EventRegisteredSourceSnapshot) =>
-        sourceLabels[row.descriptor[key]]
-    }))
+    }
   ];
   const queueColumns: DataTableColumn<EventSourceQueueSnapshot>[] = [
     {
@@ -144,10 +129,6 @@ export function EventSourceQueues({
         <>
           <Typography.Text strong>
             {t('original_queues')} · {selected.descriptor.name}
-          </Typography.Text>
-          <Typography.Text type="secondary">
-            {t('binding')}: {sourceLabels[selected.descriptor.binding]} ·{' '}
-            {t('coverage')}: {sourceLabels[selected.descriptor.coverage]}
           </Typography.Text>
           {!selected.queue_observation_complete && (
             <Alert

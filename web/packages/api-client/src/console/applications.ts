@@ -345,7 +345,6 @@ export interface ReplaceConsoleWorkflowEventTriggerInput {
   source?: import('./events').EventSourceSelection;
   enabled: boolean;
   contract_id: string;
-  contract_version: string;
   trigger_phase: import('./events').EventTriggerPhase;
   input_mapping: Record<string, string>;
 }

@@ -44,10 +44,11 @@ describe('ApplicationFormModal create intent', () => {
     applicationsApi.fetchWorkflowEventCatalog.mockResolvedValue([
       {
         contract_id: 'custom.invoice',
-        contract_version: '1',
         name: 'Invoice',
         enabled: true,
         origin: 'custom',
+        owner_id: null,
+        scope: { kind: 'workspace', workspace_id: 'workspace-1' },
         supported_phases: ['published', 'consumed']
       }
     ]);
@@ -271,10 +272,10 @@ describe('ApplicationFormModal create intent', () => {
       })
     );
     fireEvent.mouseDown(
-      await screen.findByRole('combobox', { name: '自定义事件源' })
+      await screen.findByRole('combobox', { name: '事件来源' })
     );
     fireEvent.click(
-      await screen.findByText('Invoice · 1', {
+      await screen.findByText('Invoice', {
         selector: '.ant-select-item-option-content'
       })
     );
@@ -296,7 +297,6 @@ describe('ApplicationFormModal create intent', () => {
         expect.objectContaining({
           enabled: false,
           contract_id: 'custom.invoice',
-          contract_version: '1',
           trigger_phase: 'consumed',
           input_mapping: {}
         }),
@@ -310,6 +310,9 @@ describe('ApplicationFormModal create intent', () => {
       }),
       'csrf-123'
     );
+    expect(
+      applicationsApi.saveWorkflowEventTrigger.mock.calls[0][1]
+    ).not.toHaveProperty('contract_version');
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('app-workflow'));
   });
 });

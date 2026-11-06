@@ -11,15 +11,12 @@ export interface EventSourceSelection {
 export interface EventCatalogSource {
   selection: EventSourceSelection;
   point_id: string;
-  binding: 'declaration' | 'active';
-  coverage: 'live' | 'unavailable';
 }
 export interface EventSourceDescriptor {
   source_id: string;
   owner_id: string;
   point_id: string;
   contract_id: string;
-  contract_version: string;
   name: string;
   description: string;
   payload_schema: Record<string, unknown> | boolean | null;
@@ -71,10 +68,10 @@ export interface EventSourceRuntimeSnapshot {
 export interface EventCatalogEntry {
   source?: EventCatalogSource;
   id: string | null;
-  enabled: boolean;
-  owner_id: string;
+  enabled: boolean | null;
+  owner_id: string | null;
+  scope: EventSourceScope;
   contract_id: string;
-  contract_version: string;
   name: string;
   description: string;
   payload_schema: Record<string, unknown> | boolean | null;
@@ -83,7 +80,6 @@ export interface EventCatalogEntry {
 }
 export interface CreateEventDefinitionInput {
   contract_id: string;
-  contract_version: string;
   name: string;
   description: string;
   payload_schema: Record<string, unknown> | boolean;
@@ -91,7 +87,7 @@ export interface CreateEventDefinitionInput {
 }
 export type UpdateEventDefinitionInput = Omit<
   CreateEventDefinitionInput,
-  'contract_id' | 'contract_version'
+  'contract_id'
 >;
 export interface EventDefinitionRecord extends CreateEventDefinitionInput {
   id: string;
@@ -113,7 +109,6 @@ export interface EventRuntimeQueueSnapshot {
   subscription_id: string;
   workspace_id: string;
   contract_id: string;
-  contract_version: string;
   trigger_phase: EventTriggerPhase;
   consumer_ids: string[];
   closed: boolean;
@@ -130,7 +125,6 @@ export interface EventRuntimeActivity {
   event_id: string;
   workspace_id: string;
   contract_id: string;
-  contract_version: string;
   phase: EventTriggerPhase;
   source_event_id: string | null;
   subscription_id: string | null;

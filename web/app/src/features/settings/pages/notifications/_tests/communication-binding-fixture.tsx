@@ -196,10 +196,10 @@ export function setupCommunicationBinding({
             enabled: true,
             origin: 'custom',
             contract_id: 'custom.invoice',
-            contract_version: '1',
             name: 'Invoice requested',
             description: 'Invoice request',
-            owner_id: 'user-1',
+            owner_id: null,
+            scope: { kind: 'workspace', workspace_id: 'workspace-1' },
             payload_schema: {
               type: 'object',
               properties: { invoice: { type: 'string' } },

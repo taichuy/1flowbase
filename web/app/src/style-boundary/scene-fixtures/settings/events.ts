@@ -14,10 +14,10 @@ import {
 const events: EventCatalogEntry[] = [
   {
     id: null,
-    enabled: false,
+    enabled: null,
+    scope: { kind: 'workspace', workspace_id: 'workspace-1' },
     owner_id: '1flowbase.boot-core',
     contract_id: '1flowbase.communication.command.requested',
-    contract_version: '1',
     name: '1flowbase.communication.command.requested',
     description: 'Communication command requested.',
     payload_schema: null,
@@ -25,20 +25,18 @@ const events: EventCatalogEntry[] = [
     source: {
       selection: {
         source_id: 'communication.command',
-        scope: { kind: 'unbound' }
+        scope: { kind: 'workspace', workspace_id: 'workspace-1' }
       },
-      point_id: 'communication.command.requested',
-      binding: 'declaration',
-      coverage: 'unavailable'
+      point_id: 'communication.command.requested'
     },
-    supported_phases: []
+    supported_phases: ['published', 'consumed']
   },
   {
     id: '019e3b42-0000-7000-8000-000000000001',
     enabled: true,
-    owner_id: 'workspace-1',
+    owner_id: null,
+    scope: { kind: 'workspace', workspace_id: 'workspace-1' },
     contract_id: 'custom.order.fulfillment.completed',
-    contract_version: '1.0.0',
     name: 'Order fulfillment completed',
     description: 'Published after an order is fulfilled.',
     payload_schema: {

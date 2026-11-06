@@ -26,7 +26,6 @@ vi.mock('../../api/applications', async (original) => ({
 const stored = {
   enabled: true,
   contract_id: 'custom.invoice',
-  contract_version: '1',
   trigger_phase: 'consumed',
   input_mapping: { invoice: '/payload/invoice' }
 };
@@ -42,7 +41,6 @@ test.each(['disabled', 'missing', 'unsupported phase'])(
         : [
             {
               contract_id: stored.contract_id,
-              contract_version: stored.contract_version,
               name: 'Invoice',
               origin: 'custom',
               enabled: reason !== 'disabled',
@@ -138,10 +136,9 @@ test('same-contract source scopes remain distinct and save canonical source with
   const common = {
     id: null,
     owner_id: 'runtime',
-    enabled: true,
+    enabled: null,
     origin: 'core',
     contract_id: 'runtime.event',
-    contract_version: '1',
     description: '',
     payload_schema: null,
     supported_phases: ['published']
@@ -151,25 +148,23 @@ test('same-contract source scopes remain distinct and save canonical source with
     {
       ...common,
       name: 'Workspace source',
+      scope: { kind: 'workspace', workspace_id: 'workspace-a' },
       supported_phases: ['consumed'],
       source: {
         selection: {
           source_id: 'runtime.required',
           scope: { kind: 'workspace', workspace_id: 'workspace-a' }
         },
-        point_id: 'runtime.required',
-        binding: 'active',
-        coverage: 'live'
+        point_id: 'runtime.required'
       }
     },
     {
       ...common,
       name: 'System source',
+      scope: { kind: 'system' },
       source: {
         selection: system,
-        point_id: 'runtime.required',
-        binding: 'active',
-        coverage: 'live'
+        point_id: 'runtime.required'
       }
     }
   ]);
@@ -194,7 +189,7 @@ test('same-contract source scopes remain distinct and save canonical source with
   );
   await waitFor(() => expect(api.fetchWorkflowEventCatalog).toHaveBeenCalled());
   fireEvent.mouseDown(screen.getByRole('combobox', { name: '事件来源' }));
-  fireEvent.click(await screen.findByText(/System source · 1/));
+  fireEvent.click(await screen.findByText(/System source/));
   const selects = screen.getAllByRole('combobox');
   fireEvent.mouseDown(selects[1]);
   // Only the source adapter's published phase is offered.
@@ -206,7 +201,6 @@ test('same-contract source scopes remain distinct and save canonical source with
       event: {
         enabled: true,
         contract_id: 'runtime.event',
-        contract_version: '1',
         source: system,
         trigger_phase: 'published',
         input_mapping: {}
@@ -220,16 +214,14 @@ test('an unavailable stored system registration is explained and can be disabled
   api.fetchWorkflowEventCatalog.mockResolvedValue([
     {
       contract_id: stored.contract_id,
-      contract_version: stored.contract_version,
       name: 'Native source',
-      enabled: false,
+      enabled: null,
       origin: 'core',
-      supported_phases: ['consumed'],
+      scope: { kind: 'system' },
+      supported_phases: [],
       source: {
         selection: source,
-        point_id: 'native.point',
-        binding: 'declaration',
-        coverage: 'unavailable'
+        point_id: 'native.point'
       }
     }
   ]);
@@ -254,7 +246,7 @@ test('an unavailable stored system registration is explained and can be disabled
       <Editor />
     </AppProviders>
   );
-  await screen.findByText(/Native source · 1/);
+  await screen.findByText(/Native source/);
   fireEvent.click(screen.getByRole('button', { name: 'Save system source' }));
   await waitFor(() => expect(rejected).toHaveBeenCalled());
   fireEvent.click(screen.getByRole('switch', { name: '启用订阅' }));

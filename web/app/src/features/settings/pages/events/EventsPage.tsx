@@ -120,12 +120,6 @@ export function EventsPage() {
       width: 240
     },
     {
-      key: 'contract_version',
-      title: t('contract_version'),
-      dataIndex: 'contract_version',
-      width: 110
-    },
-    {
       key: 'origin',
       title: t('origin'),
       width: 120,
@@ -140,31 +134,20 @@ export function EventsPage() {
       )
     },
     {
-      key: 'owner_id',
-      title: t('owner_id'),
-      dataIndex: 'owner_id',
-      width: 220
-    },
-    ...(['scope', 'point_id', 'binding', 'coverage'] as const).map((key) => ({
-      key,
-      title: t(key),
+      key: 'scope',
+      title: t('scope'),
       width: 220,
-      render: (_: unknown, row: EventCatalogEntry) => {
-        if (!row.source) return '—';
-        if (key === 'scope') {
-          const scope = row.source.selection.scope;
-          return scope.kind === 'workspace'
-            ? `${t('workspace_scope')} · ${scope.workspace_id}`
-            : t(scope.kind);
-        }
-        return key === 'point_id' ? row.source.point_id : t(row.source[key]);
-      }
-    })),
+      render: (_, row) =>
+        row.scope.kind === 'workspace'
+          ? `${t('workspace_scope')} · ${row.scope.workspace_id}`
+          : t(row.scope.kind)
+    },
     {
       key: 'enabled',
       title: t('enabled'),
       width: 120,
-      render: (_, row) => (row.enabled ? t('enabled') : t('disabled'))
+      render: (_, row) =>
+        row.enabled === null ? '—' : row.enabled ? t('enabled') : t('disabled')
     },
     {
       key: 'supported_phases',
@@ -227,14 +210,7 @@ export function EventsPage() {
               <EventsTable
                 columns={columns}
                 rows={catalog.data ?? []}
-                rowKey={(row) =>
-                  JSON.stringify([
-                    row.owner_id,
-                    row.contract_id,
-                    row.contract_version,
-                    row.source?.selection
-                  ])
-                }
+                rowKey={(row) => JSON.stringify([row.contract_id, row.scope])}
                 tableKey="catalog"
                 loading={catalog.isPending}
                 toolbar={

@@ -13,9 +13,9 @@ describe('event center wire contract', () => {
     const data: EventCatalogEntry[] = [
       {
         id: null,
-        enabled: true,
+        enabled: null,
+        scope: { kind: 'system' },
         owner_id: 'core',
-        contract_version: '1',
         name: 'Core ready',
         description: '',
         payload_schema: null,
@@ -50,7 +50,6 @@ describe('event center wire contract', () => {
     vi.stubGlobal('fetch', fetch);
     const input = {
       contract_id: 'custom.order',
-      contract_version: '1',
       name: 'Order',
       description: '',
       enabled: false,
@@ -61,7 +60,7 @@ describe('event center wire contract', () => {
       }
     };
     await createEventDefinition(input, 'csrf', 'https://example.test');
-    const { contract_id: _id, contract_version: _version, ...mutable } = input;
+    const { contract_id: _id, ...mutable } = input;
     await updateEventDefinition(
       'definition/a',
       mutable,

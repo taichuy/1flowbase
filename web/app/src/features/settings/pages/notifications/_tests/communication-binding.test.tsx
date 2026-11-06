@@ -425,7 +425,7 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
     within(dialog).getByRole('combobox', { name: 'Target custom event' })
   );
   fireEvent.click(
-    await screen.findByText('Invoice requested · 1', {
+    await screen.findByText('Invoice requested', {
       selector: '.ant-select-item-option-content'
     })
   );
@@ -454,10 +454,10 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
       description: 'Request invoice processing',
       enabled: true,
       contract_id: 'custom.invoice',
-      contract_version: '1',
       input_mapping: { invoice: '/arguments' }
     }
   ]);
+  expect(writes[0].event_commands[0]).not.toHaveProperty('contract_version');
   expect(
     writes[0].command_settings.every(
       (setting) => !setting.command_id.startsWith('user/')

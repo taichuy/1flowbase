@@ -95,7 +95,7 @@ export function createWorkflowStartTriggerSummary(value: unknown) {
   if (context.triggerType === 'event') {
     const event = context.event;
     return event
-      ? `${event.enabled ? i18nText('workflow', 'event.enabled') : i18nText('workflow', 'event.disabled')} · ${event.contract_id} · ${event.contract_version} · ${{ subscribed: i18nText('workflow', 'event.subscribed'), published: i18nText('workflow', 'event.published'), consumed: i18nText('workflow', 'event.consumed') }[event.trigger_phase]}`
+      ? `${event.enabled ? i18nText('workflow', 'event.enabled') : i18nText('workflow', 'event.disabled')} · ${event.contract_id} · ${{ subscribed: i18nText('workflow', 'event.subscribed'), published: i18nText('workflow', 'event.published'), consumed: i18nText('workflow', 'event.consumed') }[event.trigger_phase]}`
       : i18nText('workflow', 'auto.workflow_trigger_not_configured');
   }
   if (context.triggerType === 'schedule') {

@@ -50,9 +50,7 @@ export function EventDefinitionDrawer({
         <Form<CreateEventDefinitionInput>
           layout="vertical"
           disabled={saving}
-          initialValues={
-            entry ?? { contract_version: '1', enabled: true, description: '' }
-          }
+          initialValues={entry ?? { enabled: true, description: '' }}
           onFinish={(values) => {
             if (valid && schema !== null)
               onSave({ ...values, payload_schema: schema });
@@ -75,13 +73,6 @@ export function EventDefinitionDrawer({
                 message: t('contract_help')
               }
             ]}
-          >
-            <Input disabled={!!entry} />
-          </Form.Item>
-          <Form.Item
-            name="contract_version"
-            label={t('contract_version')}
-            rules={[{ required: true, whitespace: true }]}
           >
             <Input disabled={!!entry} />
           </Form.Item>
@@ -138,14 +129,27 @@ export function EventDefinitionDrawer({
                   children: entry.contract_id
                 },
                 {
-                  key: 'contract_version',
-                  label: t('contract_version'),
-                  children: entry.contract_version
-                },
-                {
                   key: 'owner_id',
                   label: t('owner_id'),
-                  children: entry.owner_id
+                  children: entry.owner_id ?? '—'
+                },
+                {
+                  key: 'scope',
+                  label: t('scope'),
+                  children:
+                    entry.scope.kind === 'workspace'
+                      ? `${t('workspace_scope')} · ${entry.scope.workspace_id}`
+                      : t(entry.scope.kind)
+                },
+                {
+                  key: 'enabled',
+                  label: t('enabled'),
+                  children:
+                    entry.enabled === null
+                      ? '—'
+                      : entry.enabled
+                        ? t('enabled')
+                        : t('disabled')
                 },
                 ...(entry.source
                   ? [
@@ -158,24 +162,6 @@ export function EventDefinitionDrawer({
                         key: 'point_id',
                         label: t('point_id'),
                         children: entry.source.point_id
-                      },
-                      {
-                        key: 'scope',
-                        label: t('scope'),
-                        children:
-                          entry.source.selection.scope.kind === 'workspace'
-                            ? `${t('workspace_scope')} · ${entry.source.selection.scope.workspace_id}`
-                            : t(entry.source.selection.scope.kind)
-                      },
-                      {
-                        key: 'binding',
-                        label: t('binding'),
-                        children: t(entry.source.binding)
-                      },
-                      {
-                        key: 'coverage',
-                        label: t('coverage'),
-                        children: t(entry.source.coverage)
                       }
                     ]
                   : []),

@@ -74,12 +74,6 @@ export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
       mobileRole: 'title'
     },
     {
-      key: 'contract_version',
-      title: t('contract_version'),
-      dataIndex: 'contract_version',
-      width: 110
-    },
-    {
       key: 'subscription_id',
       title: t('subscription_id'),
       dataIndex: 'subscription_id',
@@ -182,12 +176,6 @@ export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
       dataIndex: 'contract_id',
       width: 220,
       mobileRole: 'title'
-    },
-    {
-      key: 'contract_version',
-      title: t('contract_version'),
-      dataIndex: 'contract_version',
-      width: 110
     },
     {
       key: 'phase',

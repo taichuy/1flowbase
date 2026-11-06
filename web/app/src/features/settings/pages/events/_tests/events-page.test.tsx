@@ -77,9 +77,9 @@ const schema = {
 const custom: EventCatalogEntry = {
   id: 'definition',
   enabled: false,
-  owner_id: 'workspace',
+  owner_id: null,
+  scope: { kind: 'workspace', workspace_id: 'workspace' },
   contract_id: 'custom.order',
-  contract_version: '1',
   name: 'Order',
   description: 'New order',
   payload_schema: schema,
@@ -112,7 +112,6 @@ const snapshot: EventRuntimeSnapshot = {
       subscription_id: 'subscription',
       workspace_id: 'workspace',
       contract_id: 'custom.order',
-      contract_version: '1',
       trigger_phase: 'published',
       consumer_ids: ['consumer'],
       closed: false,
@@ -128,7 +127,6 @@ const snapshot: EventRuntimeSnapshot = {
       event_id: 'event',
       workspace_id: 'workspace',
       contract_id: 'custom.order',
-      contract_version: '1',
       phase: 'consumed',
       source_event_id: 'source-event',
       subscription_id: 'subscription',
@@ -192,11 +190,68 @@ beforeEach(async () => {
 });
 
 describe('event center configuration and observations', () => {
+  test('catalog has seven management columns and keeps source ownership in read-only details', async () => {
+    api.listEventCatalog.mockResolvedValue([
+      custom,
+      {
+        ...custom,
+        id: null,
+        name: 'Core ready',
+        contract_id: 'core.ready',
+        origin: 'core',
+        enabled: null,
+        owner_id: 'core.owner',
+        scope: { kind: 'system' },
+        source: {
+          selection: { source_id: 'core.source', scope: { kind: 'system' } },
+          point_id: 'core.point'
+        }
+      }
+    ]);
+    renderPage();
+    await screen.findByRole('button', { name: 'Core ready' });
+    expect(
+      screen.getAllByRole('columnheader').map((node) => node.textContent)
+    ).toEqual([
+      'Name',
+      'Event ID',
+      'Source category',
+      'Scope',
+      'Enabled',
+      'Supported trigger phases',
+      'Actions'
+    ]);
+    expect(screen.getByText('Workspace · workspace')).toBeInTheDocument();
+    expect(screen.queryByText('core.owner')).not.toBeInTheDocument();
+    expect(screen.queryByText('core.point')).not.toBeInTheDocument();
+    const row = screen.getByRole('row', { name: /Core ready/ });
+    expect(within(row).getByText('—')).toBeInTheDocument();
+    expect(
+      within(row).queryByRole('button', { name: 'Edit' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(row).getByRole('button', { name: 'Details' }));
+    const drawer = screen.getByRole('dialog');
+    expect(within(drawer).getByText('core.owner')).toBeInTheDocument();
+    expect(within(drawer).getByText('core.point')).toBeInTheDocument();
+    expect(within(drawer).getByText('—')).toBeInTheDocument();
+    expect(within(drawer).queryByRole('switch')).not.toBeInTheDocument();
+    expect(
+      within(drawer).queryByText('Contract version')
+    ).not.toBeInTheDocument();
+  });
+
   test.each([schema, {}, true, false, null])(
     'previews and copies the complete read-only schema %j',
     async (payload_schema) => {
       api.listEventCatalog.mockResolvedValue([
-        { ...custom, origin: 'core', id: null, payload_schema }
+        {
+          ...custom,
+          origin: 'core',
+          enabled: null,
+          owner_id: 'core.owner',
+          id: null,
+          payload_schema
+        }
       ]);
       renderPage();
       fireEvent.click(await screen.findByRole('button', { name: 'Details' }));
@@ -232,7 +287,13 @@ describe('event center configuration and observations', () => {
 
   test('opens event details with a single direct row action click', async () => {
     api.listEventCatalog.mockResolvedValue([
-      { ...custom, origin: 'core', id: null }
+      {
+        ...custom,
+        origin: 'core',
+        enabled: null,
+        owner_id: 'core.owner',
+        id: null
+      }
     ]);
     renderPage();
     const view = await screen.findByRole('button', { name: 'Details' });
@@ -298,17 +359,17 @@ describe('event center configuration and observations', () => {
     const fields = await screen.findByRole('dialog', {
       name: 'Customize visible fields'
     });
-    fireEvent.click(within(fields).getByRole('checkbox', { name: 'Owner' }));
+    fireEvent.click(within(fields).getByRole('checkbox', { name: 'Scope' }));
     await waitFor(() =>
       expect(
-        screen.queryByRole('columnheader', { name: 'Owner' })
+        screen.queryByRole('columnheader', { name: 'Scope' })
       ).not.toBeInTheDocument()
     );
     view.unmount();
     renderPage();
     await screen.findByRole('button', { name: 'Order' });
     expect(
-      screen.queryByRole('columnheader', { name: 'Owner' })
+      screen.queryByRole('columnheader', { name: 'Scope' })
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole('columnheader', { name: 'Event ID' })
@@ -349,7 +410,6 @@ describe('event center configuration and observations', () => {
       expect(api.createEventDefinition).toHaveBeenCalledWith(
         expect.objectContaining({
           contract_id: 'custom.request',
-          contract_version: '1',
           name: 'Request',
           enabled: false,
           payload_schema: expect.objectContaining({
@@ -359,6 +419,9 @@ describe('event center configuration and observations', () => {
         }),
         'csrf'
       )
+    );
+    expect(api.createEventDefinition.mock.calls[0][0]).not.toHaveProperty(
+      'contract_version'
     );
   });
   test('custom event details stay read-only even when editing is authorized', async () => {
@@ -382,7 +445,9 @@ describe('event center configuration and observations', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
     const drawer = screen.getByRole('dialog');
     expect(within(drawer).getByLabelText('Event ID')).toBeDisabled();
-    expect(within(drawer).getByLabelText('Contract version')).toBeDisabled();
+    expect(
+      within(drawer).queryByLabelText('Contract version')
+    ).not.toBeInTheDocument();
     fireEvent.change(within(drawer).getByLabelText('Name'), {
       target: { value: 'Changed order' }
     });
@@ -406,6 +471,8 @@ describe('event center configuration and observations', () => {
         ...custom,
         id: null,
         origin: 'plugin',
+        enabled: null,
+        owner_id: 'plugin.owner',
         name: 'Plugin event',
         supported_phases: []
       }
@@ -419,7 +486,10 @@ describe('event center configuration and observations', () => {
     expect(
       within(drawer).queryByRole('button', { name: 'Save' })
     ).not.toBeInTheDocument();
-    expect(within(drawer).getByText('workspace')).toBeInTheDocument();
+    expect(within(drawer).getByText('plugin.owner')).toBeInTheDocument();
+    expect(
+      within(drawer).getByText('Workspace · workspace')
+    ).toBeInTheDocument();
     expect(api.updateEventDefinition).not.toHaveBeenCalled();
   });
   test('shows queue facts separately from the activity window and exposes rejected admission without success metrics', async () => {
@@ -674,7 +744,6 @@ test('source scope keeps native identities and unknown original queue counts wit
           point_id: 'native.point',
           owner_id: 'native.owner',
           contract_id: 'native.contract',
-          contract_version: '1',
           name: 'Native source',
           description: '',
           payload_schema: null,
@@ -738,7 +807,7 @@ test('source scope keeps native identities and unknown original queue counts wit
   expect(window.location.search).toContain('scope=system');
 });
 
-test('unbound declarations remain visibly unavailable even without original queues', async () => {
+test('unbound original queues retain request errors without displaying adapter status', async () => {
   const workspace = withWorkspaceView(snapshot);
   api.getEventRuntime.mockResolvedValue({
     ...workspace,
@@ -758,7 +827,6 @@ test('unbound declarations remain visibly unavailable even without original queu
               point_id: 'point',
               owner_id: 'owner',
               contract_id: 'contract',
-              contract_version: '1',
               name: 'Unbound source',
               description: '',
               payload_schema: null,
@@ -783,8 +851,10 @@ test('unbound declarations remain visibly unavailable even without original queu
   expect(
     await screen.findByRole('button', { name: 'Unbound source' })
   ).toBeInTheDocument();
-  expect(screen.getAllByText('Declaration only').length).toBeGreaterThan(0);
-  expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0);
+  expect(screen.queryByText('Declaration only')).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('columnheader', { name: 'Observation coverage' })
+  ).not.toBeInTheDocument();
   expect(
     screen.getByText(/Source queue observations could not be refreshed/)
   ).toBeInTheDocument();
@@ -810,7 +880,6 @@ test.each([
         point_id: 'runtime.required',
         owner_id: 'runtime',
         contract_id: 'runtime.event',
-        contract_version: '1',
         name: 'Budgeted runtime source',
         description: '',
         payload_schema: null,
