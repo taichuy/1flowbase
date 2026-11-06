@@ -36,8 +36,18 @@ async fn metadata_seed_is_protected_and_replay_preserves_user_presentation_and_g
             assert!(!capabilities.can_update_physical_metadata);
             assert!(!capabilities.can_delete);
             assert_eq!(field.field_kind, field_contract.field_kind);
+            assert_eq!(field.is_required, field_contract.is_required);
             assert!(field.is_system);
             assert!(!field.is_writable);
+        }
+        if code == "workflow_event_triggers" {
+            let source = model
+                .fields
+                .iter()
+                .find(|field| field.code == "source")
+                .unwrap();
+            assert_eq!(source.field_kind, domain::ModelFieldKind::Json);
+            assert!(!source.is_required);
         }
         let initial_grants: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM scope_data_model_grants WHERE data_model_id=$1",
