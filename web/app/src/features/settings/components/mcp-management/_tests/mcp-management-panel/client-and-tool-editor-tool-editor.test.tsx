@@ -13,10 +13,96 @@ import {
 } from './client-and-tool-editor.fixtures';
 import { MarkdownIrEditor } from '../../../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor';
 import { McpToolDebugPanel } from '../../McpToolDebugPanel';
+import { withLegacyCallMappings } from '../../mcp-input-mapping-model';
+import { useAuthStore } from '../../../../../../state/auth-store';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { i18nText } from '../../../../../../shared/i18n/text';
 
 describe('McpManagementPanel', () => {
+  test.each([
+    ['empty mappings', { interface_parameters: [], mappings: [] }],
+    ['MCP call controls only', withLegacyCallMappings({ mappings: [] })]
+  ])('runs a parameterless interface with %s in both debug modes', async (_, inputMapping) => {
+    mcpManagementApi.executeSettingsMcpToolDebug.mockResolvedValue({
+      os: 'linux',
+      shell: '/bin/sh'
+    });
+    await renderSettled(
+      <McpToolDebugPanel
+        csrfToken="debug-csrf"
+        executeDebug={mcpManagementApi.executeSettingsMcpToolDebug}
+        interfaceId="terminal.info"
+        inputMapping={inputMapping}
+        outputMapping={{}}
+      />
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      i18nText('settings', 'auto.mcp_debug_no_arguments')
+    );
+
+    for (const name of ['运行', '查看完整内容']) {
+      const button = screen.getByRole('button', { name });
+      expect(button).toBeEnabled();
+      await domEvents.click(button);
+      await waitFor(() => {
+        expect(mcpManagementApi.executeSettingsMcpToolDebug).toHaveBeenLastCalledWith(
+          {
+            interface_id: 'terminal.info',
+            mcp_arguments: {},
+            input_mapping: inputMapping,
+            output_mapping: {},
+            ...(name === '查看完整内容' ? { debug_response_mode: 'debug_details' } : {})
+          },
+          'debug-csrf'
+        );
+      });
+      expect(await screen.findByLabelText(`${name === '运行' ? '返回值' : '完整内容'} JSON`))
+        .toHaveTextContent('"os": "linux"');
+    }
+    expect(screen.queryByText('先在 input_mapping 添加 MCP 参数映射')).not.toBeInTheDocument();
+  });
+
+  test('rejects missing required business arguments before debug execution', async () => {
+    await renderSettled(
+      <McpToolDebugPanel
+        executeDebug={mcpManagementApi.executeSettingsMcpToolDebug}
+        interfaceId="terminal.files.stat"
+        inputMapping={{
+          interface_parameters: [{ name: 'path', field_type: 'string', required: true }],
+          mappings: [{ interface_param: 'path', mcp_param: 'path', required: true }]
+        }}
+        outputMapping={{}}
+      />
+    );
+    await domEvents.click(screen.getByRole('button', { name: '运行' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('path 是必填参数');
+    expect(mcpManagementApi.executeSettingsMcpToolDebug).not.toHaveBeenCalled();
+  });
+
+  test.each(['interface', 'executor', 'permission'])('keeps parameterless debug disabled without %s', async (missing) => {
+    if (missing === 'permission') {
+      const { actor, me } = useAuthStore.getState();
+      useAuthStore.setState({
+        actor: { ...actor!, effective_display_role: 'readonly' },
+        me: { ...me!, effective_display_role: 'readonly', permissions: [] }
+      });
+    }
+    await renderSettled(
+      <McpToolDebugPanel
+        executeDebug={missing === 'executor' ? undefined : mcpManagementApi.executeSettingsMcpToolDebug}
+        interfaceId={missing === 'interface' ? undefined : 'terminal.info'}
+        inputMapping={{ mappings: [] }}
+        outputMapping={{}}
+      />
+    );
+    for (const name of ['运行', '查看完整内容']) {
+      const button = screen.getByRole('button', { name });
+      expect(button).toBeDisabled();
+      await domEvents.click(button);
+    }
+    expect(mcpManagementApi.executeSettingsMcpToolDebug).not.toHaveBeenCalled();
+  });
+
   test('AC-001 keeps the full-description Vditor outline closed by default', async () => {
     await renderPanel();
 

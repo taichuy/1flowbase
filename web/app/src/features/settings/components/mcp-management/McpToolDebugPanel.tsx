@@ -13,6 +13,7 @@ import {
 import { useMemo, useState } from 'react';
 
 import { JsonPreviewBlock } from '../../../../shared/ui/json-preview/JsonPreviewBlock';
+import { i18nText } from '../../../../shared/i18n/text';
 import {
   normalizeInputMapping,
   type McpInputMappingValue,
@@ -270,7 +271,7 @@ export function McpToolDebugPanel({
   };
 
   const canRunDebug =
-    can('mcp.debug.execute') && debugFields.length > 0 && Boolean(interfaceId && executeDebug);
+    can('mcp.debug.execute') && Boolean(interfaceId && executeDebug);
   const debugResultTitle =
     debugResultMode === 'debug_details' ? '完整内容' : '返回值';
 
@@ -324,7 +325,10 @@ export function McpToolDebugPanel({
           ))}
         </div>
       ) : (
-        <Alert type="info" title="先在 input_mapping 添加 MCP 参数映射" />
+        <Alert
+          type="info"
+          title={i18nText('settings', 'auto.mcp_debug_no_arguments')}
+        />
       )}
       {errorMessage ? <Alert type="error" title={errorMessage} /> : null}
       {debugResult ? (

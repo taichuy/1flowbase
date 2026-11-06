@@ -741,6 +741,7 @@
     "mcp_export_ready": "MCP configuration export generated",
     "mcp_get_interface_parameters": "Get interface parameters",
     "mcp_get_interface_result": "Get result structure",
+    "mcp_debug_no_arguments": "No business parameters to enter. Run directly.",
     "mcp_mapping_overwrite_confirm_title": "Overwrite current mapping?",
     "mcp_mapping_overwrite_confirm_content": "The current mapping has content. Continuing will overwrite the existing edits with the interface schema.",
     "mcp_input_interface_layer": "Interface layer",
