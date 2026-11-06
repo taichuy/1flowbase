@@ -10,7 +10,7 @@ use crate::{
 };
 use control_plane::application_public_api::workflow_event::WorkflowEventTriggerService;
 use interface_runtime::{InterfaceContract, UserPrincipal};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
@@ -85,6 +85,8 @@ struct WorkflowEventAdapter {
     statuses: crate::workers::event_workflow::EventWorkflowStatuses,
     sources: Arc<crate::event_center::catalog::EventSourceCatalog>,
     runtime: control_plane::event_center::EventCenterRuntime,
+    // The registry owns this adapter, so the generation is borrowed, never retained.
+    boot: Option<Weak<crate::extension_bus::ExtensionBootSnapshot>>,
 }
 pub(crate) fn port(
     state: &crate::app_state::ApiState,
@@ -95,6 +97,7 @@ pub(crate) fn port(
         statuses: state.event_workflow_statuses.clone(),
         sources: state.event_sources.clone(),
         runtime: state.event_center.clone(),
+        boot: state.extension_boot_snapshot.as_ref().map(Arc::downgrade),
     })
 }
 impl ConsoleInterfacePort<WorkflowEventInput, WorkflowEventOutput> for WorkflowEventAdapter {
@@ -106,6 +109,9 @@ impl ConsoleInterfacePort<WorkflowEventInput, WorkflowEventOutput> for WorkflowE
         Box::pin(async move {
             let result: Result<WorkflowEventOutput, ApiError> = async {
                 let actor = principal.actor();
+                let _generation = self.boot.as_ref().map(|boot| {
+                    boot.upgrade().ok_or_else(crate::generation_dispatch::unavailable)
+                }).transpose()?;
                 let entries = self.sources.registered_events(actor, &self.runtime);
                 let service = WorkflowEventTriggerService::new(self.store.for_actor(actor.clone())).with_registered_events(entries);
                 Ok(match input {
@@ -168,3 +174,8 @@ pub(crate) fn compile_registry(
         port,
     )
 }
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "_tests/workflow_event_ownership.rs"]
+mod ownership_tests;

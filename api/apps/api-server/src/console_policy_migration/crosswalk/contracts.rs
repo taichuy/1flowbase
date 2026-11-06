@@ -31,7 +31,27 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "notifications.messages.read_all",
         ],
     ),
-    core_simple_other("other.local-commands", &["local_commands.execute"]),
+    core_simple_other(
+        "other.local-commands",
+        &[
+            "local_commands.execute",
+            "terminal.info",
+            "terminal.files.list",
+            "terminal.files.stat",
+            "terminal.files.read_text",
+            "terminal.files.read_range",
+            "terminal.files.search",
+            "terminal.files.read_image",
+            "terminal.files.read_audio",
+            "terminal.files.read_resource",
+            "terminal.files.import_resource",
+            "terminal.files.download_file",
+            "terminal.jobs.start",
+            "terminal.jobs.get",
+            "terminal.jobs.read",
+            "terminal.jobs.cancel",
+        ],
+    ),
     core_authenticated_other(
         "core.authenticated",
         &[
@@ -526,6 +546,22 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "files.access_links.create",
     // Previously root-only; historic role grants must not acquire host command access.
     "local_commands.execute",
+    // Terminal filesystem and retained-job authority is new; no historic role grant covers it.
+    "terminal.info",
+    "terminal.files.list",
+    "terminal.files.stat",
+    "terminal.files.read_text",
+    "terminal.files.read_range",
+    "terminal.files.search",
+    "terminal.files.read_image",
+    "terminal.files.read_audio",
+    "terminal.files.read_resource",
+    "terminal.files.import_resource",
+    "terminal.files.download_file",
+    "terminal.jobs.start",
+    "terminal.jobs.get",
+    "terminal.jobs.read",
+    "terminal.jobs.cancel",
     // Proxy discovery is a new authoring grant, independent of secret-management access.
     "agent_flow.http_node_proxy_options.list",
     // Installation branding did not exist in the audited historic permission baseline.

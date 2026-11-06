@@ -15,6 +15,10 @@ use crate::error_response::ApiError;
 
 pub(super) const READ_TOOL: &str = "mcp_resources_read";
 pub(super) const LIST_TOOL: &str = "mcp_resources_list";
+pub(super) const TEMPLATES_TOOL: &str = "mcp_resource_templates_list";
+#[path = "resources/discovery.rs"]
+mod discovery;
+pub(super) use discovery::list_result;
 
 #[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
@@ -53,15 +57,11 @@ impl ResourceReference {
     }
 }
 
-pub(super) fn list_result() -> Value {
-    json!({"resources":[]})
-}
-
 pub(super) fn capabilities() -> Value {
     json!({"tools":{},"resources":{}})
 }
 
-/// Wrap only embedded resource identities and links to those same identities.
+/// Every declared read-enabled resource/link is a locator, including link-only output.
 pub(super) fn wrap_content(
     content: &mut Value,
     actor: &domain::ActorContext,
@@ -78,11 +78,19 @@ pub(super) fn wrap_content(
         return Err("Invalid native resource content");
     };
     let mut replacements = std::collections::BTreeMap::new();
-    for block in blocks.iter().filter(|block| block["type"] == "resource") {
+    for block in blocks.iter() {
+        let path = match block["type"].as_str() {
+            Some("resource") => "/resource/uri",
+            Some("resource_link") => "/uri",
+            _ => continue,
+        };
         let original = block
-            .pointer("/resource/uri")
+            .pointer(path)
             .and_then(Value::as_str)
             .ok_or("Invalid native resource URI")?;
+        if original.starts_with("flowbase-resource:") {
+            return Err("Expected original resource URI");
+        }
         let reference = ResourceReference(extension_contracts::ResourceReference {
             v: 1,
             user_id: actor.user_id,
@@ -135,8 +143,8 @@ pub(super) fn read_result(
         resource["uri"] = json!(requested_uri);
         contents.push(resource);
     }
-    if contents.is_empty() {
-        return Err("Resource not returned by tool");
+    if contents.len() != 1 {
+        return Err("Resource read requires exactly one matching resource");
     }
     Ok(json!({"contents":contents}))
 }
@@ -147,16 +155,19 @@ pub(super) async fn read(
     let Some(uri) = request.arguments.get("uri").and_then(Value::as_str) else {
         return Ok(VirtualToolOutcome::invalid("Invalid resource URI"));
     };
-    let reference = match ResourceReference::decode(uri) {
+    let reference = match discovery::decode_read_reference(uri, request.actor) {
         Ok(reference) => reference,
         Err(message) => return Ok(VirtualToolOutcome::invalid(message)),
     };
-    if let Err(message) =
-        authorize_reference(&reference, request.actor, request.catalog, request.scope)
+    let tool = match authorize_reference(&reference, request.actor, request.catalog, request.scope)
     {
-        return Ok(VirtualToolOutcome::invalid(message));
-    }
-    let arguments = json!({"tool_id":reference.tool_id,"arguments":reference.arguments});
+        Ok((_, tool)) => tool,
+        Err(message) => return Ok(VirtualToolOutcome::invalid(message)),
+    };
+    let arguments = match replay_arguments(&reference, tool) {
+        Ok(arguments) => arguments,
+        Err(message) => return Ok(VirtualToolOutcome::invalid(message)),
+    };
     let outcome = virtual_ui::call_inner(
         virtual_ui::McpCallRequest {
             arguments: &arguments,
@@ -174,6 +185,26 @@ pub(super) async fn read(
         }
         error => Ok(error),
     }
+}
+
+/// Overrides affect public tool input only, never the reference's authorization fields.
+fn replay_arguments(
+    reference: &extension_contracts::ResourceReference,
+    tool: &domain::McpToolRecord,
+) -> Result<Value, &'static str> {
+    let mapping = media::mapping(&tool.output_mapping)?.ok_or("Missing resource mapping")?;
+    let mut public = reference
+        .arguments
+        .as_object()
+        .cloned()
+        .ok_or("Invalid resource arguments")?;
+    if let Some(overrides) = mapping.resource_read_arguments {
+        public.extend(overrides);
+    }
+    let arguments = json!({"tool_id":reference.tool_id,"arguments":public});
+    McpToolArguments::from_protocol(arguments.clone())
+        .map_err(|_| "Resource arguments exceed transport budget")?;
+    Ok(arguments)
 }
 
 /// Shared currentness/visibility/opt-in authority for protocol reads and Host imports.
@@ -228,6 +259,29 @@ pub(crate) async fn replay_for_import(
     control_plane::file_management::ImportedResourceFile,
     extension_contracts::FileImportError,
 > {
+    replay_for_actor(
+        generation,
+        actor,
+        user,
+        uri,
+        binding.caller.selected_mcp_instance_ids.as_deref(),
+        Some(binding.subject.installation_id().as_str()),
+    )
+    .await
+}
+
+/// Replays an authorized source for either a native caller or a managed Host callback.
+pub(crate) async fn replay_for_actor(
+    generation: &crate::generation_dispatch::GenerationLease,
+    actor: &domain::ActorContext,
+    user: domain::UserRecord,
+    uri: &str,
+    selected_instance_ids: Option<&[String]>,
+    caller_installation: Option<&str>,
+) -> Result<
+    control_plane::file_management::ImportedResourceFile,
+    extension_contracts::FileImportError,
+> {
     use extension_contracts::FileImportError;
     let state = &generation.state;
     let dispatch = &generation.owner;
@@ -237,10 +291,8 @@ pub(crate) async fn replay_for_import(
         .read_catalog_for_actor(actor)
         .await
         .map_err(|_| FileImportError::new("file_import_resource_not_visible"))?;
-    let ids = binding
-        .caller
-        .selected_mcp_instance_ids
-        .clone()
+    let ids = selected_instance_ids
+        .map(<[String]>::to_vec)
         .unwrap_or_else(|| {
             catalog
                 .instances
@@ -290,11 +342,13 @@ pub(crate) async fn replay_for_import(
         .any(|registration| {
             registration.declaration.operations.iter().any(|operation| {
                 operation.interface_id == *interface_id
-                    && reentrant_serialized_source(
-                        binding.subject.installation_id().as_str(),
-                        &registration.installation_id.to_string(),
-                        operation.requires_mutation_lock(),
-                    )
+                    && caller_installation.is_some_and(|caller| {
+                        reentrant_serialized_source(
+                            caller,
+                            &registration.installation_id.to_string(),
+                            operation.requires_mutation_lock(),
+                        )
+                    })
             })
         })
     {
@@ -306,7 +360,8 @@ pub(crate) async fn replay_for_import(
         state.provider_secret_master_key.clone(),
     )
     .with_managed_services(state.console_surface_registry.managed_services().to_vec());
-    let arguments = json!({"tool_id":reference.tool_id,"arguments":reference.arguments});
+    let arguments = replay_arguments(&reference, tool)
+        .map_err(|_| FileImportError::new("file_import_resource_invalid"))?;
     let headers = axum::http::HeaderMap::new();
     let context =
         crate::middleware::require_session::RequestContext::server_delegation(user, actor.clone());

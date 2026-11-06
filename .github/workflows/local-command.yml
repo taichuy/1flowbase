@@ -1,12 +1,19 @@
-name: Local command native evidence
+name: Local terminal native evidence
 
 on:
   workflow_dispatch:
+    inputs:
+      include_api:
+        description: Run the focused terminal and MCP API batch instead of the native matrix
+        type: boolean
+        default: false
   push:
     branches: [dev, 'codex/local-command-portable-*']
     paths:
       - 'api/apps/api-server/src/local_command/**'
+      - 'api/apps/api-server/src/local_terminal/**'
       - 'api/apps/api-server/src/routes/local_commands/**'
+      - 'api/apps/api-server/src/routes/terminal/**'
       - 'api/apps/api-server/tests/local-command-platform/**'
       - 'api/crates/control-plane/src/system_services/local_command.rs'
       - '.github/workflows/local-command.yml'
@@ -20,6 +27,7 @@ concurrency:
 
 jobs:
   native:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.include_api != true }}
     name: Native commands (${{ matrix.platform }})
     strategy:
       fail-fast: false
@@ -43,7 +51,7 @@ jobs:
           workspaces: api/apps/api-server/tests/local-command-platform -> target
           key: local-command-${{ matrix.platform }}
           cache-on-failure: true
-      - name: Test actual production process module on native OS
+      - name: Test production process, job and filesystem modules on native OS
         env:
           RUST_BACKTRACE: '1'
         run: |
@@ -58,4 +66,109 @@ jobs:
         with:
           name: local-command-${{ matrix.platform }}-${{ github.sha }}
           path: tmp/test-governance/local-command-portable/
+          if-no-files-found: warn
+
+  api:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_api == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api -> target
+          key: terminal-mcp-api
+          cache-on-failure: true
+      - name: Compile the finite API batch
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/test-governance/terminal-mcp-api
+          git rev-parse HEAD > tmp/test-governance/terminal-mcp-api/candidate-sha.txt
+          export CARGO_BUILD_JOBS="$(nproc)"
+          cargo test --locked --manifest-path api/Cargo.toml --workspace --no-run \
+            --test api_private_routes --test api_private_contracts --test interface_coverage_inventory --test api_system_settings --test frontstage_data_capability_routes \
+            2>&1 | tee tmp/test-governance/terminal-mcp-api/compile.log
+      - name: Execute terminal and MCP contracts
+        run: |
+          set -uo pipefail
+          set +e
+          export CARGO_BUILD_JOBS="$(nproc)"
+          failures=0
+          run_case() {
+            name="$1"; shift
+            log="tmp/test-governance/terminal-mcp-api/${name}.log"
+            if cargo test --locked --manifest-path api/Cargo.toml --workspace "$@" -- --nocapture > "$log" 2>&1; then
+              status=0
+            else
+              status=$?
+            fi
+            if ! python3 - "$log" "$status" <<'PY'
+          import json, pathlib, re, sys
+          path = pathlib.Path(sys.argv[1])
+          text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", path.read_text(errors="replace"))
+          counts = re.findall(r"test result: (?:ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored", text)
+          passed = sum(int(row[0]) for row in counts)
+          failed = sum(int(row[1]) for row in counts)
+          ignored = sum(int(row[2]) for row in counts)
+          path.with_suffix(".json").write_text(json.dumps({"exit_code": int(sys.argv[2]), "passed": passed, "failed": failed, "ignored": ignored, "nonzero": passed + failed > 0}, indent=2))
+          sys.exit(0 if passed + failed > 0 else 1)
+          PY
+            then status=1; fi
+            printf '%s %s\n' "$name" "$status" >> tmp/test-governance/terminal-mcp-api/statuses.txt
+            if [ "$status" -ne 0 ]; then failures=$((failures + 1)); tail -c 5000 "tmp/test-governance/terminal-mcp-api/${name}.log"; fi
+          }
+          run_case mcp-internals --test api_private_routes routes::mcp_protocol::
+          run_case terminal --test api_private_routes routes::terminal::
+          run_case event-generation --test api_private_routes event_catalog_preserves_bound_and_unbound_views_without_retaining_boot
+          run_case workflow-event-generation --test api_private_routes workflow_event_adapter_borrows_generation_and_rejects_retired_owner
+          run_case event-center-catalog --test api_system_settings event_center
+          run_case data-block-metadata --test frontstage_data_capability_routes runtime_metadata
+          run_case existing-local-command --test api_private_routes local_commands
+          run_case mcp-routes --test api_private_contracts mcp_protocol_routes
+          run_case mcp-oauth --test api_private_contracts mcp_oauth_routes
+          run_case native-import --test api_private_contracts resource_import::native::tests::
+          run_case terminal-migration --test api_private_contracts terminal_migration_
+          run_case interface-inventory --test interface_coverage_inventory
+          run_case console-projection --test api_private_contracts console_interface_projection_inventory_is_key_only_and_exact
+          run_case console-display --test api_private_contracts console_display_inventory_matches_key_only_fixture
+          exit "$failures"
+      - name: Build the candidate API for isolated runtime acceptance
+        id: runtime_build
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          export CARGO_BUILD_JOBS="$(nproc)"
+          cargo build --locked --manifest-path api/Cargo.toml --workspace --bin api-server \
+            2>&1 | tee tmp/test-governance/terminal-mcp-api/runtime-build.log
+          mkdir -p tmp/terminal-mcp-runtime
+          strip -o tmp/terminal-mcp-runtime/api-server api/target/debug/api-server
+          sha256sum tmp/terminal-mcp-runtime/api-server > tmp/test-governance/terminal-mcp-api/runtime-sha256.txt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: terminal-mcp-api-evidence-${{ github.sha }}
+          path: tmp/test-governance/terminal-mcp-api/
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && steps.runtime_build.outcome == 'success' }}
+        with:
+          name: terminal-mcp-api-binary-${{ github.sha }}
+          path: tmp/terminal-mcp-runtime/api-server
           if-no-files-found: warn

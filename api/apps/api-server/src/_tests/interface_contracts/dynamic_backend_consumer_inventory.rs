@@ -118,6 +118,15 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "notifications.messages.read_all"
                     | "files.access_links.create"
                     | "notifications.instances.list"
+                    // Event-center contracts from bf969b7aa were already mounted but absent
+                    // from this fixture. Their exact summaries and descriptions are also
+                    // absent from the pinned seed; await an official catalog release.
+                    | "events.catalog.list"
+                    | "events.definitions.create"
+                    | "events.definitions.update"
+                    | "events.runtime.get"
+                    | "get_workflow_event_trigger"
+                    | "replace_workflow_event_trigger"
                     // Communication contracts were added after the pinned official catalog.
                     | "communications.management.conversations.messages.list"
                     | "communications.management.conversations.list"
@@ -133,6 +142,21 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "communications.messages.retry"
                     | "agent_flow.http_node_proxy_options.list"
                     | "local_commands.execute"
+                    | "terminal.info"
+                    | "terminal.files.list"
+                    | "terminal.files.stat"
+                    | "terminal.files.read_text"
+                    | "terminal.files.read_range"
+                    | "terminal.files.search"
+                    | "terminal.files.read_image"
+                    | "terminal.files.read_audio"
+                    | "terminal.files.read_resource"
+                    | "terminal.files.import_resource"
+                    | "terminal.files.download_file"
+                    | "terminal.jobs.start"
+                    | "terminal.jobs.get"
+                    | "terminal.jobs.read"
+                    | "terminal.jobs.cancel"
                     | "system.branding.get"
                     | "system.branding.save"
                     | "notifications.instances.get"
@@ -274,6 +298,8 @@ fn console_display_inventory_matches_key_only_fixture() {
         reference.starts_with("auto.")
             || reference.starts_with("console.")
             || *reference == "system_settings.title"
+            // Event Center owns this existing static reference outside console.*.
+            || *reference == "events.title"
     }));
     assert!(static_references
         .iter()

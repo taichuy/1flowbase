@@ -481,3 +481,43 @@ fn settings_page_cannot_register_without_its_feature() {
         .remove("feature");
     assert!(parse(&value).is_err());
 }
+
+#[test]
+fn resource_link_only_replay_and_discovery_manifest_contract() {
+    use crate::ManagedMcpMediaMapping;
+    let value = json!({
+        "structured_content_path":"/metadata", "resource_read":true,
+        "resource_read_arguments":{"link_only":false},
+        "resources":[{"name":"Report","uri":"urn:report:current","arguments":{"id":"current"},"mime_type":"application/pdf"}],
+        "mcp_content":[{"type":"resource_link","uri_path":"/uri","name_path":"/name"},
+            {"type":"resource","uri_path":"/uri","blob_path":"/blob","skip_if_null":true}]
+    });
+    let parsed = ManagedMcpMediaMapping::parse(&value).unwrap();
+    assert_eq!(parsed.resource_read_arguments.unwrap()["link_only"], false);
+    for (field, invalid) in [
+        ("resource_read_arguments", json!([])),
+        (
+            "resources",
+            json!([{"name":"x","uri":"urn:x","arguments":[]}]),
+        ),
+        (
+            "resources",
+            json!([{"name":"","uri":"urn:x","arguments":{}}]),
+        ),
+        (
+            "resources",
+            json!([{"name":"x","uri":"urn:x","arguments":{},"secret":"no"}]),
+        ),
+        ("resource_read", json!(false)),
+    ] {
+        let mut invalid_value = value.clone();
+        invalid_value[field] = invalid;
+        assert!(
+            ManagedMcpMediaMapping::parse(&invalid_value).is_err(),
+            "{field}"
+        );
+    }
+    let mut invalid = value;
+    invalid["mcp_content"][1]["skip_if_null"] = json!("true");
+    assert!(ManagedMcpMediaMapping::parse(&invalid).is_err());
+}

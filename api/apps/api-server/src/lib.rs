@@ -36,6 +36,7 @@ pub mod host_route_registry;
 #[path = "boot_composition/host_worker_registry.rs"]
 pub mod host_worker_registry;
 mod local_command;
+pub mod local_terminal;
 pub mod middleware;
 #[path = "catalog_sources/model_pricing_catalog.rs"]
 pub(crate) mod model_pricing_catalog;

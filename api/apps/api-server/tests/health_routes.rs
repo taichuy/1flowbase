@@ -243,6 +243,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             file_storage_registry,
             runtime_engine,
             provider_runtime: provider_runtime.clone(),
+            terminal_jobs: Default::default(),
             process_started_at,
             communication_activity: Default::default(),
         runtime_activity: std::sync::Arc::new(

@@ -12,13 +12,15 @@ use domain::event_center::{
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde_json::{json, Value};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub(crate) struct Dependencies {
     store: storage_durable_postgres::MainDurableStore,
     runtime: EventCenterRuntime,
+    // The compiled registry owns this handler; retaining Boot here would close a cycle.
+    boot: Option<Weak<crate::extension_bus::ExtensionBootSnapshot>>,
     changes: Arc<tokio::sync::Notify>,
     statuses: crate::workers::event_workflow::EventWorkflowStatuses,
     sources: Arc<crate::event_center::catalog::EventSourceCatalog>,
@@ -28,6 +30,7 @@ impl Dependencies {
         Self {
             store: state.store.clone(),
             runtime: state.event_center.clone(),
+            boot: state.extension_boot_snapshot.as_ref().map(Arc::downgrade),
             changes: state.event_workflow_changes.clone(),
             statuses: state.event_workflow_statuses.clone(),
             sources: state.event_sources.clone(),
@@ -77,6 +80,16 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
         Box::pin(async move {
             let result: Result<Value, ApiError> = async {
                 let actor = principal.actor();
+                // Registry descendants borrow their own generation; an expired binding
+                // must not silently become an unbound or newer source catalog.
+                let _generation = self
+                    .boot
+                    .as_ref()
+                    .map(|boot| {
+                        boot.upgrade()
+                            .ok_or_else(crate::generation_dispatch::unavailable)
+                    })
+                    .transpose()?;
                 let entries = self.sources.registered_events(actor, &self.runtime);
                 let service = EventCenterConfigurationService::with_registered_events(
                     self.store.clone(),
@@ -194,3 +207,8 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: false,
     },
 ];
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "_tests/interface.rs"]
+mod tests;

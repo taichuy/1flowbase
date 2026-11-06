@@ -139,7 +139,15 @@ pub(crate) fn project(
                 text_path,
                 blob_path,
                 annotations_path,
+                skip_if_null,
             } => {
+                let payload_path = text_path
+                    .as_ref()
+                    .or(blob_path.as_ref())
+                    .ok_or("resource requires exactly one text or blob path")?;
+                if *skip_if_null && source.pointer(payload_path).is_some_and(Value::is_null) {
+                    continue;
+                }
                 let uri = string(source, uri_path)?;
                 if !valid_uri(uri) {
                     return Err("resource URI must be absolute");

@@ -4,7 +4,8 @@ use std::{
 };
 
 pub(super) struct Spool {
-    file: File,
+    file: Option<File>,
+    observer: Option<std::sync::Arc<dyn super::RawOutput>>,
     pub encoding_lossy: bool,
 }
 impl Spool {
@@ -37,20 +38,35 @@ impl Spool {
         #[cfg(unix)]
         std::fs::remove_file(&path)?;
         Ok(Self {
-            file,
+            file: Some(file),
+            observer: None,
             encoding_lossy: false,
         })
     }
+    pub fn observed(observer: std::sync::Arc<dyn super::RawOutput>) -> Self {
+        Self {
+            file: None,
+            observer: Some(observer),
+            encoding_lossy: false,
+        }
+    }
     pub fn into_file(mut self) -> io::Result<File> {
-        self.file.seek(SeekFrom::Start(0))?;
-        Ok(self.file)
+        let mut file = self
+            .file
+            .take()
+            .ok_or_else(|| io::Error::other("raw collector has no JSON carrier"))?;
+        file.seek(SeekFrom::Start(0))?;
+        Ok(file)
     }
     fn append(&mut self, bytes: &[u8]) -> io::Result<()> {
         let text = String::from_utf8_lossy(bytes);
         self.encoding_lossy |= matches!(text, std::borrow::Cow::Owned(_));
         // At most one I/O chunk is decoded/escaped, never the complete result.
         let json = serde_json::to_vec(text.as_ref())?;
-        self.file.write_all(&json[1..json.len() - 1])
+        self.file
+            .as_mut()
+            .expect("JSON collector owns its carrier")
+            .write_all(&json[1..json.len() - 1])
     }
 }
 
@@ -64,6 +80,10 @@ pub(super) fn capture(mut reader: impl Read, mut spool: Spool) -> io::Result<Spo
         };
         if n == 0 {
             break;
+        }
+        if let Some(observer) = &spool.observer {
+            observer.append(&chunk[..n])?;
+            continue;
         }
         pending.extend_from_slice(&chunk[..n]);
         let mut cursor = 0;
@@ -85,8 +105,14 @@ pub(super) fn capture(mut reader: impl Read, mut spool: Spool) -> io::Result<Spo
         spool.append(&pending[..complete])?;
         pending.drain(..complete);
     }
-    spool.append(&pending)?;
-    spool.file.flush()?;
+    if spool.observer.is_none() {
+        spool.append(&pending)?;
+        spool
+            .file
+            .as_mut()
+            .expect("JSON collector owns its carrier")
+            .flush()?;
+    }
     Ok(spool)
 }
 

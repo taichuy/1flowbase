@@ -6,7 +6,8 @@ fn local_command_output_write_failure_stops_native_execution() {
     let path = std::env::temp_dir().join(format!("command-write-error-{}", uuid::Uuid::now_v7()));
     std::fs::write(&path, []).unwrap();
     let stdout = Spool {
-        file: File::open(&path).unwrap(),
+        file: Some(File::open(&path).unwrap()),
+        observer: None,
         encoding_lossy: false,
     };
     let stderr = Spool::new().unwrap();

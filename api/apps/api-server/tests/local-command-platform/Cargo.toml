@@ -6,13 +6,23 @@ publish = false
 
 # Test-only compilation of the actual production module, without unrelated API/DB code.
 [workspace]
+# Match the production core test-selection owner when compiling its exact modules.
 [lib]
+name = "api_server"
 path = "lib.rs"
 
 [dependencies]
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.154", features = ["preserve_order"] }
-uuid = { version = "=1.28.0", features = ["v7"] }
+uuid = { version = "=1.28.0", features = ["v7", "serde"] }
+
+utoipa = { version = "6.0.0", features = ["uuid"] }
+base64 = "=0.23.1"
+url = "=2.5.8"
+thiserror = "=2.0.21"
+
+[dev-dependencies]
+api-test-selection = { path = "../../../../crates/api-test-selection" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "=0.2.190"

@@ -247,6 +247,7 @@ async fn fixture_state() -> (
         file_storage_registry,
         runtime_engine,
         provider_runtime: provider_runtime.clone(),
+        terminal_jobs: Default::default(),
         process_started_at,
         communication_activity: Default::default(),
         runtime_activity: Arc::new(
