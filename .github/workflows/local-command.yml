@@ -129,6 +129,7 @@ jobs:
           run_case console-display --test api_private_contracts console_display_inventory_matches_key_only_fixture
           exit "$failures"
       - name: Build the candidate API for isolated runtime acceptance
+        id: runtime_build
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
@@ -142,7 +143,7 @@ jobs:
           path: tmp/test-governance/terminal-mcp-api/
           if-no-files-found: warn
       - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.runtime_build.outcome == 'success' }}
         with:
           name: terminal-mcp-api-binary-${{ github.sha }}
           path: api/target/debug/api-server
