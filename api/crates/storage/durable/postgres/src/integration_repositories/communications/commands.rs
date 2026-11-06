@@ -270,6 +270,7 @@ impl CommunicationCommandRepository for PgControlPlaneStore {
         };
         request.validate()?;
         let event_id = input.input_id;
+        let mut committed_fact = None;
         let (installation, contribution, graph, subscriber, handler, version) =
             if let Some(target) = &input.target {
                 anyhow::ensure!(
@@ -281,19 +282,27 @@ impl CommunicationCommandRepository for PgControlPlaneStore {
                 );
                 let subscriber = &target.publication.plan.subscribers[0];
                 let delivery = communication_command_delivery(event_id, &input.scope, &request)?;
+                let fact_input = RecordLifecycleFactInput {
+                    observation_context: Some(self.lifecycle_observation_context(
+                        domain::event_center::EventSourceScope::Workspace {
+                            workspace_id: input.scope.workspace_id,
+                        },
+                        "communication.command.requested",
+                    )),
+                    event_id,
+                    transaction_id: event_id,
+                    contract_id: extension_contracts::COMMUNICATION_COMMAND_POINT.into(),
+                    contract_version: "1".into(),
+                    canonical_payload: serde_json::to_vec(&delivery)?,
+                    occurred_at: time::OffsetDateTime::now_utc(),
+                    publication: target.publication.plan.clone(),
+                };
                 crate::lifecycle_outbox_repository::record_lifecycle_fact_in_transaction(
                     &mut tx,
-                    &RecordLifecycleFactInput {
-                        event_id,
-                        transaction_id: event_id,
-                        contract_id: extension_contracts::COMMUNICATION_COMMAND_POINT.into(),
-                        contract_version: "1".into(),
-                        canonical_payload: serde_json::to_vec(&delivery)?,
-                        occurred_at: time::OffsetDateTime::now_utc(),
-                        publication: target.publication.plan.clone(),
-                    },
+                    &fact_input,
                 )
                 .await?;
+                committed_fact = Some(fact_input);
                 (
                     Some(Uuid::parse_str(target.subject.installation_id().as_str())?),
                     Some(target.subject.contribution_id().as_str().to_string()),
@@ -315,6 +324,9 @@ impl CommunicationCommandRepository for PgControlPlaneStore {
         let row = sqlx::query("INSERT INTO communication_command_events(event_id,input_id,scope_id,instance_id,external_identity,conversation_id,session_id,request_json,installation_id,contribution_id,graph_fingerprint,subscriber_id,handler_id,handler_version) VALUES($1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *")
             .bind(event_id).bind(input.scope.workspace_id).bind(input.scope.instance_id).bind(&input.scope.external_identity).bind(input.scope.conversation_id).bind(session.id).bind(serde_json::to_value(request)?).bind(installation).bind(contribution).bind(graph).bind(subscriber).bind(handler).bind(version).fetch_one(&mut *tx).await?;
         tx.commit().await?;
+        if let Some(fact) = &committed_fact {
+            self.observe_lifecycle_commit(fact);
+        }
         // Keep the frozen snapshot permit alive through the durable request+Outbox commit.
         drop(input.target);
         record(&row)

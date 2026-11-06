@@ -990,6 +990,7 @@ async fn root_2007_ac_009_pause_revoke_retire() {
     runtime
         .store
         .record_lifecycle_fact(&RecordLifecycleFactInput {
+            observation_context: None,
             event_id,
             transaction_id,
             contract_id: a_record.contract_id.clone(),

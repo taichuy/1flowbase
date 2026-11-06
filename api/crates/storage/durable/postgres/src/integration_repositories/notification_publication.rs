@@ -54,21 +54,21 @@ impl PgControlPlaneStore {
     pub(crate) async fn publish_optional_notification_in_transaction(
         &self,
         tx: &mut Transaction<'_, Postgres>,
-        input: &PublishOptionalNotificationInput,
+        input: PublishOptionalNotificationInput,
     ) -> Result<(
         OptionalNotificationPublicationOutcome,
         Option<FrozenLifecyclePublication>,
     )> {
         match input.contract {
             OptionalNotificationContract::Credit => {
-                let fact = validate_fact::<CreditNotificationFact>(input)?;
+                let fact = validate_fact::<CreditNotificationFact>(&input)?;
                 ensure!(
                     Some(fact.payload().workspace_id) == input.workspace_id,
                     "credit notification scope mismatch"
                 );
             }
             OptionalNotificationContract::ModelDefinition => {
-                let fact = validate_fact::<ModelDefinitionIntegrationNotification>(input)?;
+                let fact = validate_fact::<ModelDefinitionIntegrationNotification>(&input)?;
                 let scope = (fact.payload().scope_kind == domain::DataModelScopeKind::Workspace)
                     .then_some(fact.payload().scope_id);
                 ensure!(
@@ -78,9 +78,9 @@ impl PgControlPlaneStore {
             }
         }
         if input.contract == OptionalNotificationContract::ModelDefinition {
-            self.validate_original_model_source(tx, input).await?;
+            self.validate_original_model_source(tx, &input).await?;
         }
-        let event_id = publication_id(input);
+        let event_id = publication_id(&input);
         // Same lock identity as the existing derived-publication helper. Resolve old
         // frozen responsibility before a new zero-target/current-plan decision.
         sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
@@ -116,36 +116,63 @@ impl PgControlPlaneStore {
                 )
                 .await?
         };
-        if publication
+        let has_targets = publication
             .as_ref()
-            .is_none_or(|plan| plan.subscribers.is_empty())
-        {
-            return Ok((
-                OptionalNotificationPublicationOutcome::NoTargets,
-                publication,
-            ));
-        }
-        let publication = publication.expect("nonempty publication checked above");
+            .is_some_and(|plan| !plan.subscribers.is_empty());
+        let publication = publication.unwrap_or_else(|| {
+            FrozenLifecyclePublication::native(LifecyclePublicationPlan {
+                graph_fingerprint: String::new(),
+                subscribers: Vec::new(),
+            })
+        });
         let target_count = publication.subscribers.len();
-        crate::lifecycle_outbox_repository::record_derived_lifecycle_fact_in_transaction(
-            tx,
-            &RecordLifecycleFactInput {
-                event_id,
-                transaction_id: input.transaction_id,
-                contract_id: input.contract.contract_id().into(),
-                contract_version: input.contract.contract_version().into(),
-                canonical_payload: input.canonical_payload.clone(),
-                occurred_at: input.occurred_at,
-                publication: publication.plan.clone(),
-            },
-        )
-        .await?;
+        let fact_input = RecordLifecycleFactInput {
+            observation_context: Some(
+                self.lifecycle_observation_context(
+                    input
+                        .workspace_id
+                        .map(
+                            |workspace_id| domain::event_center::EventSourceScope::Workspace {
+                                workspace_id,
+                            },
+                        )
+                        .unwrap_or(domain::event_center::EventSourceScope::System),
+                    input.contract.contract_id(),
+                ),
+            ),
+            event_id,
+            transaction_id: input.transaction_id,
+            contract_id: input.contract.contract_id().into(),
+            contract_version: input.contract.contract_version().into(),
+            canonical_payload: input.canonical_payload,
+            occurred_at: input.occurred_at,
+            publication: publication.plan.clone(),
+        };
+        let inserted = if has_targets {
+            crate::lifecycle_outbox_repository::record_derived_lifecycle_fact_in_transaction_with_outcome(tx, &fact_input).await?.1
+        } else {
+            true
+        }; // Optional-zero still publishes a fact in its original committed owner.
+        let observer = self.lifecycle_observer.clone();
+        let publication = if inserted {
+            publication.after_commit(move || {
+                if let Some(observer) = observer {
+                    observer.published(&fact_input);
+                }
+            })
+        } else {
+            publication
+        };
         // Return the freeze owner: the actual transaction caller keeps it through
         // commit/rollback, rather than releasing a managed snapshot at helper return.
         Ok((
-            OptionalNotificationPublicationOutcome::Enqueued {
-                event_id,
-                target_count,
+            if has_targets {
+                OptionalNotificationPublicationOutcome::Enqueued {
+                    event_id,
+                    target_count,
+                }
+            } else {
+                OptionalNotificationPublicationOutcome::NoTargets
             },
             Some(publication),
         ))
@@ -201,10 +228,12 @@ impl OptionalNotificationPublicationPort for PgControlPlaneStore {
     ) -> Result<OptionalNotificationPublicationOutcome> {
         let mut tx = self.pool().begin().await?;
         let (outcome, publication) = self
-            .publish_optional_notification_in_transaction(&mut tx, input)
+            .publish_optional_notification_in_transaction(&mut tx, input.clone())
             .await?;
         tx.commit().await?;
-        drop(publication);
+        if let Some(publication) = publication {
+            publication.committed();
+        }
         Ok(outcome)
     }
 }
@@ -245,7 +274,7 @@ pub(crate) async fn record_credit_notification_in_transaction(
     let (_, lifetime) = store
         .publish_optional_notification_in_transaction(
             tx,
-            &PublishOptionalNotificationInput {
+            PublishOptionalNotificationInput {
                 source_event_id,
                 transaction_id,
                 workspace_id: Some(workspace_id),

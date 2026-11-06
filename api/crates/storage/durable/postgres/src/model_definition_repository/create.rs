@@ -183,17 +183,30 @@ async fn create_model_definition_owned(
             )
             .await?;
         let canonical_payload = serde_json::to_vec(&fact)?;
-        let fact_input = publication
-            .as_ref()
-            .map(|publication| RecordLifecycleFactInput {
-                event_id,
-                transaction_id,
-                contract_id: ModelDefinitionCommittedFact::CONTRACT_ID.to_string(),
-                contract_version: ModelDefinitionCommittedFact::CONTRACT_VERSION.to_string(),
-                canonical_payload,
-                occurred_at,
-                publication: publication.plan.clone(),
-            });
+        let fact_input = RecordLifecycleFactInput {
+            observation_context: Some(store.lifecycle_observation_context(
+                if model.scope_kind == domain::DataModelScopeKind::Workspace {
+                    domain::event_center::EventSourceScope::Workspace {
+                        workspace_id: model.scope_id,
+                    }
+                } else {
+                    domain::event_center::EventSourceScope::System
+                },
+                "model_definition.create",
+            )),
+            event_id,
+            transaction_id,
+            contract_id: ModelDefinitionCommittedFact::CONTRACT_ID.to_string(),
+            contract_version: ModelDefinitionCommittedFact::CONTRACT_VERSION.to_string(),
+            canonical_payload,
+            occurred_at,
+            publication: publication.as_ref().map(|p| p.plan.clone()).unwrap_or(
+                control_plane_contracts::ports::LifecyclePublicationPlan {
+                    graph_fingerprint: String::new(),
+                    subscribers: Vec::new(),
+                },
+            ),
+        };
 
         let transactional_result = async {
             insert_model_definition(
@@ -239,8 +252,8 @@ async fn create_model_definition_owned(
                 },
             )
             .await?;
-            if let Some(fact_input) = &fact_input {
-                record_lifecycle_fact_in_transaction(&mut tx, fact_input).await?;
+            if !fact_input.publication.subscribers.is_empty() {
+                record_lifecycle_fact_in_transaction(&mut tx, &fact_input).await?;
             }
             Ok::<(), anyhow::Error>(())
         }
@@ -249,6 +262,7 @@ async fn create_model_definition_owned(
         match transactional_result {
             Ok(()) => {
                 tx.commit().await?;
+                store.observe_lifecycle_commit(&fact_input);
                 drop(publication);
                 return Ok(model);
             }

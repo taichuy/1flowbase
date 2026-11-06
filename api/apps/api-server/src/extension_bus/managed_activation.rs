@@ -6,6 +6,7 @@ mod governance;
 mod lifetime;
 mod publication;
 mod reclamation;
+mod source_observation;
 use anyhow::{bail, Context, Result};
 use control_plane::{
     plugin_management::{ready_current_node_plugin_installation, HostContributionGrantPolicy},
@@ -64,6 +65,9 @@ pub(crate) struct ManagedExecutionInput {
 }
 
 pub(crate) struct ManagedExtensionComposition {
+    source_observer: std::sync::OnceLock<
+        Arc<control_plane::lifecycle_outbox_dispatcher::LifecycleSourceObserver>,
+    >,
     generation_publisher: std::sync::OnceLock<
         std::sync::Weak<crate::managed_publication::ManagedGenerationPublisher>,
     >,
@@ -91,6 +95,7 @@ impl ManagedExtensionComposition {
     ) -> Self {
         let operations = store.new_managed_operation_lifetime();
         Self {
+            source_observer: Default::default(),
             generation_publisher: Default::default(),
             reclamation: Default::default(),
             store,
@@ -573,6 +578,22 @@ impl ManagedExtensionComposition {
     /// A record can reach a native handler only after its exact target is found in the frozen
     /// combined plan. Managed handlers additionally acquire current subject authority at admission.
     pub(crate) async fn deliver_event_record(
+        &self,
+        snapshot: &Arc<ManagedWorkspaceSnapshot>,
+        record: &control_plane_contracts::ports::LifecycleOutboxRecord,
+    ) -> Result<bool> {
+        control_plane_contracts::ports::with_lifecycle_workflow_ancestors(
+            record
+                .observation_context
+                .as_ref()
+                .map(|context| context.workflow_ancestor_ids.clone())
+                .unwrap_or_default(),
+            self.deliver_event_record_owned(snapshot, record),
+        )
+        .await
+    }
+
+    async fn deliver_event_record_owned(
         &self,
         snapshot: &Arc<ManagedWorkspaceSnapshot>,
         record: &control_plane_contracts::ports::LifecycleOutboxRecord,

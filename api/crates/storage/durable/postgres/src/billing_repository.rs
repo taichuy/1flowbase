@@ -482,6 +482,9 @@ impl PgControlPlaneStore {
             .bind(input.workspace_id).fetch_optional(&mut *tx).await?;
         if !enabled_at.is_some_and(|at| input.started_at >= at) {
             tx.commit().await?;
+            for notification in notifications.drain(..) {
+                notification.committed();
+            }
             return Ok(ModelBillingAdmission::Disabled);
         }
         let prepared = input
@@ -501,6 +504,9 @@ impl PgControlPlaneStore {
             Some(row) => account_record(&row)?,
             None if !prepared.charge_enabled_default => {
                 tx.commit().await?;
+                for notification in notifications.drain(..) {
+                    notification.committed();
+                }
                 return Ok(ModelBillingAdmission::ObserveOnly);
             }
             None => ensure_account(&mut tx, input.workspace_id, prepared.user_id, true).await?,
@@ -512,12 +518,18 @@ impl PgControlPlaneStore {
             .fetch_one(&mut *tx).await?;
         if !account.charge_enabled && !has_session {
             tx.commit().await?;
+            for notification in notifications.drain(..) {
+                notification.committed();
+            }
             return Ok(ModelBillingAdmission::ObserveOnly);
         }
         let reservation =
             reserve_credit_in_transaction(&mut tx, self, &mut notifications, prepared, &account)
                 .await?;
         tx.commit().await?;
+        for notification in notifications.drain(..) {
+            notification.committed();
+        }
         Ok(ModelBillingAdmission::Reserved(reservation))
     }
 }
@@ -872,6 +884,9 @@ impl BillingRepository for PgControlPlaneStore {
                 );
             }
             tx.commit().await?;
+            for notification in notifications.drain(..) {
+                notification.committed();
+            }
             return Ok(existing);
         }
         let charge_enabled = match input.command.as_str() {
@@ -904,6 +919,9 @@ impl BillingRepository for PgControlPlaneStore {
         }, serde_json::json!({"ledger_id": ledger_id, "transaction_id": transaction_id, "user_id": input.user_id,
             "amount": signed.to_string(), "balance_after": balance, "credit_unit": "USD"})).await?;
         tx.commit().await?;
+        for notification in notifications.drain(..) {
+            notification.committed();
+        }
         transaction_record(&ledger)
     }
 
@@ -922,6 +940,9 @@ impl BillingRepository for PgControlPlaneStore {
             serde_json::json!({"actor_plugin_id":actor_plugin_id,"command":command,"reason":reason,"idempotency_key":idempotency_key}),
         ).await?;
         tx.commit().await?;
+        for notification in notifications.drain(..) {
+            notification.committed();
+        }
         Ok(())
     }
 
@@ -939,6 +960,9 @@ impl BillingRepository for PgControlPlaneStore {
             reserve_credit_in_transaction(&mut tx, self, &mut notifications, input, &account)
                 .await?;
         tx.commit().await?;
+        for notification in notifications.drain(..) {
+            notification.committed();
+        }
         Ok(reservation)
     }
 
@@ -947,6 +971,9 @@ impl BillingRepository for PgControlPlaneStore {
         let mut notifications = Vec::new();
         let record = settle_credit_in_transaction(&mut tx, self, &mut notifications, input).await?;
         tx.commit().await?;
+        for notification in notifications.drain(..) {
+            notification.committed();
+        }
         Ok(record)
     }
 
@@ -961,6 +988,9 @@ impl BillingRepository for PgControlPlaneStore {
             .bind(billing_session_id).fetch_optional(&mut *tx).await? else { return Ok(None); };
         if session.try_get::<String, _>("status")? != "reserved" {
             tx.commit().await?;
+            for notification in notifications.drain(..) {
+                notification.committed();
+            }
             return Ok(None);
         }
         let account_id: Uuid = session.try_get("account_id")?;
@@ -991,6 +1021,9 @@ impl BillingRepository for PgControlPlaneStore {
         )
         .await?;
         tx.commit().await?;
+        for notification in notifications.drain(..) {
+            notification.committed();
+        }
         Ok(Some(transaction_record(&ledger)?))
     }
 

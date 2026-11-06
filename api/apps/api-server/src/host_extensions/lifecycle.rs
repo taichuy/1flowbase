@@ -180,6 +180,19 @@ impl control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryPort
         owner.terminate_command_delivery(fact, termination).await
     }
     async fn deliver(&self, fact: &LifecycleOutboxRecord) -> Result<()> {
+        control_plane_contracts::ports::with_lifecycle_workflow_ancestors(
+            fact.observation_context
+                .as_ref()
+                .map(|context| context.workflow_ancestor_ids.clone())
+                .unwrap_or_default(),
+            self.deliver_owned(fact),
+        )
+        .await
+    }
+}
+
+impl ApiLifecycleFactDelivery {
+    async fn deliver_owned(&self, fact: &LifecycleOutboxRecord) -> Result<()> {
         if let Some(owner) = &self.managed {
             let owner = owner.upgrade().ok_or({
                 LifecycleDeliveryBlocked(LifecycleDeliveryPauseReason::FrozenGraphUnavailable)
@@ -330,6 +343,7 @@ mod tests {
         );
         let subscriber = &plan.subscribers()[0];
         let record = LifecycleOutboxRecord {
+            observation_context: None,
             event_id,
             transaction_id,
             contract_id: subscriber.fact_contract_id.clone(),
@@ -573,5 +587,75 @@ mod tests {
             .extend_active_host_extensions(&[(manifest, contribution)])
             .unwrap();
         assembly
+    }
+}
+
+/// Composition hook: register native typed definitions and actual frozen original bindings.
+/// Calling during recovery restores declarations/queues and emits no subscription/publication fact.
+pub(crate) fn register_native_lifecycle_sources(
+    observer: &control_plane::lifecycle_outbox_dispatcher::LifecycleSourceObserver,
+    plan: &EffectiveLifecycleSubscriberPlan,
+    scope: domain::event_center::EventSourceScope,
+) {
+    use control_plane_contracts::ports::{CreditNotificationFact, ModelDefinitionCommittedFact};
+    use domain::event_center::*;
+    use extension_contracts::LifecycleContract;
+    for (contract, version, schema, point) in [
+        (
+            ModelDefinitionCommittedFact::CONTRACT_ID,
+            ModelDefinitionCommittedFact::CONTRACT_VERSION,
+            ModelDefinitionCommittedFact::event_source_schema(),
+            extension_contracts::MANAGED_CREATE_EVENT_POINT,
+        ),
+        (
+            CreditNotificationFact::CONTRACT_ID,
+            CreditNotificationFact::CONTRACT_VERSION,
+            CreditNotificationFact::event_source_schema(),
+            "1flowbase.credit.integration-notification",
+        ),
+        (
+            ModelDefinitionIntegrationNotification::CONTRACT_ID,
+            ModelDefinitionIntegrationNotification::CONTRACT_VERSION,
+            ModelDefinitionIntegrationNotification::event_source_schema(),
+            "1flowbase.model-definition.integration-notification",
+        ),
+    ] {
+        let targets = plan
+            .subscribers()
+            .iter()
+            .filter(|s| s.fact_contract_id == contract && s.fact_contract_version == version)
+            .map(|s| LifecycleSubscriberTarget {
+                subscriber_id: s.subscriber_id.clone(),
+                handler_id: s.handler_id.clone(),
+                handler_version: s.handler_version.clone(),
+            })
+            .collect::<Vec<_>>();
+        observer.register(
+            EventSourceDescriptor {
+                source_id: format!("lifecycle/{scope:?}/{contract}@{version}"),
+                owner_id: "control-plane.lifecycle".into(),
+                point_id: point.into(),
+                contract_id: contract.into(),
+                contract_version: version.into(),
+                name: contract.into(),
+                description:
+                    "Committed native lifecycle fact; existing durable outbox owns delivery".into(),
+                payload_schema: schema,
+                origin: EventDefinitionOrigin::Core,
+                scope: scope.clone(),
+                binding: if scope == EventSourceScope::Unbound {
+                    EventSourceBinding::Declaration
+                } else {
+                    EventSourceBinding::Active
+                },
+                coverage: if scope == EventSourceScope::Unbound {
+                    EventSourceCoverage::Unavailable
+                } else {
+                    EventSourceCoverage::Live
+                },
+                supported_phases: vec![EventTriggerPhase::Published, EventTriggerPhase::Consumed],
+            },
+            &targets,
+        );
     }
 }

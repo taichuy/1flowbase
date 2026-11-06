@@ -23,6 +23,9 @@ pub struct PgControlPlaneStore {
     pub(crate) managed_operations:
         std::sync::Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
     actor_override: Option<ActorContext>,
+    workflow_ancestor_ids: Option<Vec<Uuid>>,
+    pub(crate) lifecycle_observer:
+        Option<std::sync::Arc<dyn control_plane_contracts::ports::LifecycleFactObserver>>,
     pub(crate) runtime_table_name_policy: crate::RuntimeTableNamePolicy,
     pub(crate) lifecycle_publication_catalog: std::sync::Arc<LifecyclePublicationCatalog>,
 }
@@ -36,10 +39,49 @@ impl PgControlPlaneStore {
                 crate::managed_operation_lifetime::ManagedOperationOwner::default(),
             ),
             actor_override: None,
+            workflow_ancestor_ids: None,
+            lifecycle_observer: None,
             runtime_table_name_policy: crate::RuntimeTableNamePolicy::default(),
             lifecycle_publication_catalog: std::sync::Arc::new(
                 LifecyclePublicationCatalog::default(),
             ),
+        }
+    }
+
+    pub fn with_workflow_ancestor_ids(mut self, workflow_ancestor_ids: Vec<Uuid>) -> Self {
+        self.workflow_ancestor_ids = Some(workflow_ancestor_ids);
+        self
+    }
+
+    pub(crate) fn lifecycle_observation_context(
+        &self,
+        scope: domain::event_center::EventSourceScope,
+        producer_id: impl Into<String>,
+    ) -> control_plane_contracts::ports::LifecycleObservationContext {
+        let mut context = control_plane_contracts::ports::LifecycleObservationContext::trusted(
+            scope,
+            producer_id,
+        );
+        if let Some(ancestors) = &self.workflow_ancestor_ids {
+            context.workflow_ancestor_ids = ancestors.clone();
+        }
+        context
+    }
+
+    pub fn with_lifecycle_observer(
+        mut self,
+        observer: std::sync::Arc<dyn control_plane_contracts::ports::LifecycleFactObserver>,
+    ) -> Self {
+        self.lifecycle_observer = Some(observer);
+        self
+    }
+
+    pub(crate) fn observe_lifecycle_commit(
+        &self,
+        input: &control_plane_contracts::ports::RecordLifecycleFactInput,
+    ) {
+        if let Some(observer) = &self.lifecycle_observer {
+            observer.published(input);
         }
     }
 
@@ -65,6 +107,8 @@ impl PgControlPlaneStore {
             portable_template_transaction: self.portable_template_transaction,
             managed_operations: self.managed_operations.clone(),
             actor_override: Some(actor),
+            workflow_ancestor_ids: self.workflow_ancestor_ids.clone(),
+            lifecycle_observer: self.lifecycle_observer.clone(),
             runtime_table_name_policy: self.runtime_table_name_policy.clone(),
             lifecycle_publication_catalog: std::sync::Arc::clone(
                 &self.lifecycle_publication_catalog,

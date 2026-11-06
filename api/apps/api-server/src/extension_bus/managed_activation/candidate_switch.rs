@@ -170,11 +170,13 @@ impl ManagedExtensionComposition {
             if !retained.iter().any(|s| s.same_execution_snapshot(&old)) {
                 retained.push(old.clone());
             }
+            self.register_candidate_lifecycle_sources(workspace_id, &candidate);
             visible.current.insert(workspace_id, candidate);
             if let Some((publisher, prepared)) = prepared_host {
                 publisher.publish(prepared);
             }
             drop(visible);
+            self.refresh_lifecycle_source_observations().await;
             self.notify_reclamation();
             Ok::<_, anyhow::Error>(migrated)
         }

@@ -371,6 +371,7 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
     }
     // The Outbox keeps the first frozen targets/time across replay; changed content fails closed.
     let mut replay = control_plane_contracts::ports::RecordLifecycleFactInput {
+        observation_context: processed[0].observation_context.clone(),
         event_id: processed[0].event_id,
         transaction_id: processed[0].transaction_id,
         contract_id: processed[0].contract_id.clone(),
@@ -531,6 +532,7 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
     let unavailable_id = Uuid::now_v7();
     store
         .record_lifecycle_fact(&control_plane_contracts::ports::RecordLifecycleFactInput {
+            observation_context: None,
             event_id: unavailable_id,
             transaction_id: Uuid::now_v7(),
             contract_id: MANAGED_PROCESSED_EVENT_ID.into(),
