@@ -206,6 +206,15 @@ export function WorkflowEventTriggerFields({
       >
         <Select options={phaseOptions} />
       </Form.Item>
+      {/* Register the whole mapping even when no Start input controls exist.
+          Disabling a stored source must retain mappings for historical inputs. */}
+      <Form.Item
+        name={['event', 'input_mapping']}
+        hidden
+        getValueProps={() => ({ value: '' })}
+      >
+        <Input />
+      </Form.Item>
       {fields
         .filter((field) =>
           ['string', 'number', 'boolean'].includes(field.valueType)

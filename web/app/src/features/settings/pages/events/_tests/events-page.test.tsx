@@ -667,6 +667,7 @@ test('source scope keeps native identities and unknown original queue counts wit
     sources: [
       {
         registration_id: 'native-registration',
+        queue_observation_complete: true,
         metadata_bytes: 123,
         descriptor: {
           source_id: 'native.source',
@@ -749,6 +750,7 @@ test('unbound declarations remain visibly unavailable even without original queu
         sources: [
           {
             registration_id: 'unbound-registration',
+            queue_observation_complete: true,
             metadata_bytes: 0,
             queues: [],
             descriptor: {
@@ -790,3 +792,90 @@ test('unbound declarations remain visibly unavailable even without original queu
     screen.queryByText('source_queue_observer_unavailable')
   ).not.toBeInTheDocument();
 });
+
+test.each([
+  { complete: false, observedQueue: false },
+  { complete: false, observedQueue: true },
+  { complete: true, observedQueue: false }
+])(
+  'reports queue observation completeness=$complete with observed queue=$observedQueue',
+  async ({ complete, observedQueue }) => {
+    const workspace = withWorkspaceView(snapshot);
+    const source = {
+      registration_id: 'budget-registration',
+      queue_observation_complete: complete,
+      metadata_bytes: 100,
+      descriptor: {
+        source_id: 'runtime.required',
+        point_id: 'runtime.required',
+        owner_id: 'runtime',
+        contract_id: 'runtime.event',
+        contract_version: '1',
+        name: 'Budgeted runtime source',
+        description: '',
+        payload_schema: null,
+        origin: 'core' as const,
+        scope: { kind: 'workspace' as const, workspace_id: 'workspace' },
+        binding: 'active' as const,
+        coverage: 'live' as const,
+        supported_phases: ['consumed' as const]
+      },
+      queues: observedQueue
+        ? [
+            {
+              queue_id: 'observed-original-queue',
+              subscriber_id: 'observed-original-subscriber',
+              consumer_ids: [],
+              buffered: null,
+              in_flight: null,
+              accepted: null,
+              dequeued: 4,
+              dropped: null,
+              observed_at_unix_ms: 1000
+            }
+          ]
+        : []
+    };
+    api.getEventRuntime.mockResolvedValue({
+      ...workspace,
+      source_views: [{ ...workspace.source_views[0], sources: [source] }]
+    });
+    window.history.replaceState({}, '', '/settings/events?tab=queues');
+    renderPage();
+    const sourceButton = await screen.findByRole('button', {
+      name: 'Budgeted runtime source'
+    });
+    const sourceRow = sourceButton.closest('tr');
+    expect(sourceRow).not.toBeNull();
+    expect(
+      within(sourceRow!).getByText(complete ? 'Complete' : 'Incomplete')
+    ).toBeInTheDocument();
+    const warning = screen.queryByText(
+      /The observation budget prevented recording/
+    );
+    if (complete) {
+      expect(warning).not.toBeInTheDocument();
+    } else {
+      expect(warning).toBeInTheDocument();
+      expect(warning).toHaveTextContent(
+        'an empty list does not establish that no queues exist'
+      );
+      expect(warning).toHaveTextContent(
+        'This does not indicate a delivery failure in the original queues'
+      );
+    }
+    if (observedQueue) {
+      expect(screen.getByText('observed-original-queue')).toBeInTheDocument();
+      expect(screen.getAllByText('Unknown')).toHaveLength(4);
+      const queueRow = screen
+        .getByText('observed-original-queue')
+        .closest('tr');
+      expect(queueRow).not.toBeNull();
+      expect(within(queueRow!).getByText('4')).toBeInTheDocument();
+    } else {
+      expect(
+        screen.queryByText('observed-original-queue')
+      ).not.toBeInTheDocument();
+    }
+  }
+);

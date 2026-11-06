@@ -476,7 +476,8 @@ impl PgControlPlaneStore {
         input: &ModelBillingAdmissionInput,
     ) -> Result<ModelBillingAdmission> {
         let mut tx = self.pool().begin().await?;
-        let mut notifications = Vec::new();
+        let mut notifications: Vec<control_plane_contracts::ports::FrozenLifecyclePublication> =
+            Vec::new();
         // This statement is the workspace-switch snapshot for this invocation.
         let enabled_at: Option<OffsetDateTime> = sqlx::query_scalar("select billing_enabled_at from workspace_billing_settings where workspace_id=$1 for share")
             .bind(input.workspace_id).fetch_optional(&mut *tx).await?;
@@ -852,7 +853,8 @@ impl BillingRepository for PgControlPlaneStore {
         let charge_enabled_default =
             !crate::repositories::is_root_user(self.pool(), input.user_id).await?;
         let mut tx = self.pool().begin().await?;
-        let mut notifications = Vec::new();
+        let mut notifications: Vec<control_plane_contracts::ports::FrozenLifecyclePublication> =
+            Vec::new();
         let account = ensure_account(
             &mut tx,
             input.workspace_id,
@@ -934,7 +936,8 @@ impl BillingRepository for PgControlPlaneStore {
         idempotency_key: &str,
     ) -> Result<()> {
         let mut tx = self.pool().begin().await?;
-        let mut notifications = Vec::new();
+        let mut notifications: Vec<control_plane_contracts::ports::FrozenLifecyclePublication> =
+            Vec::new();
         crate::notification_publication::record_credit_notification_in_transaction(
             self, &mut tx, &mut notifications, workspace_id, None, "CreditCommandRejected",
             serde_json::json!({"actor_plugin_id":actor_plugin_id,"command":command,"reason":reason,"idempotency_key":idempotency_key}),
@@ -948,7 +951,8 @@ impl BillingRepository for PgControlPlaneStore {
 
     async fn reserve_credit(&self, input: &ReserveCreditInput) -> Result<CreditReservation> {
         let mut tx = self.pool().begin().await?;
-        let mut notifications = Vec::new();
+        let mut notifications: Vec<control_plane_contracts::ports::FrozenLifecyclePublication> =
+            Vec::new();
         let account = ensure_account(
             &mut tx,
             input.workspace_id,
@@ -968,7 +972,8 @@ impl BillingRepository for PgControlPlaneStore {
 
     async fn settle_credit(&self, input: &SettleCreditInput) -> Result<CreditTransactionRecord> {
         let mut tx = self.pool().begin().await?;
-        let mut notifications = Vec::new();
+        let mut notifications: Vec<control_plane_contracts::ports::FrozenLifecyclePublication> =
+            Vec::new();
         let record = settle_credit_in_transaction(&mut tx, self, &mut notifications, input).await?;
         tx.commit().await?;
         for notification in notifications.drain(..) {
@@ -983,7 +988,8 @@ impl BillingRepository for PgControlPlaneStore {
         reason: &str,
     ) -> Result<Option<CreditTransactionRecord>> {
         let mut tx = self.pool().begin().await?;
-        let mut notifications = Vec::new();
+        let mut notifications: Vec<control_plane_contracts::ports::FrozenLifecyclePublication> =
+            Vec::new();
         let Some(session)=sqlx::query("select workspace_id,user_id,account_id,reserved_amount::text as reserved_amount,status from billing_sessions where id=$1 for update")
             .bind(billing_session_id).fetch_optional(&mut *tx).await? else { return Ok(None); };
         if session.try_get::<String, _>("status")? != "reserved" {

@@ -465,7 +465,7 @@
     "source": "Event source",
     "system_scope": "System",
     "unbound_scope": "Unbound",
-    "source_unavailable": "Select an enabled custom event and a supported phase.",
+    "source_unavailable": "Select an available event source and a supported phase.",
     "phase": "Trigger stage",
     "subscribed": "Subscribed",
     "published": "Published",

@@ -3,8 +3,21 @@ import { Button, Form } from 'antd';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { AppProviders } from '../../../../app/AppProviders';
 import { WorkflowEventTriggerFields } from '../WorkflowEventTriggerFields';
+import { ApplicationFormModal } from '../ApplicationFormModal';
 
-const api = vi.hoisted(() => ({ fetchWorkflowEventCatalog: vi.fn() }));
+const api = vi.hoisted(() => ({
+  fetchWorkflowEventCatalog: vi.fn(),
+  fetchWorkflowEventTrigger: vi.fn(),
+  fetchApplicationCatalog: vi.fn(),
+  fetchApplicationDetail: vi.fn(),
+  updateApplication: vi.fn(),
+  saveWorkflowEventTrigger: vi.fn()
+}));
+const orchestration = vi.hoisted(() => ({ fetchOrchestrationState: vi.fn() }));
+vi.mock('../../../agent-flow/api/orchestration', async (original) => ({
+  ...(await original<typeof import('../../../agent-flow/api/orchestration')>()),
+  ...orchestration
+}));
 vi.mock('../../api/applications', async (original) => ({
   ...(await original<typeof import('../../api/applications')>()),
   ...api
@@ -252,3 +265,67 @@ test('an unavailable stored system registration is explained and can be disabled
     })
   );
 });
+
+test.each([
+  { label: 'empty', input_mapping: {} },
+  { label: 'historical', input_mapping: stored.input_mapping }
+])(
+  'the application modal preserves $label mapping when disabling an unavailable source without Start inputs',
+  async ({ input_mapping }) => {
+    const source = { source_id: 'native.source', scope: { kind: 'system' } };
+    const event = { ...stored, source, input_mapping };
+    api.fetchWorkflowEventCatalog.mockResolvedValue([]);
+    api.fetchWorkflowEventTrigger.mockResolvedValue(event);
+    api.fetchApplicationDetail.mockResolvedValue({
+      id: 'event-application',
+      application_type: 'workflow',
+      workflow_trigger_type: 'event',
+      name: 'Invoice workflow',
+      description: '',
+      tags: []
+    });
+    api.fetchApplicationCatalog.mockResolvedValue({
+      types: [{ value: 'workflow', label: 'Workflow' }],
+      workflow_triggers: [{ value: 'event', label: 'Event' }],
+      tags: []
+    });
+    orchestration.fetchOrchestrationState.mockResolvedValue({
+      draft: { document: { graph: { nodes: [] } } }
+    });
+    api.updateApplication.mockResolvedValue({ id: 'event-application' });
+    api.saveWorkflowEventTrigger.mockResolvedValue({
+      ...event,
+      enabled: false
+    });
+    const onClose = vi.fn();
+    render(
+      <AppProviders>
+        <ApplicationFormModal
+          open
+          csrfToken="test-csrf"
+          intent={{ kind: 'edit', applicationId: 'event-application' }}
+          onClose={onClose}
+        />
+      </AppProviders>
+    );
+    const enabled = await screen.findByRole('switch', { name: '启用订阅' });
+    await waitFor(() => expect(enabled).toBeChecked());
+    const save = screen.getByRole('button', { name: '保存修改' });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    await screen.findAllByText('请选择可用的事件来源及其支持的阶段。');
+    expect(api.saveWorkflowEventTrigger).not.toHaveBeenCalled();
+
+    fireEvent.click(enabled);
+    await waitFor(() => expect(enabled).not.toBeChecked());
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(api.saveWorkflowEventTrigger).toHaveBeenCalledWith(
+        'event-application',
+        { ...event, enabled: false },
+        'test-csrf'
+      )
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  }
+);

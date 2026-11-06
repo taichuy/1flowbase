@@ -137,5 +137,9 @@
   "source_metadata_bytes": "Source metadata bytes (included above)",
   "reentrant": "Workflow loop prevented",
   "source_queue_refresh_error": "Source queue observations could not be refreshed. The latest available snapshot is shown; counts may be stale.",
-  "source_target": "Workflow source target"
+  "source_target": "Workflow source target",
+  "queue_observation": "Queue observation",
+  "queue_observation_complete": "Complete",
+  "queue_observation_incomplete": "Incomplete",
+  "queue_observation_incomplete_help": "The observation budget prevented recording some original queues for this source. The list is incomplete; an empty list does not establish that no queues exist. This does not indicate a delivery failure in the original queues."
 }

@@ -41,6 +41,7 @@ export interface EventSourceQueueSnapshot {
   observed_at_unix_ms: number;
 }
 export interface EventRegisteredSourceSnapshot {
+  queue_observation_complete: boolean;
   metadata_bytes: number;
   registration_id: string;
   descriptor: EventSourceDescriptor;

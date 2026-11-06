@@ -108,7 +108,7 @@
   "loss_expired": "窗口内过期记录",
   "loss_evicted": "窗口内预算淘汰记录",
   "loss_oversize_dropped": "窗口内超大记录丢弃",
-  "loss_window_help": "仅统计本工作区当前计数窗口内的观察记录损失，不代表事件消费失败；窗口结束或计数记录被淘汰后重新计数。",
+  "loss_window_help": "仅统计所选范围当前计数窗口内的观察记录损失，不代表事件消费失败；窗口结束或计数记录被淘汰后重新计数。",
   "loss_unavailable": "当前没有可用的观察损失计数窗口，不能据此认定没有记录丢失。",
   "scope": "来源作用域",
   "workspace_scope": "工作区",
@@ -137,5 +137,9 @@
   "source_metadata_bytes": "来源元数据字节数（已计入上方）",
   "reentrant": "已阻止工作流循环",
   "source_queue_refresh_error": "来源队列观察刷新失败。正在显示最近可用快照，计数可能已过期。",
-  "source_target": "工作流来源目标"
+  "source_target": "工作流来源目标",
+  "queue_observation": "队列观察",
+  "queue_observation_complete": "完整",
+  "queue_observation_incomplete": "不完整",
+  "queue_observation_incomplete_help": "观察预算限制导致此来源的部分原始队列未被记录。当前列表不完整，空列表不能证明没有队列，也不表示原始队列投递失败。"
 }

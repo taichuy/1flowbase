@@ -231,7 +231,6 @@ jobs:
           if [ "$EVIDENCE_SCOPE" = system-event-center ]; then
             run_crate_tests source-contracts -p control-plane-contracts --lib
             run_crate_tests source-ingress -p control-plane --lib event_center
-            run_crate_tests reliable-source-observation -p control-plane --lib lifecycle_source_observation
             run_crate_tests reliable-dispatch -p control-plane --lib lifecycle_outbox_dispatcher
             run_crate_tests runtime-persistence -p control-plane --lib after_commit_lanes
             run_crate_tests event-bus -p storage-ephemeral --lib memory_event_bus

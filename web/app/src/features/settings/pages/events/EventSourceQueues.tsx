@@ -2,7 +2,7 @@ import type {
   EventRegisteredSourceSnapshot,
   EventSourceQueueSnapshot
 } from '@1flowbase/api-client';
-import { Button, Space, Typography } from 'antd';
+import { Alert, Button, Space, Typography } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DataTableColumn } from '../../../../shared/ui/data-table/DataTable';
@@ -60,6 +60,22 @@ export function EventSourceQueues({
       title: t('registration_id'),
       dataIndex: 'registration_id',
       width: 240
+    },
+    {
+      key: 'queue_observation_complete',
+      title: t('queue_observation'),
+      width: 180,
+      render: (_, row) => (
+        <Typography.Text
+          type={row.queue_observation_complete ? undefined : 'warning'}
+        >
+          {t(
+            row.queue_observation_complete
+              ? 'queue_observation_complete'
+              : 'queue_observation_incomplete'
+          )}
+        </Typography.Text>
+      )
     },
     ...(['binding', 'coverage'] as const).map((key) => ({
       key,
@@ -123,6 +139,14 @@ export function EventSourceQueues({
             {t('binding')}: {sourceLabels[selected.descriptor.binding]} ·{' '}
             {t('coverage')}: {sourceLabels[selected.descriptor.coverage]}
           </Typography.Text>
+          {!selected.queue_observation_complete && (
+            <Alert
+              type="warning"
+              showIcon
+              title={t('queue_observation_incomplete')}
+              description={t('queue_observation_incomplete_help')}
+            />
+          )}
           <EventsTable
             key={selected.registration_id}
             tableKey="source-queues"
