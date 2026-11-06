@@ -157,23 +157,21 @@ export function EventsPage() {
     {
       key: 'actions',
       title: t('actions'),
-      width: 120,
+      width: 180,
       mobileRole: 'actions',
       render: (_, row) => (
         <DataTableRowActions
           moreAriaLabel={t('actions')}
-          moreItems={[{ key: 'view', label: t('view') }]}
-          onMoreAction={() => open(row)}
-        >
-          {row.origin === 'custom' &&
+          actions={[
+            ...(row.origin === 'custom' &&
             row.payload_schema !== null &&
             row.id &&
-            can('events.definitions.update') && (
-              <Button type="link" size="small" onClick={() => open(row)}>
-                {t('edit')}
-              </Button>
-            )}
-        </DataTableRowActions>
+            can('events.definitions.update')
+              ? [{ key: 'edit', label: t('edit'), onClick: () => open(row) }]
+              : []),
+            { key: 'view', label: t('view'), onClick: () => open(row) }
+          ]}
+        />
       )
     }
   ];

@@ -146,6 +146,19 @@ beforeEach(async () => {
 });
 
 describe('event center configuration and observations', () => {
+  test('opens event details with a single direct row action click', async () => {
+    api.listEventCatalog.mockResolvedValue([
+      { ...custom, origin: 'core', id: null }
+    ]);
+    renderPage();
+    const view = await screen.findByRole('button', { name: 'View details' });
+    expect(
+      screen.queryByRole('button', { name: 'Actions' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(view);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
   test.each([
     ['queues', 'Current queues'],
     ['activity', 'Recent activity']

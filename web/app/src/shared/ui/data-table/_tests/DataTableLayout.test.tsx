@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
@@ -113,24 +113,84 @@ describe('DataTableLayout', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
-  test('AC-004 composes primary row actions with a business-owned more menu', async () => {
-    const onMoreAction = vi.fn();
+  test.each([0, 1, 2, 3, 4])(
+    'shows at most two actions inline with %i actions',
+    async (count) => {
+      const handlers = Array.from({ length: count }, () => vi.fn());
+      render(
+        <DataTableRowActions
+          moreAriaLabel="More actions"
+          actions={handlers.map((onClick, index) => ({
+            key: String(index),
+            label: `Action ${index + 1}`,
+            onClick
+          }))}
+        />
+      );
+      for (let index = 0; index < Math.min(count, 2); index++) {
+        fireEvent.click(
+          screen.getByRole('button', { name: `Action ${index + 1}` })
+        );
+        expect(handlers[index]).toHaveBeenCalledTimes(1);
+      }
+      if (count <= 2) {
+        expect(
+          screen.queryByRole('button', { name: 'More actions' })
+        ).not.toBeInTheDocument();
+      } else {
+        fireEvent.mouseEnter(
+          screen.getByRole('button', { name: 'More actions' })
+        );
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        });
+        expect(screen.queryByText('Action 3')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+        fireEvent.click(
+          await screen.findByRole('menuitem', { name: 'Action 3' })
+        );
+        expect(handlers[2]).toHaveBeenCalledTimes(1);
+        expect(handlers[0]).toHaveBeenCalledTimes(1);
+      }
+    }
+  );
 
+  test('preserves links and disabled actions inline and in the overflow menu', async () => {
+    const disabledAction = vi.fn();
     render(
       <DataTableRowActions
-        moreAriaLabel="更多操作：示例"
-        moreItems={[{ key: 'delete', label: '删除', danger: true }]}
-        onMoreAction={onMoreAction}
-      >
-        <button type="button">查看</button>
-        <button type="button">编辑</button>
-      </DataTableRowActions>
+        moreAriaLabel="More actions"
+        actions={[
+          {
+            key: 'view',
+            label: 'View',
+            href: '/applications/example/orchestration'
+          },
+          {
+            key: 'edit',
+            label: 'Edit',
+            disabled: true,
+            onClick: disabledAction
+          },
+          {
+            key: 'delete',
+            label: 'Delete',
+            disabled: true,
+            danger: true,
+            onClick: disabledAction
+          }
+        ]}
+      />
     );
-
-    expect(screen.getByRole('button', { name: '查看' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '编辑' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '更多操作：示例' }));
-    fireEvent.click(await screen.findByText('删除'));
-    expect(onMoreAction).toHaveBeenCalledWith('delete');
+    expect(screen.getByRole('link', { name: 'View' })).toHaveAttribute(
+      'href',
+      '/applications/example/orchestration'
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    const item = await screen.findByRole('menuitem', { name: 'Delete' });
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(item);
+    expect(disabledAction).not.toHaveBeenCalled();
   });
 });
