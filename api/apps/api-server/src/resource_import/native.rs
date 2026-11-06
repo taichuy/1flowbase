@@ -120,7 +120,7 @@ async fn current_native_caller(
     Ok((actor, user))
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 #[path = "_tests/native.rs"]
 mod tests;
