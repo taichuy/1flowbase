@@ -169,6 +169,7 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
                 let op = op.ok_or(Error::NotFound("managed_service_operation"))?;
                 let validator = jsonschema::validator_for(&op.input_schema)?;
                 if !validator.is_valid(&input.payload) { return Err(ApiError::from(Error::InvalidInput("managed_service_input"))); }
+                let event_policy=input.event_policy.clone();
                 let (publisher, stream) = interface_runtime::interface_stream_channel(16);
                 match input.stream.ok_or(Error::InvalidInput("managed_service_stream"))? {
                     StreamInput::Ticket { origin } => {
@@ -180,7 +181,7 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
                             operation: op.interface_id, payload: input.payload,
                         };
                         let token = super::stream_ticket::store(state.infrastructure.cache_store().as_ref(), &ticket).await?;
-                        publisher.finish(InterfaceStreamTerminal::Completed(ManagedServiceOutput(json!({"ticket":token})))).await.map_err(|_| Error::UpstreamUnavailable("managed_service_stream"))?;
+                        publisher.finish(InterfaceStreamTerminal::Completed(ManagedServiceOutput(json!({"ticket":token}),super::event_projection::OutputPolicy::TicketIssued(event_policy.clone())))).await.map_err(|_| Error::UpstreamUnavailable("managed_service_stream"))?;
                     }
                     StreamInput::Run { duplex, mut cancel } => {
                         let specification = op.stream.clone().ok_or(Error::InvalidInput("managed_service_stream"))?;
@@ -237,7 +238,7 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
                                 }
                             }
                             let terminal = match outcome {
-                                Ok(output) if jsonschema::validator_for(&op.output_schema).is_ok_and(|schema| schema.is_valid(&output)) => InterfaceStreamTerminal::Completed(ManagedServiceOutput(output)),
+                                Ok(output) if jsonschema::validator_for(&op.output_schema).is_ok_and(|schema| schema.is_valid(&output)) => InterfaceStreamTerminal::Completed(ManagedServiceOutput(output,super::event_projection::OutputPolicy::BusinessResult(event_policy.clone()))),
                                 Err(error) => InterfaceStreamTerminal::Failed(interface_runtime::InterfaceTargetFailure::new("managed_service_stream", ConsoleInterfaceTargetError(super::ManagedServiceFailure::from_runtime(&error).map(ApiError::from).unwrap_or_else(|| Error::UpstreamUnavailable("managed_service_stream_execution").into())))),
                             _ => InterfaceStreamTerminal::Failed(interface_runtime::InterfaceTargetFailure::new("managed_service_stream", ConsoleInterfaceTargetError(Error::UpstreamUnavailable("managed_service_stream_execution").into()))),
                             };
@@ -275,10 +276,10 @@ pub(super) fn route_assembly(
         let operation = post_op.clone();
         async move {
             let origin = super::stream_ticket::origin(&headers)?;
-            let stream = console_interface::invoke_server_stream::<ManagedServiceInput,StreamEvent,ManagedServiceOutput>(state.clone(), &format!("http.{}.v1",operation.interface_id), crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {state,headers}, ManagedServiceInput {interface_id:operation.interface_id.clone(),payload:json!({"path":path,"query":{},"body":body}),stream:Some(StreamInput::Ticket {origin})}).await?;
+            let stream = console_interface::invoke_server_stream::<ManagedServiceInput,StreamEvent,ManagedServiceOutput>(state.clone(), &format!("http.{}.v1",operation.interface_id), crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {state,headers}, ManagedServiceInput {event_policy:Arc::new(super::event_projection::OperationPolicy::new(&operation)),interface_id:operation.interface_id.clone(),payload:json!({"path":path,"query":{},"body":body}),stream:Some(StreamInput::Ticket {origin})}).await?;
             let (_,completion) = stream.into_parts();
             match completion.complete().await.map_err(|_| Error::UpstreamUnavailable("managed_service_ticket"))?.into_parts().0 {
-                InterfaceStreamTerminal::Completed(ManagedServiceOutput(value)) => Ok::<_,ApiError>(Json(ApiSuccess::new(value))),
+                InterfaceStreamTerminal::Completed(ManagedServiceOutput(value,_)) => Ok::<_,ApiError>(Json(ApiSuccess::new(value))),
                 _ => Err(Error::UpstreamUnavailable("managed_service_ticket").into())
             }
         }
@@ -363,6 +364,7 @@ async fn upgrade(
             headers: headers.clone(),
         },
         ManagedServiceInput {
+            event_policy: Arc::new(super::event_projection::OperationPolicy::new(&operation)),
             interface_id: operation.interface_id.clone(),
             payload: ticket.payload,
             stream: Some(StreamInput::Run {
@@ -589,7 +591,7 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
                 let mut failure = "managed_service_stream_execution".to_owned();
                 if let Ok(Ok(outcome)) = result {
                     match outcome.into_parts().0 {
-                        InterfaceStreamTerminal::Completed(ManagedServiceOutput(output)) => { completed = Some(output); }
+                        InterfaceStreamTerminal::Completed(ManagedServiceOutput(output,_)) => { completed = Some(output); }
                         InterfaceStreamTerminal::Failed(error) => {
                             if let Some(safe) = error.error().0.0.downcast_ref::<super::ManagedServiceFailure>() { failure = safe.0.clone(); }
                         }
@@ -667,3 +669,18 @@ fn parse_client_frame(text: &str, input: &jsonschema::Validator) -> Result<Clien
 #[cfg(test)]
 #[path = "_tests/stream_lifecycle.rs"]
 mod lifecycle_tests;
+
+// Runtime frames and their consumed ACK owner are not a business terminal DTO.
+impl crate::event_center::api_projection::ApiEventOutput for StreamEvent {
+    fn document_output_unavailable(
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Option<domain::event_center::ApiEventUnavailableReason> {
+        Some(domain::event_center::ApiEventUnavailableReason::MissingStreamingTerminal)
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<Value, Arc<str>> {
+        Err(Arc::from("managed_service_frame_is_not_a_stream_terminal"))
+    }
+}

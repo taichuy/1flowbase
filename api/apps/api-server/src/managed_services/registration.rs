@@ -232,40 +232,74 @@ pub(crate) fn append_openapi(
     use serde_json::json;
     for service in services {
         for op in &service.declaration.operations {
-            let mut parameters = Vec::new();
-            for location in ["path", "query"] {
-                if let Some(fields) = op
-                    .input_schema
-                    .pointer(&format!("/properties/{location}/properties"))
-                    .and_then(serde_json::Value::as_object)
-                {
-                    for (name, schema) in fields {
-                        let required = location == "path"
-                            || op
-                                .input_schema
-                                .pointer(&format!("/properties/{location}/required"))
-                                .and_then(serde_json::Value::as_array)
-                                .is_some_and(|values| {
-                                    values.iter().any(|v| v.as_str() == Some(name))
-                                });
-                        parameters.push(
-                            json!({"name":name,"in":location,"required":required,"schema":schema}),
-                        );
-                    }
-                }
-            }
-            // Host catalog response contracts describe ApiSuccess.data, as static DTO docs do.
-            // The shared dispatcher unwraps the HTTP envelope before validating this schema.
-            let mut operation = json!({"operationId":op.interface_id,"summary":op.summary,"description":op.description,"tags":[service.display_name],"parameters":parameters,
-            "responses":{"200":{"description":"Successful operation","content":{"application/json":{"schema":op.output_schema}}}}});
-            if op.method != "GET" && op.method != "DELETE" {
-                operation["requestBody"] = json!({"required":true,"content":{"application/json":{"schema":op.input_schema.pointer("/properties/body").cloned().unwrap_or(json!({"type":"object"}))}}});
-            }
+            let operation = operation_openapi(op, &service.display_name);
             if op.stream.is_some() {
-                operation["responses"]["200"]["content"]["application/json"]["schema"] = json!({"type":"object","properties":{"ticket":{"type":"string"}},"required":["ticket"],"additionalProperties":false});
                 document["paths"][&op.path]["get"] = json!({"operationId":format!("{}.stream-upgrade",op.interface_id),"summary":format!("Open {} stream",op.summary),"description":"Upgrades a one-time session and Origin bound stream ticket and invokes the original POST operation authorization.","parameters":[{"name":"ticket","in":"query","required":true,"schema":{"type":"string"}}],"responses":{"101":{"description":"WebSocket upgrade"}}});
             }
             document["paths"][&op.path][op.method.to_ascii_lowercase()] = operation;
         }
     }
+}
+
+fn operation_openapi(
+    op: &plugin_framework::ManagedServiceOperation,
+    display_name: &str,
+) -> serde_json::Value {
+    use serde_json::json;
+    let mut parameters = Vec::new();
+    for location in ["path", "query"] {
+        if let Some(fields) = op
+            .input_schema
+            .pointer(&format!("/properties/{location}/properties"))
+            .and_then(serde_json::Value::as_object)
+        {
+            for (name, schema) in fields {
+                let required = location == "path"
+                    || op
+                        .input_schema
+                        .pointer(&format!("/properties/{location}/required"))
+                        .and_then(serde_json::Value::as_array)
+                        .is_some_and(|values| values.iter().any(|v| v.as_str() == Some(name)));
+                parameters
+                    .push(json!({"name":name,"in":location,"required":required,"schema":schema}));
+            }
+        }
+    }
+    // Host catalog response contracts describe ApiSuccess.data, as static DTO docs do.
+    // The shared dispatcher unwraps the HTTP envelope before validating this schema.
+    let mut operation = json!({"operationId":op.interface_id,"summary":op.summary,"description":op.description,"tags":[display_name],"parameters":parameters,
+    "responses":{"200":{"description":"Successful operation","content":{"application/json":{"schema":op.output_schema}}}}});
+    if op.method != "GET" && op.method != "DELETE" {
+        operation["requestBody"] = json!({"required":true,"content":{"application/json":{"schema":op.input_schema.pointer("/properties/body").cloned().unwrap_or(json!({"type":"object"}))}}});
+    }
+    if op.stream.is_some() {
+        operation["responses"]["200"]["content"]["application/json"]["schema"] = serde_json::json!({"type":"object","properties":{"ticket":{"type":"string"}},"required":["ticket"],"additionalProperties":false});
+    }
+    operation
+}
+
+/// Uses the same selected HTTP operation as append_openapi. A managed adapter's
+/// worker envelope can contain empty locations that the HTTP contract omits.
+pub(super) fn operation_document_input_schema(
+    op: &plugin_framework::ManagedServiceOperation,
+) -> serde_json::Value {
+    use serde_json::json;
+    let mut document = json!({"paths":{}});
+    document["paths"][&op.path][op.method.to_ascii_lowercase()] =
+        operation_openapi(op, "Managed service");
+    crate::openapi_interface::catalog_entry_from_operation(
+        &crate::openapi_docs::DocsCatalogOperation {
+            id: op.interface_id.clone(),
+            method: op.method.clone(),
+            path: op.path.clone(),
+            summary: Some(op.summary.clone()),
+            description: Some(op.description.clone()),
+            tags: vec![],
+            group: "managed-services".into(),
+            deprecated: false,
+        },
+        &document,
+    )
+    .expect("managed service owner inserts the exact selected HTTP operation")
+    .request_schema
 }

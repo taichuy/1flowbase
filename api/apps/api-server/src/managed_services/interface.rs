@@ -16,8 +16,12 @@ pub(crate) struct ManagedServiceInput {
     pub interface_id: String,
     pub payload: serde_json::Value,
     pub stream: Option<super::stream::StreamInput>,
+    pub(super) event_policy: Arc<super::event_projection::OperationPolicy>,
 }
-pub(crate) struct ManagedServiceOutput(pub serde_json::Value);
+pub(crate) struct ManagedServiceOutput(
+    pub serde_json::Value,
+    pub(super) super::event_projection::OutputPolicy,
+);
 // Generic business bodies can contain outbound credentials. Hooks only receive safe metadata.
 impl InterfaceContract for ManagedServiceInput {
     const CONTRACT_ID: &'static str = "managed-service-input";
@@ -45,6 +49,7 @@ pub(super) struct Operation {
     pub(super) declaration: plugin_framework::ManagedServiceOperation,
     pub(super) input: jsonschema::Validator,
     pub(super) output: jsonschema::Validator,
+    pub(super) event_policy: Arc<super::event_projection::OperationPolicy>,
 }
 pub(super) struct Adapter {
     pub(super) state: std::sync::Weak<ApiState>,
@@ -183,7 +188,10 @@ impl Adapter {
             if op.declaration.invalidates_workers {
                 composition.reset_service_workers(&binding.handle).await?;
             }
-            Ok::<_, anyhow::Error>(ManagedServiceOutput(output))
+            Ok::<_, anyhow::Error>(ManagedServiceOutput(
+                output,
+                super::event_projection::OutputPolicy::BusinessResult(op.event_policy.clone()),
+            ))
         })
         .await
         .map_err(|_| Error::UpstreamUnavailable("managed_service_deadline_exceeded"))?;
@@ -217,6 +225,7 @@ pub(crate) fn registry_contribution(
                 declaration: op.clone(),
                 input: compile("input", op.input_schema.clone())?,
                 output: compile("output", op.output_schema.clone())?,
+                event_policy: Arc::new(super::event_projection::OperationPolicy::new(op)),
             },
         );
     }
@@ -239,6 +248,10 @@ pub(crate) fn registry_contribution(
             mutating: op.method != "GET",
         })
         .collect::<Vec<_>>();
+    let event_policies = operations
+        .iter()
+        .map(|(id, operation)| (id.clone(), operation.event_policy.clone()))
+        .collect::<BTreeMap<_, _>>();
     let adapter = Arc::new(Adapter {
         state: Arc::downgrade(state),
         registration: registration.clone(),
@@ -276,6 +289,7 @@ pub(crate) fn registry_contribution(
             interface_runtime::InterfaceScope::System,
         )?;
         compiler.absorb_snapshot(&registry)?;
+        super::event_projection::refine_registry(&mut compiler, &registry, &event_policies)?;
     }
     if !stream_declarations.is_empty() {
         let registry = console_interface::compile_server_stream_registry_with_scope(
@@ -286,6 +300,7 @@ pub(crate) fn registry_contribution(
             interface_runtime::InterfaceScope::System,
         )?;
         compiler.absorb_snapshot(&registry)?;
+        super::event_projection::refine_registry(&mut compiler, &registry, &event_policies)?;
     }
     let registry = compiler.compile()?;
     Ok(InterfaceRegistryContribution::managed(

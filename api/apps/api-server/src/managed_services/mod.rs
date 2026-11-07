@@ -1,4 +1,5 @@
 //! Generation-frozen managed services. Package declarations become ordinary host-owned console APIs.
+mod event_projection;
 mod interface;
 mod registration;
 mod routes;
