@@ -732,3 +732,6 @@ pub(crate) fn compile_registry(
         Arc::new(NetworkCenterAdapter(dependencies)),
     )
 }
+
+#[path = "core_interface/event_projection.rs"]
+mod event_projection;

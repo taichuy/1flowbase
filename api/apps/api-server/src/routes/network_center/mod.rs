@@ -37,12 +37,12 @@ pub struct CreateNetworkEgressProviderBody {
     pub config: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateNetworkEgressProviderLifecycleBody {
     pub lifecycle: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateNetworkEgressRouteBody {
     pub consumer_kind: String,
     pub consumer_reference: Option<String>,
@@ -50,7 +50,7 @@ pub struct CreateNetworkEgressRouteBody {
     pub enabled: bool,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateNetworkEgressRouteBody {
     pub pool_member_ids: Vec<String>,
     pub enabled: bool,

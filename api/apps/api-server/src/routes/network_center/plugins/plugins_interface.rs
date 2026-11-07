@@ -915,3 +915,6 @@ pub(crate) fn compile_registry(
         Arc::new(NetworkPluginAdapter(dependencies)),
     )
 }
+
+#[path = "plugins_interface/event_projection.rs"]
+mod event_projection;
