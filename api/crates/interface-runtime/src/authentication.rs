@@ -204,6 +204,7 @@ impl InterfaceAuthenticationAttempt {
                     registry_fingerprint: self.registry.fingerprint().clone(),
                     attempt: None,
                     extension_context: None,
+                    observer_context: None,
                 },
                 input: None,
                 output: None,

@@ -387,7 +387,11 @@ test('same-contract subtype leaves save complete backend filters and discover es
   const mapping = screen.getByRole('combobox', { name: 'Amount · number' });
   fireEvent.focus(mapping);
   fireEvent.change(mapping, { target: { value: '/payload/amount' } });
-  fireEvent.click(await screen.findByText('/payload/amount~1total~0value'));
+  fireEvent.click(
+    await screen.findByText('/payload/amount~1total~0value', {
+      selector: '.ant-select-item-option-content'
+    })
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Save subtype' }));
   await waitFor(() =>
     expect(saved).toHaveBeenCalledWith({

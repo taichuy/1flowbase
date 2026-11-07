@@ -415,7 +415,8 @@ describe('event center configuration and observations', () => {
         }
       ]);
       renderPage();
-      fireEvent.click(await screen.findByRole('button', { name: 'Details' }));
+      const row = await screen.findByRole('row', { name: /Order/ });
+      fireEvent.click(within(row).getByRole('button', { name: 'Details' }));
       const editor = await screen.findByTestId('schema-json-editor');
       expect(JSON.parse(editor.textContent ?? '')).toEqual(payload_schema);
       expect(editor).toHaveAttribute('data-readonly', 'true');
@@ -571,6 +572,11 @@ describe('event center configuration and observations', () => {
       fireEvent.click(
         await screen.findByText('interfaces / orders · orders.create')
       );
+      await waitFor(() =>
+        expect(
+          within(drawer).getByRole('combobox', { name: 'Interface phase' })
+        ).toBeEnabled()
+      );
       fireEvent.mouseDown(
         within(drawer).getByRole('combobox', { name: 'Interface phase' })
       );
@@ -600,6 +606,11 @@ describe('event center configuration and observations', () => {
         fireEvent.keyDown(results, { key: 'Escape' });
       }
       fireEvent.click(within(drawer).getByRole('switch', { name: 'Enabled' }));
+      await waitFor(() =>
+        expect(
+          within(drawer).getByRole('button', { name: 'Save' })
+        ).toBeEnabled()
+      );
       fireEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
       await waitFor(() =>
         expect(api.createEventDefinition).toHaveBeenCalledWith(
@@ -664,6 +675,9 @@ describe('event center configuration and observations', () => {
     fireEvent.change(within(drawer).getByLabelText('Name'), {
       target: { value: 'Changed order' }
     });
+    await waitFor(() =>
+      expect(within(drawer).getByRole('button', { name: 'Save' })).toBeEnabled()
+    );
     fireEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
     await waitFor(() =>
       expect(api.updateEventDefinition).toHaveBeenCalledWith(

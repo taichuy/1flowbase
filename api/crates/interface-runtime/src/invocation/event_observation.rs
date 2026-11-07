@@ -24,7 +24,7 @@ impl ReceiptBuilder {
         })
     }
 
-    async fn observe_event_before<I: InterfaceContract>(&mut self, input: &I) {
+    pub(super) async fn observe_event_before<I: InterfaceContract>(&mut self, input: &I) {
         let Some(context) = self.event_context() else {
             return;
         };
@@ -61,7 +61,7 @@ impl ReceiptBuilder {
         self.finalization.records.extend(budget.records);
     }
 
-    async fn project_event_output<O: InterfaceContract>(&mut self, output: &O) {
+    pub(super) async fn project_event_output<O: InterfaceContract>(&mut self, output: &O) {
         if self.event_context().is_none() {
             return;
         }
@@ -83,7 +83,7 @@ impl ReceiptBuilder {
         }
     }
 
-    async fn observe_event_completion(
+    pub(super) async fn observe_event_completion(
         &mut self,
         terminal: InterfaceInvocationTerminal,
         classification: Option<Arc<str>>,
