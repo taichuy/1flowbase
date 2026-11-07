@@ -191,6 +191,28 @@ impl InterfaceAuthenticationAttempt {
             self.registry.fingerprint().clone(),
         );
         let mut finalization = InvocationFinalization::default();
+        if let Some(observer) = self.plan.event_observer.as_ref() {
+            let event = crate::InterfaceEvent::Completion {
+                context: crate::InterfaceEventContext {
+                    principal: None,
+                    definition: self.plan.definition().clone(),
+                    binding: self.plan.binding().clone(),
+                    resolved: crate::ResolvedInvocationPin::from_plan(&self.plan),
+                    invocation_id: self.lineage.invocation_id(),
+                    parent_invocation_id: self.lineage.parent_invocation_id(),
+                    graph_fingerprint: self.registry.graph_fingerprint().clone(),
+                    registry_fingerprint: self.registry.fingerprint().clone(),
+                    attempt: None,
+                    extension_context: None,
+                },
+                input: None,
+                output: None,
+                terminal: InterfaceInvocationTerminal::Rejected,
+                classification: Some(Arc::from(classification.as_str())),
+            };
+            crate::event_observation::observe_event(&mut finalization, observer.as_ref(), event)
+                .await;
+        }
         if let Some(hooks) = self.plan.erased_hook_plan() {
             hooks
                 .run_completion(

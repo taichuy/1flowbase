@@ -82,6 +82,10 @@ where
         );
         receipt.extension_context = extension_context.clone();
         if let Some(plan) = snapshot.plan(&binding_id) {
+            if plan.event_observer.is_some() {
+                receipt.event_principal =
+                    crate::InterfaceEventPrincipal::from_principal(&principal);
+            }
             receipt.resolve(plan);
         }
         let interruption = if controls.cancellation.is_cancelled() {
@@ -418,6 +422,7 @@ where
                 Ok(Ok(())) => {}
             }
         }
+        receipt.observe_event_before(&input).await;
         receipt.stage(InterfaceInvocationStage::Prepared);
         let Some(handler) = snapshot.stream_handler::<I, S, O, E, P>(definition.interface_id())
         else {
@@ -493,6 +498,7 @@ where
                 };
                 match terminal {
                     InterfaceStreamTerminal::Completed(ref output) => {
+                        receipt.project_event_output(output).await;
                         if let Some(hooks) = hook_plan.as_ref() {
                             hooks
                                 .run_after(&mut receipt.finalization, &hook_context, output)
@@ -620,6 +626,10 @@ where
         )
         .with_extension_context(extension_context);
         if let Some(plan) = snapshot.plan(&binding_id) {
+            if plan.event_observer.is_some() {
+                receipt.event_principal =
+                    crate::InterfaceEventPrincipal::from_principal(&principal);
+            }
             receipt.resolve(plan);
         }
         let initial_interruption = if controls.cancellation.is_cancelled() {
@@ -950,6 +960,7 @@ where
                 Ok(Ok(())) => {}
             }
         }
+        receipt.observe_event_before(&input).await;
         receipt.stage(InterfaceInvocationStage::Prepared);
         let Some(handler) = snapshot.handler::<I, O, E, P>(definition.interface_id()) else {
             return Err(receipt
@@ -1062,6 +1073,7 @@ where
             };
             match target {
                 Ok(value) => {
+                    receipt.project_event_output(&value).await;
                     if let Some(hook_plan) = hook_plan {
                         hook_plan
                             .run_after(&mut receipt.finalization, &hook_context, &value)

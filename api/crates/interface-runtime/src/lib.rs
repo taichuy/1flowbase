@@ -3,7 +3,12 @@
 mod authentication;
 mod contribution;
 mod decision;
+mod event_observation;
 mod extension;
+pub use event_observation::{
+    InterfaceEvent, InterfaceEventCapability, InterfaceEventContext, InterfaceEventObserver,
+    InterfaceEventObserverFuture, InterfaceEventPrincipal,
+};
 mod finalization;
 mod hook;
 pub use finalization::{InterfaceObserverRecord, InterfaceObserverStatus};

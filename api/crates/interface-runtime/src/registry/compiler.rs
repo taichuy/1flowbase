@@ -15,6 +15,7 @@ impl RegistryCompiler {
         active_owners: impl IntoIterator<Item = InterfaceOwner>,
     ) -> Self {
         Self {
+            event_observer: None,
             managed_factory: None,
             graph_fingerprint,
             known_operations: known_operations.into_iter().collect(),
@@ -742,6 +743,23 @@ impl RegistryCompiler {
             effective_handler_bindings.insert(interface_id.clone(), binding);
         }
 
+        let mut event_capabilities = BTreeMap::new();
+        for (id, binding) in &effective_handler_bindings {
+            let definition = &self.definitions[id];
+            if definition.event_observation_enabled() {
+                let (input_schema, output_schema) = binding
+                    .event_schemas()
+                    .ok_or_else(|| RegistryCompilationError::EventProjectionMismatch(id.clone()))?;
+                event_capabilities.insert(
+                    id.clone(),
+                    crate::InterfaceEventCapability::new(
+                        definition.clone(),
+                        input_schema,
+                        output_schema,
+                    ),
+                );
+            }
+        }
         let mut managed_contracts = BTreeMap::new();
         // Exact original bytes preserve insertion order in registry fingerprints.
         // This assembly-only index releases its keys after publication.
@@ -946,6 +964,11 @@ impl RegistryCompiler {
             plans.insert(
                 binding.binding_id().clone(),
                 CompiledInvocationPlan {
+                    event_observer: if definition.event_observation_enabled() {
+                        self.event_observer.clone()
+                    } else {
+                        None
+                    },
                     definition: definition.clone(),
                     binding: binding.clone(),
                     binding_fingerprint,
@@ -991,6 +1014,16 @@ impl RegistryCompiler {
             .collect::<Vec<_>>();
         let mut digest = Sha256::new();
         digest.update(fingerprint.as_str().as_bytes());
+        for capability in event_capabilities.values() {
+            digest.update([0]);
+            digest.update(capability.definition().interface_id().as_str().as_bytes());
+            digest.update(
+                serde_json::to_vec(capability.input_schema()).expect("declared schema serializes"),
+            );
+            digest.update(
+                serde_json::to_vec(capability.output_schema()).expect("declared schema serializes"),
+            );
+        }
         digest.update(
             serde_json::to_vec(&schema_identity).expect("static projection schemas serialize"),
         );
@@ -1000,6 +1033,7 @@ impl RegistryCompiler {
         ))
         .expect("schema fingerprint has a valid identity");
         Ok(Arc::new(CompiledInterfaceRegistry {
+            event_capabilities,
             managed_contracts,
             graph_fingerprint: self.graph_fingerprint,
             fingerprint,
@@ -1018,6 +1052,11 @@ impl RegistryCompiler {
 }
 
 impl RegistryCompiler {
+    pub fn with_event_observer(mut self, observer: Arc<dyn crate::InterfaceEventObserver>) -> Self {
+        self.event_observer = Some(observer);
+        self
+    }
+
     pub fn with_managed_invocations(
         mut self,
         factory: Arc<dyn crate::ManagedInterfaceInvocationFactory>,
