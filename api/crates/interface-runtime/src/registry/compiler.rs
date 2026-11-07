@@ -1,6 +1,17 @@
 use super::*;
 
 impl RegistryCompiler {
+    /// Internal read-only view for validating observation metadata. Registration ownership
+    /// and mutation remain inside the compiler.
+    pub(crate) fn registered_protocol_binding(
+        &self,
+        binding_id: &BindingId,
+    ) -> Option<&ProtocolBinding> {
+        self.protocol_bindings
+            .get(binding_id)
+            .map(|(binding, _)| binding)
+    }
+
     fn has_interface_input(&self, interface_id: &InterfaceId) -> bool {
         self.definitions.contains_key(interface_id)
             || self

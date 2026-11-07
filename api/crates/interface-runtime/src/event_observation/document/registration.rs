@@ -156,7 +156,9 @@ impl RegistryCompiler {
             .document_operations
             .get(binding_id)
             .ok_or_else(invalid)?;
-        let (binding, _) = self.protocol_bindings.get(binding_id).ok_or_else(invalid)?;
+        let binding = self
+            .registered_protocol_binding(binding_id)
+            .ok_or_else(invalid)?;
         if !validate_descriptor(&descriptor, binding, registration.generation()) {
             return Err(invalid());
         }
