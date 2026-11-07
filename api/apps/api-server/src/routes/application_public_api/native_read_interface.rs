@@ -1,3 +1,4 @@
+mod document_projection;
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use control_plane::application_public_api::{
@@ -905,7 +906,10 @@ pub(crate) fn compile_registry(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn register<I: InterfaceContract, O: InterfaceContract>(
+fn register<
+    I: crate::event_center::api_projection::ApiEventInput,
+    O: crate::event_center::api_projection::ApiEventOutput,
+>(
     compiler: &mut RegistryCompiler,
     owner: &InterfaceOwner,
     operation: AuthorizationOperation,
@@ -972,13 +976,19 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
             interface_runtime::PrincipalProfile::Application,
         ),
     )?;
+    let binding = ProtocolBinding::new(
+        BindingId::new(binding_id).expect("static binding id is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(route),
+    );
+    crate::event_center::api_projection::register_static_api_event::<I, O>(
+        compiler,
+        &binding,
+        "graph:application-native-read-v1",
+    )?;
     compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new(binding_id).expect("static binding id is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(route),
-        ),
+        binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new("api-server.application-api-key")
                 .expect("static authentication adapter reference is valid"),

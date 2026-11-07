@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use uuid::Uuid;
 
-mod event_projection;
+pub(crate) mod event_projection;
 mod interface;
 mod projection;
 mod routes;

@@ -100,6 +100,7 @@ struct Input {
 struct PreparedInput {
     batches: Vec<AgentLogsBatch>,
     counts: SourceSpanCounts,
+    document: Result<crate::routes::applications_group::application_runtime::log_exchange::event_projection::OtlpDocument, Arc<str>>,
 }
 impl Input {
     fn new(format: WireFormat, encoding: ContentEncoding, body: Bytes) -> Self {
@@ -115,7 +116,14 @@ impl Input {
                     .map_err(|_| "agent_logs_otlp_payload")?;
             let (batches, counts) =
                 validated_batches(&request).map_err(|_| "agent_logs_otlp_payload")?;
-            Ok(PreparedInput { batches, counts })
+            let document = crate::event_center::api_projection::to_value(&request).and_then(|value| {
+                crate::routes::applications_group::application_runtime::log_exchange::event_projection::document(&value)
+            });
+            Ok(PreparedInput {
+                batches,
+                counts,
+                document,
+            })
         })();
         Self {
             format,
@@ -145,7 +153,9 @@ where
         let store = self.0.clone();
         Box::pin(async move {
             // Validate the entire request before the first batch can write anything.
-            let PreparedInput { batches, counts } = input
+            let PreparedInput {
+                batches, counts, ..
+            } = input
                 .prepared
                 .map_err(|code| failure(ControlPlaneError::InvalidInput(code).into()))?;
             let principal = context.principal();

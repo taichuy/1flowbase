@@ -186,16 +186,22 @@ where
             PrincipalProfile::Application,
         ),
     )?;
-    compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new(BINDING).expect("static agent logs interface identity is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(
-                RouteIdentity::new("POST", "/api/logs/v1/events")
-                    .expect("static agent logs interface identity is valid"),
-            ),
+    let binding = ProtocolBinding::new(
+        BindingId::new(BINDING).expect("static agent logs interface identity is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(
+            RouteIdentity::new("POST", "/api/logs/v1/events")
+                .expect("static agent logs interface identity is valid"),
         ),
+    );
+    crate::event_center::api_projection::register_static_api_event::<Input, Output>(
+        &mut compiler,
+        &binding,
+        "graph:application-agent-logs-v1",
+    )?;
+    compiler.register_binding(
+        binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new("api-server.application-api-key")
                 .expect("static agent logs interface identity is valid"),
@@ -265,3 +271,8 @@ pub(crate) fn route_assembly(
         crate::external_route_assembly::post(ingest_events.layer(DefaultBodyLimit::disable())),
     )
 }
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
+#[cfg(test)]
+#[path = "agent_logs/_tests/document_projection.rs"]
+mod document_projection_tests;

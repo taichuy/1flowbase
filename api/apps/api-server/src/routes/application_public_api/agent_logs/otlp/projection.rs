@@ -87,3 +87,37 @@ impl InterfaceContract for TargetError {
         Some(json!({"kind":Self::CONTRACT_ID}))
     }
 }
+
+impl crate::event_center::api_projection::ApiEventInput for Input {
+    fn document_input_schema(
+        _: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Option<Value> {
+        Some(ep::object_schema([("body", crate::event_center::api_projection::schema::<crate::routes::applications_group::application_runtime::log_exchange::event_projection::OtlpDocument>())]))
+    }
+    fn project_document_input(
+        &self,
+        _: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<Value, Arc<str>> {
+        let prepared = self
+            .prepared
+            .as_ref()
+            .map_err(|code| Arc::<str>::from(*code))?;
+        let document = prepared.document.as_ref().map_err(Arc::clone)?;
+        Ok(json!({"body":crate::event_center::api_projection::to_value(document)?}))
+    }
+}
+impl crate::event_center::api_projection::ApiEventOutput for Output {
+    fn project_document_output(
+        &self,
+        _: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<Value, Arc<str>> {
+        // The standard OTLP acknowledgement is the actual HTTP result. The
+        // semantic receipt remains separately owned by the existing producer.
+        crate::event_center::api_projection::to_value(&self.response)
+    }
+}
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
+#[cfg(test)]
+#[path = "_tests/document_projection.rs"]
+mod document_projection_tests;

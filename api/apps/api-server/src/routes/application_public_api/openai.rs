@@ -203,6 +203,8 @@ async fn dispatch_chat_completion(
             return Err(error);
         }
     };
+    let document =
+        compatibility_interface::document_projection::ProtocolRequestDocument::chat(&value);
     let model = value
         .get("model")
         .and_then(Value::as_str)
@@ -269,6 +271,7 @@ async fn dispatch_chat_completion(
                     resume_binding_id,
                     principal,
                     compatibility_interface::CompatibilityBlockingInput {
+                        document: document.clone(),
                         command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                             initial_run: plan.initial_run,
                             command: plan.command,
@@ -297,6 +300,7 @@ async fn dispatch_chat_completion(
                     resume_binding_id,
                     principal,
                     compatibility_interface::CompatibilityBlockingInput {
+                        document: document.clone(),
                         command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                             initial_run: plan.initial_run,
                             command: plan.command,
@@ -398,6 +402,7 @@ async fn dispatch_chat_completion(
             stream_binding_id,
             principal,
             compatibility_interface::CompatibilityBlockingInput {
+                document: document.clone(),
                 command: compatibility_interface::CompatibilityInvocationCommand::Start {
                     request,
                     protocol: TranslationProtocol::OpenAiChat,
@@ -416,6 +421,7 @@ async fn dispatch_chat_completion(
         binding_id,
         principal,
         compatibility_interface::CompatibilityBlockingInput {
+            document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Start {
                 request,
                 protocol: TranslationProtocol::OpenAiChat,
@@ -743,9 +749,14 @@ pub async fn list_models(
         "/v1/chat/completions/models" => compatibility_interface::OPENAI_CHAT_MODELS_BINDING_ID,
         _ => compatibility_interface::OPENAI_MODELS_BINDING_ID,
     };
-    let output = compatibility_interface::invoke_models(state, binding_id, credential.token)
-        .await
-        .map_err(OpenAiRouteError::from)?;
+    let output = compatibility_interface::invoke_models(
+        state,
+        binding_id,
+        credential.token,
+        query.client_version.clone(),
+    )
+    .await
+    .map_err(OpenAiRouteError::from)?;
     let model_count = output.models.len();
 
     info!(
@@ -1018,3 +1029,23 @@ pub(super) use response_projection::openai_usage;
 pub(super) use response_projection::to_openai_responses_response;
 
 use response_projection::*;
+
+// Reuse the actual protocol serializer for both HTTP model-list variants.
+pub(crate) fn models_document(
+    models: &[OpenAiCompatibleModel],
+    created: i64,
+    codex: bool,
+) -> Result<Value, Arc<str>> {
+    if codex {
+        Ok(to_codex_model_list_response(models.to_vec()))
+    } else {
+        crate::event_center::api_projection::to_value(&to_openai_model_list_response(
+            models.to_vec(),
+            created,
+        ))
+    }
+}
+pub(crate) fn models_document_schema() -> Value {
+    serde_json::json!({"anyOf":[crate::event_center::api_projection::schema::<OpenAiModelListResponse>(),
+        {"type":"object","properties":{"models":{"type":"array","items":{"type":"object"}}},"required":["models"],"additionalProperties":false}]})
+}

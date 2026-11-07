@@ -213,6 +213,8 @@ async fn dispatch_message(
     );
     let bearer_token = anthropic_token(&headers)?;
     let mut value = parse_anthropic_json_body(body)?;
+    let document =
+        compatibility_interface::document_projection::ProtocolRequestDocument::anthropic(&value);
     let source_body = value.clone();
     super::provider_session::session_header(&headers, "x-claude-code-session-id")?;
     merge_claude_code_session_header(&mut value, &headers);
@@ -264,6 +266,7 @@ async fn dispatch_message(
                     resume_binding_id,
                     principal,
                     compatibility_interface::CompatibilityBlockingInput {
+                        document: document.clone(),
                         command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                             initial_run: plan.initial_run,
                             command: plan.command,
@@ -282,6 +285,7 @@ async fn dispatch_message(
                     resume_binding_id,
                     principal,
                     compatibility_interface::CompatibilityBlockingInput {
+                        document: document.clone(),
                         command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                             initial_run: plan.initial_run,
                             command: plan.command,
@@ -356,6 +360,7 @@ async fn dispatch_message(
             compatibility_interface::ANTHROPIC_MESSAGES_STREAM_BINDING_ID,
             principal,
             compatibility_interface::CompatibilityBlockingInput {
+                document: document.clone(),
                 command: compatibility_interface::CompatibilityInvocationCommand::Start {
                     request,
                     protocol: TranslationProtocol::AnthropicMessages,
@@ -374,6 +379,7 @@ async fn dispatch_message(
         compatibility_interface::ANTHROPIC_MESSAGES_BINDING_ID,
         principal,
         compatibility_interface::CompatibilityBlockingInput {
+            document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Start {
                 request,
                 protocol: TranslationProtocol::AnthropicMessages,
@@ -437,6 +443,8 @@ async fn dispatch_count_message_tokens(
     );
     let bearer_token = anthropic_token(&headers)?;
     let mut value = parse_anthropic_json_body(body)?;
+    let document =
+        compatibility_interface::document_projection::ProtocolRequestDocument::anthropic(&value);
     let source_body = value.clone();
     super::provider_session::session_header(&headers, "x-claude-code-session-id")?;
     merge_claude_code_session_header(&mut value, &headers);
@@ -472,6 +480,7 @@ async fn dispatch_count_message_tokens(
         compatibility_interface::ANTHROPIC_COUNT_TOKENS_BINDING_ID,
         bearer_token,
         compatibility_interface::CompatibilityBlockingInput {
+            document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Start {
                 request: translation.request,
                 protocol: TranslationProtocol::AnthropicMessages,

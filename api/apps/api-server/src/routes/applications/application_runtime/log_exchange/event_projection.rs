@@ -10,7 +10,7 @@ use crate::routes::applications_group::event_projection as application;
 
 #[derive(Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct OtlpDocument {
+pub(crate) struct OtlpDocument {
     resource_spans: Vec<ResourceSpans>,
 }
 
@@ -91,7 +91,7 @@ struct ImportBody {
     otlp: OtlpDocument,
 }
 
-fn document(value: &Value) -> Result<OtlpDocument, Arc<str>> {
+pub(crate) fn document(value: &Value) -> Result<OtlpDocument, Arc<str>> {
     // Decode through the actual protocol DTO first. This preserves canonical OTLP
     // hex IDs and string-encoded nanoseconds before selecting the safe fields.
     let request: crate::agent_logs_protocol::ExportTraceServiceRequest =

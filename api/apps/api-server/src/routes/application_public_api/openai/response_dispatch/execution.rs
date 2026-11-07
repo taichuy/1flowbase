@@ -2,6 +2,8 @@ use super::*;
 use std::{future::Future, pin::Pin};
 
 pub(super) struct ResponseExecutionContext {
+    pub(super) document:
+        Result<compatibility_interface::document_projection::ProtocolRequestDocument, Arc<str>>,
     pub(super) state: Arc<ApiState>,
     // Retain the frozen registry and authenticated HTTP carrier as one owner.
     pub(super) principal: compatibility_interface::ApplicationInvocationAuthentication,
@@ -73,6 +75,7 @@ async fn execute_generate(
         blocking_binding_id: _,
     } = start;
     let ResponseExecutionContext {
+        document,
         state,
         principal,
         route_path,
@@ -94,6 +97,7 @@ async fn execute_generate(
             stream_binding_id,
             principal,
             compatibility_interface::CompatibilityBlockingInput {
+                document: document.clone(),
                 command: compatibility_interface::CompatibilityInvocationCommand::Start {
                     request,
                     protocol: TranslationProtocol::OpenAiResponses,
@@ -142,6 +146,7 @@ async fn execute_generate(
             stream_binding_id,
             principal,
             compatibility_interface::CompatibilityBlockingInput {
+                document: document.clone(),
                 command: compatibility_interface::CompatibilityInvocationCommand::Start {
                     request,
                     protocol: TranslationProtocol::OpenAiResponses,
@@ -165,6 +170,7 @@ async fn execute_generate(
         compatibility_interface::OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
         principal,
         compatibility_interface::CompatibilityBlockingInput {
+            document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Start {
                 request,
                 protocol: TranslationProtocol::OpenAiResponses,
@@ -202,6 +208,7 @@ async fn execute_compact(
         provider_transport_payload,
     } = start;
     let ResponseExecutionContext {
+        document,
         state,
         principal,
         route_path: _,
@@ -229,6 +236,7 @@ async fn execute_compact(
         blocking_binding_id,
         principal,
         compatibility_interface::CompatibilityBlockingInput {
+            document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Start {
                 request,
                 protocol: TranslationProtocol::OpenAiResponses,
@@ -308,6 +316,7 @@ async fn execute_resume(
         usage_baseline,
     } = resume;
     let ResponseExecutionContext {
+        document,
         state,
         principal,
         route_path,
@@ -325,6 +334,7 @@ async fn execute_resume(
     } = *plan;
     if response_mode.as_deref() == Some("streaming") {
         let input = compatibility_interface::CompatibilityBlockingInput {
+            document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                 initial_run,
                 command,
@@ -382,6 +392,7 @@ async fn execute_resume(
         stream_binding_id,
         principal,
         compatibility_interface::CompatibilityBlockingInput {
+            document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                 initial_run,
                 command,

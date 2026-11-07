@@ -92,6 +92,8 @@ async fn prepare_response(
             return Err(error);
         }
     };
+    let document =
+        compatibility_interface::document_projection::ProtocolRequestDocument::responses(&value);
     if matches!(delivery, OpenAiResponseDelivery::TypedEvents) {
         value
             .as_object_mut()
@@ -301,6 +303,7 @@ async fn prepare_response(
                         execution::PreparedResumeResponse {
                             usage_baseline,
                             context: execution::ResponseExecutionContext {
+                                document: document.clone(),
                                 state,
                                 principal,
                                 route_path,
@@ -457,6 +460,7 @@ async fn prepare_response(
     Ok(execution::PreparedResponseDispatch::Start(Box::new(
         execution::PreparedStartResponse {
             context: execution::ResponseExecutionContext {
+                document: document.clone(),
                 state,
                 principal,
                 route_path,

@@ -1,4 +1,5 @@
 use control_plane::client_trajectory::ClientTrajectoryRecorder;
+pub(crate) mod document_projection;
 mod managed_projection;
 
 use std::{future::Future, pin::Pin, sync::Arc};
@@ -85,6 +86,7 @@ const AUTHENTICATION_ADAPTER: &str = "api-server.application-api-key";
 const AUTHORIZATION_ADAPTER: &str = "api-server.application-compatibility-run";
 
 pub(crate) struct CompatibilityBlockingInput {
+    pub(crate) document: Result<document_projection::ProtocolRequestDocument, Arc<str>>,
     pub(crate) command: CompatibilityInvocationCommand,
 }
 

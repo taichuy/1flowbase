@@ -1,3 +1,4 @@
+pub(crate) mod document_projection;
 mod event_projection;
 
 use std::{future::Future, pin::Pin, sync::Arc};
@@ -490,15 +491,17 @@ pub(crate) fn compile_registry(
                 interface_runtime::PrincipalProfile::Application,
             ),
         )?;
-        compiler.register_binding(
-            ProtocolBinding::new(
-                BindingId::new(binding_id).expect("static binding is valid"),
-                identity,
-                contracts,
-                projection,
-            ),
-            adapter_plan(),
-        )?;
+        let binding = ProtocolBinding::new(
+            BindingId::new(binding_id).expect("static binding is valid"),
+            identity,
+            contracts,
+            projection,
+        );
+        crate::event_center::api_projection::register_static_api_event::<
+            ApplicationNativeRunInput,
+            ApplicationNativeRunOutput,
+        >(&mut compiler, &binding, "graph:application-native-run-v1")?;
+        compiler.register_binding(binding, adapter_plan())?;
     }
     compiler.bind_handler::<ApplicationNativeRunInput, ApplicationNativeRunOutput, ApplicationNativeRunTargetError, ApplicationPrincipal>(
         &InterfaceId::new(ASYNC_INTERFACE_ID).expect("static async interface id is valid"),
