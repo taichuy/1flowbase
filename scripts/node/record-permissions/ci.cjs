@@ -9,7 +9,7 @@ run('manifest',[...base,'-p','extension-package-runtime','--lib','_tests::manage
 run('worker-frame',[...base,'-p','extension-contracts','--lib','worker_cannot_supply_record_permission_context_in_frame_or_data_request'],1);
 run('policy-service',[...base,'-p','control-plane','--lib','record_permissions::tests::'],6);
 run('postgres-data',[...base,'-p','storage-durable-postgres','--lib','_tests::plugin::plugin_data_repository_tests::','--','--test-threads=1'],15);
-run('worker-context',[...base,'-p','runtime-extension-host','--lib','managed_record_call_context'],1);
+run('worker-context',[...base,'-p','runtime-extension-host','--lib','resource_replay_retains_worker_scope_without_restoring_recursive_callback_delegation'],1);
 if(run('runtime-fixture',['build','--locked','--manifest-path','api/Cargo.toml','-p','runtime-extension-sdk','--example','record_permission_worker']))env.RECORD_PERMISSION_WORKER_FIXTURE=path.resolve('api/target/debug/examples/record_permission_worker');
 run('canonical-managed',[...base,'-p','api-server','--lib','managed_services::','--','--test-threads=1','--skip','record_permission_runtime'],1);
 run('record-runtime',[...base,'-p','api-server','--lib','record_permission_runtime','--','--include-ignored','--test-threads=1'],1);
