@@ -717,7 +717,7 @@ async fn plugin_template_native_reset_rejects_foreign_ownership_and_rolls_back_u
         .seed_mcp_bundle_graph_once_atomically(&cross_workspace)
         .await
         .is_err());
-    let mut foreign = manifest.clone();
+    let (mut foreign, _) = native_template_fixture("2.0.0");
     foreign.publisher_namespace = "foreign".into();
     let foreign_installation = install(&store, user.id, &foreign).await;
     let mut foreign_input = input.clone();
@@ -725,10 +725,14 @@ async fn plugin_template_native_reset_rejects_foreign_ownership_and_rolls_back_u
         installation_id: foreign_installation,
     };
     foreign_input.source.organization = "foreign".into();
-    assert!(store
-        .seed_mcp_bundle_graph_once_atomically(&foreign_input)
-        .await
-        .is_err());
+    foreign_input.source.bundle_version = foreign.version.clone();
+    assert_eq!(
+        store
+            .seed_mcp_bundle_graph_once_atomically(&foreign_input)
+            .await
+            .unwrap_err(),
+        control_plane::errors::ControlPlaneError::Conflict("mcp_plugin_template_seed_collision")
+    );
     assert!(!store
         .has_mcp_extension_bundle_import(workspace.id, foreign_installation)
         .await
