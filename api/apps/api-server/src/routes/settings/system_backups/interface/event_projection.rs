@@ -2,7 +2,7 @@ use super::*;
 use crate::event_center::api_projection::{
     schema, to_value, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
 };
-use crate::routes::settings::document_event::{self as de, query_fields as q};
+use crate::routes::document_event::{self as de, query_fields as q};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -15,7 +15,7 @@ impl ApiEventInput for SystemBackupsInput {
     fn document_input_schema(c: &ApiEventOperationContext) -> Option<Value> {
         match c.interface_id.as_str() {
             "system_backups.create" => Some(de::body_schema(de::without_fields(
-                schema::<crate::routes::settings::system_backups::CreateBackupRequest>(),
+                schema::<crate::routes::system_backups::CreateBackupRequest>(),
                 CREDENTIALS,
             ))),
             "system_backups.recovery.reauth" => Some(de::body_schema(de::without_fields(

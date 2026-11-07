@@ -2,7 +2,7 @@ use super::*;
 use crate::event_center::api_projection::{
     to_value, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
 };
-use crate::routes::settings::document_event::query_fields as q;
+use crate::routes::document_event::query_fields as q;
 use serde_json::{json, Value};
 use std::sync::Arc;
 impl ApiEventInput for ApplicationManagementQueryParams {

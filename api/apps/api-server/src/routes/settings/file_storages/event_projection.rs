@@ -2,7 +2,7 @@ use super::*;
 use crate::event_center::api_projection::{
     schema, to_value, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
 };
-use crate::routes::settings::document_event as de;
+use crate::routes::document_event as de;
 use serde_json::{json, Value};
 use std::sync::Arc;
 

@@ -2,11 +2,11 @@ use super::*;
 use crate::event_center::api_projection::{
     schema, to_value, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
 };
-use crate::routes::settings::document_event as de;
+use crate::routes::document_event as de;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-use crate::routes::settings::host_infrastructure::CacheEntryMetadataResponse;
+use crate::routes::host_infrastructure::CacheEntryMetadataResponse;
 fn metadata_schema() -> Value {
     de::without_fields(schema::<CacheEntryMetadataResponse>(), &["key"])
 }

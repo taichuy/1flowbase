@@ -2,11 +2,11 @@ use super::*;
 use crate::event_center::api_projection::{
     schema, to_value, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
 };
-use crate::routes::settings::document_event::{self as de, query_fields as q};
+use crate::routes::document_event::{self as de, query_fields as q};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-use crate::routes::settings::host_infrastructure::MemoryEntryMetadataResponse;
+use crate::routes::host_infrastructure::MemoryEntryMetadataResponse;
 // Reveal payloads, raw keys, opaque handles and unstructured entry metadata stay with the owner.
 const ENTRY_HIDDEN: &[&str] = &["key", "entry_ref", "owner", "metadata"];
 const REVEAL_HIDDEN: &[&str] = &["value", "value_preview"];
