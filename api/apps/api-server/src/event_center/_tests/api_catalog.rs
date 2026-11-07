@@ -372,3 +372,44 @@ fn explicit_owner_restriction_changes_only_its_phase_and_unknown_owner_code_fail
         assert!(detail.completion_schema.is_none() && detail.result_schema.is_none());
     }
 }
+
+#[test]
+fn one_documented_api_preserves_real_blocking_and_stream_terminal_alternatives() {
+    let docs = docs();
+    let registry = compiled(&docs, Arc::new(Observer::default()));
+    let mut blocking = registry
+        .document_operations()
+        .next()
+        .unwrap()
+        .static_descriptor
+        .unwrap()
+        .clone();
+    blocking.schemas.result = Some(
+        json!({"type":"object","properties":{"id":{"type":"string"},"choices":{"type":"array"}},"required":["id","choices"],"additionalProperties":false}),
+    );
+    let mut streaming = blocking.clone();
+    streaming.schemas.result = Some(
+        json!({"type":"object","properties":{"run_id":{"type":"string"},"answer":{"type":"string"}},"required":["run_id","answer"],"additionalProperties":false}),
+    );
+    let (availability, result) = phase_contract(&[&blocking, &streaming], false, true);
+    assert!(availability.available());
+    let validator = jsonschema::validator_for(result.as_ref().unwrap()).unwrap();
+    assert!(validator.is_valid(&json!({"id":"generated-once","choices":[]})));
+    assert!(validator.is_valid(&json!({"run_id":"logical-run","answer":"actual"})));
+    assert!(!validator.is_valid(&json!({"stream_completed":true})));
+    assert!(phase_contract(&[&blocking, &streaming], false, false)
+        .1
+        .is_none());
+    streaming.schemas.result = None;
+    streaming.schemas.result_unavailable = Some("missing_streaming_terminal".into());
+    assert_eq!(
+        phase_contract(&[&blocking, &streaming], false, true),
+        (
+            unavailable(ApiEventUnavailableReason::MissingStreamingTerminal),
+            None
+        )
+    );
+    assert!(phase_contract(&[&blocking, &streaming], true, true)
+        .0
+        .available());
+}

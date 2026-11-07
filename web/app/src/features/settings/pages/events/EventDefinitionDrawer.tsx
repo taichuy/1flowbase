@@ -32,7 +32,6 @@ export function EventDefinitionDrawer({
   onSave
 }: {
   entry: EventCatalogEntry | null;
-  catalog: EventCatalogEntry[];
   saving: boolean;
   editable: boolean;
   error: boolean;

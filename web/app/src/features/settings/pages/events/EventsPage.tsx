@@ -328,7 +328,6 @@ export function EventsPage() {
         <EventDefinitionDrawer
           key={drawer.entry ? eventCatalogIdentity(drawer.entry) : 'create'}
           entry={drawer.entry}
-          catalog={catalog.data ?? []}
           editable={editable}
           saving={save.isPending}
           error={save.isError}
