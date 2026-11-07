@@ -111,6 +111,10 @@ async fn event_center_api_directory_matches_complete_shared_catalog_including_mc
             "/api/console/settings/system-templates/export",
             &["format"][..],
         ),
+        ("GET", "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries", &["path", "cursor", "limit", "byte_limit"][..]),
+        ("GET", "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/stats", &["path"][..]),
+        ("GET", "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/tree", &["path", "cursor", "limit", "byte_limit"][..]),
+        ("GET", "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries/search", &["q", "path", "cursor", "limit", "byte_limit"][..]),
     ] {
         let shared_row = shared
             .iter()
@@ -123,11 +127,11 @@ async fn event_center_api_directory_matches_complete_shared_catalog_including_mc
             .filter(|parameter| parameter["parameter_type"] == "url")
             .map(|parameter| parameter["name"].as_str().unwrap())
             .collect::<BTreeSet<_>>();
-        assert_eq!(
-            query_parameters,
-            expected.iter().copied().collect(),
-            "actual query contract for {method} {path}"
-        );
+        let mut expected_url_parameters = expected.iter().copied().collect::<BTreeSet<_>>();
+        if path.contains("{contract_code}") {
+            expected_url_parameters.insert("contract_code");
+        }
+        assert_eq!(query_parameters, expected_url_parameters, "actual path/query contract for {method} {path}");
         let row = rows
             .iter()
             .find(|row| row["method"] == method && row["path"] == path)
