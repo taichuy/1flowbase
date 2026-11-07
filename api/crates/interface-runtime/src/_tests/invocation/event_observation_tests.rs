@@ -734,3 +734,6 @@ async fn before_observes_the_actual_prepared_input_after_compiled_typed_mutation
         Some(json!({"value":15})),
     );
 }
+
+#[path = "document_operation_tests.rs"]
+mod document_operation_tests;

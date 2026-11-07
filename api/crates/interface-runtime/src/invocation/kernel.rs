@@ -82,7 +82,9 @@ where
         );
         receipt.extension_context = extension_context.clone();
         if let Some(plan) = snapshot.plan(&binding_id) {
-            if plan.event_observer.is_some() {
+            if plan.event_observer.is_some()
+                || (plan.document_observer.is_some() && plan.document_operation.is_some())
+            {
                 receipt.event_principal =
                     crate::InterfaceEventPrincipal::from_principal(&principal);
             }
@@ -423,6 +425,11 @@ where
             }
         }
         receipt.observe_event_before(&input).await;
+        if let Some(session) = &receipt.document_operation {
+            if session.is_static() {
+                let _ = session.observe_before(&input).await;
+            }
+        }
         receipt.stage(InterfaceInvocationStage::Prepared);
         let Some(handler) = snapshot.stream_handler::<I, S, O, E, P>(definition.interface_id())
         else {
@@ -436,13 +443,14 @@ where
         let attempt = ExecutionAttempt::first(target);
         receipt.dispatch(attempt.clone());
         receipt.stage(InterfaceInvocationStage::Executing);
-        let context = InterfaceHandlerContext::new(
+        let mut context = InterfaceHandlerContext::new(
             principal,
             attempt,
             lineage.invocation_id(),
             snapshot.graph_fingerprint().clone(),
             snapshot.fingerprint().clone(),
         );
+        context.document_operation = receipt.document_operation.clone();
         let stream = match await_in_flight(&controls, handler.invoke_stream(context, input)).await {
             Err(interruption) => {
                 return Err(receipt
@@ -502,6 +510,11 @@ where
                         if let Some(hooks) = hook_plan.as_ref() {
                             hooks
                                 .run_after(&mut receipt.finalization, &hook_context, output)
+                                .await;
+                        }
+                        if let Some(session) = &receipt.document_operation {
+                            session
+                                .project_output(output, &mut receipt.finalization)
                                 .await;
                         }
                         receipt.stage(InterfaceInvocationStage::PostProcessed);
@@ -626,7 +639,9 @@ where
         )
         .with_extension_context(extension_context);
         if let Some(plan) = snapshot.plan(&binding_id) {
-            if plan.event_observer.is_some() {
+            if plan.event_observer.is_some()
+                || (plan.document_observer.is_some() && plan.document_operation.is_some())
+            {
                 receipt.event_principal =
                     crate::InterfaceEventPrincipal::from_principal(&principal);
             }
@@ -961,6 +976,11 @@ where
             }
         }
         receipt.observe_event_before(&input).await;
+        if let Some(session) = &receipt.document_operation {
+            if session.is_static() {
+                let _ = session.observe_before(&input).await;
+            }
+        }
         receipt.stage(InterfaceInvocationStage::Prepared);
         let Some(handler) = snapshot.handler::<I, O, E, P>(definition.interface_id()) else {
             return Err(receipt
@@ -986,13 +1006,14 @@ where
         }));
         receipt.dispatch(attempt.clone());
         receipt.stage(InterfaceInvocationStage::Executing);
-        let context = InterfaceHandlerContext::new(
+        let mut context = InterfaceHandlerContext::new(
             principal,
             attempt,
             lineage.invocation_id(),
             snapshot.graph_fingerprint().clone(),
             snapshot.fingerprint().clone(),
         );
+        context.document_operation = receipt.document_operation.clone();
         Ok(Box::new(PreparedUnaryInvocation {
             snapshot,
             plan,
@@ -1077,6 +1098,11 @@ where
                     if let Some(hook_plan) = hook_plan {
                         hook_plan
                             .run_after(&mut receipt.finalization, &hook_context, &value)
+                            .await;
+                    }
+                    if let Some(session) = &receipt.document_operation {
+                        session
+                            .project_output(&value, &mut receipt.finalization)
                             .await;
                     }
                     receipt.stage(InterfaceInvocationStage::PostProcessed);

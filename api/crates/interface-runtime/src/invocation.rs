@@ -951,6 +951,7 @@ async fn run_failure_hooks<I, O>(
 }
 
 struct ReceiptBuilder {
+    document_operation: Option<crate::DocumentOperationSession>,
     event_principal: Option<crate::InterfaceEventPrincipal>,
     event_observer_context: Option<crate::hook::InvocationExtensionContext>,
     event_input: Option<serde_json::Value>,
@@ -983,6 +984,7 @@ impl ReceiptBuilder {
         controls: &InvocationControls,
     ) -> Self {
         Self {
+            document_operation: None,
             event_principal: None,
             event_observer_context: None,
             event_input: None,
@@ -1032,12 +1034,39 @@ impl ReceiptBuilder {
                 .map(crate::hook::InvocationExtensionContext)
             });
         }
+        if self.frozen_plan.is_none() {
+            if let (Some(registration), Some(observer)) =
+                (&plan.document_operation, &plan.document_observer)
+            {
+                let context = crate::InterfaceEventContext {
+                    principal: self.event_principal.clone(),
+                    definition: plan.definition().clone(),
+                    binding: plan.binding().clone(),
+                    resolved: ResolvedInvocationPin::from_plan(plan),
+                    invocation_id: self.invocation_id,
+                    parent_invocation_id: self.parent_invocation_id,
+                    graph_fingerprint: self.graph_fingerprint.clone(),
+                    registry_fingerprint: self.registry_fingerprint.clone(),
+                    attempt: self.attempt.clone(),
+                    extension_context: self.extension_context.clone(),
+                    observer_context: None,
+                };
+                self.document_operation = Some(crate::DocumentOperationSession::new(
+                    registration.clone(),
+                    observer.clone(),
+                    context,
+                ));
+            }
+        }
         self.frozen_plan = Some(plan.clone());
         self.interface_id = Some(plan.definition().interface_id().clone());
         self.resolved = Some(ResolvedInvocationPin::from_plan(plan));
     }
 
     fn dispatch(&mut self, attempt: ExecutionAttempt) {
+        if let Some(session) = &self.document_operation {
+            session.update_attempt(Some(attempt.clone()));
+        }
         self.attempt = Some(attempt);
         self.stage(InterfaceInvocationStage::Dispatched);
     }
@@ -1071,7 +1100,7 @@ impl ReceiptBuilder {
         terminal: InterfaceInvocationTerminal,
         classification: Option<Arc<str>>,
     ) {
-        self.observe_event_completion(terminal, classification)
+        self.observe_event_completion(terminal, classification.clone())
             .await;
         if let Some(hooks) = self
             .frozen_plan
@@ -1088,6 +1117,11 @@ impl ReceiptBuilder {
             context.managed_invocation = self.managed_invocation.clone();
             hooks
                 .run_completion(&mut self.finalization, &context, terminal)
+                .await;
+        }
+        if let Some(session) = self.document_operation.take() {
+            session
+                .complete(terminal, classification, &mut self.finalization)
                 .await;
         }
     }

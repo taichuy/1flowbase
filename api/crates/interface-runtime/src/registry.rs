@@ -588,6 +588,9 @@ impl InvocationAdapterPlan {
 
 #[derive(Clone)]
 pub struct CompiledInvocationPlan {
+    pub(crate) document_observer: Option<Arc<dyn crate::DocumentOperationObserver>>,
+    pub(crate) document_operation:
+        Option<Arc<dyn crate::event_observation::document::ErasedDocumentOperationRegistration>>,
     pub(crate) event_observer: Option<Arc<dyn crate::InterfaceEventObserver>>,
     definition: InterfaceDefinition,
     binding: ProtocolBinding,
@@ -706,6 +709,7 @@ where
     invocation_id: InvocationId,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
+    pub(crate) document_operation: Option<crate::DocumentOperationSession>,
 }
 
 impl<P> InterfaceHandlerContext<P>
@@ -720,6 +724,7 @@ where
         registry_fingerprint: RegistryFingerprint,
     ) -> Self {
         Self {
+            document_operation: None,
             principal_summary: principal.summary(),
             principal,
             attempt,
@@ -727,6 +732,10 @@ where
             graph_fingerprint,
             registry_fingerprint,
         }
+    }
+
+    pub fn document_operation(&self) -> Option<&crate::DocumentOperationSession> {
+        self.document_operation.as_ref()
     }
 
     pub fn principal(&self) -> &P {
@@ -806,6 +815,7 @@ where
 }
 
 trait ErasedInterfaceBinding: Send + Sync {
+    fn document_contract_types(&self) -> (std::any::TypeId, std::any::TypeId);
     fn event_schemas(&self) -> Option<(serde_json::Value, serde_json::Value)>;
     fn managed_contracts(&self) -> Vec<ManagedContractSchema>;
     fn install_managed(
@@ -859,6 +869,9 @@ where
     E: InterfaceContract,
     P: InvocationPrincipal,
 {
+    fn document_contract_types(&self) -> (std::any::TypeId, std::any::TypeId) {
+        (std::any::TypeId::of::<I>(), std::any::TypeId::of::<O>())
+    }
     fn event_schemas(&self) -> Option<(serde_json::Value, serde_json::Value)> {
         Some((I::event_projection_schema()?, O::event_projection_schema()?))
     }
@@ -903,6 +916,9 @@ where
     E: InterfaceContract,
     P: InvocationPrincipal,
 {
+    fn document_contract_types(&self) -> (std::any::TypeId, std::any::TypeId) {
+        (std::any::TypeId::of::<I>(), std::any::TypeId::of::<O>())
+    }
     fn event_schemas(&self) -> Option<(serde_json::Value, serde_json::Value)> {
         Some((I::event_projection_schema()?, O::event_projection_schema()?))
     }
@@ -941,6 +957,8 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RegistryCompilationError {
+    #[error("document operation registration does not match binding {0}")]
+    DocumentOperationMismatch(BindingId),
     #[error("event projection schema is absent for opted-in interface {0}")]
     EventProjectionMismatch(InterfaceId),
     #[error("managed projection is absent or inconsistent for interface {0}")]
@@ -1010,6 +1028,11 @@ pub enum RegistryCompilationError {
 }
 
 pub struct RegistryCompiler {
+    pub(crate) document_observer: Option<Arc<dyn crate::DocumentOperationObserver>>,
+    pub(crate) document_operations: BTreeMap<
+        BindingId,
+        Arc<dyn crate::event_observation::document::ErasedDocumentOperationRegistration>,
+    >,
     event_observer: Option<Arc<dyn crate::InterfaceEventObserver>>,
     managed_factory: Option<Arc<dyn crate::ManagedInterfaceInvocationFactory>>,
     graph_fingerprint: GraphFingerprint,

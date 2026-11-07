@@ -223,6 +223,30 @@ impl InterfaceAuthenticationAttempt {
                 )
                 .await;
         }
+        if let (Some(registration), Some(observer)) =
+            (&self.plan.document_operation, &self.plan.document_observer)
+        {
+            let context = crate::InterfaceEventContext {
+                principal: None,
+                definition: self.plan.definition().clone(),
+                binding: self.plan.binding().clone(),
+                resolved: crate::ResolvedInvocationPin::from_plan(&self.plan),
+                invocation_id: self.lineage.invocation_id(),
+                parent_invocation_id: self.lineage.parent_invocation_id(),
+                graph_fingerprint: self.registry.graph_fingerprint().clone(),
+                registry_fingerprint: self.registry.fingerprint().clone(),
+                attempt: None,
+                extension_context: None,
+                observer_context: None,
+            };
+            crate::DocumentOperationSession::new(registration.clone(), observer.clone(), context)
+                .complete(
+                    InterfaceInvocationTerminal::Rejected,
+                    Some(Arc::from(classification.as_str())),
+                    &mut finalization,
+                )
+                .await;
+        }
         InterfaceAuthenticationRejectionReceipt {
             invocation_id: self.lineage.invocation_id(),
             parent_invocation_id: self.lineage.parent_invocation_id(),

@@ -15,6 +15,8 @@ impl RegistryCompiler {
         active_owners: impl IntoIterator<Item = InterfaceOwner>,
     ) -> Self {
         Self {
+            document_observer: None,
+            document_operations: BTreeMap::new(),
             event_observer: None,
             managed_factory: None,
             graph_fingerprint,
@@ -913,6 +915,33 @@ impl RegistryCompiler {
                 &self.graph_fingerprint,
             )?;
         }
+        for (id, registration) in &self.document_operations {
+            let Some((binding, _)) = self.protocol_bindings.get(id) else {
+                return Err(RegistryCompilationError::DocumentOperationMismatch(
+                    id.clone(),
+                ));
+            };
+            let (input, output) = registration.contracts();
+            let typed_handler =
+                effective_handler_bindings.get(binding.interface_identity().interface_id());
+            if typed_handler.is_none_or(|handler| {
+                handler.document_contract_types() != registration.contract_types()
+            }) || registration.generation().trim().is_empty()
+                || &input != binding.input_contract()
+                || &output != binding.output_contract()
+                || registration.static_projection().is_some_and(|p| {
+                    !crate::event_observation::document::validate_descriptor(
+                        &p.descriptor,
+                        binding,
+                        registration.generation(),
+                    )
+                })
+            {
+                return Err(RegistryCompilationError::DocumentOperationMismatch(
+                    id.clone(),
+                ));
+            }
+        }
         let mut plans = BTreeMap::new();
         for (binding, adapter_plan) in self.protocol_bindings.values() {
             let Some(definition) = self
@@ -964,6 +993,8 @@ impl RegistryCompiler {
             plans.insert(
                 binding.binding_id().clone(),
                 CompiledInvocationPlan {
+                    document_observer: self.document_observer.clone(),
+                    document_operation: self.document_operations.get(binding.binding_id()).cloned(),
                     event_observer: if definition.event_observation_enabled() {
                         self.event_observer.clone()
                     } else {
@@ -1014,6 +1045,11 @@ impl RegistryCompiler {
             .collect::<Vec<_>>();
         let mut digest = Sha256::new();
         digest.update(fingerprint.as_str().as_bytes());
+        for (id, registration) in &self.document_operations {
+            digest.update([0]);
+            digest.update(id.as_str().as_bytes());
+            digest.update(registration.fingerprint());
+        }
         for capability in event_capabilities.values() {
             digest.update([0]);
             digest.update(capability.definition().interface_id().as_str().as_bytes());

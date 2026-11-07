@@ -180,3 +180,5 @@ pub(crate) async fn observe_event(
         budget.record_reported_failure(token);
     }
 }
+
+pub(crate) mod document;
