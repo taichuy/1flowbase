@@ -162,6 +162,21 @@ pub(super) fn manifest() -> Value {
         })
         .collect::<Vec<_>>();
     manifest["managed"] = json!({"module":{"bus_version":"v1","module_id":CODE,"module_version":"0.1.0","module_kind":"runtime","contributions":handlers.iter().map(|handler|json!({"contribution_id":format!("{CODE}.{handler}"),"contributor_module_id":CODE,"point_id":"1flowbase.managed-service.operation","contract_version":"1","mode":"append","required_permissions":["service.execute","plugin_data.owned.write"]})).collect::<Vec<_>>()},"execution_bindings":handlers.iter().map(|handler|json!({"contribution_id":format!("{CODE}.{handler}"),"execution_mode":"process_per_call","runtime":runtime,"handler":handler})).collect::<Vec<_>>()});
+    // Owned collections are a typed manifest payload with their own declarative contribution.
+    // Runtime service operations retain their separate service.execute + collection grants.
+    manifest["managed"]["module"]["contributions"].as_array_mut().unwrap().push(json!({
+        "contribution_id":format!("{CODE}.data"),"contributor_module_id":CODE,
+        "point_id":"1flowbase.plugin-data.owned-collection","contract_version":"1flowbase.plugin-data-model/v1",
+        "mode":"append","required_permissions":["plugin_data.owned.write"]
+    }));
+    manifest["managed"]["execution_bindings"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({
+            "contribution_id":format!("{CODE}.data"),"execution_mode":"declarative_only",
+            "runtime":{"protocol":"stdio_json","entry":"manifest.yaml"},
+            "handler":"owned_collections","payload":{"kind":"data_models"}
+        }));
     // Reject an invalid synthetic package before any durable fixture side effect.
     plugin_framework::parse_plugin_manifest(&serde_yaml::to_string(&manifest).unwrap())
         .expect("valid synthetic record resource declaration");
@@ -189,4 +204,89 @@ pub(super) fn package() -> Vec<u8> {
         .append_path_with_name(executable, "bin/record_permission_worker")
         .unwrap();
     archive.into_inner().unwrap().finish().unwrap()
+}
+
+#[test]
+fn synthetic_manifest_has_one_explicit_data_payload_and_retains_service_authority() {
+    let value = manifest();
+    let parsed =
+        plugin_framework::parse_plugin_manifest(&serde_yaml::to_string(&value).unwrap()).unwrap();
+    let managed = parsed.managed.as_ref().unwrap();
+    let service = parsed.managed_service.as_ref().unwrap();
+    assert_eq!(parsed.data_models.len(), 1);
+    assert_eq!(
+        parsed.data_models[0].owned_collections[0].collection_code,
+        "records"
+    );
+    assert_eq!(
+        managed.execution_bindings.len(),
+        service.operations.len() + 1
+    );
+    assert_eq!(
+        managed.module.contributions.len(),
+        managed.execution_bindings.len()
+    );
+    let data = managed
+        .execution_bindings
+        .iter()
+        .filter(|binding| {
+            binding.payload.as_ref()
+                == Some(&plugin_framework::ManagedContributionPayload::DataModels)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(data.len(), 1);
+    assert_eq!(
+        data[0].execution_mode,
+        plugin_framework::PluginExecutionMode::DeclarativeOnly
+    );
+    assert_eq!(data[0].runtime.entry, "manifest.yaml");
+    for operation in &service.operations {
+        let binding = managed
+            .execution_bindings
+            .iter()
+            .find(|binding| binding.contribution_id.as_str() == operation.contribution_id.as_str())
+            .unwrap();
+        assert_eq!(
+            binding.execution_mode,
+            plugin_framework::PluginExecutionMode::ProcessPerCall
+        );
+        assert!(binding.payload.is_none());
+        let contribution = managed
+            .module
+            .contributions
+            .iter()
+            .find(|contribution| contribution.contribution_id == binding.contribution_id)
+            .unwrap();
+        for permission in ["service.execute", "plugin_data.owned.write"] {
+            assert!(contribution
+                .required_permissions
+                .iter()
+                .any(|actual| actual.as_str() == permission));
+        }
+    }
+    // This is the exact old omission: data_models exists but its binding carries no payload.
+    let mut missing = value.clone();
+    missing["managed"]["execution_bindings"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|binding| {
+            binding.pointer("/payload/kind").and_then(Value::as_str) == Some("data_models")
+        })
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .remove("payload");
+    let failure =
+        plugin_framework::parse_plugin_manifest(&serde_yaml::to_string(&missing).unwrap())
+            .expect_err("missing typed data payload must remain invalid");
+    assert!(failure
+        .to_string()
+        .contains("every managed payload requires exactly one explicit binding"));
+    let mut denied = value;
+    denied["permissions"]["storage"] = json!("none");
+    assert!(
+        plugin_framework::parse_plugin_manifest(&serde_yaml::to_string(&denied).unwrap()).is_err(),
+        "fixture must not remove Host-managed storage eligibility"
+    );
 }
