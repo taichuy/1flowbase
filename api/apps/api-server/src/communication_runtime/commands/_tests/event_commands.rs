@@ -1,6 +1,6 @@
 use super::*;
 use control_plane::notifications::CommunicationCommandIntent;
-use domain::event_center::{CreateEventDefinitionInput, EventDefinitionRecord};
+use domain::event_center::EventDefinitionRecord;
 
 async fn configure(fixture: &mut Fixture) -> EventDefinitionRecord {
     // Explicit test deployment budget; production capacity remains deployment-owned.
@@ -22,11 +22,28 @@ async fn configure(fixture: &mut Fixture) -> EventDefinitionRecord {
         }),
     )
     .unwrap();
-    let definition = control_plane::event_center::EventCenterConfigurationService::new(fixture.state.store.clone())
-        .create_definition(&fixture.actor, CreateEventDefinitionInput {
-            contract_id: "custom.command-test".into(), name: "Command test".into(), description: String::new(), enabled: true,
-            payload_schema: json!({"type":"object","required":["message"],"additionalProperties":false,"properties":{"message":{"type":"string","minLength":1}}}),
-        }).await.unwrap();
+    // Historical communication commands still publish their stored custom contract.
+    // Seed that record directly: new interface rules cannot define a free-form schema.
+    let now = time::OffsetDateTime::now_utc();
+    let definition = EventDefinitionRecord {
+        interface_event: None,
+        id: Uuid::now_v7(),
+        workspace_id: fixture.actor.current_workspace_id,
+        contract_id: "custom.command-test".into(),
+        name: "Command test".into(),
+        description: String::new(),
+        enabled: true,
+        payload_schema: json!({"type":"object","required":["message"],"additionalProperties":false,"properties":{"message":{"type":"string","minLength":1}}}),
+        created_by: fixture.actor.user_id,
+        created_at: now,
+        updated_at: now,
+    };
+    fixture
+        .state
+        .store
+        .create_event_definition(&definition)
+        .await
+        .unwrap();
     let mut binding = fixture
         .state
         .notification_service

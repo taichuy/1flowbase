@@ -10,20 +10,57 @@ use uuid::Uuid;
 
 fn input() -> CreateEventDefinitionInput {
     CreateEventDefinitionInput {
-        contract_id: "custom.orders.created".into(),
-        name: "Order created".into(),
+        name: "Order interface observed".into(),
         description: "Event configuration fixture".into(),
-        payload_schema: json!({"type":"object","properties":{"order_id":{"type":"string"}}}),
+        interface_event: InterfaceEventBinding {
+            interface_id: "orders.create".into(),
+            phase: InterfaceEventPhase::Before,
+            results: Vec::new(),
+        },
         enabled: true,
     }
 }
-fn trigger() -> WorkflowEventTriggerInput {
+
+// The declared owner contract is separate from user rule input. Rules inherit it verbatim.
+fn declared_service<R: EventCenterRepository>(
+    repository: R,
+    actor: &ActorContext,
+) -> EventCenterConfigurationService<R> {
+    let entry = EventCatalogEntry {
+        interface_event: Some(input().interface_event),
+        group_path: vec!["interfaces".into(), "orders".into()],
+        source: None,
+        id: None,
+        scope: EventSourceScope::Workspace {
+            workspace_id: actor.current_workspace_id,
+        },
+        enabled: None,
+        owner_id: Some("orders".into()),
+        contract_id: "interface.orders.create.before".into(),
+        name: "Order create Before".into(),
+        description: String::new(),
+        payload_schema: interface_event_schema(
+            InterfaceEventPhase::Before,
+            json!({"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"],"additionalProperties":false}),
+            json!({"type":"object"}),
+        ),
+        origin: EventDefinitionOrigin::Core,
+        supported_phases: vec![EventTriggerPhase::Published],
+    };
+    EventCenterConfigurationService::with_registered_events(
+        repository,
+        actor.current_workspace_id,
+        vec![entry],
+    )
+}
+
+fn trigger(contract_id: &str) -> WorkflowEventTriggerInput {
     WorkflowEventTriggerInput {
         source: None,
         enabled: false,
-        contract_id: input().contract_id,
+        contract_id: contract_id.into(),
         trigger_phase: EventTriggerPhase::Published,
-        input_mapping: BTreeMap::from([("order_id".into(), "/payload/order_id".into())]),
+        input_mapping: BTreeMap::from([("order_id".into(), "/payload/input/order_id".into())]),
     }
 }
 
@@ -39,7 +76,7 @@ async fn definitions_roundtrip_with_workspace_scoped_identity_and_namespace_cons
         current_workspace_id: other_workspace.id,
         ..owner.clone()
     };
-    let service = EventCenterConfigurationService::new(store.clone());
+    let service = declared_service(store.clone(), &owner);
     let created = service.create_definition(&owner, input()).await.unwrap();
     let persisted = EventCenterConfigurationService::new(store.clone())
         .get_definition(&owner, created.id)
@@ -50,10 +87,16 @@ async fn definitions_roundtrip_with_workspace_scoped_identity_and_namespace_cons
     assert_eq!(persisted.created_by, owner.user_id);
     assert!(service.get_definition(&other, created.id).await.is_err());
     assert!(service.list_definitions(&other).await.unwrap().is_empty());
+    assert!(created.contract_id.starts_with("custom.interface."));
+    assert_eq!(persisted.interface_event, Some(input().interface_event));
+    assert_eq!(
+        persisted.payload_schema["properties"]["input"]["properties"]["order_id"]["type"],
+        "string"
+    );
     let update = UpdateEventDefinitionInput {
         name: "Revised order".into(),
         description: "Updated".into(),
-        payload_schema: json!({"type":"object","required":["order_id"],"properties":{"order_id":{"type":"string"}}}),
+        interface_event: input().interface_event,
         enabled: true,
     };
     assert!(service
@@ -72,22 +115,31 @@ async fn definitions_roundtrip_with_workspace_scoped_identity_and_namespace_cons
             .name,
         "Revised order"
     );
-    let duplicate = service
-        .create_definition(&owner, input())
-        .await
-        .unwrap_err();
+    // Repeated rules for one capability receive distinct identities. The repository still
+    // rejects duplicate persisted identities and namespaces reserved for declared owners.
+    let second = service.create_definition(&owner, input()).await.unwrap();
+    assert_ne!(second.id, created.id);
+    assert_ne!(second.contract_id, created.contract_id);
+    let mut duplicate = created.clone();
+    duplicate.id = Uuid::now_v7();
+    let duplicate_error = store.create_event_definition(&duplicate).await.unwrap_err();
     assert_eq!(
-        duplicate.downcast_ref::<ControlPlaneContractError>(),
+        duplicate_error.downcast_ref::<ControlPlaneContractError>(),
         Some(&ControlPlaneContractError::Conflict(
             "event_definition_identity"
         ))
     );
-    assert!(service.create_definition(&other, input()).await.is_ok());
+    assert!(declared_service(store.clone(), &other)
+        .create_definition(&other, input())
+        .await
+        .is_ok());
+    let mut unavailable = input();
+    unavailable.interface_event.interface_id = "orders.undeclared".into();
+    assert!(service
+        .create_definition(&owner, unavailable)
+        .await
+        .is_err());
     for identity in ["1flowbase.orders", "acme.plugin.orders", "custom..orders"] {
-        let mut invalid = input();
-        invalid.contract_id = identity.into();
-        assert!(service.create_definition(&owner, invalid).await.is_err());
-        // Exercise the formal database constraint as well as the service boundary.
         let mut forged = created.clone();
         forged.id = Uuid::now_v7();
         forged.contract_id = identity.into();
@@ -119,9 +171,12 @@ async fn workflow_configuration_reloads_and_cannot_write_another_workspace_appli
         current_workspace_id: other_workspace.id,
         ..owner.clone()
     };
-    let service = EventCenterConfigurationService::new(store.clone());
-    service.create_definition(&owner, input()).await.unwrap();
-    service.create_definition(&other, input()).await.unwrap();
+    let service = declared_service(store.clone(), &owner);
+    let definition = service.create_definition(&owner, input()).await.unwrap();
+    let other_definition = declared_service(store.clone(), &other)
+        .create_definition(&other, input())
+        .await
+        .unwrap();
     let application = store
         .create_application(&CreateApplicationInput {
             actor_user_id: owner.user_id,
@@ -138,7 +193,7 @@ async fn workflow_configuration_reloads_and_cannot_write_another_workspace_appli
         .await
         .unwrap();
     let first = service
-        .save_workflow_trigger(&owner, application.id, trigger())
+        .save_workflow_trigger(&owner, application.id, trigger(&definition.contract_id))
         .await
         .unwrap();
     let reloaded = EventCenterConfigurationService::new(store.clone())
@@ -146,11 +201,11 @@ async fn workflow_configuration_reloads_and_cannot_write_another_workspace_appli
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(reloaded.configuration, trigger());
+    assert_eq!(reloaded.configuration, trigger(&definition.contract_id));
     assert_eq!(reloaded.id, first.id);
     assert_eq!(reloaded.workspace_id, workspace.id);
     assert_eq!(reloaded.updated_by, owner.user_id);
-    let mut revised = trigger();
+    let mut revised = trigger(&definition.contract_id);
     revised.source = Some(EventSourceSelection {
         filters: Default::default(),
 
@@ -175,10 +230,14 @@ async fn workflow_configuration_reloads_and_cannot_write_another_workspace_appli
             .configuration,
         revised
     );
-    // Other scope has an available identically named event: rejection must come
-    // from application ownership, rather than accidentally fail early in catalog lookup.
+    // Other scope has its own available rule: rejection must come from application
+    // ownership, rather than accidentally fail early in catalog lookup.
     assert!(service
-        .save_workflow_trigger(&other, application.id, trigger())
+        .save_workflow_trigger(
+            &other,
+            application.id,
+            trigger(&other_definition.contract_id)
+        )
         .await
         .is_err());
     assert!(service

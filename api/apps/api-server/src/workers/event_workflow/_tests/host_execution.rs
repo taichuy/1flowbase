@@ -6,14 +6,12 @@ use control_plane::{
         mapping::ApplicationApiMappingConfig,
         publications::{ApplicationPublicationService, PublishApplicationCommand},
     },
-    event_center::{EventCenterConfigurationService, EventCenterRuntime, EventCenterRuntimePolicy},
+    event_center::{EventCenterRuntime, EventCenterRuntimePolicy},
     flow::{FlowService, SaveFlowDraftCommand},
     ports::AuthRepository,
 };
-use control_plane_contracts::ports::EventBusLimits;
-use domain::event_center::{
-    CreateEventDefinitionInput, EventTriggerPhase, WorkflowEventTriggerInput,
-};
+use control_plane_contracts::ports::{EventBusLimits, EventCenterRepository};
+use domain::event_center::{EventDefinitionRecord, EventTriggerPhase, WorkflowEventTriggerInput};
 use serde_json::json;
 use storage_ephemeral::MemoryEventBus;
 
@@ -55,10 +53,26 @@ async fn fixture_for_phase(phase: EventTriggerPhase, pointer: &str) -> Fixture {
     let actor = AuthRepository::load_actor_context_for_user(&state.store, user_id)
         .await
         .unwrap();
-    let definition = EventCenterConfigurationService::new(state.store.for_actor(actor.clone())).create_definition(&actor, CreateEventDefinitionInput {
-        contract_id: "custom.worker.invoice".into(), name: "Invoice".into(), description: String::new(), enabled: true,
+    // This fixture exercises legacy custom publication/consumption, not rule creation.
+    let now = time::OffsetDateTime::now_utc();
+    let definition = EventDefinitionRecord {
+        interface_event: None,
+        id: Uuid::now_v7(),
+        workspace_id: actor.current_workspace_id,
+        contract_id: "custom.worker.invoice".into(),
+        name: "Invoice".into(),
+        description: String::new(),
+        enabled: true,
         payload_schema: json!({"type":"object","properties":{"invoice":{"type":"string"}},"required":["invoice"]}),
-    }).await.unwrap();
+        created_by: actor.user_id,
+        created_at: now,
+        updated_at: now,
+    };
+    state
+        .store
+        .create_event_definition(&definition)
+        .await
+        .unwrap();
     let snapshot = workflow_snapshot(&state, &actor, &definition, phase, pointer).await;
     Fixture {
         state,

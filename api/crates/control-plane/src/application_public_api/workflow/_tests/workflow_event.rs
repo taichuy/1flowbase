@@ -85,17 +85,23 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
         .load_actor_context_for_user(user_id)
         .await
         .unwrap();
-    let definition = EventCenterConfigurationService::new(repository.clone())
-        .create_definition(
-            &actor,
-            domain::event_center::CreateEventDefinitionInput {
-                contract_id: "custom.invoice".into(),
-                name: "Invoice".into(),
-                description: String::new(),
-                payload_schema: json!({"type":"object"}),
-                enabled: true,
-            },
-        )
+    // Preserve the pre-interface-rule consumer contract using a persisted legacy record.
+    let now = time::OffsetDateTime::now_utc();
+    let mut definition = domain::event_center::EventDefinitionRecord {
+        interface_event: None,
+        id: Uuid::now_v7(),
+        workspace_id: actor.current_workspace_id,
+        contract_id: configuration().contract_id,
+        name: "Invoice".into(),
+        description: String::new(),
+        payload_schema: json!({"type":"object"}),
+        enabled: true,
+        created_by: actor.user_id,
+        created_at: now,
+        updated_at: now,
+    };
+    repository
+        .create_event_definition(&definition)
         .await
         .unwrap();
     let service = WorkflowEventTriggerService::new(repository.clone());
@@ -164,27 +170,21 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
     };
     assert!(!second.created);
     assert_eq!(first.flow_run.id, second.flow_run.id);
-    let definitions = EventCenterConfigurationService::new(repository.clone());
-    let mut definition_update = domain::event_center::UpdateEventDefinitionInput {
-        name: definition.name.clone(),
-        description: definition.description.clone(),
-        payload_schema: definition.payload_schema.clone(),
-        enabled: false,
-    };
-    definitions
-        .update_definition(&actor, definition.id, definition_update.clone())
+    definition.enabled = false;
+    assert!(repository
+        .update_event_definition(&definition)
         .await
-        .unwrap();
+        .unwrap());
     assert!(service
         .prepare_subscription(&command.trigger)
         .await
         .is_err());
     assert!(service.invoke_event(command.clone()).await.is_err());
-    definition_update.enabled = true;
-    definitions
-        .update_definition(&actor, definition.id, definition_update)
+    definition.enabled = true;
+    assert!(repository
+        .update_event_definition(&definition)
         .await
-        .unwrap();
+        .unwrap());
     let mut invalid_workspace = command.clone();
     invalid_workspace.context["workspace_id"] = json!(Uuid::now_v7());
     assert!(service.invoke_event(invalid_workspace).await.is_err());
