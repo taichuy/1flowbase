@@ -17,7 +17,7 @@
 Issue Tree 固定为两层：
 
 ```text
-Root（唯一计划、进度与用户验收真值）
+Root（唯一执行计划与状态；保留用户目标及确认变更）
   └─ Delivery（纵向验收容器；内部使用 Work Packet）
 ```
 
@@ -76,7 +76,7 @@ discussion -> ready -> implementation -> qa -> user-acceptance -> closed
 - AI 可以起草、实施和提供证据，不能替用户批准关键方向或完成最终用户验收。
 - 方向确认只授权创建或重构计划；Single Issue 或 Tree Root 确认后授权实现其既定范围。
 - Delivery 可在 Root 批准后直接进入实现；新增 Delivery、改变 Root AC、source of truth、用户内容或数据影响时回到 `problem-framing`。
-- Delivery 内局部实现判断不追加计划 comment；Packet 出现第二个独立结果、无法声明明确写集合、并发写集合不能互斥且无法串行化、assembly 无法吸收 commit，或同根因在集中 QA 第二次失败时，阶段返回 `discussion` 并重构活动真值。
+- Delivery 内局部实现判断不追加计划 comment；Packet 出现第二个独立结果、无法声明明确写集合、并发写集合不能互斥且无法串行化、assembly 无法吸收 commit 时，Root 调整执行安排；同根因再次失败先定位根因或更换等价验证入口，只有已确认目标、范围或授权变化才返回 `discussion`。
 - Single Issue 在 AC 结算并完成用户验收后进入 `phase:closed` 并关闭。
 - Delivery 在全部 Packet 装配、Root 集中 QA 通过、结果合入 protected baseline并回写 Root 后关闭；局部 commit、分支测试或评论不构成完成。
 - Root 在所有 AC 结算、最终 QA 通过并由用户验收后进入 `phase:closed` 并关闭。
