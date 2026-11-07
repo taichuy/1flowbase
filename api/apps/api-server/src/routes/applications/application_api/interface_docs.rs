@@ -492,3 +492,77 @@ pub(crate) fn compile_registry(
         port,
     )
 }
+
+impl crate::event_center::api_projection::ApiEventInput for ApplicationDocsInput {
+    fn project_document_input(
+        &self,
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::Catalog {
+                application_id,
+                query_locale,
+                ..
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({"locale":query_locale}),
+                serde_json::Value::Null,
+            ),
+            Self::CategoryOperations {
+                application_id,
+                category_id,
+                query,
+                ..
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"category_id":category_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::CategoryOpenApi {
+                application_id,
+                category_id,
+                query_locale,
+                ..
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"category_id":category_id}),
+                serde_json::json!({"locale":query_locale}),
+                serde_json::Value::Null,
+            ),
+            Self::OperationOpenApi {
+                application_id,
+                operation_id,
+                query_locale,
+                ..
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"operation_id":operation_id}),
+                serde_json::json!({"locale":query_locale}),
+                serde_json::Value::Null,
+            ),
+        })
+    }
+}
+
+impl crate::event_center::api_projection::ApiEventOutput for ApplicationDocsOutput {
+    fn project_document_output(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::Catalog(value) => crate::event_center::api_projection::to_value(value),
+            Self::CategoryOperations(value) => crate::event_center::api_projection::to_value(value),
+            Self::OpenApi(value) => crate::event_center::api_projection::to_value(value),
+        }
+    }
+}

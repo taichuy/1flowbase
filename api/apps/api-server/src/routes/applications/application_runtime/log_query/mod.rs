@@ -10,7 +10,7 @@ use schemas::{
     LogConversationsPageSchema, LogRecordsPageSchema, QueryFieldsSchema, TrajectoryQueryPageSchema,
 };
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LogConversationsQuery {
     pub application_ids: Option<Vec<Uuid>>,
@@ -43,7 +43,7 @@ pub async fn query_log_conversations(
     Ok(Json(ApiSuccess::new(page)))
 }
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LogRecordsQuery {
     /// Omit for all applications readable in the current workspace. An empty array selects none.
@@ -62,7 +62,7 @@ pub struct LogRecordsQuery {
     pub keyword: Option<String>,
 }
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TrajectoryQuery {
     /// Existing resource grammar, limited to the fields declared by query-fields.

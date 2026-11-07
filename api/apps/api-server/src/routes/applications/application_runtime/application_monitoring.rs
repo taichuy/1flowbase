@@ -21,7 +21,7 @@ use super::application_logs::{format_optional_time, format_time};
 const DEFAULT_TIME_RANGE_DAYS: i64 = 7;
 pub(super) const SLOW_RUN_THRESHOLD_MS: i64 = 30_000;
 
-#[derive(Debug, Deserialize, Default, ToSchema)]
+#[derive(Debug, Deserialize, Default, ToSchema, serde::Serialize)]
 pub struct ApplicationRunMonitoringQuery {
     #[serde(rename = "from")]
     pub from: Option<String>,

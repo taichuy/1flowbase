@@ -502,3 +502,53 @@ mod tests {
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
+
+impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDebugVariablesInput {
+    fn project_document_input(
+        &self,
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::Snapshot { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::Upsert {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::event_center::api_projection::to_value(body)?,
+            ),
+            Self::Delete {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::event_center::api_projection::to_value(body)?,
+            ),
+        })
+    }
+}
+
+impl crate::event_center::api_projection::ApiEventOutput
+    for ApplicationRuntimeDebugVariablesOutput
+{
+    fn project_document_output(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::Snapshot(value) => crate::event_center::api_projection::to_value(value),
+            Self::Updated => Ok(serde_json::json!({"ok":true})),
+        }
+    }
+}

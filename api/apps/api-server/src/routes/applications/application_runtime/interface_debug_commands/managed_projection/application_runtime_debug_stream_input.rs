@@ -127,3 +127,49 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
     const CONTRACT_ID: &'static str = "console-application-runtime-debug-stream-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDebugStreamInput {
+    fn document_input_schema(
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Option<serde_json::Value> {
+        (operation.interface_id == "applications.runtime.debug-runs.stream.create").then(|| {
+            crate::routes::applications_group::event_projection::runtime::request_schema(
+                operation,
+                crate::routes::applications_group::event_projection::runtime::schema::<
+                    StartFlowDebugRunBody,
+                >(),
+                Some(crate::event_center::api_projection::schema::<
+                    crate::routes::application_runtime::DebugRunStreamQuery,
+                >()),
+            )
+        })
+    }
+    fn project_document_input(
+        &self,
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::Start {
+                application_id,
+                body,
+                stream_query,
+                ..
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                crate::event_center::api_projection::to_value(stream_query)?,
+                crate::routes::applications_group::event_projection::runtime::document(body)?,
+            ),
+            Self::Subscribe {
+                application_id,
+                run_id,
+                from_sequence,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                serde_json::json!({"from_sequence":from_sequence}),
+                serde_json::Value::Null,
+            ),
+        })
+    }
+}

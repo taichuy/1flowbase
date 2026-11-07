@@ -19,3 +19,20 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamEvent {
     const CONTRACT_ID: &'static str = "console-application-runtime-debug-stream-event";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+// Stream frames are observations, never the server-stream terminal result.
+impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeDebugStreamEvent {
+    fn document_output_unavailable(
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Option<domain::event_center::ApiEventUnavailableReason> {
+        Some(domain::event_center::ApiEventUnavailableReason::MissingStreamingTerminal)
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Err(std::sync::Arc::from(
+            "debug_stream_frame_is_not_the_terminal_result",
+        ))
+    }
+}

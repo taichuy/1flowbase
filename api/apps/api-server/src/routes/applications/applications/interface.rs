@@ -1266,3 +1266,130 @@ mod event_projection {
 #[cfg(test)]
 #[path = "interface/_tests/event_projection.rs"]
 mod event_projection_tests;
+
+impl crate::event_center::api_projection::ApiEventInput for ApplicationsInput {
+    fn document_input_schema(
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Option<serde_json::Value> {
+        (operation.interface_id == "applications.environment-variables.replace").then(|| {
+            crate::routes::applications_group::event_projection::environment_input_schema(operation)
+        })
+    }
+    fn project_document_input(
+        &self,
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::List => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::Catalog { .. } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::Create(body) => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({}),
+                serde_json::json!({}),
+                crate::event_center::api_projection::to_value(body)?,
+            ),
+            Self::CreateTag(body) => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({}),
+                serde_json::json!({}),
+                crate::event_center::api_projection::to_value(body)?,
+            ),
+            Self::Get { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::Patch {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::event_center::api_projection::to_value(body)?,
+            ),
+            Self::Delete { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::ListEnvironmentVariables { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::ReplaceEnvironmentVariables {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::event_center::api_projection::to_value(
+                    &crate::routes::applications_group::event_projection::environment_body(body),
+                )?,
+            ),
+            Self::ListJsDependencies { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::ReplaceJsDependency {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::event_center::api_projection::to_value(body)?,
+            ),
+        })
+    }
+}
+
+impl crate::event_center::api_projection::ApiEventOutput for ApplicationsOutput {
+    fn document_output_schema(
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Option<serde_json::Value> {
+        matches!(operation.interface_id.as_str(), "applications.environment-variables.list" | "applications.environment-variables.replace").then(|| crate::event_center::api_projection::schema::<Vec<crate::routes::applications_group::event_projection::EnvironmentVariableResponse>>())
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::Applications(value) => crate::event_center::api_projection::to_value(value),
+            Self::Catalog(value) => crate::event_center::api_projection::to_value(value),
+            Self::Application(value) => crate::event_center::api_projection::to_value(value),
+            Self::Tag(value) => crate::event_center::api_projection::to_value(value),
+            Self::EnvironmentVariables(values) => crate::event_center::api_projection::to_value(
+                &crate::routes::applications_group::event_projection::environment_response(values),
+            ),
+            Self::JsDependencies(value) => crate::event_center::api_projection::to_value(value),
+            Self::JsDependency(value) => crate::event_center::api_projection::to_value(value),
+            Self::NoContent => Ok(serde_json::Value::Null),
+        }
+    }
+}

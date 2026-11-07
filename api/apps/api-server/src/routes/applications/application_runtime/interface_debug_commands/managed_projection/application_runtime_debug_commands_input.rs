@@ -199,3 +199,99 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
     const CONTRACT_ID: &'static str = "console-application-runtime-debug-commands-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDebugCommandsInput {
+    fn document_input_schema(
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Option<serde_json::Value> {
+        match operation.interface_id.as_str() {
+            "applications.runtime.debug-runs.create" => Some(
+                crate::routes::applications_group::event_projection::runtime::request_schema(
+                    operation,
+                    crate::routes::applications_group::event_projection::runtime::schema::<
+                        StartFlowDebugRunBody,
+                    >(),
+                    None,
+                ),
+            ),
+            "applications.runtime.runs.resume" => Some(
+                crate::routes::applications_group::event_projection::runtime::request_schema(
+                    operation,
+                    crate::routes::applications_group::event_projection::runtime::schema::<
+                        ResumeFlowRunBody,
+                    >(),
+                    None,
+                ),
+            ),
+            "applications.runtime.nodes.debug-runs.create" => Some(
+                crate::routes::applications_group::event_projection::runtime::request_schema(
+                    operation,
+                    crate::routes::applications_group::event_projection::runtime::schema::<
+                        StartNodeDebugPreviewBody,
+                    >(),
+                    None,
+                ),
+            ),
+            _ => None,
+        }
+    }
+    fn project_document_input(
+        &self,
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::Start {
+                application_id,
+                body,
+                ..
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::routes::applications_group::event_projection::runtime::document(body)?,
+            ),
+            Self::Resume {
+                application_id,
+                run_id,
+                body,
+                ..
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                serde_json::json!({}),
+                crate::routes::applications_group::event_projection::runtime::document(body)?,
+            ),
+            Self::Cancel {
+                application_id,
+                run_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::CompleteCallback {
+                application_id,
+                callback_task_id,
+                body,
+                ..
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"callback_task_id":callback_task_id}),
+                serde_json::json!({}),
+                crate::routes::applications_group::event_projection::runtime::document(body)?,
+            ),
+            Self::StartNode {
+                application_id,
+                node_id,
+                body,
+                ..
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"node_id":node_id}),
+                serde_json::json!({}),
+                crate::routes::applications_group::event_projection::runtime::document(body)?,
+            ),
+        })
+    }
+}

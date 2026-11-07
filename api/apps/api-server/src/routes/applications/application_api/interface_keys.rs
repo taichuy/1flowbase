@@ -417,3 +417,70 @@ pub(crate) fn compile_registry(
         port,
     )
 }
+
+impl crate::event_center::api_projection::ApiEventInput for ApplicationApiKeyInput {
+    fn project_document_input(
+        &self,
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::List { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::Create {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::event_center::api_projection::to_value(body)?,
+            ),
+            Self::Revoke {
+                application_id,
+                key_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"key_id":key_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+        })
+    }
+}
+
+impl crate::event_center::api_projection::ApiEventOutput for ApplicationApiKeyOutput {
+    fn document_output_schema(
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Option<serde_json::Value> {
+        (operation.interface_id == "applications.api-keys.create").then(|| {
+            crate::event_center::api_projection::schema::<super::ApplicationApiKeyResponse>()
+        })
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::List(value) => crate::event_center::api_projection::to_value(value),
+            Self::Created(value) => {
+                crate::event_center::api_projection::to_value(&super::ApplicationApiKeyResponse {
+                    id: value.id,
+                    name: value.name.clone(),
+                    creator_user_id: value.creator_user_id,
+                    enabled: value.enabled,
+                    expires_at: value.expires_at.clone(),
+                    last_used_at: value.last_used_at.clone(),
+                    created_at: value.created_at.clone(),
+                    updated_at: value.updated_at.clone(),
+                })
+            }
+            Self::NoContent => Ok(serde_json::Value::Null),
+        }
+    }
+}

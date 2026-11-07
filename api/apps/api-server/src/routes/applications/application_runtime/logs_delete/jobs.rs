@@ -414,3 +414,66 @@ async fn invoke_job(
     let output = console_interface::invoke(state, binding, credential, input).await?;
     Ok(Json(ApiSuccess::new(output)))
 }
+
+impl crate::event_center::api_projection::ApiEventInput for JobInput {
+    fn project_document_input(
+        &self,
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::Create {
+                application_id,
+                input,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::event_center::api_projection::to_value(input)?,
+            ),
+            Self::Get {
+                application_id,
+                job_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"job_id":job_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::Latest { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::Stop {
+                application_id,
+                job_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"job_id":job_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+        })
+    }
+}
+
+impl crate::event_center::api_projection::ApiEventOutput for JobOutput {
+    fn project_document_output(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        crate::event_center::api_projection::to_value(self)
+    }
+}
+
+impl crate::event_center::api_projection::ApiEventOutput for PreviewOutput {
+    fn project_document_output(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        crate::event_center::api_projection::to_value(self)
+    }
+}

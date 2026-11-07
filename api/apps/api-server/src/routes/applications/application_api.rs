@@ -51,7 +51,7 @@ pub use event_trigger::*;
 
 const PUBLIC_RUNS_PATH: &str = "/api/agent/v1/runs";
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateApplicationApiKeyBody {
     pub name: String,
     pub expires_at: Option<String>,
@@ -140,7 +140,7 @@ pub enum WorkflowExtensionResponseModeBody {
     Async,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default, serde::Serialize)]
 pub struct ApplicationApiDocsQuery {
     pub locale: Option<String>,
     pub offset: Option<usize>,
@@ -164,7 +164,7 @@ impl ApplicationApiDocsQuery {
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PublishApplicationApiBody {
     /// Agent Flow request/output mapping or Workflow extension publication mapping.
     pub mapping: ApplicationApiMappingBody,
@@ -173,12 +173,12 @@ pub struct PublishApplicationApiBody {
     pub api_enabled: bool,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PatchApplicationApiStatusBody {
     pub api_enabled: bool,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct WorkflowScheduleTriggerBody {
     /// Desired scheduler state. This PUT resource changes configuration and enabled state together.
     pub enabled: bool,

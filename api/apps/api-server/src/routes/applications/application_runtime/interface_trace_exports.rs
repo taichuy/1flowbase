@@ -111,6 +111,7 @@ pub(crate) struct ApplicationRuntimeTraceExportDownload {
     pub(crate) content_type: &'static str,
     pub(crate) filename: String,
     pub(crate) body: Vec<u8>,
+    document: Option<serde_json::Value>,
 }
 
 pub(crate) enum ApplicationRuntimeTraceExportsOutput {
@@ -272,6 +273,7 @@ impl ApplicationRuntimeTraceExportsAdapter {
                 run_id,
             ),
             body: serde_json::to_vec_pretty(&document.value)?,
+            document: Some(document.value),
         })
     }
 
@@ -356,6 +358,7 @@ impl ApplicationRuntimeTraceExportsAdapter {
                 run_count
             ),
             body,
+            document: None,
         })
     }
 
@@ -951,4 +954,67 @@ pub(crate) fn compile_registry(
         DECLARATIONS,
         trace_exports_port(store, file_storage_registry),
     )
+}
+
+impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeTraceExportsInput {
+    fn project_document_input(
+        &self,
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::ExportRun {
+                application_id,
+                run_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::ExportSelectedRuns {
+                application_id,
+                run_ids,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                serde_json::json!({"run_ids":run_ids}),
+            ),
+        })
+    }
+}
+
+impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeTraceExportsOutput {
+    fn document_output_schema(
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Option<serde_json::Value> {
+        (operation.interface_id == "applications.runtime.trace-export.get").then(
+            crate::routes::applications_group::event_projection::runtime::schema::<
+                ApplicationRunTraceExportResponse,
+            >,
+        )
+    }
+    // The selected-runs route owns ZIP bytes; the single-run owner retains actual JSON.
+    fn document_output_unavailable(
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Option<domain::event_center::ApiEventUnavailableReason> {
+        (operation.interface_id == "applications.runtime.trace-export.selected-runs")
+            .then_some(domain::event_center::ApiEventUnavailableReason::BinaryResponse)
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::Download(value) => {
+                let mut document = value.document.clone().ok_or_else(|| {
+                    std::sync::Arc::<str>::from("selected_trace_export_is_a_zip_document")
+                })?;
+                crate::routes::applications_group::event_projection::runtime::project(
+                    &mut document,
+                );
+                Ok(document)
+            }
+        }
+    }
 }

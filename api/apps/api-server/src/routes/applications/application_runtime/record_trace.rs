@@ -1,6 +1,6 @@
 //! Lazy metadata-only trace readers for imported records.
 use super::*;
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecordTraceChildrenQuery {
     pub cursor: Option<String>,

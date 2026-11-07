@@ -54,28 +54,28 @@ use crate::{
 
 pub(crate) mod interface;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct AnalyzeDraftBody {
     pub document: serde_json::Value,
     /// Return variable catalogs only for this node; omit for diagnostics and outputs only.
     pub node_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SaveDraftBody {
     pub document: serde_json::Value,
     pub change_kind: String,
     pub summary: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateVersionBody {
     pub summary: Option<String>,
     pub summary_is_custom: Option<bool>,
     pub is_user_protected: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportApplicationArchiveBody {
     pub application_ids: Vec<Uuid>,
 }
@@ -507,7 +507,7 @@ async fn installed_application_archive_entry_with(
     Ok((single_application_entry(package)?, warnings))
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportInstalledApplicationExtensionBody {
     pub name: Option<String>,
     pub description: Option<String>,

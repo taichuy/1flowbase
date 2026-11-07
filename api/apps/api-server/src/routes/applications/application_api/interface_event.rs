@@ -180,3 +180,42 @@ pub(crate) fn compile_registry(
 #[cfg(test)]
 #[path = "_tests/workflow_event_ownership.rs"]
 mod ownership_tests;
+
+impl crate::event_center::api_projection::ApiEventInput for WorkflowEventInput {
+    fn project_document_input(
+        &self,
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::Get { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::Replace {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::event_center::api_projection::to_value(body)?,
+            ),
+        })
+    }
+}
+
+impl crate::event_center::api_projection::ApiEventOutput for WorkflowEventOutput {
+    fn project_document_output(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::Optional(value) => crate::event_center::api_projection::to_value(value),
+            Self::Required(value) => crate::event_center::api_projection::to_value(value),
+        }
+    }
+}

@@ -16,7 +16,7 @@ impl From<domain::event_center::EventTriggerPhase> for WorkflowEventTriggerPhase
         }
     }
 }
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowEventTriggerBody {
     #[serde(default)]

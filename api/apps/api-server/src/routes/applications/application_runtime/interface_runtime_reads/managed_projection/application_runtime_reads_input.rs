@@ -768,3 +768,507 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
     const CONTRACT_ID: &'static str = "console-application-runtime-reads-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeReadsInput {
+    fn project_document_input(
+        &self,
+        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::CurrentContext { .. } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::QueryFields => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::QueryConversations { query } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({}),
+                    if operation.method == "POST" {
+                        serde_json::json!({})
+                    } else {
+                        crate::event_center::api_projection::to_value(query)?
+                    },
+                    if operation.method == "POST" {
+                        crate::event_center::api_projection::to_value(query)?
+                    } else {
+                        serde_json::Value::Null
+                    },
+                )
+            }
+            Self::RecordTraceTree {
+                application_id,
+                record_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"record_id":record_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::RecordTraceChildren {
+                application_id,
+                record_id,
+                trace_node_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"record_id":record_id,"trace_node_id":trace_node_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::QueryRecords { query } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({}),
+                    if operation.method == "POST" {
+                        serde_json::json!({})
+                    } else {
+                        crate::event_center::api_projection::to_value(query)?
+                    },
+                    if operation.method == "POST" {
+                        crate::event_center::api_projection::to_value(query)?
+                    } else {
+                        serde_json::Value::Null
+                    },
+                )
+            }
+            Self::QueryConversationTrajectory {
+                application_id,
+                log_conversation_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"log_conversation_id":log_conversation_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::ConversationTrajectorySection {
+                application_id,
+                log_conversation_id,
+                step_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"log_conversation_id":log_conversation_id,"step_id":step_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::QueryRecordTrajectory {
+                application_id,
+                record_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"record_id":record_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::RecordConversationPage {
+                application_id,
+                record_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"record_id":record_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::GetRecord {
+                application_id,
+                record_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"record_id":record_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::RecordClientTrajectoryPage {
+                application_id,
+                record_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"record_id":record_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::RecordClientTrajectorySection {
+                application_id,
+                record_id,
+                step_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"record_id":record_id,"step_id":step_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::WorkflowTrajectoryPage {
+                application_id,
+                run_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    serde_json::json!({"index_only":query.index_only,"focus_event_id":query.focus_event_id,"category":query.category,"node_run_id":query.node_run_id,"request_id":query.request_id,"from":query.from,"to":query.to,"cursor":query.cursor,"limit":query.limit})
+                },
+                if operation.method == "POST" {
+                    serde_json::json!({"index_only":query.index_only,"focus_event_id":query.focus_event_id,"category":query.category,"node_run_id":query.node_run_id,"request_id":query.request_id,"from":query.from,"to":query.to,"cursor":query.cursor,"limit":query.limit})
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::WorkflowTrajectoryBody {
+                application_id,
+                run_id,
+                event_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id,"event_id":event_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::ClientTrajectoryPage {
+                application_id,
+                run_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::ClientTrajectorySection {
+                application_id,
+                run_id,
+                step_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id,"step_id":step_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::RunTrajectoryPage {
+                application_id,
+                run_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::RunPayload {
+                application_id,
+                run_id,
+                section,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id,"section":section}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::TrajectoryPage {
+                application_id,
+                run_id,
+                node_run_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id,"node_run_id":node_run_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::TrajectoryBody {
+                application_id,
+                run_id,
+                node_run_id,
+                event_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id,"node_run_id":node_run_id,"event_id":event_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::ListRuns {
+                application_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::ListConversationMessages {
+                application_id,
+                conversation_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"conversation_id":conversation_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::ListRunConversationMessages {
+                application_id,
+                run_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::GetRunOverview {
+                application_id,
+                run_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::GetTraceTree {
+                application_id,
+                run_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::GetTraceChildren {
+                application_id,
+                run_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::GetResumeTimeline {
+                application_id,
+                run_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::GetResumeTimelineSummary {
+                application_id,
+                run_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::GetRunNodeLastRun {
+                application_id,
+                run_id,
+                node_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id,"node_id":node_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::GetMonitoringReport {
+                application_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::GetRuntimeActivity { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::GetRuntimeDebugStream {
+                application_id,
+                run_id,
+                query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                if operation.method == "POST" {
+                    serde_json::json!({})
+                } else {
+                    crate::event_center::api_projection::to_value(query)?
+                },
+                if operation.method == "POST" {
+                    crate::event_center::api_projection::to_value(query)?
+                } else {
+                    serde_json::Value::Null
+                },
+            ),
+            Self::GetNodeLastRun {
+                application_id,
+                node_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"node_id":node_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+        })
+    }
+}
