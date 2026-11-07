@@ -726,12 +726,16 @@ async fn plugin_template_native_reset_rejects_foreign_ownership_and_rolls_back_u
     };
     foreign_input.source.organization = "foreign".into();
     foreign_input.source.bundle_version = foreign.version.clone();
+    let error = store
+        .seed_mcp_bundle_graph_once_atomically(&foreign_input)
+        .await
+        .unwrap_err();
     assert_eq!(
-        store
-            .seed_mcp_bundle_graph_once_atomically(&foreign_input)
-            .await
-            .unwrap_err(),
-        control_plane::errors::ControlPlaneError::Conflict("mcp_plugin_template_seed_collision")
+        error.downcast_ref::<control_plane::errors::ControlPlaneError>(),
+        Some(&control_plane::errors::ControlPlaneError::Conflict(
+            "mcp_plugin_template_seed_collision"
+        )),
+        "{error:#}"
     );
     assert!(!store
         .has_mcp_extension_bundle_import(workspace.id, foreign_installation)
