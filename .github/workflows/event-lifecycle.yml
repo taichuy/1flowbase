@@ -13,7 +13,7 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query, full-api-events-docs]
 
       reused_api_tree:
         description: Unchanged api tree hash from the prior green host evidence (finish scope only)
@@ -35,7 +35,7 @@ env:
 
 jobs:
   acceptance:
-    if: inputs.scope != 'full-api-events-types' && inputs.scope != 'full-api-events' && inputs.scope != 'full-api-events-host' && inputs.scope != 'full-api-events-registration' && inputs.scope != 'full-api-events-publish' && inputs.scope != 'full-api-events-query' && inputs.scope != 'event-business-mcp' && inputs.scope != 'event-business-finish' && inputs.scope != 'event-business-host' && inputs.scope != 'event-business' && inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement' && inputs.scope != 'system-event-center' && inputs.scope != 'system-event-center-supplement' && inputs.scope != 'system-event-center-lineage'
+    if: startsWith(inputs.scope, 'full-api-events') == false && inputs.scope != 'event-business-mcp' && inputs.scope != 'event-business-finish' && inputs.scope != 'event-business-host' && inputs.scope != 'event-business' && inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement' && inputs.scope != 'system-event-center' && inputs.scope != 'system-event-center-supplement' && inputs.scope != 'system-event-center-lineage'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -162,7 +162,7 @@ jobs:
           path: tmp/test-governance/event-lifecycle/ci
 
   event-center-acceptance:
-    if: inputs.scope == 'full-api-events-types' || inputs.scope == 'full-api-events' || (inputs.scope == 'full-api-events-host' || (inputs.scope == 'full-api-events-registration' || (inputs.scope == 'full-api-events-publish' || inputs.scope == 'full-api-events-query'))) || inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement' || (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
+    if: startsWith(inputs.scope, 'full-api-events') || inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement' || (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -207,7 +207,7 @@ jobs:
           jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
           echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
       - name: Fetch locked dependencies for offline boundary audit
-        if: inputs.scope == 'full-api-events-types' || inputs.scope == 'full-api-events' || (inputs.scope == 'full-api-events-host' || (inputs.scope == 'full-api-events-registration' || (inputs.scope == 'full-api-events-publish' || inputs.scope == 'full-api-events-query'))) || inputs.scope == 'event-business' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business-finish'
+        if: startsWith(inputs.scope, 'full-api-events') || inputs.scope == 'event-business' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business-finish'
         run: |
           cargo fetch --locked --manifest-path api/Cargo.toml > tmp/test-governance/event-center/ci/dependency-fetch.log 2>&1 || { tail -c 7000 tmp/test-governance/event-center/ci/dependency-fetch.log; exit 1; }
       - name: Collect full API event type diagnostics without behavior acceptance
@@ -261,7 +261,7 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker > "$evidence/managed-worker-build.log" 2>&1 || { tail -c 7000 "$evidence/managed-worker-build.log"; exit 1; }
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - name: Prepare existing managed event worker for full API evidence
-        if: inputs.scope == 'full-api-events' || inputs.scope == 'full-api-events-host' || inputs.scope == 'full-api-events-registration' || inputs.scope == 'full-api-events-publish'
+        if: startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-types' && inputs.scope != 'full-api-events-query'
         shell: bash
         run: |
           set -euo pipefail
@@ -270,7 +270,7 @@ jobs:
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - name: Collect affected host test type errors before linking
         id: full-api-host-types
-        if: inputs.scope == 'full-api-events' || (inputs.scope == 'full-api-events-host' || (inputs.scope == 'full-api-events-registration' || (inputs.scope == 'full-api-events-publish' || inputs.scope == 'full-api-events-query')))
+        if: startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-types'
         continue-on-error: true
         shell: bash
         run: |
@@ -295,7 +295,7 @@ jobs:
               node scripts/node/verify/cargo-test-results.js "$evidence/$label.log" || failed=1
             else
               tail -c 7000 "$evidence/$label.log"
-              if { [ "$EVIDENCE_SCOPE" = full-api-events ] || [ "$EVIDENCE_SCOPE" = full-api-events-host ] || [ "$EVIDENCE_SCOPE" = full-api-events-registration ] || [ "$EVIDENCE_SCOPE" = full-api-events-publish ] || [ "$EVIDENCE_SCOPE" = full-api-events-query ]; } && grep -q 'could not compile' "$evidence/$label.log"; then
+              if [[ "$EVIDENCE_SCOPE" == full-api-events* ]] && grep -q 'could not compile' "$evidence/$label.log"; then
                 echo "Compilation blocked $label; do not rebuild the same failure through other filters." > "$evidence/compilation-blocked.txt"
                 exit 1
               fi
@@ -309,14 +309,28 @@ jobs:
               node scripts/node/verify/cargo-test-results.js "$evidence/$label.log" || failed=1
             else
               tail -c 7000 "$evidence/$label.log"
-              if { [ "$EVIDENCE_SCOPE" = full-api-events ] || [ "$EVIDENCE_SCOPE" = full-api-events-host ] || [ "$EVIDENCE_SCOPE" = full-api-events-registration ] || [ "$EVIDENCE_SCOPE" = full-api-events-publish ] || [ "$EVIDENCE_SCOPE" = full-api-events-query ]; } && grep -q 'could not compile' "$evidence/$label.log"; then
+              if [[ "$EVIDENCE_SCOPE" == full-api-events* ]] && grep -q 'could not compile' "$evidence/$label.log"; then
                 echo "Compilation blocked $label; do not rebuild the same failure through other filters." > "$evidence/compilation-blocked.txt"
                 exit 1
               fi
               failed=1
             fi
           }
-          if [ "$EVIDENCE_SCOPE" = full-api-events-query ]; then
+          if [ "$EVIDENCE_SCOPE" = full-api-events-docs ]; then
+            if [ "$HOST_TYPES_OUTCOME" = success ]; then
+              run_tests api-catalog-observer --test api_private_contracts event_center
+              run_tests api-event-routes --test api_system_settings event_center
+              run_tests api-doc-billing --test api_private_routes billing::openapi_contract_tests
+              run_tests api-doc-notifications --test api_private_routes notifications::openapi::tests
+              run_tests api-doc-mcp --test api_private_routes mcp_management::bundles::openapi::tests
+              run_tests api-doc-console --test api_private_routes docs::openapi::tests
+              run_tests api-doc-frontstage --test api_private_routes frontstage::dispatch_openapi::tests
+              run_tests api-doc-icons --test api_private_routes model_providers::icons::openapi_tests
+            else
+              echo 'Host scopes unverified: shared host test compilation failed; see host-types-check.log.' > "$evidence/host-scopes-unverified.txt"
+              failed=1
+            fi
+          elif [ "$EVIDENCE_SCOPE" = full-api-events-query ]; then
             if [ "$HOST_TYPES_OUTCOME" = success ]; then
               run_tests api-event-routes --test api_system_settings event_center
             else
@@ -485,12 +499,12 @@ jobs:
             run_tests command-workflow --lib communication_runtime::commands
             run_tests applications --test api_application workflow
           fi
-          if [ "$EVIDENCE_SCOPE" != full-api-events ] && [ "$EVIDENCE_SCOPE" != full-api-events-host ] && [ "$EVIDENCE_SCOPE" != full-api-events-registration ] && [ "$EVIDENCE_SCOPE" != full-api-events-publish ] && [ "$EVIDENCE_SCOPE" != full-api-events-query ] && [ "$EVIDENCE_SCOPE" != event-business-mcp ] && [ "$EVIDENCE_SCOPE" != event-business-finish ] && [ "$EVIDENCE_SCOPE" != event-business-host ] && [ "$EVIDENCE_SCOPE" != event-business ] && [ "$EVIDENCE_SCOPE" != system-event-center-supplement ] && [ "$EVIDENCE_SCOPE" != system-event-center-lineage ]; then
+          if [[ "$EVIDENCE_SCOPE" != full-api-events* ]] && [ "$EVIDENCE_SCOPE" != event-business-mcp ] && [ "$EVIDENCE_SCOPE" != event-business-finish ] && [ "$EVIDENCE_SCOPE" != event-business-host ] && [ "$EVIDENCE_SCOPE" != event-business ] && [ "$EVIDENCE_SCOPE" != system-event-center-supplement ] && [ "$EVIDENCE_SCOPE" != system-event-center-lineage ]; then
             run_tests communications --test api_private_routes routes::communications
           fi
           test "$failed" = 0
       - name: Build matching system-event local verification candidate
-        if: ${{ always() && !cancelled() && (inputs.scope == 'full-api-events' || (inputs.scope == 'full-api-events-host' || (inputs.scope == 'full-api-events-registration' || (inputs.scope == 'full-api-events-publish' || inputs.scope == 'full-api-events-query'))) || (success() && (inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage'))) }}
+        if: ${{ always() && !cancelled() && ((startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-types') || (success() && (inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage'))) }}
         shell: bash
         run: |
           set -euo pipefail
@@ -499,7 +513,7 @@ jobs:
           cp api/target/debug/api-server "$evidence/api-server-candidate"
           strip --strip-unneeded "$evidence/api-server-candidate"
           sha256sum "$evidence/api-server-candidate" > "$evidence/binary-sha256.txt"
-          if [ '${{ inputs.scope }}' = full-api-events-host ] || [ '${{ inputs.scope }}' = full-api-events-registration ] || [ '${{ inputs.scope }}' = full-api-events-publish ] || [ '${{ inputs.scope }}' = full-api-events-query ]; then
+          if [[ '${{ inputs.scope }}' == full-api-events-* ]]; then
             # Existing runner xz reduces candidate transport; no package installation.
             xz -T2 -6 "$evidence/api-server-candidate"
           fi

@@ -42,7 +42,7 @@ pub struct ManagedExecutionQuery {
     pub cursor: Option<String>,
 }
 
-#[utoipa::path(get,path="/api/console/settings/extension-center/installed/{installation_id}/managed-execution",operation_id="extension_center_managed_execution_view",summary="View managed executions and durable lifecycle deliveries",params(("cursor" = Option<String>, Query, description = "Continuation cursor from next_cursor; bound to the installation and current workspace")),responses((status=200),(status=400,body=crate::error_response::ErrorBody),(status=403,body=crate::error_response::ErrorBody)))]
+#[utoipa::path(get,path="/api/console/settings/extension-center/installed/{installation_id}/managed-execution",operation_id = "extension_center.managed_execution.view",summary="View managed executions and durable lifecycle deliveries",params(("cursor" = Option<String>, Query, description = "Continuation cursor from next_cursor; bound to the installation and current workspace")),responses((status=200),(status=400,body=crate::error_response::ErrorBody),(status=403,body=crate::error_response::ErrorBody)))]
 pub(super) async fn view_managed_execution(
     axum::extract::Query(query): axum::extract::Query<ManagedExecutionQuery>,
     State(state): State<Arc<ApiState>>,
@@ -62,7 +62,7 @@ pub(super) async fn view_managed_execution(
     };
     Ok(Json(ApiSuccess::new(state)))
 }
-#[utoipa::path(post,path="/api/console/settings/extension-center/installed/{installation_id}/lifecycle-deliveries/resume",operation_id="extension_center_lifecycle_deliveries_resume",summary="Resume one exact paused lifecycle delivery",request_body=ResumeManagedDeliveryBody,responses((status=200),(status=403,body=crate::error_response::ErrorBody)))]
+#[utoipa::path(post,path="/api/console/settings/extension-center/installed/{installation_id}/lifecycle-deliveries/resume",operation_id = "extension_center.lifecycle_deliveries.resume",summary="Resume one exact paused lifecycle delivery",request_body=ResumeManagedDeliveryBody,responses((status=200),(status=403,body=crate::error_response::ErrorBody)))]
 pub(super) async fn resume_managed_delivery(
     State(state): State<Arc<ApiState>>,
     Path(installation_id): Path<Uuid>,
@@ -82,7 +82,7 @@ pub(super) async fn resume_managed_delivery(
     };
     Ok(Json(ApiSuccess::new(state)))
 }
-#[utoipa::path(post,path="/api/console/settings/extension-center/installed/{installation_id}/managed-executions/retire",operation_id="extension_center_managed_executions_retire",summary="Retire one unreferenced frozen managed execution",request_body=ManagedExecutionTargetBody,responses((status=200),(status=403,body=crate::error_response::ErrorBody)))]
+#[utoipa::path(post,path="/api/console/settings/extension-center/installed/{installation_id}/managed-executions/retire",operation_id = "extension_center.managed_executions.retire",summary="Retire one unreferenced frozen managed execution",request_body=ManagedExecutionTargetBody,responses((status=200),(status=403,body=crate::error_response::ErrorBody)))]
 pub(super) async fn retire_managed_execution(
     State(state): State<Arc<ApiState>>,
     Path(installation_id): Path<Uuid>,

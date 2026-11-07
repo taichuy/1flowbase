@@ -159,5 +159,7 @@
   "api_reason_binary_response": "This phase returns binary content without an event result contract.",
   "api_reason_missing_streaming_terminal": "This API has no declared stream completion result contract.",
   "api_reason_credential_boundary": "This phase contains credentials and cannot publish a regular event.",
-  "api_reason_ambiguous_operation": "This API matches multiple targets and cannot be bound uniquely."
+  "api_reason_ambiguous_operation": "This API matches multiple targets and cannot be bound uniquely.",
+  "api_reason_operational_control": "This operational endpoint does not produce business invocation events.",
+  "api_reason_protocol_control": "This protocol control endpoint does not produce business invocation events."
 }

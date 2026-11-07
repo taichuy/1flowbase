@@ -887,7 +887,7 @@ async fn invoke(
     crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "billing/_tests/openapi_contract.rs"]
 mod openapi_contract_tests;

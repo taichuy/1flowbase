@@ -3,7 +3,7 @@ use super::*;
 #[utoipa::path(
     post,
     path = "/api/console/settings/extension-center/installed/{installation_id}/contribution-authorizations",
-    operation_id = "extension_center_contribution_authorizations_grant",
+    operation_id = "extension_center.contribution_authorizations.grant",
     summary = "Grant installed contribution authorizations",
     request_body = GrantContributionPermissionRequest,
     responses((status = 200, body = ContributionAuthorizationResponse), (status = 403, body = crate::error_response::ErrorBody))
@@ -31,7 +31,7 @@ pub(super) async fn grant_contribution_authorizations(
 #[utoipa::path(
     post,
     path = "/api/console/settings/extension-center/installed/{installation_id}/contribution-authorizations/revoke",
-    operation_id = "extension_center_contribution_authorizations_revoke",
+    operation_id = "extension_center.contribution_authorizations.revoke",
     summary = "Revoke installed contribution authorizations",
     request_body = RevokeContributionPermissionRequest,
     responses((status = 200, body = ContributionAuthorizationResponse), (status = 403, body = crate::error_response::ErrorBody))
@@ -59,7 +59,7 @@ pub(super) async fn revoke_contribution_authorizations(
 #[utoipa::path(
     get,
     path = "/api/console/settings/extension-center/installed/{installation_id}/contribution-authorizations",
-    operation_id = "extension_center_contribution_authorizations_view",
+    operation_id = "extension_center.contribution_authorizations.view",
     summary = "View installed contribution authorizations",
     responses((status = 200, body = ContributionAuthorizationResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]

@@ -102,6 +102,34 @@ async fn project_current_entry(
 fn unavailable(reason: ApiEventUnavailableReason) -> ApiEventPhaseAvailability {
     ApiEventPhaseAvailability::Unavailable { reason }
 }
+fn unbound_control_reason(
+    method: &str,
+    path: &str,
+    registry: Option<&CompiledInterfaceRegistry>,
+) -> Option<ApiEventUnavailableReason> {
+    use crate::external_endpoint_catalog::{
+        approved_http_control_classification, ExternalEndpointClassification,
+    };
+    let classification = approved_http_control_classification(method, path)?;
+    if registry.is_some_and(|registry| {
+        registry.bindings().any(|binding| {
+            binding.projection().http_route().is_some_and(|route| {
+                route_identity(route.method(), route.path()) == route_identity(method, path)
+            })
+        })
+    }) {
+        return None;
+    }
+    match classification {
+        ExternalEndpointClassification::OperationalControl => {
+            Some(ApiEventUnavailableReason::OperationalControl)
+        }
+        ExternalEndpointClassification::ProtocolControl => {
+            Some(ApiEventUnavailableReason::ProtocolControl)
+        }
+        _ => None,
+    }
+}
 fn reason(code: Option<&str>) -> Option<ApiEventUnavailableReason> {
     code.map(|code| {
         serde_json::from_value(serde_json::Value::String(code.to_owned()))
@@ -139,7 +167,9 @@ fn project_entry(
     let mut request = None;
     let mut result = None;
     let mut rejected = Some(ApiEventUnavailableReason::MissingBinding);
-    if entry.disabled_reason == Some("missing_openapi_contract") {
+    if let Some(reason) = unbound_control_reason(&api.method, &api.path, registry) {
+        rejected = Some(reason);
+    } else if entry.disabled_reason == Some("missing_openapi_contract") {
         rejected = Some(ApiEventUnavailableReason::MissingOpenapiContract);
     } else if let Some(registry) = registry {
         let candidates = registry

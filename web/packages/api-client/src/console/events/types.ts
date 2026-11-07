@@ -87,6 +87,8 @@ export type InterfaceEventBinding =
   | ApiInterfaceEventBinding
   | LegacyInterfaceEventBinding;
 export type ApiEventUnavailableReason =
+  | 'operational_control'
+  | 'protocol_control'
   | 'missing_openapi_contract'
   | 'missing_binding'
   | 'missing_typed_codec'

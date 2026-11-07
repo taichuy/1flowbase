@@ -420,7 +420,7 @@ pub async fn plugin_settings_page(
     Ok(Json(ApiSuccess::new(page)))
 }
 
-#[utoipa::path(get, path = "/api/console/settings/ui-management/plugin-settings-module-asset", summary = "Read a declared settings page module asset", description = "Returns retained bytes after registered settings page authorization, applied version and digest membership checks.", params(("route_id" = String, Query), ("applied_plugin_version" = String, Query), ("sha256" = String, Query)), responses((status = 200, description = "Verified module asset"), (status = 403, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(get, path = "/api/console/settings/ui-management/plugin-settings-module-asset", summary = "Read a declared settings page module asset", description = "Returns retained bytes after registered settings page authorization, applied version and digest membership checks.", params(("route_id" = String, Query), ("applied_plugin_version" = String, Query), ("sha256" = String, Query)), responses((status = 200, description = "Verified retained bytes with the registered asset media type", body = crate::openapi::OpenApiBinaryBody, content_type = "*/*"), (status = 403, body = crate::error_response::ErrorBody)))]
 pub async fn plugin_settings_module_asset(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

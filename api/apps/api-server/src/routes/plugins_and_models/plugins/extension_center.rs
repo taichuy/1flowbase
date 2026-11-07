@@ -74,11 +74,11 @@ async fn invoke_interface(
 
 mod builtin_mcp;
 mod catalog_page;
-mod contribution_authority;
+pub(crate) mod contribution_authority;
 mod dto;
 use contribution_authority::*;
 pub(crate) mod interface;
-mod managed_execution;
+pub(crate) mod managed_execution;
 mod managed_schema;
 mod official_install;
 use managed_execution::*;
@@ -374,7 +374,7 @@ pub async fn list_local_extension_inventory(
 #[utoipa::path(
     post,
     path = "/api/console/settings/extension-center/installed/{installation_id}/enable",
-    operation_id = "extension_center_enable_installed_plugin",
+    operation_id = "extension_center.installed.enable",
     summary = "Enable an installed executable extension",
     responses((status = 200, body = PluginTaskResponse), (status = 409, body = crate::error_response::ErrorBody))
 )]
@@ -400,7 +400,7 @@ pub async fn enable_installed_plugin(
 #[utoipa::path(
     post,
     path = "/api/console/settings/extension-center/installed/{installation_id}/disable",
-    operation_id = "extension_center_disable_installed_plugin",
+    operation_id = "extension_center.installed.disable",
     summary = "Disable an installed executable extension",
     responses((status = 200, body = PluginTaskResponse), (status = 409, body = crate::error_response::ErrorBody))
 )]

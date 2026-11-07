@@ -662,6 +662,7 @@ pub async fn bind_file_table_storage(
 }
 
 #[utoipa::path(
+    operation_id = "file_tables.delete",
     delete,
     path = "/api/console/settings/files/tables/{id}",
     params(("id" = String, Path, description = "File table id")),

@@ -27,7 +27,7 @@ use crate::{
 pub(crate) mod data_model_openapi_interface;
 #[path = "docs_interface.rs"]
 pub(crate) mod interface;
-#[path = "docs_openapi.rs"]
+#[path = "docs_interface/openapi.rs"]
 pub mod openapi;
 
 #[derive(Debug, Deserialize, IntoParams)]

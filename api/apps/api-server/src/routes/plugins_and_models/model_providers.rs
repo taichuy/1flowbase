@@ -452,7 +452,7 @@ pub async fn validate_instance(
 #[utoipa::path(
     post,
     path = "/api/console/settings/model-providers/instances/{id}/authenticate",
-    operation_id = "model_provider_authenticate_instance",
+    operation_id = "model_providers.instances.authenticate",
     request_body = AuthenticateModelProviderInstanceBody,
     responses((status = 200, body = AuthenticateModelProviderInstanceResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
@@ -480,7 +480,7 @@ pub async fn authenticate_instance(
 #[utoipa::path(
     get,
     path = "/api/console/settings/model-providers/instances/{id}/usage",
-    operation_id = "model_provider_get_usage_windows",
+    operation_id = "model_providers.instances.usage.view",
     responses((status = 200, body = ModelProviderUsageWindowsResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn get_usage_windows(
@@ -505,7 +505,7 @@ pub async fn get_usage_windows(
 #[utoipa::path(
     get,
     path = "/api/console/settings/model-providers/instances/{id}/reset-credits",
-    operation_id = "model_provider_count_reset_credits",
+    operation_id = "model_providers.instances.reset_credits.view",
     responses((status = 200, body = ModelProviderResetCreditCountResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn count_reset_credits(
@@ -531,7 +531,7 @@ pub async fn count_reset_credits(
 #[utoipa::path(
     post,
     path = "/api/console/settings/model-providers/instances/{id}/reset-credits/consume",
-    operation_id = "model_provider_consume_reset_credit",
+    operation_id = "model_providers.instances.reset_credits.consume",
     request_body = ConsumeModelProviderResetCreditBody,
     responses((status = 200, body = ConsumeModelProviderResetCreditResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]

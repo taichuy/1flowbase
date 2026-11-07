@@ -603,6 +603,7 @@ pub async fn create_file_storage(
 }
 
 #[utoipa::path(
+    operation_id = "file_storages.update",
     put,
     path = "/api/console/settings/files/storages/{id}",
     request_body = UpdateFileStorageBody,
@@ -632,6 +633,7 @@ pub async fn update_file_storage(
 }
 
 #[utoipa::path(
+    operation_id = "file_storages.delete",
     delete,
     path = "/api/console/settings/files/storages/{id}",
     params(("id" = String, Path, description = "File storage id")),

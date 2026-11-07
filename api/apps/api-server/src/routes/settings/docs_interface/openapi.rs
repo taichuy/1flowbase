@@ -78,5 +78,5 @@ fn document_schema() -> Value {
 
 #[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
-#[path = "docs_interface/_tests/openapi.rs"]
+#[path = "_tests/openapi.rs"]
 mod tests;

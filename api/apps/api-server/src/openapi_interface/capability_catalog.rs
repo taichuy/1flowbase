@@ -507,7 +507,10 @@ fn static_disabled_reason(
         Some(media_type) if is_json_media_type(media_type) => None,
         Some(_) => Some("unsupported_response_media_type"),
         None if has_no_content_success(operation, spec) => None,
-        None => Some("missing_openapi_contract"),
+        // The operation is documented. Its upgrade/redirect/empty carrier has
+        // no response shape for an MCP interface wrapper; event phases decide
+        // from their own principal, typed codec and terminal owner.
+        None => Some("unsupported_response_semantics"),
     }
 }
 

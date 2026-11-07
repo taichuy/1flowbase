@@ -390,6 +390,7 @@ pub async fn get_runtime_profile(
 }
 
 #[utoipa::path(
+    operation_id = "system.runtime_processes.view",
     get,
     path = "/api/console/system/runtime-processes",
     responses(
@@ -417,6 +418,7 @@ pub async fn get_runtime_processes(
 }
 
 #[utoipa::path(
+    operation_id = "system.runtime_process.terminate",
     post,
     path = "/api/console/system/runtime-profile/processes/{pid}/terminate",
     params(("pid" = u32, Path, description = "Process id to terminate")),

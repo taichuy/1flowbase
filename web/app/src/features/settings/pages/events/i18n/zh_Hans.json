@@ -159,5 +159,7 @@
   "api_reason_binary_response": "此阶段返回二进制内容，没有可用的事件响应契约。",
   "api_reason_missing_streaming_terminal": "此接口尚未声明流结束时的结果契约。",
   "api_reason_credential_boundary": "此阶段的数据属于凭据，不能作为普通事件发布。",
-  "api_reason_ambiguous_operation": "此接口存在多个匹配目标，当前无法唯一绑定。"
+  "api_reason_ambiguous_operation": "此接口存在多个匹配目标，当前无法唯一绑定。",
+  "api_reason_operational_control": "此运行控制接口不产生业务调用事件。",
+  "api_reason_protocol_control": "此协议控制入口不产生业务调用事件。"
 }

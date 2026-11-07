@@ -7,6 +7,8 @@ use super::{EventSourceScope, InterfaceEventPhase};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ApiEventUnavailableReason {
+    OperationalControl,
+    ProtocolControl,
     MissingOpenapiContract,
     MissingBinding,
     MissingTypedCodec,

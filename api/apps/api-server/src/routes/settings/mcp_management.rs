@@ -593,7 +593,8 @@ pub async fn upsert_mcp_group(
     Ok(Json(ApiSuccess::new(value)))
 }
 
-#[utoipa::path(post, path = "/api/console/mcp/instances/{instance_id}/groups/move", request_body = MoveMcpGroupBody, responses((status = 200, body = McpGroupResponse)))]
+#[utoipa::path(
+    operation_id = "mcp.groups.move",post, path = "/api/console/mcp/instances/{instance_id}/groups/move", request_body = MoveMcpGroupBody, responses((status = 200, body = McpGroupResponse)))]
 pub async fn move_mcp_group(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

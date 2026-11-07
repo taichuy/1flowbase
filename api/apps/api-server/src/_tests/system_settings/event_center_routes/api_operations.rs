@@ -165,8 +165,47 @@ async fn event_center_api_directory_matches_complete_shared_catalog_including_mc
                 row[phase]["reason"], "missing_typed_codec",
                 "ordinary API codec inventory must be complete: {row}"
             );
+            for missing in ["missing_openapi_contract", "missing_binding"] {
+                assert_ne!(row[phase]["reason"], missing,
+                    "documented API must have its real contract/binding or an explicit control owner: {row}");
+            }
         }
     }
+    for (path, reason) in [
+        ("/health", "operational_control"),
+        ("/api/console/health", "operational_control"),
+        ("/api/console/assistant/runs/websocket", "protocol_control"),
+        ("/api/console/notifications/events", "protocol_control"),
+    ] {
+        let row = rows
+            .iter()
+            .find(|row| row["method"] == "GET" && row["path"] == path)
+            .unwrap();
+        assert_eq!(row["before"]["reason"], reason, "{row}");
+        assert_eq!(row["completion"]["reason"], reason, "{row}");
+    }
+    for path in [
+        "/api/public/auth/external/start",
+        "/api/public/auth/external/callback",
+    ] {
+        let row = rows
+            .iter()
+            .find(|row| row["method"] == "GET" && row["path"] == path)
+            .unwrap();
+        assert_eq!(row["before"]["reason"], "no_workspace_principal", "{row}");
+        assert_eq!(
+            row["completion"]["reason"], "no_workspace_principal",
+            "{row}"
+        );
+    }
+    let asset = rows
+        .iter()
+        .find(|row| {
+            row["path"] == "/api/console/settings/ui-management/plugin-settings-module-asset"
+        })
+        .unwrap();
+    assert_eq!(asset["before"]["status"], "available", "{asset}");
+    assert_eq!(asset["completion"]["reason"], "binary_response", "{asset}");
     assert_eq!(
         request(
             &app,
@@ -393,5 +432,75 @@ async fn event_center_dynamic_models_same_verb_keep_distinct_rules_and_actual_ow
     );
     for queue in [&queue_a, &queue_b, &queue_completed] {
         queue.close();
+    }
+}
+
+#[tokio::test]
+async fn event_center_previously_undocumented_business_queries_publish_real_dtos_with_inherited_schemas(
+) {
+    let state = event_state().await;
+    let app = crate::app_with_state_and_config(state.clone(), &test_config());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    for (path, query) in [
+        (
+            "/api/console/settings/billing/credit-accounts",
+            "page=1&page_size=1",
+        ),
+        (
+            "/api/console/notifications/channels",
+            "page_size=3&read_status=unread",
+        ),
+        ("/api/console/mcp/bundles/export-defaults", ""),
+    ] {
+        let selected = operation(&app, &cookie, "GET", path).await;
+        assert_eq!(selected["before"]["status"], "available", "{selected}");
+        assert_eq!(selected["completion"]["status"], "available", "{selected}");
+        let operation_id = selected["operation_id"].as_str().unwrap();
+        let before = create_rule(
+            &app,
+            &state,
+            &cookie,
+            &csrf,
+            api_rule(operation_id, "before"),
+        )
+        .await;
+        let completion = create_rule(
+            &app,
+            &state,
+            &cookie,
+            &csrf,
+            api_rule(operation_id, "completion"),
+        )
+        .await;
+        let before_queue = subscribe_rule(&state, &before, before.workspace_id);
+        let completion_queue = subscribe_rule(&state, &completion, completion.workspace_id);
+        let uri = if query.is_empty() {
+            path.to_owned()
+        } else {
+            format!("{path}?{query}")
+        };
+        let (status, response) = request(&app, "GET", &uri, &cookie, "", None).await;
+        assert_eq!(status, StatusCode::OK, "{path}: {response}");
+        let before_value = take_payload(&before_queue);
+        let completion_value = take_payload(&completion_queue);
+        assert_eq!(before_value["operation_id"], operation_id);
+        assert_eq!(completion_value["terminal"], "completed");
+        assert_eq!(
+            completion_value["output"], response["data"],
+            "actual DTO for {path}"
+        );
+        for (definition, value) in [(&before, &before_value), (&completion, &completion_value)] {
+            assert!(
+                jsonschema::validator_for(&definition.payload_schema)
+                    .unwrap()
+                    .is_valid(value),
+                "inherited schema rejects actual {path}: {value}; {}",
+                definition.payload_schema
+            );
+        }
+        assert!(before_queue.try_recv().unwrap().is_none());
+        assert!(completion_queue.try_recv().unwrap().is_none());
+        before_queue.close();
+        completion_queue.close();
     }
 }

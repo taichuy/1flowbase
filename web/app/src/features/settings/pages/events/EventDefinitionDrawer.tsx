@@ -85,6 +85,8 @@ export function EventDefinitionDrawer({
     : (availability?.status === 'available' && hasSchema) || unchangedDisabled;
   // Static references keep all backend reason translations visible to i18n hygiene.
   const reasonLabels: Record<ApiEventUnavailableReason, string> = {
+    operational_control: t('api_reason_operational_control'),
+    protocol_control: t('api_reason_protocol_control'),
     missing_openapi_contract: t('api_reason_missing_openapi_contract'),
     missing_binding: t('api_reason_missing_binding'),
     missing_typed_codec: t('api_reason_missing_typed_codec'),

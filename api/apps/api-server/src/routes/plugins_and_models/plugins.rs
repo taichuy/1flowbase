@@ -833,7 +833,7 @@ pub async fn refresh_catalog_projection(
 #[utoipa::path(
     post,
     path = "/api/console/plugins/{installation_id}/artifact/refresh",
-    operation_id = "plugin_refresh_current_node_artifact",
+    operation_id = "plugins.artifact.refresh",
     responses((status = 200, body = PluginArtifactInstanceResponse), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
 pub async fn refresh_current_node_artifact(
@@ -858,7 +858,7 @@ pub async fn refresh_current_node_artifact(
 #[utoipa::path(
     post,
     path = "/api/console/plugins/{installation_id}/artifact/install-current-node",
-    operation_id = "plugin_install_current_node_artifact",
+    operation_id = "plugins.artifact.install",
     responses((status = 200, body = PluginArtifactInstanceResponse), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
 pub async fn install_current_node_artifact(

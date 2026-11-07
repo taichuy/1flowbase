@@ -413,3 +413,65 @@ fn one_documented_api_preserves_real_blocking_and_stream_terminal_alternatives()
         .0
         .available());
 }
+
+#[test]
+fn health_and_upgrade_capabilities_use_the_existing_control_owner_without_business_bindings() {
+    for (method, path, reason) in [
+        (
+            "GET",
+            "/health",
+            ApiEventUnavailableReason::OperationalControl,
+        ),
+        (
+            "GET",
+            "/api/console/health",
+            ApiEventUnavailableReason::OperationalControl,
+        ),
+        (
+            "GET",
+            "/api/console/assistant/runs/websocket",
+            ApiEventUnavailableReason::ProtocolControl,
+        ),
+        (
+            "GET",
+            "/api/console/notifications/events",
+            ApiEventUnavailableReason::ProtocolControl,
+        ),
+    ] {
+        assert_eq!(unbound_control_reason(method, path, None), Some(reason));
+        let mut entry = entries(&docs()).remove(0);
+        entry.interface.method = method.to_owned();
+        entry.interface.path = path.to_owned();
+        entry.disabled_reason = Some("unsupported_response_semantics");
+        let detail = details_for_entry(&entry, None, &actor(), None);
+        assert_eq!(detail.operation.before, unavailable(reason));
+        assert_eq!(detail.operation.completion, unavailable(reason));
+        assert!(detail.before_schema.is_none() && detail.completion_schema.is_none());
+    }
+    assert_eq!(
+        unbound_control_reason("POST", "/api/console/unknown", None),
+        None
+    );
+}
+
+#[test]
+fn canonical_business_http_binding_is_not_hidden_by_a_shared_sse_control_variant() {
+    let declarations = [ConsoleInterfaceDeclaration {
+        interface_id: "fixture.canonical",
+        binding_id: "http.fixture.business-control-overlap",
+        method: "POST",
+        path: "/api/agent/v1/runs",
+        mutating: true,
+    }];
+    let registry = console_interface::compile_registry(
+        "api-server.event-fixture",
+        "graph:event-fixture",
+        &declarations,
+        Arc::new(Port),
+    )
+    .unwrap();
+    assert_eq!(
+        unbound_control_reason("POST", "/api/agent/v1/runs", Some(&registry)),
+        None
+    );
+}
