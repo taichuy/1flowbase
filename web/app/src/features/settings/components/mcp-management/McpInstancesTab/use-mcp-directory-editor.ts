@@ -249,9 +249,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     setEditingBinding(null);
     setDirectoryEditorMode('group');
     applyDirectoryPathToForms(
-      key.startsWith('group:')
-        ? key.slice('group:'.length)
-        : (selectedInstance?.default_entry_path ?? '/')
+      key.startsWith('group:') ? key.slice('group:'.length) : '/'
     );
   }
   async function openDirectory(instance: ConsoleMcpInstance) {
@@ -264,14 +262,12 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     setNodeEditing(false);
     setParentGroupPath(null);
     setExpandedDirectoryKeys([]);
-    setSelectedDirectoryKey(
-      `instance:${instance.instance_id}:${normalizeMcpDirectoryPath(instance.default_entry_path)}`
-    );
+    setSelectedDirectoryKey(`instance:${instance.instance_id}:/`);
     groupForm.resetFields();
     bindingForm.resetFields();
     const snapshot = await draft.load(instance.instance_id);
     if (snapshot) {
-      const path = normalizeMcpDirectoryPath(instance.default_entry_path);
+      const path = '/';
       const group = snapshot.groups.find((row) => row.path === path);
       editingGroupIdRef.current = group?.id ?? null;
       const values = {
@@ -379,7 +375,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
             (row) => row.id === selectedDirectoryKey.slice('binding:'.length)
           )?.group_path ?? editingBinding?.group_path
       );
-    return normalizeMcpDirectoryPath(selectedInstance?.default_entry_path);
+    return '/';
   }
   const groupCreationPathPrefix = () =>
     buildMcpChildGroupPath(parentGroupPath ?? selectedDirectoryPath(), '');
@@ -387,9 +383,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     buildMcpChildGroupPath(parentGroupPath ?? selectedDirectoryPath(), segment);
   function expandDirectoryPath(path: string) {
     if (!selectedInstance) return;
-    const keys = [
-      `instance:${selectedInstance.instance_id}:${normalizeMcpDirectoryPath(selectedInstance.default_entry_path)}`
-    ];
+    const keys = [`instance:${selectedInstance.instance_id}:/`];
     let current = '';
     for (const segment of path.split('/').filter(Boolean)) {
       current += `/${segment}`;

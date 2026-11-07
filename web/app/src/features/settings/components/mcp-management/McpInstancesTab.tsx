@@ -508,9 +508,7 @@ export function McpInstancesTab({
                   className="mcp-management__directory-form"
                   initialValues={{
                     instance_id: selectedInstance.instance_id,
-                    path: normalizeMcpDirectoryPath(
-                      selectedInstance.default_entry_path
-                    ),
+                    path: '/',
                     enabled: true,
                     sort_order: 0
                   }}
@@ -669,9 +667,7 @@ export function McpInstancesTab({
                   className="mcp-management__directory-form"
                   initialValues={{
                     instance_id: selectedInstance.instance_id,
-                    group_path: normalizeMcpDirectoryPath(
-                      selectedInstance.default_entry_path
-                    ),
+                    group_path: '/',
                     visible: true,
                     sort_order: 0
                   }}

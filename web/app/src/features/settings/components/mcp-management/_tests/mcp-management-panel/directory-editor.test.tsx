@@ -14,6 +14,44 @@ import {
 describe('McpManagementPanel', () => {
   setupDirectoryEditorFixture();
 
+  test('keeps the real root and entry group distinct when the default entry is nested', async () => {
+    await renderPanelWithMountedTool({
+      defaultEntryPath: '/ops',
+      includeGroup: true
+    });
+    await click(screen.getByRole('button', { name: '目录编辑' }));
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    const tree = within(dialog).getByRole('tree');
+    const heading = dialog.querySelector(
+      '.mcp-management__directory-form-header'
+    );
+    expect(heading).not.toBeNull();
+    expect(heading).toHaveTextContent('/');
+    expect(heading).not.toHaveTextContent('/ops');
+    await expandTreeRootIfCollapsed(tree);
+    await click(within(tree).getByText('ops'));
+    expect(heading).toHaveTextContent('/ops');
+    await click(within(tree).getByText('/'));
+    expect(heading).not.toHaveTextContent('/ops');
+    await click(within(dialog).getByRole('button', { name: '新建分组' }));
+    await change(within(dialog).getByLabelText('路径'), {
+      target: { value: 'sibling' }
+    });
+    await click(within(dialog).getByRole('button', { name: '保存节点' }));
+    await click(within(dialog).getByRole('button', { name: '保存目录' }));
+    await waitFor(() =>
+      expect(
+        mcpManagementApi.replaceSettingsMcpInstanceDirectory
+      ).toHaveBeenCalled()
+    );
+    expect(
+      mcpManagementApi.replaceSettingsMcpInstanceDirectory.mock.calls[0]?.[1]
+        .groups
+    ).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: '/sibling' })])
+    );
+  });
+
   test.each([
     ['/', '/search_customer'],
     ['/ops/customer', '/ops/customer/search_customer']
