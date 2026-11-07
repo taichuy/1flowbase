@@ -1,5 +1,7 @@
 //! Application-key admitted observational ingestion, independent of generation.
+pub(crate) mod event_projection;
 pub mod otlp;
+mod projection;
 use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 use axum::{
     extract::{DefaultBodyLimit, State},
@@ -14,16 +16,24 @@ use interface_runtime::*;
 use std::sync::Arc;
 
 pub(crate) const BINDING: &str = "http.application.logs.events.ingest.v1";
-const ID: &str = "application.logs.events.ingest";
+pub(crate) const ID: &str = "application.logs.events.ingest";
 const OWNER: &str = "api-server.application-agent-logs";
 struct Input(AgentLogsBatch);
 struct Output(AgentLogsReceipt);
 struct TargetError(ApiError);
 macro_rules! contract {
-    ($ty:ty, $id:literal) => {
+    ($ty:ty, $id:literal $(, $schema:path, $value:path)?) => {
         impl InterfaceContract for $ty {
             const CONTRACT_ID: &'static str = $id;
             const CONTRACT_VERSION: &'static str = "1";
+            $(
+                fn event_projection_schema() -> Option<serde_json::Value> {
+                    Some($schema())
+                }
+                fn project_for_event(&self) -> Option<serde_json::Value> {
+                    Some($value(self))
+                }
+            )?
             fn managed_projection_schema() -> Option<serde_json::Value> {
                 use crate::extension_bus::managed_projection as mp;
                 Some(mp::object_schema([("kind", mp::tag_schema($id))]))
@@ -34,14 +44,29 @@ macro_rules! contract {
         }
     };
 }
-contract!(Input, "application-agent-logs-input");
-contract!(Output, "application-agent-logs-output");
+contract!(
+    Input,
+    "application-agent-logs-input",
+    Input::event_schema,
+    Input::event_value
+);
+contract!(
+    Output,
+    "application-agent-logs-output",
+    Output::event_schema,
+    Output::event_value
+);
 contract!(TargetError, "application-agent-logs-error");
 
 #[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "agent_logs/_tests/managed_projection.rs"]
 mod managed_projection_tests;
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
+#[cfg(test)]
+#[path = "agent_logs/_tests/event_projection.rs"]
+mod event_projection_tests;
 
 struct Handler<R>(R);
 impl<R> InterfaceHandler<Input, Output, TargetError, ApplicationPrincipal> for Handler<R>
@@ -114,25 +139,28 @@ where
         [operation.clone()],
         [owner.clone()],
     );
-    compiler.register_definition(InterfaceDefinition::new(
-        identity.clone(),
-        contracts.clone(),
-        InterfaceAccess::new(
-            PrincipalProfile::Application,
-            InterfaceAuthenticationPolicy::Authenticated,
-            operation,
-            InterfaceScope::Workspace,
-        ),
-        InterfaceExecution::new(
-            InterfaceExecutionMode::Unary,
-            handler.clone(),
-            TargetReference::new(OWNER).expect("static agent logs interface identity is valid"),
-        ),
-        InterfaceAuditPolicy::Mutating,
-        InterfaceErrorPolicy::TypedTarget,
-        InterfaceLifecycle::BootSnapshot,
-        owner,
-    ))?;
+    compiler.register_definition(
+        InterfaceDefinition::new(
+            identity.clone(),
+            contracts.clone(),
+            InterfaceAccess::new(
+                PrincipalProfile::Application,
+                InterfaceAuthenticationPolicy::Authenticated,
+                operation,
+                InterfaceScope::Workspace,
+            ),
+            InterfaceExecution::new(
+                InterfaceExecutionMode::Unary,
+                handler.clone(),
+                TargetReference::new(OWNER).expect("static agent logs interface identity is valid"),
+            ),
+            InterfaceAuditPolicy::Mutating,
+            InterfaceErrorPolicy::TypedTarget,
+            InterfaceLifecycle::BootSnapshot,
+            owner,
+        )
+        .with_event_observation(),
+    )?;
     compiler.register_authentication_adapter(
         &id,
         1,

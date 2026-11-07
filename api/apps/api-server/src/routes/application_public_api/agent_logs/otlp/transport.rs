@@ -114,11 +114,7 @@ pub async fn ingest_traces(
         let result = InterfaceInvocationKernel::new(Arc::new(interface::Authorization))
             .invoke::<Input, Output, TargetError>(
                 snapshot,
-                authenticated.into_envelope(Input {
-                    format,
-                    encoding,
-                    body,
-                }),
+                authenticated.into_envelope(Input::new(format, encoding, body)),
             )
             .await
             .map_err(|failure| match failure.into_error() {

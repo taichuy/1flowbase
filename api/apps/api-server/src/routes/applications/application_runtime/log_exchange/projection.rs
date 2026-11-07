@@ -1,9 +1,36 @@
 //! Managed hooks receive counts only; source bodies and remote destinations stay private.
 use super::*;
 use crate::extension_bus::managed_projection as mp;
+use crate::routes::application_public_api::agent_logs::event_projection as ep;
 impl InterfaceContract for ExchangeInput {
     const CONTRACT_ID: &'static str = "console-application-log-exchange-input";
     const CONTRACT_VERSION: &'static str = "1";
+    fn event_projection_schema() -> Option<Value> {
+        Some(ep::object_schema([
+            ("application_id", json!({"type":"string","format":"uuid"})),
+            ("action", json!({"type":"string","const":"otlp_import"})),
+            ("batches", ep::array_schema(ep::batch_schema())),
+        ]))
+    }
+    fn project_for_event(&self) -> Option<Value> {
+        let Self::OtlpImport {
+            application_id,
+            body,
+        } = self
+        else {
+            return None;
+        };
+        // Only parsed, typed source facts can become fields; arbitrary OTLP attributes stay private.
+        let request =
+            serde_json::from_value::<crate::agent_logs_protocol::ExportTraceServiceRequest>(
+                body.otlp.clone(),
+            )
+            .ok()?;
+        let batches = crate::agent_logs_protocol::traces_to_batches(&request).ok()?;
+        Some(
+            json!({"application_id":application_id,"action":"otlp_import","batches":batches.iter().map(ep::batch_value).collect::<Vec<_>>()}),
+        )
+    }
     fn managed_projection_schema() -> Option<Value> {
         Some(mp::object_schema([
             ("application_id", mp::text_schema()),
@@ -29,6 +56,17 @@ impl InterfaceContract for ExchangeInput {
 impl InterfaceContract for ExchangeOutput {
     const CONTRACT_ID: &'static str = "console-application-log-exchange-output";
     const CONTRACT_VERSION: &'static str = "1";
+    fn event_projection_schema() -> Option<Value> {
+        Some(ep::receipt_schema())
+    }
+    fn project_for_event(&self) -> Option<Value> {
+        let Self::Imported(receipt) = self else {
+            return None;
+        };
+        Some(
+            json!({"accepted_events":receipt.accepted_events,"duplicate_events":receipt.duplicate_events,"record_ids":receipt.record_ids}),
+        )
+    }
     fn managed_projection_schema() -> Option<Value> {
         Some(mp::object_schema([
             ("action", mp::text_schema()),

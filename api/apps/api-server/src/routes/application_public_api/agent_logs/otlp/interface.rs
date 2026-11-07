@@ -43,25 +43,28 @@ where
         [operation.clone()],
         [owner.clone()],
     );
-    compiler.register_definition(InterfaceDefinition::new(
-        identity.clone(),
-        contracts.clone(),
-        InterfaceAccess::new(
-            PrincipalProfile::Application,
-            InterfaceAuthenticationPolicy::Authenticated,
-            operation,
-            InterfaceScope::Workspace,
-        ),
-        InterfaceExecution::new(
-            InterfaceExecutionMode::Unary,
-            handler.clone(),
-            TargetReference::new(OWNER).expect("static OTLP trace interface identity is valid"),
-        ),
-        InterfaceAuditPolicy::Mutating,
-        InterfaceErrorPolicy::TypedTarget,
-        InterfaceLifecycle::BootSnapshot,
-        owner,
-    ))?;
+    compiler.register_definition(
+        InterfaceDefinition::new(
+            identity.clone(),
+            contracts.clone(),
+            InterfaceAccess::new(
+                PrincipalProfile::Application,
+                InterfaceAuthenticationPolicy::Authenticated,
+                operation,
+                InterfaceScope::Workspace,
+            ),
+            InterfaceExecution::new(
+                InterfaceExecutionMode::Unary,
+                handler.clone(),
+                TargetReference::new(OWNER).expect("static OTLP trace interface identity is valid"),
+            ),
+            InterfaceAuditPolicy::Mutating,
+            InterfaceErrorPolicy::TypedTarget,
+            InterfaceLifecycle::BootSnapshot,
+            owner,
+        )
+        .with_event_observation(),
+    )?;
     compiler.register_authentication_adapter(
         &id,
         1,
