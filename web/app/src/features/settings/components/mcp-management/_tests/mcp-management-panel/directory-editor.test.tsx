@@ -174,6 +174,7 @@ describe('McpManagementPanel', () => {
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     const tree = within(dialog).getByRole('tree');
     await expandTreeRootIfCollapsed(tree);
+    await click(within(dialog).getByRole('button', { name: '新建分组' }));
 
     await change(within(dialog).getByLabelText('路径'), {
       target: { value: 'ops' }

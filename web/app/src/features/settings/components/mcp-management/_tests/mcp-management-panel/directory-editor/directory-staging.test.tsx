@@ -1,5 +1,5 @@
 import type { ConsoleMcpInstanceDirectory } from '@1flowbase/api-client';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import {
   change,
@@ -10,8 +10,10 @@ import {
   mouseDown,
   renderPanelWithMountedTool,
   selectAntdOption,
-  setupDirectoryEditorFixture
+  setupDirectoryEditorFixture,
+  waitForRequests
 } from './fixture';
+import { holdNextDirectoryReplace } from '../fixtures/directory-snapshot';
 
 async function openDirectory(
   options: Parameters<typeof renderPanelWithMountedTool>[0] = {
@@ -167,6 +169,69 @@ describe('instance directory confirmed tree and node form', () => {
       bindings: expectedBindings(snapshot)
     });
     expect(dialog).toBeInTheDocument();
+  });
+
+  test('AC-S4 a deferred footer response advances the baseline without overwriting nodes confirmed during the request', async () => {
+    const { dialog, snapshot } = await openDirectory();
+    await selectGroup(dialog);
+    await editGroup(dialog, 'Submitted operations');
+    await saveNode(dialog);
+    const response = holdNextDirectoryReplace(mcpManagementApi);
+    try {
+      await click(within(dialog).getByRole('button', { name: '保存目录' }));
+      await waitFor(() =>
+        expect(
+          mcpManagementApi.replaceSettingsMcpInstanceDirectory
+        ).toHaveBeenCalledTimes(1)
+      );
+      expect(
+        mcpManagementApi.replaceSettingsMcpInstanceDirectory.mock.calls[0]![1]
+      ).toEqual({
+        expected_snapshot: snapshot,
+        groups: [expectedGroup(snapshot, 'Submitted operations')],
+        bindings: expectedBindings(snapshot)
+      });
+      await editGroup(dialog, 'Confirmed while saving');
+      await saveNode(dialog);
+      expect(within(dialog).getByRole('tree')).toHaveTextContent(
+        'Confirmed while saving'
+      );
+      expect(
+        mcpManagementApi.replaceSettingsMcpInstanceDirectory
+      ).toHaveBeenCalledTimes(1);
+      expectNoImmediateWrites();
+      await act(async () => {
+        response.release();
+        await mcpManagementApi.replaceSettingsMcpInstanceDirectory.mock
+          .results[0]!.value;
+      });
+      await waitForRequests();
+      const committed: ConsoleMcpInstanceDirectory =
+        await mcpManagementApi.replaceSettingsMcpInstanceDirectory.mock
+          .results[0]!.value;
+      expect(committed.groups[0]!.display_name).toBe('Submitted operations');
+      expect(within(dialog).getByRole('tree')).toHaveTextContent(
+        'Confirmed while saving'
+      );
+      expect(
+        within(dialog).queryByRole('textbox', { name: '显示名称' })
+      ).not.toBeInTheDocument();
+      await click(within(dialog).getByRole('button', { name: '保存目录' }));
+      await waitForRequests();
+      expect(
+        mcpManagementApi.replaceSettingsMcpInstanceDirectory
+      ).toHaveBeenCalledTimes(2);
+      expect(
+        mcpManagementApi.replaceSettingsMcpInstanceDirectory.mock.calls[1]![1]
+      ).toEqual({
+        expected_snapshot: committed,
+        groups: [expectedGroup(snapshot, 'Confirmed while saving')],
+        bindings: expectedBindings(snapshot)
+      });
+      expectNoImmediateWrites();
+    } finally {
+      response.release();
+    }
   });
 
   test.each(['cancel', 'save'] as const)(
@@ -485,9 +550,10 @@ describe('instance directory confirmed tree and node form', () => {
       .getByText('ops')
       .closest('[role="treeitem"]')!;
     await click(groupItem.querySelector('.ant-tree-switcher')!);
-    const bindingItem = within(tree)
-      .getByText('search_customer')
-      .closest('.ant-tree-node-content-wrapper') as HTMLElement;
+    const bindingLabel = await within(tree).findByText('search_customer');
+    const bindingItem = bindingLabel.closest(
+      '.ant-tree-node-content-wrapper'
+    ) as HTMLElement;
     await click(within(bindingItem).getByRole('button', { name: 'Delete' }));
     await click(screen.getByRole('button', { name: /^确\s*定$/ }));
     await waitFor(() => expect(tree).not.toHaveTextContent('search_customer'));
@@ -553,8 +619,8 @@ describe('instance directory confirmed tree and node form', () => {
     ).toBeDisabled();
     expect(
       within(dialog)
-        .getByRole('tree')
-        .querySelector('.ant-tree-treenode-draggable')
+        .queryByRole('tree')
+        ?.querySelector('.ant-tree-treenode-draggable')
     ).toBeNull();
     expectNoImmediateWrites();
     expect(

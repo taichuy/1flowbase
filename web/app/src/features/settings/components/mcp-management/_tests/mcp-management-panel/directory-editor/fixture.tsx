@@ -643,7 +643,7 @@ function ObservePanelQueries() {
   panelClients.add(useQueryClient());
   return null;
 }
-async function waitForRequests() {
+export async function waitForRequests() {
   await waitFor(() => {
     for (const client of panelClients) {
       expect(client.isFetching()).toBe(0);

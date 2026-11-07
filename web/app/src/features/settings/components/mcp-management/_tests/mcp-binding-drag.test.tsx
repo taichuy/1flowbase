@@ -1,5 +1,6 @@
 import type {
   ConsoleMcpCatalog,
+  ConsoleMcpInstanceDirectory,
   ConsoleMcpToolBinding
 } from '@1flowbase/api-client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -10,7 +11,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
 import type { McpDirectoryTreeDropInfo } from '../McpInstancesTab/directory-tree';
 import { useMcpDirectoryEditor } from '../McpInstancesTab/use-mcp-directory-editor';
-import { installDirectorySnapshotApi } from './mcp-management-panel/fixtures/directory-snapshot';
+import {
+  holdNextDirectoryReplace,
+  installDirectorySnapshotApi
+} from './mcp-management-panel/fixtures/directory-snapshot';
 
 const api = vi.hoisted(() => ({
   settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog'],
@@ -77,6 +81,32 @@ const catalog: ConsoleMcpCatalog = {
   discovery_policies: []
 };
 
+const newMountTool: ConsoleMcpCatalog['tools'][number] = {
+  id: 'tool-new-mount',
+  workspace_id: 'workspace',
+  tool_id: 'new_mount_tool',
+  name: 'New mount Tool',
+  short_description: 'Tool for directory identity regression',
+  full_description: 'Tool for directory identity regression',
+  managed_by: null,
+  execution_target: { kind: 'interface_wrapper', interface_id: 'list_apps' },
+  operation: 'GET /api/console/apps',
+  parameter_schema: {},
+  result_schema: {},
+  max_inline_chars: null,
+  response_fields: null,
+  input_mapping: {},
+  output_mapping: {},
+  permission_code: null,
+  risk_level: 'low',
+  des_id: 'des-new-mount',
+  des_id_required: false,
+  status: 'enabled',
+  availability_status: 'available',
+  availability_reason: null,
+  revision: 1
+};
+
 function grant(permissions: string[]) {
   useAuthStore.getState().setAuthenticated({
     csrfToken: 'csrf-drag',
@@ -102,14 +132,14 @@ function grant(permissions: string[]) {
 }
 
 const clients: QueryClient[] = [];
-function renderEditor() {
+function renderEditor(initialCatalog: ConsoleMcpCatalog = catalog) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false } }
   });
   clients.push(client);
   let current: ReturnType<typeof useMcpDirectoryEditor>;
   function Harness() {
-    current = useMcpDirectoryEditor(catalog);
+    current = useMcpDirectoryEditor(initialCatalog);
     return (
       <>
         <Form form={current.groupForm} />
@@ -174,10 +204,10 @@ afterEach(() => {
   });
 });
 
-async function openEditor() {
-  const view = renderEditor();
+async function openEditor(initialCatalog: ConsoleMcpCatalog = catalog) {
+  const view = renderEditor(initialCatalog);
   await act(async () => {
-    await view.editor.openDirectory(catalog.instances[0]!);
+    await view.editor.openDirectory(initialCatalog.instances[0]!);
   });
   return view;
 }
@@ -298,5 +328,157 @@ describe('MCP directory draft drag', () => {
       ])
     );
     expect(api.moveSettingsMcpGroup).not.toHaveBeenCalled();
+  });
+
+  test('a new mount moved during PUT keeps its unconfirmed visible flag and saves through the returned server identity', async () => {
+    grant(['mcp.directory.view', 'mcp.directory.replace']);
+    const newCatalog: ConsoleMcpCatalog = {
+      ...catalog,
+      tools: [newMountTool],
+      bindings: []
+    };
+    installDirectorySnapshotApi(api, newCatalog);
+    const view = await openEditor(newCatalog);
+    act(() => view.editor.startToolMount('/origin'));
+    act(() => {
+      view.editor.bindingForm.setFieldsValue({
+        instance_id: 'ops',
+        group_path: '/origin',
+        tool_id: newMountTool.tool_id,
+        visible: true,
+        sort_order: 0
+      });
+      view.editor.saveBinding(view.editor.bindingForm.getFieldsValue(true));
+    });
+    expect(view.editor.directorySnapshot!.bindings).toHaveLength(1);
+    const draftBinding = view.editor.directorySnapshot!.bindings[0]!;
+    expect(draftBinding.id).toMatch(/^draft:/);
+    expect(view.editor.selectedDirectoryKey).toBe(`binding:${draftBinding.id}`);
+    expectNoImmediateWrites();
+    const response = holdNextDirectoryReplace(api);
+    let firstSave: Promise<void> | undefined;
+    try {
+      act(() => {
+        firstSave = view.editor.saveDirectoryMutation.mutateAsync();
+      });
+      await waitFor(() =>
+        expect(api.replaceSettingsMcpInstanceDirectory).toHaveBeenCalledTimes(1)
+      );
+      expect(view.editor.saveDirectoryMutation.isPending).toBe(true);
+      expect(
+        api.replaceSettingsMcpInstanceDirectory.mock.calls[0]![1].bindings
+      ).toEqual([
+        {
+          tool_id: newMountTool.tool_id,
+          group_path: '/origin',
+          display_alias: null,
+          visible: true,
+          sort_order: 0
+        }
+      ]);
+      act(() => view.editor.editCurrentNode());
+      act(() => view.editor.bindingForm.setFieldValue('visible', false));
+      act(() =>
+        view.editor.handleTreeDrop({
+          dragNode: { key: `binding:${draftBinding.id}` },
+          node: { key: 'group:/target', pos: '0-1' },
+          dropToGap: false,
+          dropPosition: 0
+        } as McpDirectoryTreeDropInfo)
+      );
+      expect(view.editor.directorySnapshot!.bindings).toEqual([
+        { ...draftBinding, group_path: '/target' }
+      ]);
+      expect(view.editor.bindingForm.getFieldsValue(true)).toMatchObject({
+        group_path: '/target',
+        tool_id: newMountTool.tool_id,
+        visible: false
+      });
+      expect(view.editor.nodeEditing).toBe(true);
+      expect(api.replaceSettingsMcpInstanceDirectory).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        response.release();
+        await firstSave;
+      });
+      const committed: ConsoleMcpInstanceDirectory =
+        await api.replaceSettingsMcpInstanceDirectory.mock.results[0]!.value;
+      const persistedBinding = committed.bindings[0]!;
+      expect(persistedBinding).toMatchObject({
+        group_path: '/origin',
+        visible: true
+      });
+      expect(persistedBinding.id).not.toBe(draftBinding.id);
+      expect(persistedBinding.id).not.toMatch(/^draft:/);
+      await waitFor(() =>
+        expect(view.editor.editingBinding?.id).toBe(persistedBinding.id)
+      );
+      expect(view.editor.selectedDirectoryKey).toBe(
+        `binding:${persistedBinding.id}`
+      );
+      expect(view.editor.directorySnapshot!.bindings).toEqual([
+        { ...persistedBinding, group_path: '/target' }
+      ]);
+      expect(view.editor.bindingForm.getFieldsValue(true)).toMatchObject({
+        group_path: '/target',
+        tool_id: newMountTool.tool_id,
+        visible: false
+      });
+      expect(view.editor.nodeEditing).toBe(true);
+      act(() =>
+        view.editor.saveBinding(view.editor.bindingForm.getFieldsValue(true))
+      );
+      expect(view.editor.nodeEditing).toBe(false);
+      expect(view.editor.directorySnapshot!.bindings).toEqual([
+        { ...persistedBinding, group_path: '/target', visible: false }
+      ]);
+      expect(api.replaceSettingsMcpInstanceDirectory).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await view.editor.saveDirectoryMutation.mutateAsync();
+      });
+      expect(api.replaceSettingsMcpInstanceDirectory).toHaveBeenCalledTimes(2);
+      expect(api.replaceSettingsMcpInstanceDirectory.mock.calls[1]).toEqual([
+        'ops',
+        {
+          expected_snapshot: committed,
+          groups: newCatalog.groups.map(
+            ({
+              id,
+              path,
+              display_name,
+              description_short,
+              enabled,
+              sort_order
+            }) => ({
+              id,
+              path,
+              display_name,
+              description_short,
+              enabled,
+              sort_order
+            })
+          ),
+          bindings: [
+            {
+              id: persistedBinding.id,
+              tool_id: newMountTool.tool_id,
+              group_path: '/target',
+              display_alias: null,
+              visible: false,
+              sort_order: 0
+            }
+          ]
+        },
+        'csrf-drag'
+      ]);
+      expect(api.createSettingsMcpToolBinding).not.toHaveBeenCalled();
+      expect(api.updateSettingsMcpToolBinding).not.toHaveBeenCalled();
+      expect(api.deleteSettingsMcpToolBinding).not.toHaveBeenCalled();
+    } finally {
+      response.release();
+      if (firstSave)
+        await act(async () => {
+          await firstSave;
+        });
+    }
   });
 });

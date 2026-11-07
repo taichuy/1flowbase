@@ -73,3 +73,35 @@ export function installDirectorySnapshotApi(
   );
   return snapshots;
 }
+
+/** Commit on the mock server now, but hold the response until the test releases it. */
+export function holdNextDirectoryReplace(api: {
+  replaceSettingsMcpInstanceDirectory: Mock;
+}) {
+  const replace =
+    api.replaceSettingsMcpInstanceDirectory.getMockImplementation();
+  if (!replace)
+    throw new Error(
+      'Install the directory snapshot API before holding a response'
+    );
+  let release!: () => void;
+  const responseGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  api.replaceSettingsMcpInstanceDirectory.mockImplementationOnce(
+    async (
+      instanceId: string,
+      body: ReplaceConsoleMcpInstanceDirectoryBody,
+      csrfToken: string
+    ) => {
+      const committed: ConsoleMcpInstanceDirectory = await replace(
+        instanceId,
+        body,
+        csrfToken
+      );
+      await responseGate;
+      return committed;
+    }
+  );
+  return { release };
+}

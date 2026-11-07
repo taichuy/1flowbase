@@ -5,7 +5,9 @@ import { authenticateEditor } from '../../../../agent-flow/_tests/fixtures/edito
 import { i18nText } from '../../../../../shared/i18n/text';
 import { McpInstanceTable } from '../McpInstancesTab/McpInstanceTable';
 
-beforeEach(() => authenticateEditor(['mcp.instances.update'], 'member'));
+beforeEach(() =>
+  authenticateEditor(['mcp.instances.update', 'mcp.directory.view'], 'member')
+);
 
 describe('McpInstanceTable', () => {
   test('shows instance_id without rendering the derived LLM registration column', () => {
