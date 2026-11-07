@@ -5,8 +5,9 @@ use crate::managed_services::{
 };
 use crate::routes::console_interface::{self, ConsoleInterfaceTargetError};
 use interface_runtime::{
-    InterfaceInvocationFailure, InterfaceInvocationStage, InterfaceInvocationTerminal,
-    InterfaceStreamTerminal, InterfaceStreamTerminalOutcome,
+    InterfaceExtensionPoint, InterfaceInvocationError, InterfaceInvocationFailure,
+    InterfaceInvocationStage, InterfaceInvocationTerminal, InterfaceObserverStatus,
+    InterfaceStreamTerminalOutcome,
 };
 use runtime_core::runtime_backend::{RuntimeManagedDuplex, RuntimeManagedDuplexEvent};
 use tokio::sync::{mpsc, watch};
@@ -111,27 +112,74 @@ async fn completed<L>(active: Active<L>) {
             .unwrap();
     }
     assert!(*cancellation.borrow());
-    let outcome = tokio::time::timeout(Duration::from_secs(10), completion)
+    // The Kernel returns a target failure as Err only after Failure/Completion observers
+    // finalize its receipt; a failed stream is not an Ok terminal outcome.
+    let failure = tokio::time::timeout(Duration::from_secs(10), completion)
         .await
         .expect("canonical completion must remain owned after revocation")
-        .unwrap()
-        .unwrap();
-    let (terminal, receipt) = outcome.into_parts();
-    assert!(
-        matches!(terminal, InterfaceStreamTerminal::Failed(_)),
-        "revoked ephemeral stream must report its real terminal"
-    );
+        .expect("canonical completion task must not panic")
+        .err()
+        .expect("revoked ephemeral stream must fail canonical completion");
+    let receipt = failure.receipt();
     assert_eq!(receipt.terminal(), InterfaceInvocationTerminal::Failed);
     assert_eq!(
         receipt.interface_id().unwrap().as_str(),
         "record_fixture.stream"
     );
-    assert!(receipt
-        .stages()
-        .any(|stage| stage == InterfaceInvocationStage::Executing));
+    assert_eq!(
+        receipt
+            .stages()
+            .filter(|stage| *stage == InterfaceInvocationStage::Executing)
+            .count(),
+        1
+    );
+    assert_eq!(
+        receipt
+            .resolved()
+            .expect("must finalize the real compiled canonical plan")
+            .binding_id()
+            .as_str(),
+        "http.record_fixture.stream.v1"
+    );
+    let observers = receipt.observer_records();
+    assert_eq!(observers.len(), 2, "{observers:?}");
+    for (observer, (point, plugin)) in observers.iter().zip([
+        (
+            InterfaceExtensionPoint::Failure,
+            "interface-runtime.managed.failure",
+        ),
+        (
+            InterfaceExtensionPoint::Completion,
+            "interface-runtime.managed.completion",
+        ),
+    ]) {
+        assert_eq!(observer.point(), point);
+        assert_eq!(observer.plugin().as_str(), plugin);
+        assert_eq!(observer.status(), InterfaceObserverStatus::Executed);
+        assert_eq!(observer.reason(), None);
+    }
+    let target = match failure.into_error() {
+        InterfaceInvocationError::TargetFailed(target) => target,
+        error => panic!("revoked managed target must report its exact failure: {error:?}"),
+    };
+    assert_eq!(target.classification(), "managed_service_stream");
+    let ConsoleInterfaceTargetError(api_error) = target
+        .into_source::<ConsoleInterfaceTargetError>()
+        .expect("managed stream must preserve its typed target error");
+    // The current adapter maps its cancellation Conflict to this safe execution code.
     assert!(
-        receipt.resolved().is_some(),
-        "must finalize the real compiled canonical plan"
+        matches!(
+            api_error
+                .0
+                .downcast_ref::<control_plane::errors::ControlPlaneError>(),
+            Some(
+                control_plane::errors::ControlPlaneError::UpstreamUnavailable(
+                    "managed_service_stream_execution"
+                )
+            )
+        ),
+        "unexpected managed stream failure: {:?}",
+        api_error
     );
     drop((lease, _input, _events));
 }
@@ -256,12 +304,15 @@ pub(super) async fn run(f: &Fixture) {
         loop {
             let traces =
                 std::fs::read_to_string(f.worker.with_extension("trace")).unwrap_or_default();
-            if traces
+            let cleanups = traces
                 .lines()
                 .filter(|line| *line == "stream_cleanup")
-                .count()
-                >= 4
-            {
+                .count();
+            assert!(
+                cleanups <= 4,
+                "each of four real streams must clean up once"
+            );
+            if cleanups == 4 {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
