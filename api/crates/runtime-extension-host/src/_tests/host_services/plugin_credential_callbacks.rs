@@ -41,6 +41,7 @@ pub(super) fn context(port: Arc<Credentials>) -> ProviderHostCallContext {
     };
     ProviderHostCallContext {
         binding: PluginDataBinding {
+            record_permissions: None,
             managed_subject: None,
             publisher_namespace: "trusted".into(),
             plugin_code: "ssh".into(),

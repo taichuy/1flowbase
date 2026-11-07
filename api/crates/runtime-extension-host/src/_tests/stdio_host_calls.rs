@@ -56,6 +56,7 @@ fn now_unix_ms() -> i64 {
 fn host_call_context(port: Arc<CapturingPluginDataPort>) -> ProviderHostCallContext {
     ProviderHostCallContext {
         binding: PluginDataBinding {
+            record_permissions: None,
             managed_subject: None,
             publisher_namespace: "trusted".to_string(),
             plugin_code: "fixture".to_string(),

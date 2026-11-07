@@ -268,6 +268,7 @@ fn fixture() -> (State, PluginDataBinding, PluginDataRequest) {
         ],
     };
     let binding = PluginDataBinding {
+        record_permissions: None,
         managed_subject: Some(ManagedContributionSubject::new(
             ManagedInstallationId::new(id.to_string()).unwrap(),
             ManagedWorkspaceId::new(scope.to_string()).unwrap(),

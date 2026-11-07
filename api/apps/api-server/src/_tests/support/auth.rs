@@ -140,8 +140,12 @@ async fn test_state_with_runtime_profile_state(
     process_started_at: OffsetDateTime,
     api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
     runtime_host_system: Arc<dyn RuntimeHostSystemPort>,
+    pool_capacity: Option<std::num::NonZeroU32>,
 ) -> (Arc<ApiState>, String) {
     let mut config = default_test_config();
+    if let Some(capacity) = pool_capacity {
+        config.database_pool_max_connections = capacity.get();
+    }
     let database = isolated_database(&config.database_url).await;
     config.database_url = database.database_url().to_owned();
     config.business_file_local_root = std::env::temp_dir()
@@ -424,6 +428,7 @@ async fn test_app_with_runtime_profile_state(
         process_started_at,
         api_runtime_profile,
         runtime_host_system,
+        None,
     )
     .await;
     let config = default_test_config();
@@ -466,12 +471,25 @@ pub async fn test_app_with_official_extension_source(
 }
 
 pub async fn test_api_state_with_database_url() -> (Arc<ApiState>, String) {
+    test_api_state_with_database_pool_capacity(
+        std::num::NonZeroU32::new(default_test_config().database_pool_max_connections)
+            .expect("default test pool capacity is positive"),
+    )
+    .await
+}
+
+/// Explicit resource capacity for tests whose real services retain concurrent transactions.
+/// The default helpers keep their existing one-connection budget and isolated database owner.
+pub async fn test_api_state_with_database_pool_capacity(
+    pool_capacity: std::num::NonZeroU32,
+) -> (Arc<ApiState>, String) {
     test_state_with_runtime_profile_state(
         OffsetDateTime::now_utc(),
         Arc::new(HostApiRuntimeProfileCollector::new(OffsetDateTime::now_utc()).unwrap()),
         Arc::new(StubRuntimeHostSystemClient {
             result: Ok(sample_runner_profile("host_api_server")),
         }),
+        Some(pool_capacity),
     )
     .await
 }

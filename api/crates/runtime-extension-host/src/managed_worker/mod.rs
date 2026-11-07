@@ -248,6 +248,7 @@ impl ManagedWorkers {
         }
         let host_calls = crate::stdio_runtime::ProviderHostCallContext {
             binding: extension_contracts::PluginDataBinding {
+                record_permissions: request.principal.record_permissions.clone(),
                 managed_subject: Some(request.handle.identity().subject().clone()),
                 publisher_namespace: binding.publisher_namespace.clone(),
                 plugin_code: binding.plugin_code.clone(),

@@ -1,5 +1,7 @@
 //! Generation-frozen managed services. Package declarations become ordinary host-owned console APIs.
 mod interface;
+mod record_acl;
+pub(crate) mod record_permissions;
 mod registration;
 mod routes;
 pub(crate) mod stream;

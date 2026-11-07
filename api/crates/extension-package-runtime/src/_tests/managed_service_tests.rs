@@ -588,3 +588,186 @@ fn packaged_mcp_template_is_hash_bound_optional_and_reset_is_explicit() {
     assert!(legacy.template.is_none());
     assert!(!legacy.reset_on_activation);
 }
+
+// AC-006/007: declaration ownership, schema selectors and operation mapping are Host-validated.
+fn record_fixture() -> Value {
+    let mut value = fixture();
+    value["permissions"]["storage"] = json!("host_managed");
+    value["data_models"] = json!([{"contribution_version":"1flowbase.plugin-data-model/v1", "storage_binding":"main",
+        "owned_collections":[{"collection_code":"hosts", "fields":[{"field_code":"host_id", "field_type":"string", "nullable":false}]}]}]);
+    value["managed"]["module"]["contributions"].as_array_mut().unwrap().push(json!({
+        "contribution_id":"managed_fixture.data", "contributor_module_id":"managed_fixture", "point_id":"acme.data", "contract_version":"1", "mode":"append"
+    }));
+    value["managed"]["execution_bindings"].as_array_mut().unwrap().push(json!({
+        "contribution_id":"managed_fixture.data", "execution_mode":"declarative_only",
+        "runtime":{"protocol":"stdio_json", "entry":"ui/data.json"}, "handler":"data", "payload":{"kind":"data_models"}
+    }));
+    value["managed_service"]["record_resources"] = json!([{
+        "resource_code":"hosts", "collection_code":"hosts", "id_field":"host_id", "label":"Hosts", "description":"Host row permissions",
+        "actions":[{"action_code":"view", "label":"View", "description":"View a host", "operation_ids":["managed_fixture.list"]}]
+    }]);
+    value["managed_service"]["operations"][0]["record_permission"] =
+        json!({"resource_code":"hosts", "action_code":"view", "selector":{"kind":"list"}});
+    value
+}
+
+#[test]
+fn record_resources_validate_owned_collection_and_leave_legacy_packages_unchanged() {
+    assert!(parse(&fixture())
+        .unwrap()
+        .managed_service
+        .unwrap()
+        .record_resources
+        .is_empty());
+    let parsed = parse(&record_fixture()).unwrap();
+    assert_eq!(
+        parsed.managed_service.unwrap().record_resources[0].id_field,
+        "host_id"
+    );
+    let mut builtin = record_fixture();
+    builtin["managed_service"]["record_resources"][0]["id_field"] = json!("id");
+    assert!(
+        parse(&builtin).is_ok(),
+        "Host-owned UUID id is also a valid owned collection identity"
+    );
+}
+
+#[test]
+fn record_resources_reject_ownership_action_reference_and_selector_schema_forgery() {
+    for (pointer, replacement) in [
+        (
+            "/managed_service/record_resources/0/collection_code",
+            json!("other_plugin_hosts"),
+        ),
+        (
+            "/managed_service/record_resources/0/id_field",
+            json!("missing_id"),
+        ),
+        (
+            "/data_models/0/owned_collections/0/fields/0/nullable",
+            json!(true),
+        ),
+        (
+            "/data_models/0/owned_collections/0/fields/0/field_type",
+            json!("json"),
+        ),
+        (
+            "/managed_service/record_resources/0/actions/0/operation_ids",
+            json!(["other_plugin.view"]),
+        ),
+        (
+            "/managed_service/operations/0/record_permission/resource_code",
+            json!("other_resource"),
+        ),
+        (
+            "/managed_service/operations/0/record_permission/action_code",
+            json!("delete"),
+        ),
+        (
+            "/managed_service/operations/0/record_permission/selector",
+            json!({"kind":"record", "pointer":"/body/host_id"}),
+        ),
+        (
+            "/managed_service/operations/0/record_permission/selector",
+            json!({"kind":"handle", "pointer":"/path/session_id"}),
+        ),
+    ] {
+        let mut value = record_fixture();
+        *value.pointer_mut(pointer).unwrap() = replacement;
+        assert!(parse(&value).is_err(), "{pointer} must fail closed");
+    }
+    let mut duplicate = record_fixture();
+    let resource = duplicate["managed_service"]["record_resources"][0].clone();
+    duplicate["managed_service"]["record_resources"]
+        .as_array_mut()
+        .unwrap()
+        .push(resource);
+    assert!(parse(&duplicate).is_err());
+}
+
+fn open_record_fixture() -> Value {
+    let mut value = record_fixture();
+    value["managed_service"]["record_resources"][0]["actions"][0]["action_code"] = json!("open");
+    value["managed_service"]["operations"][0]["method"] = json!("POST");
+    value["managed_service"]["operations"][0]["input_schema"] = json!({
+        "type":"object", "required":["body"], "properties":{"body":{"type":"object", "required":["host_id"], "properties":{"host_id":{"type":"string"}}}}
+    });
+    value["managed_service"]["operations"][0]["output_schema"] = json!({
+        "type":"object", "required":["session"], "properties":{"session":{"type":"object", "required":["session_id"], "properties":{"session_id":{"type":"string"}}}}
+    });
+    value["managed_service"]["operations"][0]["record_permission"] = json!({"resource_code":"hosts", "action_code":"open", "selector":{"kind":"record", "pointer":"/body/host_id"}, "response_handle_pointer":"/session/session_id"});
+    value
+}
+
+#[test]
+fn record_and_host_handle_selectors_validate_requiredness_and_open_response_binding() {
+    assert!(parse(&open_record_fixture()).is_ok());
+    for (pointer, replacement) in [
+        ("/managed_service/operations/0/input_schema/properties/body/required", json!([])),
+        ("/managed_service/operations/0/record_permission/selector/pointer", json!("/body/host_id~2")),
+        ("/managed_service/operations/0/output_schema/properties/session/properties/session_id/type", json!("number")),
+        ("/managed_service/operations/0/record_permission/response_handle_pointer", json!("/missing/session_id")),
+        ("/managed_service/operations/0/record_permission/selector/allow_missing", json!(true)),
+    ] {
+        let mut value = open_record_fixture();
+        if let Some(target) = value.pointer_mut(pointer) { *target = replacement; }
+        else { value["managed_service"]["operations"][0]["record_permission"]["selector"]["allow_missing"] = replacement; }
+        assert!(parse(&value).is_err(), "{pointer} must fail closed");
+    }
+    let mut handle = open_record_fixture();
+    handle["managed_service"]["operations"][0]["record_permission"] = json!({"resource_code":"hosts", "action_code":"open", "selector":{"kind":"handle", "pointer":"/body/host_id"}});
+    assert!(parse(&handle).is_ok());
+    let mut draft = open_record_fixture();
+    draft["managed_service"]["operations"][0]["input_schema"]["properties"]["body"]["required"] =
+        json!([]);
+    draft["managed_service"]["operations"][0]["record_permission"] = json!({"resource_code":"hosts", "action_code":"open", "selector":{"kind":"record", "pointer":"/body/host_id", "allow_missing":true}});
+    assert!(
+        parse(&draft).is_ok(),
+        "explicit optional record permits draft without weakening normal records"
+    );
+}
+
+#[test]
+fn record_create_is_an_explicit_non_grantable_insert_classification() {
+    let mut value = record_fixture();
+    let mut create = value["managed_service"]["operations"][0].clone();
+    create["interface_id"] = json!("managed_fixture.create");
+    create["contribution_id"] = json!("managed_fixture.create");
+    create["method"] = json!("POST");
+    create["record_permission"] =
+        json!({"resource_code":"hosts", "action_code":"create", "selector":{"kind":"create"}});
+    value["managed_service"]["operations"]
+        .as_array_mut()
+        .unwrap()
+        .push(create);
+    let mut contribution = value["managed"]["module"]["contributions"][0].clone();
+    contribution["contribution_id"] = json!("managed_fixture.create");
+    value["managed"]["module"]["contributions"]
+        .as_array_mut()
+        .unwrap()
+        .push(contribution);
+    let mut execution = value["managed"]["execution_bindings"][0].clone();
+    execution["contribution_id"] = json!("managed_fixture.create");
+    value["managed"]["execution_bindings"]
+        .as_array_mut()
+        .unwrap()
+        .push(execution);
+    assert!(parse(&value).is_ok());
+    for (field, replacement) in [
+        ("method", json!("GET")),
+        (
+            "record_permission",
+            json!({"resource_code":"hosts","action_code":"open","selector":{"kind":"create"}}),
+        ),
+        (
+            "record_permission",
+            json!({"resource_code":"unknown","action_code":"create","selector":{"kind":"create"}}),
+        ),
+    ] {
+        let mut invalid = value.clone();
+        invalid["managed_service"]["operations"][1][field] = replacement;
+        assert!(parse(&invalid).is_err());
+    }
+    value["managed_service"]["record_resources"][0]["actions"].as_array_mut().unwrap().push(json!({"action_code":"create", "label":"Create", "description":"Must never be grantable per record", "operation_ids":["managed_fixture.create"]}));
+    assert!(parse(&value).is_err());
+}

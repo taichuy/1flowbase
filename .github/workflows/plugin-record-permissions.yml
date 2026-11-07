@@ -1,0 +1,49 @@
+name: Plugin record permissions acceptance
+on:
+  push:
+    branches: ['codex/ssh-host-permissions-host-*', 'codex/ssh-host-permissions-runtime-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: record-permissions-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  record-permissions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      RECORD_PERMISSION_TEST_SCOPE: ${{ startsWith(github.ref_name, 'codex/ssh-host-permissions-runtime-') && 'runtime' || 'full' }}
+      DATABASE_URL: postgres://postgres:record-fixture@127.0.0.1:5432/record_permissions
+      API_DATABASE_URL: postgres://postgres:record-fixture@127.0.0.1:5432/record_permissions
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_PASSWORD: record-fixture
+          POSTGRES_DB: record_permissions
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d record_permissions"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: web/.nvmrc
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api -> target
+          key: terminal-mcp-api
+          cache-on-failure: true
+      - name: Verify record policies and build exact runtime
+        run: node scripts/node/record-permissions/ci.cjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: record-permissions-${{ github.sha }}
+          path: tmp/test-governance/record-permissions-ci/
+          if-no-files-found: error

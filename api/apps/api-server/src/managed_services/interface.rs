@@ -82,6 +82,14 @@ impl Adapter {
         if !op.input.is_valid(&input.payload) {
             return Err(Error::InvalidInput("managed_service_input").into());
         }
+        let record_permissions = super::record_acl::authorize(
+            &state,
+            &self.registration,
+            principal.actor(),
+            &op.declaration,
+            &input.payload,
+        )
+        .await?;
         let timeout_ms = input
             .payload
             .pointer("/body/timeout_ms")
@@ -156,7 +164,7 @@ impl Adapter {
             } else {
                 None
             };
-            if needs_call_context && caller.is_none() {
+            if needs_call_context && caller.is_none() && record_permissions.is_none() {
                 return Err(Error::NotAuthenticated.into());
             }
             let output = composition
@@ -165,6 +173,7 @@ impl Adapter {
                     domain::SYSTEM_SCOPE_ID,
                     &contribution_id,
                     runtime_core::runtime_backend::RuntimeExecutionPrincipal {
+                        record_permissions: record_permissions.clone(),
                         caller,
                         workspace_id: domain::SYSTEM_SCOPE_ID.to_string(),
                         actor_id: Some(principal.actor().user_id.to_string()),
@@ -177,6 +186,15 @@ impl Adapter {
             if !op.output.is_valid(&output) {
                 return Err(Error::UpstreamUnavailable("managed_service_output_contract").into());
             }
+            super::record_acl::bind_response(
+                &state,
+                &self.registration,
+                principal.actor(),
+                &op.declaration,
+                &record_permissions,
+                &output,
+            )
+            .map_err(|error| error.0)?;
             if op.declaration.invalidates_streams {
                 super::stream::revoke_installation(self.registration.installation_id);
             }

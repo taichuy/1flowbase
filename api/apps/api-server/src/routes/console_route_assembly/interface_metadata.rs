@@ -603,16 +603,23 @@ pub(super) fn compile_console_interface_metadata(
             &binding.route.method,
             &binding.route.path,
         );
+        let record_metadata = crate::managed_services::record_permissions::metadata(&interface_id);
         interfaces.push(ConsoleInterfaceRegistration {
             interface_id,
             route: binding.route.clone(),
             description: methods_metadata
                 .map(|(_, description)| description.to_owned())
                 .or_else(|| external_auth_metadata.map(|metadata| metadata.description.to_owned()))
+                .or_else(|| {
+                    record_metadata
+                        .as_ref()
+                        .map(|(_, description)| description.clone())
+                })
                 .unwrap_or(description),
             summary: methods_metadata
                 .map(|(summary, _)| summary.to_owned())
                 .or_else(|| external_auth_metadata.map(|metadata| metadata.summary.to_owned()))
+                .or_else(|| record_metadata.as_ref().map(|(summary, _)| summary.clone()))
                 .unwrap_or(summary),
         });
     }

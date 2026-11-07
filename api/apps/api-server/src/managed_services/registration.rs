@@ -8,6 +8,8 @@ use storage_durable_postgres::MainDurableStore;
 #[derive(Debug, Clone)]
 pub(crate) struct ManagedServiceRegistration {
     pub installation_id: uuid::Uuid,
+    pub publisher_namespace: String,
+    pub data_models: Vec<extension_contracts::PluginDataModelContribution>,
     pub plugin_code: String,
     pub plugin_version: String,
     pub display_name: String,
@@ -212,6 +214,8 @@ pub(crate) async fn load_installations(
         }
         registrations.push(ManagedServiceRegistration {
             installation_id: installation.id,
+            publisher_namespace: manifest.publisher_namespace,
+            data_models: manifest.data_models,
             plugin_code: code,
             plugin_version: manifest.version,
             display_name: manifest.display_name,

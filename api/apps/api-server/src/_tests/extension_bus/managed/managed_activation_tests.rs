@@ -62,6 +62,7 @@ fn package_bytes(root: &Path) -> Vec<u8> {
 
 pub(super) fn principal(workspace: Uuid, actor: Uuid) -> RuntimeExecutionPrincipal {
     RuntimeExecutionPrincipal {
+        record_permissions: None,
         caller: None,
         workspace_id: workspace.to_string(),
         actor_id: Some(actor.to_string()),

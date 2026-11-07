@@ -120,6 +120,13 @@ const MCP_SIMPLE_OPERATIONS: &[&str] = &[
     "mcp.upstream_tools.import",
 ];
 
+// Record policy management is new authority. Keep it outside the historical roles-feature
+// projection so old grants cannot authorize viewing or replacing per-record role policies.
+pub(super) const ROLE_RECORD_PERMISSION_NEW_OPERATIONS: &[&str] = &[
+    "roles.record_permissions.replace",
+    "roles.record_permissions.view",
+];
+
 const ROLE_SIMPLE_OPERATIONS: &[&str] = &[
     "roles.create",
     "roles.data_model_options.list",

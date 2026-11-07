@@ -65,3 +65,23 @@ fn managed_subject_is_not_a_worker_supplied_plugin_data_field() {
         json!({"installation_id":"forged","workspace_id":"forged","contribution_id":"forged"});
     assert!(serde_json::from_value::<PluginDataRequest>(request).is_err());
 }
+
+#[test]
+fn worker_cannot_supply_record_permission_context_in_frame_or_data_request() {
+    let clean = json!({"frame":"host_call", "protocol":RUNTIME_HOST_CALL_PROTOCOL_V1,
+        "call_id":"record-call", "service":PLUGIN_DATA_SERVICE_V1,
+        "request":{"operations":[{"operation":"count", "target":{"kind":"owned_collection", "collection_code":"hosts"}}]}});
+    assert!(serde_json::from_value::<RuntimeHostWorkerFrame>(clean.clone()).is_ok());
+    for context in [
+        json!({"is_root":true}),
+        json!({"caller_workspace_id":"other", "active_role_code":"root"}),
+        json!({"resources":[{"resource_code":"hosts", "action_code":"open"}]}),
+    ] {
+        let mut frame = clean.clone();
+        frame["record_permissions"] = context.clone();
+        assert!(serde_json::from_value::<RuntimeHostWorkerFrame>(frame).is_err());
+        let mut request = clean.clone();
+        request["request"]["record_permissions"] = context;
+        assert!(serde_json::from_value::<RuntimeHostWorkerFrame>(request).is_err());
+    }
+}

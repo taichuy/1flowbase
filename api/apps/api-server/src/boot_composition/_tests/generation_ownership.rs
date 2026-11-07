@@ -417,7 +417,7 @@ async fn failed_candidate_catalog_releases_partial_assembly_and_preserves_servin
             .fork_generation(BTreeMap::new())
             .unwrap(),
     );
-    let service = crate::managed_services::ManagedServiceRegistration {
+    let service = crate::managed_services::ManagedServiceRegistration { publisher_namespace: "test".into(), data_models: Vec::new(),
         display_name: "Fixture plugin".into(), description: "Fixture plugin operations".into(),
         installation_id: Uuid::now_v7(), plugin_code: "invalid-candidate".into(), plugin_version: "1.0.0".into(), pages: vec![],
         declaration: serde_json::from_value(json!({

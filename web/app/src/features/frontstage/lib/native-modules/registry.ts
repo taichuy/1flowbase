@@ -181,7 +181,12 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   })),
   registration(
     '@1flowbase/plugin-settings',
-    ['request', 'openStream'],
+    [
+      'request',
+      'openStream',
+      'RecordPermissionEditor',
+      'getRecordCapabilities'
+    ],
     async () => ({
       module: await import('./plugin-settings/runtime')
     })
