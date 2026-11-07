@@ -107,6 +107,7 @@ async fn anthropic_resume_replay_terminal_returns_explicit_unsupported() {
         console_operation_registry: base_state.console_operation_registry.clone(),
         infrastructure: base_state.infrastructure.clone(),
         event_center: base_state.event_center.clone(),
+        event_sources: Arc::default(),
         event_workflow_changes: base_state.event_workflow_changes.clone(),
         event_workflow_statuses: base_state.event_workflow_statuses.clone(),
         extension_boot_snapshot: base_state.extension_boot_snapshot.clone(),

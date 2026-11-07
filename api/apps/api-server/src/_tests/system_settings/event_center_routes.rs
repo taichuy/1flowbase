@@ -72,10 +72,7 @@ async fn event_state() -> Arc<crate::app_state::ApiState> {
     .unwrap();
     // Bind only this fixture to the compiled serving catalog. General support remains
     // deliberately unavailable until a test opts into an event runtime.
-    state_mut.event_sources = Arc::default();
-    Arc::get_mut(&mut state_mut.event_sources)
-        .unwrap()
-        .runtime_bound = true;
+    state_mut.event_sources = Arc::new(crate::EventSourceCatalog::for_test_support());
     state
 }
 

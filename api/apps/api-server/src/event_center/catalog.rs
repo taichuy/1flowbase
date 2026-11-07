@@ -11,6 +11,16 @@ pub struct EventSourceCatalog {
         Option<Arc<control_plane::lifecycle_outbox_dispatcher::LifecycleSourceObserver>>,
 }
 impl EventSourceCatalog {
+    /// Opt an isolated fixture into canonical/runtime capabilities without exposing
+    /// mutable composition evidence through the public library facade.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn for_test_support() -> Self {
+        Self {
+            runtime_bound: true,
+            ..Self::default()
+        }
+    }
+
     /// Shared production/fixture assembly. Call before extracting stream/store clones or
     /// starting producers/workers; keep the returned catalog with the serving generation.
     pub(crate) fn attach_local(
