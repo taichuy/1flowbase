@@ -195,59 +195,25 @@ fn project_entry(
                     })
                     .filter(|descriptor| descriptor.operation_id.as_ref() == api.operation_id)
                     .collect::<Vec<_>>();
-                rejected = if capabilities.is_empty() {
+                rejected = if capabilities.len() != candidates.len() || capabilities.is_empty() {
                     Some(ApiEventUnavailableReason::MissingTypedCodec)
                 } else if capabilities
                     .iter()
-                    .all(|capability| !capability.observer_enabled)
+                    .any(|capability| !capability.observer_enabled)
                 {
                     Some(ApiEventUnavailableReason::TargetUnavailable)
                 } else if descriptors.is_empty() {
                     Some(ApiEventUnavailableReason::TargetUnavailable)
-                } else if descriptors
-                    .windows(2)
-                    .any(|pair| pair[0].schemas != pair[1].schemas)
-                {
-                    Some(ApiEventUnavailableReason::AmbiguousOperation)
                 } else {
                     None
                 };
                 if rejected.is_none() {
-                    let descriptor = descriptors[0];
-                    let request_available = descriptor
-                        .schemas
-                        .request
-                        .as_ref()
-                        .is_some_and(|schema| !schema.is_null());
-                    let result_available = descriptor
-                        .schemas
-                        .result
-                        .as_ref()
-                        .is_some_and(|schema| !schema.is_null());
-                    if include_schemas {
-                        request = descriptor
-                            .schemas
-                            .request
-                            .clone()
-                            .filter(|schema| !schema.is_null());
-                        result = descriptor
-                            .schemas
-                            .result
-                            .clone()
-                            .filter(|schema| !schema.is_null());
-                    }
-                    summary.before = match reason(descriptor.schemas.request_unavailable.as_deref())
-                    {
-                        Some(reason) => unavailable(reason),
-                        None if request_available => ApiEventPhaseAvailability::Available,
-                        _ => unavailable(ApiEventUnavailableReason::MissingTypedCodec),
-                    };
-                    summary.completion =
-                        match reason(descriptor.schemas.result_unavailable.as_deref()) {
-                            Some(reason) => unavailable(reason),
-                            None if result_available => ApiEventPhaseAvailability::Available,
-                            _ => unavailable(ApiEventUnavailableReason::MissingTypedCodec),
-                        };
+                    // One documented API may have blocking and streaming bindings. Each
+                    // binding freezes its own real terminal; the operation schema describes
+                    // those supported alternatives without confusing frames with terminals.
+                    (summary.before, request) = phase_contract(&descriptors, true, include_schemas);
+                    (summary.completion, result) =
+                        phase_contract(&descriptors, false, include_schemas);
                 }
             }
         }
@@ -291,6 +257,53 @@ fn project_entry(
         before_schema,
         completion_schema,
     }
+}
+
+fn phase_contract(
+    descriptors: &[&DocumentOperationDescriptor],
+    before: bool,
+    include_schema: bool,
+) -> (ApiEventPhaseAvailability, Option<serde_json::Value>) {
+    let mut schemas = Vec::<&serde_json::Value>::new();
+    for descriptor in descriptors {
+        let (schema, owner_reason) = if before {
+            (
+                descriptor.schemas.request.as_ref(),
+                descriptor.schemas.request_unavailable.as_deref(),
+            )
+        } else {
+            (
+                descriptor.schemas.result.as_ref(),
+                descriptor.schemas.result_unavailable.as_deref(),
+            )
+        };
+        if let Some(reason) = reason(owner_reason) {
+            return (unavailable(reason), None);
+        }
+        let Some(schema) = schema.filter(|value| !value.is_null()) else {
+            return (
+                unavailable(ApiEventUnavailableReason::MissingTypedCodec),
+                None,
+            );
+        };
+        if !schemas.contains(&schema) {
+            schemas.push(schema);
+        }
+    }
+    if schemas.is_empty() {
+        return (
+            unavailable(ApiEventUnavailableReason::MissingTypedCodec),
+            None,
+        );
+    }
+    let schema = include_schema.then(|| {
+        if schemas.len() == 1 {
+            schemas[0].clone()
+        } else {
+            serde_json::json!({"anyOf":schemas})
+        }
+    });
+    (ApiEventPhaseAvailability::Available, schema)
 }
 
 /// Gate ordinary documented JSON operations against actual compiled typed codec evidence.
