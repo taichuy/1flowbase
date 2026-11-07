@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;
 
+#[path = "plugin_data_repository/record_permissions.rs"]
 mod record_permissions;
 use record_permissions::{RequestAuthorization, ResolvedRecordPermission};
 
