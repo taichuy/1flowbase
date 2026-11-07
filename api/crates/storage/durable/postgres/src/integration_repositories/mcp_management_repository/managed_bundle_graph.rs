@@ -17,6 +17,19 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
     store: &PgControlPlaneStore,
     input: &SeedMcpBundleGraphInput,
 ) -> Result<()> {
+    let reset = matches!(input.kind, McpBundleSeedKind::PluginTemplateReset { .. });
+    if reset {
+        let namespace = format!("plugin.{}.", input.source.bundle_id);
+        if input.instances.len() != 1
+            || input.tools.iter().any(|tool| {
+                tool.workspace_id != input.workspace_id
+                    || !tool.tool_id.starts_with(&namespace)
+                    || tool.tool_id.len() == namespace.len()
+            })
+        {
+            return Err(ControlPlaneError::Conflict("mcp_plugin_template_scope").into());
+        }
+    }
     let mut transaction = store.pool().begin().await?;
     // Serialize graph seeders in a workspace, including overlapping namespaces from different
     // families. The unique inserts below also fence concurrent ordinary user creates.
@@ -24,9 +37,13 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
         .bind(format!("mcp-graph-seed:{}", input.workspace_id))
         .execute(&mut *transaction)
         .await?;
-    let plugin_template = matches!(input.kind, McpBundleSeedKind::PluginTemplate { .. });
+    let plugin_template = matches!(
+        input.kind,
+        McpBundleSeedKind::PluginTemplate { .. } | McpBundleSeedKind::PluginTemplateReset { .. }
+    );
     let requested_installation = match input.kind {
-        McpBundleSeedKind::PluginTemplate { installation_id } => Some(installation_id),
+        McpBundleSeedKind::PluginTemplate { installation_id }
+        | McpBundleSeedKind::PluginTemplateReset { installation_id } => Some(installation_id),
         McpBundleSeedKind::BundleVersion => None,
     };
     let extension_installation_id = sqlx::query_scalar::<_, Uuid>(
@@ -63,10 +80,13 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
     .bind(plugin_template)
     .fetch_one(&mut *transaction)
     .await?;
-    if imported_before {
+    if imported_before && !reset {
         transaction.commit().await?;
         return Ok(());
     }
+    // Source metadata alone cannot prove plugin ownership on the first activation: a
+    // preexisting MCP bundle may use the same organization/code. Require our import receipt.
+    let owned_reset = reset && imported_before;
 
     let tool_ids = input
         .tools
@@ -84,13 +104,18 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
             select 1 from mcp_tools
             where workspace_id = $1
               and tool_id = any($2)
-              and (managed_bundle_id is null or $3)
+              and (managed_bundle_id is null or ($3 and
+                (not $4 or managed_bundle_organization is distinct from $5
+                  or managed_bundle_id is distinct from $6)))
         )
         "#,
     )
     .bind(input.workspace_id)
     .bind(&tool_ids)
     .bind(plugin_template)
+    .bind(owned_reset)
+    .bind(&input.source.organization)
+    .bind(&input.source.bundle_id)
     .fetch_one(&mut *transaction)
     .await?;
     let unmanaged_instance_collision = sqlx::query_scalar::<_, bool>(
@@ -99,13 +124,18 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
             select 1 from mcp_instances
             where workspace_id = $1
               and instance_id = any($2)
-              and (managed_bundle_id is null or $3)
+              and (managed_bundle_id is null or ($3 and
+                (not $4 or managed_bundle_organization is distinct from $5
+                  or managed_bundle_id is distinct from $6)))
         )
         "#,
     )
     .bind(input.workspace_id)
     .bind(&instance_ids)
     .bind(plugin_template)
+    .bind(owned_reset)
+    .bind(&input.source.organization)
+    .bind(&input.source.bundle_id)
     .fetch_one(&mut *transaction)
     .await?;
     if unmanaged_tool_collision || unmanaged_instance_collision {
@@ -158,7 +188,7 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
                 revision=mcp_tools.revision + 1,
                 updated_by=excluded.updated_by,
                 updated_at=now()
-            where not $28 and (mcp_tools.managed_bundle_id is null
+            where (not $28 or $29) and ((not $28 and mcp_tools.managed_bundle_id is null)
                or mcp_tools.managed_bundle_organization = excluded.managed_bundle_organization
                   and mcp_tools.managed_bundle_id = excluded.managed_bundle_id)
             "#,
@@ -200,6 +230,7 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
                 .transpose()?,
         )
         .bind(plugin_template)
+        .bind(owned_reset)
         .execute(&mut *transaction)
         .await?;
         if plugin_template && inserted.rows_affected() != 1 {
@@ -225,7 +256,7 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
                 managed_bundle_version=excluded.managed_bundle_version,
                 updated_by=excluded.updated_by,
                 updated_at=now()
-            where not $12 and (mcp_instances.managed_bundle_id is null
+            where (not $12 or $13) and ((not $12 and mcp_instances.managed_bundle_id is null)
                or mcp_instances.managed_bundle_organization = excluded.managed_bundle_organization
                   and mcp_instances.managed_bundle_id = excluded.managed_bundle_id)
             returning id
@@ -243,6 +274,7 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
         .bind(&input.source.bundle_version)
         .bind(input.actor_user_id)
         .bind(plugin_template)
+        .bind(owned_reset)
         .fetch_optional(&mut *transaction)
         .await?
         .ok_or(ControlPlaneError::Conflict(

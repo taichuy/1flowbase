@@ -288,10 +288,23 @@ impl ManagedServiceWorkerLifetime {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct ManagedServiceMcpTemplate {
+    /// Package-relative native bundle manifest, bound into the signed plugin manifest.
+    pub path: String,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ManagedServiceMcpInstance {
     pub instance_id: String,
     pub name: String,
     pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<ManagedServiceMcpTemplate>,
+    /// Explicit activation restores package defaults; legacy packages seed only once.
+    #[serde(default)]
+    pub reset_on_activation: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -350,13 +363,32 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
                 .instance_id
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
-            || !service
-                .operations
-                .iter()
-                .any(|operation| operation.mcp.is_some())
+            || (instance.template.is_none()
+                && !service
+                    .operations
+                    .iter()
+                    .any(|operation| operation.mcp.is_some()))
         {
             return Err(invalid(
-                "managed MCP instance requires an owned instance_id, name, description and MCP operation",
+                "managed MCP instance requires an owned instance_id, name, description and MCP operation or template",
+            ));
+        }
+        if let Some(template) = &instance.template {
+            if !valid_managed_mcp_asset_path(&template.path)
+                || !template.sha256.strip_prefix("sha256:").is_some_and(|hash| {
+                    hash.len() == 64
+                        && hash
+                            .bytes()
+                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                })
+            {
+                return Err(invalid(
+                    "managed MCP template requires a safe relative path and sha256 digest",
+                ));
+            }
+        } else if instance.reset_on_activation {
+            return Err(invalid(
+                "managed MCP reset_on_activation requires a packaged template",
             ));
         }
     }
@@ -559,4 +591,14 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
         }
     }
     Ok(())
+}
+
+/// Paths use portable package separators and contain only ordinary nonempty components.
+pub fn valid_managed_mcp_asset_path(path: &str) -> bool {
+    !path.is_empty()
+        && !path.contains('\\')
+        && !path.contains(':')
+        && path.split('/').all(|part| {
+            !part.is_empty() && part != "." && part != ".." && !part.chars().any(char::is_control)
+        })
 }

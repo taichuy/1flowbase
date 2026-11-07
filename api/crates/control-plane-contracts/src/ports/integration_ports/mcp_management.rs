@@ -194,11 +194,12 @@ pub struct ReplaceMcpBundleGraphInput {
     pub instances: Vec<domain::McpBundleInstance>,
 }
 
-/// Builtin bundles reconcile each version; plugin templates are user-owned after first seed.
+/// Builtin bundles reconcile each version; plugin templates either seed once or explicitly reset.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum McpBundleSeedKind {
     BundleVersion,
     PluginTemplate { installation_id: Uuid },
+    PluginTemplateReset { installation_id: Uuid },
 }
 
 #[derive(Debug, Clone)]

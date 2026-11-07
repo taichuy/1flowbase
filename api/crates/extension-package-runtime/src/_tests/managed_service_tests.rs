@@ -521,3 +521,70 @@ fn resource_link_only_replay_and_discovery_manifest_contract() {
     invalid["mcp_content"][1]["skip_if_null"] = json!("true");
     assert!(ManagedMcpMediaMapping::parse(&invalid).is_err());
 }
+
+#[test]
+fn packaged_mcp_template_is_hash_bound_optional_and_reset_is_explicit() {
+    let mut value = fixture();
+    value["managed_service"]["mcp_instance"] = json!({
+        "instance_id":"managed_fixture_tools", "name":"Fixture", "description":"Native tools",
+        "template":{"path":"_assets/mcp/manifest.json", "sha256":format!("sha256:{}", "a".repeat(64))}
+    });
+    let parsed = parse(&value).unwrap();
+    let instance = parsed.managed_service.unwrap().mcp_instance.unwrap();
+    assert!(!instance.reset_on_activation);
+    assert_eq!(instance.template.unwrap().path, "_assets/mcp/manifest.json");
+    assert!(
+        value["managed_service"]["operations"][0]
+            .get("mcp")
+            .is_none(),
+        "native templates may explicitly wrap operations without a flat MCP declaration"
+    );
+    value["managed_service"]["mcp_instance"]["reset_on_activation"] = json!(true);
+    assert!(
+        parse(&value)
+            .unwrap()
+            .managed_service
+            .unwrap()
+            .mcp_instance
+            .unwrap()
+            .reset_on_activation
+    );
+    for path in [
+        "",
+        "/manifest.json",
+        "../manifest.json",
+        "_assets/../manifest.json",
+        "_assets//manifest.json",
+        "./manifest.json",
+        "_assets\\manifest.json",
+        "C:/manifest.json",
+    ] {
+        let mut invalid = value.clone();
+        invalid["managed_service"]["mcp_instance"]["template"]["path"] = json!(path);
+        assert!(parse(&invalid).is_err(), "unsafe template path {path}");
+    }
+    for hash in [
+        "a".repeat(64),
+        "sha256:bad".into(),
+        format!("sha256:{}", "A".repeat(64)),
+    ] {
+        let mut invalid = value.clone();
+        invalid["managed_service"]["mcp_instance"]["template"]["sha256"] = json!(hash);
+        assert!(parse(&invalid).is_err(), "invalid digest {hash}");
+    }
+    value["managed_service"]["operations"][0]["mcp"] = json!({"name":"list", "description":"List"});
+    value["managed_service"]["mcp_instance"]
+        .as_object_mut()
+        .unwrap()
+        .remove("template");
+    assert!(parse(&value).is_err(), "reset requires a packaged default");
+    value["managed_service"]["mcp_instance"]["reset_on_activation"] = json!(false);
+    let legacy = parse(&value)
+        .unwrap()
+        .managed_service
+        .unwrap()
+        .mcp_instance
+        .unwrap();
+    assert!(legacy.template.is_none());
+    assert!(!legacy.reset_on_activation);
+}
