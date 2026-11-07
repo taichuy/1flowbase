@@ -55,7 +55,7 @@ pub struct CreateDataSourceBody {
     pub secret_json: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct PreviewDataSourceReadBody {
     pub resource_key: String,
     pub limit: Option<u32>,
@@ -70,12 +70,12 @@ pub struct RotateDataSourceSecretBody {
     pub secret_json: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateDataSourceDefaultsBody {
     pub default_data_model_status: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct MapDataSourceResourceToModelBody {
     pub resource_key: String,
     pub template_provider: String,

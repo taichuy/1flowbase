@@ -410,3 +410,6 @@ pub(crate) fn compile_registry(
         Arc::new(ProviderDiscoveryAdapter(dependencies)),
     )
 }
+
+#[path = "discovery_interface/event_projection.rs"]
+mod event_projection;

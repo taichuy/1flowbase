@@ -416,3 +416,6 @@ pub(crate) fn compile_registry(
         Arc::new(ProviderRoutingAdapter(dependencies)),
     )
 }
+
+#[path = "routing_interface/event_projection.rs"]
+mod event_projection;

@@ -903,3 +903,6 @@ impl InterfaceContract for PluginInterfaceInput {
 
 #[path = "managed_projection/output_projection.rs"]
 mod output_projection;
+
+#[path = "event_projection.rs"]
+mod event_projection;

@@ -265,3 +265,6 @@ pub(crate) fn compile_registry(
         Arc::new(JsDependenciesAdapter(store)),
     )
 }
+
+#[path = "js_dependencies/event_projection.rs"]
+mod event_projection;

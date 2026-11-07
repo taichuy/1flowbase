@@ -34,12 +34,12 @@ use crate::{
 const DEFAULT_OFFICIAL_PLUGIN_CATALOG_LIMIT: usize = 20;
 const MAX_OFFICIAL_PLUGIN_CATALOG_LIMIT: usize = 50;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct InstallPluginBody {
     pub package_root: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct InstallOfficialPluginBody {
     pub plugin_id: String,
     pub compatibility_override: Option<PluginCompatibilityOverrideBody>,
@@ -66,31 +66,38 @@ pub struct PluginRiskOverrideBody {
     pub acknowledged_warnings: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpgradeLatestPluginFamilyBody {
     pub compatibility_override: Option<PluginCompatibilityOverrideBody>,
     pub risk_override: Option<PluginRiskOverrideBody>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct SwitchPluginVersionBody {
     pub installation_id: String,
 }
 
-#[derive(Debug, Deserialize, IntoParams, Clone)]
+#[derive(Debug, Deserialize, IntoParams, Clone, Serialize)]
 pub struct PluginCatalogQuery {
     /// Optional plugin kind filter for catalog views.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
 }
 
-#[derive(Debug, Deserialize, IntoParams, Clone)]
+#[derive(Debug, Deserialize, IntoParams, Clone, Serialize)]
 pub struct OfficialPluginCatalogQuery {
     /// Optional plugin kind filter for official catalog views.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub q: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
 }
 

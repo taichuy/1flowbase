@@ -419,3 +419,6 @@ pub(crate) fn compile_registry(
         Arc::new(NodeContributionsAdapter(store)),
     )
 }
+
+#[path = "node_contributions/event_projection.rs"]
+mod event_projection;

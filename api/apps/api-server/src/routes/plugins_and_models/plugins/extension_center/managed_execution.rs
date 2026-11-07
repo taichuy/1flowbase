@@ -19,7 +19,7 @@ impl From<ManagedExecutionTargetBody> for ManagedFrozenExecutionTarget {
         }
     }
 }
-#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResumeManagedDeliveryBody {
     pub event_id: Uuid,

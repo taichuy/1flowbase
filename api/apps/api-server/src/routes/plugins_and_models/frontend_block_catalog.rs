@@ -518,3 +518,6 @@ pub(crate) fn compile_registry(
         Arc::new(FrontendBlocksAdapter(dependencies)),
     )
 }
+
+#[path = "frontend_block_catalog/event_projection.rs"]
+mod event_projection;

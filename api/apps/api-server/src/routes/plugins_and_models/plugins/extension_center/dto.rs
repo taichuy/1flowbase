@@ -3,10 +3,13 @@ use utoipa::{IntoParams, ToSchema};
 
 use super::{PluginCompatibilityOverrideBody, PluginRiskOverrideBody};
 
-#[derive(Debug, Deserialize, IntoParams, Clone)]
+#[derive(Debug, Deserialize, IntoParams, Clone, Serialize)]
 pub struct LocalExtensionInventoryQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
 }
 
@@ -137,11 +140,15 @@ pub struct ExtensionRiskChallengeResponse {
     pub compatibility: Option<ExtensionCompatibilityWarningResponse>,
 }
 
-#[derive(Debug, Deserialize, IntoParams, Clone)]
+#[derive(Debug, Deserialize, IntoParams, Clone, Serialize)]
 pub struct ExtensionCatalogGatewayQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub slot_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub q: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
 }
 
@@ -200,14 +207,14 @@ pub struct ExtensionCatalogGatewayPageResponse {
     pub entries: Vec<ExtensionCatalogGatewayEntryResponse>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ExtensionUpdateCheckItemBody {
     pub catalog_id: String,
     pub current_version: String,
     pub installed_versions: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ExtensionUpdateCheckBody {
     pub category: String,
     pub items: Vec<ExtensionUpdateCheckItemBody>,
@@ -227,7 +234,7 @@ pub struct ExtensionUpdateCheckResponse {
     pub items: Vec<ExtensionUpdateCheckItemResponse>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct InstallOfficialExtensionBody {
     pub category: String,
     pub catalog_id: String,
@@ -249,7 +256,7 @@ pub struct ExtensionUploadMultipartBody {
     compatibility_override: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GrantContributionPermissionRequest {
     pub contribution_id: String,
@@ -259,7 +266,7 @@ pub struct GrantContributionPermissionRequest {
     pub permission_contract_version: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RevokeContributionPermissionRequest {
     pub authorization_id: uuid::Uuid,

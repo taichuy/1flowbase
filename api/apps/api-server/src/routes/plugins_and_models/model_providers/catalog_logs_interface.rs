@@ -611,3 +611,6 @@ pub(crate) fn compile_registry(
         }),
     )
 }
+
+#[path = "catalog_logs_interface/event_projection.rs"]
+mod event_projection;

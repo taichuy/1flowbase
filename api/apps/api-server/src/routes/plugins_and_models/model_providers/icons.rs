@@ -256,3 +256,6 @@ pub(crate) fn compile_registry(
         }),
     )
 }
+
+#[path = "icons/event_projection.rs"]
+mod event_projection;

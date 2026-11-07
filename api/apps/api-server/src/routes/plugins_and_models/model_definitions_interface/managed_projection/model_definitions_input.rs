@@ -750,3 +750,6 @@ impl InterfaceContract for ModelDefinitionsInput {
     const CONTRACT_ID: &'static str = "console-model-definitions-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+#[path = "event_projection.rs"]
+mod event_projection;
