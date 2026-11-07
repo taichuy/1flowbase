@@ -165,7 +165,7 @@ pub(crate) enum McpBundleSourceBody {
     BuiltinTemplate(BuiltinMcpTemplateSelector),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct OfficialMcpBundleSelector {
     pub(crate) organization: String,
     pub(crate) bundle_id: String,
@@ -178,7 +178,7 @@ pub(crate) struct InstalledMcpExtensionSelector {
     pub(crate) integrity_override: Option<crate::routes::plugins::PluginRiskOverrideBody>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct BuiltinMcpTemplateSelector {
     pub(crate) builtin_template_id: String,
     pub(crate) instance_id: String,
@@ -246,7 +246,7 @@ pub(crate) struct InstalledMcpExtensionIntegrityChallengeResponse {
     pub(crate) preview: domain::McpBundlePreview,
 }
 
-#[derive(Debug, Default, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Default, Deserialize, utoipa::ToSchema, Serialize)]
 pub(crate) struct McpBundleLibraryVersionBody {
     pub(crate) bundle_version: Option<String>,
 }
@@ -548,7 +548,7 @@ async fn import_official_bundle(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ExportMcpBundleBody {
     pub(crate) organization: String,
@@ -557,7 +557,7 @@ pub(crate) struct ExportMcpBundleBody {
     pub(crate) locale: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ExportMcpInstanceBundleBody {
     pub(crate) organization: String,
@@ -567,7 +567,7 @@ pub(crate) struct ExportMcpInstanceBundleBody {
     pub(crate) export_profile: Option<McpInstanceBundleExportProfile>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum McpInstanceBundleExportProfile {
     Portable,

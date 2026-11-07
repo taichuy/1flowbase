@@ -1081,3 +1081,6 @@ impl InterfaceContract for McpCoreOutput {
     const CONTRACT_ID: &'static str = "console-mcp-core-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+#[path = "event_projection.rs"]
+mod event_projection;

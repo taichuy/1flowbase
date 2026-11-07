@@ -1112,3 +1112,6 @@ impl InterfaceContract for McpBundlesOutput {
     const CONTRACT_ID: &'static str = "console-mcp-bundles-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+#[path = "event_projection.rs"]
+mod event_projection;

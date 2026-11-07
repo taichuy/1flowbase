@@ -585,3 +585,6 @@ pub(crate) fn compile_registry(
         Arc::new(McpToolsAdapter(dependencies)),
     )
 }
+
+#[path = "interface_tools/event_projection.rs"]
+mod event_projection;

@@ -1105,3 +1105,6 @@ pub(crate) fn compile_registry(
         Arc::new(McpCatalogAdapter(dependencies)),
     )
 }
+
+#[path = "interface_catalog_routes/event_projection.rs"]
+mod event_projection;

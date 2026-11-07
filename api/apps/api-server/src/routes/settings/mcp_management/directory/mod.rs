@@ -11,14 +11,14 @@ pub struct McpInstanceDirectoryResponse {
     pub bindings: Vec<McpToolBindingResponse>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ReplaceMcpInstanceDirectoryBody {
     pub expected_snapshot: McpInstanceDirectoryResponse,
     pub groups: Vec<McpDirectoryGroupBody>,
     pub bindings: Vec<McpDirectoryBindingBody>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct McpDirectoryGroupBody {
     pub id: Option<String>,
     pub path: String,
@@ -28,7 +28,7 @@ pub struct McpDirectoryGroupBody {
     pub sort_order: i32,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct McpDirectoryBindingBody {
     pub id: Option<String>,
     pub tool_id: String,

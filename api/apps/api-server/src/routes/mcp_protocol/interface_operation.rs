@@ -682,13 +682,20 @@ pub(super) fn compile_registry(
             interface_runtime::PrincipalProfile::User,
         ),
     )?;
+    let event_binding = ProtocolBinding::new(
+        BindingId::new("mcp.user-api-key.invoke.v1").expect("static binding is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::mcp("mcp.json-rpc"),
+    );
+    // Non-HTTP bindings are classified by the shared helper and retain their
+    // existing protocol/downstream observers without a fabricated API operation.
+    crate::event_center::api_projection::register_static_api_event::<
+        McpInvocationInput,
+        McpInvocationOutput,
+    >(&mut compiler, &event_binding, "graph:mcp-protocol-v1")?;
     compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new("mcp.user-api-key.invoke.v1").expect("static binding is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::mcp("mcp.json-rpc"),
-        ),
+        event_binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new("api-server.user-api-key")
                 .expect("static adapter is valid"),
@@ -708,3 +715,6 @@ pub(super) fn compile_registry(
 fn contract<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION).expect("static contract is valid")
 }
+
+#[path = "interface_operation/event_projection.rs"]
+mod event_projection;
