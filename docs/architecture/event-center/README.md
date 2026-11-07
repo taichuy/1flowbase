@@ -2,15 +2,15 @@
 
 [English](README.en.md)
 
-事件中心位于 `/settings/events`。自定义事件定义、工作流触发配置和通信指令绑定持久保存；自定义事件实例、事件中心投递队列和观察动态仅保存在当前宿主内存，重启允许丢失。系统既有 runtime / lifecycle / communication 来源通过其真实 owner 接入；其原有持久化、重试、fence 与 ACK 保持不变，不能因观察日志临时保存就推断原始事件也不持久化。
+事件中心位于 `/settings/events`。用户接口事件规则、工作流触发配置和既有通信指令绑定持久保存；自定义事件实例、事件中心投递队列和观察动态仅保存在当前宿主内存，重启允许丢失。系统既有 runtime / lifecycle / communication 来源通过其真实 owner 接入；其原有持久化、重试、fence 与 ACK 保持不变，不能因观察日志临时保存就推断原始事件也不持久化。
 
 三个页签使用独立 URL：`/settings/events?tab=catalog`（事件目录）、`/settings/events?tab=queues`（当前队列）、`/settings/events?tab=activity`（近期动态）。直接打开 `/settings/events` 默认进入目录；刷新、前进和后退保留 URL 对应页签。页面沿用应用管理的共享表格工具栏和列设置，不另设标题面板。
 
 ## 系统来源与真实队列
 
-事件目录管理当前事件定义：同一作用域内的 `contract_id` 是事件标识，对应一份当前 Schema，不再通过契约版本区分事件。创建、订阅、通信事件绑定和事件中心信号均不携带版本。`source.selection` 保存稳定来源身份和明确 scope，技术详情中的 `point_id` 表示底层扩展接入点。Schema 来自 typed owner 或受管声明；`null`、布尔 Schema 和对象均由共享 JSON 区块原样展示。已有运行流声明使用真实 `RuntimeEventEnvelope` Schema，不为每个动态 `event_type` 伪造字段规则。
+事件目录管理当前事件定义：同一作用域内的 `contract_id` 是事件标识，对应一份当前 Schema，不再通过契约版本区分事件。创建、订阅、通信事件绑定和事件中心信号均不携带版本。`source.selection` 保存稳定来源身份、明确 scope 和后端声明的子类型 `filters`，技术详情中的 `point_id` 表示底层扩展接入点。Schema 来自 typed owner 或受管声明；`null`、布尔 Schema 和对象均由共享 JSON 区块原样展示。已有运行流声明使用真实 `RuntimeEventEnvelope` Schema，不为每个动态 `event_type` 伪造字段规则。
 
-已接入范围包括运行时 required / diagnostic / after-commit、通信命令、原生模型与积分通知，以及冻结图允许的 managed publications。内部 `Notify`、watch 和任意 socket 不因此变成可订阅的业务事件。可用触发时机由实际 adapter 决定。纯声明模板和 Unbound 历史来源不作为普通目录行重复展示，原始历史队列仍可在运行视图检查。目录按作用域与事件标识去重，不按运行实例生成重复定义。
+已接入范围包括运行时 required / diagnostic / after-commit、通信命令、原生模型与积分通知，以及冻结图允许的 managed publications。内部 `Notify`、watch 和任意 socket 不因此变成可订阅的业务事件。可用触发时机由实际 adapter 决定。纯声明模板和 Unbound 历史来源不作为普通目录行重复展示，原始历史队列仍可在运行视图检查。目录按作用域、事件标识和子类型 filters 区分；子事件继承同一原始 source，不重复发布事实。`group_path` 由后端声明业务层次，GUI、Workflow 与 MCP 消费同一份目录。
 
 “当前队列”分别展示原始来源队列和事件工作流队列。required / diagnostic 的统计来自原始通道；durable pending / paused / claimed 来自现有 outbox 的只读聚合。没有可靠累计真值的字段显示未知，不补零。读取快照不取走消息；consumed 在原始责任交接时成立，后续 handler 失败或 ACK 不撤销它。diagnostic 丢弃与 required / durable 交付规则均保留原语义。
 
@@ -42,9 +42,27 @@
 
 `EventDelivery` 的资源额度保留到 guard 释放。取出计数、仍持有资源和业务成功是不同概念；观察页面通过快照读取，不能从队列取走消息。
 
+## 业务事件与接口生命周期
+
+- **接口规则**：`before` 位于认证、授权和准入之后、业务执行之前，携带明确开放的真实 `input`。`completion` 等到逻辑调用结束，`terminal` 为 `completed / failed / rejected / cancelled`；空 `results` 选择全部终态。流式等待逻辑流收尾，连接关闭不自动等于取消。成功才携带声明的真实 `output`，其他终态不补造输出；没有可信身份/工作区的认证拒绝不派发工作区规则。观察不能修改请求、准入或主结果。未声明字段、credential、native handle 和原始协议内容不会自动开放。通知发送的 `input_payload` 为业务 JSON 对象，不从样例推断供应商字段 Schema。
+- **应用运行**：`host.application.run.started.v1`、`host.application.run.ended.v1` 复用现有状态 owner。首次进入 running 产生开始；最终事务/CAS 赢者提交后产生结束，覆盖 succeeded、incomplete、failed、cancelled。`run_mode` 区分 API、工作流 HTTP、定时、事件和调试等来源。LLM 节点回调、等待和恢复属于同次运行，不重复宣布开始/结束；观察没有第二套运行状态机。
+- **Agent Logs**：JSON、OTLP 接收和控制台导入投影 typed 输入及真实 receipt，使用 `host.application.operation.<interface_id>.<before|completion>` 记录操作及可信 application/workspace 身份，无需伪造 FlowRun 或先上报 task_end。接收/导入完成与外部任务实际完成独立。失败不把 partial receipt 伪装为成功输出；原错误保留已提交数量。
+- **积分**：`credit.integration_notification` 展开 CreditReserved、CreditSettled、CreditReleased、CreditGranted、CreditCharged、CreditRefunded、CreditAdjusted、CreditChargeSettingChanged、CreditCommandRejected 九个叶子。通过 `/payload/event_type` 匹配同一原事实，保留发布和消费身份。
+- **通信**：`system.communication.received` 在新增消息去重并提交后产生，重复输入不重发。Text/File 保留真实 MIME 和文件描述，不开放下载凭证。`system.communication.send_result` 提供 accepted、failed、unknown 叶子，保留回复与原供应商消息的关联。accepted 只表示供应商接受，不代表送达/已读；中断恢复的 unknown 不触发盲目重发。微信当前出站仅文本，入站文件用 MIME 区分图片、音频、视频等。
+
+```text
+接口调用 ── before(input) ── 逻辑终态 ── completion(output 或 terminal/classification)
+业务 owner ── 提交/真实回执 ── 业务事件 ── 各订阅独立队列 ── 消费者竞争取出
+应用 run ── 首次 running ── 等待/回调/恢复 ── 最终状态提交 ── ended
+```
+
+接口完成、应用结束、订阅激活、消息消费和通知送达各有独立含义。跨订阅广播是扇出关系，不新增“广播”生命周期状态。
+
+旧自由事件定义保持可读及原发布契约；缺少 `interface_event` 的旧记录在编辑器中只读，不借旧入口新建自由 Schema。通信指令的原发布契约只适用于旧自由事件，不允许伪造接口规则的调用事实。增量迁移只增加 nullable 规则元数据，不删除其他环境配置。当前开发库盘点未发现旧定义、触发器或通信事件绑定引用，这不代表所有环境均为空。
+
 ## 使用路径
 
-1. 在事件目录创建 `custom.<name>` 事件，填写非空展示名称和正文 Schema，不填写版本。名称可以重复，事件标识在工作区内唯一；更新 Schema 修改当前定义，不生成历史版本。只有自定义事件允许启停；系统与插件事件由定义方管理，启用列显示“—”。
+1. 在事件目录新建接口事件规则：选择已声明的 Canonical Interface 操作，再选“请求前”或“响应结束后”；响应结束可筛选全部或指定终态。填写名称，查看继承的只读 Schema。事件标识由后端生成，不再自由填写 `custom.*` 或 Schema。用户规则在有更新权限时可启停；系统与插件统一显示开启且禁用的开关。
 2. 在应用中创建 Workflow，选择 Event 触发类型，保存事件、阶段与输入映射，再发布工作流。未发布、无权限或来源不可用时不激活订阅，当前队列页显示原因。
 3. 输入映射使用 RFC6901 指针，例如 `/payload/order_id`；沿用现有 Start 的 string/number/boolean 输入规则。只把明确映射的输入和必要事件标识写入工作流运行，不额外保存完整事件正文。
 4. 通信绑定可新增 `user/<name>` 指令，并映射 `/arguments`、`/input_id`、`/conversation_id`、`/instance_id` 到事件字段。底座、插件与用户指令不能重名；不覆盖 `/new`、`/model` 或 `/help`。
@@ -85,6 +103,8 @@
 两张新表只保存配置：`event_definitions` 的选择性备份归 `system.events`，`workflow_event_triggers` 归 `system.applications`。恢复时沿用现有依赖校验；选择应用配置不会暗中复制其他事件定义。内置模型的结构与 generic record 写入口受保护，专用服务负责修改。
 
 ## 验证入口
+
+本轮业务事件的集中验证入口为 `event-lifecycle.yml` 的 `event-business` scope，保存精确 source SHA、非零测试结果和匹配的宿主候选产物。接口观察、应用终态、积分筛选、通信去重/结果与权限分别验证；源码检查不代替运行结果。
 
 行为证据分为事件服务单元测试、`event_center_configuration` PostgreSQL target、`api_system_settings` 的 event center 路由用例、`api_private_contracts` 的 event workflow/communication 用例，以及对应前端 feature 测试和 page-debug 页面证据。有限设计模型不替代这些实现测试。
 

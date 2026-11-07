@@ -26,7 +26,7 @@ Workflow configuration persists an optional source selection; omission preserves
 
 The default columns are Name, Event ID, Source category, Scope, Enabled, Supported trigger phases, and Actions. Owning module and extension point belong in read-only details. Contract version, registration status and observation coverage are not management columns. System/plugin ownership follows the defining module. Custom events have no owning module; their workspace is represented by scope. Source category does not depend on whether a consumer executes through a plugin.
 
-The catalog DTO exposes a boolean enabled value for custom events and null for system/plugin events. Custom-event write endpoints cannot toggle system/plugin sources. Request failures and incomplete queue observations remain explicit rather than being hidden with the removed columns. Custom payloads are validated against the current schema. Only configuration is durable; this design does not add payload archives or a legacy workflow migration mechanism.
+The catalog DTO exposes a boolean enabled value for user rules and null for system/plugin events. Both use switches: system/plugin switches are checked and disabled, without writing that display state back to enabled. Custom-event write endpoints cannot toggle system/plugin sources. Request failures and incomplete queue observations remain explicit rather than being hidden with the removed columns. Custom payloads are validated against the current schema. Only configuration is durable; this design does not add payload archives or a legacy workflow migration mechanism.
 
 Existing plugin, native lifecycle and outbox protocol versions remain with their original adapters and dispatchers. They are not part of Event Center definitions, source IDs or subscription matching. There is no hidden default event version or separate version-translation registry.
 
@@ -42,12 +42,32 @@ Independent subscriptions have separate queues. Workers within one subscription 
 
 An `EventDelivery` continues to hold its resource charge until its guard is released. Dequeue counts, retained resources and successful business execution are separate concepts. Inspection reads snapshots without consuming messages.
 
+## Business events and interface lifecycle
+
+The backend declares `group_path`, source identity, scope, subtype `filters`, and schemas. GUI, Workflow, and MCP consume the same catalog. A subtype selects the original fact; it does not publish a second event.
+
+- **Interface rules:** `before` runs after authentication, authorization, and admission, before business execution, with explicitly exposed actual `input`. `completion` runs at the logical terminal (`completed`, `failed`, `rejected`, or `cancelled`); empty `results` selects all. Streams wait for logical completion. A closed connection does not imply business cancellation. Only successful calls carry actual declared `output`; other results never fabricate successful output. Authentication rejection without a trusted workspace cannot dispatch workspace rules. Observation cannot modify input, veto execution, or replace the primary result. Undeclared fields, credentials, native handles, and raw protocol envelopes are excluded. Notification `input_payload` is a generic business JSON object, not a provider-specific schema inferred from examples.
+- **Application runs:** `host.application.run.started.v1` and `host.application.run.ended.v1` project the existing run owner. The first running transition starts a run; a winning final transaction/CAS ends it as succeeded, incomplete, failed, or cancelled. `run_mode` distinguishes API, workflow HTTP, schedule, event, and debug origins. LLM callbacks, waits, and resumes do not start or end another run. Observation does not introduce a second state machine.
+- **Agent Logs:** JSON/OTLP ingestion and console import expose typed business inputs and actual receipts through `host.application.operation.<interface_id>.<before|completion>`. Trusted application/workspace identities associate the operation with its application, without fabricating a FlowRun or requiring task_end. Ingestion/import completion is independent of external agent task completion. Failure does not turn a partial receipt into successful output; existing errors retain committed counts.
+- **Credits:** `credit.integration_notification` has nine selectable leaves: CreditReserved, CreditSettled, CreditReleased, CreditGranted, CreditCharged, CreditRefunded, CreditAdjusted, CreditChargeSettingChanged, and CreditCommandRejected. `/payload/event_type` selects one existing fact and preserves its publication/consumption identity.
+- **Communications:** `system.communication.received` follows deduplicated message commit; duplicates do not emit another fact. Text/File content includes actual MIME and file metadata, without download credentials. `system.communication.send_result` offers accepted, failed, and unknown leaves, retaining reply linkage to the original provider message. Accepted means provider acceptance, not delivery or read. Interrupted recovery can report unknown and must not cause blind retries. WeChat currently sends text only; incoming files distinguish images, audio, and video through MIME.
+
+```text
+Interface -> before(input) -> logical terminal -> completion(output or terminal/classification)
+Business owner -> commit/actual receipt -> event -> independent subscription queues -> competing consumers
+Application run -> first running -> waits/callbacks/resumes -> committed terminal -> ended
+```
+
+Interface completion, application termination, subscription activation, queue handoff, and notification delivery are independent boundaries. Cross-subscription broadcast is fanout, not an additional lifecycle state.
+
+Legacy free-schema records remain readable and retain their existing publication contracts. Records without `interface_event` are read-only in the editor; the old API cannot create new free-schema events. Legacy communication commands cannot publish fabricated interface-rule facts. The additive migration adds nullable rule metadata without deleting configuration in other environments. The development inventory found no legacy definitions, workflow triggers, or communication event-command references; that finding does not describe every deployment.
+
 ## Configuration flow
 
-1. Create a `custom.<name>` event with a nonempty display name and payload schema, without a version. Names may repeat; the event identifier is unique within its workspace. Editing the schema updates the current definition without creating historical versions. Only custom events can be enabled or disabled. System and plugin events are managed by their defining owners and show a dash in the Enabled column.
+1. Create an interface event rule: select a declared Canonical Interface operation and Before or Completion. Completion can select all terminal results or a subset. Give the rule a name and inspect its inherited, read-only schema. The backend generates its event identifier; users no longer author arbitrary `custom.*` identifiers or schemas. Authorized users can toggle their rules. System and plugin events use checked, disabled switches.
 2. Create a Workflow application with the Event trigger. Configure its event, phase and input mapping, then publish it. Missing publication, authority or source availability prevents activation and is reported on the current queues page.
 3. Map input names to RFC6901 pointers such as `/payload/order_id`. Existing Start string/number/boolean rules apply. Only explicitly mapped inputs and necessary event identities are included in workflow run records, not an extra copy of the entire event context.
-4. Communication bindings support `user/<name>` commands. Map `/arguments`, `/input_id`, `/conversation_id` and `/instance_id` into event fields. Names must not conflict with builtin, plugin or other user commands, including `/new`, `/model` and `/help`.
+4. Legacy free-schema communication bindings support `user/<name>` commands. Map `/arguments`, `/input_id`, `/conversation_id` and `/instance_id` into event fields. Names must not conflict with builtin, plugin or other user commands, including `/new`, `/model` and `/help`.
 5. Use existing workflow notification actions to send messages. A command acceptance reply does not confirm workflow completion or notification delivery.
 
 Publication reports admission per subscription. Zero targets is valid but does not retain events for future subscribers. Partial rejection does not roll back other targets or automatically retry all targets. A consumption fact and admission of its observer workflow are separate outcomes. An uncertain prior command attempt is not blindly published again.
@@ -85,6 +105,8 @@ Use `node scripts/node/tooling.js settings-registry register <descriptor.json>` 
 The only new tables store configuration: `event_definitions` belongs to the `system.events` selective-backup feature and `workflow_event_triggers` to `system.applications`. Existing restore dependency checks apply. Selecting application configuration does not silently copy event definitions owned by another feature. Builtin metadata protects structure and generic record writes; dedicated services own configuration changes.
 
 ## Verification
+
+The `event-business` scope in `event-lifecycle.yml` runs the focused business-event Test Batch and retains the exact source SHA, nonzero test results, and matching host candidate. Interface observation, application terminals, credit filters, communication deduplication/results, and permissions have separate evidence; source checks do not replace runtime verification.
 
 Implementation evidence comes from event-service unit tests, the `event_center_configuration` PostgreSQL target, event routes in `api_system_settings`, event workflow/communication cases in `api_private_contracts`, frontend feature tests and page-debug evidence. Finite design models do not replace implementation tests.
 

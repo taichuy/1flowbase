@@ -141,3 +141,23 @@ fn event_command_current_target_has_no_version_and_rejects_removed_input() {
     old["contract_version"] = json!("1");
     assert!(serde_json::from_value::<CommunicationEventCommandBinding>(old).is_err());
 }
+
+#[test]
+fn communication_command_cannot_fabricate_an_interface_invocation_fact() {
+    use domain::event_center::{InterfaceEventBinding, InterfaceEventPhase};
+    let workspace = Uuid::now_v7();
+    let command = binding();
+    let mut target = event(workspace);
+    target.interface_event = Some(InterfaceEventBinding {
+        interface_id: "applications.list".into(),
+        phase: InterfaceEventPhase::Before,
+        results: Vec::new(),
+    });
+    assert!(definition(&command, &[target.clone()], workspace).is_none());
+    assert!(communication_event_payload(
+        &command,
+        &json!({"arguments":"hello","input_id":"host"}),
+        &target
+    )
+    .is_err());
+}
