@@ -40,7 +40,7 @@ export function McpDirectoryTree({
   return (
     <Tree<McpDirectoryTreeNode>
       className="mcp-management__directory-tree"
-      draggable={{ icon: false, nodeDraggable: (node) => can('mcp.directory.replace') }}
+      draggable={{ icon: false, nodeDraggable: () => can('mcp.directory.replace') }}
       blockNode
       expandedKeys={expandedKeys}
       showIcon

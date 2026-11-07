@@ -160,38 +160,34 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     [catalog]
   );
 
-  // Only replace identity after server-assigned IDs arrive; never reset a node's unsaved form.
+  const directorySnapshot = draft.snapshot;
+  const resolveDirectoryId = draft.resolveId;
+  // Server IDs are mapped by the submitted snapshot, independent of later moves.
   useEffect(() => {
-    if (
-      !editingBinding ||
-      !draft.snapshot ||
-      draft.snapshot.bindings.some((row) => row.id === editingBinding.id)
-    )
-      return;
-    const saved = draft.snapshot.bindings.find(
-      (row) =>
-        row.group_path === editingBinding.group_path &&
-        row.tool_id === editingBinding.tool_id
+    if (!editingBinding || !directorySnapshot) return;
+    const saved = directorySnapshot.bindings.find(
+      (row) => row.id === resolveDirectoryId(editingBinding.id)
     );
-    if (saved) {
+    if (saved && saved.id !== editingBinding.id) {
       setEditingBinding(saved);
       setSelectedDirectoryKey((key) =>
         key === `binding:${editingBinding.id}` ? `binding:${saved.id}` : key
       );
     }
   }, [
-    draft.snapshot,
+    directorySnapshot,
+    resolveDirectoryId,
     editingBinding,
     setEditingBinding,
     setSelectedDirectoryKey
   ]);
-
   useEffect(() => {
-    const group = draft.snapshot?.groups.find(
-      (row) => row.path === watchedPath
-    );
+    const group =
+      directorySnapshot?.groups.find(
+        (row) => row.id === resolveDirectoryId(editingGroupIdRef.current ?? '')
+      ) ?? directorySnapshot?.groups.find((row) => row.path === watchedPath);
     if (group) editingGroupIdRef.current = group.id;
-  }, [draft.snapshot, watchedPath]);
+  }, [directorySnapshot, resolveDirectoryId, watchedPath]);
 
   function applyDirectoryPathToForms(
     path: string,
@@ -435,6 +431,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     const values = {
       instance_id: selectedInstance?.instance_id ?? '',
       group_path: path,
+      tool_id: '',
       visible: true,
       sort_order: 0
     };
@@ -520,7 +517,9 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     if (!nodeEditing || !draft.snapshot) return;
     const old =
       editingBinding &&
-      (draft.snapshot.bindings.find((row) => row.id === editingBinding.id) ??
+      (draft.snapshot.bindings.find(
+        (row) => row.id === draft.resolveId(editingBinding.id)
+      ) ??
         draft.snapshot.bindings.find(
           (row) =>
             row.tool_id === editingBinding.tool_id &&
@@ -626,7 +625,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
       const snapshot = draft.getSnapshot();
       if (editingBinding) {
         const row = snapshot?.bindings.find(
-          (value) => value.id === editingBinding.id
+          (value) => value.id === draft.resolveId(editingBinding.id)
         );
         if (row) {
           bindingForm.setFieldValue('group_path', row.group_path);
