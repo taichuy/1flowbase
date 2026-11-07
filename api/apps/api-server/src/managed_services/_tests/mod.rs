@@ -328,3 +328,5 @@ fn plugin_settings_navigation_and_api_use_the_same_canonical_grant() {
         assert_eq!(crate::middleware::require_settings_feature_permission::authorize_compiled_console_access(&access, &actor, &policies), expected);
     }
 }
+
+mod record_permission_runtime;

@@ -692,3 +692,23 @@ fn parse_client_frame(text: &str, input: &jsonschema::Validator) -> Result<Clien
 #[cfg(test)]
 #[path = "_tests/stream_lifecycle.rs"]
 mod lifecycle_tests;
+
+#[cfg(test)]
+pub(super) fn register_test_stream(
+    installation: uuid::Uuid,
+    generation: &str,
+) -> Result<(impl Send, watch::Receiver<bool>), ApiError> {
+    register(installation, epoch(installation), generation)
+}
+
+#[cfg(test)]
+pub(super) async fn revalidate_test_stream(
+    state: &ApiState,
+    headers: &HeaderMap,
+    session: &str,
+    operation: &plugin_framework::ManagedServiceOperation,
+    installation: uuid::Uuid,
+    payload: &Value,
+) -> Result<(), ApiError> {
+    revalidate(state, headers, session, operation, installation, payload).await
+}
