@@ -24,6 +24,10 @@ pub struct PgControlPlaneStore {
         std::sync::Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
     actor_override: Option<ActorContext>,
     workflow_ancestor_ids: Option<Vec<Uuid>>,
+    pub(crate) application_lifecycle_observer:
+        Option<std::sync::Arc<dyn control_plane_contracts::ports::ApplicationLifecycleObserver>>,
+    pub(crate) communication_lifecycle_observer:
+        Option<std::sync::Arc<dyn control_plane_contracts::ports::CommunicationLifecycleObserver>>,
     pub(crate) lifecycle_observer:
         Option<std::sync::Arc<dyn control_plane_contracts::ports::LifecycleFactObserver>>,
     pub(crate) runtime_table_name_policy: crate::RuntimeTableNamePolicy,
@@ -41,6 +45,8 @@ impl PgControlPlaneStore {
             actor_override: None,
             workflow_ancestor_ids: None,
             lifecycle_observer: None,
+            application_lifecycle_observer: None,
+            communication_lifecycle_observer: None,
             runtime_table_name_policy: crate::RuntimeTableNamePolicy::default(),
             lifecycle_publication_catalog: std::sync::Arc::new(
                 LifecyclePublicationCatalog::default(),
@@ -71,6 +77,23 @@ impl PgControlPlaneStore {
         );
         context.workflow_ancestor_ids = self.workflow_ancestor_ids();
         context
+    }
+
+    pub fn with_application_lifecycle_observer(
+        mut self,
+        observer: std::sync::Arc<dyn control_plane_contracts::ports::ApplicationLifecycleObserver>,
+    ) -> Self {
+        self.application_lifecycle_observer = Some(observer);
+        self
+    }
+    pub fn with_communication_lifecycle_observer(
+        mut self,
+        observer: std::sync::Arc<
+            dyn control_plane_contracts::ports::CommunicationLifecycleObserver,
+        >,
+    ) -> Self {
+        self.communication_lifecycle_observer = Some(observer);
+        self
     }
 
     pub fn with_lifecycle_observer(
@@ -114,6 +137,8 @@ impl PgControlPlaneStore {
             actor_override: Some(actor),
             workflow_ancestor_ids: self.workflow_ancestor_ids.clone(),
             lifecycle_observer: self.lifecycle_observer.clone(),
+            application_lifecycle_observer: self.application_lifecycle_observer.clone(),
+            communication_lifecycle_observer: self.communication_lifecycle_observer.clone(),
             runtime_table_name_policy: self.runtime_table_name_policy.clone(),
             lifecycle_publication_catalog: std::sync::Arc::clone(
                 &self.lifecycle_publication_catalog,

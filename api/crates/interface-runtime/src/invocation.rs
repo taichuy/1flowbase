@@ -952,6 +952,7 @@ async fn run_failure_hooks<I, O>(
 
 struct ReceiptBuilder {
     event_principal: Option<crate::InterfaceEventPrincipal>,
+    event_observer_context: Option<crate::hook::InvocationExtensionContext>,
     event_input: Option<serde_json::Value>,
     event_output: Option<serde_json::Value>,
     managed_invocation: Option<crate::hook::ManagedInvocationContext>,
@@ -983,6 +984,7 @@ impl ReceiptBuilder {
     ) -> Self {
         Self {
             event_principal: None,
+            event_observer_context: None,
             event_input: None,
             event_output: None,
             managed_invocation: None,
@@ -1020,6 +1022,16 @@ impl ReceiptBuilder {
     }
 
     fn resolve(&mut self, plan: &crate::CompiledInvocationPlan) {
+        if self.frozen_plan.is_none() {
+            self.event_observer_context = plan.event_observer.as_ref().and_then(|observer| {
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    observer.capture_context()
+                }))
+                .ok()
+                .flatten()
+                .map(crate::hook::InvocationExtensionContext)
+            });
+        }
         self.frozen_plan = Some(plan.clone());
         self.interface_id = Some(plan.definition().interface_id().clone());
         self.resolved = Some(ResolvedInvocationPin::from_plan(plan));

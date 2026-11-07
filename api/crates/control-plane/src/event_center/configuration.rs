@@ -111,9 +111,15 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
         id: Uuid,
         input: UpdateEventDefinitionInput,
     ) -> anyhow::Result<EventDefinitionRecord> {
-        let payload_schema = self.interface_schema(actor, &input.interface_event)?;
-        validate_fields(&input.name, &payload_schema)?;
         let mut record = self.get_definition(actor, id).await?;
+        // Stopping an unchanged rule stays possible when its interface is unavailable.
+        let payload_schema =
+            if !input.enabled && record.interface_event.as_ref() == Some(&input.interface_event) {
+                record.payload_schema.clone()
+            } else {
+                self.interface_schema(actor, &input.interface_event)?
+            };
+        validate_fields(&input.name, &payload_schema)?;
         validate_identity(&record.contract_id)?;
         record.name = input.name;
         record.description = input.description;

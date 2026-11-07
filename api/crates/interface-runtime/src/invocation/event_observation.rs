@@ -20,6 +20,7 @@ impl ReceiptBuilder {
             registry_fingerprint: self.registry_fingerprint.clone(),
             attempt: self.attempt.clone(),
             extension_context: self.extension_context.clone(),
+            observer_context: self.event_observer_context.clone(),
         })
     }
 

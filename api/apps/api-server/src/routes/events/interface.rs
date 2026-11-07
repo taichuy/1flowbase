@@ -90,7 +90,15 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                             .ok_or_else(crate::generation_dispatch::unavailable)
                     })
                     .transpose()?;
-                let entries = self.sources.registered_events(actor, &self.runtime);
+                let registry = _generation
+                    .as_ref()
+                    .and_then(|boot| boot.interface_registry())
+                    .map(|registry| registry.snapshot());
+                let entries = self.sources.registered_events_with_interfaces(
+                    actor,
+                    &self.runtime,
+                    registry.as_deref(),
+                );
                 let service = EventCenterConfigurationService::with_registered_events(
                     self.store.clone(),
                     actor.current_workspace_id,

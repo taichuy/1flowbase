@@ -263,6 +263,10 @@ impl EventCenterRuntime {
         ))
     }
 
+    pub fn configured(&self) -> bool {
+        self.inner.policy.is_some()
+    }
+
     pub fn publish(
         &self,
         definition: &EventDefinitionRecord,

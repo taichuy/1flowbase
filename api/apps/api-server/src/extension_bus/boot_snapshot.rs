@@ -311,7 +311,6 @@ impl ExtensionBootSnapshot {
         let (candidate, console_operation_snapshot) = collector
             .compile_complete_console_snapshot(state.console_operation_registry.inventory())?;
         managed.bind_registry(&candidate)?;
-        state.event_sources.bind_interface_registry(&candidate)?;
         let module = plugin_framework::extension_bus::compile_managed_interface_module(
             candidate
                 .definitions()

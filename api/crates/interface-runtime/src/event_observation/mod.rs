@@ -81,6 +81,7 @@ pub struct InterfaceEventContext {
     pub(crate) registry_fingerprint: RegistryFingerprint,
     pub(crate) attempt: Option<ExecutionAttempt>,
     pub(crate) extension_context: Option<crate::hook::InvocationExtensionContext>,
+    pub(crate) observer_context: Option<crate::hook::InvocationExtensionContext>,
 }
 impl InterfaceEventContext {
     /// None denotes rejection before authentication established a principal.
@@ -110,6 +111,10 @@ impl InterfaceEventContext {
     }
     pub fn attempt(&self) -> Option<&ExecutionAttempt> {
         self.attempt.as_ref()
+    }
+    /// Invocation-owned snapshot of host observation metadata, retained through stream terminal.
+    pub fn observer_context<T: Any + Send + Sync>(&self) -> Option<&T> {
+        self.observer_context.as_ref()?.0.downcast_ref()
     }
     pub fn extension_context<T: Any + Send + Sync>(&self) -> Option<&T> {
         self.extension_context.as_ref()?.0.downcast_ref()
@@ -145,6 +150,12 @@ pub type InterfaceEventObserverFuture<'a> =
 
 /// Host-only read observation. It cannot mutate input, veto, or replace the primary result.
 pub trait InterfaceEventObserver: Send + Sync + 'static {
+    /// Captured once when resolving an invocation, before task-local context can be lost.
+    /// The kernel treats it as opaque host metadata; it is never serialized.
+    fn capture_context(&self) -> Option<Arc<dyn Any + Send + Sync>> {
+        None
+    }
+
     fn observe(&self, event: InterfaceEvent) -> InterfaceEventObserverFuture<'_>;
 }
 

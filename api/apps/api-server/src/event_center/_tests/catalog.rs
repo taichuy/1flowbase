@@ -30,9 +30,14 @@ fn runtime_capabilities_exist_before_first_run_without_fake_queues_or_subscripti
         ..Default::default()
     };
     let entries = catalog.registered_events(&actor, &runtime);
-    assert_eq!(entries.len(), 6);
+    assert_eq!(
+        entries.len(),
+        6 + super::super::business::catalog(EventSourceScope::Workspace {
+            workspace_id: actor.current_workspace_id
+        })
+        .len()
+    );
     assert!(entries.iter().all(|entry| entry.enabled.is_none()
-        && entry.payload_schema["properties"]["event_id"]["type"] == "string"
         && entry
             .supported_phases
             .contains(&EventTriggerPhase::Published)));
@@ -55,7 +60,13 @@ fn runtime_capabilities_exist_before_first_run_without_fake_queues_or_subscripti
     }
     actor.is_root = false;
     let workspace_only = catalog.registered_events(&actor, &runtime);
-    assert_eq!(workspace_only.len(), 3);
+    assert_eq!(
+        workspace_only.len(),
+        3 + super::super::business::catalog(EventSourceScope::Workspace {
+            workspace_id: actor.current_workspace_id
+        })
+        .len()
+    );
     assert!(workspace_only.iter().all(|entry| matches!(
         entry.source.as_ref().unwrap().selection.scope,
         EventSourceScope::Workspace { .. }

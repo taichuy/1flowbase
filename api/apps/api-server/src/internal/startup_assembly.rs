@@ -401,6 +401,7 @@ pub(super) async fn app_and_runtime_host_from_config(
     let notification_service = Arc::new(control_plane::notifications::NotificationService::new(
         store.clone(), config.provider_secret_master_key.clone(),
     ).with_events(notification_events.clone())
+        .with_communication_lifecycle_observer(crate::event_center::business::BusinessSourceObserver::new(&event_center))
         .with_provider(Arc::new(notification_runtime::ManagedNotificationProvider::new(managed_composition.clone())))
         .with_command_provider(Arc::new(crate::extension_bus::ManagedCommunicationCommandProvider::new(managed_composition.clone()))));
     notification_service.bootstrap().await?;

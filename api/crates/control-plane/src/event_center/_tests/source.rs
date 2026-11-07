@@ -569,3 +569,67 @@ fn current_definition_rejects_conflicting_schema_or_defining_owner() {
     };
     assert!(runtime.register_source(other_scope).is_ok());
 }
+
+#[test]
+fn subtype_filters_dispatch_one_credit_leaf_and_preserve_original_identity() {
+    use control_plane_contracts::ports::CreditNotificationEventType;
+    let runtime = runtime();
+    let workspace_id = Uuid::now_v7();
+    let scope = EventSourceScope::Workspace { workspace_id };
+    let source = runtime.register_source(descriptor(scope.clone())).unwrap();
+    let targets = CreditNotificationEventType::ALL
+        .into_iter()
+        .map(|kind| {
+            let subscription = runtime
+                .subscribe_source(
+                    EventRuntimeSubscription {
+                        subscription_id: Uuid::now_v7(),
+                        workspace_id,
+                        contract_id: "runtime.envelope".into(),
+                        trigger_phase: EventTriggerPhase::Published,
+                        consumer_id: Uuid::now_v7(),
+                    },
+                    EventSourceTarget {
+                        scope: scope.clone(),
+                        source_id: "runtime.required".into(),
+                        workflow_id: Uuid::now_v7(),
+                        filters: std::collections::BTreeMap::from([(
+                            "/payload/event_type".into(),
+                            kind.wire_name().into(),
+                        )]),
+                    },
+                )
+                .unwrap();
+            (kind, subscription)
+        })
+        .collect::<Vec<_>>();
+    for kind in CreditNotificationEventType::ALL {
+        let mut fact = observation(EventSourceFact::Published, Vec::new());
+        fact.attributes
+            .insert("/payload/event_type".into(), kind.wire_name().into());
+        source.observe_with_payload(fact, &mut || Some(json!({"payload":{"event_type":kind}})));
+        for (selected, subscription) in &targets {
+            let delivery = subscription.try_recv().unwrap();
+            assert_eq!(
+                delivery.is_some(),
+                *selected == kind,
+                "wrong subtype cannot receive {kind:?}"
+            );
+            if let Some(delivery) = delivery {
+                let context = delivery.signal().source_context.as_ref().unwrap();
+                assert_eq!(
+                    context.original_event_id.as_deref(),
+                    Some("native:event:42")
+                );
+                assert_eq!(context.attributes["/payload/event_type"], kind.wire_name());
+            }
+        }
+    }
+    source.observe_with_payload(
+        observation(EventSourceFact::Published, Vec::new()),
+        &mut || panic!("missing discriminator cannot match any leaf"),
+    );
+    assert!(targets
+        .iter()
+        .all(|(_, subscription)| subscription.try_recv().unwrap().is_none()));
+}

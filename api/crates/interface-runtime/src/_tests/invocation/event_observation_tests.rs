@@ -17,8 +17,16 @@ enum ObserverBehavior {
 struct Observer {
     events: Arc<Mutex<Vec<InterfaceEvent>>>,
     behavior: ObserverBehavior,
+    captures: std::sync::atomic::AtomicUsize,
 }
 impl InterfaceEventObserver for Observer {
+    fn capture_context(&self) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
+        Some(Arc::new(
+            self.captures
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                + 1,
+        ))
+    }
     fn observe(&self, event: InterfaceEvent) -> InterfaceEventObserverFuture<'_> {
         if matches!(self.behavior, ObserverBehavior::PanicConstruction) {
             panic!("controlled host observer constructor panic");
@@ -47,6 +55,7 @@ fn observer(behavior: ObserverBehavior) -> (Arc<Observer>, Arc<Mutex<Vec<Interfa
         Arc::new(Observer {
             events: events.clone(),
             behavior,
+            captures: std::sync::atomic::AtomicUsize::new(0),
         }),
         events,
     )
@@ -162,6 +171,13 @@ async fn event_capability_is_explicit_and_independent_of_managed_hooks_and_subsc
     assert_eq!(outcome.value(), &Output(5));
     let events = events.lock().unwrap();
     assert_eq!(events.len(), 2);
+    for event in events.iter() {
+        assert_eq!(
+            event.context().observer_context::<usize>(),
+            Some(&1),
+            "host context must freeze once, including completion"
+        );
+    }
     let InterfaceEvent::Before { context, input } = &events[0] else {
         panic!("expected before")
     };

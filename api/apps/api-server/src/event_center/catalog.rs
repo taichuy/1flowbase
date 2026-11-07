@@ -5,23 +5,12 @@ use std::{collections::BTreeMap, sync::Arc};
 #[derive(Default)]
 pub struct EventSourceCatalog {
     pub(crate) runtime_bound: bool,
-    interface_registry:
-        std::sync::OnceLock<std::sync::Weak<interface_runtime::CompiledInterfaceRegistry>>,
     pub(crate) native_plan:
         Option<Arc<plugin_framework::extension_bus::EffectiveLifecycleSubscriberPlan>>,
     pub(crate) lifecycle_observer:
         Option<Arc<control_plane::lifecycle_outbox_dispatcher::LifecycleSourceObserver>>,
 }
 impl EventSourceCatalog {
-    pub(crate) fn bind_interface_registry(
-        &self,
-        registry: &Arc<interface_runtime::CompiledInterfaceRegistry>,
-    ) -> anyhow::Result<()> {
-        self.interface_registry
-            .set(Arc::downgrade(registry))
-            .map_err(|_| anyhow::anyhow!("event interface registry already bound"))
-    }
-
     /// Shared production/fixture assembly. Call before extracting stream/store clones or
     /// starting producers/workers; keep the returned catalog with the serving generation.
     pub(crate) fn attach_local(
@@ -46,12 +35,15 @@ impl EventSourceCatalog {
                 EventSourceScope::Unbound,
             );
         }
-        let store = store.with_lifecycle_observer(lifecycle.clone());
+        let business = super::business::BusinessSourceObserver::new(runtime);
+        let store = store
+            .with_lifecycle_observer(lifecycle.clone())
+            .with_application_lifecycle_observer(business.clone())
+            .with_communication_lifecycle_observer(business);
         Ok((
             store,
             Arc::new(Self {
                 runtime_bound: true,
-                interface_registry: Default::default(),
                 native_plan,
                 lifecycle_observer: Some(lifecycle),
             }),
@@ -63,16 +55,21 @@ impl EventSourceCatalog {
         actor: &ActorContext,
         runtime: &control_plane::event_center::EventCenterRuntime,
     ) -> Vec<EventCatalogEntry> {
+        self.registered_events_with_interfaces(actor, runtime, None)
+    }
+
+    pub(crate) fn registered_events_with_interfaces(
+        &self,
+        actor: &ActorContext,
+        runtime: &control_plane::event_center::EventCenterRuntime,
+        registry: Option<&interface_runtime::CompiledInterfaceRegistry>,
+    ) -> Vec<EventCatalogEntry> {
         let scopes = visible_scopes(actor);
-        let configured = runtime.snapshot(actor.current_workspace_id).configured;
+        let configured = runtime.configured();
         let mut entries = BTreeMap::new();
         if configured && self.runtime_bound {
-            if let Some(registry) = self
-                .interface_registry
-                .get()
-                .and_then(std::sync::Weak::upgrade)
-            {
-                for entry in super::interface::catalog(&registry, actor) {
+            if let Some(registry) = registry {
+                for entry in super::interface::catalog(registry, actor) {
                     insert(&mut entries, entry);
                 }
             }
@@ -91,6 +88,11 @@ impl EventSourceCatalog {
                     unavailable(&mut source);
                 }
                 insert(&mut entries, source.into());
+            }
+            if configured && self.runtime_bound {
+                for entry in super::business::catalog(scope.clone()) {
+                    insert(&mut entries, entry);
+                }
             }
             if let Some(plan) = &self.native_plan {
                 for mut entry in crate::host_extensions::lifecycle::native_lifecycle_catalog_entries(

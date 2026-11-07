@@ -335,3 +335,43 @@ async fn source_selection_authorizes_scope_and_matches_identity_before_phase() {
         .await
         .is_ok());
 }
+
+#[tokio::test]
+async fn unchanged_rule_can_be_disabled_after_its_interface_is_removed() {
+    let actor = actor();
+    let repository = MemoryRepository::default();
+    let mut record = EventDefinitionRecord {
+        interface_event: Some(input().interface_event),
+        id: Uuid::now_v7(),
+        workspace_id: actor.current_workspace_id,
+        contract_id: "custom.interface.removed".into(),
+        name: "Removed source".into(),
+        description: String::new(),
+        payload_schema: serde_json::json!({"type":"object"}),
+        enabled: true,
+        created_by: actor.user_id,
+        created_at: OffsetDateTime::now_utc(),
+        updated_at: OffsetDateTime::now_utc(),
+    };
+    repository.create_event_definition(&record).await.unwrap();
+    let service = EventCenterConfigurationService::new(repository);
+    let mut update = UpdateEventDefinitionInput {
+        name: record.name.clone(),
+        description: record.description.clone(),
+        interface_event: record.interface_event.clone().unwrap(),
+        enabled: false,
+    };
+    record = service
+        .update_definition(&actor, record.id, update.clone())
+        .await
+        .unwrap();
+    assert!(!record.enabled);
+    update.enabled = true;
+    assert!(
+        service
+            .update_definition(&actor, record.id, update)
+            .await
+            .is_err(),
+        "missing declaration cannot be reactivated"
+    );
+}

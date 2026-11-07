@@ -57,7 +57,10 @@ fn definition<'a>(
     workspace_id: Uuid,
 ) -> Option<&'a EventDefinitionRecord> {
     definitions.iter().find(|d| {
-        d.workspace_id == workspace_id && d.enabled && d.contract_id == binding.contract_id
+        d.workspace_id == workspace_id
+            && d.enabled
+            && d.interface_event.is_none()
+            && d.contract_id == binding.contract_id
     })
 }
 
@@ -69,7 +72,10 @@ pub fn communication_event_payload(
     definition: &EventDefinitionRecord,
 ) -> Result<Value> {
     anyhow::ensure!(
-        binding.enabled && definition.enabled && binding.contract_id == definition.contract_id,
+        binding.enabled
+            && definition.enabled
+            && definition.interface_event.is_none()
+            && binding.contract_id == definition.contract_id,
         "event command target unavailable"
     );
     let mut payload = serde_json::Map::new();
